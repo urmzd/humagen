@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,22 +10,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // The Slack app runs npm dependencies, so it is given what Node needs and
-// its own settings, never warp's database URL, sign-in secret or model keys.
+// its own settings, never humagen's database URL, sign-in secret or model keys.
 func TestTheSlackAppIsGivenOnlyWhatItNeeds(t *testing.T) {
 	process := map[string]string{
-		"PATH": "/usr/bin", "HOME": "/home/warp", "HTTPS_PROXY": "http://proxy:3128",
+		"PATH": "/usr/bin", "HOME": "/home/humagen", "HTTPS_PROXY": "http://proxy:3128",
 		"NODE_EXTRA_CA_CERTS": "/etc/ca.pem",
 		// What the server keeps for itself.
-		"WARP_POSTGRES_URL":       "postgres://warp:pw@db/warp",
-		"WARP_OIDC_CLIENT_SECRET": "the-servers-own-secret",
-		"ANTHROPIC_API_KEY":       "sk-ant-x",
-		"AWS_SECRET_ACCESS_KEY":   "aws-x",
-		"WARP_S3_SECRET_KEY":      "s3-x",
+		"HUMAGEN_POSTGRES_URL":       "postgres://humagen:pw@db/humagen",
+		"HUMAGEN_OIDC_CLIENT_SECRET": "the-servers-own-secret",
+		"ANTHROPIC_API_KEY":          "sk-ant-x",
+		"AWS_SECRET_ACCESS_KEY":      "aws-x",
+		"HUMAGEN_S3_SECRET_KEY":      "s3-x",
 		// Where the choices say the app's own credentials are kept.
 		"BOT": "xoxb-1", "APP": "xapp-1", "SLACK_CLIENT_SECRET": "the-apps-secret", "API_TOKEN": "tok-1",
 	}
@@ -35,14 +36,14 @@ func TestTheSlackAppIsGivenOnlyWhatItNeeds(t *testing.T) {
 		choice: spec.Slack{
 			Enabled: true, Team: "T1", Operators: []string{"U1", "U2"},
 			BotToken: &spec.Ref{Ref: "env:BOT"}, AppToken: &spec.Ref{Ref: "env:APP"},
-			WarpClient: &spec.ClientCredentials{
-				TokenURL: "https://login.example.com/token", ClientID: "warp-slack",
+			HumagenClient: &spec.ClientCredentials{
+				TokenURL: "https://login.example.com/token", ClientID: "humagen-slack",
 				ClientSecret: &spec.Ref{Ref: "env:SLACK_CLIENT_SECRET"},
-				Scopes:       []string{"warp:runs:read", "warp:runs:write"}, Audience: "warp",
+				Scopes:       []string{"humagen:runs:read", "humagen:runs:write"}, Audience: "humagen",
 			},
 		},
 	}
-	env, err := app.env(context.Background(), "http://127.0.0.1:8080", "https://warp.example.com", lookup)
+	env, err := app.env(context.Background(), "http://127.0.0.1:8080", "https://humagen.example.com", lookup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,13 +56,22 @@ func TestTheSlackAppIsGivenOnlyWhatItNeeds(t *testing.T) {
 		got[k] = v
 	}
 	want := map[string]string{
-		"PATH": "/usr/bin", "HOME": "/home/warp", "HTTPS_PROXY": "http://proxy:3128", "NODE_EXTRA_CA_CERTS": "/etc/ca.pem",
+		"PATH": "/usr/bin", "HOME": "/home/humagen", "HTTPS_PROXY": "http://proxy:3128", "NODE_EXTRA_CA_CERTS": "/etc/ca.pem",
 		"SLACK_BOT_TOKEN": "xoxb-1", "SLACK_APP_TOKEN": "xapp-1", "SLACK_TEAM_ID": "T1", "SLACK_OPERATORS": "U1,U2",
-		"WARP_URL": "http://127.0.0.1:8080", "WARP_TENANT": "acme", "WARP_PUBLIC_URL": "https://warp.example.com",
-		"WARP_OIDC_TOKEN_URL": "https://login.example.com/token", "WARP_OIDC_CLIENT_ID": "warp-slack",
-		"WARP_OIDC_CLIENT_SECRET": "the-apps-secret", "WARP_OIDC_SCOPES": "warp:runs:read warp:runs:write",
-		"WARP_OIDC_AUDIENCE": "warp",
+		"HUMAGEN_URL": "http://127.0.0.1:8080", "HUMAGEN_TENANT": "acme", "HUMAGEN_PUBLIC_URL": "https://humagen.example.com",
+		"HUMAGEN_OIDC_TOKEN_URL": "https://login.example.com/token", "HUMAGEN_OIDC_CLIENT_ID": "humagen-slack",
+		"HUMAGEN_OIDC_CLIENT_SECRET": "the-apps-secret", "HUMAGEN_OIDC_SCOPES": "humagen:runs:read humagen:runs:write",
+		"HUMAGEN_OIDC_AUDIENCE": "humagen",
 	}
+	// Each of the app's own settings also under its old name, for an app
+	// directory from before the rename, which reads only those; the new app
+	// is told they are copies and notes nothing.
+	for k, v := range maps.Clone(want) {
+		if rest, ok := strings.CutPrefix(k, "HUMAGEN_"); ok {
+			want["WARP_"+rest] = v
+		}
+	}
+	want["HUMAGEN_OLD_NAMES_COPIED"] = "1"
 	for k, v := range want {
 		if got[k] != v {
 			t.Errorf("%s = %q, want %q", k, got[k], v)
@@ -74,13 +84,13 @@ func TestTheSlackAppIsGivenOnlyWhatItNeeds(t *testing.T) {
 	}
 
 	// A token is given as it is.
-	app.choice.WarpClient, app.choice.WarpToken = nil, &spec.Ref{Ref: "env:API_TOKEN"}
+	app.choice.HumagenClient, app.choice.HumagenToken = nil, &spec.Ref{Ref: "env:API_TOKEN"}
 	env, err = app.env(context.Background(), "http://127.0.0.1:8080", "", lookup)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(env, "WARP_TOKEN=tok-1") || slices.ContainsFunc(env, func(e string) bool { return strings.HasPrefix(e, "WARP_OIDC_") }) {
-		t.Errorf("with warp_token: %v", env)
+	if !slices.Contains(env, "HUMAGEN_TOKEN=tok-1") || slices.ContainsFunc(env, func(e string) bool { return strings.HasPrefix(e, "HUMAGEN_OIDC_") }) {
+		t.Errorf("with humagen_token: %v", env)
 	}
 }
 
@@ -89,14 +99,14 @@ func TestTheSlackAppIsGivenOnlyWhatItNeeds(t *testing.T) {
 // server goes on answering.
 func TestASlackAppThatCannotStartLeavesTheServerUp(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(dir, "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: System
 spec:
   auth: {kind: dev}
   blobs: {kind: memory}
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: default}
 spec:
@@ -106,7 +116,7 @@ spec:
 		t.Fatal(err)
 	}
 	// An apps/slack with nothing installed in it.
-	t.Setenv("WARP_SLACK_APP_DIR", t.TempDir())
+	t.Setenv("HUMAGEN_SLACK_APP_DIR", t.TempDir())
 	stopped := make(chan error, 1)
 	o := Options{slackDone: func(_ string, err error) { stopped <- err }}
 	addr := serveFor(t, o, "-f", path, "-addr", "127.0.0.1:0")
@@ -125,8 +135,8 @@ spec:
 // A flag can choose a sign-in the file's Slack surface has no credential
 // for; serve refuses that before it listens, as a check refuses the file.
 func TestServeRefusesASlackSurfaceWithNoCredentialForItsSignIn(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: Platform
 metadata: {name: default}
 spec:

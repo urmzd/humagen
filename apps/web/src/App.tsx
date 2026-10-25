@@ -1,3 +1,5 @@
+import { agentHuePath, configureAgentHues } from "./agentHues.ts";
+import { setAgentHues } from "./ui.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentDetail } from "./AgentDetail.tsx";
 import { Agents } from "./Agents.tsx";
@@ -32,11 +34,12 @@ import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import { notificationsOf, updatesOf } from "@warp/adapter";
-import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@warp/core";
+import { notificationsOf, updatesOf } from "@humagen/adapter";
+import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@humagen/core";
 import { HomeBoxes, type Loaded } from "./HomePage.tsx";
 import { usePreferences } from "./preferences.ts";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
+import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { type AgentTab, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
@@ -54,7 +57,11 @@ export function App() {
     api
       .me()
       // A caller with no permission at all is sent null, not an empty list.
-      .then((me) => setSession({ state: "ready", me: { ...me, permissions: me.permissions ?? [] } }))
+      .then((me) => {
+ const huePath = agentHuePath(me.permissions ?? []);
+ configureAgentHues(huePath ? (names) => api.agentHues(names, huePath).then((r) => r.hues) : undefined);
+ setSession({ state: "ready", me: { ...me, permissions: me.permissions ?? [] } });
+ })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) {
           // Arriving signed out goes straight to sign-in. Signing out, below,
@@ -72,7 +79,7 @@ export function App() {
   if (session.state === "signed-out") {
     return (
       <Centered>
-        <h1 className="text-aui-lg font-medium text-aui-fg">Warp</h1>
+        <h1 className="text-aui-lg font-medium text-aui-fg">Humagen</h1>
         <p className="text-aui-sm text-aui-muted">You are signed out.</p>
         <a className={primary} href={signInUrl()}>
           Sign In
@@ -80,7 +87,7 @@ export function App() {
       </Centered>
     );
   }
-  return <Console me={session.me} onSignedOut={() => setSession({ state: "signed-out" })} />;
+  return <Console me={session.me} onSignedOut={() => { configureAgentHues(undefined); setSession({ state: "signed-out" }); }} />;
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -91,21 +98,10 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-const SIDEBAR_KEY = "warp.sidebar";
-
 /** The platform's own agents the console offers ways into. */
 export const BUILTIN_ANALYST = "warp-analyst";
 export const BUILTIN_BUILDER = "warp-builder";
 
-/** A per-viewer convenience, so it lives in the browser and must never throw. */
-function stored(key: string, fallback: boolean): boolean {
-  try {
-    const v = window.localStorage.getItem(key);
-    return v === null ? fallback : v === "1";
-  } catch {
-    return fallback;
-  }
-}
 
 function greeting(name: string): string {
   const h = new Date().getHours();
@@ -141,7 +137,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // The project tree, null until it is read, and the workspace's own view, which heads it.
   const [projects, setProjects] = useState<ProjectView[] | null>(null);
   const [root, setRoot] = useState<ProjectView | null>(null);
-  const [open, setOpen] = useState(() => stored(SIDEBAR_KEY, window.innerWidth >= 768));
+  const [open, setOpen] = useState(() => sidebarStartsOpen(window.innerWidth));
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);
@@ -193,6 +189,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     api
       .agentList()
       .then((r) => {
+        setAgentHues(r.hues ?? {});
         setAgents(r.agents);
         setBuiltin(r.builtin ?? []);
         setHomes(r.homes ?? {});
@@ -278,7 +275,10 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     const close = subscribe("agent", {
       onOpen: loadRuns,
       onState: setLive,
-      onInbox: loadInbox,
+      onInbox: () => {
+        loadInbox();
+        loadProjects();
+      },
       // A person's message starts no run, so the stream says so by name.
       onThread: () => {
         window.clearTimeout(pending.current);
@@ -295,7 +295,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       window.clearTimeout(pending.current);
       close();
     };
-  }, [can, loadRuns, loadAgents, loadInbox]);
+  }, [can, loadRuns, loadAgents, loadInbox, loadProjects]);
 
   // An eval in flight reports progress on its own record, not on the bus.
   const evalRunning = suites.some((s) => s.runs[0]?.status === "running");
@@ -385,6 +385,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         prefs={prefs}
         can={can}
         threads={threads}
+        projects={projects ?? []}
+        workspaceName={workspaceName}
         pinned={prefs.pinned}
         onPin={pin}
         inboxCount={inboxCounts.open}
@@ -406,6 +408,12 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             startChannel={route.page === "new" ? route.channel : undefined}
             focus={route.page === "conversation" ? route.message : undefined}
             sharing={route.page === "conversation" && !!route.share}
+            view={route.page === "conversation" ? route : undefined}
+            onView={(view) => {
+              if (thread) go({ page: "conversation", id: thread, ...view }, {
+                replace: route.page === "conversation" && route.panel === view.panel && route.artifact === view.artifact,
+              });
+            }}
             onSharing={(open) => {
               if (!thread) return;
               // Closing a dialog opened here goes back, so Back does not open it again.
@@ -663,6 +671,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpenRun={openRun}
             onOpenThread={openThread}
             selectedId={route.artifact ?? null}
+            onOpenArtifact={(file) => go({ page: "conversation", id: file.thread, panel: "deliverables", artifact: file.id })}
             onSelect={(artifact) => go({ page: "artifacts", artifact: artifact ?? undefined })}
           />
         )}

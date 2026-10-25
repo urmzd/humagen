@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultCopy } from "@warp/components";
-import { LIMITS } from "@warp/render-slack";
+import { defaultCopy } from "@humagen/components";
+import { LIMITS } from "@humagen/render-slack";
 import {
   alertMail,
   announcementMail,
@@ -23,12 +23,12 @@ import {
   type World,
   world,
 } from "./harness.ts";
-import type { WireProject } from "./warp.ts";
+import type { WireProject } from "./humagen.ts";
 
-const CONSOLE = "https://warp.test";
+const CONSOLE = "https://humagen.test";
 
 /**
- * What warp lists for ana: Field and its account Globex, which name her, and
+ * What humagen lists for ana: Field and its account Globex, which name her, and
  * News, which she reads as one of everyone. Secret, which she may not see, is
  * not among them.
  */
@@ -63,7 +63,7 @@ const ANAS: WireProject[] = [
 /** An app that is the client "app", mapping USER to ana, with the console's address unless it is "". */
 function mapping(publicUrl = CONSOLE, operators: string[] = []): World {
   const w = world({ clientId: "app", operators, ...(publicUrl ? { publicUrl } : {}) });
-  w.warp.clients.set("app", {
+  w.humagen.clients.set("app", {
     id: "app",
     surface: "slack",
     enabled: true,
@@ -71,8 +71,8 @@ function mapping(publicUrl = CONSOLE, operators: string[] = []): World {
     agents: ["*"],
     slack: { machine: SUBJECT, people: { [USER]: "ana" } },
   });
-  w.warp.personal.set("ana", [mentionMail(), announcementMail()]);
-  w.warp.projects.set("ana", ANAS);
+  w.humagen.personal.set("ana", [mentionMail(), announcementMail()]);
+  w.humagen.projects.set("ana", ANAS);
   w.slack.users.set(USER, "Ana Lima");
   return w;
 }
@@ -108,8 +108,8 @@ function under(blocks: Block[], heading: string): Block[] {
 /** Answer the run a message started, so the app stops following it. */
 async function answered(w: World) {
   await settle();
-  w.warp.emit(w.warp.last.id, "lifecycle.accepted");
-  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "Done." });
+  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
+  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "Done." });
   await w.app.idle();
 }
 
@@ -121,25 +121,25 @@ test("a person the client maps sees the shared Home, every part of it read as th
   await w.app.handle(homeOpened(USER));
   await settle();
   const as = { client: "app", user: USER };
-  assert.deepEqual(w.warp.readFor, [as, as], "their inbox, and their announcements");
-  assert.deepEqual(w.warp.projectsReadFor, [as], "their projects");
+  assert.deepEqual(w.humagen.readFor, [as, as], "their inbox, and their announcements");
+  assert.deepEqual(w.humagen.projectsReadFor, [as], "their projects");
 
   const blocks = published(w);
   assert.ok(blocks.length <= LIMITS.blocks.home);
   // The sections the design names.
   assert.deepEqual(headers(blocks), [
-    "Hi Ana, I'm Warp.",
+    "Hi Ana, I'm Humagen.",
     "Needs you",
     "What's new",
     "Your projects",
   ]);
   const [mention] = under(blocks, defaultCopy.home.needsYou);
   assert.match(mention?.text?.text ?? "", /^\*Ana\* mentioned you in #renewals/);
-  assert.match(mention?.text?.text ?? "", /https:\/\/warp\.test\/inbox\?message=m-mention/);
+  assert.match(mention?.text?.text ?? "", /https:\/\/humagen\.test\/inbox\?message=m-mention/);
 
   const [news] = under(blocks, defaultCopy.home.whatsNew);
   assert.match(news?.text?.text ?? "", /^\*Field offsite\*\nUnread · Posted in Field engineering/);
-  assert.equal(news?.accessory?.url, "https://warp.test/projects/Field?message=m-news");
+  assert.equal(news?.accessory?.url, "https://humagen.test/projects/Field?message=m-news");
 
   // The projects that name her: News, everyone's and the busiest, is not one.
   const projects = under(blocks, defaultCopy.home.yourProjects);
@@ -148,18 +148,21 @@ test("a person the client maps sees the shared Home, every part of it read as th
     ["*Field engineering*", "*Globex*"],
   );
   assert.match(projects[1]?.text?.text ?? "", /Account · in Field engineering/);
-  assert.equal(projects[1]?.accessory?.url, "https://warp.test/projects/Globex");
+  assert.equal(projects[1]?.accessory?.url, "https://humagen.test/projects/Globex");
 
   // It cannot know their access or what they connected, so it says neither.
   const text = JSON.stringify(blocks);
   assert.ok(!text.includes("Signed in as"));
   assert.ok(!text.includes(defaultCopy.home.connections));
-  assert.match(text, /<https:\/\/warp\.test\|Open the console>/);
+  assert.match(text, /<https:\/\/humagen\.test\|Open the console>/);
 });
 
 test("Home starts a question or an agent as the person, and searches in the console", async () => {
   const w = mapping();
-  w.warp.agentList = [...w.warp.agentList, { name: "warp-builder", description: "Builds agents." }];
+  w.humagen.agentList = [
+    ...w.humagen.agentList,
+    { name: "warp-builder", description: "Builds agents." },
+  ];
   await w.app.handle(homeOpened(USER));
   await settle();
   const start = published(w).find((b) => b.block_id === "home:start");
@@ -167,7 +170,7 @@ test("Home starts a question or an agent as the person, and searches in the cons
     start?.elements?.map((e) => e.text?.text),
     ["Ask a Question", "Build an Agent", "Search Context"],
   );
-  assert.equal(start?.elements?.[2]?.url, "https://warp.test/context");
+  assert.equal(start?.elements?.[2]?.url, "https://humagen.test/context");
 
   // Search Context is a link Slack opens itself: its click asks nothing here.
   const calls = w.slack.calls.length;
@@ -188,7 +191,7 @@ test("Home starts a question or an agent as the person, and searches in the cons
   await answered(w);
   assert.equal(w.slack.of("chat.postMessage").at(-1)?.channel, USER);
   assert.deepEqual(
-    w.warp.posts.map((p) => ({ text: p.text, act_as: p.act_as })),
+    w.humagen.posts.map((p) => ({ text: p.text, act_as: p.act_as })),
     [{ text: "what changed today?", act_as: { client: "app", user: USER } }],
   );
 
@@ -206,15 +209,15 @@ test("Home starts a question or an agent as the person, and searches in the cons
     }),
   );
   await answered(w);
-  assert.equal(w.warp.posts.at(-1)?.text, "@warp-builder one that triages support tickets");
-  assert.deepEqual(w.warp.posts.at(-1)?.act_as, { client: "app", user: USER });
+  assert.equal(w.humagen.posts.at(-1)?.text, "@warp-builder one that triages support tickets");
+  assert.deepEqual(w.humagen.posts.at(-1)?.act_as, { client: "app", user: USER });
 });
 
 test("Build an Agent is offered only where this app may reach the builder", async () => {
   const w = mapping();
-  w.warp.agentList = [...w.warp.agentList, { name: "warp-builder" }];
-  w.warp.clients.set("app", {
-    ...(w.warp.clients.get("app") as NonNullable<ReturnType<typeof w.warp.clients.get>>),
+  w.humagen.agentList = [...w.humagen.agentList, { name: "warp-builder" }];
+  w.humagen.clients.set("app", {
+    ...(w.humagen.clients.get("app") as NonNullable<ReturnType<typeof w.humagen.clients.get>>),
     agents: ["lead"],
   });
   await w.app.handle(homeOpened(USER));
@@ -241,7 +244,7 @@ test("without a console address, Review sends an item to the person's messages, 
   assert.equal(dm?.channel, USER);
   assert.match(JSON.stringify(dm?.blocks), /can you confirm the renewal date/);
   assert.match(JSON.stringify(dm?.blocks), new RegExp(`"${defaultCopy.reply}"`));
-  assert.deepEqual(w.warp.readFor.at(-1), { client: "app", user: USER });
+  assert.deepEqual(w.humagen.readFor.at(-1), { client: "app", user: USER });
 });
 
 /** Press Review on the Home tab, and return the message it sent the person. */
@@ -260,14 +263,14 @@ for (const operators of [[], [USER]]) {
   test(`a press in what Review sent is the person's own, for ${who}, even where the app may read it too`, async () => {
     const w = mapping("", operators);
     // An alert that notifies nobody: the app's machine may read it as well as ana.
-    w.warp.personal.set("ana", [alertMail()]);
-    w.warp.mailbox.set("m-alert", alertMail());
+    w.humagen.personal.set("ana", [alertMail()]);
+    w.humagen.mailbox.set("m-alert", alertMail());
     const blocks = await reviewed(w);
     await w.app.handle(
       click(blocks, defaultCopy.acknowledge, { channel: DM, ts: "1800000009.000100" }),
     );
     await w.app.idle();
-    assert.deepEqual(w.warp.resolvedFor, [
+    assert.deepEqual(w.humagen.resolvedFor, [
       {
         id: "m-alert",
         part: "p1",
@@ -275,16 +278,16 @@ for (const operators of [[], [USER]]) {
         as: { client: "app", user: USER },
       },
     ]);
-    assert.deepEqual(w.warp.resolved, [], "never settled with the app's own credential");
+    assert.deepEqual(w.humagen.resolved, [], "never settled with the app's own credential");
     assert.deepEqual(w.slack.of("chat.postEphemeral"), [], "nobody is told no");
     const edit = w.slack.of("chat.update").at(-1);
     assert.equal(edit?.channel, DM, "the message is kept current where it was pressed");
   });
 }
 
-test("what Review sent offers no Snooze or Dismiss, which warp does only as the caller", async () => {
+test("what Review sent offers no Snooze or Dismiss, which humagen does only as the caller", async () => {
   const w = mapping("");
-  w.warp.personal.set("ana", [alertMail()]);
+  w.humagen.personal.set("ana", [alertMail()]);
   const text = JSON.stringify(await reviewed(w));
   assert.match(text, new RegExp(`"${defaultCopy.acknowledge}"`), "what it can do for them stays");
   for (const label of [defaultCopy.snooze, defaultCopy.dismiss]) {
@@ -294,29 +297,29 @@ test("what Review sent offers no Snooze or Dismiss, which warp does only as the 
 
 test("Retry in what Review sent asks again as the person, in the run's thread, and acknowledges it as them", async () => {
   const w = mapping("");
-  w.warp.personal.set("ana", []);
+  w.humagen.personal.set("ana", []);
   await w.app.handle(mention("deploy it", "1700000000.000100"));
   await settle();
-  const run = w.warp.last.id;
-  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
-  w.warp.emit(run, "lifecycle.accepted");
-  w.warp.emit(run, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
+  const run = w.humagen.last.id;
+  assert.equal(w.humagen.runs.get(run)?.actor?.user, "ana");
+  w.humagen.emit(run, "lifecycle.accepted");
+  w.humagen.emit(run, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
   await settle();
   await w.app.idle();
   // A failed run's message names no audience: the app's machine may read it too.
-  w.warp.personal.set("ana", [failureMail(run)]);
-  w.warp.mailbox.set("m-failure", failureMail(run));
+  w.humagen.personal.set("ana", [failureMail(run)]);
+  w.humagen.mailbox.set("m-failure", failureMail(run));
   const blocks = await reviewed(w);
   const reacted = w.slack.of("reactions.add").length;
   await w.app.handle(click(blocks, defaultCopy.retry, { channel: DM, ts: "1800000009.000100" }));
   await settle();
-  assert.equal(w.warp.started.length, 2, "asked again");
-  assert.deepEqual(w.warp.started[1]?.act_as, { client: "app", user: USER });
+  assert.equal(w.humagen.started.length, 2, "asked again");
+  assert.deepEqual(w.humagen.started[1]?.act_as, { client: "app", user: USER });
   // The turn asked again is shown in the run's own thread, not on the message in their messages.
   const seen = w.slack.of("reactions.add").slice(reacted);
   assert.ok(seen.length > 0);
   for (const r of seen) assert.deepEqual([r.channel, r.timestamp], [CHANNEL, "1700000000.000100"]);
-  assert.deepEqual(w.warp.resolvedFor, [
+  assert.deepEqual(w.humagen.resolvedFor, [
     {
       id: "m-failure",
       part: "p1",
@@ -324,16 +327,20 @@ test("Retry in what Review sent asks again as the person, in the run's thread, a
       as: { client: "app", user: USER },
     },
   ]);
-  assert.deepEqual(w.warp.resolved, [], "warp is never asked to retry, nor the app to settle it");
-  w.warp.emit(w.warp.last.id, "lifecycle.accepted");
-  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "ok" });
+  assert.deepEqual(
+    w.humagen.resolved,
+    [],
+    "humagen is never asked to retry, nor the app to settle it",
+  );
+  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
+  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "ok" });
   await settle();
   await w.app.idle();
 });
 
-test("an agent's draft waits in Needs you, counted as warp counts it, and is not news", async () => {
+test("an agent's draft waits in Needs you, counted as humagen counts it, and is not news", async () => {
   const w = mapping();
-  w.warp.personal.set("ana", [
+  w.humagen.personal.set("ana", [
     mentionMail(),
     announcementMail(),
     draftMail({ subject: "Field shipped two fixes <!here>" }),
@@ -345,7 +352,7 @@ test("an agent's draft waits in Needs you, counted as warp counts it, and is not
   const rows = needs.filter((b) => b.type === "section").map((b) => b.text?.text ?? "");
   assert.equal(rows.length, 2, JSON.stringify(needs));
   assert.match(rows[0] ?? "", /^\*warp-analyst\* Field shipped two fixes @here/);
-  assert.match(rows[0] ?? "", /https:\/\/warp\.test\/inbox\?message=m-draft/);
+  assert.match(rows[0] ?? "", /https:\/\/humagen\.test\/inbox\?message=m-draft/);
   assert.match(rows[1] ?? "", /^\*Ana\* mentioned you in #renewals/);
   // Two need her, and both are shown: nothing more is counted.
   const text = JSON.stringify(blocks);
@@ -370,7 +377,7 @@ test("however much news is newer, Needs you shows what needs her and agrees with
       updated_at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
     }),
   );
-  w.warp.personal.set("ana", [...news.reverse(), mentionMail()]);
+  w.humagen.personal.set("ana", [...news.reverse(), mentionMail()]);
   await w.app.handle(homeOpened(USER));
   await settle();
   const blocks = published(w);
@@ -382,8 +389,8 @@ test("however much news is newer, Needs you shows what needs her and agrees with
   const text = JSON.stringify(blocks);
   assert.ok(!text.includes("more in the inbox"), "one needs her, and it is shown");
   assert.ok(
-    w.warp.inboxQueries.some((q) => q.needs === true && !q.kind),
-    JSON.stringify(w.warp.inboxQueries),
+    w.humagen.inboxQueries.some((q) => q.needs === true && !q.kind),
+    JSON.stringify(w.humagen.inboxQueries),
   );
 });
 
@@ -399,7 +406,7 @@ test("however many drafts are newer, What's new shows the posted announcement", 
       updated_at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
     }),
   );
-  w.warp.personal.set("ana", [...drafts.reverse(), announcementMail()]);
+  w.humagen.personal.set("ana", [...drafts.reverse(), announcementMail()]);
   await w.app.handle(homeOpened(USER));
   await settle();
   const news = under(published(w), defaultCopy.home.whatsNew);
@@ -408,14 +415,14 @@ test("however many drafts are newer, What's new shows the posted announcement", 
     ["*Field offsite*"],
   );
   assert.ok(
-    w.warp.inboxQueries.some((q) => q.news === true && !q.kind),
-    JSON.stringify(w.warp.inboxQueries),
+    w.humagen.inboxQueries.some((q) => q.news === true && !q.kind),
+    JSON.stringify(w.humagen.inboxQueries),
   );
 });
 
 test("What's new names where it was posted by its title, in a project that is not one of hers too", async () => {
   const w = mapping();
-  w.warp.personal.set("ana", [
+  w.humagen.personal.set("ana", [
     announcementMail({ id: "m-all", subject: "Office closed Friday", source: { project: "News" } }),
   ]);
   await w.app.handle(homeOpened(USER));
@@ -435,7 +442,7 @@ test("What's new names where it was posted by its title, in a project that is no
 
 test("a person whose projects cannot be read sees the rest of their Home", async () => {
   const w = mapping();
-  w.warp.projects.delete("ana");
+  w.humagen.projects.delete("ana");
   await w.app.handle(homeOpened(USER));
   await settle();
   const blocks = published(w);
@@ -446,7 +453,7 @@ test("a person whose projects cannot be read sees the rest of their Home", async
 
 test("an announcement an agent wrote pings nobody on Home either", async () => {
   const w = mapping();
-  w.warp.personal.set("ana", [
+  w.humagen.personal.set("ana", [
     announcementMail({
       from: { kind: "agent", name: "recap" },
       subject: "Recap <@U0DANA> <!here>",
@@ -467,6 +474,6 @@ test("someone the client maps to nobody keeps the mailbox Home, and nothing is r
   const blocks = published(w, OTHER_USER);
   assert.ok(!headers(blocks).includes(defaultCopy.home.whatsNew));
   assert.ok(!headers(blocks).includes(defaultCopy.home.yourProjects));
-  assert.deepEqual(w.warp.readFor, []);
-  assert.deepEqual(w.warp.projectsReadFor, []);
+  assert.deepEqual(w.humagen.readFor, []);
+  assert.deepEqual(w.humagen.projectsReadFor, []);
 });

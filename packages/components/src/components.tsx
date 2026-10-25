@@ -21,7 +21,7 @@ import {
   type SystemAlert,
   type Turn,
   timeToken,
-} from "@warp/core";
+} from "@humagen/core";
 import {
   type ActionRef,
   Actions,
@@ -48,7 +48,7 @@ import {
   Terminal,
   Text,
   useSurface,
-} from "@warp/primitives";
+} from "@humagen/primitives";
 import type { ReactNode } from "react";
 import { type Copy, defaultCopy } from "./copy";
 
@@ -321,7 +321,13 @@ export function ClarificationCard({
     <>
       <Summary text={copy.inputNeeded(clarification.question)} />
       <Text text={body} />
-      <Actions blockId={`clarification:${clarification.id}`}>
+      <Actions
+        blockId={`clarification:${clarification.id}`}
+        confirmChoice={{
+          label: copy.conversation.answerChoice,
+          hint: copy.conversation.questionHint,
+        }}
+      >
         {options.map((o) => (
           <Button
             key={o.id}
@@ -598,10 +604,13 @@ export function TurnView({
   streamed = false,
   viewer,
   capabilities,
+  hideTasks = false,
 }: {
   turn: Turn;
   /** What the host can act on. Controls it can't act on are left out. */
   capabilities?: TurnCapabilities;
+  /** A web message frame may group these same tasks above the answer. */
+  hideTasks?: boolean;
   /** Who is looking, for approval gating. */
   viewer?: string;
   /**
@@ -639,7 +648,7 @@ export function TurnView({
           ]}
         />
       )}
-      {!streamed && <TaskList turn={turn} copy={copy} />}
+      {!streamed && !hideTasks && <TaskList turn={turn} copy={copy} />}
       {settled.map((i) => (
         <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
       ))}

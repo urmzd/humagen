@@ -1,12 +1,12 @@
 /**
- * What a Slack host needs that warp does not export yet. The entry ids and
- * the wording below are copied from warp's Slack sandbox
+ * What a Slack host needs that humagen does not export yet. The entry ids and
+ * the wording below are copied from humagen's Slack sandbox
  * (`apps/slack-sandbox/src/manifest.ts` and `serve.tsx`), where they are
- * private to that app. They belong in a warp package: until they move, this
+ * private to that app. They belong in a humagen package: until they move, this
  * file is the copy, and it holds nothing else.
  *
- * warp: export ENTRY (with the manifest), the ask form as askForm() in
- * @warp/render-slack (like feedbackModal), and these words in copy.ts as
+ * humagen: export ENTRY (with the manifest), the ask form as askForm() in
+ * @humagen/render-slack (like feedbackModal), and these words in copy.ts as
  * copy.ask.{title,label,send,cancel} and copy.notInChannel.
  */
 
@@ -32,11 +32,11 @@ export const words = {
   /** What the Home tab says the app does, before how to reach it. */
   homeIntro: "I hand your questions to this workspace's agents.",
   notInChannel: "I'm not in this channel yet. Invite me with `/invite`, then try again.",
-  // warp: needs a reply modal for questions; until then this says where to answer.
+  // humagen: needs a reply modal for questions; until then this says where to answer.
   replyInConsole: "Replies to this question are typed in the console for now.",
   /** Under a mention or a question sent to a person's direct messages: where it was said. */
   openThread: "Open Thread",
-  // warp: belongs in copy.ts, as copy.interrupted.
+  // humagen: belongs in copy.ts, as copy.interrupted.
   interrupted: "This answer was cut off when the app restarted. Please ask again.",
   // What the agent is told about a thread's messages that were not addressed to it.
   historyOpen: "Messages in this Slack thread since you were last asked, oldest first:",

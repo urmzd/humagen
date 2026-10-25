@@ -7,17 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 var everything = []string{
-	"warp:agents:read", "warp:agents:write", "warp:runs:read", "warp:runs:write",
-	"warp:schedules:read", "warp:schedules:write", "warp:alerts:read", "warp:alerts:write",
-	"warp:knowledge:read", "warp:knowledge:write", "warp:evals:read", "warp:evals:write",
-	"warp:billing:read", "warp:billing:write", "warp:artifacts:read", "warp:artifacts:write",
-	"warp:clients:read", "warp:clients:write", "warp:projects:read", "warp:projects:write", "warp:projects:govern",
-	"warp:people:read",
+	"humagen:agents:read", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write",
+	"humagen:schedules:read", "humagen:schedules:write", "humagen:alerts:read", "humagen:alerts:write",
+	"humagen:knowledge:read", "humagen:knowledge:write", "humagen:evals:read", "humagen:evals:write",
+	"humagen:billing:read", "humagen:billing:write", "humagen:artifacts:read", "humagen:artifacts:write",
+	"humagen:clients:read", "humagen:clients:write", "humagen:projects:read", "humagen:projects:write", "humagen:projects:govern",
+	"humagen:people:read",
 }
 
 func TestObservabilityIsConfinedToATenant(t *testing.T) {
@@ -100,7 +100,7 @@ func TestObservabilityIsConfinedToATenant(t *testing.T) {
 
 func TestObservabilityPermissions(t *testing.T) {
 	f := newFixture(t)
-	viewer := f.signIn(t, "warp-viewers")
+	viewer := f.signIn(t, "humagen-viewers")
 	for _, tc := range []struct{ path, body string }{
 		{"/api/alert-rules", `{"name":"any","kind":"run_failed","severity":"critical"}`},
 		{"/api/knowledge", `{"name":"handbook"}`},
@@ -264,7 +264,7 @@ func TestEvalsAreConfinedAndGuarded(t *testing.T) {
 			t.Errorf("other tenant %s %s = %d, want 404", tc.method, tc.path, res.StatusCode)
 		}
 	}
-	viewer := f.signIn(t, "warp-viewers")
+	viewer := f.signIn(t, "humagen-viewers")
 	if res, _ := f.do(t, viewer, "POST", "/api/evals/smoke/run", "", ""); res.StatusCode != http.StatusForbidden {
 		t.Errorf("a viewer ran an eval: %d", res.StatusCode)
 	}
@@ -377,7 +377,7 @@ func TestConversationsBranchAndPick(t *testing.T) {
 
 func TestPreferencesAreTheCallersOwn(t *testing.T) {
 	f := newFixture(t)
-	ada := f.signIn(t, "warp-viewers")
+	ada := f.signIn(t, "humagen-viewers")
 	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
 
 	res, out := f.do(t, ada, "PUT", "/api/preferences", "", `{"display_name":"Ada","theme":"light","accent":"teal"}`)
@@ -449,7 +449,7 @@ func TestAgentMemory(t *testing.T) {
 	if res, _ := f.do(t, nil, "POST", "/api/agents/helper/memory/approve", globex, `{"ids":["m1"]}`); res.StatusCode != http.StatusNotFound {
 		t.Errorf("other tenant approved memory: %d", res.StatusCode)
 	}
-	reader := f.machine(t, "acme", "warp:agents:read")
+	reader := f.machine(t, "acme", "humagen:agents:read")
 	if res, _ := f.do(t, nil, "POST", "/api/agents/helper/memory/approve", reader, `{"ids":["m1"]}`); res.StatusCode != http.StatusForbidden {
 		t.Errorf("a reader approved memory: %d", res.StatusCode)
 	}
@@ -537,7 +537,7 @@ func TestProjects(t *testing.T) {
 			t.Errorf("other tenant %s %s = %d, want 404", tc.method, tc.path, res.StatusCode)
 		}
 	}
-	viewer := f.signIn(t, "warp-viewers")
+	viewer := f.signIn(t, "humagen-viewers")
 	if res, _ := f.do(t, viewer, "POST", "/api/projects", "", `{"name":"Mine"}`); res.StatusCode != http.StatusForbidden {
 		t.Errorf("a viewer made a project: %d", res.StatusCode)
 	}
@@ -691,7 +691,7 @@ func TestBillingPolicies(t *testing.T) {
 	if res, _ := f.do(t, nil, "DELETE", "/api/policies?kind=project&name=Launch", globex, ""); res.StatusCode != http.StatusNotFound {
 		t.Errorf("other tenant deleted the policy: %d", res.StatusCode)
 	}
-	viewer := f.signIn(t, "warp-viewers")
+	viewer := f.signIn(t, "humagen-viewers")
 	if res, _ := f.do(t, viewer, "GET", "/api/usage", "", ""); res.StatusCode != http.StatusOK {
 		t.Errorf("a viewer cannot read usage: %d", res.StatusCode)
 	}
@@ -705,7 +705,7 @@ func TestBillingPolicies(t *testing.T) {
 
 func TestOnboardingFlags(t *testing.T) {
 	f := newFixture(t)
-	admin, viewer := f.signIn(t, "warp-admins"), f.signIn(t, "warp-viewers")
+	admin, viewer := f.signIn(t, "humagen-admins"), f.signIn(t, "humagen-viewers")
 
 	_, me := f.do(t, admin, "GET", "/api/me", "", "")
 	if me["first_admin"] != true {
@@ -887,7 +887,7 @@ func TestAlertRuleConfiguration(t *testing.T) {
 	}
 
 	// Refusals: who may change a rule, which rule, and what it may become.
-	viewer := f.signIn(t, "warp-viewers")
+	viewer := f.signIn(t, "humagen-viewers")
 	enabled := `{"kind":"slow_run","threshold":1e-9,"severity":"critical","project":"Launch","cooldown_seconds":3600}`
 	if res, _ := f.do(t, viewer, "PUT", "/api/alert-rules/slow", "", enabled); res.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer PUT = %d, want 403", res.StatusCode)
@@ -958,7 +958,7 @@ func TestScheduleEdit(t *testing.T) {
 	}
 
 	edit := `{"expression":"30 6 * * 1-5","agent":"helper","text":"weekday report","project":"Launch","description":"Weekdays"}`
-	viewer := f.signIn(t, "warp-viewers")
+	viewer := f.signIn(t, "humagen-viewers")
 	if res, _ := f.do(t, viewer, "PUT", "/api/schedules/nightly", "", edit); res.StatusCode != http.StatusForbidden {
 		t.Errorf("viewer PUT = %d, want 403", res.StatusCode)
 	}

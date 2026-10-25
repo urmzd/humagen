@@ -1,7 +1,7 @@
+import { Home } from "@humagen/components";
+import { ActionId, HOME_ID, type HomeModel } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Home } from "@warp/components";
-import { ActionId, HOME_ID, type HomeModel } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 
@@ -34,7 +34,9 @@ export const Default: Story = {
   parameters: slack("homes.default@home", "Published to App Home"),
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("heading", { level: 1 })).toHaveTextContent("Hi Ada, I'm Warp.");
+    await expect(canvas.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Hi Ada, I'm Humagen.",
+    );
     // Each notification's title is a link to that item, and stays in the tab.
     const alert = canvas.getByRole("link", { name: /deploy-failures fired/ });
     await expect(alert).toHaveAttribute(

@@ -21,7 +21,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/urmzd/warp/pkg/authz"
+	"github.com/urmzd/humagen/pkg/authz"
 )
 
 // Sentinel errors. Handlers map ErrUnauthenticated to 401 and ErrForbidden to 403.
@@ -119,6 +119,8 @@ func ParseRole(s string) (Role, bool) {
 
 // Principal is an authenticated caller.
 type Principal struct {
+	// AuditRead is installed by the server to record exceptional reads once per request.
+	AuditRead func(subject, project, thread string) bool `json:"-"`
 	// Subject is the provider's stable identifier for the caller.
 	Subject string `json:"subject"`
 	// Tenant is the authorization scope every read and write is confined to.

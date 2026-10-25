@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // MaxRuns is how many agents answer one message, side by side.

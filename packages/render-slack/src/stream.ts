@@ -1,4 +1,4 @@
-import type { PromptConfig, Task, Turn } from "@warp/core";
+import type { PromptConfig, Task, Turn } from "@humagen/core";
 import type { Block } from "./blocks";
 import { toMrkdwn, toPlain } from "./mrkdwn";
 import { nextBreak } from "./split";

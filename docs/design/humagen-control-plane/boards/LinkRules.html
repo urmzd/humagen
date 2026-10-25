@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Auto-link rules - GitHub</title>
+<link rel="stylesheet" href="assets/boards.css">
+<script src="assets/boards.js" defer></script>
+</head>
+<body class="board-fixed">
+<template data-board>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2E5B88}a:hover{color:#1F4166}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1100px; height: 1000px; box-sizing: border-box; font-family: Inter, system-ui, sans-serif; color: #1B1C1E; background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 16px; display: flex; flex-direction: column; font-size: 14px; line-height: 1.45; overflow: hidden">
+
+  <!-- Header -->
+  <div style="padding: 18px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2E2DE">
+    <span style="flex: 0 0 auto; width: 36px; height: 36px; border-radius: 9px; background: #EEEEEB; color: #3A3C41; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">GH</span>
+    <div style="flex: 1 1 auto; display: flex; flex-direction: column">
+      <h1 style="margin: 0; font-size: 18px; font-weight: 600">Auto-link rules · GitHub</h1>
+      <span style="font-size: 13px; color: #5F6168">Decide where new repos, issues and pull requests land - without anyone filing them by hand.</span>
+    </div>
+    <a href="Integrations.html" aria-label="Close" style="width: 36px; height: 36px; border-radius: 8px; color: #5F6168; display: inline-flex; align-items: center; justify-content: center">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+    </a>
+  </div>
+
+  <div style="flex: 1 1 auto; display: flex; min-height: 0">
+
+    <!-- Builder -->
+    <div style="flex: 1 1 620px; min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; overflow: auto; border-right: 1px solid #E2E2DE">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">New rule</h2>
+
+      <!-- When -->
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600">When</span>
+        <div role="radiogroup" aria-label="Match on" style="display: flex; gap: 6px; flex-wrap: wrap">
+          <sc-for list="{{ fields }}" as="f" hint-placeholder-count="5">
+            <button type="button" role="radio" aria-checked="{{ f.checked }}" onClick="{{ f.pick }}" style="{{ f.style }}">{{ f.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+          <div role="radiogroup" aria-label="Comparison" style="display: flex; border: 1px solid #D5D5D0; border-radius: 8px; overflow: hidden">
+            <sc-for list="{{ ops }}" as="o" hint-placeholder-count="2">
+              <button type="button" role="radio" aria-checked="{{ o.checked }}" onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</button>
+            </sc-for>
+          </div>
+          <label for="rule-value" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Value</label>
+          <input id="rule-value" type="text" value="spring-launch" style="flex: 1 1 200px; height: 36px; box-sizing: border-box; border: 1px solid #D5D5D0; border-radius: 8px; padding: 0 10px; font: inherit; font-size: 13px; color: #1B1C1E">
+        </div>
+      </div>
+
+      <!-- Link to -->
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600">Link to</span>
+        <div role="radiogroup" aria-label="Destination" style="border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column; padding: 4px">
+          <sc-for list="{{ targets }}" as="t" hint-placeholder-count="5">
+            <button type="button" role="radio" aria-checked="{{ t.checked }}" onClick="{{ t.pick }}" style="{{ t.style }}">
+              <span style="{{ t.indent }}"></span>
+              <span style="flex: 0 0 auto; color: #5F6168; display: inline-flex">
+                <sc-if value="{{ t.isInit }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4h11l-2 4 2 4H5"></path></svg></sc-if>
+                <sc-if value="{{ t.isProject }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></sc-if>
+                <sc-if value="{{ t.isChannel }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9h14M5 15h14M10 3L8 21M16 3l-2 18"></path></svg></sc-if>
+              </span>
+              <span style="flex: 1 1 auto; text-align: left">{{ t.label }}</span>
+              <span style="font-size: 12px; color: #5F6168">{{ t.kind }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <span style="font-size: 12px; color: #5F6168">Linking to an initiative makes the resource available to every project under it.</span>
+      </div>
+
+      <!-- Mode -->
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600">Mode</span>
+        <div role="radiogroup" aria-label="Mode" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{ modes }}" as="m" hint-placeholder-count="2">
+            <button type="button" role="radio" aria-checked="{{ m.checked }}" onClick="{{ m.pick }}" style="{{ m.style }}">
+              <span style="font-weight: 600; font-size: 13px">{{ m.label }}</span>
+              <span style="font-size: 12px; color: #3A3C41">{{ m.desc }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- Also bring -->
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600">Also bring as context</span>
+        <div style="border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column">
+          <sc-for list="{{ brings }}" as="b" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid #F0F0ED; flex-wrap: wrap">
+              <span style="flex: 1 1 160px; font-size: 13px">{{ b.label }}</span>
+              <div role="radiogroup" aria-label="{{ b.label }}" style="display: flex; border: 1px solid #D5D5D0; border-radius: 8px; overflow: hidden">
+                <sc-for list="{{ b.opts }}" as="o" hint-placeholder-count="3">
+                  <button type="button" role="radio" aria-checked="{{ o.checked }}" onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap">
+        <button type="button" style="height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid #D5D5D0; background: #FFFFFF; color: #1B1C1E; font-weight: 500; cursor: pointer">Cancel</button>
+        <button type="button" style="height: 40px; padding: 0 16px; border-radius: 8px; border: 0; background: #1B1C1E; color: #FFFFFF; font-weight: 600; cursor: pointer">Save rule</button>
+      </div>
+    </div>
+
+    <!-- Preview + existing rules -->
+    <div style="flex: 0 0 400px; min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; overflow: auto; background: #FAFAF8">
+      <section aria-label="Preview" style="display: flex; flex-direction: column; gap: 8px">
+        <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Preview</h2>
+        <div style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+          <div style="font-weight: 600">3 repos, 41 issues would link</div>
+          <div style="font-size: 13px; color: #3A3C41">to <strong>{{ targetLabel }}</strong> · {{ modeLabel }}</div>
+          <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+            <li style="display: flex; gap: 8px"><span style="flex: 1 1 auto">acme/launch-site</span><span style="color: #5F6168">already linked</span></li>
+            <li style="display: flex; gap: 8px"><span style="flex: 1 1 auto">acme/packaging-api</span><span style="color: #5F6168">already linked</span></li>
+            <li style="display: flex; gap: 8px"><span style="flex: 1 1 auto">acme/press-kit</span><span style="color: #1F6B45; font-weight: 600">new</span></li>
+          </ul>
+        </div>
+        <div style="display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #FBF3E4; border: 1px solid #EED9B3; font-size: 13px; color: #4A3A20">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A5300" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 2px"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4M12 17.5v.5"></path></svg>
+          <span><strong>1 conflict:</strong> acme/pricing-calculator also matches “Path contains /pricing → Q4 Research”. Repos matching two destinations always go to Suggest, never auto-link.</span>
+        </div>
+      </section>
+
+      <section aria-label="Existing rules" style="display: flex; flex-direction: column; gap: 8px">
+        <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Rules · applied top to bottom</h2>
+        <sc-for list="{{ rules }}" as="r" hint-placeholder-count="4">
+          <div style="{{ r.cardStyle }}">
+            <div style="display: flex; align-items: flex-start; gap: 10px">
+              <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-size: 13px; font-weight: 600">{{ r.when }}</span>
+                <span style="font-size: 13px; color: #3A3C41">→ {{ r.target }}</span>
+              </div>
+              <button type="button" role="switch" aria-checked="{{ r.onStr }}" aria-label="{{ r.switchLabel }}" onClick="{{ r.toggle }}" style="{{ r.trackStyle }}"><span style="{{ r.knobStyle }}"></span></button>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; color: #5F6168">
+              <span style="{{ r.modeStyle }}">{{ r.mode }}</span>
+              <span>{{ r.matches }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </section>
+    </div>
+  </div>
+</div>
+</template>
+<a class="board-back" href="index.html">All screens</a>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      field: 'topic', op: 'is', target: 'launch', mode: 'suggest',
+      bring: { issues: 'live', prs: 'live', readme: 'indexed' },
+      rules: { r1: true, r2: true, r3: false, r4: true }
+    };
+  }
+  renderVals() {
+    const s = this.state;
+    const chip = (on) => 'height: 32px; padding: 0 12px; border-radius: 999px; font-size: 12px; cursor: pointer; border: 1px solid ' + (on ? '#1B1C1E' : '#D5D5D0') + '; background: ' + (on ? '#1B1C1E' : '#FFFFFF') + '; color: ' + (on ? '#FFFFFF' : '#1B1C1E');
+    const seg = (on) => 'height: 32px; min-width: 64px; padding: 0 10px; border: 0; font-size: 12px; cursor: pointer; background: ' + (on ? '#1B1C1E' : '#FFFFFF') + '; color: ' + (on ? '#FFFFFF' : '#3A3C41') + '; font-weight: ' + (on ? '600' : '400');
+
+    const fields = [['topic', 'Repo topic'], ['label', 'Label'], ['milestone', 'Milestone'], ['path', 'Path'], ['contributor', 'Contributor']].map(([id, label]) => ({
+      label, checked: s.field === id ? 'true' : 'false', pick: () => this.setState({ field: id }), style: chip(s.field === id) }));
+    const ops = [['is', 'is'], ['contains', 'contains']].map(([id, label]) => ({
+      label, checked: s.op === id ? 'true' : 'false', pick: () => this.setState({ op: id }), style: seg(s.op === id) }));
+
+    const tdefs = [
+      { id: 'gtm', label: 'Spring 2027 GTM', kind: 'Initiative', depth: 0 },
+      { id: 'launch', label: 'Spring Launch', kind: 'Project', depth: 1 },
+      { id: 'ops', label: '# launch-ops', kind: 'Channel', depth: 2 },
+      { id: 'q4', label: 'Q4 Research', kind: 'Project', depth: 1 },
+      { id: 'onb', label: 'Onboarding Revamp', kind: 'Project', depth: 0 }
+    ];
+    const targets = tdefs.map((t) => {
+      const on = s.target === t.id;
+      return { ...t,
+        checked: on ? 'true' : 'false',
+        pick: () => this.setState({ target: t.id }),
+        isInit: t.kind === 'Initiative', isProject: t.kind === 'Project', isChannel: t.kind === 'Channel',
+        indent: 'flex: 0 0 auto; width: ' + (t.depth * 20) + 'px',
+        style: 'display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 0; border-radius: 6px; cursor: pointer; font-size: 13px; color: #1B1C1E; background: ' + (on ? '#E3E8EE' : 'transparent') + '; font-weight: ' + (on ? '600' : '400')
+      };
+    });
+    const tSel = tdefs.find((t) => t.id === s.target);
+    const path = { gtm: 'Spring 2027 GTM', launch: 'Spring 2027 GTM › Spring Launch', ops: 'Spring Launch › # launch-ops', q4: 'Spring 2027 GTM › Q4 Research', onb: 'Onboarding Revamp' };
+
+    const mdefs = [
+      ['suggest', 'Suggest first', 'Matches wait in Suggested links until someone presses Link.'],
+      ['auto', 'Auto-link', 'Matches link immediately and are logged; anyone can unlink.']
+    ];
+    const modes = mdefs.map(([id, label, desc]) => {
+      const on = s.mode === id;
+      return { label, desc, checked: on ? 'true' : 'false', pick: () => this.setState({ mode: id }),
+        style: 'display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px; border-radius: 10px; cursor: pointer; text-align: left; color: #1B1C1E; border: ' + (on ? '1.5px solid #2E5B88' : '1px solid #E2E2DE') + '; background: ' + (on ? '#F3F6FA' : '#FFFFFF') };
+    });
+
+    const bdefs = [['issues', 'Issues'], ['prs', 'Pull requests'], ['readme', 'README and docs']];
+    const odefs = [['indexed', 'Indexed'], ['live', 'Live'], ['off', 'Off']];
+    const brings = bdefs.map(([key, label]) => ({
+      label,
+      opts: odefs.map(([v, l]) => ({
+        label: l, checked: s.bring[key] === v ? 'true' : 'false',
+        pick: () => this.setState({ bring: { ...s.bring, [key]: v } }),
+        style: seg(s.bring[key] === v)
+      }))
+    }));
+
+    const rdefs = [
+      { id: 'r1', when: 'Repo topic is spring-launch', target: 'Spring Launch › # launch-ops', mode: 'Auto-link', matches: '2 repos · 37 issues' },
+      { id: 'r2', when: 'Label is launch-blocker', target: 'Spring Launch › # launch-ops', mode: 'Suggest first', matches: '4 issues' },
+      { id: 'r3', when: 'Path contains /pricing', target: 'Q4 Research', mode: 'Suggest first', matches: '1 repo · paused' },
+      { id: 'r4', when: 'Contributor is a Spring Launch member', target: 'Spring Launch', mode: 'Suggest first', matches: '6 repos · 1 conflict' }
+    ];
+    const rules = rdefs.map((r) => {
+      const on = !!s.rules[r.id];
+      return { ...r,
+        onStr: on ? 'true' : 'false',
+        switchLabel: 'Rule on: ' + r.when,
+        toggle: () => this.setState({ rules: { ...s.rules, [r.id]: !on } }),
+        cardStyle: 'display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid #E2E2DE; background: #FFFFFF; opacity: ' + (on ? '1' : '0.7'),
+        trackStyle: 'flex: 0 0 auto; position: relative; width: 40px; height: 24px; border-radius: 999px; border: 0; padding: 0; cursor: pointer; background: ' + (on ? '#2E5B88' : '#C8C8C2'),
+        knobStyle: 'position: absolute; top: 3px; left: ' + (on ? '19px' : '3px') + '; width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF',
+        modeStyle: 'display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; border: 1px solid #E2E2DE; color: ' + (r.mode === 'Auto-link' ? '#2E5B88' : '#3A3C41') + '; background: #FFFFFF'
+      };
+    });
+
+    return {
+      fields, ops, targets, modes, brings, rules,
+      targetLabel: path[tSel.id],
+      modeLabel: s.mode === 'auto' ? 'auto-link' : 'suggest first'
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -39,7 +39,7 @@ import (
 // Development credentials for the web client. They are not secrets: anyone
 // can read them here, which is fine only because the provider is loopback.
 const (
-	DevClientID     = "warp-dev"
+	DevClientID     = "humagen-dev"
 	DevClientSecret = "mock-client-secret"
 )
 
@@ -66,7 +66,7 @@ type Machine struct {
 	ClientID string `json:"client_id"`
 	Secret   string `json:"secret"`
 	// Scopes are the scopes it may be issued, written in full, for example
-	// "warp:runs:read".
+	// "humagen:runs:read".
 	Scopes []string `json:"scopes"`
 	// Tenant goes in the tenant claim. Empty means Config.Tenant.
 	Tenant string `json:"tenant,omitempty"`
@@ -109,10 +109,10 @@ type Config struct {
 // a viewer, an operator, a manager, an admin, and someone in no mapped group.
 func DefaultPeople() []Person {
 	return []Person{
-		{Subject: "mock-viewer", Name: "Vera Viewer", Email: "vera@example.test", Groups: []string{"warp-viewers"}},
-		{Subject: "mock-operator", Name: "Otto Operator", Email: "otto@example.test", Groups: []string{"warp-operators"}},
-		{Subject: "mock-manager", Name: "Mo Manager", Email: "mo@example.test", Groups: []string{"warp-managers"}},
-		{Subject: "mock-admin", Name: "Ada Admin", Email: "ada@example.test", Groups: []string{"warp-admins"}},
+		{Subject: "mock-viewer", Name: "Vera Viewer", Email: "vera@example.test", Groups: []string{"humagen-viewers"}},
+		{Subject: "mock-operator", Name: "Otto Operator", Email: "otto@example.test", Groups: []string{"humagen-operators"}},
+		{Subject: "mock-manager", Name: "Mo Manager", Email: "mo@example.test", Groups: []string{"humagen-managers"}},
+		{Subject: "mock-admin", Name: "Ada Admin", Email: "ada@example.test", Groups: []string{"humagen-admins"}},
 		{Subject: "mock-nobody", Name: "Nell Nobody", Email: "nell@example.test", Groups: []string{"everyone"}},
 	}
 }
@@ -121,7 +121,7 @@ func DefaultPeople() []Person {
 func DefaultMachines() []Machine {
 	return []Machine{{
 		ClientID: "mock-ci", Secret: "mock-ci-secret",
-		Scopes: []string{"warp:runs:read", "warp:runs:write"},
+		Scopes: []string{"humagen:runs:read", "humagen:runs:write"},
 	}}
 }
 

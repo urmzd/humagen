@@ -16,12 +16,12 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/topic"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 const tenant = "acme"

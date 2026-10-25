@@ -16,6 +16,62 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
+  /** The product, as a sender: what every system message is shown from, whatever name its record keeps. */
+  product: "Humagen",
+  conversation: {
+    settings: "Conversation Settings",
+    activity: "Activity",
+    context: "Context",
+    people: "People & Access",
+    deliverables: "Deliverables",
+    project: "Project",
+    projectAction: "Project and sharing",
+    private: "Private",
+    shared: "Project conversation",
+    agents: (count: number) => `${count} ${count === 1 ? "agent" : "agents"} took part`,
+    sourcesFailed: "Project context could not be loaded.",
+    sourcesEmpty: "No sources are attached to this project yet.",
+    sourceMode: "Indexed",
+    sourceUpdates: "Imported documents",
+    sourceOrigin: "Origin",
+    sourceImported: "Imported",
+    sourceHealth: "Available for search",
+    sourceEmpty: "No text has been indexed",
+    sourcePassages: (count: number) => `${count} ${count === 1 ? "passage" : "passages"} indexed`,
+    sourceExcluded: "Excluded from search",
+    more: "Show More",
+    artifactNoMatch: "No deliverables match this type.",
+    sourceDocs: (count: number) => `${count} ${count === 1 ? "document" : "documents"}`,
+    peopleEmpty: "No participants are recorded yet.",
+    contextHint:
+      "Sources available to this project. Expand a source to see its documents, origins and import times.",
+    tools: (count: number) => `${count} ${count === 1 ? "work step" : "work steps"}`,
+    complete: (count: number) => `${count} completed`,
+    blocked: (count: number) => `${count} need attention`,
+    askAgent: (agent: string) => `Ask ${agent}`,
+    reply: "Reply",
+    question: "Clarification",
+    answerChoice: "Use This Answer",
+    questionHint: "This answers the question. Approvals for actions remain separate.",
+    artifactFailed: "The artifact could not be loaded.",
+    artifactEmpty: "No deliverables have been saved in this conversation yet.",
+    artifactFeedback: "Request Changes",
+    artifactPreview: "Preview",
+    artifactVersions: "Versions",
+    artifactSources: "Provenance",
+    artifactDraft: "Saved artifact",
+    artifactHint:
+      "Review and download this version, or ask its agent for a revision in the conversation.",
+  },
+  readAudit: {
+    label: "Read Audit",
+    denied: "Only workspace administrators may read this audit.",
+    title: "Break-glass reads",
+    description:
+      "Reads allowed only by project governance in the last 24 hours. Showing at most 100 records, newest first.",
+    empty: "No break-glass reads in the last 24 hours.",
+    failed: "The read audit could not be loaded.",
+  },
   approve: "Approve",
   cancel: "Cancel",
   edit: "Edit",
@@ -751,6 +807,7 @@ export const defaultCopy = {
   },
   /** The project tree: its kinds, where a project sits, and what a person does with one. */
   projects: {
+    unreadUpdates: "Unread updates",
     title: "Projects",
     lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
     /** A kind in words, on a row and in a project's meta line. */
@@ -876,6 +933,35 @@ export const defaultCopy = {
       delete: "The project could not be deleted.",
     },
     context: {
+      preview: {
+        title: "Turn preview",
+        hint: "Saved context for the selected agent and optional channel. Instruction and inherited-note budgets are shared across the chain. Conversation history, retrieval and model limits depend on the turn.",
+        agent: "Preview agent",
+        channel: "Preview channel",
+        submit: "Preview Turn",
+        loading: "Loading",
+        failed: "The turn preview could not be loaded.",
+        available: "Available when named in the message",
+        notSent: "Not sent",
+        omitted: (n: number) => `${n} omitted`,
+        previewOmitted: (n: number) => `${n} shortened in this preview only`,
+        usage: (used: number, budget: number, unit: string) =>
+          budget > 0
+            ? `${used.toLocaleString()} / ${budget.toLocaleString()} ${unit}`
+            : `${used.toLocaleString()} ${unit} · no additional cap`,
+        kinds: {
+          instructions: "Instructions",
+          agent_instructions: "Agent instructions",
+          channel: "Channel purpose",
+          experts: "Experts",
+          project_notes: "Project notes",
+          ancestor_notes: "Notes from above",
+          agent_notes: "Agent notes",
+          knowledge: "Project knowledge source names",
+          agent_knowledge: "Agent knowledge source names",
+          skills: "Skill names",
+        },
+      },
       instructions: "Instructions",
       instructionsHint:
         "Sent to every agent answering here and below, after the instructions of the projects above. An agent's own instructions win over these.",
@@ -1065,12 +1151,12 @@ export const defaultCopy = {
       post: "The message could not be posted. Try again.",
       channel: "The channel could not be created.",
     },
-    /** In a Slack channel bound to a project, to someone the app maps to nobody in warp. */
+    /** In a Slack channel bound to a project, to someone the app maps to nobody in humagen. */
     unmappedInBound:
-      "This channel is a project's channel in warp, and only people warp knows post in it. Ask an admin to connect your Slack account.",
+      "This channel is a project's channel in Humagen, and only people Humagen knows post in it. Ask an admin to connect your Slack account.",
     /** In a Slack channel bound to a project, to someone asking about another person's message. */
     notTheirsInBound:
-      "This channel is a project's channel in warp, where a message is asked only as its writer's own. Ask in the thread in your own words.",
+      "This channel is a project's channel in Humagen, where a message is asked only as its writer's own. Ask in the thread in your own words.",
   },
 };
 

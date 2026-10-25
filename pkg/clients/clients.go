@@ -32,6 +32,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Errors.
@@ -152,7 +154,7 @@ func (s SecretInput) GoString() string { return s.String() }
 // EnvPrefix is what the name in an "env:NAME" reference must start with. A
 // reference is sent to the surface as a credential, so it may not name an
 // arbitrary variable of the server's, such as a model key.
-const EnvPrefix = "WARP_"
+const EnvPrefix = "HUMAGEN_"
 
 var envName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
 
@@ -162,7 +164,9 @@ func EnvRef(ref string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%w: a secret reference is written env:NAME", ErrInvalid)
 	}
-	if !envName.MatchString(name) || !strings.HasPrefix(name, EnvPrefix) {
+	// The old WARP_ prefix is accepted for good: client records stored
+	// before the rename name variables under it.
+	if !envName.MatchString(name) || legacy.OldName(name) == "" {
 		return "", fmt.Errorf("%w: a secret reference names a variable starting with %s", ErrInvalid, EnvPrefix)
 	}
 	return name, nil
@@ -211,8 +215,8 @@ type GitHubOptions struct {
 	// ReadRepositories are "owner/repo" names a run from another surface may
 	// read through this client.
 	ReadRepositories []string `json:"read_repositories,omitempty"`
-	// Login is the app's own GitHub login, such as "warp[bot]", mentioned as
-	// @warp. A comment that mentions it and names no agent is addressed to
+	// Login is the app's own GitHub login, such as "humagen[bot]", mentioned as
+	// @humagen. A comment that mentions it and names no agent is addressed to
 	// the client and answered by its default, as an untagged Slack message is
 	// (see docs/github.md). While it is empty, a comment that names no agent
 	// starts nothing.

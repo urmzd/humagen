@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { defaultCopy as copy } from "@warp/components";
+import { defaultCopy as copy } from "@humagen/components";
 import type { Me, Preferences, ProjectChange, Settings as Workspace } from "./api.ts";
 import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
 import { KnowledgeLists, MAX_KNOWLEDGE } from "./ProjectKnowledge.tsx";
@@ -27,7 +27,7 @@ test("projects are grouped by kind, Company-wide, Teams, then Accounts, each in 
   );
 });
 
-test("a project of the workspace's own kind is listed after warp's kinds, in a group by its title", () => {
+test("a project of the workspace's own kind is listed after humagen's kinds, in a group by its title", () => {
   const partner = view("Reseller", { kind: "partner", parent: field });
   const kinds = [{ name: "partner", title: "Partners", like: "account" as const }];
   assert.deepEqual(
@@ -293,4 +293,15 @@ test("knowledge: a list the platform file sets is read only, and says so", () =>
   assert.match(out, /The platform file sets these sources\./);
   assert.doesNotMatch(out, /Add Source|Save Knowledge/);
   assert.match(out, /<li[^>]*>globex-contracts<\/li>/);
+});
+
+
+test("project rows show named agents and a still unread indicator only for unread updates", () => {
+ const unread = {...view("Unread"), unread: 2, row_agents: ["lead", "helper"]};
+ const read = {...view("Read"), unread: 0, row_agents: []};
+ const markup = html(<ProjectsPage projects={[unread, read]} root={null} workspaceName="Acme" canCreate={false} canGovern={false} narrow={false} onFilter={noop} onOpen={noop} onCreated={noop} />);
+ assert.match(markup, /title="lead"/);
+ assert.match(markup, /title="helper"/);
+ assert.equal((markup.match(/aria-label="Unread updates"/g) ?? []).length, 1);
+ assert.doesNotMatch(markup, /animate-/);
 });

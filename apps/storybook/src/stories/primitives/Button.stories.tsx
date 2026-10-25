@@ -1,6 +1,6 @@
+import { ActionId } from "@humagen/core";
+import { Actions, Button } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ActionId } from "@warp/core";
-import { Actions, Button } from "@warp/primitives";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slackPrimitive } from "../../support";
 

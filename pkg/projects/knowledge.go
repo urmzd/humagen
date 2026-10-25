@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/urmzd/warp/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/knowledge"
 )
 
 // Knowledge bounds.

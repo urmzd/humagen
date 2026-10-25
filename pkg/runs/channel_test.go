@@ -7,7 +7,7 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/humagen/pkg/call"
 )
 
 // A run's channel is believed where the server wrote it: the API, and Slack

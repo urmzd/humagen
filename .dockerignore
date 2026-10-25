@@ -11,11 +11,12 @@ bin
 build
 showcase
 # deploy/ holds only the chart the binary embeds (deploy/chart.go and
-# deploy/helm/warp); the rest is not part of the image.
+# deploy/helm/humagen); the rest is not part of the image.
 deploy/compose
 deploy/flux
 deploy/helm/check.sh
-# Projects `warp deploy` writes beside a spec.
+# Projects `humagen deploy` writes beside a spec, and wrote before the rename.
+**/.humagen
 **/.warp
 *.log
 .env

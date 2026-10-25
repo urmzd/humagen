@@ -1,7 +1,8 @@
-import { BanIcon, CheckIcon, ChevronDownIcon, ShieldIcon, Tooltip, XIcon } from "@warp/render-web";
-import { defaultCopy } from "@warp/components";
-import { AgentOrb, type OrbState } from "@warp/web";
-import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
+import { BanIcon, CheckIcon, ChevronDownIcon, ShieldIcon, Tooltip, XIcon } from "@humagen/render-web";
+import { defaultCopy } from "@humagen/components";
+import { AgentOrb, type OrbState } from "@humagen/web";
+import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Run } from "./adapter.ts";
 import { cause, dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
@@ -11,10 +12,10 @@ export const field =
 
 // A button's label stays on one line: the button is one line tall.
 export const button =
-  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 whitespace-nowrap warp-press rounded-aui border border-aui-border bg-aui-surface px-3 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 whitespace-nowrap humagen-press rounded-aui border border-aui-border bg-aui-surface px-3 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
 
 export const primary =
-  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 whitespace-nowrap warp-press rounded-aui bg-aui-primary px-3 text-aui-sm font-medium text-aui-primary-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 whitespace-nowrap humagen-press rounded-aui bg-aui-primary px-3 text-aui-sm font-medium text-aui-primary-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
 
 export function Label({ text, hint, children }: { text: string; hint?: string; children: ReactNode }) {
   return (
@@ -38,7 +39,7 @@ export function Problem({ message }: { message: string | null }) {
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col gap-1 py-10">
-      <p className="warp-display text-aui-lg font-medium text-aui-fg">{title}</p>
+      <p className="humagen-display text-aui-lg font-medium text-aui-fg">{title}</p>
       {children && <p className="max-w-md text-aui-sm text-aui-muted">{children}</p>}
     </div>
   );
@@ -48,10 +49,10 @@ const statusTone: Record<Run["status"], string> = {
   accepted: "bg-aui-neutral",
   running: "bg-aui-info",
   parked: "bg-aui-warn",
-  completed: "bg-[var(--warp-ink)]",
+  completed: "bg-[var(--humagen-ink)]",
   failed: "bg-aui-bad",
   // Stopped from outside is not a failure, so it is not red.
-  stopped: "bg-[var(--warp-ink-faint)]",
+  stopped: "bg-[var(--humagen-ink-faint)]",
 };
 
 const statusWord: Record<Run["status"], string> = {
@@ -214,7 +215,7 @@ export function PickMany({
 }
 
 /** The one style for a page's title and the line under it, wherever a page draws its own header. */
-export const pageTitle = "warp-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
+export const pageTitle = "humagen-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
 export const pageLede = "max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted";
 
 export function Page({
@@ -226,6 +227,8 @@ export function Page({
   back,
   actions,
   tabs,
+  layout,
+  start,
   narrow,
   children,
 }: {
@@ -244,17 +247,36 @@ export function Page({
   actions?: ReactNode;
   /** Tabs under the header, sticking to the top while the page scrolls. What the page shows under them is a column of its own. */
   tabs?: ReactNode;
+  /** Conversation controls surround its one centered page title. */
+  layout?: "conversation";
+  /** The project control, at the leading edge of a conversation. */
+  start?: ReactNode;
   /** A reading width, for forms and settings. */
   narrow?: boolean;
   /** Kept for callers. Pages share one width now. */
   wide?: boolean;
   children: ReactNode;
 }) {
+  if (layout === "conversation") {
+    return (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="humagen-conversation-header relative z-10 grid shrink-0 items-center gap-x-3 gap-y-2 border-aui-border border-b px-4 py-3">
+          <div className="humagen-conversation-start flex min-w-0 items-center gap-2">{start}</div>
+          <div className="humagen-conversation-title min-w-0 text-center">
+            <h1 className="truncate text-aui-sm font-semibold text-aui-fg" title={typeof title === "string" ? title : undefined}>{title}</h1>
+            {meta && <div className="truncate pt-1 text-aui-2xs text-aui-muted">{meta}</div>}
+          </div>
+          <div className="humagen-conversation-actions flex min-w-0 items-center justify-end gap-1">{actions}</div>
+        </header>
+        {children}
+      </div>
+    );
+  }
   const width = narrow ? "max-w-3xl" : "max-w-[68rem]";
   return (
     <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
       {/* Every page is one centered column, so a wide window never strands the content against the sidebar. */}
-      <div className={`@container warp-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 pt-8 pb-12 md:px-10`}>
+      <div className={`@container humagen-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 pt-8 pb-12 md:px-10`}>
         <header className="flex flex-col gap-3">
           {back && (
             <button
@@ -400,21 +422,21 @@ export function RowButton({
   );
 }
 
-export const card = "warp-glass rounded-aui-lg p-4";
+export const card = "humagen-glass rounded-aui-lg p-4";
 
 /** A list of rows on hairlines, with no box around it. */
-export const rows = "divide-y divide-[var(--warp-rule)] border-[var(--warp-rule)] border-y";
+export const rows = "divide-y divide-[var(--humagen-rule)] border-[var(--humagen-rule)] border-y";
 
 /** Figures side by side on one rule. Wrap a row of `Stat`s in it. */
 export const figures =
-  "grid grid-cols-2 gap-x-8 gap-y-5 border-[var(--warp-rule)] border-y py-5 sm:grid-cols-3 lg:grid-cols-5";
+  "grid grid-cols-2 gap-x-8 gap-y-5 border-[var(--humagen-rule)] border-y py-5 sm:grid-cols-3 lg:grid-cols-5";
 
 /** A figure with its label. The value is ink, never a status color. */
 export function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="flex min-w-0 flex-col">
       <span className="text-aui-xs text-aui-muted">{label}</span>
-      <span className="warp-display pt-0.5 text-[1.75rem] leading-9 font-semibold text-aui-fg">{value}</span>
+      <span className="humagen-display pt-0.5 text-[1.75rem] leading-9 font-semibold text-aui-fg">{value}</span>
       {note && <span className="text-aui-2xs text-aui-muted">{note}</span>}
     </div>
   );
@@ -465,16 +487,16 @@ export function Tape({
   const shown = [...runs].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-slots);
   const top = Math.log1p(Math.max(scale ?? longest(shown), 1));
   const blanks = Array.from({ length: Math.max(slots - shown.length, 0) }, (_, i) => i);
-  const style = tall ? ({ "--warp-tape-h": "2.75rem" } as React.CSSProperties) : undefined;
+  const style = tall ? ({ "--humagen-tape-h": "2.75rem" } as React.CSSProperties) : undefined;
   return (
     <div
       role={onOpen ? "group" : "img"}
       aria-label={`Recent runs. ${tally(shown)}.`}
-      className={`warp-tape ${className}`}
+      className={`humagen-tape ${className}`}
       style={style}
     >
       {blanks.map((i) => (
-        <span key={i} aria-hidden className="warp-tick" data-status="none" />
+        <span key={i} aria-hidden className="humagen-tick" data-status="none" />
       ))}
       {shown.map((r) => {
         const t = { "--t": Math.min(Math.log1p(elapsed(r)) / top, 1).toFixed(3) } as React.CSSProperties;
@@ -483,7 +505,7 @@ export function Tape({
           <button
             key={r.id}
             type="button"
-            className="warp-tick"
+            className="humagen-tick"
             data-status={r.status}
             style={t}
             title={label}
@@ -491,34 +513,39 @@ export function Tape({
             onClick={() => onOpen(r.id)}
           />
         ) : (
-          <span key={r.id} aria-hidden className="warp-tick" data-status={r.status} style={t} title={label} />
+          <span key={r.id} aria-hidden className="humagen-tick" data-status={r.status} style={t} title={label} />
         );
       })}
     </div>
   );
 }
 
-/** How many hues agents are drawn from: twelve, 30 degrees apart, so two that differ are told apart. */
+/** The original palette, retained as the fallback before the agent list arrives. */
 export const AGENT_HUES = 12;
+export { setAgentHues } from "./agentHues.ts";
 
-/**
- * A stable hue for a name, so an agent keeps its color everywhere it
- * appears. Names fall on one of AGENT_HUES evenly spaced hues, never on one
- * a few degrees from another's, and the hash is seeded so warp's own agents
- * and the seeded ones each take a hue of their own (ui.test.tsx).
- */
+function useAgentHue(name: string): number | undefined {
+  const hue = useSyncExternalStore(subscribeHues, () => agentHue(name), () => agentHue(name));
+  useEffect(() => { requestAgentHue(name); }, [name]);
+  return hue;
+}
+
+/** A server-reserved hue, with the original mapping while loading. */
 export function hueOf(name: string): number {
+  const assigned = agentHue(name);
+  if (assigned !== undefined) return assigned;
   let h = 186;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 1000003;
   return (h % AGENT_HUES) * (360 / AGENT_HUES);
 }
 
 /**
- * Gives everything inside it an agent's color. warp draws its accent from
+ * Gives everything inside it an agent's color. humagen draws its accent from
  * one hue, so setting that hue here recolors the orb, and any accent, for this
  * agent alone.
  */
 export function AgentTint({ name, className, children }: { name: string; className?: string; children: ReactNode }) {
+  useAgentHue(name);
   return (
     <div data-accent="agent" className={className} style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}>
       {children}
@@ -532,6 +559,8 @@ export function AgentTint({ name, className, children }: { name: string; classNa
  * and the presence in a conversation are one thing. At rest it is still.
  */
 export function AgentMark({ name, size = 18, state = "idle" }: { name: string; size?: number; state?: OrbState }) {
+  const hue = useAgentHue(name);
+  if (hue === undefined) return <span aria-hidden className="inline-block shrink-0" style={{ width: size, height: size }} />;
   return (
     <span data-accent="agent" className="inline-flex shrink-0 items-center align-middle" style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}>
       <AgentOrb state={state} size={size} label="" />
@@ -561,7 +590,7 @@ export function Switch({
       </span>
       <input
         type="checkbox"
-        className="warp-switch mt-0.5"
+        className="humagen-switch mt-0.5"
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
@@ -588,7 +617,7 @@ export function Segmented<T extends string>({
   return (
     <fieldset className="inline-flex min-w-0 max-w-full rounded-aui border border-aui-border p-0.5">
       <legend className="sr-only">{label}</legend>
-      <div ref={strip} className="warp-strip flex min-w-0 overflow-x-auto [scrollbar-width:none]">
+      <div ref={strip} className="humagen-strip flex min-w-0 overflow-x-auto [scrollbar-width:none]">
         {options.map((o) => (
           <button
             key={o.id}
@@ -610,7 +639,7 @@ export function Segmented<T extends string>({
  * a segmented choice. Whenever `chosen` changes, whenever items are added to
  * or taken from the row, and whenever the row or what is in it changes size,
  * it brings the chosen item (aria-selected, aria-pressed or aria-current) into
- * view. It marks which ends have more as data-more, which warp-strip fades, so
+ * view. It marks which ends have more as data-more, which humagen-strip fades, so
  * an item cut off at the edge reads as more to scroll to.
  */
 export function useStrip<E extends HTMLElement>(chosen: unknown): RefObject<E | null> {
@@ -690,7 +719,7 @@ export function Tabs<T extends string>({
   return (
     <div className="relative">
       <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b" />
-      <div ref={strip} role="tablist" aria-label={label} className="warp-strip aui-scroll relative flex gap-1 overflow-x-auto">
+      <div ref={strip} role="tablist" aria-label={label} className="humagen-strip aui-scroll relative flex gap-1 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -910,10 +939,10 @@ export function MoreMenu({ items, label = defaultCopy.more }: { items: PageActio
               close();
             }
           }}
-          className="warp-glass-pop absolute top-full right-0 z-40 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col rounded-aui-lg p-1.5"
+          className="humagen-glass-pop absolute top-full right-0 z-40 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col rounded-aui-lg p-1.5"
         >
           {everyday.map(entry)}
-          {everyday.length > 0 && destructive.length > 0 && <div role="separator" className="my-1 border-[var(--warp-rule)] border-t" />}
+          {everyday.length > 0 && destructive.length > 0 && <div role="separator" className="my-1 border-[var(--humagen-rule)] border-t" />}
           {destructive.map(entry)}
         </div>
       )}
@@ -1015,10 +1044,10 @@ export function Popover({
             {
               ...(side === "right" ? flyout : {}),
               ...(shift ? { translate: `${shift}px 0` } : {}),
-              "--warp-pop-origin": side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
+              "--humagen-pop-origin": side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
             } as CSSProperties
           }
-          className={`warp-glass-pop warp-pop ${side === "right" ? "fixed" : "absolute"} z-40 max-w-[calc(100vw-2rem)] rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"} ${
+          className={`humagen-glass-pop humagen-pop ${side === "right" ? "fixed" : "absolute"} z-40 max-w-[calc(100vw-2rem)] rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"} ${
             side === "right" ? "" : align === "right" ? "right-0" : "left-0"
           } ${side === "right" ? "" : up ? "bottom-full mb-2" : "top-full mt-2"}`}
         >
@@ -1074,7 +1103,7 @@ export function SearchField({
 }) {
   return (
     <div
-      className={`flex h-8 items-center gap-2 rounded-aui border border-[var(--warp-rule)] bg-aui-bg px-2.5 text-aui-muted transition-colors focus-within:border-aui-accent focus-within:text-aui-fg ${className}`}
+      className={`flex h-8 items-center gap-2 rounded-aui border border-[var(--humagen-rule)] bg-aui-bg px-2.5 text-aui-muted transition-colors focus-within:border-aui-accent focus-within:text-aui-fg ${className}`}
     >
       <SearchIcon />
       <input
@@ -1171,7 +1200,7 @@ export function FlashNote({ flash, align = "center" }: { flash: Flash | null; al
           data-testid="flash-note"
           data-bad={shown.bad}
           data-leaving={present.leaving}
-          className="warp-note warp-glass-pop flex items-center gap-1.5 whitespace-nowrap rounded-aui px-2 py-1 text-aui-xs text-aui-fg"
+          className="humagen-note humagen-glass-pop flex items-center gap-1.5 whitespace-nowrap rounded-aui px-2 py-1 text-aui-xs text-aui-fg"
         >
           {/* A mark as well as the words, so a small notice beside a bare icon still reads as a result. */}
           {shown.bad ? <XIcon size={12} className="text-aui-bad" /> : <CheckIcon size={12} className="text-aui-ok" />}
@@ -1350,12 +1379,12 @@ export function Menu<T extends string>({
           ref={panel}
           onKeyDown={onKey}
           data-leaving={present.leaving}
-          style={{ ...(shift ? { translate: `${shift}px 0` } : {}), "--warp-pop-origin": `${up ? "bottom" : "top"} ${align}` } as CSSProperties}
-          className={`warp-glass-pop warp-pop absolute z-40 flex max-h-80 min-w-full max-w-[min(22rem,calc(100vw-2rem))] flex-col rounded-aui-lg p-1 ${
+          style={{ ...(shift ? { translate: `${shift}px 0` } : {}), "--humagen-pop-origin": `${up ? "bottom" : "top"} ${align}` } as CSSProperties}
+          className={`humagen-glass-pop humagen-pop absolute z-40 flex max-h-80 min-w-full max-w-[min(22rem,calc(100vw-2rem))] flex-col rounded-aui-lg p-1 ${
             quiet ? "w-max min-w-44" : ""
           } ${align === "right" ? "right-0" : "left-0"} ${up ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}
         >
-          {header && <div className="shrink-0 border-[var(--warp-rule)] border-b px-2.5 pt-1.5 pb-2 text-aui-xs text-aui-muted">{header}</div>}
+          {header && <div className="shrink-0 border-[var(--humagen-rule)] border-b px-2.5 pt-1.5 pb-2 text-aui-xs text-aui-muted">{header}</div>}
           {searchable && (
             <SearchField
               label={`Filter ${label.toLowerCase()}`}
@@ -1443,8 +1472,8 @@ export function Stroke({
       data-agent={agent}
       data-state={agent ? state : undefined}
       data-edge={edge}
-      className={`warp-stroke ${className}`}
-      style={agent ? ({ "--warp-hue": hueOf(agent) } as CSSProperties) : undefined}
+      className={`humagen-stroke ${className}`}
+      style={agent ? ({ "--humagen-hue": hueOf(agent) } as CSSProperties) : undefined}
     >
       {children}
     </div>
@@ -1553,10 +1582,10 @@ export function UsageMeter({
         aria-valuenow={Math.min(spent, cap || spent)}
         aria-valuetext={text}
         title={text}
-        className="warp-meter-track inline-block w-10 shrink-0"
-        style={{ "--warp-meter-h": "4px" } as CSSProperties}
+        className="humagen-meter-track inline-block w-10 shrink-0"
+        style={{ "--humagen-meter-h": "4px" } as CSSProperties}
       >
-        {cap > 0 && <span className="warp-meter-fill" style={{ width: pct(spent) }} />}
+        {cap > 0 && <span className="humagen-meter-fill" style={{ width: pct(spent) }} />}
       </span>
     );
   }
@@ -1573,7 +1602,7 @@ export function UsageMeter({
       )}
       {!header && labelled && <span className="truncate text-aui-xs text-aui-muted">{label}</span>}
       <div className="flex items-baseline justify-between gap-3">
-        <span className={`warp-display min-w-0 truncate font-semibold text-aui-fg ${header ? "text-[1.75rem] leading-9" : "text-aui-sm"}`}>
+        <span className={`humagen-display min-w-0 truncate font-semibold text-aui-fg ${header ? "text-[1.75rem] leading-9" : "text-aui-sm"}`}>
           {show(spent)}
           {!header && cap > 0 && <span className="font-normal text-aui-muted"> of {show(cap)}</span>}
         </span>
@@ -1588,14 +1617,14 @@ export function UsageMeter({
         aria-valuemax={cap || Math.max(spent, 1)}
         aria-valuenow={Math.min(spent, cap || spent)}
         aria-valuetext={text}
-        className="warp-meter-track"
-        style={header ? ({ "--warp-meter-h": "10px" } as CSSProperties) : undefined}
+        className="humagen-meter-track"
+        style={header ? ({ "--humagen-meter-h": "10px" } as CSSProperties) : undefined}
       >
-        {ahead > 0 && <span data-testid={`${testId}-projected`} className="warp-meter-projected" style={{ width: pct(ahead) }} />}
+        {ahead > 0 && <span data-testid={`${testId}-projected`} className="humagen-meter-projected" style={{ width: pct(ahead) }} />}
         {/* With no limit there is nothing to fill toward, so the track stays empty. */}
-        {cap > 0 && <span className="warp-meter-fill" style={{ width: pct(spent) }} />}
-        {cap > 0 && warnAt > 0 && warnAt < 1 && <span aria-hidden className="warp-meter-warn" style={{ left: pct(cap * warnAt) }} />}
-        {cap > 0 && scale > cap && <span aria-hidden className="warp-meter-limit" style={{ left: pct(cap) }} />}
+        {cap > 0 && <span className="humagen-meter-fill" style={{ width: pct(spent) }} />}
+        {cap > 0 && warnAt > 0 && warnAt < 1 && <span aria-hidden className="humagen-meter-warn" style={{ left: pct(cap * warnAt) }} />}
+        {cap > 0 && scale > cap && <span aria-hidden className="humagen-meter-limit" style={{ left: pct(cap) }} />}
       </div>
     </div>
   );
@@ -1735,7 +1764,7 @@ export function PolicyBadge({
     <span
       data-testid={testId}
       data-action={action}
-      className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-[var(--warp-stroke)] pr-2.5 pl-2 text-aui-xs text-aui-muted"
+      className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-[var(--humagen-stroke)] pr-2.5 pl-2 text-aui-xs text-aui-muted"
     >
       <Icon size={12} />
       <span className="truncate">

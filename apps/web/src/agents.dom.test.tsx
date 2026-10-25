@@ -9,7 +9,7 @@ const writer: Revision = {
   rev: 2,
   spec: { name: "warp-writer", description: "Writes a document.", provider: "offline", model: "offline", system_prompt: "Write it.", access: { spawn: [] } },
   created_at: new Date().toISOString(),
-  created_by: "warp",
+  created_by: "humagen",
   hash: "h2",
 };
 const field: ProjectView = {
@@ -31,6 +31,8 @@ const field: ProjectView = {
   schedules: 0,
   notes: 0,
   proposed: 0,
+  unread: 0,
+  row_agents: [],
   mine: false,
 };
 const older: Revision = { ...writer, rev: 1, hash: "h1", spec: { ...writer.spec, system_prompt: "Write." } };

@@ -6,13 +6,13 @@ combines source inspection, a live local preview, and official product reference
 
 ## Reference patterns
 
-| Reference | Documented behavior | Application to Warp |
+| Reference | Documented behavior | Application to Humagen |
 |---|---|---|
 | [ChatGPT projects](https://openai.com/academy/projects/) | Projects collect related chats, files and instructions; creation starts from Projects in the sidebar | Use one name for the concept throughout the console; make the selected context visible before sending |
 | [Claude projects](https://support.claude.com/en/articles/9519177-how-can-i-create-and-manage-projects) | Projects have names and descriptions; standalone chats can be moved into or out of projects | Treat projectless work as a valid choice, show descriptions when choosing context, and keep project identity distinct from presentation |
 
-These are documented reference flows, not claims that Warp duplicates their
-interfaces. Warp's useful difference is choosing an answering agent alongside
+These are documented reference flows, not claims that Humagen duplicates their
+interfaces. Humagen's useful difference is choosing an answering agent alongside
 the project in the composer. Both controls should remain quiet and readable.
 
 ## Findings and changes
@@ -67,7 +67,7 @@ ChatGPT's live page presented a browser check. The comparison therefore uses
 official documentation and the published ChatGPT screenshot, without claiming
 to have inspected either signed-in interface.
 
-Warp now uses shared warp folder, open-folder and folder-plus icons in
+Humagen now uses shared Humagen folder, open-folder and folder-plus icons in
 project navigation and the composer. Projectless work uses a conversation icon.
 A folder remains in the collapsed rail and opens a named project list, including
 creation when permitted. Opening a project closes the flyout and highlights its
@@ -89,11 +89,11 @@ collapsed Projects entry and project-creation permission.
 
 Follow-up review against Claude's desktop app, from a screenshot of its signed-in
 sidebar: a short flat list (New, Projects, Artifacts, Scheduled, Customize,
-More), then Pinned, then Chats and tasks. Warp's sidebar had Home and New
+More), then Pinned, then Chats and tasks. Humagen's sidebar had Home and New
 conversation side by side, though both open the same empty conversation, and two
 labelled groups of eight tools under the task list.
 
-Warp now follows the same shape:
+Humagen now follows the same shape:
 
 - **New** is home. The separate Home entry is gone, and New is current on the
   empty conversation at the bare address.
@@ -115,7 +115,7 @@ reload, More open and folded, the Projects page, and the collapsed rail.
 
 ## One console for agents across systems
 
-Second pass, after the first one above. Warp is a place to run work with agents,
+Second pass, after the first one above. Humagen is a place to run work with agents,
 project by project, so the navigation follows the work rather than the
 platform's parts.
 
@@ -231,7 +231,7 @@ to the conversation work.
 
 ## Checking a UI change
 
-`make screens` builds warp and the console, starts warp on a free loopback port
+`make screens` builds Humagen and the console, starts Humagen on a free loopback port
 with the development sign-in, the seeded agents and state in memory, adds
 announcements, failed runs and a schedule through the API, and captures every
 page and tab at 390x844 and 1280x800. It uses an installed Chromium or Chrome
@@ -260,3 +260,34 @@ workflow, and uploads `.screens/` as the
 
 Every UI change lists the screens it changes, with the before and after
 screenshots from `make screens`, in its pull request.
+
+## Stable agent colors
+
+AgentMark, agent tints, run strokes and usage bars use a workspace-wide hue
+reservation returned by `GET /api/agents`. Reservations are written through
+`pkg/state` before use, so every reader gets the same color after a restart
+and adding, removing or renaming other agents never recolors a name. A deleted
+name keeps its reservation, including when it is created again.
+
+The first twelve hues keep the old hash's preferred color where available.
+A collision takes an unused hue; after twelve reservations the allocator fills
+successive gaps between hues. This is the smallest change that guarantees
+unique hue values without changing agent specs or adding a configuration choice.
+A larger hash palette alone would still collide. The server returns assignments
+only for readable agents. Each workspace has at most 10,000 reserved names;
+exhaustion or a failed write refuses the list rather than returning colliding
+assignments. A mark reserves its space without drawing an orb until its server
+hue arrives.
+A bounded `GET /api/agent-hues` lookup, behind `runs:read`, batches at most
+100 explicitly named readable agents for readers without `agents:read`.
+A second route, `GET /api/project-agent-hues`, uses the same bounded handler
+behind `projects:read`, for project readers without run or agent permissions.
+The host selects the route the reader may call. Hidden and missing names are
+both omitted. No names are enumerated.
+The host clears the palette on identity changes and retries failed lookups at
+most twice. Tints and non-mark accents retain the original hue while loading.
+Distinct hue values do not guarantee perceptually distinct colors for thousands
+of agents. Names remain beside marks wherever people choose an agent.
+
+The `agent-colors` screenshot state includes more than twelve custom agents,
+checked at phone and desktop widths by `make screens`.

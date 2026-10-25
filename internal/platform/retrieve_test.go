@@ -13,8 +13,8 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 func TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant(t *testing.T) {
@@ -31,7 +31,7 @@ func TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant(t *testing.T) {
 		if _, err := p.Knowledge.Create(tn, "handbook", "", "test", now); err != nil {
 			t.Fatal(err)
 		}
-		spec := agentspec.AgentSpec{Name: "support", Provider: "scripted", Model: "m", SystemPrompt: "Answer.", Sources: []agentspec.Source{{Name: "handbook", URI: "warp://knowledge/handbook"}}}
+		spec := agentspec.AgentSpec{Name: "support", Provider: "scripted", Model: "m", SystemPrompt: "Answer.", Sources: []agentspec.Source{{Name: "handbook", URI: "humagen://knowledge/handbook"}}}
 		if _, err := p.Agents.Create(ctx, tn, spec, "test"); err != nil {
 			t.Fatal(err)
 		}

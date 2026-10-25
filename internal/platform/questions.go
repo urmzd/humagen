@@ -14,13 +14,13 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/authz"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/authz"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // People in the loop.
@@ -414,28 +414,66 @@ func audienceOf(allowed []string, q payload.Question) (audience []string) {
 	return audience
 }
 
-// raiseQuestion puts a question a run is parked on in the inbox, once. via is
-// the run whose stream showed it, when that is not the run that asked.
-func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Question, via string) (inbox.Message, bool) {
+// raiseQuestion puts a question a run is parked on in the inbox, once, and
+// returns its message. via is the run whose stream showed it, when that is
+// not the run that asked. A question no person answers is inbox.ErrNotFound,
+// and a message the inbox could not keep is the inbox's error.
+func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Question, via string) (inbox.Message, error) {
 	if _, _, ok := questionParts(q.Kind); !ok || q.ID == "" {
-		return inbox.Message{}, false
+		return inbox.Message{}, fmt.Errorf("%w: question %q is not one a person answers", inbox.ErrNotFound, q.ID)
 	}
 	key := questionKey(run.ID, q.ID)
 	if m, ok := p.Inbox.ByKey(run.Tenant, key); ok {
-		return m, true
+		return m, nil
 	}
 	msg, _ := p.questionMessage(ctx, run, q, via)
+	if p.beforeQuestionKept != nil {
+		p.beforeQuestionKept()
+	}
 	at := q.At
 	if at.IsZero() {
 		at = p.now()
 	}
-	m, raised := p.raiseInbox(run.Tenant, key, msg, at)
+	// Raised once, by whichever gets here first: the run's event, or an
+	// answer given before the event was folded in. A question answered and
+	// settled before the other arrives is not raised again.
+	m, raised, err := p.Inbox.RaiseOnce(run.Tenant, key, msg, at)
+	if err != nil {
+		p.log.Error("platform: inbox message could not be kept", "tenant", run.Tenant, "key", key, "error", err)
+		return inbox.Message{}, fmt.Errorf("platform: the question's message could not be kept: %w", err)
+	}
 	if raised {
 		p.log.Info("platform: question raised", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "kind", q.Kind,
 			"audience", strings.Join(msg.Audience, ","), "message", m.ID)
 		p.wakeAtExpiry(run.Tenant, run.ID, q)
 	}
-	return m, true
+	return m, nil
+}
+
+// askedMessage is the inbox message of the question questionID that run
+// asked. The run shows the question a moment before its event raises the
+// message, so a question the run reports it is waiting on, or failing that
+// the runtime's record of it, is raised here. A question the run is not
+// waiting on and that has no message is inbox.ErrNotFound.
+func (p *Platform) askedMessage(ctx context.Context, run runs.Run, questionID string) (inbox.Message, error) {
+	if m, ok := p.Inbox.ByKey(run.Tenant, questionKey(run.ID, questionID)); ok {
+		return m, nil
+	}
+	// The event announces the question a moment before the runtime's
+	// record of it is written, so the run's own report is used first.
+	q, pending := payload.Question{}, false
+	if run.Question != nil && run.Question.ID == questionID {
+		q, pending = *run.Question, true
+	} else if got, ok, err := p.rt.PendingQuestion(ctx, run.Tenant, run.ID); err == nil && ok {
+		q, pending = got, true
+	}
+	if !pending || q.ID != questionID {
+		return inbox.Message{}, fmt.Errorf("%w: run %q has no question %q", inbox.ErrNotFound, run.ID, questionID)
+	}
+	// Raised as the run's event would raise it, whatever becomes of the
+	// request that got here first: a message is addressed once, and one
+	// addressed while the request was being given up would reach nobody.
+	return p.raiseQuestion(context.WithoutCancel(ctx), run, q, "")
 }
 
 // questionMessage is the inbox message a question is raised as, addressed
@@ -590,7 +628,8 @@ func (p *Platform) observeQuestion(ctx context.Context, e envelope.Event) {
 			return
 		}
 		if run, err := p.Runs.Get(e.Tenant, e.RunID); err == nil {
-			p.raiseQuestion(ctx, run, *body.Question, "")
+			// What could not be kept is logged where it was tried.
+			_, _ = p.raiseQuestion(ctx, run, *body.Question, "")
 		}
 	case envelope.KindChildParked:
 		// A run waiting on a run it called shows that run's question. The
@@ -600,7 +639,7 @@ func (p *Platform) observeQuestion(ctx context.Context, e envelope.Event) {
 			return
 		}
 		if child, err := p.Runs.Get(e.Tenant, cq.RunID); err == nil {
-			p.raiseQuestion(ctx, child, cq.Question, e.RunID)
+			_, _ = p.raiseQuestion(ctx, child, cq.Question, e.RunID)
 		}
 	case envelope.KindResumed:
 		p.answers.Lock()
@@ -837,24 +876,9 @@ func (p *Platform) AnswerQuestion(ctx context.Context, who auth.Principal, runID
 	if err != nil {
 		return inbox.Message{}, err
 	}
-	m, ok := p.Inbox.ByKey(who.Tenant, questionKey(runID, questionID))
-	if !ok {
-		// The question's event may not have been folded in yet. The
-		// runtime's record of it is the authority.
-		// The event announces the question a moment before the runtime's
-		// record of it is written, so the run's own report is used first.
-		q, pending := payload.Question{}, false
-		if run.Question != nil && run.Question.ID == questionID {
-			q, pending = *run.Question, true
-		} else if got, ok, qerr := p.rt.PendingQuestion(ctx, who.Tenant, runID); qerr == nil && ok {
-			q, pending = got, true
-		}
-		if !pending || q.ID != questionID {
-			return inbox.Message{}, fmt.Errorf("%w: run %q has no question %q", inbox.ErrNotFound, runID, questionID)
-		}
-		if m, ok = p.raiseQuestion(ctx, run, q, ""); !ok {
-			return inbox.Message{}, fmt.Errorf("%w: question %q is not one a person answers", inbox.ErrNotFound, questionID)
-		}
+	m, err := p.askedMessage(ctx, run, questionID)
+	if err != nil {
+		return inbox.Message{}, err
 	}
 	return p.answer(ctx, who, m, a)
 }

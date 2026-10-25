@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 
 /**
  * Schedule expressions in words. A schedule's expression is cron, read in

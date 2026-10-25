@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/auth/authtest"
-	"github.com/urmzd/warp/pkg/authz"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/auth/authtest"
+	"github.com/urmzd/humagen/pkg/authz"
 )
 
 // legacyRolePermissions is the hardcoded table the policy language replaced,
@@ -114,7 +114,7 @@ func customVerifier(t *testing.T, iss *authtest.Issuer) *auth.Verifier {
 	}
 	return verifier(t, iss, func(c *auth.OIDCConfig) {
 		c.Policy = pol
-		c.GroupRoles = map[string]auth.Role{"warp-operators": auth.Operator}
+		c.GroupRoles = map[string]auth.Role{"humagen-operators": auth.Operator}
 	})
 }
 
@@ -128,7 +128,7 @@ func TestVerifierAssignsRolesThroughThePolicy(t *testing.T) {
 	}{
 		{"anyone", map[string]any{}, []auth.Role{auth.Viewer}},
 		{"group in the policy", map[string]any{"groups": []string{"eng-oncall"}}, []auth.Role{auth.Viewer, auth.Operator}},
-		{"group from GroupRoles", map[string]any{"groups": []string{"warp-operators"}}, []auth.Role{auth.Viewer, auth.Operator}},
+		{"group from GroupRoles", map[string]any{"groups": []string{"humagen-operators"}}, []auth.Role{auth.Viewer, auth.Operator}},
 		{"claim", map[string]any{"department": "finance"}, []auth.Role{auth.Viewer, "auditor"}},
 		{"verified email", map[string]any{"email": "ada@acme.test", "email_verified": true}, []auth.Role{auth.Viewer, auth.Operator}},
 		{"unverified email", map[string]any{"email": "ada@acme.test"}, []auth.Role{auth.Viewer}},
@@ -190,7 +190,7 @@ func TestPolicyDoesNotWidenAMachine(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := verifier(t, iss, func(c *auth.OIDCConfig) { c.Policy = pol; c.GroupRoles = nil })
-	p, err := v.Bearer(context.Background(), iss.Sign(t, "svc", audience, map[string]any{"scp": []string{"warp:runs:read"}}))
+	p, err := v.Bearer(context.Background(), iss.Sign(t, "svc", audience, map[string]any{"scp": []string{"humagen:runs:read"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestAMachineCarriesThePolicyForThePeopleItMaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := verifier(t, iss, func(c *auth.OIDCConfig) { c.Policy = pol; c.GroupRoles = nil })
-	p, err := v.Bearer(context.Background(), iss.Sign(t, "slack-app", audience, map[string]any{"scp": []string{"warp:runs:write"}}))
+	p, err := v.Bearer(context.Background(), iss.Sign(t, "slack-app", audience, map[string]any{"scp": []string{"humagen:runs:write"}}))
 	if err != nil {
 		t.Fatal(err)
 	}

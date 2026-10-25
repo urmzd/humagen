@@ -1,4 +1,4 @@
-import { isAnnouncement, messageState } from "@warp/core";
+import { isAnnouncement, messageState } from "@humagen/core";
 import { fromServer, type PlatformMessage, type Transport } from "./mail.ts";
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 func newProjectsPlatform(t *testing.T) *platform.Platform {
@@ -284,16 +284,16 @@ func TestTheFileMovesAProjectUnderTheTreesRules(t *testing.T) {
 // an unchanged entry makes no version, one that left the file stays,
 // unmanaged, and the workspace's instructions are the file's.
 func TestAConsoleProjectSurvivesARestartOnPostgres(t *testing.T) {
-	url := os.Getenv("WARP_POSTGRES_TEST_URL")
+	url := os.Getenv("HUMAGEN_POSTGRES_TEST_URL")
 	if url == "" {
-		t.Skip("WARP_POSTGRES_TEST_URL is not set")
+		t.Skip("HUMAGEN_POSTGRES_TEST_URL is not set")
 	}
 	t.Setenv("SPEC_TEST_PG", url)
 	dir := t.TempDir()
 	write := func(projectsYAML string) string {
-		path := filepath.Join(dir, "warp.yaml")
-		body := "api_version: warp/v1\nkind: System\nspec:\n  stores: {kind: postgres, postgres: {url: {ref: \"env:SPEC_TEST_PG\"}}}\n---\n" +
-			"api_version: warp/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  workspace:\n    instructions: Answer plainly.\n    projects:\n" + projectsYAML
+		path := filepath.Join(dir, "humagen.yaml")
+		body := "api_version: humagen/v1\nkind: System\nspec:\n  stores: {kind: postgres, postgres: {url: {ref: \"env:SPEC_TEST_PG\"}}}\n---\n" +
+			"api_version: humagen/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  workspace:\n    instructions: Answer plainly.\n    projects:\n" + projectsYAML
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}

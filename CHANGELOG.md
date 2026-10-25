@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.25.0 (2026-10-25)
+
+### Features
+
+- **web**: add the Humagen project conversation workspace (#64) ([8cd34d5](https://github.com/urmzd/humagen/commit/8cd34d5715f0f3e8091feb99e99a154cdbd5e2ee))
+
+### Misc
+
+- verify installs and Helm/Flux rename upgrades ([cbb95fc](https://github.com/urmzd/humagen/commit/cbb95fcc4e16253abe933e66f573eb6b36b4daec))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.24.0...v0.25.0)
+
+
+## 0.24.0 (2026-10-23)
+
+### Features
+
+- **projects**: preview composed turn context layers ([b3eda7a](https://github.com/urmzd/humagen/commit/b3eda7a12a3a2a970cebb97e30c2ce3473a45b1e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.23.0...v0.24.0)
+
+
+## 0.23.0 (2026-10-23)
+
+### Features
+
+- record break-glass reads ([b904b1c](https://github.com/urmzd/humagen/commit/b904b1c296f9488adebd7f44ea6de261aac5e97a))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.22.0...v0.23.0)
+
+
+## 0.22.0 (2026-10-23)
+
+### Features
+
+- show project agents and unread updates ([9e5e661](https://github.com/urmzd/humagen/commit/9e5e661c8300305346e72682027656e8d0d0e5e8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.21.2...v0.22.0)
+
+
+## 0.21.2 (2026-10-23)
+
+### Bug Fixes
+
+- **console**: reserve stable AgentMark colors ([91c05b3](https://github.com/urmzd/humagen/commit/91c05b3c1d3fc101be2d26fbc65b06f435729055))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.21.1...v0.21.2)
+
+
+## 0.21.1 (2026-10-22)
+
+### Bug Fixes
+
+- keep installs from before the rename working, from the install-safety review (#54) ([f713fa2](https://github.com/urmzd/humagen/commit/f713fa2f380534ca32372a42a26f1990d330d4c2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.21.0...v0.21.1)
+
+
+## 0.21.0 (2026-10-22)
+
+### Breaking
+
+- rename warp to Humagen, with old names still read (#53) ([54edc7b](https://github.com/urmzd/humagen/commit/54edc7bad20bacda5e9dd7e899b5f864e267e23c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.20.2...v0.21.0)
+
+
 ## 0.20.2 (2026-10-22)
 
 ### Bug Fixes

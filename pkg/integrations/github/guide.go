@@ -5,7 +5,7 @@ import (
 	"fmt"
 	transport "github.com/urmzd/fiber/pkg/connectors/github"
 	"github.com/urmzd/fiber/pkg/envelope"
-	presentation "github.com/urmzd/warp/internal/presentation/github"
+	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"sort"
 	"strings"
 )

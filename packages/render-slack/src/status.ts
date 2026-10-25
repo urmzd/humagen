@@ -1,7 +1,7 @@
-import type { TaskStatus } from "@warp/core";
+import type { TaskStatus } from "@humagen/core";
 
 /**
- * Slack has fewer task states than warp. Plans accept `pending`; task cards
+ * Slack has fewer task states than humagen. Plans accept `pending`; task cards
  * and stream task_update chunks accept only in_progress/complete/error
  * (verified with blocks.validate). `waiting` is blocked on a person, so in a
  * plan it shows as pending (no spinner); `denied` is an outcome, shown as error

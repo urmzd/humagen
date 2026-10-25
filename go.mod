@@ -1,4 +1,4 @@
-module github.com/urmzd/warp
+module github.com/urmzd/humagen
 
 go 1.26.10
 

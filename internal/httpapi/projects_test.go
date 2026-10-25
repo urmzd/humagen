@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // operator is what the built-in operator role holds, as a machine's scopes:
 // projects:read and projects:write, and not projects:govern.
 var operator = []string{
-	"warp:agents:read", "warp:runs:read", "warp:runs:write", "warp:schedules:read", "warp:schedules:write",
-	"warp:alerts:read", "warp:alerts:write", "warp:billing:read", "warp:projects:read", "warp:projects:write",
+	"humagen:agents:read", "humagen:runs:read", "humagen:runs:write", "humagen:schedules:read", "humagen:schedules:write",
+	"humagen:alerts:read", "humagen:alerts:write", "humagen:billing:read", "humagen:projects:read", "humagen:projects:write",
 }
 
 func status(t *testing.T, f *fixture, tok, method, path, body string) (int, map[string]any) {
@@ -48,12 +48,13 @@ func names(list any) []string {
 // still holds only runs:* is refused, and one holding projects:read reads.
 func TestProjectRoutesCheckProjectsPermissionsNotRuns(t *testing.T) {
 	f := newFixture(t)
-	runsOnly := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
+	runsOnly := f.machine(t, "acme", "humagen:runs:read", "humagen:runs:write")
 	for _, tc := range []struct{ method, path, perm string }{
 		{"GET", "/api/projects", "projects:read"},
 		{"POST", "/api/projects", "projects:write"},
 		{"GET", "/api/projects/~", "projects:read"},
 		{"GET", "/api/projects/~/memory", "projects:read"},
+		{"GET", "/api/projects/~/context?agent=helper", "projects:read"},
 		{"POST", "/api/projects/~/memory", "projects:write"},
 		{"GET", "/api/projects/~/history", "projects:read"},
 	} {
@@ -61,7 +62,7 @@ func TestProjectRoutesCheckProjectsPermissionsNotRuns(t *testing.T) {
 			t.Errorf("%s %s with runs:* = %d %v, want 403 you need %s", tc.method, tc.path, got, out, tc.perm)
 		}
 	}
-	reader := f.machine(t, "acme", "warp:projects:read")
+	reader := f.machine(t, "acme", "humagen:projects:read")
 	if out := want(t, f, reader, "GET", "/api/projects", "", http.StatusOK); len(out["projects"].([]any)) != 0 {
 		t.Fatalf("an empty workspace lists %v", out)
 	}
@@ -138,7 +139,7 @@ func TestAnAgentNamedWorkspaceNeverReachesTheWorkspacesNotes(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machine(t, "acme", everything...)
 	// A manager: agents:write and projects:write, not projects:govern.
-	manager := f.machine(t, "acme", append([]string{"warp:agents:write"}, operator...)...)
+	manager := f.machine(t, "acme", append([]string{"humagen:agents:write"}, operator...)...)
 	want(t, f, admin, "POST", "/api/projects", `{"name":"News","kind":"company"}`, http.StatusCreated)
 	// The manager is a member of the workspace, so their note is only a
 	// proposal, which they may not keep.
@@ -234,8 +235,8 @@ func TestAProjectsCountsLeaveOutWhatTheCallerMayNotRead(t *testing.T) {
 	want(t, f, acme, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
 	want(t, f, acme, "POST", "/api/projects", `{"name":"Secret","parent":"Field"}`, http.StatusCreated)
 	want(t, f, acme, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
-	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "humagen-operators")
 	private := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"private","text":"@helper between us"}`, http.StatusCreated)
 	ended(t, f, ana, private["runs"].([]any)[0].(map[string]any)["id"].(string))
 	ended(t, f, bo, want(t, f, bo, "POST", "/api/runs", `{"agent":"helper","text":"go","project":"Field"}`, http.StatusAccepted)["id"].(string))

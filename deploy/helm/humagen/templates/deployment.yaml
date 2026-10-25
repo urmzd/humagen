@@ -1,0 +1,143 @@
+{{- if ne (int .Values.replicaCount) 1 }}
+{{- fail "replicaCount must be 1: humagen's stores are single-writer. See values.yaml." }}
+{{- end }}
+{{- include "humagen.keepOldNames" . -}}
+{{- $fullname := include "humagen.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "humagen.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: the old pod must let go of the stores and the
+  # ReadWriteOnce volume before the new one starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "humagen.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "humagen.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "humagen.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Long enough for runs in flight to settle on SIGTERM.
+      terminationGracePeriodSeconds: 30
+      containers:
+        # The old name for a release the warp chart installed, so patches
+        # and `kubectl logs -c` keep working (humagen.containerName).
+        - name: {{ include "humagen.containerName" . }}
+          image: {{ include "humagen.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The spec is the file; the chart forces only the listener and the
+          # console's directory, which are the image's, as flags that win.
+          args:
+            - serve
+            - -f=/etc/warp/humagen.yaml
+            - -addr=0.0.0.0:8080
+            - -web=/usr/share/warp/web
+            {{- if .Values.webhooks.enabled }}
+            - -webhook-addr=0.0.0.0:{{ .Values.webhooks.port }}
+            {{- end }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            # The workspace lives under the user cache directory, on the volume.
+            - name: HOME
+              value: /var/lib/warp
+            - name: XDG_CACHE_HOME
+              value: /var/lib/warp/cache
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.existingSecret }}
+          # The references in the spec ({ref: env:NAME}) read these.
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            {{- if .Values.webhooks.enabled }}
+            - name: webhooks
+              containerPort: {{ .Values.webhooks.port }}
+              protocol: TCP
+            {{- end }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/warp
+            # A read-only root filesystem still needs somewhere for temp files.
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/warp
+              readOnly: true
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default $fullname }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        # humagen.yaml and the files beside it.
+        - name: config
+          configMap:
+            name: {{ $fullname }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

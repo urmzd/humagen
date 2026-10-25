@@ -11,7 +11,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/address"
 	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/warp/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
 func TestContextReadsPRSourcesAndExposesPagination(t *testing.T) {

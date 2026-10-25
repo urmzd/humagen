@@ -7,7 +7,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/address"
 	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/humagen/pkg/integrations/slack"
 )
 
 var commands = []slack.Command{

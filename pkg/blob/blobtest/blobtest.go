@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/blob"
+	"github.com/urmzd/humagen/pkg/blob"
 )
 
 func body(t *testing.T, s blob.Store, tenant, key string) string {

@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { useRef, useState } from "react";
 import { ApiError, coworking, type Thread, type ThreadPage } from "./api.ts";
 import { conflictOf } from "./conflicts.ts";

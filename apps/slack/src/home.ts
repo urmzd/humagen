@@ -5,8 +5,8 @@ import {
   projectsOf,
   updatesOf,
   type WireProject,
-} from "@warp/adapter";
-import { HOME_NEEDS, type HomeModel, type HomeStart, orderNotifications } from "@warp/core";
+} from "@humagen/adapter";
+import { HOME_NEEDS, type HomeModel, type HomeStart, orderNotifications } from "@humagen/core";
 
 /** How many that need the person the Home tab shows, as the console's Home does. The rest are counted. */
 export { HOME_NEEDS };

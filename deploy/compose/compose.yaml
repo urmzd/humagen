@@ -1,12 +1,17 @@
-# warp with Postgres, and optional MinIO (S3) and Redis.
+# Humagen with Postgres, and optional MinIO (S3) and Redis.
 #
 #   cp .env.example .env                       # the secrets config/warp.yaml names
 #   $EDITOR config/warp.yaml                   # the identity provider, public URL
-#   docker compose up -d --build               # warp and Postgres
+#   docker compose up -d --build               # Humagen and Postgres
 #   docker compose --profile s3 --profile redis up -d --build   # and MinIO, Redis
 #
 # `make up` and `make down` at the repository root wrap these, and take the
 # profiles from COMPOSE_PROFILES in .env. See docs/deploy.md.
+#
+# The project, service, volume and Postgres names stay warp, as before the
+# product was renamed: the volumes are named for the project, and Postgres
+# creates its user and database only on first start. Each HUMAGEN_ variable
+# below falls back to its old WARP_ name.
 
 name: warp
 
@@ -15,26 +20,29 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    image: ${WARP_IMAGE:-warp:local}
+    image: ${HUMAGEN_IMAGE:-${WARP_IMAGE:-humagen:local}}
     restart: unless-stopped
-    # One warp per database: the stores are single-writer. The spec in
+    # One server per database: the stores are single-writer. The spec in
     # ./config says the rest; these flags win over it for what belongs to the
     # container: the listen address and the console's directory.
-    command: serve -f /etc/warp -addr 0.0.0.0:8080 -web /usr/share/warp/web ${WARP_EXTRA_ARGS:-}
+    command: serve -f /etc/warp -addr 0.0.0.0:8080 -web /usr/share/warp/web ${HUMAGEN_EXTRA_ARGS:-${WARP_EXTRA_ARGS:-}}
     ports:
-      - "${WARP_BIND:-127.0.0.1}:${WARP_PORT:-8080}:8080"
+      - "${HUMAGEN_BIND:-${WARP_BIND:-127.0.0.1}}:${HUMAGEN_PORT:-${WARP_PORT:-8080}}:8080"
     # The variables the spec's references name ({ref: env:NAME}), such as
-    # WARP_OIDC_CLIENT_SECRET or ANTHROPIC_API_KEY. A reference to an unset
-    # variable stops warp at start.
+    # HUMAGEN_OIDC_CLIENT_SECRET or ANTHROPIC_API_KEY. A reference to an unset
+    # variable stops the server at start.
     env_file:
       - path: .env
         required: false
     environment:
-      WARP_POSTGRES_URL: ${WARP_POSTGRES_URL:-postgres://warp:${POSTGRES_PASSWORD:-warp}@postgres:5432/warp?sslmode=disable}
+      HUMAGEN_POSTGRES_URL: ${HUMAGEN_POSTGRES_URL:-${WARP_POSTGRES_URL:-postgres://warp:${POSTGRES_PASSWORD:-warp}@postgres:5432/warp?sslmode=disable}}
+      # The same, under the old name config/warp.yaml and images from before
+      # the rename read, so rolling back to one still finds the database.
+      WARP_POSTGRES_URL: ${HUMAGEN_POSTGRES_URL:-${WARP_POSTGRES_URL:-postgres://warp:${POSTGRES_PASSWORD:-warp}@postgres:5432/warp?sslmode=disable}}
     volumes:
       # The workspace: agents' files and, with blobs.kind=disk, published files.
       - warp-data:/var/lib/warp
-      # warp.yaml and any file it names (a policy, agent specs), read-only.
+      # The spec and any file it names (a policy, agent specs), read-only.
       - ./config:/etc/warp:ro
     depends_on:
       postgres:
@@ -68,17 +76,17 @@ services:
       timeout: 3s
       retries: 10
 
-  # S3-compatible storage for published files. Use with WARP_STORAGE=s3. The
-  # root user and password are WARP_S3_ACCESS_KEY_ID and
-  # WARP_S3_SECRET_ACCESS_KEY, so warp signs in with the same pair.
+  # S3-compatible storage for published files. Use with blobs.kind s3. The
+  # root user and password are HUMAGEN_S3_ACCESS_KEY_ID and
+  # HUMAGEN_S3_SECRET_ACCESS_KEY, so the server signs in with the same pair.
   minio:
     profiles: ["s3"]
     image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
     restart: unless-stopped
     command: server /data --console-address :9001
     environment:
-      MINIO_ROOT_USER: ${WARP_S3_ACCESS_KEY_ID:-warp}
-      MINIO_ROOT_PASSWORD: ${WARP_S3_SECRET_ACCESS_KEY:-change-me-please}
+      MINIO_ROOT_USER: ${HUMAGEN_S3_ACCESS_KEY_ID:-${WARP_S3_ACCESS_KEY_ID:-warp}}
+      MINIO_ROOT_PASSWORD: ${HUMAGEN_S3_SECRET_ACCESS_KEY:-${WARP_S3_SECRET_ACCESS_KEY:-change-me-please}}
     ports:
       - "127.0.0.1:9001:9001"
     volumes:
@@ -101,12 +109,12 @@ services:
     command:
       - >-
         mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
-        mc mb --ignore-existing local/${WARP_S3_BUCKET:-warp}
+        mc mb --ignore-existing local/${HUMAGEN_S3_BUCKET:-${WARP_S3_BUCKET:-warp}}
     environment:
-      MINIO_ROOT_USER: ${WARP_S3_ACCESS_KEY_ID:-warp}
-      MINIO_ROOT_PASSWORD: ${WARP_S3_SECRET_ACCESS_KEY:-change-me-please}
+      MINIO_ROOT_USER: ${HUMAGEN_S3_ACCESS_KEY_ID:-${WARP_S3_ACCESS_KEY_ID:-warp}}
+      MINIO_ROOT_PASSWORD: ${HUMAGEN_S3_SECRET_ACCESS_KEY:-${WARP_S3_SECRET_ACCESS_KEY:-change-me-please}}
 
-  # The event bus. Use with WARP_REDIS_URL=redis://redis:6379/0.
+  # The event bus. Use with HUMAGEN_REDIS_URL=redis://redis:6379/0.
   redis:
     profiles: ["redis"]
     image: redis:8-alpine

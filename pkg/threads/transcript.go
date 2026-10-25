@@ -9,7 +9,9 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/pkg/runs"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Turn is one turn of a thread: a person's message, an agent's run, or the
@@ -32,7 +34,7 @@ func AnnouncementTurn(a Announcement) Turn { return Turn{Announcement: &a} }
 
 // Announcement is the announcement a thread was started from, as the thread
 // reads it when it is read: who posted it, a person, the agent a schedule
-// ran, or warp itself, and what it says. It is the inbox's, never a message
+// ran, or humagen itself, and what it says. It is the inbox's, never a message
 // here, so its author is whoever posted it and never the person whose reply
 // started the thread, and a withdrawn one says nothing.
 type Announcement struct {
@@ -41,9 +43,9 @@ type Announcement struct {
 	// Kind is person, agent or system.
 	Kind string `json:"kind"`
 	// By is the person's subject, handed out as their handle, the agent's
-	// name, or for a system one the name warp posted it under.
+	// name, or for a system one the name humagen posted it under.
 	By string `json:"by"`
-	// Name is what the person is called. An agent and warp itself (System)
+	// Name is what the person is called. An agent and humagen itself (System)
 	// have none.
 	Name string `json:"name,omitempty"`
 	// Subject and Text are what it says. A withdrawn one has neither.
@@ -54,7 +56,7 @@ type Announcement struct {
 	At        time.Time `json:"at"`
 }
 
-// System is the kind of an announcement warp posted itself, such as a
+// System is the kind of an announcement humagen posted itself, such as a
 // release's notes: from no person and no agent.
 const System = "system"
 
@@ -235,10 +237,16 @@ const someone = "someone"
 
 func agentLabel(name string) string { return flat(name) + " (agent)" }
 
-// systemLabel is how a transcript names warp, posting as itself. No agent's
-// or person's line can read the same: an agent is marked (agent), and a
+// systemLabel is how a transcript names the product, posting as itself,
+// whatever name the record keeps (warp, before the rename). No agent's or
+// person's line can read the same: an agent is marked (agent), and a
 // person's shown name holds no parentheses.
-func systemLabel(name string) string { return flat(name) + " (system)" }
+func systemLabel(name string) string {
+	if name == "humagen" || name == legacy.SystemSender {
+		name = "Humagen"
+	}
+	return flat(name) + " (system)"
+}
 
 // shownName is a name as a transcript shows it: on one line, without the
 // marks a label is made of, so a name cannot pass for a handle or end a

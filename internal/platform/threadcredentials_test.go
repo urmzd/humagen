@@ -9,15 +9,15 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/credentials"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // A run a message starts in a shared thread acts for the person who posted
@@ -30,9 +30,9 @@ import (
 // their place. Each run is still sent what the others said in the room.
 func TestARunAMessageStartsActsForThePersonWhoPostedIt(t *testing.T) {
 	w := newWorld(t, platform.Config{})
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
 	w.connect(t, ben, credentials.Input{Value: benValue})
-	anas, bens := "Bearer "+environment["WARP_PERSON_ANA_ISSUES"], "Bearer "+benValue
+	anas, bens := "Bearer "+environment["HUMAGEN_PERSON_ANA_ISSUES"], "Bearer "+benValue
 
 	// answer waits for the one run a message started, which acts for who.
 	answer := func(posted platform.Posted, who string) runs.Run {
@@ -82,7 +82,7 @@ func TestARunAMessageStartsActsForThePersonWhoPostedIt(t *testing.T) {
 	if got := w.server.Calls()[calls:]; len(got) != 0 {
 		t.Fatalf("cyd's tag reached the server with %q", got)
 	}
-	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
+	w.leaks(t, environment["HUMAGEN_PERSON_ANA_ISSUES"], benValue)
 }
 
 // An agent may ask the experts (asked_of sme:<topic>), but in a run that
@@ -96,7 +96,7 @@ func TestARunAMessageStartsActsForThePersonWhoPostedIt(t *testing.T) {
 func TestAnExpertDoesNotAnswerWhatARunAsksWithAnotherPersonsCredential(t *testing.T) {
 	w := newWorld(t, platform.Config{})
 	ctx := t.Context()
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
 	w.connect(t, ben, credentials.Input{Value: benValue})
 	for _, spec := range []agentspec.AgentSpec{
 		{Name: "asker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"mcp:issues", "ask_person"}},
@@ -175,7 +175,7 @@ func TestAnExpertDoesNotAnswerWhatARunAsksWithAnotherPersonsCredential(t *testin
 	}
 	post(t, w.p, ana, th.ID, platform.MessageInput{Text: "PO-12", Answers: ref})
 	await(t, w.p, run.ID, runs.Completed)
-	if got := w.server.Calls()[calls:]; len(got) != 1 || got[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
+	if got := w.server.Calls()[calls:]; len(got) != 1 || got[0] != "Bearer "+environment["HUMAGEN_PERSON_ANA_ISSUES"] {
 		t.Fatalf("ana's answer reached the server with %q", got)
 	}
 
@@ -188,7 +188,7 @@ func TestAnExpertDoesNotAnswerWhatARunAsksWithAnotherPersonsCredential(t *testin
 		t.Fatalf("the expert's answer started %+v", got)
 	}
 	await(t, w.p, run.ID, runs.Completed)
-	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
+	w.leaks(t, environment["HUMAGEN_PERSON_ANA_ISSUES"], benValue)
 }
 
 // A run that another calls acts for nobody, and inherits its caller's thread
@@ -242,7 +242,7 @@ func TestAnExpertDoesNotAnswerARunCalledByOneWithAnotherPersonsCredential(t *tes
 	post(t, p, ana, posted.Thread.ID, platform.MessageInput{Text: "PO-12", Answers: ref})
 	await(t, p, posted.Runs[0].ID, runs.Completed)
 	if q, got := model.searched(), server.Calls(); len(q) != 1 || strings.Contains(q[0], "BEN") || !strings.Contains(q[0], "PO-12") ||
-		!slices.Equal(got, []string{"Bearer " + environment["WARP_PERSON_ANA_ISSUES"]}) {
+		!slices.Equal(got, []string{"Bearer " + environment["HUMAGEN_PERSON_ANA_ISSUES"]}) {
 		t.Fatalf("searched %q and reached the server with %q, want her words alone with her token", q, got)
 	}
 }
@@ -254,7 +254,7 @@ func TestAnExpertDoesNotAnswerARunCalledByOneWithAnotherPersonsCredential(t *tes
 func TestARetryOfAThreadsRunAnswersTheSameMessageForThePoster(t *testing.T) {
 	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
 	ctx := t.Context()
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
 	w.connect(t, ben, credentials.Input{Value: benValue})
 
 	w.model.fail(true)
@@ -294,10 +294,10 @@ func TestARetryOfAThreadsRunAnswersTheSameMessageForThePoster(t *testing.T) {
 	if again.Actor.User != "ana" || again.Thread != failed.Thread || again.Message != failed.Message || again.Prev != failed.Prev || again.Agent != "worker" {
 		t.Fatalf("ana's retry = %+v, want worker answering %s of %s for ana", again, failed.Message, failed.Thread)
 	}
-	if got := w.server.Calls()[calls:]; len(got) != 1 || got[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
+	if got := w.server.Calls()[calls:]; len(got) != 1 || got[0] != "Bearer "+environment["HUMAGEN_PERSON_ANA_ISSUES"] {
 		t.Fatalf("ana's retry reached the server with %q", got)
 	}
-	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
+	w.leaks(t, environment["HUMAGEN_PERSON_ANA_ISSUES"], benValue)
 }
 
 // A turn in a shared thread is sent the room, so what an earlier answer in
@@ -319,7 +319,7 @@ func TestWhatAPersonsCredentialReachedInARoomIsNotTaughtToMemory(t *testing.T) {
 	if _, err := w.p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
 		t.Fatal(err)
 	}
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
 
 	room := startThread(t, w.p, ana, platform.ThreadInput{Project: "Launch", Text: "@worker any open bugs?"})
 	first := await(t, w.p, room.Runs[0].ID, runs.Completed)
@@ -358,5 +358,5 @@ func TestWhatAPersonsCredentialReachedInARoomIsNotTaughtToMemory(t *testing.T) {
 			}
 		}
 	}
-	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
+	w.leaks(t, environment["HUMAGEN_PERSON_ANA_ISSUES"])
 }

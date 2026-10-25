@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/signature"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/clients"
-	slackflow "github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/clients"
+	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
 )
 
 // The secrets a test writes. Nothing the server says or logs may contain them.
@@ -100,7 +100,7 @@ func TestClientSecretsNeverAppearInAResponseOrALog(t *testing.T) {
 	// Refusals echo what was wrong, never what was sent.
 	keep(f.do(t, nil, "POST", "/api/clients", admin, slackBody("docs", "A0DOCS", "helper")))
 	keep(f.do(t, nil, "POST", "/api/clients", admin, slackBody("Bad Id", "A0BAD", "helper")))
-	keep(f.do(t, nil, "POST", "/api/clients", admin, strings.Replace(slackBody("x", "A0X", "helper"), `"value":"`+botToken+`"`, `"value":"`+botToken+`","ref":"env:WARP_X"`, 1)))
+	keep(f.do(t, nil, "POST", "/api/clients", admin, strings.Replace(slackBody("x", "A0X", "helper"), `"value":"`+botToken+`"`, `"value":"`+botToken+`","ref":"env:HUMAGEN_X"`, 1)))
 	keep(f.do(t, nil, "PUT", "/api/policies", admin, `{"scope":{"kind":"client","name":"docs"},"period":"day","max_concurrent":2}`))
 	keep(f.do(t, nil, "GET", "/api/policies", admin, ""))
 	keep(f.do(t, nil, "GET", "/api/policies/history", admin, ""))
@@ -196,9 +196,9 @@ func TestAnotherTenantsClientIsNotFound(t *testing.T) {
 // an admin's.
 func TestClientRoutesEachNeedTheirPermission(t *testing.T) {
 	f, _, _ := clientFixture(t)
-	reader := f.machine(t, "acme", "warp:clients:read")
-	writer := f.machine(t, "acme", "warp:clients:write")
-	other := f.machine(t, "acme", "warp:agents:write", "warp:runs:write", "warp:billing:write")
+	reader := f.machine(t, "acme", "humagen:clients:read")
+	writer := f.machine(t, "acme", "humagen:clients:write")
+	other := f.machine(t, "acme", "humagen:agents:write", "humagen:runs:write", "humagen:billing:write")
 	want(t, f, f.machine(t, "acme", everything...), "POST", "/api/agents", helperSpec, http.StatusCreated)
 	body := slackBody("docs", "A0DOCS", "helper")
 	for _, tc := range []struct {
@@ -222,7 +222,7 @@ func TestClientRoutesEachNeedTheirPermission(t *testing.T) {
 		}
 	}
 	// A viewer sees clients and an admin changes them; a viewer does not.
-	viewer, admin := f.signIn(t, "warp-viewers"), f.signIn(t, "warp-admins")
+	viewer, admin := f.signIn(t, "humagen-viewers"), f.signIn(t, "humagen-admins")
 	if res, _ := f.do(t, viewer, "GET", "/api/clients", "", ""); res.StatusCode != http.StatusOK {
 		t.Errorf("viewer list = %d", res.StatusCode)
 	}
@@ -333,15 +333,15 @@ func TestAClientBodyCannotClaimWhatTheServerDecides(t *testing.T) {
 // same body: unset, set, another tenant's, or the default client's.
 func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 	env := map[string]string{
-		"WARP_SLACK_TOKEN": "xoxb-default", "WARP_SLACK_SIGNING_SECRET": "default-signing",
-		"WARP_SLACK_TOKEN_ACME": botToken, "WARP_SLACK_SECRET_ACME": signingSecret,
+		"HUMAGEN_SLACK_TOKEN": "xoxb-default", "HUMAGEN_SLACK_SIGNING_SECRET": "default-signing",
+		"HUMAGEN_SLACK_TOKEN_ACME": botToken, "HUMAGEN_SLACK_SECRET_ACME": signingSecret,
 	}
 	fake := slackflow.NewFake()
 	f := newFixtureWith(t, platform.Config{
 		SlackAPI: func(string) slackflow.API { return fake }, ClientInterval: -1,
 		Env: func(name string) (string, bool) { v, ok := env[name]; return v, ok },
 		SecretRefs: map[string][]string{
-			"acme": {"WARP_SLACK_TOKEN", "WARP_SLACK_SIGNING_SECRET", "WARP_SLACK_TOKEN_ACME", "WARP_SLACK_SECRET_ACME"},
+			"acme": {"HUMAGEN_SLACK_TOKEN", "HUMAGEN_SLACK_SIGNING_SECRET", "HUMAGEN_SLACK_TOKEN_ACME", "HUMAGEN_SLACK_SECRET_ACME"},
 		},
 	})
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
@@ -352,7 +352,7 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 	want(t, f, acme, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	want(t, f, globex, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	// The tenant the variables were given to may reference them.
-	if res, out := f.do(t, nil, "POST", "/api/clients", acme, withRefs("mine", "A0MINE", "env:WARP_SLACK_TOKEN_ACME", "env:WARP_SLACK_SECRET_ACME")); res.StatusCode != http.StatusCreated {
+	if res, out := f.do(t, nil, "POST", "/api/clients", acme, withRefs("mine", "A0MINE", "env:HUMAGEN_SLACK_TOKEN_ACME", "env:HUMAGEN_SLACK_SECRET_ACME")); res.StatusCode != http.StatusCreated {
 		t.Fatalf("acme create = %d %v", res.StatusCode, out)
 	}
 	body := `{"type":"event_callback","api_app_id":"A0MINE","team_id":"T01ABCDEF","event_id":"Ev1","event":{"type":"app_mention","user":"U01","channel":"C01","ts":"1700000000.000100","text":"explain"}}`
@@ -363,9 +363,9 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 	// Nobody else may, whatever the variable is.
 	bodies := map[string]bool{}
 	for name, ref := range map[string]string{
-		"another tenant's variable":     "env:WARP_SLACK_TOKEN_ACME",
-		"the default client's variable": "env:WARP_SLACK_TOKEN",
-		"a variable that is not set":    "env:WARP_NOT_SET",
+		"another tenant's variable":     "env:HUMAGEN_SLACK_TOKEN_ACME",
+		"the default client's variable": "env:HUMAGEN_SLACK_TOKEN",
+		"a variable that is not set":    "env:HUMAGEN_NOT_SET",
 		"a variable outside the prefix": "env:PATH",
 	} {
 		res, out := f.do(t, nil, "POST", "/api/clients", globex, withRefs("probe", "A0PROBE", ref, ref))
@@ -382,7 +382,7 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 	if res, out := f.do(t, nil, "POST", "/api/clients", globex, slackBody("theirs", "A0THEIRS", "helper")); res.StatusCode != http.StatusCreated {
 		t.Fatalf("globex create = %d %v", res.StatusCode, out)
 	}
-	update := strings.Replace(withRefs("theirs", "A0THEIRS", "env:WARP_SLACK_TOKEN", "env:WARP_SLACK_SIGNING_SECRET"), `"id":"theirs",`, "", 1)
+	update := strings.Replace(withRefs("theirs", "A0THEIRS", "env:HUMAGEN_SLACK_TOKEN", "env:HUMAGEN_SLACK_SIGNING_SECRET"), `"id":"theirs",`, "", 1)
 	res, out := f.do(t, nil, "PUT", "/api/clients/theirs", globex, update)
 	raw, _ := json.Marshal(out)
 	if res.StatusCode != http.StatusBadRequest || !bodies[string(raw)] {
@@ -405,7 +405,7 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 func TestAClientsHomeIsShownOnlyWhereTheCallerMayReadIt(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", everything...)
-	writer := f.machineAs(t, "svc-ops", "acme", "warp:clients:read", "warp:clients:write")
+	writer := f.machineAs(t, "svc-ops", "acme", "humagen:clients:read", "humagen:clients:write")
 	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Secret"}`, http.StatusCreated)
 	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)

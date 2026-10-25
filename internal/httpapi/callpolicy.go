@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/callpolicy"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/callpolicy"
 )
 
 // getCallPolicy answers an agent's call policy: the stored one, or the

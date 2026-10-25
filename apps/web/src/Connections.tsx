@@ -222,7 +222,7 @@ export function ConnectForm({
           />
         </Label>
       ) : (
-        <Label text="Value" hint="Stored with warp, in the store client secrets are kept in. It is never shown again.">
+        <Label text="Value" hint="Stored with Humagen, in the store client secrets are kept in. It is never shown again.">
           <input className={field} type="password" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" spellCheck={false} />
         </Label>
       )}

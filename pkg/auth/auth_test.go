@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/auth/authtest"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/auth/authtest"
 )
 
 const (
 	client   = "web-client"
-	audience = "api://warp"
+	audience = "api://humagen"
 )
 
 func verifier(t *testing.T, iss *authtest.Issuer, mut func(*auth.OIDCConfig)) *auth.Verifier {
@@ -24,8 +24,8 @@ func verifier(t *testing.T, iss *authtest.Issuer, mut func(*auth.OIDCConfig)) *a
 		Audience: audience,
 		Tenant:   "acme",
 		GroupRoles: map[string]auth.Role{
-			"warp-admins":    auth.Admin,
-			"warp-operators": auth.Operator,
+			"humagen-admins":    auth.Admin,
+			"humagen-operators": auth.Operator,
 		},
 	}
 	if mut != nil {
@@ -78,7 +78,7 @@ func TestSignInMapsGroupsToRoles(t *testing.T) {
 	v := verifier(t, iss, nil)
 	raw := iss.Sign(t, "00u1", client, map[string]any{
 		"nonce": "n1", "name": "Ada", "email": "ada@acme.test",
-		"groups": []string{"warp-operators", "everyone"},
+		"groups": []string{"humagen-operators", "everyone"},
 	})
 	p, err := v.IDToken(context.Background(), raw, "n1")
 	if err != nil {
@@ -115,7 +115,7 @@ func TestMachineGetsOnlyItsScopes(t *testing.T) {
 	v := verifier(t, iss, nil)
 	raw := iss.Sign(t, "0oa-ci", audience, map[string]any{
 		"cid": "0oa-ci",
-		"scp": []string{"warp:runs:write", "warp:everything", "runs:read", "other:agents:write"},
+		"scp": []string{"humagen:runs:write", "humagen:everything", "runs:read", "other:agents:write"},
 	})
 	p, err := v.Bearer(context.Background(), raw)
 	if err != nil {
@@ -132,7 +132,7 @@ func TestMachineGetsOnlyItsScopes(t *testing.T) {
 func TestMachineScopeString(t *testing.T) {
 	iss := authtest.New(t)
 	v := verifier(t, iss, nil)
-	raw := iss.Sign(t, "svc", audience, map[string]any{"scope": "warp:runs:read warp:agents:read"})
+	raw := iss.Sign(t, "svc", audience, map[string]any{"scope": "humagen:runs:read humagen:agents:read"})
 	p, err := v.Bearer(context.Background(), raw)
 	if err != nil {
 		t.Fatal(err)
@@ -142,12 +142,28 @@ func TestMachineScopeString(t *testing.T) {
 	}
 }
 
+// A token whose scopes use the prefix from before the rename keeps its
+// permissions: the identity provider mints them, and its operator renames
+// them on their own time. Another prefix still grants nothing.
+func TestMachineScopesUnderTheOldPrefix(t *testing.T) {
+	iss := authtest.New(t)
+	v := verifier(t, iss, nil)
+	raw := iss.Sign(t, "svc", audience, map[string]any{"scope": "warp:runs:read humagen:agents:read other:runs:write warp:everything"})
+	p, err := v.Bearer(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Granted(); !slices.Equal(got, []auth.Permission{auth.AgentsRead, auth.RunsRead}) {
+		t.Fatalf("granted %v, want runs:read and agents:read", got)
+	}
+}
+
 // An ID token is issued to the web client, not to the API. Accepting one as a
 // bearer token would let a page's token call the API as that person.
 func TestBearerRejectsAnIDToken(t *testing.T) {
 	iss := authtest.New(t)
 	v := verifier(t, iss, nil)
-	raw := iss.Sign(t, "00u1", client, map[string]any{"groups": []string{"warp-admins"}})
+	raw := iss.Sign(t, "00u1", client, map[string]any{"groups": []string{"humagen-admins"}})
 	if _, err := v.Bearer(context.Background(), raw); !errors.Is(err, auth.ErrUnauthenticated) {
 		t.Fatalf("got %v, want ErrUnauthenticated", err)
 	}
@@ -156,7 +172,7 @@ func TestBearerRejectsAnIDToken(t *testing.T) {
 func TestBearerForAPerson(t *testing.T) {
 	iss := authtest.New(t)
 	v := verifier(t, iss, nil)
-	raw := iss.Sign(t, "00u1", audience, map[string]any{"groups": []string{"warp-admins"}})
+	raw := iss.Sign(t, "00u1", audience, map[string]any{"groups": []string{"humagen-admins"}})
 	p, err := v.Bearer(context.Background(), raw)
 	if err != nil {
 		t.Fatal(err)

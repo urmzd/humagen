@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/spec"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/spec"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // releaseChangelog is three releases as the release tool writes them: one
@@ -23,40 +23,40 @@ const releaseChangelog = `# Changelog
 
 ### Breaking
 
-- **inbox**: a breaking change (#48) ([abcdef0](https://github.com/urmzd/warp/commit/abcdef01))
+- **inbox**: a breaking change (#48) ([abcdef0](https://github.com/urmzd/humagen/commit/abcdef01))
 
-[Full Changelog](https://github.com/urmzd/warp/compare/v0.16.0...v0.17.0)
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.16.0...v0.17.0)
 
 
 ## 0.16.0 (2026-11-02)
 
 ### Features
 
-- **projects**: release notes in the workspace's inbox (#45) ([1234abc](https://github.com/urmzd/warp/commit/1234abcd))
+- **projects**: release notes in the workspace's inbox (#45) ([1234abc](https://github.com/urmzd/humagen/commit/1234abcd))
 
 ### Bug Fixes
 
-- **inbox**: a fix (#46) ([5678def](https://github.com/urmzd/warp/commit/5678defa))
+- **inbox**: a fix (#46) ([5678def](https://github.com/urmzd/humagen/commit/5678defa))
 
-[Full Changelog](https://github.com/urmzd/warp/compare/v0.15.0...v0.16.0)
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.15.0...v0.16.0)
 
 
 ## 0.15.1 (2026-10-30)
 
 ### Bug Fixes
 
-- **slack**: another fix (#47) ([9abc012](https://github.com/urmzd/warp/commit/9abc0123))
+- **slack**: another fix (#47) ([9abc012](https://github.com/urmzd/humagen/commit/9abc0123))
 
-[Full Changelog](https://github.com/urmzd/warp/compare/v0.15.0...v0.15.1)
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.15.0...v0.15.1)
 `
 
 const releaseText = "- projects: release notes in the workspace's inbox (#45)\n\n" +
-	"Full changelog: https://github.com/urmzd/warp/compare/v0.15.0...v0.16.0"
+	"Full changelog: https://github.com/urmzd/humagen/compare/v0.15.0...v0.16.0"
 
 // Release notes are off unless the workspace turns them on, and only a
 // release with breaking changes or features posts: a build that is not a
 // release, a release the changelog does not list and a release of fixes post
-// nothing. A release is posted once, from warp, in the workspace's own inbox.
+// nothing. A release is posted once, from humagen, in the workspace's own inbox.
 func TestReleaseNotesArePostedWhereTurnedOn(t *testing.T) {
 	p := newProjectsPlatform(t)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -78,7 +78,7 @@ func TestReleaseNotesArePostedWhereTurnedOn(t *testing.T) {
 		t.Fatalf("posted %d times", len(got))
 	}
 	m := got[0]
-	if m.Key != "release:0.16.0" || m.Subject != "What's new in warp 0.16.0" || m.From != (inbox.From{Kind: "system", Name: "warp"}) ||
+	if m.Key != "release:0.16.0" || m.Subject != "What's new in Humagen 0.16.0" || m.From != (inbox.From{Kind: "system", Name: "humagen"}) ||
 		m.Source.Project != "" || len(m.Parts) != 1 || m.Parts[0].Text != releaseText {
 		t.Fatalf("posted = %+v", m)
 	}
@@ -90,9 +90,9 @@ func TestReleaseNotesArePostedWhereTurnedOn(t *testing.T) {
 	postReleaseNotes(p, cfg, "v0.17.0", releaseChangelog, quiet)
 	got = p.Inbox.OpenOf("acme", inbox.KindAnnouncement)
 	i := slices.IndexFunc(got, func(m inbox.Message) bool { return m.Key == "release:0.17.0" })
-	if len(got) != 2 || i < 0 || got[i].Subject != "What's new in warp 0.17.0" || len(got[i].Parts) != 1 ||
+	if len(got) != 2 || i < 0 || got[i].Subject != "What's new in Humagen 0.17.0" || len(got[i].Parts) != 1 ||
 		got[i].Parts[0].Text != "Breaking changes:\n- inbox: a breaking change (#48)\n\n"+
-			"Full changelog: https://github.com/urmzd/warp/compare/v0.16.0...v0.17.0" {
+			"Full changelog: https://github.com/urmzd/humagen/compare/v0.16.0...v0.17.0" {
 		t.Fatalf("0.17.0 posted %+v", got)
 	}
 
@@ -126,9 +126,9 @@ func TestReleaseNotesArePostedOnceAcrossRestartsOnPostgres(t *testing.T) {
 	t.Setenv("SPEC_TEST_PG", url+sep+"search_path="+schema)
 	dir := t.TempDir()
 	write := func(on bool) string {
-		path := filepath.Join(dir, "warp.yaml")
-		body := "api_version: warp/v1\nkind: System\nspec:\n  stores: {kind: postgres, postgres: {url: {ref: \"env:SPEC_TEST_PG\"}}}\n---\n" +
-			"api_version: warp/v1\nkind: Platform\nmetadata: {name: default}\n"
+		path := filepath.Join(dir, "humagen.yaml")
+		body := "api_version: humagen/v1\nkind: System\nspec:\n  stores: {kind: postgres, postgres: {url: {ref: \"env:SPEC_TEST_PG\"}}}\n---\n" +
+			"api_version: humagen/v1\nkind: Platform\nmetadata: {name: default}\n"
 		if on {
 			body += "spec:\n  workspace:\n    release_notes: true\n"
 		}
@@ -160,7 +160,7 @@ func TestReleaseNotesArePostedOnceAcrossRestartsOnPostgres(t *testing.T) {
 		t.Fatalf("off, posted %+v", got)
 	}
 	first := start("v0.16.0", true)
-	if len(first.Messages) != 1 || first.Messages[0].Subject != "What's new in warp 0.16.0" || first.Messages[0].From != (inbox.From{Kind: "system", Name: "warp"}) {
+	if len(first.Messages) != 1 || first.Messages[0].Subject != "What's new in Humagen 0.16.0" || first.Messages[0].From != (inbox.From{Kind: "system", Name: "humagen", Display: "Humagen"}) {
 		t.Fatalf("the first start = %+v", first)
 	}
 	if again := start("v0.16.0", true); len(again.Messages) != 1 || again.Messages[0].ID != first.Messages[0].ID {

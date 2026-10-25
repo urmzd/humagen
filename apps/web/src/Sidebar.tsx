@@ -8,10 +8,11 @@ import {
   PanelLeftOpenIcon,
   SettingsIcon,
   Tooltip,
-} from "@warp/render-web";
-import { defaultCopy } from "@warp/components";
+} from "@humagen/render-web";
+import { defaultCopy } from "@humagen/components";
+import { HumagenMark } from "@humagen/web";
 import { type MouseEvent, type ReactNode, type SVGProps, useState } from "react";
-import type { Me, Preferences, ThreadSummary } from "./api.ts";
+import type { Me, Preferences, ProjectView, ThreadSummary } from "./api.ts";
 import { type Page as RoutePage, type Route, href } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
 import { type Standing, useRecents } from "./recents.ts";
@@ -188,21 +189,23 @@ function TaskRow({
   return (
     // A row that is saying something sits over its neighbours and over the
     // section's label, which sticks above the first row, so the note shows.
-    <li className={`group relative warp-enter ${flash ? "z-20" : ""}`}>
+    <li className={`group relative humagen-enter ${flash ? "z-20" : ""}`}>
       <button
         type="button"
         onClick={onSelect}
         title={`${title}\n${state}${task.project ? ` · ${task.project}` : ""}`}
         aria-current={current ? "page" : undefined}
-        className="flex h-8 w-full items-center gap-2 rounded-aui pr-8 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+        className="flex min-h-10 w-full items-center gap-2 rounded-aui py-1.5 pr-8 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
       >
-        {/* The orb of the agent that last answered: moving while it works, red when a reply failed. */}
-        <AgentMark
-          name={task.agents[task.agents.length - 1] ?? "?"}
-          size={10}
-          state={task.active > 0 ? "thinking" : task.failed > 0 ? "error" : "idle"}
-        />
-        <span className="min-w-0 flex-1 truncate">{title}</span>
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="truncate">{title}</span>
+          {task.agents.length > 0 && (
+            <span className="flex min-w-0 items-center gap-1 text-aui-2xs text-aui-muted" aria-label={`Agents that took part: ${task.agents.join(", ")}`}>
+              {[...new Set(task.agents)].slice(0, 4).map((agent) => <AgentMark key={agent} name={agent} size={9} />)}
+              <span className="truncate">{[...new Set(task.agents)].join(", ")}</span>
+            </span>
+          )}
+        </span>
         {task.active > 0 && <span className="sr-only">, running</span>}
         {task.active === 0 && task.failed > 0 && <span className="sr-only">, a reply failed</span>}
       </button>
@@ -225,7 +228,7 @@ function TaskRow({
 /** A small section label, as Claude's sidebar draws Pinned and Recents. */
 function Label({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-1 bg-[var(--warp-plane)] pr-2 pl-2">
+    <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-1 bg-[var(--humagen-plane)] pr-2 pl-2">
       <p className="px-2 text-aui-xs text-aui-muted">{children}</p>
       {action}
     </div>
@@ -245,6 +248,8 @@ export function Sidebar({
   prefs,
   can,
   threads,
+  projects = [],
+  workspaceName,
   pinned,
   onPin,
   inboxCount,
@@ -259,6 +264,8 @@ export function Sidebar({
   prefs: Preferences | null;
   can: (permission: string) => boolean;
   threads: ThreadSummary[];
+  projects?: ProjectView[];
+  workspaceName?: string;
   /** Pinned conversation ids, most recently pinned first. */
   pinned: string[];
   /** Resolves once the pin is saved, and rejects when it could not be. */
@@ -321,7 +328,7 @@ export function Sidebar({
       show: can("people:read") || can("agents:read") || can("projects:read"),
       active: here("directory"),
     },
-    { to: { page: "artifacts" }, label: "Artifacts", icon: <BoxIcon />, show: can("artifacts:read"), active: here("artifacts") },
+    { to: { page: "artifacts" }, label: defaultCopy.conversation.deliverables, icon: <BoxIcon />, show: can("artifacts:read"), active: here("artifacts") },
   ];
 
   // Pinned conversations come from whatever is loaded. One that cannot be found
@@ -343,12 +350,12 @@ export function Sidebar({
     {open && <button type="button" tabIndex={-1} aria-label="Dismiss navigation" onClick={onToggle} className="fixed inset-0 z-40 bg-black/40 md:hidden" />}
     <aside
       aria-label="Navigation"
-      className={`warp-glass-bar flex shrink-0 flex-col border-[var(--warp-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
+      className={`humagen-glass-bar flex shrink-0 flex-col border-[var(--humagen-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
         open ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]" : "w-12 max-md:hidden"
       }`}
     >
       <div className={`flex h-12 items-center ${open ? "justify-between pr-2 pl-3.5" : "justify-center"}`}>
-        {open && <span className="warp-display truncate text-aui-base font-semibold text-aui-fg">Warp</span>}
+        {open && <span className="humagen-display flex min-w-0 items-center gap-2 truncate text-aui-base font-semibold text-aui-fg"><HumagenMark size={23} />humagen</span>}
         <button
           type="button"
           onClick={onToggle}
@@ -437,7 +444,7 @@ export function Sidebar({
                       <button
                         type="button"
                         onClick={clear}
-                        className="mt-1 rounded-aui border-[var(--warp-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                        className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                       >
                         Clear filters
                       </button>
@@ -461,7 +468,7 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={retry}
-                  className="warp-press inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   Try Again
                 </button>
@@ -472,7 +479,7 @@ export function Sidebar({
                 {filters > 0 ? "No conversation matches these filters." : "Your conversations appear here. Start with New."}
               </li>
             )}
-            {unpinned.map((t) => (
+            {[...new Set(unpinned.map((thread) => thread.project ?? ""))].map((project) => <li key={project} className="min-w-0 pt-2"><details open><summary className="flex min-h-7 cursor-pointer items-center gap-1.5 px-2.5 text-aui-xs font-medium text-aui-muted"><FolderIcon size={13} /><span className="min-w-0 flex-1 truncate">{projects.find((item) => item.name === project)?.title || project || workspaceName || defaultCopy.projects.workspace}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter((thread) => (thread.project ?? "") === project).map((t) => (
               <TaskRow
                 key={t.id}
                 task={t}
@@ -482,7 +489,7 @@ export function Sidebar({
                 onPin={canPin ? () => togglePin(t.id, true) : undefined}
                 flash={flashed === t.id ? flash : null}
               />
-            ))}
+            ))}</ul></details></li>)}
             {/* Older conversations arrive a page at a time, when asked for. */}
             {(hasMore || loading === "more") && (
               <li className="flex justify-center pt-2">
@@ -490,7 +497,7 @@ export function Sidebar({
                   type="button"
                   onClick={more}
                   disabled={loading === "more"}
-                  className="inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+                  className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
                 >
                   {loading === "more" ? <span className="aui-shimmer">Loading</span> : failed ? "Could not load. Try again" : "See more"}
                 </button>

@@ -22,11 +22,11 @@ import { memoryStorage, sampleFiles, sampleUse } from "./storage.fixtures.ts";
 import { RunItem, runManifest, runMarkdown, statusOf } from "./RunItem.tsx";
 import { CopyAs } from "./CopyAs.tsx";
 import { itemActions, itemOf } from "./itemActions.tsx";
-import { AgentMessage } from "@warp/web";
-import { WebSurface } from "@warp/render-web";
+import { AgentMessage } from "@humagen/web";
+import { WebSurface } from "@humagen/render-web";
 import { replay } from "./Runs.tsx";
 import { formats } from "./copyas.ts";
-import { emptyTurn, type Turn } from "@warp/core";
+import { emptyTurn, type Turn } from "@humagen/core";
 
 const sidebarMe: Me = {
   principal: { subject: "ada", tenant: "acme", name: "Ada", roles: ["member"] },
@@ -74,7 +74,7 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
 test("the sidebar is one flat list in working order, with New as home", () => {
   const out = sidebar();
   // Inbox comes right after New: what fired and what waits on a person land there.
-  const order = ["New", "Inbox", "Projects", "Schedules", "Monitor", "Context", "Agents", "Artifacts"];
+  const order = ["New", "Inbox", "Projects", "Schedules", "Monitor", "Context", "Agents", "Deliverables"];
   const at = order.map((label) => out.indexOf(`>${label}<`));
   assert.ok(at.every((i) => i >= 0), `every page is listed: ${at}`);
   assert.deepEqual([...at].sort((x, y) => x - y), at, "in this order");
@@ -89,7 +89,7 @@ test("the sidebar is one flat list in working order, with New as home", () => {
 test("the sidebar hides pages from someone who may not read them", () => {
   const out = sidebar({ can: (p) => p === "runs:write" });
   assert.match(out, />New</);
-  for (const label of ["Projects", "Inbox", "Schedules", "Context", "Agents", "Artifacts"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
+  for (const label of ["Projects", "Inbox", "Schedules", "Context", "Agents", "Deliverables"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
 });
 
 test("pinned conversations sit in their own section, ahead of the rest", () => {
@@ -119,12 +119,12 @@ test("project selection: an empty workspace still offers projectless work and cr
   assert.match(projectless, /aria-label="Select project: Projectless"/);
 });
 import type { Alert, AlertRule } from "./api.ts";
-import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@warp/core";
+import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@humagen/core";
 import { after, merge } from "./inbox.ts";
 import { edgeOf, KindChips, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
-import { AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf, PageActions } from "./ui.tsx";
+import { AgentMark, AgentTint, setAgentHues, AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf, PageActions } from "./ui.tsx";
 
 const M = 1_000_000;
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -188,19 +188,19 @@ test("UsageMeter: a row shows its label only when asked", () => {
 test("UsageMeter: over the limit, the value stops at the limit and the limit line is drawn", () => {
   const out = html(<UsageMeter label="x" spent={12 * M} limit={10 * M} />);
   assert.equal(attr(out, "aria-valuenow"), String(10 * M));
-  assert.match(out, /warp-meter-limit/);
+  assert.match(out, /humagen-meter-limit/);
   assert.match(attr(out, "aria-valuetext") ?? "", /Over limit by .*2\.00/);
 });
 
 test("UsageMeter: no limit draws no fill", () => {
-  assert.doesNotMatch(html(<UsageMeter label="x" spent={3 * M} />), /warp-meter-fill/);
+  assert.doesNotMatch(html(<UsageMeter label="x" spent={3 * M} />), /humagen-meter-fill/);
 });
 
 test("UsageMeter: a projected value is drawn and read out only when it is ahead of what is spent", () => {
   const ahead = html(<UsageMeter label="x" spent={40 * M} limit={50 * M} projected={58 * M} />);
   assert.match(ahead, /data-testid="usage-meter-projected"/);
   assert.match(attr(ahead, "aria-valuetext") ?? "", /Heading for .*58\.00/);
-  assert.match(ahead, /warp-meter-limit/);
+  assert.match(ahead, /humagen-meter-limit/);
   const behind = html(<UsageMeter label="x" spent={40 * M} limit={50 * M} projected={30 * M} />);
   assert.doesNotMatch(behind, /usage-meter-projected/);
 });
@@ -233,12 +233,12 @@ test("Stroke: an agent's stroke carries its hue and state", () => {
   assert.equal(attr(out, "data-agent"), "oncall");
   assert.equal(attr(out, "data-state"), "waiting");
   assert.equal(attr(out, "data-edge"), "around");
-  assert.match(out, /--warp-hue:\d+/);
+  assert.match(out, /--humagen-hue:\d+/);
 });
 
 test("Stroke: without an agent it is neutral and has no state", () => {
   const out = html(<Stroke state="working">x</Stroke>);
-  assert.doesNotMatch(out, /data-agent|data-state|--warp-hue/);
+  assert.doesNotMatch(out, /data-agent|data-state|--humagen-hue/);
   assert.equal(attr(out, "data-edge"), "start");
 });
 
@@ -250,13 +250,13 @@ test("Stroke: waiting never animates, in markup or in the stylesheet", () => {
   );
   assert.doesNotMatch(out, /animate|aui-shimmer|aui-spinner/);
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selector]) => selector?.includes(".warp-stroke"));
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selector]) => selector?.includes(".humagen-stroke"));
   assert.ok(rules.length > 5, "the stroke rules were found");
   for (const [, selector = "", body = ""] of rules) {
     if (selector.includes('"waiting"')) assert.doesNotMatch(body, /animation/, `waiting animates in: ${selector.trim()}`);
   }
   assert.ok(
-    rules.some(([, selector = "", body = ""]) => selector.includes('"working"') && /animation:\s*warp-stroke-work/.test(body)),
+    rules.some(([, selector = "", body = ""]) => selector.includes('"working"') && /animation:\s*humagen-stroke-work/.test(body)),
     "working is the state that animates",
   );
 });
@@ -578,7 +578,7 @@ test("edgeOf: an agent's message carries its edge, a rule's and the platform's s
   assert.equal(edgeOf(mailOf("m-done")).state, "done");
 });
 
-test("MailboxView: hosts warp's mailbox with every message listed", () => {
+test("MailboxView: hosts humagen's mailbox with every message listed", () => {
   const out = mailbox(null);
   for (const m of sampleMail().filter((x) => messageState(x) === "open")) assert.ok(out.includes(m.subject), m.subject);
   assert.equal(out.match(/data-message="/g)?.length, 8, "one row per open message");
@@ -620,7 +620,7 @@ test("MailboxView: the platform draws a reached limit with the meter and a way t
   assert.match(out, /value="200"/, "the new limit starts at double");
 });
 
-test("MailboxView: failures and memory to review are warp's own parts", () => {
+test("MailboxView: failures and memory to review are humagen's own parts", () => {
   const failure = mailbox("m-failure");
   assert.match(failure, /data-aui-part="text"/);
   assert.match(failure, /data-aui-part="failure"/);
@@ -631,7 +631,7 @@ test("MailboxView: failures and memory to review are warp's own parts", () => {
 });
 
 test("MailboxView: a failure the reader is not offered Retry on draws no Retry, and does not say it can't be retried", () => {
-  // As warp sends ana's failed turn to ben: he may acknowledge it, but only ana may retry it.
+  // As humagen sends ana's failed turn to ben: he may acknowledge it, but only ana may retry it.
   const [raw] = wireMail().filter((m) => m.id === "m-failure");
   assert.ok(raw);
   const theirs = (p: unknown) => {
@@ -1103,17 +1103,17 @@ test("StoredDetail: delete is offered only to those who may, and asks first", ()
 
 test("motion: every class moves only transform and opacity, and reduced motion removes the travel", () => {
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-  const frames = [...css.matchAll(/@keyframes (warp-[a-z-]+) \{((?:[^{}]|\{[^{}]*\})*)\}/g)];
+  const frames = [...css.matchAll(/@keyframes (humagen-[a-z-]+) \{((?:[^{}]|\{[^{}]*\})*)\}/g)];
   assert.ok(frames.length >= 7, "the motion keyframes were found");
   for (const [, name, body = ""] of frames) {
     const props = [...body.matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1]);
     for (const prop of props) assert.ok(prop === "opacity" || prop === "transform", `${name} animates ${prop}`);
   }
   const reduced = css.slice(css.indexOf("/* With motion reduced, nothing travels."));
-  for (const cls of [".warp-enter", ".warp-pop", ".warp-drawer", ".warp-note"]) assert.ok(reduced.includes(cls), `${cls} is covered when motion is reduced`);
-  assert.match(reduced, /animation: warp-fade /, "what arrives only fades");
-  assert.doesNotMatch(css, /animation:[^;]*infinite[^;]*;[^}]*\}\s*(?=[^]*\.warp-(enter|pop|drawer|note|fade)\b)(?!)/, "no motion class loops");
-  for (const cls of ["warp-enter", "warp-fade", "warp-pop", "warp-drawer", "warp-note"]) {
+  for (const cls of [".humagen-enter", ".humagen-pop", ".humagen-drawer", ".humagen-note"]) assert.ok(reduced.includes(cls), `${cls} is covered when motion is reduced`);
+  assert.match(reduced, /animation: humagen-fade /, "what arrives only fades");
+  assert.doesNotMatch(css, /animation:[^;]*infinite[^;]*;[^}]*\}\s*(?=[^]*\.humagen-(enter|pop|drawer|note|fade)\b)(?!)/, "no motion class loops");
+  for (const cls of ["humagen-enter", "humagen-fade", "humagen-pop", "humagen-drawer", "humagen-note"]) {
     const rule = css.match(new RegExp(`\\.${cls} \\{([^}]*)\\}`))?.[1] ?? "";
     assert.doesNotMatch(rule, /infinite/, `${cls} plays once`);
   }
@@ -1165,7 +1165,7 @@ test("motion: loading lists are skeletons that still say Loading to a screen rea
   assert.ok((out.match(/aui-skeleton/g)?.length ?? 0) >= 3);
 });
 
-test("an answer has exactly one copy control: the console's Copy as, in place of warp's button", () => {
+test("an answer has exactly one copy control: the console's Copy as, in place of humagen's button", () => {
   const run = runOf({ answer: "2.4 could not be tagged." });
   const turn = { ...emptyTurn(run.id, { name: run.agent }), status: "done" as const, text: "2.4 could not be tagged." };
   const draw = (withSlot: boolean) =>
@@ -1176,14 +1176,14 @@ test("an answer has exactly one copy control: the console's Copy as, in place of
     );
   const hosted = draw(true);
   assert.equal(hosted.match(/data-testid="item-copy"/g)?.length, 1, "the console's control is there once");
-  assert.doesNotMatch(hosted, /aria-label="Copy answer"/, "warp's own button is not drawn beside it");
+  assert.doesNotMatch(hosted, /aria-label="Copy answer"/, "humagen's own button is not drawn beside it");
   assert.match(hosted, /aria-label="Copy answer as: none"/, "it is an icon with a name, opened on click");
   assert.match(hosted, /aria-haspopup="listbox"/);
   assert.match(hosted, /role="status"[^>]*aria-live="polite"/, "the confirmation is announced");
   assert.doesNotMatch(hosted, />Copied</);
 
   const plain = draw(false);
-  assert.equal(plain.match(/aria-label="Copy answer"/g)?.length, 1, "with no host control, warp's button is the one");
+  assert.equal(plain.match(/aria-label="Copy answer"/g)?.length, 1, "with no host control, humagen's button is the one");
   assert.doesNotMatch(plain, /data-testid="item-copy"/);
 });
 
@@ -1323,7 +1323,7 @@ test("every custom property the console reads is one it defines", () => {
   // Defined in the stylesheet, or set inline on an element as a custom property.
   const defined = new Set([...css.matchAll(/(--[a-z][a-z0-9-]*)\s*:/g), ...code.matchAll(/"(--[a-z][a-z0-9-]*)"\s*:/g)].map((m) => m[1]));
   const read = new Set([...code.matchAll(/var\((--[a-z][a-z0-9-]*)/g), ...css.matchAll(/var\((--[a-z][a-z0-9-]*)/g)].map((m) => m[1]));
-  // warp owns these: its theme defines the --aui-* tokens and Tailwind the --tw-* ones.
+  // humagen owns these: its theme defines the --aui-* tokens and Tailwind the --tw-* ones.
   const missing = [...read].filter((name) => name && !defined.has(name) && !/^--(aui|tw|color|radius|text|font|shadow)-/.test(name));
   assert.deepEqual(missing, [], "read but never defined");
   assert.doesNotMatch(code, /\boap-/, "the old prefix is gone");
@@ -1402,28 +1402,43 @@ test("what floats above the page is opaque, so nothing under a menu shows throug
   // Each rule's selector, without the comment before it.
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .map(([, selector = "", body = ""]) => [selector.split("*/").at(-1)?.trim() ?? "", body] as const)
-    .filter(([selector]) => /\.warp-glass-pop\b/.test(selector));
+    .filter(([selector]) => /\.humagen-glass-pop\b/.test(selector));
   assert.ok(rules.length > 0, "the floating surface was found");
-  const own = rules.find(([selector]) => selector === ".warp-glass-pop")?.[1] ?? "";
+  const own = rules.find(([selector]) => selector === ".humagen-glass-pop")?.[1] ?? "";
   assert.match(own, /background:\s*var\(--aui-pop\)/, "the theme's popover surface, which is opaque");
   for (const [selector, body] of rules) {
     assert.doesNotMatch(body, /backdrop-filter/, `no blur is relied on in ${selector}`);
     assert.doesNotMatch(body, /background:[^;]*\/\s*\d+%/, `no see-through background in ${selector}`);
   }
-  assert.doesNotMatch(css, /--warp-glass-strong/, "the see-through surface is gone");
+  assert.doesNotMatch(css, /--humagen-glass-strong/, "the see-through surface is gone");
 });
 
 
-test("agents shown together are told apart by color: warp's own and the seeded agents each take a hue of their own", () => {
+test("agents shown together are told apart by color: humagen's own and the seeded agents each take a hue of their own", () => {
   const builtin = ["warp-analyst", "warp-builder", "warp-writer"];
   const seeded = ["helper", "lead", "intake", "triage"];
   const hues = [...builtin, ...seeded].map(hueOf);
   assert.equal(new Set(hues).size, hues.length, JSON.stringify(hues));
   // Every hue is one of twelve, 30 degrees apart.
   for (const h of hues) assert.equal(h % (360 / AGENT_HUES), 0, String(h));
-  // warp's own agents sit side by side as Home's suggestions, so they are far apart.
+  // humagen's own agents sit side by side as Home's suggestions, so they are far apart.
   const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
   for (const [i, a] of builtin.entries()) for (const b of builtin.slice(i + 1)) assert.ok(apart(hueOf(a), hueOf(b)) >= 90, `${a} and ${b}`);
   // A name keeps its hue.
   assert.equal(hueOf("helper"), hueOf("helper"));
+});
+
+
+test("server hue reservations color marks, tints and strokes consistently", () => {
+  assert.doesNotMatch(html(<AgentMark name="never-loaded" />), /aui-orb|--aui-accent-h/);
+  setAgentHues({ custom: 15, second: 45 });
+  try {
+    assert.match(html(<AgentMark name="custom" />), /--aui-accent-h:15/);
+    assert.match(html(<AgentTint name="custom">Content</AgentTint>), /--aui-accent-h:15/);
+    assert.equal(hueOf("custom"), 15);
+    assert.equal(hueOf("second"), 45);
+    assert.notEqual(hueOf("custom"), hueOf("second"));
+    setAgentHues({ custom: 15, second: 45, third: 75 });
+    assert.equal(hueOf("custom"), 15);
+  } finally { setAgentHues({ custom: hueOf("custom"), second: hueOf("second") }); }
 });

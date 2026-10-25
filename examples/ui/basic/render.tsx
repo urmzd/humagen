@@ -1,7 +1,7 @@
-import { TurnView } from "@warp/components";
-import { replay } from "@warp/core";
-import { renderToSlack } from "@warp/render-slack";
-import { WebSurface } from "@warp/render-web";
+import { TurnView } from "@humagen/components";
+import { replay } from "@humagen/core";
+import { renderToSlack } from "@humagen/render-slack";
+import { WebSurface } from "@humagen/render-web";
 
 // One stream of events from any runtime...
 const turn = replay([

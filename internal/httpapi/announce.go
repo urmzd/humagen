@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
 )
 
 // inboxKinds are the kinds a project's inbox can be narrowed to.

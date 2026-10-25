@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 /**
- * How a Slack thread names a warp conversation, and how one Slack event
+ * How a Slack thread names a humagen conversation, and how one Slack event
  * names one run. Both are derived, never stored, so a restart loses neither.
  *
  * The platform makes a run's id from the workspace, the caller and the

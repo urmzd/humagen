@@ -7,10 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/credentials"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // The environment configures at most one client per surface: the default one,
@@ -20,34 +21,34 @@ import (
 const (
 	// Slack. A signing secret is what makes the trigger safe; a bot token is
 	// what makes the sink able to write.
-	EnvSlackToken   = "WARP_SLACK_TOKEN"
-	EnvSlackSecret  = "WARP_SLACK_SIGNING_SECRET"
-	EnvSlackTeam    = "WARP_SLACK_TEAM"
-	EnvSlackApp     = "WARP_SLACK_APP"
-	EnvSlackBots    = "WARP_SLACK_BOTS"
-	EnvSlackDefault = "WARP_SLACK_DEFAULT_AGENT"
+	EnvSlackToken   = "HUMAGEN_SLACK_TOKEN"
+	EnvSlackSecret  = "HUMAGEN_SLACK_SIGNING_SECRET"
+	EnvSlackTeam    = "HUMAGEN_SLACK_TEAM"
+	EnvSlackApp     = "HUMAGEN_SLACK_APP"
+	EnvSlackBots    = "HUMAGEN_SLACK_BOTS"
+	EnvSlackDefault = "HUMAGEN_SLACK_DEFAULT_AGENT"
 	// Sessions is a boolean; Commands is a JSON array of
 	// {"name","description","argument_hint"} objects.
-	EnvSlackSessions = "WARP_SLACK_SESSIONS"
-	EnvSlackCommands = "WARP_SLACK_COMMANDS"
+	EnvSlackSessions = "HUMAGEN_SLACK_SESSIONS"
+	EnvSlackCommands = "HUMAGEN_SLACK_COMMANDS"
 
 	// GitHub.
-	EnvGitHubReadRepositories = "WARP_GITHUB_READ_REPOSITORIES"
-	EnvGitHubToken            = "WARP_GITHUB_TOKEN"
-	EnvGitHubSecret           = "WARP_GITHUB_WEBHOOK_SECRET"
-	EnvGitHubOwners           = "WARP_GITHUB_OWNERS"
-	EnvGitHubApp              = "WARP_GITHUB_APP"
-	EnvGitHubInstallation     = "WARP_GITHUB_INSTALLATION"
-	EnvGitHubBots             = "WARP_GITHUB_BOTS"
-	EnvGitHubAutoLabels       = "WARP_GITHUB_AUTO_LABELS"
-	EnvGitHubChecks           = "WARP_GITHUB_CHECKS"
-	EnvGitHubGuides           = "WARP_GITHUB_GUIDES"
-	EnvGitHubMutations        = "WARP_GITHUB_MUTATIONS"
+	EnvGitHubReadRepositories = "HUMAGEN_GITHUB_READ_REPOSITORIES"
+	EnvGitHubToken            = "HUMAGEN_GITHUB_TOKEN"
+	EnvGitHubSecret           = "HUMAGEN_GITHUB_WEBHOOK_SECRET"
+	EnvGitHubOwners           = "HUMAGEN_GITHUB_OWNERS"
+	EnvGitHubApp              = "HUMAGEN_GITHUB_APP"
+	EnvGitHubInstallation     = "HUMAGEN_GITHUB_INSTALLATION"
+	EnvGitHubBots             = "HUMAGEN_GITHUB_BOTS"
+	EnvGitHubAutoLabels       = "HUMAGEN_GITHUB_AUTO_LABELS"
+	EnvGitHubChecks           = "HUMAGEN_GITHUB_CHECKS"
+	EnvGitHubGuides           = "HUMAGEN_GITHUB_GUIDES"
+	EnvGitHubMutations        = "HUMAGEN_GITHUB_MUTATIONS"
 	// EnvGitHubLogin is the app's own login. A comment that mentions it and
 	// names no agent is answered by the client's default (EnvGitHubDefault),
 	// else by the default chain of the client's home.
-	EnvGitHubLogin   = "WARP_GITHUB_LOGIN"
-	EnvGitHubDefault = "WARP_GITHUB_DEFAULT_AGENT"
+	EnvGitHubLogin   = "HUMAGEN_GITHUB_LOGIN"
+	EnvGitHubDefault = "HUMAGEN_GITHUB_DEFAULT_AGENT"
 )
 
 // Ids of the clients the environment configures.
@@ -95,7 +96,7 @@ func secretRefs(raw, tenant string, env func(string) string) (map[string][]strin
 		}
 		for _, v := range list(names) {
 			// The sign-in secrets are the server's own, whatever the prefix.
-			if _, err := clients.EnvRef("env:" + v); err != nil || strings.HasPrefix(v, "WARP_OIDC_") {
+			if _, err := clients.EnvRef("env:" + v); err != nil || legacy.SignInSecret(v) {
 				return nil, fmt.Errorf("-secret-refs: %q cannot be referenced by a client", v)
 			}
 			out[name] = append(out[name], v)
@@ -139,7 +140,7 @@ func personRefs(raw string) (map[string][]string, error) {
 }
 
 // personValues is the workspaces whose Platform document lets people store
-// their own tool credentials with warp.
+// their own tool credentials with humagen.
 func personValues(cfg spec.Config) map[string]bool {
 	out := map[string]bool{}
 	for _, p := range cfg.Platforms {

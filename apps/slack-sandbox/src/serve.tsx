@@ -1,4 +1,4 @@
-import { defaultCopy, Home, RequestView, SystemAlertView, TurnView } from "@warp/components";
+import { defaultCopy, Home, RequestView, SystemAlertView, TurnView } from "@humagen/components";
 import {
   ActionId,
   type Approval,
@@ -7,9 +7,9 @@ import {
   reduce,
   type Turn,
   type TurnEvent,
-} from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { Context } from "@warp/primitives";
+} from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { Context } from "@humagen/primitives";
 import {
   AMOUNT_MODAL,
   amountModal,
@@ -25,8 +25,8 @@ import {
   reactionChanges,
   renderToSlack,
   suggestedPrompts,
-} from "@warp/render-slack";
-import { streamTurn } from "@warp/slack-host";
+} from "@humagen/render-slack";
+import { streamTurn } from "@humagen/slack-host";
 import { eventsFor, SCENARIOS, scenarioFor } from "./fixtures";
 import { type SandboxEnv, type SlackClient, SlackError, slackClient } from "./slack";
 
@@ -216,7 +216,7 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     if (id === ActionId.homeAsk) {
       await slack.call("views.open", {
         trigger_id: payload.trigger_id,
-        view: form("Ask Warp", "What do you need?", { kind: "ask" }),
+        view: form("Ask Humagen", "What do you need?", { kind: "ask" }),
       });
       return true;
     }
@@ -377,7 +377,7 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
       if (part?.type !== "budget") return whisper("That limit isn't in the sandbox's fixtures.");
       await slack.call("views.open", {
         trigger_id: payload.trigger_id,
-        // Its words default to warp copy (raiseLimitTitle, newLimit, raiseLimit, cancel).
+        // Its words default to humagen copy (raiseLimitTitle, newLimit, raiseLimit, cancel).
         view: amountModal({
           action: ui,
           unit: part.meter.unit,
@@ -541,7 +541,7 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     if (payload.type === "shortcut" && payload.callback_id === ENTRY.ask) {
       await slack.call("views.open", {
         trigger_id: payload.trigger_id,
-        view: form("Ask Warp", "What do you need?", { kind: "ask" }),
+        view: form("Ask Humagen", "What do you need?", { kind: "ask" }),
       });
       return;
     }

@@ -1,8 +1,8 @@
-import { answerOfAction, answers as isAnswer } from "@warp/adapter/question";
-import { defaultCopy } from "@warp/components";
-import type { UiAction } from "@warp/core";
-import { WebSurface } from "@warp/render-web";
-import { AgentMessage, Thread as ThreadList, useQueue } from "@warp/web";
+import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
+import { defaultCopy } from "@humagen/components";
+import { ActionId, type UiAction } from "@humagen/core";
+import { CopyButton, WebSurface } from "@humagen/render-web";
+import { AgentMessage, Thread as ThreadList, useQueue } from "@humagen/web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { actedFor, type Run } from "./adapter.ts";
 import {
@@ -25,7 +25,11 @@ import {
 import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { type Completion, useCompletion } from "./completion.ts";
 import { rememberSaid, saidFor } from "./conflicts.ts";
-import { Composer } from "./Composer.tsx";
+import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
+import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
+import { Activity } from "./Activity.tsx";
+import { href, type ConversationPanel, type ConversationView } from "./route.ts";
 import { itemActions } from "./itemActions.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
@@ -33,6 +37,7 @@ import { useThreadSelection } from "./selection.ts";
 import { ShareDialog } from "./Share.tsx";
 import { mergeTurns } from "./turns.ts";
 import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
+import { OLD_SYSTEM_SENDER } from "./legacy.ts";
 
 /**
  * Conversations, channels and shared threads: where people and agents work
@@ -142,6 +147,7 @@ function RoomComposer({
   placeholder,
   tags,
   autoFocus,
+  seed,
   plus,
   onPost,
 }: {
@@ -150,6 +156,7 @@ function RoomComposer({
   placeholder: string;
   tags: Completion;
   autoFocus?: boolean;
+  seed?: ComposerSeed;
   plus?: Parameters<typeof Composer>[0]["plus"];
   onPost: (text: string) => Promise<ThreadPosted>;
 }) {
@@ -176,7 +183,7 @@ function RoomComposer({
   return (
     <div className="flex flex-col gap-2">
       <Problem message={problem} />
-      <Composer placeholder={placeholder} queue={queue} autoFocus={autoFocus} tags={tags} plus={plus} />
+      <Composer placeholder={placeholder} queue={queue} autoFocus={autoFocus} seed={seed} tags={tags} plus={plus} />
       {said && (
         <p role="status" className="px-3 text-aui-xs text-aui-muted">
           {said}
@@ -187,7 +194,7 @@ function RoomComposer({
 }
 
 /** A person's message: who posted it, when, and what it says. */
-function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
+function MessageView({ m, focused, onReply }: { m: ThreadMessage; focused: boolean; onReply?: () => void }) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "center" });
@@ -206,6 +213,7 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
           <time dateTime={m.at}>{ago(m.at)}</time>
           {m.surface_id && <span>{words.fromSlack}</span>}
           {m.answers && <span>{words.answered}</span>}
+          <span className="ml-auto flex items-center gap-1"><CopyButton text={m.text} label="Copy message" />{onReply && <button type="button" className="min-h-6 rounded-aui px-1.5 py-1 hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent" onClick={onReply}>{defaultCopy.conversation.reply}</button>}</span>
         </p>
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{m.text}</p>
       </div>
@@ -215,12 +223,21 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
 
 /**
  * The announcement a thread was started from, ahead of its first message:
- * from the person who posted it, the agent a schedule ran, or warp itself
+ * from the person who posted it, the agent a schedule ran, or humagen itself
  * for a release's notes, never from whoever replied. A withdrawn one says
- * only that. Warp needs no mark, as in the inbox, so its column stays empty.
+ * only that. Humagen needs no mark, as in the inbox, so its column stays empty.
  */
+/** The names the product posts under as itself: now, and in records from before the rename. */
+const PRODUCT_SENDERS = ["humagen", OLD_SYSTEM_SENDER];
+
 function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
-  const who = a.kind === "person" ? a.name || a.by : a.by;
+  // A release's notes are from the product, whatever name the record keeps.
+  const who =
+    a.kind === "person"
+      ? a.name || a.by
+      : a.kind === "system" && PRODUCT_SENDERS.includes(a.by)
+        ? defaultCopy.product
+        : a.by;
   return (
     <article aria-label={`${defaultCopy.template.announcement} from ${who}`} className="flex gap-3">
       {a.kind === "agent" ? (
@@ -278,6 +295,8 @@ function AnswerView({
   ask,
   refused,
   routed,
+  onAsk,
+  onReply,
 }: {
   run: Run;
   me: string;
@@ -286,6 +305,8 @@ function AnswerView({
   refused?: Refusal;
   /** That it answers because the conversation routes to it, not because it was tagged. */
   routed?: string;
+  onAsk?: () => void;
+  onReply?: () => void;
 }) {
   const turn = useRunTurn(live ? run : undefined);
   const drawn = useMemo(
@@ -311,12 +332,12 @@ function AnswerView({
     <article id={`turn-${run.id}`} className="flex flex-col gap-2" aria-label={`Answered by ${run.agent}`}>
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
-        <p className="warp-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
+        <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
       )}
       {/* The answer names its agent; why @auto chose it is said above it. */}
       {(routed || run.picked) && <p className="pl-11 text-aui-xs text-aui-muted">{[routed, run.picked].filter(Boolean).join(". ")}</p>}
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} />
+        <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} />
       </AgentTint>
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
@@ -349,6 +370,8 @@ export function ThreadRoom({
   focus,
   sharing = false,
   onSharing,
+  view,
+  onView,
   onOpenChannel,
   onChanged,
 }: {
@@ -373,6 +396,8 @@ export function ThreadRoom({
   sharing?: boolean;
   /** Opens or closes the Share dialog, at its address. */
   onSharing?: (open: boolean) => void;
+  view?: ConversationView;
+  onView?: (view: ConversationView) => void;
   onOpenChannel: (project: string, channel: string) => void;
   onChanged: () => void;
 }) {
@@ -383,6 +408,14 @@ export function ThreadRoom({
   // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
   const [problem, setProblem] = useState<string | null>(null);
+  const [localView, setLocalView] = useState<ConversationView>({});
+  const [seed, setSeed] = useState<ComposerSeed>();
+  const shownView = onView ? view ?? {} : localView;
+  const openPanel = (panel?: ConversationPanel, selection: Omit<ConversationView, "panel"> = {}) => {
+    const next = { ...selection, panel };
+    if (onView) onView(next);
+    else setLocalView(next);
+  };
   // Why an answer to a run's question was not taken, by run: said under it
   // while that question still waits, and gone once anyone settles it.
   const [refusals, setRefusals] = useState<Record<string, Refusal>>({});
@@ -455,7 +488,6 @@ export function ThreadRoom({
   useEffect(() => {
     if (sharing && !shareable) onSharing?.(false);
   }, [sharing, shareable, onSharing]);
-  const people = th.participants.filter((p) => p.kind === "person");
   const answering = th.participants.filter((p) => p.kind === "agent").map((p) => p.name);
   const title =
     th.title ||
@@ -471,6 +503,7 @@ export function ThreadRoom({
   const busy = turns.some((t) => t.run && isWorking(t.run.status));
 
   const onAction = (a: UiAction) => {
+    if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
     if (!isAnswer(a)) return;
     const answer = answerOfAction(a);
     if (!answer) return;
@@ -500,51 +533,27 @@ export function ThreadRoom({
   };
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
-      {/* On a narrow screen the title has a line of its own, and where it is shared wraps under it. */}
-      <header className="relative z-10 mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-4 pb-2">
-        <h1 className="w-full min-w-0 truncate text-aui-lg font-semibold text-aui-fg sm:w-auto sm:flex-1">{title}</h1>
-        <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-aui-xs text-aui-muted sm:shrink-0">
-          {th.visibility === "private" ? (
-            <span>{words.private}</span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onOpenChannel(th.project, th.channel)}
-              className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-            >
-              {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
-            </button>
-          )}
-          {th.surface && <span>{words.inSlack}</span>}
-          <span
-            title={people
-              .filter((p) => p.name)
-              .map((p) => `@${p.name}`)
-              .join(", ")}
-          >
-            {words.participants(people.length)}
-          </span>
-          {answering.map((a) => (
-            <span key={a} className="inline-flex items-center gap-1">
-              <AgentMark name={a} size={14} />
-              {a}
-            </span>
-          ))}
-        </p>
-        {shareable && (
-          <button
-            ref={shareButton}
-            type="button"
-            className={`${button} shrink-0`}
-            aria-haspopup="dialog"
-            aria-expanded={sharing}
-            onClick={() => onSharing?.(!sharing)}
-          >
-            {words.share}
-          </button>
-        )}
-      </header>
+    <section className="flex min-h-0 min-w-0 flex-1">
+      <ConversationPage
+        title={title}
+        project={projectTitle(projects, th.project, workspaceName)}
+        private={th.visibility === "private"}
+        agents={answering}
+        location={
+          <>
+            <span>{th.visibility === "private" ? words.private : (
+              <button type="button" onClick={() => onOpenChannel(th.project, th.channel)} className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+                {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
+              </button>
+            )}</span>
+            {th.surface && <span> · <span>{words.inSlack}</span></span>}
+          </>
+        }
+        projectRef={shareButton}
+        onProject={shareable ? () => onSharing?.(!sharing) : th.visibility === "shared" ? () => onOpenChannel(th.project, th.channel) : undefined}
+        onPanel={(next) => openPanel(next)}
+        onArtifact={(id) => openPanel("deliverables", { artifact: id })}
+      >
       {shareable && sharing && (
         <div data-layer="share" className="relative z-10 px-4 pb-2">
           <ShareDialog
@@ -591,12 +600,14 @@ export function ThreadRoom({
             t.announcement ? (
               <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
             ) : t.message ? (
-              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} />
+              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} onReply={posts ? () => setSeed({ text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `, mode: "prepend" }) : undefined} />
             ) : t.run ? (
               <AnswerView
                 key={t.run.id}
                 run={t.run}
                 routed={routedOf(t.run)}
+                onAsk={posts ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" }) : undefined}
+                onReply={posts ? () => setSeed({ text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `, mode: "prepend" }) : undefined}
                 me={me}
                 ask={t.ask}
                 refused={refusals[t.run.id]}
@@ -612,6 +623,7 @@ export function ThreadRoom({
         {posts && (
           <RoomComposer
             thread={id}
+            seed={seed}
             placeholder={selection.agents.length > 0 ? placeholderFor(selection) : th.visibility === "private" ? words.message : words.channel(th.channel)}
             tags={tags}
             plus={{
@@ -643,6 +655,10 @@ export function ThreadRoom({
           />
         )}
       </div>
+      </ConversationPage>
+      <ConversationInfo panel={shownView.panel} thread={th} project={projectTitle(projects, th.project, workspaceName)} onClose={() => openPanel()} />
+      {shownView.panel === "deliverables" && <Deliverables thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
+      {shownView.panel === "activity" && <Activity turns={turns.flatMap((turn) => turn.run ? [turn.run] : [])} stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")} focus={shownView.run ?? null} onFocus={(run) => openPanel("activity", run ? { run } : {})} onClose={() => openPanel()} onJump={(run) => document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })} />}
     </section>
   );
 }

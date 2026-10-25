@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // field builds acme's tree: Field and Launch at the top, Globex and Initech

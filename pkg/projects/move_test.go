@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 func TestRacingMovesNeverMakeACycle(t *testing.T) {

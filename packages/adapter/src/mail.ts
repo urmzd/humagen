@@ -1,8 +1,8 @@
 /**
- * The one seam between the platform's inbox and warp's mailbox, for every
+ * The one seam between the platform's inbox and humagen's mailbox, for every
  * surface.
  *
- * The model is warp's (`InboxMessage`, its parts, its actions). The routes
+ * The model is humagen's (`InboxMessage`, its parts, its actions). The routes
  * and the wire shape are the platform's. `fromServer` turns one into the
  * other, `toRequest` turns a click back into a call, and `mailTransport` makes
  * the calls through whatever a surface authenticates with: the console's
@@ -25,7 +25,7 @@ import {
   type TemplateId,
   type Tone,
   type UiAction,
-} from "@warp/core";
+} from "@humagen/core";
 import { interruptOf, settledFromOutcome, type WireQuestion } from "./question.ts";
 
 /** Something a message is about, which the console can open. */

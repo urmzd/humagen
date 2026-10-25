@@ -12,9 +12,9 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // spySpec is an agent that comes to live in Secret, a project only its
@@ -82,8 +82,8 @@ func asRead(t *testing.T, c map[string]any) string {
 func TestAClientNamesOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", everything...)
-	writer := f.machineAs(t, "svc-ops", "acme", "warp:clients:read", "warp:clients:write")
-	machine := f.machineAs(t, "svc-app", "acme", "warp:clients:read")
+	writer := f.machineAs(t, "svc-ops", "acme", "humagen:clients:read", "humagen:clients:write")
+	machine := f.machineAs(t, "svc-app", "acme", "humagen:clients:read")
 	secretAgent(t, f, owner)
 
 	app := func(fields string) string {
@@ -213,7 +213,7 @@ func TestAClientNamesAgentsThatExist(t *testing.T) {
 func TestAProjectsListsNameOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", everything...)
-	writer := f.machineAs(t, "svc-ops", "acme", "warp:projects:read", "warp:projects:write", "warp:agents:read")
+	writer := f.machineAs(t, "svc-ops", "acme", "humagen:projects:read", "humagen:projects:write", "humagen:agents:read")
 	secretAgent(t, f, owner)
 	want(t, f, writer, "POST", "/api/projects", `{"name":"Open"}`, http.StatusCreated)
 	want(t, f, owner, "PUT", "/api/projects/Open/agents", `{"version":1,"enable":["helper"],"allow":["helper","spy"]}`, http.StatusOK)
@@ -270,7 +270,7 @@ func TestAProjectsListsNameOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 func TestTheSettingsNameOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", everything...)
-	writer := f.machineAs(t, "svc-ops", "acme", "warp:agents:read", "warp:agents:write")
+	writer := f.machineAs(t, "svc-ops", "acme", "humagen:agents:read", "humagen:agents:write")
 	secretAgent(t, f, owner)
 	settings := func(tok, title, memory string) string {
 		t.Helper()
@@ -333,7 +333,7 @@ func TestAHousekeepingAgentThatLivesInAProjectServesOnlyItsTurns(t *testing.T) {
 func housekeepingServesOnlyItsTurns(t *testing.T, spelled string) {
 	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
 	owner := f.machine(t, "acme", everything...)
-	reader := f.machineAs(t, "svc-ops", "acme", "warp:runs:read", "warp:runs:write", "warp:agents:read", "warp:projects:read")
+	reader := f.machineAs(t, "svc-ops", "acme", "humagen:runs:read", "humagen:runs:write", "humagen:agents:read", "humagen:projects:read")
 	secretAgent(t, f, owner)
 	_, st := read(t, f, owner, "/api/settings")
 	st["title_agent"], st["memory_agent"] = spelled, spelled
@@ -413,7 +413,7 @@ func housekeepingServesOnlyItsTurns(t *testing.T, spelled string) {
 func TestAModelPolicyInUseNamesOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", everything...)
-	writer := f.machineAs(t, "svc-ops", "acme", "warp:agents:read", "warp:agents:write")
+	writer := f.machineAs(t, "svc-ops", "acme", "humagen:agents:read", "humagen:agents:write")
 	secretAgent(t, f, owner)
 	_, st := read(t, f, owner, "/api/settings")
 	st["model_policies"] = []any{map[string]any{"name": "steady", "models": []any{map[string]any{"provider": "offline", "model": "offline"}}}}
@@ -455,7 +455,7 @@ func TestAThreadNamesOnlyTheAgentsItsPosterMayRead(t *testing.T) {
 	owner := f.machine(t, "acme", everything...)
 	secretAgent(t, f, owner)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Open"}`, http.StatusCreated)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
 	if code, _ := get(t, f, ana, "/api/projects/Secret"); code != http.StatusNotFound {
 		t.Fatalf("Ana reads Secret: %d", code)
 	}
@@ -509,7 +509,7 @@ func alike(t *testing.T, f *fixture, tok, method, path string, body func(name st
 func TestASpecAndItsCallPolicyNameOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", everything...)
-	writer := f.machineAs(t, "svc-ops", "acme", "warp:agents:read", "warp:agents:write", "warp:runs:read", "warp:runs:write")
+	writer := f.machineAs(t, "svc-ops", "acme", "humagen:agents:read", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
 	secretAgent(t, f, owner)
 	lead := func(spawn, approvals string) string {
 		return `{"name":"lead","model":"offline","provider":"offline","system_prompt":"Leads.","access":{"spawn":` + spawn + `},"approvals":` + approvals + `}`
@@ -614,8 +614,8 @@ func TestAThreadShowsOnlyTheAgentsItsReaderMayRead(t *testing.T) {
 	want(t, f, owner, "POST", "/api/agents", spySpec, http.StatusCreated)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Secret"}`, http.StatusCreated)
 	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
-	olu := f.person(t, "acme", "00u-olu", "Olu", "warp-admins")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
+	olu := f.person(t, "acme", "00u-olu", "Olu", "humagen-admins")
 
 	// While spy is a platform agent, Ana makes it the thread's default and
 	// a participant; then it comes to live in Secret.
@@ -729,7 +729,7 @@ func TestAChannelNamesNoDefaultItsReaderMayNotRead(t *testing.T) {
 	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Ops"}`, http.StatusCreated)
 	want(t, f, owner, "PUT", "/api/projects/Ops/members", `{"version":1,"members":[{"who":"*","role":"member"},{"who":"00u-ana","role":"owner"}]}`, http.StatusOK)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
 
 	// While spy is a platform agent, it is #room's default, and moving it
 	// into Secret is refused, as #room would lose it.
@@ -806,7 +806,7 @@ func TestAChannelNamesNoDefaultItsReaderMayNotRead(t *testing.T) {
 func TestASpecWhoseEveryApprovalIsHiddenNamesNoApprovers(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", everything...)
-	writer := f.machineAs(t, "svc-ops", "acme", "warp:agents:read", "warp:agents:write")
+	writer := f.machineAs(t, "svc-ops", "acme", "humagen:agents:read", "humagen:agents:write")
 	secretAgent(t, f, owner)
 	spec := func(name, spawn, approvals, approvers string, self bool) string {
 		return fmt.Sprintf(`{"name":%q,"model":"offline","provider":"offline","system_prompt":"Leads.","access":{"spawn":%s},"approvals":%s,"approvers":%s,"self_approval":%t}`, name, spawn, approvals, approvers, self)
@@ -866,12 +866,12 @@ func TestASpecWhoseEveryApprovalIsHiddenNamesNoApprovers(t *testing.T) {
 func TestWhatAWriterIsNotShownCountsTowardNoLimit(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", everything...)
-	writer := f.machineAs(t, "svc-ops", "acme", "warp:agents:read", "warp:agents:write")
+	writer := f.machineAs(t, "svc-ops", "acme", "humagen:agents:read", "humagen:agents:write")
 	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	want(t, f, owner, "POST", "/api/agents", spySpec, http.StatusCreated)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Secret"}`, http.StatusCreated)
 	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
 	var names []string
 	for i := range 100 {
 		name := fmt.Sprintf("a%02d", i)
@@ -928,7 +928,7 @@ func TestAutoFallsBackPastADefaultItsPosterMayNotRead(t *testing.T) {
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
 	want(t, f, owner, "PUT", "/api/projects/Field/members", `{"version":1,"members":[{"who":"*","role":"owner"}]}`, http.StatusOK)
 	want(t, f, owner, "PUT", "/api/projects/Field/agents", `{"version":2,"default":"helper"}`, http.StatusOK)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
 	want(t, f, ana, "POST", "/api/projects/Field/channels", `{"name":"room","default":"auto"}`, http.StatusCreated)
 
 	start := func(body string) string {

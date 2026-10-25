@@ -1,0 +1,17 @@
+apiVersion: v2
+name: humagen
+description: The Humagen agent platform, one process serving the API, sign-in, the event stream and the web console.
+type: application
+# The chart's own version. Bump it when a template or values.yaml changes.
+version: 0.2.0
+# The default image tag: the first release under the new name, the oldest
+# that reads the spec this chart writes (api_version humagen/v1). Release
+# tooling does not bump it; any later image reads that spec too. Raise it
+# when the chart needs something a newer image adds.
+appVersion: "0.21.0"
+home: https://github.com/urmzd/humagen
+sources:
+  - https://github.com/urmzd/humagen
+keywords:
+  - agents
+  - platform

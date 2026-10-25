@@ -9,9 +9,9 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/people"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/people"
 )
 
 // The directory of people: who is in the workspace, by name and handle. It is

@@ -13,6 +13,15 @@ test("every route survives a round trip through its address", () => {
     { page: "new", project: "launch" },
     { page: "conversation", id: "t-1" },
     { page: "conversation", id: "t-1", share: true },
+    { page: "conversation", id: "t-1", panel: "context" },
+    { page: "conversation", id: "t-1", panel: "people" },
+    { page: "conversation", id: "t-1", panel: "activity" },
+    { page: "conversation", id: "t-1", panel: "activity", run: "run/with spaces" },
+    { page: "conversation", id: "t-1", panel: "deliverables" },
+    { page: "conversation", id: "t-1", panel: "deliverables", artifact: "art-1" },
+    { page: "conversation", id: "t-1", panel: "deliverables", artifact: "art-1", artifactTab: "preview", slide: 3 },
+    { page: "conversation", id: "t-1", panel: "deliverables", artifact: "art-1", artifactTab: "versions" },
+    { page: "conversation", id: "t-1", panel: "deliverables", artifact: "art-1", artifactTab: "provenance" },
     { page: "projects" },
     { page: "projects", q: "globex" },
     { page: "projects", kind: "account" },
@@ -193,4 +202,9 @@ test("Alerts became Monitor and Knowledge became Context, and old paths still la
   assert.deepEqual(at("/alerts/overview"), { page: "monitor", tab: "overview" });
   assert.deepEqual(at("/knowledge/handbook/search"), { page: "context", source: "handbook", tab: "search" });
   assert.deepEqual(at("/agents/lead/knowledge"), { page: "agent", name: "lead", tab: "context" });
+});
+
+test("the read audit has a Settings address", () => {
+  assert.equal(href({ page: "settings", section: "read-audit" }), "/settings/read-audit");
+  assert.deepEqual(at("/settings/read-audit"), { page: "settings", section: "read-audit" });
 });

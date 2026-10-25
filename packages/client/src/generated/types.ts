@@ -217,7 +217,7 @@ export interface Actor {
 /** The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give. */
 export interface ToolCredentials {
   providers: ToolCredential[];
-  /** Whether this workspace lets people store a credential's value with warp. Off, people give only a reference to where it is kept. */
+  /** Whether this workspace lets people store a credential's value with Humagen. Off, people give only a reference to where it is kept. */
   values: boolean;
   /** How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given. */
   references: string[];
@@ -577,18 +577,18 @@ export interface ThreadMessage {
 /** The announcement a thread was started from, as it stands when the
 thread is read: who posted it and what it says. It is the inbox's,
 never a message of the thread, so it is from whoever posted it, a
-person, the agent a schedule ran, or warp itself for a release's
+person, the agent a schedule ran, or Humagen itself for a release's
 notes, and never from the person whose reply started the thread. A
 withdrawn one says nothing more.
  */
 export interface ThreadAnnouncement {
   /** The announcement's inbox id. */
   id: string;
-  /** Who posted it. `system` is warp itself, as for a release's notes. */
+  /** Who posted it. `system` is Humagen itself, as for a release's notes. */
   kind: "person" | "agent" | "system";
-  /** The person's handle, the agent's name, or `warp` for what warp posted itself. */
+  /** The person's handle, the agent's name, or `humagen` for what Humagen posted itself (`warp` in records written before the rename). */
   by: string;
-  /** What the person is called. Absent for an agent and for warp itself (`system`). */
+  /** What the person is called. Absent for an agent and for Humagen itself (`system`). */
   name?: string;
   subject?: string;
   text?: string;
@@ -815,7 +815,7 @@ export interface Channel {
   slack?: SlackBinding;
   /** When `slack` was bound as it stands: set when a binding is made
 or moved, kept while it holds. Absent while unbound, and on a
-binding made before warp kept the time, which the client's
+binding made before Humagen kept the time, which the client's
 bindings then read as bound at the channel's last change.
  */
   bound_at?: string;
@@ -880,7 +880,7 @@ export interface ClientBinding {
 app catches up on nothing announced before it: what was
 announced before the binding, or while the channel was unbound,
 never reached the Slack channel and is not news there now.
-Present for every binding; a binding made before warp kept the
+Present for every binding; a binding made before Humagen kept the
 time reads as bound at its channel's last change.
  */
   bound_at?: string;
@@ -934,6 +934,23 @@ export interface ProjectKnowledgeSource {
   name: string;
   /** The project that names it, the nearest when more than one does. Empty for the workspace. */
   from: string;
+}
+
+export interface ProjectContext {
+  layers: ContextLayer[];
+}
+
+export interface ContextLayer {
+  kind: string;
+  from: string;
+  text: string;
+  budget: number;
+  used: number;
+  omitted: number;
+  /** Content shortened only in this preview, using the layer's unit. Runtime composition is unchanged. */
+  preview_omitted: number;
+  sent: boolean;
+  unit: "characters" | "items";
 }
 
 /** The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in. */
@@ -1133,7 +1150,7 @@ export interface ProjectStep {
 }
 
 /** A project, where it sits, and what is in it. */
-export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
+export type ProjectView = Project & { unread: number; row_agents: string[]; depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
 
 /** A limit a run filed in the project falls under for being there, and
 the project it is set on. What the limit allows is read from
@@ -1561,7 +1578,7 @@ export interface InboxFrom {
   kind: string;
   /** The agent, the rule or the part of the system, and a person's subject. A mention, a thread's artefact, names its poster as threads do, by handle, and never by subject. */
   name: string;
-  /** What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. A mention's poster is called what their message is called now. */
+  /** What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's, and to `Humagen` on what the product posted itself (a `system` sender named `humagen`, or `warp` in records written before the rename). A mention's poster is called what their message is called now. */
   display?: string;
   /** The person who published an agent's draft, by subject. Absent on what an agent posted itself. */
   approved_by?: string;
@@ -2379,7 +2396,7 @@ export interface SecretRef {
   ref?: string;
 }
 
-/** A secret as a caller writes it, as a value or as an `env:WARP_*` reference. Leave both out to keep the one held. */
+/** A secret as a caller writes it, as a value or as an `env:HUMAGEN_*` reference (`env:WARP_*`, the prefix before the rename, still works). Leave both out to keep the one held. */
 export interface SecretInput {
   value?: string;
   ref?: string;
@@ -2409,7 +2426,7 @@ export interface GitHubOptions {
   guides?: boolean;
   mutations?: boolean;
   read_repositories?: string[];
-  /** The app's own GitHub login, such as `warp[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md). */
+  /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md). */
   login?: string;
 }
 
@@ -2915,9 +2932,30 @@ export interface ManifestUsage {
   total: Usage;
 }
 
+export interface ListReadAuditResponseRecordsItem {
+  subject: string;
+  project: string;
+  thread?: string;
+  route: string;
+  at: string;
+}
+
+export interface ListReadAuditResponse {
+  records: ListReadAuditResponseRecordsItem[];
+}
+
+export interface GetAgentHuesResponse {
+  hues: Record<string, number>;
+}
+
+export interface GetProjectAgentHuesResponse {
+  hues: Record<string, number>;
+}
+
 export interface ListAgentsResponse {
   agents: Revision[];
   builtin: string[];
+  hues: Record<string, number>;
   homes: Record<string, string>;
   enabled_in: Record<string, string[]>;
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import type { QueuedApproval } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { ApprovalQueue } from "./Governance.tsx";

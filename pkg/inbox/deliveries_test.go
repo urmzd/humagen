@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // A delivery is the client's own receipt: kept and replayed, never announced,

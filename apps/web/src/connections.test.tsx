@@ -34,7 +34,7 @@ test("a tool that acts as you says whether you connected it, and how", () => {
   // A stored value is never part of what the page has, so it says where it is
   // and nothing more.
   const value = text(card(stored));
-  assert.match(value, /stored with warp/);
+  assert.match(value, /stored with Humagen/);
   assert.doesNotMatch(value, /op:\/\//);
 });
 
@@ -53,9 +53,9 @@ test("you are offered only the ways this workspace allows", () => {
   assert.match(both, /Reference/);
   assert.match(both, /Value/);
 
-  const refOnly = html(<ConnectForm ways={["reference"]} references={["op://People/", "keychain:warp-people/"]} replacing={false} onSave={noop} onCancel={noop} />);
+  const refOnly = html(<ConnectForm ways={["reference"]} references={["op://People/", "keychain:humagen-people/"]} replacing={false} onSave={noop} onCancel={noop} />);
   assert.doesNotMatch(refOnly, /type="password"|>Value</);
-  assert.match(text(refOnly), /starts with op:\/\/People\/, keychain:warp-people\//);
+  assert.match(text(refOnly), /starts with op:\/\/People\/, keychain:humagen-people\//);
 
   const valueOnly = html(<ConnectForm ways={["value"]} references={[]} replacing onSave={noop} onCancel={noop} />);
   assert.match(valueOnly, /type="password"/);
@@ -81,7 +81,7 @@ test("a reference from outside the workspace's starts is caught before it is sen
 test("what you stand with is said in words", () => {
   assert.match(standing(issues), /^Not connected/);
   assert.match(standing(byRef), /reads op:\/\/People\/ana\/issues each time a run uses it/);
-  assert.match(standing(stored), /stored with warp/);
+  assert.match(standing(stored), /stored with Humagen/);
 });
 
 test("someone who may not connect is shown where they stand with each tool, and nothing to press", () => {

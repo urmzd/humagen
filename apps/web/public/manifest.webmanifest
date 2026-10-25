@@ -1,6 +1,6 @@
 {
-  "name": "Warp",
-  "short_name": "Warp",
+  "name": "Humagen",
+  "short_name": "Humagen",
   "description": "Your agents, your inbox and what they are doing, wherever you are.",
   "start_url": "/inbox",
   "scope": "/",

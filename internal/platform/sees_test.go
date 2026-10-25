@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/artifacts"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // What a reader sees, by every combination of role, govern, thread and

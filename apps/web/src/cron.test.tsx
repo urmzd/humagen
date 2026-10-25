@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { inWords, presets } from "./cron.ts";
 import { recapCron } from "./recap.ts";
 

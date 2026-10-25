@@ -1,4 +1,4 @@
-import type { Turn, TurnStatus } from "@warp/core";
+import type { Turn, TurnStatus } from "@humagen/core";
 import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react";
 
 export interface TurnRailEntry {

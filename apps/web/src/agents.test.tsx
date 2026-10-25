@@ -9,7 +9,7 @@ const writer: Revision = {
   rev: 2,
   spec: { name: "warp-writer", description: "Writes a document.", provider: "offline", model: "offline", system_prompt: "Write it.", access: { spawn: [] } },
   created_at: new Date().toISOString(),
-  created_by: "warp",
+  created_by: "humagen",
   hash: "h2",
 };
 
@@ -32,6 +32,8 @@ const field: ProjectView = {
   schedules: 0,
   notes: 0,
   proposed: 0,
+  unread: 0,
+  row_agents: [],
   mine: false,
 };
 
@@ -100,7 +102,7 @@ test("A built-in's spec is locked, and it lives in no project", () => {
   assert.match(model(render(true, true, "model")), /disabled=""/);
   // Every switch of the spec's own is locked.
   const access = render(true, true, "access");
-  const specSwitches = access.match(/<input type="checkbox" class="warp-switch[^>]*>/g) ?? [];
+  const specSwitches = access.match(/<input type="checkbox" class="humagen-switch[^>]*>/g) ?? [];
   assert.ok(specSwitches.length > 0 && specSwitches.every((s) => s.includes('disabled=""')), "the spec's switches are locked");
   assert.match(livesIn(access), /disabled=""/, "the platform's own agents live nowhere");
   assert.doesNotMatch(model(render(false, true, "model")), /disabled/);

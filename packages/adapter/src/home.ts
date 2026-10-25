@@ -6,7 +6,7 @@
  * Your projects are the ones it marks `mine`. The console's Home has no Your
  * projects; one that shows them makes them here.
  */
-import { type HomeProject, orderProjects } from "@warp/core";
+import { type HomeProject, orderProjects } from "@humagen/core";
 
 /** A project view as `GET /api/projects` lists it: only the fields Home reads. */
 export interface WireProject {

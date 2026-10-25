@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urmzd/warp/pkg/blob"
+	"github.com/urmzd/humagen/pkg/blob"
 )
 
 // Credentials for an S3-compatible store, read from the environment. Unset
 // means the AWS default chain (AWS_ACCESS_KEY_ID and friends, shared files,
 // an instance role).
 const (
-	s3AccessEnv = "WARP_S3_ACCESS_KEY_ID"
-	s3SecretEnv = "WARP_S3_SECRET_ACCESS_KEY"
+	s3AccessEnv = "HUMAGEN_S3_ACCESS_KEY_ID"
+	s3SecretEnv = "HUMAGEN_S3_SECRET_ACCESS_KEY"
 )
 
 // storageFlags say where published files' bytes are kept.

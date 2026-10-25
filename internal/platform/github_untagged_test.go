@@ -19,10 +19,10 @@ import (
 	"github.com/urmzd/fiber/pkg/signature"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // raiser is a GitHub connector of the test's own: it raises the tags it is
@@ -76,7 +76,7 @@ var issue = address.MustParse("github://acme/handbook/issues/7")
 
 // fromGitHub is a comment on the issue as fiber's GitHub connector raises
 // it: for an agent it names, or, addressed to the app and naming none, for
-// the name warp's connectors are given for a message that names no agent.
+// the name humagen's connectors are given for a message that names no agent.
 // It says things about its tenant and where it is filed that stamp writes
 // over.
 func fromGitHub(id, agent, text string) envelope.Tag {
@@ -116,7 +116,7 @@ func githubRoom(t *testing.T, b platform.Backends, mutate func(*platform.ClientI
 		Client: clients.Client{
 			ID: "gh", Name: "gh", Surface: clients.GitHub, Enabled: true,
 			Identity: clients.Identity{Owners: []string{"acme"}}, DefaultAgent: "docs", Agents: []string{"ops"},
-			GitHub: &clients.GitHubOptions{Login: "warp[bot]"},
+			GitHub: &clients.GitHubOptions{Login: "humagen[bot]"},
 			Home:   &clients.Home{Project: "Launch"},
 		},
 		Token: clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
@@ -235,7 +235,7 @@ func TestASignedCommentToTheAppIsAnsweredByTheClientsDefault(t *testing.T) {
 		Client: clients.Client{
 			ID: "gh", Name: "gh", Surface: clients.GitHub, Enabled: true,
 			Identity: clients.Identity{Owners: []string{"acme"}}, DefaultAgent: "docs",
-			GitHub: &clients.GitHubOptions{Login: "warp[bot]"},
+			GitHub: &clients.GitHubOptions{Login: "humagen[bot]"},
 		},
 		Token: clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
 	})
@@ -257,7 +257,7 @@ func TestASignedCommentToTheAppIsAnsweredByTheClientsDefault(t *testing.T) {
 		}
 	}
 	post("to-nobody", "@octocat can you look?")
-	post("to-the-app", "@warp what changed?")
+	post("to-the-app", "@humagen what changed?")
 	run := await(t, p, runtime.RunID(tenant, "to-the-app"), runs.Completed)
 	if run.Agent != "docs" || run.Text != "what changed?" || run.Actor.User != "" {
 		t.Fatalf("the comment to the app is %s's, %q, for %q", run.Agent, run.Text, run.Actor.User)

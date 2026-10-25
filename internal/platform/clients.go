@@ -14,10 +14,11 @@ import (
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/signature"
 
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/integrations/github"
-	"github.com/urmzd/warp/pkg/integrations/slack"
-	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/integrations/slack"
+	"github.com/urmzd/humagen/pkg/policy"
 )
 
 // ClientInput is a client as someone writes it: the record, and the two
@@ -281,7 +282,9 @@ var errSecretRef = fmt.Errorf("%w: that secret reference cannot be used by this 
 // tenant means it may reference nothing.
 func (p *Platform) envSecret(tenant, ref string) (string, bool) {
 	name, err := clients.EnvRef(ref)
-	if err != nil || tenant == "" || p.cfg.Env == nil || !slices.Contains(p.cfg.SecretRefs[tenant], name) {
+	// A grant and a reference name one variable whichever prefix, HUMAGEN_
+	// or the old WARP_, each was written with.
+	if err != nil || tenant == "" || p.cfg.Env == nil || !slices.ContainsFunc(p.cfg.SecretRefs[tenant], func(g string) bool { return legacy.SameVar(g, name) }) {
 		return "", false
 	}
 	v, _ := p.cfg.Env(name)

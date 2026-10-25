@@ -1,6 +1,6 @@
 {
-  "name": "@warp/components",
-  "version": "0.20.2",
+  "name": "@humagen/components",
+  "version": "0.25.0",
   "private": true,
   "type": "module",
   "description": "Shared agent components (turn, approval, clarification, notice) built only from primitives.",
@@ -11,8 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@warp/core": "workspace:*",
-    "@warp/primitives": "workspace:*"
+    "@humagen/core": "workspace:*",
+    "@humagen/primitives": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19"

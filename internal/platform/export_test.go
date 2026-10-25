@@ -11,12 +11,12 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/pick"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/pick"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // UseTool calls one of a turn's file tools the way the agent loop would, and
@@ -149,3 +149,7 @@ func (p *Platform) SkillNamesOf(tenant string, th threads.Thread, m threads.Mess
 // BeforeCarryOut runs fn after each message is posted and before what it
 // starts is decided, as a share landing then would.
 func (p *Platform) BeforeCarryOut(fn func()) { p.beforeCarryOut = fn }
+
+// BeforeQuestionKept runs fn after a question's message is found missing
+// and built, and before it is kept, as a slow raise would.
+func (p *Platform) BeforeQuestionKept(fn func()) { p.beforeQuestionKept = fn }

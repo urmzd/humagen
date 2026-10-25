@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
@@ -268,7 +268,7 @@ const answered = (actor: Run["actor"], tag = "api-t1"): Run => {
   return { ...turn, status: "completed", answer: "Filed." };
 };
 
-/** A retry warp asked for nobody: it names whoever pressed it, and none of its words were theirs. */
+/** A retry humagen asked for nobody: it names whoever pressed it, and none of its words were theirs. */
 const NOBODY_RETRY = "api-retry-3-ben-t0";
 
 function open(turn: Run, me: string, turns: Run[] = [turn]) {
@@ -384,7 +384,7 @@ test("Regenerate is offered only on an answered turn that acted for the reader",
   await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
 });
 
-test("a reader's own turn from before warp said whom a run acts for may be asked again", async () => {
+test("a reader's own turn from before humagen said whom a run acts for may be asked again", async () => {
   // Recorded before actor.user existed: the person who asked, and no more.
   const before = { id: "ben", display: "Ben" };
   open(failed(before, "api-r-0123456789abcdefghijkl"), "ben");
@@ -471,7 +471,7 @@ test("a conversation longer than one page is read from its start, and the next m
   assert.ok(await screen.findByRole("article", { name: "Message from Ana" }));
 });
 
-test("a turn from before warp said whom a run acts for is not the reader's when its words were someone else's", async () => {
+test("a turn from before humagen said whom a run acts for is not the reader's when its words were someone else's", async () => {
   // Before actor.user, the console's Retry and Regenerate asked an earlier
   // turn's words again at the same point, as an ordinary turn of whoever
   // pressed, and the Slack app asked for a person it maps under its own

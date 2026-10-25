@@ -14,20 +14,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
 
-	deployfs "github.com/urmzd/warp/deploy"
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/spec"
+	deployfs "github.com/urmzd/humagen/deploy"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
-// deployCmd is `warp deploy`: run the spec where its System document's
-// deploy slot says. local is `warp start` here; compose writes a Docker
-// Compose project and brings it up; kubernetes installs the chart warp
+// deployCmd is `humagen deploy`: run the spec where its System document's
+// deploy slot says. local is `humagen start` here; compose writes a Docker
+// Compose project and brings it up; kubernetes installs the chart humagen
 // carries with Helm. -o writes what would be applied and stops.
 //
 // A secret never lands in a written file. An env: reference stays one and is
@@ -48,21 +50,25 @@ func deployCmd(o Options, args []string, in io.Reader, out io.Writer) error {
 func deploy(o Options, args []string, in io.Reader, out io.Writer, keys credref.Resolver, run func(*exec.Cmd) error) error {
 	fs := flag.NewFlagSet("deploy", flag.ContinueOnError)
 	var paths files
-	fs.Var(&paths, "f", "a spec file or directory; repeatable. Empty means warp.yaml in the config directory")
+	fs.Var(&paths, "f", "a spec file or directory; repeatable. Empty means humagen.yaml in the config directory")
 	target := fs.String("target", "", "local, compose or kubernetes, over the spec's deploy.kind")
 	outDir := fs.String("o", "", "write the deployment to this directory and stop, applying nothing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if len(paths) == 0 {
-		if def := defaultSpec(os.Getenv); def != "" {
+		def, err := defaultSpec(o.notes)
+		if err != nil {
+			return err
+		}
+		if def != "" {
 			paths = append(paths, def)
 		}
 	}
 	var cfg spec.Config
 	if len(paths) > 0 {
 		var err error
-		if cfg, err = spec.Load(paths...); err != nil {
+		if cfg, err = loadSpec(o, paths...); err != nil {
 			return err
 		}
 	}
@@ -78,7 +84,7 @@ func deploy(o Options, args []string, in io.Reader, out io.Writer, keys credref.
 	switch d.Kind {
 	case "", "local":
 		if *outDir != "" {
-			return errors.New("deploy: local has nothing to write; it is warp start")
+			return errors.New("deploy: local has nothing to write; it is humagen start")
 		}
 		var startArgs []string
 		for _, p := range paths {
@@ -131,9 +137,9 @@ func remotePersonRefs(cfg spec.Config, kind string) (env []string, err error) {
 		}
 	}
 	if len(refused) > 0 {
-		return nil, fmt.Errorf("deploy: %s, which a %s target cannot reach: warp reads a person's reference where it runs, when a run uses it. "+
-			"For a %s target, list an env: start in person_refs instead (env:WARP_PERSON_{subject}_) and set those variables in the target, "+
-			"let people store their credential with warp (workspace.person_credentials.values: true), or deploy local",
+		return nil, fmt.Errorf("deploy: %s, which a %s target cannot reach: Humagen reads a person's reference where it runs, when a run uses it. "+
+			"For a %s target, list an env: start in person_refs instead (env:HUMAGEN_PERSON_{subject}_) and set those variables in the target, "+
+			"let people store their credential with Humagen (workspace.person_credentials.values: true), or deploy local",
 			strings.Join(refused, "; "), kind, kind)
 	}
 	return env, nil
@@ -146,7 +152,7 @@ func personEnvNote(starts []string, where string) string {
 	if len(starts) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("people's own tool credentials are read from variables under %s, one per person and tool, which warp deploy does not pass. "+
+	return fmt.Sprintf("people's own tool credentials are read from variables under %s, one per person and tool, which humagen deploy does not pass. "+
 		"Set each %s", strings.Join(starts, ", "), where)
 }
 
@@ -191,7 +197,9 @@ func carry(ctx context.Context, cfg spec.Config, keys credref.Resolver) (carried
 					if err != nil {
 						return err
 					}
-					name = fmt.Sprintf("WARP_REF_%d", len(seen)+1)
+					// Kept under the old prefix: a Secret written before the rename
+					// holds these keys, and a rollback reads them.
+					name = fmt.Sprintf(legacy.OldPrefix+"REF_%d", len(seen)+1)
 					seen[ref], c.values[name] = name, val
 					c.env = append(c.env, name)
 				}
@@ -260,11 +268,11 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	if outDir != "" {
 		dir = outDir
 	}
-	// The default is .warp/compose beside the spec, which git ignores. A spec
-	// at the root of a warp checkout, where the image is built from, then
+	// The default is .humagen/compose beside the spec, which git ignores. A spec
+	// at the root of a humagen checkout, where the image is built from, then
 	// cannot write over the checked-in deploy/compose project.
 	if dir == "" {
-		dir = filepath.Join(specDir(paths), ".warp", "compose")
+		dir = composeDir(specDir(paths), out)
 	}
 	port := b.Port
 	if port == 0 {
@@ -278,8 +286,8 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	if err != nil {
 		return err
 	}
-	note := personEnvNote(people, "in the warp service's environment yourself, for example in a compose.override.yaml beside compose.yaml, which warp deploy does not write")
-	// Postgres beside warp: the stores point at it, by a variable the
+	note := personEnvNote(people, "in the humagen service's environment yourself, for example in a compose.override.yaml beside compose.yaml, which humagen deploy does not write")
+	// Postgres beside humagen: the stores point at it, by a variable the
 	// project sets.
 	if b.Postgres {
 		cfg.System.Spec.Stores = spec.Slot{Kind: "postgres", Block: spec.MustJSON(spec.URLBlock{URL: &spec.Ref{Ref: "env:" + envPostgres}})}
@@ -302,14 +310,18 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 		return err
 	}
 
-	warp := map[string]any{
+	svc := map[string]any{
 		"restart": "unless-stopped",
-		"command": []string{"start", "-f", "/etc/warp/warp.yaml", "-addr", addr, "-web", "/usr/share/warp/web"},
-		"volumes": []string{"warp-data:/var/lib/warp", "./warp.yaml:/etc/warp/warp.yaml:ro"},
+		"command": []string{"start", "-f", legacy.SpecDir + "/humagen.yaml", "-addr", addr, "-web", legacy.WebDir},
+		"volumes": []string{legacy.DataVolume + ":" + legacy.DataDir, "./humagen.yaml:" + legacy.SpecDir + "/humagen.yaml:ro"},
 	}
 	switch {
 	case b.Image != "":
-		warp["image"] = b.Image
+		if tag := legacy.ImageTag(b.Image); legacy.BeforeRename(tag) {
+			return fmt.Errorf("deploy: compose.image %s is a release from before the rename, which cannot read the spec this release writes; "+
+				"use an image of %s or later, or build one (docs/upgrading-from-warp.md#compose)", b.Image, legacy.FirstRelease)
+		}
+		svc["image"] = b.Image
 	default:
 		ctxDir := b.Build
 		if ctxDir == "" {
@@ -317,31 +329,37 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 			ctxDir = wd
 		}
 		if _, err := os.Stat(filepath.Join(ctxDir, "Dockerfile")); err != nil {
-			return fmt.Errorf("deploy: compose needs an image, or build pointing at a warp checkout (no Dockerfile in %s)", ctxDir)
+			return fmt.Errorf("deploy: compose needs an image, or build pointing at a Humagen checkout (no Dockerfile in %s)", ctxDir)
 		}
 		abs, _ := filepath.Abs(ctxDir)
-		warp["build"] = map[string]any{"context": abs}
-		warp["image"] = name + ":local"
+		svc["build"] = map[string]any{"context": abs}
+		svc["image"] = name + ":local"
 	}
 	env := map[string]string{}
 	for _, v := range c.env {
-		env[v] = "${" + v + ":-}"
+		// A reference deploy carries is passed by exact name: its value is
+		// the one carry read, never another variable of the shell's.
+		if _, carried := c.values[v]; carried {
+			env[v] = "${" + v + ":-}"
+			continue
+		}
+		env[v] = interpolate(v)
 	}
-	services := map[string]any{"warp": warp}
+	services := map[string]any{legacy.DeployName: svc}
 	if hostNet {
-		warp["network_mode"] = "host"
+		svc["network_mode"] = "host"
 	} else {
-		warp["ports"] = []string{fmt.Sprintf("%d:8080", port)}
+		svc["ports"] = []string{fmt.Sprintf("%d:8080", port)}
 	}
-	volumes := map[string]any{"warp-data": map[string]any{}}
+	volumes := map[string]any{legacy.DataVolume: map[string]any{}}
 	if b.Postgres {
 		host := "postgres:5432"
 		pg := map[string]any{
 			"image":       "postgres:17-alpine",
 			"restart":     "unless-stopped",
-			"environment": map[string]string{"POSTGRES_USER": "warp", "POSTGRES_PASSWORD": "${POSTGRES_PASSWORD:-warp}", "POSTGRES_DB": "warp"},
+			"environment": map[string]string{"POSTGRES_USER": legacy.DeployName, "POSTGRES_PASSWORD": "${POSTGRES_PASSWORD:-" + legacy.DeployName + "}", "POSTGRES_DB": legacy.DeployName},
 			"volumes":     []string{"postgres-data:/var/lib/postgresql/data"},
-			"healthcheck": map[string]any{"test": []string{"CMD-SHELL", "pg_isready -U warp -d warp"}, "interval": "5s", "retries": 20},
+			"healthcheck": map[string]any{"test": []string{"CMD-SHELL", "pg_isready -U " + legacy.DeployName + " -d " + legacy.DeployName}, "interval": "5s", "retries": 20},
 		}
 		if hostNet {
 			pg["ports"] = []string{"127.0.0.1:55432:5432"}
@@ -349,10 +367,10 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 		}
 		services["postgres"] = pg
 		volumes["postgres-data"] = map[string]any{}
-		env[envPostgres] = "postgres://warp:${POSTGRES_PASSWORD:-warp}@" + host + "/warp?sslmode=disable"
-		warp["depends_on"] = map[string]any{"postgres": map[string]string{"condition": "service_healthy"}}
+		env[envPostgres] = "postgres://" + legacy.DeployName + ":${POSTGRES_PASSWORD:-" + legacy.DeployName + "}@" + host + "/" + legacy.DeployName + "?sslmode=disable"
+		svc["depends_on"] = map[string]any{"postgres": map[string]string{"condition": "service_healthy"}}
 	}
-	warp["environment"] = env
+	svc["environment"] = env
 	project, err := yaml.Marshal(map[string]any{"name": name, "services": services, "volumes": volumes})
 	if err != nil {
 		return err
@@ -360,11 +378,11 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	header := "# Written by `warp deploy` from the spec. Edit the spec and deploy again;\n# secrets are passed from the environment and are not in this file.\n" + comment(note)
+	header := "# Written by `humagen deploy` from the spec. Edit the spec and deploy again;\n# secrets are passed from the environment and are not in this file.\n" + comment(note)
 	if err := os.WriteFile(filepath.Join(dir, "compose.yaml"), append([]byte(header), project...), 0o600); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "warp.yaml"), doc, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "humagen.yaml"), doc, 0o600); err != nil {
 		return err
 	}
 	if outDir != "" {
@@ -379,13 +397,13 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	}
 	cmd := exec.CommandContext(ctx, "docker", "compose", "--project-directory", dir, "up", "-d", "--build")
 	cmd.Env, cmd.Stdout, cmd.Stderr = c.environ(), out, os.Stderr
-	fmt.Fprintf(out, "warp: deploying %s with docker compose from %s\n", name, dir)
+	fmt.Fprintf(out, "humagen: deploying %s with docker compose from %s\n", name, dir)
 	if err := run(cmd); err != nil {
 		return fmt.Errorf("deploy: docker compose: %w", err)
 	}
-	fmt.Fprintf(out, "warp: %s is up at http://127.0.0.1:%d\n", name, port)
+	fmt.Fprintf(out, "humagen: %s is up at http://127.0.0.1:%d\n", name, port)
 	if note != "" {
-		fmt.Fprintln(out, "warp: "+note)
+		fmt.Fprintln(out, "humagen: "+note)
 	}
 	return nil
 }
@@ -409,10 +427,14 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	}
 	ns := b.Namespace
 	if ns == "" {
-		ns = "warp"
+		ns = legacy.DeployName
 	}
 	if err := ownValues(b); err != nil {
 		return err
+	}
+	if legacy.BeforeRename(b.Image.Tag) {
+		return fmt.Errorf("deploy: kubernetes image.tag %s is a release from before the rename, which cannot read the spec this release writes; "+
+			"use %s or later (docs/upgrading-from-warp.md#kubernetes)", b.Image.Tag, legacy.FirstRelease)
 	}
 	people, err := remotePersonRefs(cfg, "kubernetes")
 	if err != nil {
@@ -428,22 +450,39 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	if err != nil {
 		return err
 	}
+	helmScope := []string{"-n", ns}
+	if b.Context != "" {
+		helmScope = append(helmScope, "--kube-context", b.Context)
+	}
+	// A release the warp chart installed keeps its Deployment, Service and
+	// volume only under the old name. Asked on every deploy, since after the
+	// first upgrade the release's chart is this one.
+	if _, set := values["nameOverride"]; !set && outDir == "" {
+		old, err := installedByOldChart(ctx, release, helmScope, run)
+		if err != nil {
+			return err
+		}
+		if old {
+			values["nameOverride"] = legacy.ChartName
+			fmt.Fprintf(out, "humagen: release %s was installed by the %s chart; it keeps its names with nameOverride: %s\n", release, legacy.ChartName, legacy.ChartName)
+		}
+	}
 	dir := outDir
 	if dir == "" {
-		if dir, err = os.MkdirTemp("", "warp-deploy-"); err != nil {
+		if dir, err = os.MkdirTemp("", "humagen-deploy-"); err != nil {
 			return err
 		}
 		defer os.RemoveAll(dir)
 	}
 	chart := filepath.Join(dir, "chart")
-	if err := os.CopyFS(chart, mustSub(deployfs.Chart, "helm/warp")); err != nil && !errors.Is(err, fs.ErrExist) {
+	if err := os.CopyFS(chart, mustSub(deployfs.Chart, "helm/humagen")); err != nil && !errors.Is(err, fs.ErrExist) {
 		return fmt.Errorf("deploy: write the chart: %w", err)
 	}
 	raw, err := yaml.Marshal(values)
 	if err != nil {
 		return err
 	}
-	header := "# Written by `warp deploy` from the spec. Secrets are in the Secret named\n# by existingSecret, created from the deploying shell; none are in here.\n" + comment(note)
+	header := "# Written by `humagen deploy` from the spec. Secrets are in the Secret named\n# by existingSecret, created from the deploying shell; none are in here.\n" + comment(note)
 	if err := os.WriteFile(filepath.Join(dir, "values.yaml"), append([]byte(header), raw...), 0o600); err != nil {
 		return err
 	}
@@ -471,12 +510,12 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	}
 	cmd := exec.CommandContext(ctx, "helm", helmArgs...)
 	cmd.Stdout, cmd.Stderr = out, os.Stderr
-	fmt.Fprintf(out, "warp: deploying %s to namespace %s with helm\n", release, ns)
+	fmt.Fprintf(out, "humagen: deploying %s to namespace %s with helm\n", release, ns)
 	if err := run(cmd); err != nil {
 		return fmt.Errorf("deploy: helm: %w", err)
 	}
 	if note != "" {
-		fmt.Fprintln(out, "warp: "+note)
+		fmt.Fprintln(out, "humagen: "+note)
 	}
 	return nil
 }
@@ -489,7 +528,7 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 func ownValues(b spec.Kubernetes) error {
 	for _, k := range []string{"system", "platforms"} {
 		if _, ok := b.Values[k]; ok {
-			return fmt.Errorf("deploy: kubernetes values.%s: the chart's %s is written from the spec, whose references warp deploy carries and checks, "+
+			return fmt.Errorf("deploy: kubernetes values.%s: the chart's %s is written from the spec, whose references humagen deploy carries and checks, "+
 				"and values are merged over it unchecked; set it in the spec's documents instead", k, k)
 		}
 	}
@@ -569,7 +608,7 @@ func applySecret(ctx context.Context, c carried, name, ns string, kube []string,
 	for _, v := range c.env {
 		val, ok := c.values[v]
 		if !ok {
-			val = os.Getenv(v)
+			val = legacy.Getenv(v)
 		}
 		if val == "" {
 			missing = append(missing, v)
@@ -613,4 +652,74 @@ func mustSub(f fs.FS, dir string) fs.FS {
 		panic(err)
 	}
 	return sub
+}
+
+// composeDir is where deploy writes a compose project beside a spec:
+// .humagen/compose, which git ignores, or the old .humagen/compose when an
+// earlier deploy wrote there. The project's identity is its name, not its
+// directory, so either keeps its volumes.
+func composeDir(base string, out io.Writer) string {
+	old := filepath.Join(base, legacy.ComposeDir, "compose")
+	if st, err := os.Stat(old); err == nil && st.IsDir() {
+		fmt.Fprintf(out, "humagen: writing to %s, where an earlier deploy wrote; it still works\n", old)
+		return old
+	}
+	return filepath.Join(base, ".humagen", "compose")
+}
+
+// interpolate is how generated compose passes a variable the spec names to
+// the container: by its own name, from the deploying shell, where it may be
+// set under either prefix (the new one wins, as legacy.Lookup reads it).
+func interpolate(v string) string {
+	if old := legacy.OldName(v); old != "" {
+		return "${" + legacy.Canonical(v) + ":-${" + old + ":-}}"
+	}
+	return "${" + v + ":-}"
+}
+
+// helmRelease is a release as helm list -o json writes it.
+type helmRelease struct {
+	Name  string `json:"name"`
+	Chart string `json:"chart"`
+}
+
+// installedByOldChart reports whether release was installed by the chart before
+// the rename and so keeps its names: its chart is the warp chart, or, once
+// upgraded to this one, it was given nameOverride: warp. scope is helm's
+// namespace and context flags. No release is not an error.
+func installedByOldChart(ctx context.Context, release string, scope []string, run func(*exec.Cmd) error) (bool, error) {
+	var listed bytes.Buffer
+	list := exec.CommandContext(ctx, "helm", append([]string{"list", "--filter", "^" + regexp.QuoteMeta(release) + "$", "-o", "json"}, scope...)...)
+	list.Stdout, list.Stderr = &listed, os.Stderr
+	if err := run(list); err != nil {
+		return false, fmt.Errorf("deploy: helm list: %w", err)
+	}
+	var releases []helmRelease
+	if b := bytes.TrimSpace(listed.Bytes()); len(b) > 0 {
+		if err := json.Unmarshal(b, &releases); err != nil {
+			return false, fmt.Errorf("deploy: helm list: %w", err)
+		}
+	}
+	i := slices.IndexFunc(releases, func(r helmRelease) bool { return r.Name == release })
+	if i < 0 {
+		return false, nil
+	}
+	if strings.HasPrefix(releases[i].Chart, legacy.ChartName+"-") {
+		return true, nil
+	}
+	var got bytes.Buffer
+	get := exec.CommandContext(ctx, "helm", append([]string{"get", "values", release, "-o", "json"}, scope...)...)
+	get.Stdout, get.Stderr = &got, os.Stderr
+	if err := run(get); err != nil {
+		return false, fmt.Errorf("deploy: helm get values: %w", err)
+	}
+	var v struct {
+		NameOverride string `json:"nameOverride"`
+	}
+	if b := bytes.TrimSpace(got.Bytes()); len(b) > 0 && !bytes.Equal(b, []byte("null")) {
+		if err := json.Unmarshal(b, &v); err != nil {
+			return false, fmt.Errorf("deploy: helm get values: %w", err)
+		}
+	}
+	return v.NameOverride == legacy.ChartName, nil
 }

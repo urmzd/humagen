@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 func setKnowledge(t *testing.T, s *projects.Store, name string, w projects.Writer, sources ...string) projects.Project {

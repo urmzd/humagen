@@ -3,10 +3,10 @@ package platform
 import (
 	"fmt"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // What a client's own surface host, such as the Slack app, records through
@@ -122,5 +122,5 @@ func principalOf(who auth.Principal, person inbox.Reader) auth.Principal {
 	for _, r := range person.Roles {
 		roles = append(roles, auth.Role(r))
 	}
-	return auth.Principal{Subject: person.Subject, Name: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy())
+	return auth.Principal{AuditRead: who.AuditRead, Subject: person.Subject, Name: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy())
 }

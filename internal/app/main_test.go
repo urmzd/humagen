@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/auth/mockidp"
-	"github.com/urmzd/warp/pkg/blob"
+	"github.com/urmzd/humagen/pkg/auth/mockidp"
+	"github.com/urmzd/humagen/pkg/blob"
 )
 
 // serve is what a server runs, behind a proxy or in a pod, so it keeps a
@@ -25,13 +25,13 @@ func TestServeSignsInWithOIDCAndSeedsNothing(t *testing.T) {
 	// A spec in the config directory that would turn on dev sign-in and
 	// declare an agent, were serve to read it.
 	home := t.TempDir()
-	t.Setenv("WARP_HOME", home)
+	t.Setenv("HUMAGEN_HOME", home)
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	if err := os.WriteFile(filepath.Join(home, "warp.yaml"), []byte(`api_version: warp/v1
+	if err := os.WriteFile(filepath.Join(home, "humagen.yaml"), []byte(`api_version: humagen/v1
 kind: System
 spec: {auth: {kind: dev}}
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: default}
 spec:
@@ -42,19 +42,19 @@ spec:
 	}
 	idp, err := mockidp.Start(mockidp.Config{
 		Enabled: true, Addr: "127.0.0.1:0",
-		ClientID: "warp", ClientSecret: "web-secret", RedirectURIs: []string{"http://127.0.0.1/auth/callback"},
-		Audience: "warp", Tenant: "default",
-		Machines: []mockidp.Machine{{ClientID: "probe", Secret: "probe-secret", Scopes: []string{"warp:agents:read"}}},
+		ClientID: "humagen", ClientSecret: "web-secret", RedirectURIs: []string{"http://127.0.0.1/auth/callback"},
+		Audience: "humagen", Tenant: "default",
+		Machines: []mockidp.Machine{{ClientID: "probe", Secret: "probe-secret", Scopes: []string{"humagen:agents:read"}}},
 		Log:      slog.New(slog.DiscardHandler),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = idp.Close() }()
-	t.Setenv("WARP_OIDC_ISSUER", idp.Issuer())
-	t.Setenv("WARP_OIDC_CLIENT_ID", "warp")
-	t.Setenv("WARP_OIDC_CLIENT_SECRET", "web-secret")
-	t.Setenv("WARP_OIDC_AUDIENCE", "warp")
+	t.Setenv("HUMAGEN_OIDC_ISSUER", idp.Issuer())
+	t.Setenv("HUMAGEN_OIDC_CLIENT_ID", "humagen")
+	t.Setenv("HUMAGEN_OIDC_CLIENT_SECRET", "web-secret")
+	t.Setenv("HUMAGEN_OIDC_AUDIENCE", "humagen")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -163,7 +163,7 @@ func TestStorageFlags(t *testing.T) {
 	} else if _, ok := s.(*blob.Disk); !ok {
 		t.Fatalf("-storage-dir = %T", s)
 	}
-	s, err := open(map[string]string{s3AccessEnv: "k", s3SecretEnv: "s"}, "-storage=s3", "-s3-bucket=warp", "-s3-endpoint=http://127.0.0.1:9000", "-s3-region=auto", "-s3-path-style", "-s3-prefix=prod")
+	s, err := open(map[string]string{s3AccessEnv: "k", s3SecretEnv: "s"}, "-storage=s3", "-s3-bucket=humagen", "-s3-endpoint=http://127.0.0.1:9000", "-s3-region=auto", "-s3-path-style", "-s3-prefix=prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestStorageFlags(t *testing.T) {
 		args []string
 	}{
 		"no bucket":          {nil, []string{"-storage=s3"}},
-		"half a credential":  {map[string]string{s3AccessEnv: "k"}, []string{"-storage=s3", "-s3-bucket=warp"}},
+		"half a credential":  {map[string]string{s3AccessEnv: "k"}, []string{"-storage=s3", "-s3-bucket=humagen"}},
 		"an unknown storage": {nil, []string{"-storage=tape"}},
 	} {
 		if _, err := open(c.env, c.args...); err == nil {

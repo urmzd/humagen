@@ -112,14 +112,14 @@ different input is an error. Tool call IDs also correlate parallel helper
 steps with their runs, independent of start order.
 
 `Access.Spawn` makes the unified tool available automatically. Per-target
-`tag_<agent>` tools are replaced in Warp. The explicitly configured
+`tag_<agent>` tools are replaced in Humagen. The explicitly configured
 `delegate_task` tool and the calls HTTP endpoint retain their legacy `text`
 shorthand, normalized to a user message and a text return contract. The HTTP
 endpoint also accepts the structured contract under `input`.
 
 ## Runtime dependency
 
-Warp depends on the fiber release `v0.20.0`. It carries:
+Humagen depends on the fiber release `v0.20.0`. It carries:
 - the call extension (PR #17);
 - model fallbacks with `fallback_on`, and per-call approvals
   (`agentrt.Approving`, PRs #32 and #33);

@@ -1,4 +1,4 @@
-import type { PrimitiveProps } from "@warp/primitives";
+import type { PrimitiveProps } from "@humagen/primitives";
 
 /**
  * Slack's mention syntax as a reader sees it: `<@U123|dana>` → "@dana",

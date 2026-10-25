@@ -1,6 +1,6 @@
-import { type ActionHandler, ActionId, type ActionPayload } from "@warp/core";
-import type { ButtonProps, ConfirmSpec, PrimitiveProps } from "@warp/primitives";
-import { Button as ButtonPrimitive, Menu as MenuPrimitive } from "@warp/primitives";
+import { type ActionHandler, ActionId, type ActionPayload, type UiAction } from "@humagen/core";
+import type { ButtonProps, ConfirmSpec, PrimitiveProps } from "@humagen/primitives";
+import { Button as ButtonPrimitive, Menu as MenuPrimitive } from "@humagen/primitives";
 import {
   Children,
   createContext,
@@ -38,6 +38,10 @@ export function buttonClass(variant: keyof typeof buttonVariant = "default") {
  * button in place, so "Edit" and "Cancel" can't sit next to "Yes, continue".
  */
 const ConfirmContext = createContext<((spec: ConfirmSpec, run: () => void) => void) | null>(null);
+const ChoiceContext = createContext<{
+  selected: UiAction | null;
+  select: (action: UiAction | null) => void;
+} | null>(null);
 
 /** Actions that need words, not a click: the web asks for them inline. */
 const TEXT_ACTIONS: Partial<Record<string, string>> = {
@@ -125,13 +129,14 @@ export function Button({
 }: ButtonProps) {
   const onAction = useContext(ActionContext);
   const askConfirm = useContext(ConfirmContext);
+  const choice = useContext(ChoiceContext);
   const [inlineConfirm, setInlineConfirm] = useState(false);
   const [typing, setTyping] = useState(false);
   // What was typed for an action that takes words, kept while the box is closed.
   const [draft, setDraft] = useState("");
   const group = useGroup(collects);
   const dense = useContext(DenseContext);
-  const cls = `${buttonClass(style ?? "default")} ${dense ? "h-6 px-2" : ""}`;
+  const cls = `${buttonClass(style ?? "default")} ${dense ? "h-6 px-2" : ""} aria-pressed:border-aui-accent aria-pressed:bg-aui-accent/10`;
 
   if (url) {
     return (
@@ -182,9 +187,18 @@ export function Button({
         aria-label={accessibilityLabel ?? (shown !== label ? shown : undefined)}
         aria-haspopup={confirm ? "dialog" : undefined}
         aria-expanded={prompt ? typing : undefined}
+        aria-pressed={
+          choice && action?.id === ActionId.clarify
+            ? choice.selected?.payload.option === action.payload.option
+            : undefined
+        }
         disabled={group ? group.selected.length === 0 : undefined}
         onClick={() => {
-          if (prompt) return setTyping(!typing);
+          if (choice && action?.id === ActionId.clarify) return choice.select(action);
+          if (prompt) {
+            choice?.select(null);
+            return setTyping(!typing);
+          }
           if (!confirm) return fire();
           if (askConfirm) askConfirm(confirm, () => fire());
           else setInlineConfirm(true);
@@ -292,7 +306,9 @@ function keepSplitsTogether(children: ReactNode): ReactNode[] {
   return out;
 }
 
-export function Actions({ children, blockId }: PrimitiveProps["Actions"]) {
+export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Actions"]) {
+  const onAction = useContext(ActionContext);
+  const [selected, setSelected] = useState<UiAction | null>(null);
   const suppressed = useContext(SuppressContext);
   const [pending, setPending] = useState<{ spec: ConfirmSpec; run: () => void } | null>(null);
   const row = useRef<HTMLFieldSetElement>(null);
@@ -328,7 +344,26 @@ export function Actions({ children, blockId }: PrimitiveProps["Actions"]) {
         />
       ) : (
         <ConfirmContext.Provider value={(spec, run) => setPending({ spec, run })}>
-          {keepSplitsTogether(children)}
+          <ChoiceContext.Provider value={confirmChoice ? { selected, select: setSelected } : null}>
+            {keepSplitsTogether(children)}
+          </ChoiceContext.Provider>
+          {confirmChoice && (
+            <div className="flex basis-full min-w-0 flex-wrap items-center justify-between gap-3 border-aui-border border-t pt-3">
+              {confirmChoice.hint && (
+                <p className="min-w-0 flex-1 text-aui-2xs text-aui-muted">{confirmChoice.hint}</p>
+              )}
+              <button
+                type="button"
+                className={buttonClass("primary")}
+                disabled={!selected}
+                onClick={() => {
+                  if (selected) onAction(selected);
+                }}
+              >
+                {confirmChoice.label}
+              </button>
+            </div>
+          )}
         </ConfirmContext.Provider>
       )}
     </fieldset>

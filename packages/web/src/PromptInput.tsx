@@ -1,4 +1,4 @@
-import type { PromptConfig } from "@warp/core";
+import type { PromptConfig } from "@humagen/core";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
@@ -7,7 +7,7 @@ import {
   PaperclipIcon,
   XIcon,
   ZapIcon,
-} from "@warp/render-web";
+} from "@humagen/render-web";
 import {
   type FormEvent,
   type KeyboardEvent,

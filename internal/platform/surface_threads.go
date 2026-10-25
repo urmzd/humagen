@@ -8,11 +8,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // A thread on a client's surface, such as a Slack thread, is one thread here.
@@ -209,7 +209,7 @@ func closedForAll(m inbox.Message) bool {
 }
 
 // seedOf is the announcement a thread was started from, as it stands when
-// the thread is read: who posted it, a person, an agent or warp itself for
+// the thread is read: who posted it, a person, an agent or humagen itself for
 // a release's notes, and what it says, or only that it was withdrawn. It is
 // read under the thread's own read rule, which is the announcement's
 // project's, as announcementAt filed it.

@@ -13,19 +13,20 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/warp/internal/httpapi"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/auth/mockidp"
-	"github.com/urmzd/warp/pkg/authz"
+	"github.com/urmzd/humagen/internal/httpapi"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/auth/mockidp"
+	"github.com/urmzd/humagen/pkg/authz"
 )
 
 // policyEnv names the file holding the authorization policy. Unset means the
 // built-in policy. See docs/authorization.md.
-const policyEnv = "WARP_AUTHZ_POLICY"
+const policyEnv = "HUMAGEN_AUTHZ_POLICY"
 
 // mockAudience is the API audience the mock provider issues access tokens for.
-const mockAudience = "api://warp-dev"
+const mockAudience = "api://humagen-dev"
 
 // groupFlags are the -admin-group, -manager-group, -operator-group and
 // -viewer-group flags,
@@ -36,10 +37,24 @@ type groupFlags struct {
 
 func addGroupFlags(fs *flag.FlagSet) groupFlags {
 	return groupFlags{
-		admin:    fs.String("admin-group", "warp-admins", "identity provider group granted the admin role"),
-		manager:  fs.String("manager-group", "warp-managers", "identity provider group granted the manager role"),
-		operator: fs.String("operator-group", "warp-operators", "identity provider group granted the operator role"),
-		viewer:   fs.String("viewer-group", "warp-viewers", "identity provider group granted the viewer role"),
+		admin:    fs.String("admin-group", "humagen-admins", "identity provider group granted the admin role"),
+		manager:  fs.String("manager-group", "humagen-managers", "identity provider group granted the manager role"),
+		operator: fs.String("operator-group", "humagen-operators", "identity provider group granted the operator role"),
+		viewer:   fs.String("viewer-group", "humagen-viewers", "identity provider group granted the viewer role"),
+	}
+}
+
+// noteOldGroups notes the old default groups granted, which an identity
+// provider may hold for another product of the same name.
+func noteOldGroups(groupRoles map[string]auth.Role, n *legacy.Notes) {
+	var old []string
+	for _, g := range legacy.GroupNames() {
+		if _, ok := groupRoles[g]; ok {
+			old = append(old, g)
+		}
+	}
+	if len(old) > 0 {
+		n.Add("the default groups also grant %s, the old names; name your groups in auth.groups or a policy file", strings.Join(old, ", "))
 	}
 }
 
@@ -52,6 +67,15 @@ func loadPolicy(fs *flag.FlagSet, g groupFlags, getenv func(string) string) (*au
 	all := map[string]auth.Role{*g.admin: auth.Admin, *g.manager: auth.Manager, *g.operator: auth.Operator, *g.viewer: auth.Viewer}
 	path := strings.TrimSpace(getenv(policyEnv))
 	if path == "" {
+		// The old default groups keep their roles while the defaults are in
+		// force: for each role whose flag was not set.
+		set := map[string]bool{}
+		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+		for group, role := range legacy.Groups {
+			if !set[role+"-group"] {
+				all[group] = auth.Role(role)
+			}
+		}
 		return auth.DefaultPolicy(), all, nil
 	}
 	pol, err := auth.LoadPolicyFile(path)
@@ -161,9 +185,9 @@ func newAuthn(ctx context.Context, c authConfig) (authn *httpapi.Authn, stop fun
 
 	case "oidc", "okta":
 		v, err := auth.NewVerifier(ctx, auth.OIDCConfig{
-			Issuer:      c.getenv("WARP_OIDC_ISSUER"),
-			ClientID:    c.getenv("WARP_OIDC_CLIENT_ID"),
-			Audience:    c.getenv("WARP_OIDC_AUDIENCE"),
+			Issuer:      c.getenv("HUMAGEN_OIDC_ISSUER"),
+			ClientID:    c.getenv("HUMAGEN_OIDC_CLIENT_ID"),
+			Audience:    c.getenv("HUMAGEN_OIDC_AUDIENCE"),
 			Tenant:      c.tenant,
 			TenantClaim: c.tenantClaim,
 			GroupsClaim: c.groups,
@@ -171,9 +195,9 @@ func newAuthn(ctx context.Context, c authConfig) (authn *httpapi.Authn, stop fun
 			GroupRoles:  c.groupRoles,
 		})
 		if err != nil {
-			return nil, stop, fmt.Errorf("%w (set WARP_OIDC_ISSUER, WARP_OIDC_CLIENT_ID, WARP_OIDC_CLIENT_SECRET and WARP_OIDC_AUDIENCE, or use -auth=dev or -auth=mock locally)", err)
+			return nil, stop, fmt.Errorf("%w (set HUMAGEN_OIDC_ISSUER, HUMAGEN_OIDC_CLIENT_ID, HUMAGEN_OIDC_CLIENT_SECRET and HUMAGEN_OIDC_AUDIENCE, or use -auth=dev or -auth=mock locally)", err)
 		}
-		authn, err := httpapi.NewAuthn(v, c.getenv("WARP_OIDC_CLIENT_ID"), c.getenv("WARP_OIDC_CLIENT_SECRET"), c.publicURL,
+		authn, err := httpapi.NewAuthn(v, c.getenv("HUMAGEN_OIDC_CLIENT_ID"), c.getenv("HUMAGEN_OIDC_CLIENT_SECRET"), c.publicURL,
 			[]string{"openid", "profile", "email", c.groups})
 		return authn, stop, err
 
@@ -235,7 +259,7 @@ func mockAuthn(ctx context.Context, c authConfig) (*httpapi.Authn, func(), error
 		stop()
 		return nil, func() {}, err
 	}
-	c.log.Warn("mock sign-in: WARP_OIDC_* is ignored. Sign in with no password as any persona.",
+	c.log.Warn("mock sign-in: HUMAGEN_OIDC_* is ignored. Sign in with no password as any persona.",
 		"sign_in", strings.TrimSuffix(c.publicURL, "/")+"/auth/login", "issuer", idp.Issuer(), "audience", mockAudience)
 	return authn, stop, nil
 }
@@ -263,10 +287,10 @@ func readPersonas(path string) ([]mockidp.Person, []mockidp.Machine, error) {
 	return p.People, p.Machines, nil
 }
 
-// runAuthz is "warp authz": checking a policy file, and explaining a
+// runAuthz is "humagen authz": checking a policy file, and explaining a
 // decision for a token's claims the way the server would make it.
 func runAuthz(args []string, stdout io.Writer, getenv func(string) string) error {
-	const usage = "usage: warp authz check FILE | authz explain [-claims FILE] [-tenant-claim C] [-groups-claim C] [-*-group G] PERMISSION"
+	const usage = "usage: humagen authz check FILE | authz explain [-claims FILE] [-tenant-claim C] [-groups-claim C] [-*-group G] PERMISSION"
 	if len(args) == 0 {
 		return errors.New(usage)
 	}

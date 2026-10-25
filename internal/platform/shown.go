@@ -5,10 +5,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/people"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // How a thread shows the people in it.

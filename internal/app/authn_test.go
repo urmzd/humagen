@@ -16,17 +16,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/internal/httpapi"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/auth/authtest"
-	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/humagen/internal/httpapi"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/auth/authtest"
+	"github.com/urmzd/humagen/pkg/call"
 )
 
 func env(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 
 func TestTailscaleServeAuth(t *testing.T) {
-	base := authConfig{mode: "tailscale", addr: "127.0.0.1:8080", publicURL: "https://warp.example.ts.net", tenant: "acme", policy: auth.DefaultPolicy()}
+	base := authConfig{mode: "tailscale", addr: "127.0.0.1:8080", publicURL: "https://humagen.example.ts.net", tenant: "acme", policy: auth.DefaultPolicy()}
 	a, stop, err := newAuthn(context.Background(), base)
 	stop()
 	if err != nil {
@@ -51,19 +52,19 @@ func TestTailscaleServeAuth(t *testing.T) {
 func TestOktaAlias(t *testing.T) {
 	issuer := authtest.New(t)
 	a, stop, err := newAuthn(context.Background(), authConfig{
-		mode: "okta", publicURL: "https://warp.example.com", tenant: "acme", groups: "groups", policy: auth.DefaultPolicy(),
+		mode: "okta", publicURL: "https://humagen.example.com", tenant: "acme", groups: "groups", policy: auth.DefaultPolicy(),
 		getenv: env(map[string]string{
-			"WARP_OIDC_ISSUER":        issuer.URL,
-			"WARP_OIDC_CLIENT_ID":     "web",
-			"WARP_OIDC_CLIENT_SECRET": "secret",
-			"WARP_OIDC_AUDIENCE":      "api://warp",
+			"HUMAGEN_OIDC_ISSUER":        issuer.URL,
+			"HUMAGEN_OIDC_CLIENT_ID":     "web",
+			"HUMAGEN_OIDC_CLIENT_SECRET": "secret",
+			"HUMAGEN_OIDC_AUDIENCE":      "api://humagen",
 		}),
 	})
 	stop()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Verifier == nil || a.OAuth.ClientID != "web" || a.OAuth.RedirectURL != "https://warp.example.com/auth/callback" {
+	if a.Verifier == nil || a.OAuth.ClientID != "web" || a.OAuth.RedirectURL != "https://humagen.example.com/auth/callback" {
 		t.Fatalf("Okta did not use the OIDC flow: %+v", a)
 	}
 }
@@ -206,11 +207,11 @@ func TestMockSignInUnderAPolicyFile(t *testing.T) {
 role viewer  { allow read on * }
 role auditor extends viewer { deny read on billing }
 grant viewer  to anyone
-grant auditor to group "warp-admins"
+grant auditor to group "humagen-admins"
 `)
 	m := signIn(t, mockServer(t, path), "mock-admin")
 	// With a policy file, the default group flags no longer map
-	// warp-admins to admin: the file decides.
+	// humagen-admins to admin: the file decides.
 	if !slices.Equal(m.Principal.Roles, []auth.Role{auth.Viewer, "auditor"}) {
 		t.Fatalf("roles %v", m.Principal.Roles)
 	}
@@ -249,7 +250,8 @@ func TestGroupFlagsWithAPolicyFile(t *testing.T) {
 		want    int
 		wantErr bool
 	}{
-		"without a file, the defaults apply": {"", nil, 4, false},
+		// The four defaults and their four old names.
+		"without a file, the defaults apply": {"", nil, 8, false},
 		"with a file, the defaults do not":   {path, nil, 0, false},
 		"with a file, an explicit flag does": {path, []string{"-viewer-group", "readers"}, 1, false},
 		"and must name a declared role":      {path, []string{"-admin-group", "ops"}, 1, true},
@@ -274,6 +276,56 @@ func TestGroupFlagsWithAPolicyFile(t *testing.T) {
 	}
 }
 
+// The old default groups keep their roles while the defaults are in force:
+// for each role whose flag was not set, and never with a policy file.
+func TestTheOldDefaultGroupsKeepTheirRoles(t *testing.T) {
+	path := writeFile(t, "p.authz", "role viewer { allow read on * }\nrole admin { allow * on * }")
+	for name, tc := range map[string]struct {
+		file string
+		args []string
+		want map[string]auth.Role
+	}{
+		"no flags":    {"", nil, map[string]auth.Role{"humagen-admins": auth.Admin, "warp-admins": auth.Admin, "warp-viewers": auth.Viewer, "humagen-viewers": auth.Viewer}},
+		"admin flag":  {"", []string{"-admin-group", "ops"}, map[string]auth.Role{"ops": auth.Admin, "warp-viewers": auth.Viewer}},
+		"policy file": {path, nil, map[string]auth.Role{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+			g := addGroupFlags(fs)
+			if err := fs.Parse(tc.args); err != nil {
+				t.Fatal(err)
+			}
+			_, roles, err := loadPolicy(fs, g, env(map[string]string{policyEnv: tc.file}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for group, role := range tc.want {
+				if roles[group] != role {
+					t.Errorf("%s is %q, want %q (%v)", group, roles[group], role, roles)
+				}
+			}
+			if tc.file != "" && len(roles) != 0 {
+				t.Errorf("with a policy file, the defaults granted %v", roles)
+			}
+			if _, ok := roles["warp-admins"]; ok && slices.Contains(tc.args, "-admin-group") {
+				t.Error("an explicit -admin-group still granted warp-admins")
+			}
+		})
+	}
+	var buf bytes.Buffer
+	n := legacy.NewNotes(&buf)
+	noteOldGroups(map[string]auth.Role{"warp-admins": auth.Admin, "humagen-admins": auth.Admin}, n)
+	noteOldGroups(map[string]auth.Role{"warp-admins": auth.Admin}, n)
+	if got := strings.Count(buf.String(), "\n"); got != 1 || !strings.Contains(buf.String(), "warp-admins") {
+		t.Errorf("notes %q", buf.String())
+	}
+	buf.Reset()
+	noteOldGroups(map[string]auth.Role{"humagen-admins": auth.Admin}, legacy.NewNotes(&buf))
+	if buf.Len() != 0 {
+		t.Errorf("noted %q with no old group", buf.String())
+	}
+}
+
 func TestMockAndDevRefusals(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.DiscardHandler)
@@ -284,7 +336,7 @@ func TestMockAndDevRefusals(t *testing.T) {
 	for name, c := range map[string]authConfig{
 		"mock on every interface":          {mode: "mock", addr: "0.0.0.0:8080", publicURL: "http://127.0.0.1:8080", mockAddr: "127.0.0.1:0"},
 		"mock provider on every interface": {mode: "mock", addr: "127.0.0.1:8080", publicURL: "http://127.0.0.1:8080", mockAddr: "0.0.0.0:0"},
-		"mock with a public url":           {mode: "mock", addr: "127.0.0.1:8080", publicURL: "https://warp.example.com", mockAddr: "127.0.0.1:0"},
+		"mock with a public url":           {mode: "mock", addr: "127.0.0.1:8080", publicURL: "https://humagen.example.com", mockAddr: "127.0.0.1:0"},
 		"dev without an admin role":        {mode: "dev", addr: "127.0.0.1:8080", policy: noAdmin},
 		"unknown mode":                     {mode: "open"},
 	} {
@@ -303,7 +355,7 @@ func TestMockAndDevRefusals(t *testing.T) {
 }
 
 func TestMockPersonasFile(t *testing.T) {
-	path := writeFile(t, "people.json", `{"people": [{"subject": "s1", "name": "Sam", "groups": ["warp-admins"]}]}`)
+	path := writeFile(t, "people.json", `{"people": [{"subject": "s1", "name": "Sam", "groups": ["humagen-admins"]}]}`)
 	people, machines, err := readPersonas(path)
 	if err != nil || len(people) != 1 || people[0].Subject != "s1" || len(machines) != 0 {
 		t.Fatalf("got %v %v %v", people, machines, err)
@@ -350,12 +402,12 @@ grant auditor to claim department = "finance"
 	}
 
 	// With no policy file it explains the built-in policy and the group flags.
-	admin := writeFile(t, "admin.json", `{"sub": "00u2", "groups": ["warp-admins"]}`)
+	admin := writeFile(t, "admin.json", `{"sub": "00u2", "groups": ["humagen-admins"]}`)
 	out.Reset()
 	if err := runAuthz([]string{"explain", "-claims", admin, "agents:write"}, &out, env(nil)); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "agents:write: allowed") || !strings.Contains(out.String(), `grant admin to group "warp-admins"`) {
+	if !strings.Contains(out.String(), "agents:write: allowed") || !strings.Contains(out.String(), `grant admin to group "humagen-admins"`) {
 		t.Fatalf("explain:\n%s", out.String())
 	}
 }

@@ -1,6 +1,6 @@
-import { InboxView } from "@warp/components";
-import { type ActionHandler, type InboxItem, openCount } from "@warp/core";
-import { CheckCircleIcon, WebSurface } from "@warp/render-web";
+import { InboxView } from "@humagen/components";
+import { type ActionHandler, type InboxItem, openCount } from "@humagen/core";
+import { CheckCircleIcon, WebSurface } from "@humagen/render-web";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 
 export type InboxFilter = "all" | "needs" | "alerts" | "resolved";

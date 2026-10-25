@@ -14,7 +14,8 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/inbox"
 )
 
 // Platform is what one workspace offers. Metadata.Name is its tenant.
@@ -87,8 +88,8 @@ type Workspace struct {
 	// PersonCredentials is what people may give for the tools that take
 	// their own credential.
 	PersonCredentials *PersonCredentials `json:"person_credentials,omitempty"`
-	// ReleaseNotes posts what each release of warp brings in the
-	// workspace's own inbox, from warp: the breaking changes and features
+	// ReleaseNotes posts what each release of humagen brings in the
+	// workspace's own inbox, from humagen: the breaking changes and features
 	// the changelog lists for the release this process runs, once a
 	// release. Off by default.
 	ReleaseNotes bool `json:"release_notes,omitempty"`
@@ -144,7 +145,7 @@ const maxRetentionDays = 100 * 365
 // person-scoped tool. A reference is always theirs to give, from where the
 // operator allows (System person_refs). Values are off by default.
 type PersonCredentials struct {
-	// Values lets a person store the credential itself with warp, kept as a
+	// Values lets a person store the credential itself with humagen, kept as a
 	// client's secret is. Off, they may only give a reference to where it
 	// is kept, and nothing of theirs is stored but that name.
 	Values bool `json:"values,omitempty"`
@@ -461,14 +462,45 @@ type Slack struct {
 	// deployment's display name.
 	AppName string `json:"app_name,omitempty"`
 	Command string `json:"command,omitempty"`
-	// WarpClient is how the app signs in to warp's API: a machine client of
+	// HumagenClient is how the app signs in to humagen's API: a machine client of
 	// the identity provider, whose tokens it gets and renews with client
-	// credentials. Sign-in other than dev needs it or WarpToken.
-	WarpClient *ClientCredentials `json:"warp_client,omitempty"`
-	// WarpToken is a bearer token the app calls warp's API with, given to it
-	// as WARP_TOKEN. It is not renewed, so it suits a token that does not
-	// expire; an identity provider's access tokens do, so use WarpClient.
-	WarpToken *Ref `json:"warp_token,omitempty"`
+	// credentials. Sign-in other than dev needs it or HumagenToken.
+	HumagenClient *ClientCredentials `json:"humagen_client,omitempty"`
+	// HumagenToken is a bearer token the app calls humagen's API with, given to it
+	// as HUMAGEN_TOKEN. It is not renewed, so it suits a token that does not
+	// expire; an identity provider's access tokens do, so use HumagenClient.
+	HumagenToken *Ref `json:"humagen_token,omitempty"`
+
+	// OldClient and OldToken are humagen_client and humagen_token under the
+	// names they had before the rename. A file that uses them still reads:
+	// Parse moves each into its new field, clears it and notes it, so
+	// nothing else reads or writes them.
+	OldClient *ClientCredentials `json:"warp_client,omitempty"`
+	OldToken  *Ref               `json:"warp_token,omitempty"`
+}
+
+// adoptOld moves the old fields into the new ones, refusing a file that sets
+// both names of one field. It returns a note for each old one moved.
+func (s *Slack) adoptOld() ([]string, error) {
+	if s == nil {
+		return nil, nil
+	}
+	var notes []string
+	if s.OldClient != nil {
+		if s.HumagenClient != nil {
+			return nil, fmt.Errorf("%w: surfaces.slack: humagen_client and %s, not both", ErrInvalid, legacy.SlackClient)
+		}
+		s.HumagenClient, s.OldClient = s.OldClient, nil
+		notes = append(notes, "surfaces.slack."+legacy.SlackClient+" still works; write humagen_client")
+	}
+	if s.OldToken != nil {
+		if s.HumagenToken != nil {
+			return nil, fmt.Errorf("%w: surfaces.slack: humagen_token and %s, not both", ErrInvalid, legacy.SlackToken)
+		}
+		s.HumagenToken, s.OldToken = s.OldToken, nil
+		notes = append(notes, "surfaces.slack."+legacy.SlackToken+" still works; write humagen_token")
+	}
+	return notes, nil
 }
 
 // ClientCredentials is a machine client of an identity provider: where it
@@ -481,10 +513,10 @@ type ClientCredentials struct {
 	Audience     string   `json:"audience,omitempty"`
 }
 
-// CheckSignIn reports whether the app can call warp's API under the sign-in
+// CheckSignIn reports whether the app can call humagen's API under the sign-in
 // kind auth, where empty is dev, the default. Dev needs no credential, a
 // process cannot sign in through Tailscale Serve, and every other kind needs
-// warp_client or warp_token.
+// humagen_client or humagen_token.
 func (s Slack) CheckSignIn(auth string) error {
 	switch auth {
 	case "", "dev":
@@ -492,8 +524,8 @@ func (s Slack) CheckSignIn(auth string) error {
 	case "tailscale":
 		return errors.New("the Slack app cannot sign in through Tailscale Serve; use oidc, or dev on one machine")
 	}
-	if s.WarpClient == nil && !s.WarpToken.Set() {
-		return fmt.Errorf("under %s sign-in the Slack app needs a credential for warp's API: warp_client (client credentials) or warp_token", auth)
+	if s.HumagenClient == nil && !s.HumagenToken.Set() {
+		return fmt.Errorf("under %s sign-in the Slack app needs a credential for humagen's API: humagen_client (client credentials) or humagen_token", auth)
 	}
 	return nil
 }
@@ -510,7 +542,7 @@ type GitHub struct {
 	Checks        bool     `json:"checks,omitempty"`
 	Guides        bool     `json:"guides,omitempty"`
 	Mutations     bool     `json:"mutations,omitempty"`
-	// Login is the app's own login, such as "warp[bot]". A comment that
+	// Login is the app's own login, such as "humagen[bot]". A comment that
 	// mentions it and names no agent is answered by the client's default,
 	// then by the default chain of the client's home. Left empty, only a
 	// comment that names an agent, or an auto label, starts a run.
@@ -598,16 +630,16 @@ func (p Platform) check(kinds Kinds) error {
 		if s.Command != "" && !strings.HasPrefix(s.Command, "/") {
 			return fmt.Errorf("%s: surfaces.slack.command starts with /", where)
 		}
-		if s.WarpClient != nil && s.WarpToken.Set() {
-			return fmt.Errorf("%s: surfaces.slack: warp_client or warp_token, not both", where)
+		if s.HumagenClient != nil && s.HumagenToken.Set() {
+			return fmt.Errorf("%s: surfaces.slack: humagen_client or humagen_token, not both", where)
 		}
-		if c := s.WarpClient; c != nil {
+		if c := s.HumagenClient; c != nil {
 			u, err := url.Parse(c.TokenURL)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
-				return fmt.Errorf("%s: surfaces.slack.warp_client.token_url must be an http or https URL", where)
+				return fmt.Errorf("%s: surfaces.slack.humagen_client.token_url must be an http or https URL", where)
 			}
 			if c.ClientID == "" || !c.ClientSecret.Set() {
-				return fmt.Errorf("%s: surfaces.slack.warp_client: client_id and client_secret are required", where)
+				return fmt.Errorf("%s: surfaces.slack.humagen_client: client_id and client_secret are required", where)
 			}
 		}
 	}

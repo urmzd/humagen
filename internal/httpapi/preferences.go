@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/prefs"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // Preferences are a person's own. Every route here acts on the caller and takes

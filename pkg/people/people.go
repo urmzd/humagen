@@ -5,7 +5,7 @@
 // to them, and when the policy grants a role to their subject in a server of
 // one tenant (a grant names no tenant, so with tenants from a claim it
 // records nobody). Nothing here decides who anyone is or what they may do:
-// the identity provider and the policy do. This is what the rest of warp shows and addresses them by, a
+// the identity provider and the policy do. This is what the rest of humagen shows and addresses them by, a
 // name and a handle.
 //
 // # No email
@@ -16,7 +16,7 @@
 // signs in with, and some subjects hold an address: a Tailscale login, or the
 // subject a Slack people map names. Such a subject is never shown
 // (ShownSubject), and the directory never searches subjects. A person's
-// picture is their own photo in pkg/prefs, served by warp: a picture URL from
+// picture is their own photo in pkg/prefs, served by humagen: a picture URL from
 // the identity provider is never kept, so showing the directory sends nobody
 // else a request.
 //

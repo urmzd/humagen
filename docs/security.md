@@ -100,7 +100,7 @@ policy such an agent runs on is not removed, and the refusal does not name
 the agent. A private thread is read by its participants alone.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
-`warp:projects:read` to list projects and `warp:projects:write` to make them:
+`humagen:projects:read` to list projects and `humagen:projects:write` to make them:
 `runs:*` no longer covers them.
 
 Which agents may run where is a policy the platform enforces, never an
@@ -126,7 +126,7 @@ kept as a name. A subject is kept as the identity provider gives it, since it
 is the key a person signs in with, and can hold an address: a Tailscale login
 does, and so can the subject a Slack people map names. The directory leaves
 such a subject out and never searches subjects. A picture is only one a
-person uploaded themselves, served by warp: reading the directory sends
+person uploaded themselves, served by humagen: reading the directory sends
 nobody else a request. People are recorded when they make a request holding
 any permission, when a client maps a Slack person to them, and when the
 policy grants a role to their subject, unless tenants come from a claim: a
@@ -145,8 +145,8 @@ for a tenant only if the operator listed that variable for that tenant with
 where the secret is read, and a refusal is the same whatever the reason. See
 [clients](clients.md#which-variables-a-workspace-may-reference).
 
-A machine has no role. It is issued scopes named `warp:<permission>`, for
-example `warp:runs:write`. A scope without the `warp:` prefix, or one that names
+A machine has no role. It is issued scopes named `humagen:<permission>`, for
+example `humagen:runs:write`. A scope without the `humagen:` prefix, or one that names
 no permission, grants nothing.
 
 ## Rules the code holds
@@ -329,7 +329,7 @@ no permission, grants nothing.
   detail. The identity provider's error text is never echoed.
 - **Secrets come from the environment or a reference**, never from flags.
   A spec names where a credential is kept (`env:`, `keychain:`, `op://`);
-  warp reads it when it is used and does not write it down.
+  Humagen reads it when it is used and does not write it down.
 - **Every change is logged** with subject, kind, tenant, method and path.
   Denials are logged with the permission that was missing.
 
@@ -339,22 +339,22 @@ An MCP tool provider is reached with one of two credentials, as its
 `credential_scope` says ([spec](spec.md#tools-that-act-as-you)): its own
 shared `credential`, the same for every run, or the credential of the person
 the run acts for. fiber reaches a person-scoped provider only with the
-credential warp answers for the actor on the run's record, on a session of
+credential Humagen answers for the actor on the run's record, on a session of
 that person's own, and never with the shared one: such a provider has none.
 fiber redacts every resolved credential, shared or a person's, from tool
-results, errors and logs; warp's tests check each person's token is absent
+results, errors and logs; Humagen's tests check each person's token is absent
 from answers, run events, what the model was sent and the server log.
 
 | The run | Acts for |
 |---|---|
 | asked in the console, or through the API with a person's sign-in | that person |
 | asked by a machine for a person its client maps (`act_as`) | the mapped person |
-| asked about with the Slack app's message shortcut | the person who pressed it, when the message is theirs. On anyone else's message, or a bot's, nobody: the app asks as itself, since the message's words are the whole request and were not the presser's. Asking as itself acts for whoever the app's own credential is, so where that is a person, as under a dev sign-in (an empty `WARP_TOKEN` against `-auth=dev`, where every request is `dev`'s), it acts for that person. A mention in a channel thread differs: the thread's messages go ahead of the asker's own words, each with who wrote it, and the run acts for the asker, who asked there |
+| asked about with the Slack app's message shortcut | the person who pressed it, when the message is theirs. On anyone else's message, or a bot's, nobody: the app asks as itself, since the message's words are the whole request and were not the presser's. Asking as itself acts for whoever the app's own credential is, so where that is a person, as under a dev sign-in (an empty `HUMAGEN_TOKEN` against `-auth=dev`, where every request is `dev`'s), it acts for that person. A mention in a channel thread differs: the thread's messages go ahead of the asker's own words, each with who wrote it, and the run acts for the asker, who asked there |
 | raised by a Slack client's connector | the one person the team's enabled Slack clients map the Slack user to; none, or two different people, is nobody |
 | started by a message in a shared thread: an agent it tags, `@auto`, or the default it inherits | the person who posted the message, or the person a client's credential posted it for (`act_as`), and never another participant. Like a mention in a Slack channel thread, the run is sent the room up to the message, what others said there each with who said it, ahead of the poster's own words, as it reads a tool's result: a request someone else made in the thread is acted on with the poster's credentials only when the poster's own words ask for it, as "go ahead" does. Each earlier turn is one line, its line breaks made spaces, after who took it: a person by name and by handle, which no one else has, an agent marked as one. The room is fenced off from the poster's words, which follow with who posted them, so no one can write a line that reads as the poster's, nor pass for them by display name, which anyone may share and which may be an agent's (`TestNoOneInTheRoomPutsWordsInThePostersMouth`). What the run finds is posted in the thread, which everyone who reads the project reads. A failed answer is retried only by the poster, from their inbox, as an answer to the same message; a room offers no Retry or Regenerate of its own. A follow-up asked through the API after a turn in such a thread acts for whoever asks it, and is sent the room the same way: each earlier follow-up with who asked it, or as acting for nobody, and its own words with who asks them (`TestAFollowUpInARoomNamesWhoAskedEachTurn`) |
-| Run Now on a schedule | whoever pressed it, when they wrote what it runs: whoever last changed its text, or its creator while nobody has, and nobody else has since chosen its agent or its project, whose instructions and notes go ahead of its text. Saving a schedule without changing its text writes none of it, so moving someone else's to another time does not make it yours. Anyone with `schedules:write` may change a schedule's words, so anyone else's press acts for nobody, as the schedule's own clock does: one person's words never run with another's credential, nor on an agent or in a project someone else chose for them. What a project itself says, its instructions and notes, is still written by whoever may change that project, as for every turn filed in it. A schedule edited before warp kept who wrote it acts for nobody until its text is written again |
+| Run Now on a schedule | whoever pressed it, when they wrote what it runs: whoever last changed its text, or its creator while nobody has, and nobody else has since chosen its agent or its project, whose instructions and notes go ahead of its text. Saving a schedule without changing its text writes none of it, so moving someone else's to another time does not make it yours. Anyone with `schedules:write` may change a schedule's words, so anyone else's press acts for nobody, as the schedule's own clock does: one person's words never run with another's credential, nor on an agent or in a project someone else chose for them. What a project itself says, its instructions and notes, is still written by whoever may change that project, as for every turn filed in it. A schedule edited before Humagen kept who wrote it acts for nobody until its text is written again |
 | Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person: in the inbox signed in as themselves, where anyone else is not offered Retry (the card says only that person can retry it) and is refused (403), and in the Slack app by a Slack person its client maps to them, asked for with `act_as`, where anyone else, an operator included, is refused. So one person's words never run with another's credential, nor a person's credential on someone else's choice. The exception is a turn the Slack app asked as itself, which it asks again the same way, through the app, by the person who asked or an operator: where the app's own credential is a person, as under a dev sign-in, such a turn acted for that person, and its retry acts for them again. A turn that acted for nobody is retried for nobody: in the inbox by anyone with `runs:write`, in the Slack app by the person who asked or an operator, and only an operator once a restart has made the app forget who asked. Each person's retry is a run of its own, and pressing again joins it |
-| Retry or Regenerate in a console conversation | the person pressing it, as anything they send there, so each is offered only on a turn that acted for them: on anyone else's, or one that acted for nobody, neither is offered, and a failed turn says why instead. A turn recorded before warp said whom a run acts for counts as the person's who asked it under their own name from the console or the API, unless its words were someone else's: an earlier turn's at the same point, asked by anyone else, which is what the console's Retry and Regenerate asked then. One a machine asked for a person (the Slack app's `act_as`, its message shortcut included) and a retry warp asked for nobody count as nobody's |
+| Retry or Regenerate in a console conversation | the person pressing it, as anything they send there, so each is offered only on a turn that acted for them: on anyone else's, or one that acted for nobody, neither is offered, and a failed turn says why instead. A turn recorded before Humagen said whom a run acts for counts as the person's who asked it under their own name from the console or the API, unless its words were someone else's: an earlier turn's at the same point, asked by anyone else, which is what the console's Retry and Regenerate asked then. One a machine asked for a person (the Slack app's `act_as`, its message shortcut included) and a retry Humagen asked for nobody count as nobody's |
 | asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, a call from another agent, GitHub | nobody |
 
 A person connects their own credential at `PUT /api/me/credentials/{tool}`
@@ -378,7 +378,7 @@ kinds, and they are kept differently:
   subjects are written alike), and no two starts may share a place,
   within a tenant or across two, so no reference is under two people's
   starts. Nothing is listed by default, so nobody may reference anything
-  until the operator says where. An `env:` start names a `WARP_` variable
+  until the operator says where. An `env:` start names a `HUMAGEN_` variable
   and never a sign-in secret, as a client's reference must. The binding is
   only as good as the place: keep each person's items under their exact
   subject, in a vault, keychain service or variable prefix that holds
@@ -386,13 +386,13 @@ kinds, and they are kept differently:
   is not read when it is given, so connecting one says nothing about whether
   it names anything, and a refused reference gets one message whatever the
   reason. In a container the server's access is its environment alone, so
-  `warp deploy` refuses a `keychain:` or `op://` start for a compose or
+  `humagen deploy` refuses a `keychain:` or `op://` start for a compose or
   kubernetes target ([Deploying it](spec.md#deploying-it)).
 - **A value is stored.** Only where the Platform document sets
   `workspace.person_credentials.values: true`, which is off by default. It is
   kept with the same protections a client's secret has: in the same secrets
   store, apart from the record, never returned by any route, never written to
-  a log, and forgotten when it is removed or replaced by a reference. warp
+  a log, and forgotten when it is removed or replaced by a reference. Humagen
   does not encrypt it: with `-state=postgres` it is in the database as
   written, so guard the database as you would the credentials.
 
@@ -442,7 +442,7 @@ reach that person's tools with that person's credential
 without an identity provider. The server refuses to start in this mode on any
 address that is not loopback. Never put it behind a proxy.
 
-It is `warp start`'s default, for a laptop. `warp serve` signs in with OIDC
+It is `humagen start`'s default, for a laptop. `humagen serve` signs in with OIDC
 unless a flag or the spec's System document says otherwise; a System document
 that names no `auth.kind` means `dev`, so a server's spec names one.
 
@@ -459,37 +459,37 @@ else. It logs a warning at start and its page says what it is. See
 1. Create an **OIDC web application**. Sign-in redirect URI:
    `<public-url>/auth/callback`. Note the client ID and secret.
 2. On the **authorization server** (for example `default`), set the audience
-   to a value of your choice, such as `api://warp`.
+   to a value of your choice, such as `api://humagen`.
 3. Add a **groups claim** named `groups` to both ID and access tokens, filtered
    to the platform's groups.
-4. Create the groups `warp-admins`, `warp-managers`, `warp-operators` and
-   `warp-viewers`, and
+4. Create the groups `humagen-admins`, `humagen-managers`, `humagen-operators` and
+   `humagen-viewers`, and
    assign people.
 5. For each machine, create an **API services application** and grant it only
-   the `warp:` scopes it needs. Add those scopes to the authorization server.
+   the `humagen:` scopes it needs. Add those scopes to the authorization server.
 
 ```sh
-export WARP_OIDC_ISSUER="https://<org>.okta.com/oauth2/default"
-export WARP_OIDC_CLIENT_ID="<web app client id>"
-export WARP_OIDC_CLIENT_SECRET="<from your secret store>"
-export WARP_OIDC_AUDIENCE="api://warp"
-warp serve -public-url https://warp.example.com
+export HUMAGEN_OIDC_ISSUER="https://<org>.okta.com/oauth2/default"
+export HUMAGEN_OIDC_CLIENT_ID="<web app client id>"
+export HUMAGEN_OIDC_CLIENT_SECRET="<from your secret store>"
+export HUMAGEN_OIDC_AUDIENCE="api://humagen"
+humagen serve -public-url https://humagen.example.com
 ```
 
 Any OpenID Connect provider works the same way. Group names, the groups claim
 and a per-caller tenant claim are flags: see `serve -h`.
 
 `-auth=okta` is an alias for `-auth=oidc` and uses the same environment variables.
-Opening the console automatically starts sign-in. Warp does not send
+Opening the console automatically starts sign-in. Humagen does not send
 `prompt=login` or `max_age`, so an existing Okta session can satisfy the flow
 without another password prompt, subject to the organization's Okta policy.
 See [Okta session cookies](https://developer.okta.com/docs/guides/session-cookie/main/).
 
 ## Tailscale: no application sign-in
 
-Run Warp behind [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
+Run Humagen behind [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
 Serve authenticates the tailnet user on every request. No OIDC application or
-Warp session cookie is needed.
+Humagen session cookie is needed.
 
 Create `/etc/warp/tailnet.authz`, granting specific login names:
 
@@ -501,9 +501,9 @@ grant admin to subject "tailscale:operator@example.com"
 ```
 
 ```sh
-export WARP_AUTHZ_POLICY=/etc/warp/tailnet.authz
-warp serve -auth=tailscale -addr 127.0.0.1:8080 \
-  -public-url https://warp.your-tailnet.ts.net -tenant acme \
+export HUMAGEN_AUTHZ_POLICY=/etc/warp/tailnet.authz
+humagen serve -auth=tailscale -addr 127.0.0.1:8080 \
+  -public-url https://humagen.your-tailnet.ts.net -tenant acme \
   -web apps/web/dist
 # In another terminal on the same host:
 tailscale serve --bg http://127.0.0.1:8080
@@ -522,7 +522,7 @@ peers, to another host, with bearer credentials, or without a user identity
 are refused. Funnel traffic and tagged devices carry no Serve user identity
 and cannot sign in. Display names support Serve's RFC 2047 encoding.
 
-Signing out clears Warp cookies but cannot end the device's Tailscale
+Signing out clears Humagen cookies but cannot end the device's Tailscale
 identity. Reloading the console signs the user in again. Remove the policy
 grant or tailnet access to revoke access. This mode does not accept OIDC
 machine tokens; use OIDC mode for those deployments.
@@ -633,7 +633,7 @@ by none that reaches a person's, is answered by whoever `answerers` and
 a called agent's for what a called run asks. When it leaves out the person
 whose credentials the answer may reach, nobody may answer its reply or
 choice: the question is addressed to that person, the runtime refuses them,
-and warp refuses everyone else. The run waits until the question expires (a
+and Humagen refuses everyone else. The run waits until the question expires (a
 day by default) and takes its default, or someone stops it, the same
 fail-closed outcome as `approvers` naming only the person who asked, without
 `self_approval`. On an agent granted a person-scoped tool provider, and on
@@ -679,15 +679,15 @@ that kind.
   person-scoped tool.
 - Dictation uses the browser's speech recognition. In Chrome that sends audio
   to the browser vendor's service, not to this server.
-- No OAuth to third parties: nobody signs in to a third party through warp.
+- No OAuth to third parties: nobody signs in to a third party through Humagen.
   A shared MCP server's credential is a reference the spec names, read when a
   session opens. A person connects a tool with a reference or a token they
-  got elsewhere, and warp keeps no refresh token. A person's value is kept in
+  got elsewhere, and Humagen keeps no refresh token. A person's value is kept in
   the clear in the store client secrets use: there is no encrypted store yet.
 - Only MCP tools act as a person. The Slack and GitHub surfaces' own actions
   and deliveries still use their client's token, whoever the run acts for.
 - A rotated secret behind an unchanged reference is not noticed by an open
-  session until the reference, the secret warp answers or the provider's
+  session until the reference, the secret Humagen answers or the provider's
   record changes, as fiber documents.
 - A run another agent called acts for nobody, so it gets no tools that act as
   a person, even when the person who started the tree has connected them. A
@@ -705,3 +705,9 @@ that kind.
 - The audit trail is the server log, not a store.
 - A call cannot yet narrow the callee's access to the caller's grant.
 - Sign-in has been tested against in-process issuers, not a live Okta org.
+
+## Recorded break-glass reads
+
+The ordinary project role and private-thread participation rule is evaluated before `projects:govern` bypasses it. Every exceptional read writes who read which project or thread, when, and by which server route. A failed audit write refuses access. Internal reads carry route `platform`. HTTP writes do not create read records.
+
+The state store keeps records across restart on memory and Postgres backends. Records follow `workspace.inbox_retention` and are removed at startup and hourly. Each tenant holds at most 100,000 records; saturation refuses exceptional reads until retention makes room. Workspace administrators alone list the records through `GET /api/read-audit`, bounded to 500 rows and a 31-day window. Settings shows at most 100 of the last day's records. Audit records deliberately disclose confidential project and thread identifiers to administrators.

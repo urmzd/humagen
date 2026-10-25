@@ -1,8 +1,8 @@
 openapi: 3.2.0
 info:
-  title: Warp API
+  title: Humagen API
   version: 0.1.0
-  summary: The HTTP contract of the warp agent platform.
+  summary: The HTTP contract of the Humagen agent platform.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -99,6 +99,41 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/read-audit:
+    get:
+      operationId: listReadAudit
+      tags: [projects]
+      summary: List recorded break-glass reads
+      description: Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end.
+      x-permission: projects:govern
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses:
+        '200':
+          description: Newest reads first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records]
+                properties:
+                  records:
+                    type: array
+                    maxItems: 500
+                    items:
+                      type: object
+                      required: [subject, project, route, at]
+                      properties:
+                        subject: {type: string}
+                        project: {type: string}
+                        thread: {type: string}
+                        route: {type: string}
+                        at: {type: string, format: date-time}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /healthz:
     get:
       operationId: getHealth
@@ -120,7 +155,7 @@ paths:
       summary: Start a browser sign-in
       description: |
         Redirects to the identity provider (authorization code flow with
-        PKCE) and sets a short-lived `warp_login` cookie. Under
+        PKCE) and sets a short-lived `humagen_login` cookie. Under
         development auth it redirects straight to `/`. A browser navigates
         here; a script has no use for it.
       x-permission: public
@@ -140,7 +175,7 @@ paths:
       summary: Finish a browser sign-in
       description: |
         The identity provider redirects here. On success it sets the
-        `warp_session` cookie (`__Host-warp_session` over https),
+        `humagen_session` cookie (`__Host-humagen_session` over https),
         HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
         `return_to` path. Errors are plain text, not JSON.
       x-permission: public
@@ -307,6 +342,66 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/agent-hues:
+    get:
+      operationId: getAgentHues
+      x-permission: runs:read
+      tags: [agents]
+      summary: Resolve hues for explicitly named readable agents
+      description: Requires runs:read. Hidden and missing agents are both omitted. Never enumerates names.
+      parameters:
+        - name: names
+          in: query
+          required: true
+          description: At most 100 comma-separated names, each at most 200 characters.
+          schema: {type: string, maxLength: 20099}
+      responses:
+        "200":
+          description: Stable reservations for the readable agents requested.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hues]
+                properties:
+                  hues:
+                    type: object
+                    additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/project-agent-hues:
+    get:
+      operationId: getProjectAgentHues
+      x-permission: projects:read
+      tags: [agents]
+      summary: Resolve hues for explicitly named readable agents
+      description: Requires projects:read. Hidden and missing agents are both omitted. Never enumerates names.
+      parameters:
+        - name: names
+          in: query
+          required: true
+          description: At most 100 comma-separated names, each at most 200 characters.
+          schema: {type: string, maxLength: 20099}
+      responses:
+        "200":
+          description: Stable reservations for the readable agents requested.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hues]
+                properties:
+                  hues:
+                    type: object
+                    additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/agents:
     get:
       operationId: listAgents
@@ -324,7 +419,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [agents, builtin, homes, enabled_in]
+                required: [agents, builtin, homes, enabled_in, hues]
                 properties:
                   agents:
                     type: array
@@ -333,6 +428,10 @@ paths:
                     description: Names of the agents the platform provides, which cannot be edited.
                     type: array
                     items: {type: string}
+                  hues:
+                    description: Permanently reserved hues for readable agents in this workspace.
+                    type: object
+                    additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
                   homes:
                     description: |
                       Where each agent that lives in a project lives, by agent.
@@ -3543,6 +3642,44 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/context:
+    get:
+      operationId: getProjectContext
+      tags: [projects]
+      summary: Preview the layers composed for a turn
+      description: |
+        Uses the live turn composer. Hidden project layers are omitted.
+        Source names require knowledge:read. Skills are available choices,
+        sent only when a message names them. Budgets are character caps on
+        layer content, or item caps for knowledge and skills, not token estimates.
+        The agent system prompt is the current revision, sent separately
+        by the runtime. A zero budget means no extra composer cap. The
+        conversation, retrieved documents and runtime compaction depend on the turn.
+        System prompt previews show at most 32,000 characters; source name
+        previews show at most 128 names and 16,000 name characters.
+        preview_omitted distinguishes display truncation from runtime omissions.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+        - in: query
+          name: agent
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 63}
+        - in: query
+          name: channel
+          schema: {type: string, maxLength: 63}
+      responses:
+        "200":
+          description: Ordered layers for the selected agent and channel.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectContext"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/projects/{name}/knowledge:
     get:
       operationId: getProjectKnowledge
@@ -4050,13 +4187,13 @@ paths:
       operationId: getPersonPhoto
       tags: [people]
       summary: The photo a person uploaded for themselves
-      description: Served by warp, never fetched from elsewhere. 404 for someone with none.
+      description: Served by Humagen, never fetched from elsewhere. 404 for someone with none.
       x-permission: people:read
       parameters:
         - {$ref: "#/components/parameters/PersonHandle"}
       responses:
         "200":
-          description: The picture, as the type warp found its bytes to be.
+          description: The picture, as the type Humagen found its bytes to be.
           content:
             image/png: {schema: {type: string, format: binary}}
             image/jpeg: {schema: {type: string, format: binary}}
@@ -4376,17 +4513,19 @@ components:
         An OIDC access token issued for the API audience, sent as
         `Authorization: Bearer <token>`. A machine uses a client-credentials
         token and is granted exactly the scopes on it that are named
-        `warp:<permission>`, for example `warp:runs:write`. A person
+        `humagen:<permission>`, for example `humagen:runs:write`, or
+        `warp:<permission>`, the old prefix from before the product was
+        renamed, which is still honoured. A person
         using a CLI sends an access token too, and gets roles from its groups
         claim. An ID token is not an API credential and is refused. There is
         no revocation check beyond expiry.
     sessionCookie:
       type: apiKey
       in: cookie
-      name: warp_session
+      name: humagen_session
       description: |
         The opaque, HttpOnly cookie a browser is given by `/auth/callback`. It
-        is named `__Host-warp_session` when the server is reached over
+        is named `__Host-humagen_session` when the server is reached over
         https. A browser never holds a token. Under development auth
         (`-auth=dev`, loopback only) every request is the same admin and no
         credential is needed.
@@ -4903,7 +5042,7 @@ components:
           maxItems: 64
           items: {$ref: "#/components/schemas/ToolCredential"}
         values:
-          description: Whether this workspace lets people store a credential's value with warp. Off, people give only a reference to where it is kept.
+          description: Whether this workspace lets people store a credential's value with Humagen. Off, people give only a reference to where it is kept.
           type: boolean
         references:
           description: How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given.
@@ -5449,7 +5588,7 @@ components:
         The announcement a thread was started from, as it stands when the
         thread is read: who posted it and what it says. It is the inbox's,
         never a message of the thread, so it is from whoever posted it, a
-        person, the agent a schedule ran, or warp itself for a release's
+        person, the agent a schedule ran, or Humagen itself for a release's
         notes, and never from the person whose reply started the thread. A
         withdrawn one says nothing more.
       type: object
@@ -5459,14 +5598,14 @@ components:
           description: The announcement's inbox id.
           type: string
         kind:
-          description: Who posted it. `system` is warp itself, as for a release's notes.
+          description: Who posted it. `system` is Humagen itself, as for a release's notes.
           type: string
           enum: [person, agent, system]
         by:
-          description: The person's handle, the agent's name, or `warp` for what warp posted itself.
+          description: The person's handle, the agent's name, or `humagen` for what Humagen posted itself (`warp` in records written before the rename).
           type: string
         name:
-          description: What the person is called. Absent for an agent and for warp itself (`system`).
+          description: What the person is called. Absent for an agent and for Humagen itself (`system`).
           type: string
         subject: {type: string, maxLength: 150}
         text: {type: string, maxLength: 4000}
@@ -5777,7 +5916,7 @@ components:
           description: |
             When `slack` was bound as it stands: set when a binding is made
             or moved, kept while it holds. Absent while unbound, and on a
-            binding made before warp kept the time, which the client's
+            binding made before Humagen kept the time, which the client's
             bindings then read as bound at the channel's last change.
           type: string
           format: date-time
@@ -5865,7 +6004,7 @@ components:
             app catches up on nothing announced before it: what was
             announced before the binding, or while the channel was unbound,
             never reached the Slack channel and is not news there now.
-            Present for every binding; a binding made before warp kept the
+            Present for every binding; a binding made before Humagen kept the
             time reads as bound at its channel's last change.
           type: string
           format: date-time
@@ -5944,6 +6083,33 @@ components:
           description: The project that names it, the nearest when more than one does. Empty for the workspace.
           type: string
           maxLength: 63
+    ProjectContext:
+      type: object
+      additionalProperties: false
+      required: [layers]
+      properties:
+        layers:
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ContextLayer"}
+    ContextLayer:
+      type: object
+      additionalProperties: false
+      required: [kind, from, text, budget, used, omitted, preview_omitted, sent, unit]
+      properties:
+        kind: {type: string}
+        from: {type: string}
+        text: {type: string}
+        budget: {type: integer, minimum: 0}
+        used: {type: integer, minimum: 0}
+        omitted: {type: integer, minimum: 0}
+        preview_omitted:
+          description: Content shortened only in this preview, using the layer's unit. Runtime composition is unchanged.
+          type: integer
+          minimum: 0
+        sent: {type: boolean}
+        unit: {type: string, enum: [characters, items]}
+
     ProjectKnowledge:
       description: The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in.
       type: object
@@ -6244,8 +6410,17 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents]
           properties:
+            unread:
+              description: Unread open messages and announcements in the caller's own inbox filed directly in this project, excluding every message the reader cannot see.
+              type: integer
+              minimum: 0
+            row_agents:
+              description: Up to eight agents that live directly in this project and that the caller may read, sorted by name.
+              type: array
+              maxItems: 8
+              items: {type: string}
             depth:
               description: How many levels below the workspace it sits, 1 to 4. The workspace itself is 0.
               type: integer
@@ -6946,7 +7121,7 @@ components:
           description: The agent, the rule or the part of the system, and a person's subject. A mention, a thread's artefact, names its poster as threads do, by handle, and never by subject.
           type: string
         display:
-          description: What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. A mention's poster is called what their message is called now.
+          description: What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's, and to `Humagen` on what the product posted itself (a `system` sender named `humagen`, or `warp` in records written before the rename). A mention's poster is called what their message is called now.
           type: string
         approved_by:
           description: The person who published an agent's draft, by subject. Absent on what an agent posted itself.
@@ -8054,7 +8229,7 @@ components:
           description: "`env:NAME` when the secret lives in the server's environment."
           type: string
     SecretInput:
-      description: A secret as a caller writes it, as a value or as an `env:WARP_*` reference. Leave both out to keep the one held.
+      description: A secret as a caller writes it, as a value or as an `env:HUMAGEN_*` reference (`env:WARP_*`, the prefix before the rename, still works). Leave both out to keep the one held.
       type: object
       properties:
         value: {type: string}
@@ -8098,7 +8273,7 @@ components:
           type: array
           items: {type: string}
         login:
-          description: The app's own GitHub login, such as `warp[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md).
+          description: The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md).
           type: string
     ClientInput:
       description: A client as a caller writes it. The tenant, who manages it and its version are the server's to say.

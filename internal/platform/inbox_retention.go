@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/inbox"
 )
 
 // retainEvery is how often each workspace's inbox drops what was settled
@@ -25,6 +25,14 @@ func (p *Platform) inboxRetention(tenant string) time.Duration {
 // again at the next pass. A pass stops between workspaces once ctx is done.
 func (p *Platform) retainInbox(ctx context.Context) {
 	now := p.now()
+	for _, tenant := range p.ReadAudit.Tenants() {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := p.ReadAudit.Retain(tenant, now.Add(-p.inboxRetention(tenant))); err != nil {
+			p.log.Error("platform: read audit retention failed", "error", err)
+		}
+	}
 	for _, tenant := range p.Inbox.Tenants() {
 		if ctx.Err() != nil {
 			return

@@ -1,5 +1,5 @@
-import { type ArtifactKind, type ArtifactPhase, formatBytes } from "@warp/core";
-import type { FileProps } from "@warp/primitives";
+import { type ArtifactKind, type ArtifactPhase, formatBytes } from "@humagen/core";
+import type { FileProps } from "@humagen/primitives";
 import { type CSSProperties, useContext, useId } from "react";
 import { DownloadIcon, EyeIcon } from "./icons";
 import { ArtifactOpenContext } from "./meta";

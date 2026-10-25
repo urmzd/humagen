@@ -16,10 +16,10 @@ import (
 
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/people"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // The confinement sweep reads every GET in the contract, and the event
@@ -104,7 +104,7 @@ func outsiders(t *testing.T, f *fixture) map[string]struct {
 } {
 	t.Helper()
 	nonmember := f.iss.Sign(t, "svc-nonmember", audience, map[string]any{
-		"org": "acme", "scp": slices.DeleteFunc(slices.Clone(everything), func(s string) bool { return s == "warp:projects:govern" }),
+		"org": "acme", "scp": slices.DeleteFunc(slices.Clone(everything), func(s string) bool { return s == "humagen:projects:govern" }),
 	})
 	return map[string]struct {
 		tok    string
@@ -217,7 +217,7 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		// comes to live in the hidden project once they are set.
 		drifter := "drifter-" + marker
 		must("POST", "/api/agents", `{"name":"`+drifter+`","model":"offline","provider":"offline","system_prompt":"Drifts."}`, http.StatusCreated)
-		dana := f.person(t, "acme", "00u-dana", "Dana", "warp-operators")
+		dana := f.person(t, "acme", "00u-dana", "Dana", "humagen-operators")
 		started := want(t, f, dana, "POST", "/api/threads", `{"visibility":"shared","text":"Plans.","post_only":true,"default":"`+drifter+`"}`, http.StatusCreated)
 		h.openThread = obj(started["thread"])["id"].(string)
 		want(t, f, dana, "PUT", "/api/threads/"+h.openThread+"/participants", `{"version":1,"add":[{"kind":"agent","name":"`+drifter+`"}]}`, http.StatusOK)
@@ -322,7 +322,7 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
 	// Every run in Field is slow enough to raise an alert.
 	want(t, f, owner, "POST", "/api/alert-rules", `{"name":"slow","kind":"slow_run","threshold":1e-9,"severity":"warning","project":"Field"}`, http.StatusCreated)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
 	started := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"private","text":"@helper the plan is `+marker+`."}`, http.StatusCreated)
 	h.thread = started["thread"].(map[string]any)["id"].(string)
 	h.run = started["runs"].([]any)[0].(map[string]any)["id"].(string)
@@ -520,7 +520,7 @@ func (h hidden) probes() map[string]string {
 		return map[string]string{"thread": h.thread, "run": h.run}
 	}
 	out := map[string]string{
-		"project": h.project, "thread": h.thread, "run": h.run, "agent": h.agent, "q": "Canary" + marker,
+		"project": h.project, "thread": h.thread, "run": h.run, "agent": h.agent, "names": h.agent, "q": "Canary" + marker,
 	}
 	if !h.inside {
 		out["source"], out["variant"] = h.source, h.variant
@@ -638,7 +638,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"permission": "runs:read", "q": "hello"}
+	defaults := map[string]string{"permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing"}
 
 	var keys []string
 	for key := range s.ops {
@@ -1078,7 +1078,7 @@ func TestAPrivateThreadIsItsParticipantsAlone(t *testing.T) {
 			case "writes":
 				sweepWrites(t, f, owner, member, h)
 			case "stream":
-				ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
+				ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
 				streamOf(t, f, owner, member, "acme", h, func() string {
 					out := want(t, f, ana, "POST", "/api/threads/"+h.thread+"/messages", `{"text":"@helper and the budget is `+marker+`?"}`, http.StatusCreated)
 					runs, _ := out["runs"].([]any)

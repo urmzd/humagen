@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // Reserved names. No agent and no person goes by them.

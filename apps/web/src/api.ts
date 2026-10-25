@@ -1,5 +1,6 @@
-import { type AnswerRequest, answerPath } from "@warp/adapter/question";
+import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
+  ProjectContext,
   AgentHome,
   Person,
   ProjectAgentsInput,
@@ -23,6 +24,8 @@ import type { BusEvent, Run } from "./adapter.ts";
 // The project tree's shapes are the generated client's own, from
 // api/openapi.yaml, so this file cannot drift from the contract on them.
 export type {
+  ProjectContext,
+  ContextLayer,
   AgentHome,
   AgentOffer,
   AgentPlace,
@@ -441,7 +444,7 @@ export interface Client {
     guides?: boolean;
     mutations?: boolean;
     read_repositories?: string[];
-    /** The app's own login. Once warp's GitHub connector reads it, a comment that mentions it and names no agent is answered by the default; until then it changes nothing. */
+    /** The app's own login. Once humagen's GitHub connector reads it, a comment that mentions it and names no agent is answered by the default; until then it changes nothing. */
     login?: string;
   };
   /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */
@@ -526,7 +529,7 @@ export interface ToolCredential {
 /** The tools that act as you, and what this workspace lets people give for them. */
 export interface ToolCredentials {
   providers: ToolCredential[];
-  /** Whether you may store the credential itself with warp. */
+  /** Whether you may store the credential itself with humagen. */
   values: boolean;
   /** How the references you may give start. Empty means none can be given. */
   references: string[];
@@ -639,6 +642,7 @@ export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
 }
 
 export const api = {
+ readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
@@ -648,8 +652,9 @@ export const api = {
    * Every agent, the platform's own by name, where each that lives in a
    * project lives, and which projects enable each ("~" is the workspace).
    */
+  agentHues: (names: string[], path = "/api/agent-hues") => call<{ hues: Record<string, number> }>("GET", `${path}?names=${encodeURIComponent(names.join(","))}`),
   agentList: () =>
-    call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]> }>("GET", "/api/agents"),
+    call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]>; hues?: Record<string, number> }>("GET", "/api/agents"),
   /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
@@ -767,6 +772,11 @@ export const api = {
   /** Replace a project's title, description, account and instructions, as a whole, from the version read. */
   updateProject: (name: string, u: ProjectUpdate) => call<ProjectView>("PUT", `/api/projects/${projectPath(name)}`, u),
   /** What a project turns on, what is available there, and who answers untagged messages. "" is the workspace. */
+  projectContext: (name: string, agent: string, channel: string) => {
+    const query = new URLSearchParams({ agent });
+    if (channel) query.set("channel", channel);
+    return call<ProjectContext>("GET", `/api/projects/${projectPath(name)}/context?${query}`);
+  },
   projectAgents: (name: string) => call<ProjectAgentsView>("GET", `/api/projects/${projectPath(name)}/agents`),
   setProjectAgents: (name: string, input: ProjectAgentsInput) =>
     call<ProjectAgentsView>("PUT", `/api/projects/${projectPath(name)}/agents`, input),
@@ -1073,8 +1083,8 @@ export interface ThreadMessage {
 
 /**
  * The announcement a thread was started from, as it stands now: who posted
- * it, a person by handle, an agent by name, or warp itself (`system`, by
- * `warp`) for a release's notes, and what it says. A withdrawn one says
+ * it, a person by handle, an agent by name, or humagen itself (`system`, by
+ * `humagen`) for a release's notes, and what it says. A withdrawn one says
  * nothing more.
  */
 export interface ThreadAnnouncement {
@@ -1266,3 +1276,5 @@ export const coworking = {
   /** Which agents may answer in a project, for the @ typeahead. */
   available: (project: string) => call<ProjectAvailability>("GET", `${projectAt(project)}/agents`),
 };
+
+export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };

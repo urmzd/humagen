@@ -6,7 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/urmzd/warp/pkg/credentials"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/credentials"
 )
 
 // Slot names, for a binary registering a kind.
@@ -34,7 +35,7 @@ var Builtin = map[string][]string{
 	SlotTools:      {"mcp"},
 }
 
-// System is how and where warp runs.
+// System is how and where humagen runs.
 type System struct {
 	Metadata Metadata   `json:"metadata"`
 	Spec     SystemSpec `json:"spec"`
@@ -52,15 +53,15 @@ type SystemSpec struct {
 	// PersonRefs is where each workspace's people may keep their own tool
 	// credentials, by tenant: how the references they give may start, each
 	// naming the person whose references it holds with {subject}
-	// (op://People/{subject}/, keychain:warp-people-{subject}/,
-	// env:WARP_PERSON_{subject}_). The server reads a reference with its
+	// (op://People/{subject}/, keychain:humagen-people-{subject}/,
+	// env:HUMAGEN_PERSON_{subject}_). The server reads a reference with its
 	// own access, so a person may give only their own: one under a start
 	// with their subject in it. No two starts may share a place, within a
 	// workspace or across two. A tenant not listed may reference nothing.
 	PersonRefs map[string][]string `json:"person_refs,omitempty"`
 	Extensions []Slot              `json:"extensions,omitempty"`
-	// Deploy is where `warp deploy` runs this: local, compose or
-	// kubernetes. It is read by warp deploy, not by the server.
+	// Deploy is where `humagen deploy` runs this: local, compose or
+	// kubernetes. It is read by humagen deploy, not by the server.
 	Deploy Slot `json:"deploy,omitzero"`
 }
 
@@ -70,19 +71,19 @@ type Compose struct {
 	// Dir is where the project is written. Empty is deploy/compose under
 	// the spec's directory.
 	Dir string `json:"dir,omitempty"`
-	// Image is the warp image. Empty builds one from Build.
+	// Image is the humagen image. Empty builds one from Build.
 	Image string `json:"image,omitempty"`
-	// Build is a warp checkout to build the image from. Empty is the
+	// Build is a humagen checkout to build the image from. Empty is the
 	// working directory when Image is empty.
 	Build string `json:"build,omitempty"`
 	// Port is the host port. Empty is the port of server.addr.
 	Port int `json:"port,omitempty"`
-	// Postgres runs a Postgres beside warp and points the stores at it.
+	// Postgres runs a Postgres beside humagen and points the stores at it.
 	Postgres bool `json:"postgres,omitempty"`
 }
 
 // Kubernetes is the kubernetes deploy kind's block: the platform as a Helm
-// release of the chart warp carries.
+// release of the chart humagen carries.
 type Kubernetes struct {
 	Context   string `json:"context,omitempty"`
 	Namespace string `json:"namespace,omitempty"`
@@ -96,7 +97,7 @@ type Kubernetes struct {
 	Host         string `json:"host,omitempty"`
 	IngressClass string `json:"ingress_class,omitempty"`
 	TLSSecret    string `json:"tls_secret,omitempty"`
-	// Values are further chart values, merged over what warp derives.
+	// Values are further chart values, merged over what humagen derives.
 	Values map[string]any `json:"values,omitempty"`
 }
 
@@ -208,13 +209,13 @@ var (
 	envVar     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
-// Defaults fills every empty field with what warp uses for it.
+// Defaults fills every empty field with what humagen uses for it.
 func (s *System) Defaults() {
 	if s.Metadata.Name == "" {
-		s.Metadata.Name = "warp"
+		s.Metadata.Name = legacy.DeployName
 	}
 	if s.Metadata.DisplayName == "" {
-		s.Metadata.DisplayName = "Warp"
+		s.Metadata.DisplayName = "Humagen"
 	}
 	sp := &s.Spec
 	if sp.Server.Addr == "" {
@@ -267,7 +268,7 @@ func (s System) check(kinds Kinds) error {
 	}
 	for name, vars := range sp.SecretEnv {
 		for _, v := range vars {
-			if !envVar.MatchString(v) || strings.HasPrefix(v, "WARP_OIDC_") {
+			if !envVar.MatchString(v) || legacy.SignInSecret(v) {
 				return fmt.Errorf("system: secret_env.%s: %q cannot be referenced by a client", name, v)
 			}
 		}

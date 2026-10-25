@@ -1,8 +1,8 @@
-import { ActionId, type Approval, type Clarification, type Interrupt, type UiAction } from "@warp/core";
+import { ActionId, type Approval, type Clarification, type Interrupt, type UiAction } from "@humagen/core";
 
 /**
  * A question a run is parked on, as one shape for every surface: on the run
- * it is an interrupt (warp's approval or clarification card), in the inbox
+ * it is an interrupt (humagen's approval or clarification card), in the inbox
  * it is the same card inside a message part. Both are built here, so a
  * question looks and answers the same in the console and in Slack, whether
  * it is read on the run or in the inbox.
@@ -94,7 +94,7 @@ function decisionOf(s: Settled | undefined): Approval["decision"] {
   }
 }
 
-// warp: Clarification.answer has no state for "nobody answered in time" or
+// humagen: Clarification.answer has no state for "nobody answered in time" or
 // "the run was stopped", so both read as declined, with the reason in words.
 function answerOf(s: Settled | undefined, options: readonly string[]): Clarification["answer"] {
   if (!s) return { kind: "pending" };
@@ -117,7 +117,7 @@ function argsOf(q: WireQuestion): Record<string, unknown> | undefined {
 }
 
 /**
- * The question as warp's interrupt. An approval is an approval card with the
+ * The question as humagen's interrupt. An approval is an approval card with the
  * call's arguments; a choice is a clarification with its options; a reply is
  * a clarification that takes words. A question a person does not answer (a
  * delegation) is null.
@@ -136,7 +136,7 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
         ...(q.expires_at ? { expiresAt: q.expires_at } : {}),
         // Every surface says a call that acts as the person does, and none offers an edit of it.
         ...(q.tool?.acts_for_person === true ? { actsForPerson: true } : {}),
-        // warp: an editor for a tool's arguments from its schema, on web and in a Slack modal,
+        // humagen: an editor for a tool's arguments from its schema, on web and in a Slack modal,
         // before `editable` can be offered. The API takes edited arguments already. Even then,
         // a call that acts as the person (`actsForPerson`) is never editable: only that
         // person may change it, and a card cannot tell who is reading it.

@@ -16,16 +16,16 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // declare sets the skills a project declares, through the store, as whoever
@@ -471,7 +471,7 @@ func TestARetryKeepsACommandsSkill(t *testing.T) {
 }
 
 // A run stopped before its attempt starts records the prompt it would have
-// been sent, and the keys warp pins privately are not written into it as
+// been sent, and the keys humagen pins privately are not written into it as
 // trigger context: neither the skills' instructions, nor the sources'
 // names. The run's tag keeps them, as fiber keeps a private key wherever the
 // tag is.

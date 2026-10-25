@@ -16,14 +16,14 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/warp/internal/mcpfake"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/credentials"
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/internal/mcpfake"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // steered is a model that does what a person tells it, per agent:
@@ -112,7 +112,7 @@ func steeredWorld(t *testing.T, cfg platform.Config) (*platform.Platform, *mcpfa
 	for _, name := range []string{"issues", "tracker", "wiki"} {
 		provider := toolprovider.Provider{Tenant: tenant, Name: name, Transport: toolprovider.TransportHTTP, Endpoint: server.URL, CredentialScope: toolprovider.ScopePerson}
 		if name == "wiki" {
-			provider.CredentialScope, provider.CredentialRef = toolprovider.ScopeShared, "env:WARP_SHARED_TOKEN"
+			provider.CredentialScope, provider.CredentialRef = toolprovider.ScopeShared, "env:HUMAGEN_SHARED_TOKEN"
 		}
 		cfg.Ext.ToolProviders = append(cfg.Ext.ToolProviders, platform.ToolProviderSeed{Provider: provider, Accept: server.Tools(t)})
 	}
@@ -120,7 +120,7 @@ func steeredWorld(t *testing.T, cfg platform.Config) (*platform.Platform, *mcpfa
 		v, ok := environment[name]
 		return v, ok
 	}}.MCP()
-	cfg.CredentialRefs = map[string][]string{tenant: {"env:WARP_PERSON_{subject}_"}}
+	cfg.CredentialRefs = map[string][]string{tenant: {"env:HUMAGEN_PERSON_{subject}_"}}
 	cfg.Log = slog.New(slog.DiscardHandler)
 	cfg.AgentOptions = []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(spec agentrt.Spec) (saigetypes.Provider, error) {
 		return model.agent(spec.Name), nil
@@ -128,7 +128,7 @@ func steeredWorld(t *testing.T, cfg platform.Config) (*platform.Platform, *mcpfa
 	p := startWith(t, cfg)
 	t.Cleanup(func() { _ = p.Close() })
 	for _, name := range []string{"issues", "tracker"} {
-		if _, err := p.ConnectTool(t.Context(), ana, name, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"}); err != nil {
+		if _, err := p.ConnectTool(t.Context(), ana, name, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -190,7 +190,7 @@ func TestAnApprovalCarriesNoOneElsesWordsToAPersonsCredential(t *testing.T) {
 	if q := model.searched(); len(q) != 2 || strings.Contains(q[1], "BEN") {
 		t.Fatalf("searched %q, want her words and then no word of ben's", q)
 	}
-	if got := server.Calls(); !slices.Equal(got, []string{"Bearer " + environment["WARP_PERSON_ANA_ISSUES"]}) {
+	if got := server.Calls(); !slices.Equal(got, []string{"Bearer " + environment["HUMAGEN_PERSON_ANA_ISSUES"]}) {
 		t.Fatalf("the server was reached with %q", got)
 	}
 
@@ -279,7 +279,7 @@ func TestACalledRunIsAnsweredByThePersonWhoseCredentialsItsCallerUses(t *testing
 		t.Fatalf("ana answering what her run's helper asks: %v", err)
 	}
 	await(t, p, first.ID, runs.Completed)
-	if q, got := model.searched(), server.Calls(); !slices.Equal(q, []string{"[{[{flaky tests}]}]"}) || !slices.Equal(got, []string{"Bearer " + environment["WARP_PERSON_ANA_ISSUES"]}) {
+	if q, got := model.searched(), server.Calls(); !slices.Equal(q, []string{"[{[{flaky tests}]}]"}) || !slices.Equal(got, []string{"Bearer " + environment["HUMAGEN_PERSON_ANA_ISSUES"]}) {
 		t.Fatalf("searched %q and reached the server with %q, want her words alone with her token", q, got)
 	}
 
@@ -331,7 +331,7 @@ func TestACalledRunIsAnsweredByThePersonWhoseCredentialsItsCallerUses(t *testing
 func TestAnswerersThatLeaveOutThePersonLeaveNobodyToAnswer(t *testing.T) {
 	w := newWorld(t, platform.Config{})
 	ctx := t.Context()
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
 	spec := agentspec.AgentSpec{Name: "asker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt,
 		Tools: []string{"mcp:issues", "ask_person"}, Answerers: []string{"ben"}}
 	if _, err := w.p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
@@ -347,7 +347,7 @@ func TestAnswerersThatLeaveOutThePersonLeaveNobodyToAnswer(t *testing.T) {
 	if !slices.Equal(msg.Audience, []string{"ana"}) {
 		t.Errorf("addressed to %v, want ana", msg.Audience)
 	}
-	// The runtime refuses ana, whom answerers leave out, and warp refuses ben.
+	// The runtime refuses ana, whom answerers leave out, and humagen refuses ben.
 	for _, by := range []auth.Principal{ana, ben} {
 		reply := platform.QuestionAnswer{Action: platform.ActReply, Text: by.Subject + "'s words"}
 		if _, err := w.p.AnswerQuestion(ctx, by, run.ID, run.Question.ID, reply); !errors.Is(err, platform.ErrForbidden) {
@@ -398,7 +398,7 @@ func TestACalledAgentsAnswerersThatLeaveOutThePersonLeaveNobodyToAnswer(t *testi
 		t.Errorf("addressed to %v, want ana", msg.Audience)
 	}
 	// The runtime refuses ana, whom the helper's answerers leave out, and
-	// warp refuses ben.
+	// humagen refuses ben.
 	for _, by := range []auth.Principal{ana, ben} {
 		reply := platform.QuestionAnswer{Action: platform.ActReply, Text: by.Subject + "'s words"}
 		if _, err := p.AnswerQuestion(ctx, by, helper.ID, helper.Question.ID, reply); !errors.Is(err, platform.ErrForbidden) {

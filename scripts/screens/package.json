@@ -1,6 +1,6 @@
 {
-  "name": "@warp/screens",
-  "version": "0.20.2",
+  "name": "@humagen/screens",
+  "version": "0.25.0",
   "private": true,
   "type": "module",
   "description": "Captures every console screen at phone and desktop width and fails on a broken layout.",

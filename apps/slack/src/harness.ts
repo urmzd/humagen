@@ -1,6 +1,6 @@
 /**
  * Test doubles for both sides of the app: a Slack that records every call and
- * a warp whose runs the test drives one event at a time. Every id here is
+ * a humagen whose runs the test drives one event at a time. Every id here is
  * made up.
  */
 import {
@@ -9,25 +9,25 @@ import {
   type Http,
   mailTransport,
   type Run,
-} from "@warp/adapter";
+} from "@humagen/adapter";
 import { App, type AppOptions } from "./app.tsx";
-import { runId, tagId } from "./keys.ts";
 import {
   type ActAs,
   type Agent,
   type Binding,
   type ClientRecord,
+  type Humagen,
+  HumagenError,
   type InboxNotice,
   type Receipt,
   type RunRequest,
   type StreamItem,
   type ThreadPosted,
   type ThreadPostRequest,
-  type Warp,
-  WarpError,
   type WireMessage,
   type WireProject,
-} from "./warp.ts";
+} from "./humagen.ts";
+import { runId, tagId } from "./keys.ts";
 
 /** A run asked for: the body and the key, as `createRun` takes them. */
 export interface Asked extends RunRequest {
@@ -137,8 +137,8 @@ const terminalStatus = (s: Run["status"]) => s === "completed" || s === "failed"
 
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
 
-/** A warp that keeps runs, conversations and an inbox in memory, shaped like the real API. */
-export class FakeWarp implements Warp {
+/** A humagen that keeps runs, conversations and an inbox in memory, shaped like the real API. */
+export class FakeHumagen implements Humagen {
   async getRunFor(id: string, _as: ActAs) {
     return this.runs.get(id) ?? null;
   }
@@ -152,8 +152,8 @@ export class FakeWarp implements Warp {
   async disconnect(provider: string, as: ActAs) {
     this.connectionCalls.push({ provider, as });
   }
-  readonly feedback: { run: string; body: import("./warp.ts").FeedbackInput }[] = [];
-  async saveFeedback(run: string, body: import("./warp.ts").FeedbackInput) {
+  readonly feedback: { run: string; body: import("./humagen.ts").FeedbackInput }[] = [];
+  async saveFeedback(run: string, body: import("./humagen.ts").FeedbackInput) {
     this.feedback.push({ run, body });
   }
   readonly runs = new Map<string, Run>();
@@ -171,14 +171,14 @@ export class FakeWarp implements Warp {
   /** Inbox messages as the platform sends them. */
   readonly mailbox = new Map<string, Record<string, unknown>>();
   /** Set to refuse the next turn, as a limit would. */
-  refuse: WarpError | null = null;
+  refuse: HumagenError | null = null;
   /** Set to make stop fail. */
   stopFails = false;
   /** Every answer asked for, and for whom. */
   readonly answered: { answer: AnswerRequest; as: ActAs }[] = [];
   /** Every message posted from a Slack thread, in order. */
   readonly posts: ThreadPostRequest[] = [];
-  /** The warp thread each Slack thread is, by client, channel and ts. */
+  /** The humagen thread each Slack thread is, by client, channel and ts. */
   private readonly surfaces = new Map<string, string>();
   /** Each message posted, by its ts: what it did. */
   private readonly postedOnce = new Map<string, ThreadPosted>();
@@ -186,7 +186,7 @@ export class FakeWarp implements Warp {
   noDefault = false;
   /** The Slack channels each client is bound to. */
   readonly bound = new Map<string, Binding[]>();
-  /** The announcement each warp thread was started from, by thread. */
+  /** The announcement each humagen thread was started from, by thread. */
   readonly seeded = new Map<string, string>();
   /** Where the app recorded it posted each inbox message. */
   readonly deliveries: { message: string; client: string; channel: string; ts: string }[] = [];
@@ -206,20 +206,20 @@ export class FakeWarp implements Warp {
   readonly projects = new Map<string, WireProject[]>();
   /** Every projects read made for someone, and for whom. */
   readonly projectsReadFor: ActAs[] = [];
-  /** Set to refuse the next answer, as warp does someone who may not answer. */
-  refuseAnswer: WarpError | null = null;
+  /** Set to refuse the next answer, as humagen does someone who may not answer. */
+  refuseAnswer: HumagenError | null = null;
   /**
    * Set when the app's own credential is a person, as under dev sign-in: what
-   * it asks as itself then acts for that person, as warp's ActorOf records it.
+   * it asks as itself then acts for that person, as humagen's ActorOf records it.
    */
   person = false;
   private readonly feeds = new Map<string, Feed<StreamItem>>();
   private readonly notes = new Feed<InboxNotice>();
   private seq = new Map<string, number>();
   /**
-   * warp's clock, which the app's is too (world()). It starts after every
+   * humagen's clock, which the app's is too (world()). It starts after every
    * fixture's own times, so what the fake records, such as a receipt, comes
-   * after the messages it is about, as it does in warp.
+   * after the messages it is about, as it does in humagen.
    */
   private clock = Date.parse("2026-10-09T01:00:00Z");
 
@@ -228,12 +228,12 @@ export class FakeWarp implements Warp {
     return new Date(this.clock).toISOString();
   }
 
-  /** What time it is for warp, as the app reads it. */
+  /** What time it is for humagen, as the app reads it. */
   now() {
     return this.clock;
   }
 
-  /** A time some way back on warp's clock, for a message raised then. */
+  /** A time some way back on humagen's clock, for a message raised then. */
   ago(ms: number) {
     return new Date(this.clock - ms).toISOString();
   }
@@ -275,14 +275,14 @@ export class FakeWarp implements Warp {
       : { id: SUBJECT, bot: true };
     if (t.act_as) {
       const person = this.clients.get(t.act_as.client)?.slack?.people?.[t.act_as.user];
-      if (!person) throw new WarpError(403, "this client does not map that person");
+      if (!person) throw new HumagenError(403, "this client does not map that person");
       actor = { id: person, display: person, user: person };
     }
     const id = runId("acme", SUBJECT, t.idempotencyKey);
     const existing = this.runs.get(id);
     if (existing) return existing;
     const prev = t.after ? this.runs.get(t.after) : undefined;
-    if (t.after && !prev) throw new WarpError(404, "not found");
+    if (t.after && !prev) throw new HumagenError(404, "not found");
     const now = this.at();
     const run: Run = {
       id,
@@ -316,14 +316,14 @@ export class FakeWarp implements Warp {
 
   /**
    * As the platform does for the client's machine: the Slack thread is one
-   * warp thread, each message is posted once by its ts, and a message tags
+   * humagen thread, each message is posted once by its ts, and a message tags
    * an agent by its name, a person by @handle, or else the default answers.
    */
   async postThread(body: ThreadPostRequest): Promise<ThreadPosted> {
     const client = this.clients.get(body.surface.client);
-    if (!client || client.slack?.machine !== SUBJECT) throw new WarpError(404, "not found");
+    if (!client || client.slack?.machine !== SUBJECT) throw new HumagenError(404, "not found");
     if (!client.slack?.people?.[body.act_as.user]) {
-      throw new WarpError(403, "that person is not mapped to anyone in this workspace");
+      throw new HumagenError(403, "that person is not mapped to anyone in this workspace");
     }
     this.posts.push(body);
     const s = body.surface;
@@ -344,7 +344,10 @@ export class FakeWarp implements Warp {
       const source = found?.source as { project?: string } | undefined;
       const seed = bound && source?.project === bound.project ? found : undefined;
       if (seed && seed.state !== "open") {
-        throw new WarpError(410, "a reply to this announcement starts nothing: it was withdrawn");
+        throw new HumagenError(
+          410,
+          "a reply to this announcement starts nothing: it was withdrawn",
+        );
       }
       thread = `th-${String(this.surfaces.size + 1).padStart(16, "0")}`;
       this.surfaces.set(where, thread);
@@ -391,20 +394,20 @@ export class FakeWarp implements Warp {
     return posted;
   }
 
-  /** How many reads of one message fail next, as when warp is restarting. */
+  /** How many reads of one message fail next, as when humagen is restarting. */
   failReads = 0;
 
   async getInboxMessage(id: string) {
     if (this.failReads > 0) {
       this.failReads--;
-      throw new WarpError(503, "warp is restarting");
+      throw new HumagenError(503, "humagen is restarting");
     }
     // A copy, as a read over HTTP is: a later change does not reach it.
     const m = this.mailbox.get(id) as WireMessage | undefined;
     return m ? structuredClone(m) : null;
   }
 
-  /** The surface of each warp thread the fake started from one. */
+  /** The surface of each humagen thread the fake started from one. */
   async threadSurface(id: string) {
     for (const [where, thread] of this.surfaces) {
       if (thread !== id) continue;
@@ -429,7 +432,7 @@ export class FakeWarp implements Warp {
     this.resolvedFor.push({ id, part, body, as: actAs });
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user] ?? "";
     const m = (this.personal.get(subject) ?? []).find((x) => x.id === id);
-    if (!m) throw new WarpError(404, "not found");
+    if (!m) throw new HumagenError(404, "not found");
     m.state = "resolved";
     m.parts = (m.parts as Record<string, unknown>[]).map((p) =>
       p.id === part
@@ -445,12 +448,12 @@ export class FakeWarp implements Warp {
   }
 
   async bindings(client: string) {
-    if (!this.clients.has(client)) throw new WarpError(404, "not found");
+    if (!this.clients.has(client)) throw new HumagenError(404, "not found");
     return this.bound.get(client) ?? [];
   }
 
-  /** Set to make the next receipt fail, as when warp goes away after a post. */
-  refuseDelivery: WarpError | null = null;
+  /** Set to make the next receipt fail, as when humagen goes away after a post. */
+  refuseDelivery: HumagenError | null = null;
 
   /**
    * As the real route does: the same post recorded again moves the receipt's
@@ -478,7 +481,7 @@ export class FakeWarp implements Warp {
   /** Every read of a project's announcements, by project. */
   readonly newsReads: string[] = [];
 
-  /** How many reads of a project's announcements fail next, as when warp is restarting. */
+  /** How many reads of a project's announcements fail next, as when humagen is restarting. */
   failNews = 0;
   /** Projects whose inbox the app's machine may not read: 404, as for a project it cannot see. */
   readonly unseen = new Set<string>();
@@ -488,9 +491,9 @@ export class FakeWarp implements Warp {
     this.newsReads.push(project);
     if (this.failNews > 0) {
       this.failNews--;
-      throw new WarpError(503, "warp is restarting");
+      throw new HumagenError(503, "humagen is restarting");
     }
-    if (this.unseen.has(project)) throw new WarpError(404, "no such project");
+    if (this.unseen.has(project)) throw new HumagenError(404, "no such project");
     return [...this.mailbox.values()]
       .filter(
         (m) => m.kind === "announcement" && (m.source as { project?: string })?.project === project,
@@ -500,7 +503,7 @@ export class FakeWarp implements Warp {
   }
 
   /**
-   * Change a message for everyone, as warp does, without telling anyone: a
+   * Change a message for everyone, as humagen does, without telling anyone: a
    * notice the stream would have carried while the app was not listening.
    */
   quietly(id: string, change: Record<string, unknown>) {
@@ -515,7 +518,8 @@ export class FakeWarp implements Warp {
     this.readFor.push(actAs);
     this.inboxQueries.push(query);
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
-    if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
+    if (!subject)
+      throw new HumagenError(403, "that person is not mapped to anyone in this workspace");
     const all = this.personal.get(subject) ?? [];
     // A posted announcement is news; an agent's draft, which waits on its
     // owners, is not, though it shares the kind.
@@ -529,7 +533,7 @@ export class FakeWarp implements Warp {
         (!query.news || posted(m)) &&
         (query.state === "all" || m.state === (query.state ?? "open")),
     );
-    // The counts are the whole inbox's, as warp's are: posted announcements
+    // The counts are the whole inbox's, as humagen's are: posted announcements
     // count only as updates, and an agent's draft counts as open.
     const open = all.filter((m) => m.state === "open");
     const news = open.filter(posted);
@@ -544,9 +548,10 @@ export class FakeWarp implements Warp {
   async projectsFor(actAs: ActAs) {
     this.projectsReadFor.push(actAs);
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
-    if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
+    if (!subject)
+      throw new HumagenError(403, "that person is not mapped to anyone in this workspace");
     const seen = this.projects.get(subject);
-    if (!seen) throw new WarpError(403, "that person cannot read projects");
+    if (!seen) throw new HumagenError(403, "that person cannot read projects");
     return seen;
   }
 
@@ -582,9 +587,9 @@ export class FakeWarp implements Warp {
    */
   async stopRun(id: string): Promise<Run> {
     this.stops.push(id);
-    if (this.stopFails) throw new WarpError(500, "something went wrong on our side");
+    if (this.stopFails) throw new HumagenError(500, "something went wrong on our side");
     const run = this.runs.get(id);
-    if (!run) throw new WarpError(404, "not found");
+    if (!run) throw new HumagenError(404, "not found");
     if (terminalStatus(run.status)) return run;
     if (!run.stopping) {
       this.set(id, { stopping: true, stop_requested_at: this.at() });
@@ -650,14 +655,14 @@ export class FakeWarp implements Warp {
 
   /** The inbox routes, over the real mapping, so the wire shapes are the ones exercised. */
   private http: Http = async <T>(method: string, path: string, json?: unknown): Promise<T> => {
-    const url = new URL(path, "http://warp.test");
+    const url = new URL(path, "http://humagen.test");
     const [, , , id, ...rest] = url.pathname.split("/");
     if (method === "GET" && !id) {
       const messages = [...this.mailbox.values()].filter((m) => m.state === "open");
       return { messages, next: null, open: messages.length, unread: 0 } as T;
     }
     const message = id ? this.mailbox.get(decodeURIComponent(id)) : undefined;
-    if (!message) throw new WarpError(404, "not found");
+    if (!message) throw new HumagenError(404, "not found");
     if (method === "GET") return { message, history: [] } as T;
     this.resolved.push({ id: String(message.id), path: rest.join("/"), body: json });
     if (rest[0] === "parts") {
@@ -722,7 +727,7 @@ export class FakeWarp implements Warp {
   /** Put a message in the inbox and announce it. */
   raise(message: Record<string, unknown>) {
     const was = this.mailbox.get(String(message.id));
-    // A change is a change for everyone, as warp's updated_at says.
+    // A change is a change for everyone, as humagen's updated_at says.
     if (was && was !== message && was.updated_at === message.updated_at)
       message = { ...message, updated_at: this.at() };
     this.mailbox.set(String(message.id), message);
@@ -762,19 +767,22 @@ export async function settle(rounds = 8): Promise<void> {
 
 export interface World {
   slack: FakeSlack;
-  warp: FakeWarp;
+  humagen: FakeHumagen;
   app: App;
   logs: string[];
-  /** A second app over the same Slack and warp, as after a restart. */
+  /** A second app over the same Slack and humagen, as after a restart. */
   restart(): App;
 }
 
-export function world(opts: Partial<AppOptions> = {}, from?: Pick<World, "slack" | "warp">): World {
+export function world(
+  opts: Partial<AppOptions> = {},
+  from?: Pick<World, "slack" | "humagen">,
+): World {
   const slack = from?.slack ?? new FakeSlack();
-  const warp = from?.warp ?? new FakeWarp();
+  const humagen = from?.humagen ?? new FakeHumagen();
   const logs: string[] = [];
   const make = () =>
-    new App(slack, warp, {
+    new App(slack, humagen, {
       team: TEAM,
       botUser: BOT,
       subject: SUBJECT,
@@ -782,11 +790,11 @@ export function world(opts: Partial<AppOptions> = {}, from?: Pick<World, "slack"
       defaultAgent: "lead",
       flushMs: 0,
       pollMs: 20,
-      now: () => warp.now(),
+      now: () => humagen.now(),
       log: (line) => logs.push(line),
       ...opts,
     });
-  return { slack, warp, app: make(), logs, restart: make };
+  return { slack, humagen, app: make(), logs, restart: make };
 }
 
 // Slack deliveries, as Socket Mode hands them over.
@@ -961,7 +969,7 @@ export function memoryMail(run: string): Record<string, unknown> {
   };
 }
 
-/** The warp thread a run started from a mention is in. */
+/** The humagen thread a run started from a mention is in. */
 export const RUN_THREAD = "th-5a1c0ffee0d15ea5";
 
 /**

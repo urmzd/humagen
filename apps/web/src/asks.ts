@@ -1,5 +1,5 @@
-import { type Copy, defaultCopy } from "@warp/components";
-import type { Interrupt, Turn } from "@warp/core";
+import { type Copy, defaultCopy } from "@humagen/components";
+import type { Interrupt, Turn } from "@humagen/core";
 import type { ThreadAsk } from "./api.ts";
 
 /**

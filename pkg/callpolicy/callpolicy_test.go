@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/callpolicy"
+	"github.com/urmzd/humagen/pkg/callpolicy"
 )
 
 func known(names ...string) func(string) bool {

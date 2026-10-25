@@ -14,15 +14,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/auth/authtest"
-	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/auth/authtest"
+	"github.com/urmzd/humagen/pkg/call"
 )
 
 const (
 	clientID = "web-client"
-	audience = "api://warp"
+	audience = "api://humagen"
 )
 
 type fixture struct {
@@ -68,7 +68,7 @@ func newFixtureGranting(t *testing.T, cfg platform.Config, grants string) *fixtu
 	iss := authtest.New(t)
 	v, err := auth.NewVerifier(ctx, auth.OIDCConfig{
 		Issuer: iss.URL, ClientID: clientID, Audience: audience, TenantClaim: "org", Policy: pol,
-		GroupRoles: map[string]auth.Role{"warp-admins": auth.Admin, "warp-operators": auth.Operator, "warp-viewers": auth.Viewer},
+		GroupRoles: map[string]auth.Role{"humagen-admins": auth.Admin, "humagen-operators": auth.Operator, "humagen-viewers": auth.Viewer},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestUnauthenticatedIsRefused(t *testing.T) {
 
 func TestMachineIsHeldToItsScopes(t *testing.T) {
 	f := newFixture(t)
-	reader := f.machine(t, "acme", "warp:agents:read", "warp:runs:read")
+	reader := f.machine(t, "acme", "humagen:agents:read", "humagen:runs:read")
 
 	if res, _ := f.do(t, nil, "GET", "/api/agents", reader, ""); res.StatusCode != http.StatusOK {
 		t.Fatalf("read = %d", res.StatusCode)
@@ -168,7 +168,7 @@ func TestMachineIsHeldToItsScopes(t *testing.T) {
 
 func TestTenantsAreIsolated(t *testing.T) {
 	f := newFixture(t)
-	all := []string{"warp:agents:read", "warp:agents:write", "warp:runs:read", "warp:runs:write", "warp:schedules:read", "warp:schedules:write"}
+	all := []string{"humagen:agents:read", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write", "humagen:schedules:read", "humagen:schedules:write"}
 	acme, globex := f.machine(t, "acme", all...), f.machine(t, "globex", all...)
 
 	if res, _ := f.do(t, nil, "POST", "/api/agents", acme, helperSpec); res.StatusCode != http.StatusCreated {
@@ -215,7 +215,7 @@ func TestTenantsAreIsolated(t *testing.T) {
 
 func TestEventsStreamARun(t *testing.T) {
 	f := newFixture(t)
-	tok := f.machine(t, "acme", "warp:agents:write", "warp:runs:read", "warp:runs:write")
+	tok := f.machine(t, "acme", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
 	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -308,7 +308,7 @@ func (f *fixture) signIn(t *testing.T, groups ...string) *http.Client {
 
 func TestBrowserSignIn(t *testing.T) {
 	f := newFixture(t)
-	c := f.signIn(t, "warp-viewers")
+	c := f.signIn(t, "humagen-viewers")
 
 	res, me := f.do(t, c, "GET", "/api/me", "", "")
 	if res.StatusCode != http.StatusOK {
@@ -325,7 +325,7 @@ func TestBrowserSignIn(t *testing.T) {
 
 	u, _ := url.Parse(f.srv.URL)
 	for _, ck := range c.Jar.Cookies(u) {
-		if ck.Name == "warp_session" && len(ck.Value) < 40 {
+		if ck.Name == "humagen_session" && len(ck.Value) < 40 {
 			t.Fatalf("session id is too short to be unguessable: %d chars", len(ck.Value))
 		}
 	}
@@ -369,7 +369,7 @@ func TestCallbackRejectsAForeignState(t *testing.T) {
 
 func TestCrossOriginWritesAreRefused(t *testing.T) {
 	f := newFixture(t)
-	c := f.signIn(t, "warp-admins")
+	c := f.signIn(t, "humagen-admins")
 
 	res, _ := f.do(t, c, "POST", "/api/agents", "", helperSpec, "Sec-Fetch-Site", "cross-site", "Origin", "https://evil.test")
 	if res.StatusCode != http.StatusForbidden {
@@ -399,7 +399,7 @@ func TestSafeReturn(t *testing.T) {
 
 func TestErrorsDoNotLeak(t *testing.T) {
 	f := newFixture(t)
-	tok := f.machine(t, "acme", "warp:runs:write")
+	tok := f.machine(t, "acme", "humagen:runs:write")
 	res, out := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"ghost","text":"hi"}`)
 	if res.StatusCode != http.StatusNotFound || out["error"] != "not found" {
 		t.Fatalf("got %d %v", res.StatusCode, out)

@@ -45,29 +45,32 @@ import (
 	"github.com/urmzd/playscape/pkg/tool"
 	"github.com/urmzd/playscape/pkg/workspace"
 
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/artifacts"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/blob"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/callpolicy"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/credentials"
-	"github.com/urmzd/warp/pkg/evals"
-	"github.com/urmzd/warp/pkg/feedback"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/integrations/github"
-	"github.com/urmzd/warp/pkg/integrations/slack"
-	"github.com/urmzd/warp/pkg/journal"
-	"github.com/urmzd/warp/pkg/knowledge"
-	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/people"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/prefs"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/agentcolors"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/blob"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/callpolicy"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/integrations/slack"
+	"github.com/urmzd/humagen/pkg/journal"
+	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 // ErrForbidden reports a call the caller's agent spec does not allow.
@@ -101,7 +104,7 @@ type Config struct {
 	// CredentialRefs is which references each tenant's people may give for
 	// their own tool credentials, by tenant: each entry is how a reference
 	// starts, naming the person whose it is ("op://People/{subject}/",
-	// "keychain:warp-people-{subject}/", "env:WARP_PERSON_{subject}_"), and
+	// "keychain:humagen-people-{subject}/", "env:HUMAGEN_PERSON_{subject}_"), and
 	// a person may give only their own (credentials.CheckStarts, Owns). A
 	// reference is read with this process's own access (its environment,
 	// its keychain, the 1Password account it signed in to), so this is the
@@ -109,7 +112,7 @@ type Config struct {
 	// with no entry may reference nothing.
 	CredentialRefs map[string][]string
 	// CredentialValues is the tenants whose people may store a credential's
-	// value with warp, kept in Secrets as a client's secret is. Everyone
+	// value with humagen, kept in Secrets as a client's secret is. Everyone
 	// else may only reference one.
 	CredentialValues map[string]bool
 	// InboxRetention is how long each tenant's inbox keeps what was settled
@@ -169,7 +172,7 @@ type Config struct {
 	Log          *slog.Logger
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
-	// Ext is what a program built on warp adds: model providers, tool
+	// Ext is what a program built on humagen adds: model providers, tool
 	// sources and MCP tool providers. The zero value adds nothing.
 	Ext Extensions
 	// Policy is the workspace's policy, which says what a person holds by
@@ -199,6 +202,8 @@ type Platform struct {
 	Feedback  *feedback.Store
 	Prefs     *prefs.Store
 	Memory    *memory.Store
+	// AgentColors reserves each workspace's stable agent hues.
+	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
 	Projects *projects.Store
 	// People is each tenant's directory of people.
@@ -211,6 +216,7 @@ type Platform struct {
 	CallPolicies *callpolicy.Store
 	Usage        *usage.Ledger
 	Inbox        *inbox.Store
+	ReadAudit    *readaudit.Store
 	Artifacts    *artifacts.Index
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
@@ -262,6 +268,10 @@ type Platform struct {
 	// beforeCarryOut, when set, runs after a message is posted and before
 	// what it starts is decided. Only tests set it, to move a thread then.
 	beforeCarryOut func()
+	// beforeQuestionKept, when set, runs after a question's message is
+	// found missing and built, and before it is kept. Only tests set it, to
+	// answer in that moment.
+	beforeQuestionKept func()
 	// halting holds runs being stopped at a limit, by run id, so a run is
 	// asked once however many of its calls cross it.
 	halting sync.Map
@@ -327,11 +337,7 @@ func New(cfg Config) (*Platform, error) {
 	}
 	dir := cfg.Workspace
 	if dir == "" {
-		base, err := os.UserCacheDir()
-		if err != nil {
-			base = os.TempDir()
-		}
-		dir = filepath.Join(base, "warp", "workspace")
+		dir = defaultWorkspace()
 	}
 	files, err := filesblob.NewFS(filepath.Join(dir, "attachments"))
 	if err != nil {
@@ -435,11 +441,7 @@ func New(cfg Config) (*Platform, error) {
 func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, error) {
 	dir := p.cfg.Workspace
 	if dir == "" {
-		base, err := os.UserCacheDir()
-		if err != nil {
-			base = os.TempDir()
-		}
-		dir = filepath.Join(base, "warp", "workspace")
+		dir = defaultWorkspace()
 	}
 	p.dir = dir
 	ws, err := workspace.NewLocal(dir)
@@ -1015,4 +1017,14 @@ func (p *Platform) Run(ctx context.Context) error {
 	p.flush()
 	close(errc)
 	return <-errc
+}
+
+// defaultWorkspace is where agents write their files when nothing is set:
+// under the user cache directory, at the path stored records point at.
+func defaultWorkspace() string {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		base = os.TempDir()
+	}
+	return legacy.WorkspaceDir(base)
 }

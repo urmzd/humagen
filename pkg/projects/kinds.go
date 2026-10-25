@@ -9,7 +9,7 @@ import (
 )
 
 // KindSpec is a workspace's own kind: a name and a title over a built-in
-// behavior. The behaviors stay warp's and stay testable; the names are the
+// behavior. The behaviors stay humagen's and stay testable; the names are the
 // workspace's. Only the root carries them.
 type KindSpec struct {
 	// Name matches ^[a-z][a-z0-9-]{0,31}$ and is not a built-in kind.
@@ -39,7 +39,7 @@ func validKinds(ks []KindSpec) error {
 	for _, k := range ks {
 		switch {
 		case builtIn(k.Name):
-			return fmt.Errorf("%w: %s is a kind warp defines", ErrInvalid, k.Name)
+			return fmt.Errorf("%w: %s is a kind Humagen defines", ErrInvalid, k.Name)
 		case !validKindName(k.Name):
 			return fmt.Errorf("%w: a kind's name is lower case letters, digits and dashes, starting with a letter, at most 32", ErrInvalid)
 		case utf8.RuneCountInString(k.Title) > MaxKindTitle || !oneLine(k.Title):

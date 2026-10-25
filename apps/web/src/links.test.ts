@@ -8,8 +8,8 @@ test("item addresses: relative on the console, absolute under a public URL", () 
     [inboxItemUrl("m-1"), "/?view=inbox&message=m-1"],
     [alertUrl("al-3"), "/?view=inbox&alert=al-3"],
     [inboxItemUrl("m 1&x"), "/?view=inbox&message=m+1%26x"],
-    [alertUrl("al-3", "https://warp.example.com"), "https://warp.example.com/?view=inbox&alert=al-3"],
-    [inboxItemUrl("m-1", "https://warp.example.com//"), "https://warp.example.com/?view=inbox&message=m-1"],
+    [alertUrl("al-3", "https://humagen.example.com"), "https://humagen.example.com/?view=inbox&alert=al-3"],
+    [inboxItemUrl("m-1", "https://humagen.example.com//"), "https://humagen.example.com/?view=inbox&message=m-1"],
     [consoleUrl("alerts", {}, "https://c.example.com/console/"), "https://c.example.com/console/?view=alerts"],
   ];
   for (const [got, want] of cases) assert.equal(got, want);

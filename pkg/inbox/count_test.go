@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // scan is Count as it was before it kept counters: every message the reader
@@ -124,13 +124,13 @@ func (w *world) raise() {
 	w.issue(w.s.Raise(acme, "key-"+strconv.Itoa(r.IntN(12)), m, w.now))
 }
 
-// post posts a broadcast in a project, from a person or from warp, once
+// post posts a broadcast in a project, from a person or from humagen, once
 // in a while under a key it is posted once by.
 func (w *world) post() {
 	r := w.rnd
 	m := announcement(pick(r, worldProjects), "News")
 	if r.IntN(3) == 0 {
-		m.From = From{Kind: "system", Name: "warp"}
+		m.From = From{Kind: "system", Name: "humagen"}
 	}
 	if r.IntN(5) == 0 {
 		w.issue(w.s.PostOnce(acme, "release:0."+strconv.Itoa(r.IntN(4)), m, w.now, PostCaps{PerProject: 1000, PerTenant: 1000}))

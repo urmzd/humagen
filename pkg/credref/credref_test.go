@@ -14,8 +14,8 @@ func TestParseAcceptsOnlyTheThreeSchemes(t *testing.T) {
 		ok  bool
 	}{
 		{"env:OPENAI_API_KEY", true},
-		{"keychain:warp", true},
-		{"keychain:warp/openai", true},
+		{"keychain:humagen", true},
+		{"keychain:humagen/openai", true},
 		{"op://Private/OpenAI/credential", true},
 		{"op://Private/OpenAI/section/credential", true},
 		{"sk-live-1234", false},
@@ -56,8 +56,8 @@ func TestResolveRunsTheRightTool(t *testing.T) {
 		goos, ref string
 		want      []string
 	}{
-		{"darwin", "keychain:warp/openai", []string{"security", "find-generic-password", "-s", "warp", "-w", "-a", "openai"}},
-		{"linux", "keychain:warp", []string{"secret-tool", "lookup", "service", "warp"}},
+		{"darwin", "keychain:humagen/openai", []string{"security", "find-generic-password", "-s", "humagen", "-w", "-a", "openai"}},
+		{"linux", "keychain:humagen", []string{"secret-tool", "lookup", "service", "humagen"}},
 		{"linux", "op://V/I/F", []string{"op", "read", "--no-newline", "op://V/I/F"}},
 	} {
 		calls = nil

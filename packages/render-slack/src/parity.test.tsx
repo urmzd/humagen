@@ -5,10 +5,10 @@ import {
   MessageView,
   RequestView,
   TurnView,
-} from "@warp/components";
-import { ActionId, decodeAction, type InboxMessage } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { Actions, Button, Checkboxes } from "@warp/primitives";
+} from "@humagen/components";
+import { ActionId, decodeAction, type InboxMessage } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { Actions, Button, Checkboxes } from "@humagen/primitives";
 import { describe, expect, it } from "vitest";
 import {
   AMOUNT_MODAL,

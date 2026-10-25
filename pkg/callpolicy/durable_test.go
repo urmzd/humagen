@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/callpolicy"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/callpolicy"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 func TestRestart(t *testing.T) {

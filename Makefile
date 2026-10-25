@@ -1,6 +1,6 @@
 .PHONY: all init build test lint fmt check start dev dev-signin web screens up down chart-check image client client-check spec-lint oag-install
 
-BIN := warp
+BIN := humagen
 
 # The generator that writes packages/client from api/openapi.yaml, and the one
 # version of it whose output is committed. CI regenerates with the same version
@@ -40,7 +40,7 @@ check: fmt lint test
 # The whole platform with zero configuration: console, seeded agents, and
 # the first-run questions on a terminal.
 start: build
-	pnpm install && pnpm --filter @warp/console build
+	pnpm install && pnpm --filter @humagen/console build
 	./bin/$(BIN) start
 
 # Local preview: no sign-in, loopback only, two example agents.
@@ -56,23 +56,23 @@ dev-signin: build
 # The web console, proxying /api and /auth to the server from `make dev`.
 web:
 	pnpm install
-	pnpm --filter @warp/console dev
+	pnpm --filter @humagen/console dev
 
 # Every console screen at phone (390x844) and desktop (1280x800) width, from a
-# warp seeded with example data, with the layout checks that fail the run
+# humagen seeded with example data, with the layout checks that fail the run
 # (scripts/screens). Uses an installed Chromium or Chrome and downloads none.
 # Screenshots and index.html, which shows them side by side, go to .screens/.
 screens: build
 	pnpm install --frozen-lockfile
-	pnpm --filter @warp/console build
-	pnpm --filter @warp/screens screens
+	pnpm --filter @humagen/console build
+	pnpm --filter @humagen/screens screens
 
 # The container image, from the Dockerfile at the root.
-IMAGE ?= warp:local
+IMAGE ?= humagen:local
 image:
 	docker build -t $(IMAGE) .
 
-# warp, Postgres and the profiles in deploy/compose/.env (COMPOSE_PROFILES), built
+# humagen, Postgres and the profiles in deploy/compose/.env (COMPOSE_PROFILES), built
 # from this checkout. Copy deploy/compose/.env.example to .env first.
 COMPOSE := docker compose --project-directory deploy/compose -f deploy/compose/compose.yaml
 up:
@@ -82,13 +82,13 @@ up:
 down:
 	$(COMPOSE) down $(if $(V),-v)
 
-# Lint and render the Helm chart, and run `warp config check` on the spec each
+# Lint and render the Helm chart, and run `humagen config check` on the spec each
 # render produces, and on the compose stack's. Needs helm; kubeconform is used
 # when it is on PATH.
 chart-check:
 	deploy/helm/check.sh
-	go run ./cmd/warp config check -f deploy/compose/config
-	go run ./cmd/warp config check -f deploy/compose/dev
+	go run ./cmd/humagen config check -f deploy/compose/config
+	go run ./cmd/humagen config check -f deploy/compose/dev
 
 # Regenerate the TypeScript client from the API contract. The output under
 # packages/client/src/generated is committed.
@@ -102,8 +102,8 @@ client:
 # Build, typecheck and test the client package.
 client-check:
 	pnpm install --frozen-lockfile
-	pnpm --filter @warp/client typecheck
-	pnpm --filter @warp/client test
+	pnpm --filter @humagen/client typecheck
+	pnpm --filter @humagen/client test
 
 # Lint the API contract.
 spec-lint:

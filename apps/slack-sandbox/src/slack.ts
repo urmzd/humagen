@@ -1,11 +1,11 @@
-import { slackClient as hostClient, type SlackClient } from "@warp/slack-host";
+import { slackClient as hostClient, type SlackClient } from "@humagen/slack-host";
 
 /**
- * The sandbox's Slack: the shared host client from `@warp/slack-host`, with
+ * The sandbox's Slack: the shared host client from `@humagen/slack-host`, with
  * Slack's warnings printed, plus what only a test bench needs.
  */
 
-export { type SlackClient, SlackError, uploadFile } from "@warp/slack-host";
+export { type SlackClient, SlackError, uploadFile } from "@humagen/slack-host";
 
 /** A client for one token that prints Slack's warnings. */
 export function slackClient(token: string | undefined): SlackClient {

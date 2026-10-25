@@ -7,7 +7,7 @@ import (
 	"github.com/urmzd/fiber/pkg/address"
 	"github.com/urmzd/fiber/pkg/attachment"
 	"github.com/urmzd/fiber/pkg/thread"
-	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/humagen/pkg/auth"
 )
 
 // surfaceFiles reads the actual Slack message through its client, so the host

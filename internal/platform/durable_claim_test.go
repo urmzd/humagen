@@ -17,9 +17,9 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // lateClaims stands for a database that gets to the run queue's claims late,

@@ -15,12 +15,12 @@ import (
 
 	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/pick"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/pick"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // Shared threads (docs/projects.md, "Channels and threads"): the
@@ -932,9 +932,15 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as 
 	if err != nil || run.Thread != th.ID {
 		return fmt.Errorf("%w: no run of this thread asked that", threads.ErrInvalid)
 	}
-	m, ok := p.Inbox.ByKey(who.Tenant, questionKey(ref.Run, ref.Question))
-	if !ok || len(m.Parts) == 0 {
+	// As AnswerQuestion finds it: a reply posted in the moment between the
+	// run showing its question and the question's message being raised
+	// answers it too.
+	m, err := p.askedMessage(ctx, run, ref.Question)
+	if errors.Is(err, inbox.ErrNotFound) || (err == nil && len(m.Parts) == 0) {
 		return fmt.Errorf("%w: no run of this thread asked that", threads.ErrInvalid)
+	}
+	if err != nil {
+		return err
 	}
 	a := QuestionAnswer{Text: strings.TrimSpace(text), ActAs: as}
 	switch m.Parts[0].Type {

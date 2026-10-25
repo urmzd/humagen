@@ -7,12 +7,12 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 // Denied reports a run a billing policy refused. It carries the decision, so a

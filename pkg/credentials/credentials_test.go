@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/credentials"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 var at = time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
@@ -111,7 +111,7 @@ func TestAValueNoLongerHeldIsForgotten(t *testing.T) {
 	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Value: token}, at); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Ref: "env:WARP_ADA_DRIVE"}, at); err != nil {
+	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Ref: "env:HUMAGEN_ADA_DRIVE"}, at); err != nil {
 		t.Fatal(err)
 	}
 	if v, _ := secrets.Get("acme", "person/ada", "drive"); v != "" {
@@ -160,7 +160,7 @@ func TestOnlyACredentialOfAValidFormIsKept(t *testing.T) {
 		in                credentials.Input
 	}{
 		"nothing":            {"ada", "drive", credentials.Input{}},
-		"both":               {"ada", "drive", credentials.Input{Ref: "env:WARP_X", Value: "v"}},
+		"both":               {"ada", "drive", credentials.Input{Ref: "env:HUMAGEN_X", Value: "v"}},
 		"a bare secret":      {"ada", "drive", credentials.Input{Ref: "sk-live-123"}},
 		"another scheme":     {"ada", "drive", credentials.Input{Ref: "vault:secret/x"}},
 		"a value of lines":   {"ada", "drive", credentials.Input{Value: "one\r\nX-Evil: two"}},
@@ -187,14 +187,14 @@ func TestOnlyACredentialOfAValidFormIsKept(t *testing.T) {
 func TestAPersonHoldsABoundedNumber(t *testing.T) {
 	s := credentials.New(nil)
 	for i := range credentials.MaxPerPerson {
-		if _, err := s.Put("acme", "ada", fmt.Sprintf("p%d", i), credentials.Input{Ref: "env:WARP_X"}, at); err != nil {
+		if _, err := s.Put("acme", "ada", fmt.Sprintf("p%d", i), credentials.Input{Ref: "env:HUMAGEN_X"}, at); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.Put("acme", "ada", "one-more", credentials.Input{Ref: "env:WARP_X"}, at); !errors.Is(err, credentials.ErrLimit) {
+	if _, err := s.Put("acme", "ada", "one-more", credentials.Input{Ref: "env:HUMAGEN_X"}, at); !errors.Is(err, credentials.ErrLimit) {
 		t.Fatalf("one over the cap = %v", err)
 	}
-	if _, err := s.Put("acme", "ada", "p0", credentials.Input{Ref: "env:WARP_Y"}, at); err != nil {
+	if _, err := s.Put("acme", "ada", "p0", credentials.Input{Ref: "env:HUMAGEN_Y"}, at); err != nil {
 		t.Fatalf("replacing one at the cap = %v", err)
 	}
 	if _, err := s.Put("acme", "ada", "p1", credentials.Input{Value: "v"}, at); !errors.Is(err, credentials.ErrInvalid) {
@@ -218,7 +218,7 @@ func TestAFailedWriteChangesNothing(t *testing.T) {
 	if v, _ := s.Value("acme", "ada", "drive"); v != "first" {
 		t.Fatalf("a failed write left the value %q", v)
 	}
-	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Ref: "env:WARP_X"}, at); !errors.Is(err, statetest.ErrInjected) {
+	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Ref: "env:HUMAGEN_X"}, at); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("a failed write = %v", err)
 	}
 	if c, _ := s.Get("acme", "ada", "drive"); c.Kind != credentials.Value {

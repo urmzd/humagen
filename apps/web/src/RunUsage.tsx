@@ -8,7 +8,7 @@ import { contextFill, contextWords, costWords, count, tokenWords } from "./usage
  * was, and, for a run with a budget, what it has spent of it. The figures
  * are the runtime's. While the run works they are the calls reported so far.
  *
- * warp has no usage summary for a run yet, so this is the console's own;
+ * humagen has no usage summary for a run yet, so this is the console's own;
  * see docs/clients.md. Presentational: it fetches nothing.
  */
 export function RunUsageSummary({ run }: { run: Run }) {

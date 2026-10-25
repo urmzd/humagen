@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/people"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // platformDoc is a Platform document with a workspace and agents, each
 // indented under its key.
 func platformDoc(workspace, agents string) string {
-	doc := "api_version: warp/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  workspace:\n" + workspace
+	doc := "api_version: humagen/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  workspace:\n" + workspace
 	if agents != "" {
 		doc += "  agents:\n" + agents
 	}

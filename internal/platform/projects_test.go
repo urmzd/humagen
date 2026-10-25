@@ -19,16 +19,17 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 var (
@@ -637,6 +638,23 @@ func TestContextLayersInOrderAndWithinBudget(t *testing.T) {
 		if strings.Contains(text, never) {
 			t.Fatalf("%q was sent past its budget", never)
 		}
+	}
+	preview, err := p.ProjectContextAs(ctx, auth.Principal{Tenant: tenant, Subject: "ada", Kind: auth.Machine, Scopes: []auth.Permission{auth.ProjectsRead}}, "Renewals", "", "lead")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rendered []string
+	for _, l := range preview.Layers {
+		if l.Kind == "knowledge" || l.Kind == "skills" || l.Kind == "agent_instructions" {
+			continue
+		}
+		rendered = append(rendered, l.Text)
+		if l.Used > l.Budget && l.Budget > 0 {
+			t.Fatalf("layer exceeds its cap: %+v", l)
+		}
+	}
+	if composed := strings.Join(rendered, "\n\n"); !strings.HasPrefix(text, composed) {
+		t.Fatalf("preview and real turn differ:\n%s\n---\n%s", composed, text)
 	}
 	// What the person asked is what the record shows.
 	if second.Text != "SECOND-MESSAGE" {

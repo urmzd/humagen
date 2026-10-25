@@ -1,5 +1,6 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { type FormEvent, type MouseEvent, useRef, useState } from "react";
+import { ReadAudit } from "./ReadAudit.tsx";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { href, type SettingsSection } from "./route.ts";
 import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revision, type Settings as Workspace } from "./api.ts";
@@ -130,6 +131,7 @@ export function Settings({
       .catch(fail("The workspace settings could not be saved."));
   };
 
+  const canReadAudit = me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const sections: { id: Section; label: string }[] = [
     { id: "profile", label: "Profile" },
     { id: "appearance", label: "Appearance" },
@@ -139,16 +141,17 @@ export function Settings({
     { id: "limits", label: "Limits" },
     { id: "connections", label: "Connections" },
     { id: "access", label: "Access" },
+    ...(canReadAudit ? [{ id: "read-audit" as const, label: defaultCopy.readAudit.label }] : []),
   ];
   // On a phone the sections are a row that scrolls inside itself, kept on the open one.
   const strip = useStrip<HTMLElement>(section);
 
   return (
-    <div className="warp-fade flex min-h-0 flex-1 flex-col md:flex-row">
+    <div className="humagen-fade flex min-h-0 flex-1 flex-col md:flex-row">
       {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
       {/* On a phone the row scrolls inside the 16px gutter, never under the screen's edge. */}
       <div className="shrink-0 border-aui-border border-b px-4 md:w-52 md:border-r md:border-b-0 md:px-0">
-        <nav ref={strip} aria-label="Settings sections" className="warp-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3">
+        <nav ref={strip} aria-label="Settings sections" className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3">
           {sections.map((s) => (
             <button
               key={s.id}
@@ -169,6 +172,12 @@ export function Settings({
       <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-8 pb-12 md:px-10">
           <Problem message={problem} />
+          {section === "read-audit" && (canReadAudit ? <ReadAudit /> : (
+            <>
+              <h1 className={pageTitle}>{defaultCopy.readAudit.title}</h1>
+              <Problem message={defaultCopy.readAudit.denied} />
+            </>
+          ))}
 
           {section === "routing" && (
             <>

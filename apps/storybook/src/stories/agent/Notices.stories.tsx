@@ -1,7 +1,7 @@
+import { NoticeView } from "@humagen/components";
+import type { Notice } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { NoticeView } from "@warp/components";
-import type { Notice } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
 import { fn } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 

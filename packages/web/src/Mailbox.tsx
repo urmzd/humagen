@@ -1,4 +1,4 @@
-import { defaultCopy, MessagePartView } from "@warp/components";
+import { defaultCopy, MessagePartView } from "@humagen/components";
 import {
   type ActionHandler,
   ActionId,
@@ -17,7 +17,7 @@ import {
   sortMessages,
   type TemplateId,
   type Tone,
-} from "@warp/core";
+} from "@humagen/core";
 import {
   AlertOctagonIcon,
   AlertTriangleIcon,
@@ -36,7 +36,7 @@ import {
   WebSurface,
   XCircleIcon,
   XIcon,
-} from "@warp/render-web";
+} from "@humagen/render-web";
 import {
   type ComponentType,
   type KeyboardEvent,

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { defaultCopy } from "@warp/components";
-import type { Turn } from "@warp/core";
-import { WebSurface } from "@warp/render-web";
-import { AgentMessage } from "@warp/web";
+import { defaultCopy } from "@humagen/components";
+import type { Turn } from "@humagen/core";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage } from "@humagen/web";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
@@ -508,12 +508,17 @@ test("a recap's announcement is the agent's, and a withdrawn one says only that"
   assert.ok(screen.getByRole("heading", { name: "what does it mean for renewals?" }), "a withdrawn subject is not the title");
 });
 
-test("release notes seed a thread from warp itself, with no person's or agent's mark", async () => {
-  seededRoom(seeded({ id: "m-10", kind: "system", by: "warp", subject: "What's new in warp 0.16.0", text: "- Slack catch-up", at }));
-  const notes = await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from warp` });
+test("release notes seed a thread from humagen itself, with no person's or agent's mark", async () => {
+  seededRoom(seeded({ id: "m-10", kind: "system", by: "humagen", subject: "What's new in Humagen 0.16.0", text: "- Slack catch-up", at }));
+  const notes = await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from Humagen` });
   assert.ok(notes.textContent?.includes("Slack catch-up"));
-  assert.equal(notes.querySelector("[aria-hidden]")?.textContent, "", "no letter in a circle reads as a person called W");
-  assert.ok(screen.getByRole("heading", { name: "What's new in warp 0.16.0" }));
+  assert.equal(notes.querySelector("[aria-hidden]")?.textContent, "", "no letter in a circle reads as a person called H");
+  assert.ok(screen.getByRole("heading", { name: "What's new in Humagen 0.16.0" }));
+});
+
+test("release notes posted before the rename, by warp, are from Humagen too", async () => {
+  seededRoom(seeded({ id: "m-11", kind: "system", by: "warp", subject: "What's new in warp 0.15.0", text: "- Inbox", at }));
+  assert.ok(await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from Humagen` }));
 });
 
 /** The room with ledger parked on a question for the billing experts, as the platform says it to `ask`. */
@@ -771,9 +776,7 @@ test("a thread started in Slack says so, and so does each message posted there; 
     assert.equal(screen.getAllByText(words.fromSlack).length, 1, "only the message posted in Slack says it came from there");
     const fromAna = screen.getByRole("article", { name: "Message from Ana" });
     assert.ok(within(fromAna).getByText(words.fromSlack));
-    // Below the small breakpoint the title takes the whole first line.
-    const title = screen.getByRole("heading", { level: 1 });
-    assert.ok(/(^|\s)w-full(\s|$)/.test(title.className) && /(^|\s)sm:flex-1(\s|$)/.test(title.className), title.className);
+    assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1, "the conversation has one page title");
   } finally {
     restore();
   }

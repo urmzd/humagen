@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/urmzd/warp/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/artifacts"
 )
 
 // put reserves an id and publishes under it, the way the platform does.

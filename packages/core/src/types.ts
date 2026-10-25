@@ -63,6 +63,9 @@ export interface Task {
   tool?: string;
   details?: string;
   output?: string;
+  /** Bounded arguments for an explicit technical detail view. */
+  input?: string;
+  durationMs?: number;
   sources?: Citation[];
   /** The approval gating this call, when status is `waiting` or `denied`. */
   interruptId?: string;
@@ -307,6 +310,8 @@ export type ArtifactPhase =
 export interface Artifact {
   type: "artifact";
   id: string;
+  /** The immutable storage record, when the UI id follows a publishing task. */
+  artifactId?: string;
   /** File name as the user will save it: "refunds-q3.xlsx". */
   title: string;
   kind: ArtifactKind;

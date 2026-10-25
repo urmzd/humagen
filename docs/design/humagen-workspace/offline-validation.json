@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "The prototype contains its content and download files",
+    "Clarification and artifact flows continue with network access disabled",
+    "The native table matches the exported dataset",
+    "Native table has one title and no horizontal overflow",
+    "Phone native table has one title and no horizontal overflow",
+    "Offline flows have no runtime errors"
+  ],
+  "errors": []
+}

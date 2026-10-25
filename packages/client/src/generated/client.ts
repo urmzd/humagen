@@ -22,7 +22,9 @@ import type {
   CreateRunRequest,
   EvalRun,
   EvalSuite,
+  GetAgentHuesResponse,
   GetInboxMessageResponse,
+  GetProjectAgentHuesResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
   GetUsageResponse,
@@ -54,6 +56,7 @@ import type {
   ListProjectHistoryResponse,
   ListProjectsResponse,
   ListReachableAgentsResponse,
+  ListReadAuditResponse,
   ListRunEventsResponse,
   ListRunFeedbackResponse,
   ListSchedulesResponse,
@@ -72,6 +75,7 @@ import type {
   Preferences,
   ProjectAgentsInput,
   ProjectAgentsView,
+  ProjectContext,
   ProjectDetail,
   ProjectExperts,
   ProjectInput,
@@ -258,7 +262,7 @@ function buildFormData(body: Record<string, unknown>): FormData {
   return formData;
 }
 
-/** API client for Warp API. */
+/** API client for Humagen API. */
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
@@ -447,6 +451,33 @@ export class ApiClient {
     return response.data;
   }
 
+  /** Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end. */
+  async listReadAudit(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListReadAuditResponse> {
+    let path = "/api/read-audit";
+    const _q = new URLSearchParams();
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListReadAuditResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listReadAuditRaw(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListReadAuditResponse>> {
+    let path = "/api/read-audit";
+    const _q = new URLSearchParams();
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListReadAuditResponse>("GET", path, {
+      ...options,
+    });
+  }
+
   /** Liveness probe */
   async getHealth(options?: RequestOptions): Promise<string> {
     const path = "/healthz";
@@ -463,7 +494,7 @@ export class ApiClient {
   }
 
   /** Redirects to the identity provider (authorization code flow with
-PKCE) and sets a short-lived `warp_login` cookie. Under
+PKCE) and sets a short-lived `humagen_login` cookie. Under
 development auth it redirects straight to `/`. A browser navigates
 here; a script has no use for it.
  */
@@ -490,7 +521,7 @@ here; a script has no use for it.
   }
 
   /** The identity provider redirects here. On success it sets the
-`warp_session` cookie (`__Host-warp_session` over https),
+`humagen_session` cookie (`__Host-humagen_session` over https),
 HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
 `return_to` path. Errors are plain text, not JSON.
  */
@@ -652,6 +683,52 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Requires runs:read. Hidden and missing agents are both omitted. Never enumerates names. */
+  async getAgentHues(names: string, options?: RequestOptions): Promise<GetAgentHuesResponse> {
+    let path = "/api/agent-hues";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GetAgentHuesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentHuesRaw(names: string, options?: RequestOptions): Promise<ApiResponse<GetAgentHuesResponse>> {
+    let path = "/api/agent-hues";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GetAgentHuesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Requires projects:read. Hidden and missing agents are both omitted. Never enumerates names. */
+  async getProjectAgentHues(names: string, options?: RequestOptions): Promise<GetProjectAgentHuesResponse> {
+    let path = "/api/project-agent-hues";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GetProjectAgentHuesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectAgentHuesRaw(names: string, options?: RequestOptions): Promise<ApiResponse<GetProjectAgentHuesResponse>> {
+    let path = "/api/project-agent-hues";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GetProjectAgentHuesResponse>("GET", path, {
       ...options,
     });
   }
@@ -3341,6 +3418,43 @@ need `projects:govern` as well.
     });
   }
 
+  /** Uses the live turn composer. Hidden project layers are omitted.
+Source names require knowledge:read. Skills are available choices,
+sent only when a message names them. Budgets are character caps on
+layer content, or item caps for knowledge and skills, not token estimates.
+The agent system prompt is the current revision, sent separately
+by the runtime. A zero budget means no extra composer cap. The
+conversation, retrieved documents and runtime compaction depend on the turn.
+System prompt previews show at most 32,000 characters; source name
+previews show at most 128 names and 16,000 name characters.
+preview_omitted distinguishes display truncation from runtime omissions.
+ */
+  async getProjectContext(name: string, agent: string, channel?: string, options?: RequestOptions): Promise<ProjectContext> {
+    let path = "/api/projects/{name}/context";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ProjectContext>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectContextRaw(name: string, agent: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<ProjectContext>> {
+    let path = "/api/projects/{name}/context";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ProjectContext>("GET", path, {
+      ...options,
+    });
+  }
+
   /** A run filed in a project is grounded in the knowledge sources its
 project names, then each project above it, nearest first, besides
 its agent's own: `given`, each source once, from the nearest project
@@ -3753,7 +3867,7 @@ end; pass it back as `before`.
     });
   }
 
-  /** Served by warp, never fetched from elsewhere. 404 for someone with none. */
+  /** Served by Humagen, never fetched from elsewhere. 404 for someone with none. */
   async getPersonPhoto(handle: string, options?: RequestOptions): Promise<Blob> {
     let path = "/api/people/{handle}/photo";
     path = path.replace("{handle}", encodeURIComponent(String(handle)));

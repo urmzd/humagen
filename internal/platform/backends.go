@@ -11,25 +11,27 @@ import (
 	"github.com/urmzd/fiber/pkg/durable"
 	"github.com/urmzd/fiber/pkg/registry"
 
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/artifacts"
-	"github.com/urmzd/warp/pkg/callpolicy"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/credentials"
-	"github.com/urmzd/warp/pkg/evals"
-	"github.com/urmzd/warp/pkg/feedback"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/journal"
-	"github.com/urmzd/warp/pkg/knowledge"
-	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/people"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/prefs"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/threads"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/pkg/agentcolors"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/callpolicy"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/journal"
+	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 // Ledger is the run ledger the runtime executes from and the platform reads
@@ -43,7 +45,7 @@ type Ledger interface {
 // zero value keeps everything in memory, as a test wants. Each is chosen on
 // its own; OpenPostgres chooses all of them on one database.
 type Backends struct {
-	// State is where warp's own stores keep their records: clients and
+	// State is where humagen's own stores keep their records: clients and
 	// their secrets (unless Config sets its own), people's own credentials
 	// for tool providers (their values beside the clients' secrets), the
 	// inbox, preferences, memory, projects, threads, limits, call policies,
@@ -60,7 +62,7 @@ type Backends struct {
 	Queue  dqueue.Queue
 }
 
-// OpenPostgres puts every backend on one Postgres database: warp's state
+// OpenPostgres puts every backend on one Postgres database: humagen's state
 // (pkg/state), fiber's agent registry, and anchor's run ledger and queue
 // (fiber's pkg/durable). Each migrates its own tables, idempotently. The
 // caller owns the pool and closes it after calling release.
@@ -99,7 +101,7 @@ func (b Backends) check() error {
 	return nil
 }
 
-// openStores builds warp's own stores on st, reading back what it holds. A
+// openStores builds humagen's own stores on st, reading back what it holds. A
 // nil st builds them in memory.
 func (p *Platform) openStores(cfg Config) error {
 	st := cfg.Backends.State
@@ -110,6 +112,8 @@ func (p *Platform) openStores(cfg Config) error {
 		}
 	}
 	var err error
+	p.AgentColors, err = agentcolors.Open(st)
+	keep("agent colors", err)
 	p.Runs, err = runs.Open(st)
 	keep("runs", err)
 	p.Schedules, err = OpenSchedules(st)
@@ -142,6 +146,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("call policies", err)
 	p.Usage, err = usage.Open(st)
 	keep("usage", err)
+	p.ReadAudit, err = readaudit.Open(st)
+	keep("read audit", err)
 	p.Inbox, err = inbox.OpenStore(st)
 	keep("inbox", err)
 	p.Artifacts, err = artifacts.Open(st)

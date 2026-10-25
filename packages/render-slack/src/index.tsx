@@ -1,5 +1,5 @@
-import { decodeAction, type UiAction } from "@warp/core";
-import { RendererProvider } from "@warp/primitives";
+import { decodeAction, type UiAction } from "@humagen/core";
+import { RendererProvider } from "@humagen/primitives";
 import type { ReactNode } from "react";
 import {
   type Block,
@@ -34,7 +34,7 @@ export interface RenderOptions extends SerializeOptions {
 }
 
 /**
- * Render warp components to Block Kit. Synchronous and side-effect free:
+ * Render humagen components to Block Kit. Synchronous and side-effect free:
  * no hooks with effects, no async. Post the result with chat.postMessage,
  * chat.update, chat.stopStream (blocks), views.open, or views.publish.
  */
@@ -82,14 +82,14 @@ export function homeView(
   };
 }
 
-/** Slack sends action_id back as "<base>#<index>"; recover the shared warp ActionId. */
+/** Slack sends action_id back as "<base>#<index>"; recover the shared humagen ActionId. */
 export function actionIdBase(actionId: string): string {
   const i = actionId.lastIndexOf("#");
   return i === -1 ? actionId : actionId.slice(0, i);
 }
 
 /**
- * Decode any warp interaction from a Slack block_actions payload: buttons
+ * Decode any humagen interaction from a Slack block_actions payload: buttons
  * carry the payload in `value`; overflow and select menus in `selected_option.value`;
  * checkbox groups contribute `selection` from state.values.
  */

@@ -2,19 +2,32 @@
  * Captures every main console screen at phone and desktop width, and fails
  * when one breaks the layout checks in checks.ts.
  *
- * It starts warp on a free loopback port with the development sign-in, the
+ * It starts humagen on a free loopback port with the development sign-in, the
  * seeded agents on the offline provider and state in memory, adds a little
  * more through the API (announcements, a failed run whose alert waits in the
  * inbox, a schedule), and serves the built console from apps/web/dist. Run it
  * with `make screens`, which builds both first.
  *
- * Settings, all optional: WARP_BIN (the warp binary), WARP_WEB (the built
+ * Settings, all optional: HUMAGEN_BIN (the humagen binary), HUMAGEN_WEB (the built
  * console), SCREENS_OUT (where screenshots go, .screens at the root),
  * CHROMIUM (a Chromium or Chrome to use instead of the first one found),
- * SCREENS_ONLY (a comma-separated list of screen names).
+ * SCREENS_ONLY (a comma-separated list of screen names), SCREENS_SHOWCASE=1
+ * (also refresh the eight committed showcase images, using the gallery fixtures
+ * for primitives and approval; requires all screens).
  */
+
+import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -24,9 +37,10 @@ import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./chec
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
-const bin = resolve(process.env.WARP_BIN ?? join(repo, "bin/warp"));
-const web = resolve(process.env.WARP_WEB ?? join(repo, "apps/web/dist"));
+const bin = resolve(process.env.HUMAGEN_BIN ?? join(repo, "bin/humagen"));
+const web = resolve(process.env.HUMAGEN_WEB ?? join(repo, "apps/web/dist"));
 const out = resolve(process.env.SCREENS_OUT ?? join(repo, ".screens"));
+const showcase = process.env.SCREENS_SHOWCASE === "1";
 const only = (process.env.SCREENS_ONLY ?? "").split(",").filter(Boolean);
 
 interface Viewport {
@@ -83,6 +97,93 @@ async function twoAgents(page: Page): Promise<void> {
  */
 function chats(ids: Ids): Screen[] {
   return [
+    {
+      name: "conversation-context",
+      path: `/conversations/${ids.privateChat}/context`,
+      act: async (page) => {
+        await page.locator("summary").filter({ hasText: "launch-context" }).click();
+        await page.getByText("Origin: drive://launch/supplier-eta", { exact: true }).waitFor();
+      },
+    },
+    { name: "conversation-people", path: `/conversations/${ids.privateChat}/people` },
+    {
+      name: "conversation-activity",
+      path: `/conversations/${ids.privateChat}/activity`,
+      act: async (page) => {
+        await page.getByTestId("activity-row").first().click();
+        await page.getByTestId("activity-detail").waitFor();
+        assert.match(new URL(page.url()).pathname, /\/activity\/.+$/);
+        await page.keyboard.press("Escape");
+        await page.getByTestId("activity-row").first().waitFor();
+        assert.equal(new URL(page.url()).pathname.endsWith("/activity"), true);
+      },
+    },
+    {
+      name: "conversation-settings",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
+        await page.getByRole("button", { name: "Activity", exact: true }).waitFor();
+      },
+    },
+    {
+      name: "conversation-presentation",
+      path: `/conversations/${ids.privateChat}/deliverables/sample-deck-v2`,
+      act: async (page) => {
+        await artifactFixtures(page, ids.privateChat);
+        await page.reload();
+        await page.getByRole("button", { name: /^Slide 3:/ }).click();
+        assert.equal(new URL(page.url()).searchParams.get("slide"), "3");
+        await page.getByRole("button", { name: "Present", exact: true }).click();
+        await page.keyboard.press("ArrowRight");
+        await page.getByText("Slide 4 of 6 · ← →", { exact: true }).waitFor();
+        await page.keyboard.press("Escape");
+        await page.getByRole("button", { name: "Request Changes", exact: true }).waitFor();
+        assert.equal(
+          await page.getByRole("button", { name: "Exit Presentation", exact: true }).isVisible(),
+          false,
+        );
+      },
+    },
+    {
+      name: "conversation-document",
+      path: `/conversations/${ids.privateChat}/deliverables/sample-plan`,
+      act: async (page) => {
+        await artifactFixtures(page, ids.privateChat);
+        await page.reload();
+        await page.getByRole("heading", { name: "Launch plan", exact: true }).waitFor();
+      },
+    },
+    {
+      name: "conversation-table",
+      path: `/conversations/${ids.privateChat}/deliverables/sample-dependencies`,
+      act: async (page) => {
+        await artifactFixtures(page, ids.privateChat);
+        await page.reload();
+        await page.getByRole("table").waitFor();
+        assert.equal(await page.getByRole("row").count(), 6);
+      },
+    },
+    {
+      name: "conversation-revision",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        await artifactFixtures(page, ids.privateChat);
+        await bar(page).fill("Make the owner clear.");
+        await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
+        await page.getByRole("button", { name: "Deliverables", exact: true }).click();
+        await page.getByRole("button", { name: /^Launch briefing.pptx/ }).click();
+        await page.getByRole("button", { name: /^Slide 3:/ }).click();
+        await page.getByRole("button", { name: "Request Changes", exact: true }).click();
+        await page.waitForFunction(() =>
+          document
+            .querySelector<HTMLTextAreaElement>("form[aria-label='Message'] textarea")
+            ?.value.includes("v2, slide 3"),
+        );
+        assert.match(await bar(page).inputValue(), /Make the owner clear/);
+        assert.equal(new URL(page.url()).pathname.includes("deliverables"), false);
+      },
+    },
     {
       name: "chat-kind-items",
       path: "/",
@@ -165,6 +266,10 @@ function chats(ids: Ids): Screen[] {
           .getByText(/^Routed to /)
           .first()
           .waitFor();
+        // Reproduce a long conversation whose earlier messages are clipped above the log.
+        await page.getByRole("log", { name: "Thread", exact: true }).evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
       },
     },
   ];
@@ -202,7 +307,18 @@ function screens(ids: Ids): Screen[] {
       },
     },
     { name: "workspace", path: "/projects/~" },
+    { name: "workspace-overview", path: "/projects/~/overview" },
     { name: "workspace-context", path: "/projects/~/context" },
+    {
+      name: "project-context-preview",
+      path: "/projects/Launch/context",
+      act: async (page) => {
+        await page.getByRole("textbox", { name: "Preview agent" }).fill("lead");
+        await page.getByRole("textbox", { name: "Preview channel" }).fill("general");
+        await page.getByRole("button", { name: "Preview Turn" }).click();
+        await page.getByRole("heading", { name: "Skill names" }).waitFor();
+      },
+    },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
     { name: "schedule", path: `/schedules/${ids.schedule}` },
@@ -210,6 +326,21 @@ function screens(ids: Ids): Screen[] {
     { name: "monitor-rules", path: "/monitor/rules" },
     { name: "context", path: "/context" },
     { name: "agents", path: "/agents" },
+    {
+      name: "agent-colors",
+      path: "/agents",
+      act: async (page) => {
+        await page.getByRole("searchbox", { name: "Find an agent" }).fill("z-color");
+        await page.getByText("z-color-0", { exact: true }).first().waitFor();
+        const hues = await page
+          .locator("main ul > li span[data-accent='agent']")
+          .evaluateAll((marks) =>
+            marks.map((mark) => (mark as HTMLElement).style.getPropertyValue("--aui-accent-h")),
+          );
+        if (hues.length < 13 || new Set(hues).size !== hues.length)
+          throw new Error(`Agent hues collide: ${hues.join(",")}`);
+      },
+    },
     ...[
       "prompt",
       "model",
@@ -232,6 +363,29 @@ function screens(ids: Ids): Screen[] {
       name: `directory-${tab}`,
       path: tab === "people" ? "/directory" : `/directory/${tab}`,
     })),
+    {
+      name: "settings-read-audit-records",
+      path: "/settings/read-audit",
+      act: async (page) => {
+        await page.route("**/api/read-audit", (route) =>
+          route.fulfill({
+            json: {
+              records: [
+                {
+                  subject: "mock-admin",
+                  project: "Customer renewal",
+                  thread: "private-renewal",
+                  route: "GET /api/threads/{id}",
+                  at: "2026-10-22T10:00:00Z",
+                },
+              ],
+            },
+          }),
+        );
+        await page.reload();
+        await page.getByText("Customer renewal / private-renewal").waitFor();
+      },
+    },
     ...[
       "profile",
       "appearance",
@@ -241,6 +395,7 @@ function screens(ids: Ids): Screen[] {
       "limits",
       "connections",
       "access",
+      "read-audit",
     ].map((s) => ({
       name: `settings-${s}`,
       path: `/settings/${s}`,
@@ -286,15 +441,17 @@ function freePort(): Promise<number> {
 
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
-/** warp with seeded agents, no sign-in and nothing kept, in a directory of its own. */
-async function startWarp(port: number): Promise<{ base: string; proc: ChildProcess; dir: string }> {
+/** humagen with seeded agents, no sign-in and nothing kept, in a directory of its own. */
+async function startHumagen(
+  port: number,
+): Promise<{ base: string; proc: ChildProcess; dir: string }> {
   if (!existsSync(bin))
-    throw new Error(`No warp binary at ${bin}. Run make build, or set WARP_BIN.`);
+    throw new Error(`No humagen binary at ${bin}. Run make build, or set HUMAGEN_BIN.`);
   if (!existsSync(join(web, "index.html")))
     throw new Error(
-      `No built console at ${web}. Run pnpm --filter @warp/console build, or set WARP_WEB.`,
+      `No built console at ${web}. Run pnpm --filter @humagen/console build, or set HUMAGEN_WEB.`,
     );
-  const dir = mkdtempSync(join(tmpdir(), "warp-screens-"));
+  const dir = mkdtempSync(join(tmpdir(), "humagen-screens-"));
   const env = { ...process.env };
   // A model key would let the agents seeded to fail succeed.
   for (const k of Object.keys(env)) if (/_API_KEY$/.test(k)) delete env[k];
@@ -321,7 +478,7 @@ async function startWarp(port: number): Promise<{ base: string; proc: ChildProce
   proc.stderr?.on("data", keep);
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 100; i++) {
-    if (proc.exitCode !== null) throw new Error(`warp exited with ${proc.exitCode}:\n${log}`);
+    if (proc.exitCode !== null) throw new Error(`humagen exited with ${proc.exitCode}:\n${log}`);
     try {
       const r = await fetch(`${base}/api/me`);
       if (r.ok) return { base, proc, dir };
@@ -331,7 +488,7 @@ async function startWarp(port: number): Promise<{ base: string; proc: ChildProce
     await sleep(100);
   }
   proc.kill();
-  throw new Error(`warp did not start:\n${log}`);
+  throw new Error(`humagen did not start:\n${log}`);
 }
 
 /** One call to the API, failing loudly: a seed that did not land would make every screen lie. */
@@ -349,6 +506,85 @@ function api(base: string) {
 }
 
 type Call = ReturnType<typeof api>;
+
+/** Office files are visual fixtures; the surrounding conversation runs on the seeded platform. */
+async function artifactFixtures(page: Page, thread: string): Promise<void> {
+  const exports = join(repo, "docs/design/humagen-workspace/exports");
+  const source = [
+    {
+      id: "sample-deck-v2",
+      title: "Launch briefing.pptx",
+      kind: "presentation",
+      version: 2,
+      mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      file: "Launch-briefing-project-team.pptx",
+    },
+    {
+      id: "sample-deck-v1",
+      title: "Launch briefing.pptx",
+      kind: "presentation",
+      version: 1,
+      mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      file: "Launch-briefing-leadership.pptx",
+    },
+    {
+      id: "sample-plan",
+      title: "Launch plan.docx",
+      kind: "document",
+      version: 4,
+      mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      file: "Launch-plan-v4.docx",
+    },
+    {
+      id: "sample-dependencies",
+      title: "Launch dependencies.csv",
+      kind: "spreadsheet",
+      version: 1,
+      mime: "text/csv",
+      file: "Launch-dependencies.csv",
+    },
+  ].map((item) => ({ ...item, bytes: readFileSync(join(exports, item.file)) }));
+  const metadata = (item: (typeof source)[number]) => ({
+    id: item.id,
+    title: item.title,
+    kind: item.kind,
+    version: item.version,
+    mime: item.mime,
+    size: item.bytes.length,
+    thread,
+    run: "sample-run",
+    agent: "lead",
+    project: "Launch",
+    created_by: "dev",
+    created_at: "2026-10-23T10:00:00Z",
+    sha256: "a".repeat(64),
+  });
+  await page.route("**/api/artifacts**", async (route) => {
+    const url = new URL(route.request().url());
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length === 2)
+      return route.fulfill({
+        json: {
+          artifacts: source.filter((item) => item.id !== "sample-deck-v1").map(metadata),
+          next: null,
+        },
+      });
+    const item = source.find((item) => item.id === parts[2]);
+    if (!item) return route.continue();
+    if (parts[3] === "versions")
+      return route.fulfill({
+        json: { versions: source.filter((other) => other.title === item.title).map(metadata) },
+      });
+    if (parts[3] === "content")
+      return route.fulfill({
+        body: item.bytes,
+        contentType: "application/octet-stream",
+        headers: { "content-disposition": `attachment; filename="${item.title}"` },
+      });
+    return route.fulfill({ json: metadata(item) });
+  });
+}
+
 interface Inbox {
   messages: { id: string }[];
 }
@@ -387,6 +623,20 @@ interface Posted {
 async function seedChats(
   call: Call,
 ): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat">> {
+  await call("POST", "/api/knowledge", {
+    name: "launch-context",
+    description: "Imported supplier updates for the launch",
+  });
+  await call("POST", "/api/knowledge/launch-context/documents", {
+    title: "Supplier ETA",
+    uri: "drive://launch/supplier-eta",
+    text: "Packaging arrives on November 8. Keep the November 12 press embargo and review November 19 retail availability.",
+  });
+  const knowledge = await call<{ version: number }>("GET", "/api/projects/Launch/knowledge");
+  await call("PUT", "/api/projects/Launch/knowledge", {
+    version: knowledge.version,
+    knowledge: ["launch-context"],
+  });
   const skills = await call<{ version: number }>("GET", "/api/projects/~/skills");
   await call("PUT", "/api/projects/~/skills", {
     version: skills.version,
@@ -469,18 +719,47 @@ async function shoot(
   vp: Viewport,
   s: Screen,
 ): Promise<{ problems: Problem[]; full: boolean }> {
+  const errors: string[] = [];
+  const onError = (error: Error) => errors.push(error.message);
+  page.on("pageerror", onError);
+  await page.unrouteAll({ behavior: "wait" });
   await page.goto(`${base}${s.path}`, { waitUntil: "domcontentloaded" });
   // Ready when the page has drawn its title and the loading placeholders are gone.
   await page.waitForSelector("h1", { timeout: 15_000 }).catch(() => {});
   await page
     .waitForFunction(
-      () => !document.querySelector("[aria-busy='true'], .warp-skeleton"),
+      () => !document.querySelector("[aria-busy='true'], .humagen-skeleton"),
       undefined,
       { timeout: 5_000 },
     )
     .catch(() => {});
   await page.evaluate(() => document.fonts.ready);
-  if (s.act) await s.act(page);
+  if (s.act) {
+    try {
+      await s.act(page);
+    } catch (error) {
+      await page.screenshot({ path: join(out, vp.name, `${s.name}.failure.png`) });
+      writeFileSync(
+        join(out, `${vp.name}-${s.name}.failure.json`),
+        JSON.stringify(
+          { url: page.url(), errors, text: await page.locator("body").innerText() },
+          null,
+          2,
+        ),
+      );
+      page.off("pageerror", onError);
+      throw new Error(
+        `${vp.name} ${s.name}: ${error instanceof Error ? error.message : String(error)}${errors.length ? `\nRuntime errors: ${errors.join("; ")}` : ""}`,
+      );
+    }
+  }
+  if (errors.length) {
+    page.off("pageerror", onError);
+    throw new Error(`${vp.name} ${s.name}: ${errors.join("; ")}`);
+  }
+  // Inspectors must sit above page controls, including the conversation header.
+  const inspectorClose = page.locator("dialog[data-layer='inspector'][open] > header button");
+  if (await inspectorClose.count()) await inspectorClose.click({ trial: true, timeout: 5_000 });
   await sleep(300);
   const file = join(out, vp.name, `${s.name}.png`);
   await page.screenshot({ path: file });
@@ -503,6 +782,7 @@ async function shoot(
     await page.screenshot({ path: join(out, vp.name, `${s.name}.full.png`) });
     await page.setViewportSize({ width: vp.width, height: vp.height });
   }
+  page.off("pageerror", onError);
   return { problems, full: extra > 8 };
 }
 
@@ -579,7 +859,105 @@ function report(results: Result[]): void {
   );
 }
 
+/** Export seeded console screens and the console's existing component gallery. */
+async function exportShowcase(browser: Browser, base: string): Promise<void> {
+  const target = join(repo, "showcase");
+  mkdirSync(target, { recursive: true });
+  for (const [name, screen] of Object.entries({
+    agents: "agents",
+    analytics: "monitor",
+    home: "home",
+    onboarding: "home-new",
+    runs: "task",
+    "ui-agent-turn": "chat-private",
+  })) {
+    copyFileSync(join(out, "desktop", `${screen}.png`), join(target, `${name}.png`));
+  }
+  // The gallery is deliberately outside the production build. Serve its
+  // existing fixtures with Vite, alongside the same isolated seeded server.
+  const port = await freePort();
+  const gallery = `http://127.0.0.1:${port}`;
+  const vite = spawn(
+    process.execPath,
+    [
+      join(repo, "apps/web/node_modules/vite/bin/vite.js"),
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(port),
+      "--strictPort",
+    ],
+    {
+      cwd: join(repo, "apps/web"),
+      env: { ...process.env, HUMAGEN_API: base },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let log = "";
+  vite.stdout?.on("data", (d: Buffer) => {
+    log += d;
+  });
+  vite.stderr?.on("data", (d: Buffer) => {
+    log += d;
+  });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    reducedMotion: "reduce",
+    colorScheme: "light",
+    locale: "en-US",
+    timezoneId: "UTC",
+  });
+  try {
+    await waitFor(async () => {
+      if (vite.exitCode !== null) throw new Error(`gallery exited: ${log}`);
+      try {
+        return (await fetch(`${gallery}/gallery.html`)).ok;
+      } catch {
+        return false;
+      }
+    }, "the gallery did not start");
+    const page = await context.newPage();
+    // The standalone gallery has no signed-in host to load reservations.
+    // Give its finite fixture roster explicit hues, without a runtime fallback.
+    const fixtureHues = async () => {
+      await page.evaluate(async () => {
+        const modulePath = "/src/agentHues.ts";
+        const { setAgentHues } = await import(modulePath);
+        setAgentHues({
+          lead: 240,
+          oncall: 330,
+          releaser: 180,
+          helper: 120,
+          billing: 30,
+          triage: 0,
+        });
+      });
+      await page.locator("[data-accent='agent']").first().waitFor();
+    };
+    await page.goto(`${gallery}/gallery.html`, { waitUntil: "networkidle" });
+    await fixtureHues();
+    await page.evaluate(() => document.fonts.ready);
+    await page.getByRole("heading", { name: "Console primitives" }).waitFor();
+    await page.screenshot({
+      path: join(target, "primitives.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.goto(`${gallery}/gallery.html?message=m-approval`, { waitUntil: "networkidle" });
+    await fixtureHues();
+    const inbox = page.getByTestId("gallery-inbox");
+    await inbox.getByRole("button", { name: /^Approve:/ }).waitFor();
+    await inbox.screenshot({ path: join(target, "ui-approval.png"), animations: "disabled" });
+    console.log(`Showcase images refreshed in ${target}`);
+  } finally {
+    await context.close();
+    vite.kill();
+  }
+}
+
 async function main(): Promise<void> {
+  if (showcase && only.length)
+    throw new Error("SCREENS_SHOWCASE requires every screen; unset SCREENS_ONLY.");
   // A mistyped name would otherwise capture nothing and pass.
   const unknown = only.filter((n) => n !== "home-new" && !screens(ids0).some((s) => s.name === n));
   if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
@@ -591,8 +969,9 @@ async function main(): Promise<void> {
   }
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, "report.json"), "[]\n");
   const executablePath = chromiumPath();
-  const { base, proc, dir } = await startWarp(await freePort());
+  const { base, proc, dir } = await startHumagen(await freePort());
   let browser: Browser | undefined;
   try {
     browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
@@ -600,7 +979,7 @@ async function main(): Promise<void> {
     const results: Result[] = [];
 
     // A person with nothing waiting and nothing new: Home's welcome. The
-    // seeded files reach the inbox just after warp starts listening, so it
+    // seeded files reach the inbox just after humagen starts listening, so it
     // is cleared until it stays empty.
     await emptied(call);
     if (only.length === 0 || only.includes("home-new")) {
@@ -653,6 +1032,16 @@ async function main(): Promise<void> {
         system_prompt: a.description,
       });
     }
+    // More than twelve agents exercises the palette beyond the original hash.
+    for (let i = 0; i < 13; i++) {
+      await call("POST", "/api/agents", {
+        name: `z-color-${i}`,
+        description: "Color reservation example.",
+        model: "offline",
+        provider: "offline",
+        system_prompt: "Help.",
+      });
+    }
     const ran = await call<{ id: string; thread?: string }>("POST", "/api/runs", {
       agent: "lead",
       text: "Summarize the launch plan",
@@ -674,6 +1063,23 @@ async function main(): Promise<void> {
       text: "Summarize the week",
       description: "A summary every Monday morning",
     });
+    // Project rows cover empty and populated agent marks, plus read and unread inboxes.
+    for (const name of ["triage", "intake"]) {
+      await call("PUT", `/api/agents/${name}/home`, { project: "Support" });
+    }
+    const supportRun = await call<{ id: string }>("POST", "/api/runs", {
+      agent: "triage",
+      project: "Support",
+      text: "Check new tickets",
+    });
+    await settled(call, supportRun.id);
+    await waitFor(async () => {
+      const p = await call<{ project: { unread: number; row_agents: string[] } }>(
+        "GET",
+        "/api/projects/Support",
+      );
+      return p.project.unread > 0 && p.project.row_agents.length === 2;
+    }, "Support's project row has no agents or unread update");
     const files = await call<{ artifacts?: { id: string }[] }>("GET", "/api/artifacts");
     const ids: Ids = {
       task: ran.thread ?? ran.id,
@@ -684,6 +1090,9 @@ async function main(): Promise<void> {
     results.push(...(await capture(browser, base, screens(ids))));
 
     report(results);
+    if (showcase && results.every((r) => r.problems.length === 0)) {
+      await exportShowcase(browser, base);
+    }
     const failing = results.filter((r) => r.problems.length > 0);
     console.log(`\n${results.length} screenshots in ${out}, index.html shows them side by side.`);
     if (failing.length) {

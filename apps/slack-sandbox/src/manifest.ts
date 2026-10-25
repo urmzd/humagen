@@ -1,7 +1,7 @@
-import { ENTRY } from "@warp/render-slack";
+import { ENTRY } from "@humagen/render-slack";
 
 /**
- * Slack app manifest, generated from what warp actually uses. Each
+ * Slack app manifest, generated from what humagen actually uses. Each
  * capability lists the scopes and events it needs, so the manifest never
  * drifts from the code: add a capability, regenerate, reinstall.
  *
@@ -17,10 +17,10 @@ export interface Capability {
 
 /**
  * Ways into the agent besides a DM or a mention. The ids live in
- * `@warp/render-slack` with the forms that use them, so this manifest, the
+ * `@humagen/render-slack` with the forms that use them, so this manifest, the
  * handlers and every other host share them.
  */
-export { ENTRY } from "@warp/render-slack";
+export { ENTRY } from "@humagen/render-slack";
 
 export const CAPABILITIES: Record<string, Capability> = {
   messages: {
@@ -95,8 +95,8 @@ export const CAPABILITIES: Record<string, Capability> = {
  * App Settings and caps it at 4000. Plain text: say only what exists.
  */
 export const LONG_DESCRIPTION = [
-  "Warp brings your workspace's agents into Slack.",
-  "Mention @Warp in a channel, or send it a direct message, and the agent that fits the question answers.",
+  "Humagen brings your workspace's agents into Slack.",
+  "Mention @Humagen in a channel, or send it a direct message, and the agent that fits the question answers.",
   "Answers cite the documents they came from.",
   "Before an agent posts a message, changes something or remembers something, it asks a person first.",
   "The Home tab shows what needs you, which agent answers your direct messages, and your connections.",
@@ -104,7 +104,7 @@ export const LONG_DESCRIPTION = [
 ].join(" ");
 
 export const AGENT_DESCRIPTION =
-  "Your workspace's agents in Slack. Mention @Warp or message it, and the agent that fits answers, with the documents it used. Agents ask a person before they post, change or remember anything.";
+  "Your workspace's agents in Slack. Mention @Humagen or message it, and the agent that fits answers, with the documents it used. Agents ask a person before they post, change or remember anything.";
 
 export interface ManifestOptions {
   name?: string;
@@ -150,7 +150,7 @@ export function buildManifest(options: ManifestOptions = {}) {
   return {
     _metadata: { major_version: 2, minor_version: 1 },
     display_information: {
-      name: options.name ?? "Warp",
+      name: options.name ?? "Humagen",
       description:
         options.description ??
         "Your workspace's agents in Slack. Ask a question, build an agent, or review what one is waiting on.",
@@ -163,18 +163,18 @@ export function buildManifest(options: ManifestOptions = {}) {
         messages_tab_enabled: true,
         messages_tab_read_only_enabled: false,
       },
-      bot_user: { display_name: options.botName ?? "warp", always_online: true },
+      bot_user: { display_name: options.botName ?? "humagen", always_online: true },
       ...(has("shortcuts")
         ? {
             shortcuts: [
               {
-                name: "Ask Warp",
+                name: "Ask Humagen",
                 type: "global",
                 callback_id: ENTRY.ask,
                 description: "Ask from anywhere. The answer arrives in the app's messages.",
               },
               {
-                name: "Ask Warp about this",
+                name: "Ask Humagen about this",
                 type: "message",
                 callback_id: ENTRY.askAbout,
                 description: "Answer in this message's thread, using the message as the question.",
@@ -183,7 +183,7 @@ export function buildManifest(options: ManifestOptions = {}) {
             slash_commands: [
               {
                 command: ENTRY.command,
-                description: "Ask Warp in this channel",
+                description: "Ask Humagen in this channel",
                 usage_hint: "[question] or help",
                 should_escape: false,
               },
