@@ -1017,6 +1017,19 @@ func (s *Store) Raise(tenantName, key string, m Message, at time.Time) (Message,
 	return s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
 }
 
+// RaiseOnce is Raise for a message about something that happens once, such
+// as a question a run asked: while any message with that key is kept, open
+// or not, it is returned and nothing is raised.
+func (s *Store) RaiseOnce(tenantName, key string, m Message, at time.Time) (Message, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing := s.of(tenantName).byKey[key]; existing != nil {
+		return existing.clone(), false, nil
+	}
+	m.Key = key
+	return s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+}
+
 // ByID returns one message as it is, for the platform's own use: who may
 // read it is the caller's to decide.
 func (s *Store) ByID(tenantName, id string) (Message, bool) {
