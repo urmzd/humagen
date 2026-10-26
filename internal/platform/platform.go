@@ -237,6 +237,8 @@ type Platform struct {
 	assignmentSources          sync.Map
 	assignmentSourceCursor     sync.Map
 	assignmentSettlementCursor sync.Map
+	operationReminderCursor    sync.Map
+	operationScheduleCursor    sync.Map
 	CallPolicies               *callpolicy.Store
 	Operations                 *operations.Store
 	Usage                      *usage.Ledger
@@ -821,7 +823,9 @@ const flushEvery = 250 * time.Millisecond
 // fallback for when there is none: a run that exhausts its retries is failed in
 // the ledger with nothing further published.
 func (p *Platform) reconcile(ctx context.Context) {
+	p.reconcileOperationReminders(ctx)
 	p.settleOperations(ctx)
+	p.syncAssignmentSchedules()
 	for _, id := range p.Runs.Active() {
 		p.settleFromLedger(ctx, id)
 	}

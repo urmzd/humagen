@@ -667,7 +667,7 @@ export const api = {
   saveActionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name: string, input: ActionPolicyInput) => call<ActionPolicy>("PUT", operationPolicyPath(scope, name), input),
   assignment: (id:string) => call<Assignment>("GET",`/api/assignments/${encodeURIComponent(id)}`),
   agentRoster:(names:string[]) => call<{controls:Record<string,AgentControl>;window_days:number}>("GET",`/api/agent-roster?${new URLSearchParams({names:names.join(",")})}`).then(r=>r.controls),
-  assignments: () => call<Assignment[]>("GET", "/api/assignments?limit=200"),
+  assignments: (agent?: string) => call<Assignment[]>("GET", `/api/assignments?${new URLSearchParams({limit:"200", ...(agent ? {agent} : {})})}`),
   saveAssignment: (input: AssignmentInput) => call<Assignment>(input.version === 0 ? "POST" : "PUT", input.version === 0 ? "/api/assignments" : `/api/assignments/${encodeURIComponent(input.id)}`, input),
   runAssignment: (id: string) => call<Run>("POST", `/api/assignments/${encodeURIComponent(id)}/run`),
   handoff: (id:string) => call<HandoffContract>("GET",`/api/handoffs/${encodeURIComponent(id)}`),

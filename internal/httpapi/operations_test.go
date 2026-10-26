@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -152,4 +153,101 @@ func TestOperationAttentionIsNotARunFailureAndUsesRunsPermission(t *testing.T) {
 	if err != nil || recorded.Status != runs.Completed {
 		t.Fatal("attention invented a failed run")
 	}
+}
+
+func TestActionPolicyExplainsInheritedEffectiveRule(t *testing.T) {
+	f := newFixture(t)
+	token := f.machineAs(t, "owner", "acme", everything...)
+	want(t, f, token, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, token, "PUT", "/api/action-policy", `{"rules":{"external_messages":"never"},"version":0}`, http.StatusOK)
+	want(t, f, token, "PUT", "/api/agents/helper/action-policy", `{"rules":{"external_messages":"allow"},"version":0}`, http.StatusOK)
+	policy := want(t, f, token, "GET", "/api/agents/helper/action-policy", "", http.StatusOK)
+	effective, ok := policy["effective"].(map[string]any)
+	if !ok {
+		t.Fatal("policy editor cannot inspect effective inherited constraints")
+	}
+	rule := effective["external_messages"].(map[string]any)
+	if rule["level"] != "never" || rule["inherited"] != "never" || rule["locked"] != true {
+		t.Fatalf("weaker local choice appeared effective: %+v", rule)
+	}
+}
+
+func TestAssignmentResultRequiresRecordedCompletedRun(t *testing.T) {
+	f := newFixture(t)
+	token := f.machineAs(t, "owner", "acme", everything...)
+	want(t, f, token, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	body := `{"id":"proof","agent":"helper","project":"","owner":"owner","goal":"Inspect queue","done_when":"Report saved","state":"requested","version":0}`
+	want(t, f, token, "POST", "/api/assignments", body, http.StatusOK)
+	body = strings.Replace(strings.Replace(body, `"requested"`, `"accepted"`, 1), `"version":0`, `"version":1`, 1)
+	want(t, f, token, "PUT", "/api/assignments/proof", body, http.StatusOK)
+	body = strings.Replace(strings.Replace(body, `"accepted"`, `"result"`, 1), `"version":1`, `"version":2`, 1)
+	want(t, f, token, "PUT", "/api/assignments/proof", body, http.StatusConflict)
+}
+
+func TestReminderSettingsPersistWhenPausingAndRejectUnboundedIntervals(t *testing.T) {
+	f := newFixture(t)
+	token := f.machineAs(t, "owner", "acme", everything...)
+	saved := want(t, f, token, "PUT", "/api/agent-controls", `{"paused":false,"reminder_after_seconds":300,"blocked_reminder_after_seconds":600,"version":0}`, http.StatusOK)
+	if saved["effective_reminder_after_seconds"] != float64(300) || saved["effective_blocked_reminder_after_seconds"] != float64(600) {
+		t.Fatalf("timer configuration was not effective: %+v", saved)
+	}
+	paused := want(t, f, token, "PUT", "/api/agent-controls", `{"paused":true,"version":1}`, http.StatusOK)
+	if paused["effective_reminder_after_seconds"] != float64(300) || paused["effective_blocked_reminder_after_seconds"] != float64(600) {
+		t.Fatal("ordinary pause cleared configured reminders")
+	}
+	want(t, f, token, "PUT", "/api/agent-controls", `{"paused":true,"reminder_after_seconds":604801,"version":2}`, http.StatusBadRequest)
+	want(t, f, token, "PUT", "/api/agent-controls", `{"paused":true,"blocked_reminder_after_seconds":-1,"version":2}`, http.StatusBadRequest)
+}
+
+func TestAssignmentAgentFilterIsConfinedAndRunsBeforeTheBound(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machineAs(t, "owner", "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", strings.Replace(helperSpec, `"helper"`, `"lead"`, 1), http.StatusCreated)
+	secretAgent(t, f, owner)
+	at := time.Now()
+	for i := 0; i <= operations.MaxResults; i++ {
+		agent := "helper"
+		if i == operations.MaxResults {
+			agent = "lead"
+		}
+		if _, err := f.p.Operations.SetAssignment("acme", operations.Assignment{ID: fmt.Sprintf("a-%03d", i), Agent: agent, Owner: "owner", Goal: "Review", DoneWhen: "Report", State: operations.Requested}, 0, "owner", at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reader := f.machineAs(t, "reader", "acme", "humagen:runs:read", "humagen:agents:read")
+	for _, test := range []struct {
+		agent string
+		count int
+	}{{"lead", 1}, {"spy", 0}, {"missing", 0}} {
+		req, err := http.NewRequest("GET", f.srv.URL+"/api/assignments?agent="+test.agent+"&limit=1", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+reader)
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var items []operations.Assignment
+		err = json.NewDecoder(response.Body).Decode(&items)
+		_ = response.Body.Close()
+		if err != nil || response.StatusCode != 200 || len(items) != test.count {
+			t.Fatalf("filter %q=%+v,%v,status%d", test.agent, items, err, response.StatusCode)
+		}
+	}
+}
+
+func TestAssignmentReviewCannotRemovePrivateConversationBoundary(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
+	opened := want(t, f, ana, "POST", "/api/threads", `{"visibility":"private","text":"Private contract"}`, http.StatusCreated)
+	thread := opened["thread"].(map[string]any)
+	project, _ := thread["project"].(string)
+	body := fmt.Sprintf(`{"id":"private-review","agent":"helper","project":%q,"thread":%q,"owner":"ana","goal":"PRIVATE-CONTRACT","done_when":"Reviewed","state":"requested","version":0}`, project, thread["id"])
+	want(t, f, ana, "POST", "/api/assignments", body, http.StatusOK)
+	body = strings.Replace(body, fmt.Sprintf(`"thread":%q,`, thread["id"]), "", 1)
+	body = strings.Replace(body, `"version":0`, `"version":1`, 1)
+	want(t, f, ana, "PUT", "/api/assignments/private-review", body, http.StatusBadRequest)
 }

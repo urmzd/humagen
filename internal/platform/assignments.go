@@ -8,6 +8,7 @@ import (
 
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
@@ -30,10 +31,14 @@ func (p *Platform) SeesAssignment(who auth.Principal, a operations.Assignment) b
 	seer := p.Seer(who)
 	return seer.Project(a.Project) && seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
 }
-func (p *Platform) Assignments(who auth.Principal, limit int) []operations.Assignment {
+func (p *Platform) Assignments(who auth.Principal, limit int, agentFilter ...string) []operations.Assignment {
 	seer := p.Seer(who)
+	agent := ""
+	if len(agentFilter) > 0 {
+		agent = agentFilter[0]
+	}
 	out := p.Operations.Assignments(who.Tenant, limit, func(a operations.Assignment) bool {
-		return seer.Project(a.Project) && seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
+		return (agent == "" || a.Agent == agent) && seer.Project(a.Project) && seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
 	})
 	for i, a := range out {
 		out[i] = p.shownAssignment(who, a)
@@ -91,11 +96,48 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 		if old.Owner != who.Subject && !who.Can(auth.ProjectsGovern) {
 			return operations.Assignment{}, ErrForbidden
 		}
-		if old.Trigger != a.Trigger || old.Source != a.Source || old.Cron != a.Cron || old.Agent != a.Agent || old.Project != a.Project || old.Goal != a.Goal || old.DoneWhen != a.DoneWhen {
+		if old.Trigger != a.Trigger || old.Source != a.Source || old.Cron != a.Cron || old.Agent != a.Agent || old.Project != a.Project || old.Thread != a.Thread || old.Goal != a.Goal || old.DoneWhen != a.DoneWhen {
 			return operations.Assignment{}, fmt.Errorf("%w: create a new assignment to change its execution contract", operations.ErrInvalid)
 		}
 	}
-	attempt, err := p.BeginAudit(who, audit.Change{Action: "assignment.save", Resource: "assignment", ID: a.ID, Scope: "project", Project: a.Project, Thread: a.Thread, Agent: a.Agent, Before: map[string]string{"state": string(old.State)}, After: map[string]string{"state": string(a.State), "standing": strconv.FormatBool(a.Cron != "")}})
+	if exists && old.DeadlineMissed && !a.DueAt.Equal(old.DueAt) && (a.DueAt.IsZero() || a.DueAt.After(p.now())) && old.RunID != "" {
+		if run, err := p.Runs.Get(who.Tenant, old.RunID); err == nil {
+			switch {
+			case !run.Status.Terminal():
+				a.State = operations.InProgress
+			case run.Status == runs.Completed:
+				a.State = operations.Result
+			default:
+				a.State = operations.Blocked
+				a.Blocker = "The recorded run did not complete successfully."
+			}
+		}
+	}
+	if a.State == operations.InProgress {
+		if !exists || old.RunID == "" {
+			return operations.Assignment{}, operations.ErrConflict
+		}
+		run, err := p.Runs.Get(who.Tenant, old.RunID)
+		if err != nil || run.Status.Terminal() {
+			return operations.Assignment{}, operations.ErrConflict
+		}
+	}
+	if a.State == operations.Watching && a.Trigger != operations.CronTrigger && a.Trigger != operations.SourceTrigger {
+		return operations.Assignment{}, operations.ErrInvalid
+	}
+	if (a.State == operations.Watching || a.State == operations.InProgress) && !a.DueAt.IsZero() && !a.DueAt.After(p.now()) {
+		return operations.Assignment{}, fmt.Errorf("%w: review the expired assignment deadline before continuing", operations.ErrInvalid)
+	}
+	if a.State == operations.Result {
+		if !exists || old.RunID == "" {
+			return operations.Assignment{}, operations.ErrConflict
+		}
+		run, err := p.Runs.Get(who.Tenant, old.RunID)
+		if err != nil || run.Status != runs.Completed {
+			return operations.Assignment{}, operations.ErrConflict
+		}
+	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "assignment.save", Resource: "assignment", ID: a.ID, Scope: "project", Project: a.Project, Thread: a.Thread, Agent: a.Agent, Before: map[string]string{"state": string(old.State), "due_at": old.DueAt.Format(time.RFC3339Nano)}, After: map[string]string{"state": string(a.State), "standing": strconv.FormatBool(a.Cron != ""), "due_at": a.DueAt.Format(time.RFC3339Nano)}})
 	if err != nil {
 		return operations.Assignment{}, err
 	}
@@ -146,6 +188,18 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 	if err = p.operationAdmission(who.Tenant, a.Agent); err != nil {
 		return runs.Run{}, err
 	}
+	if a.RunID != "" {
+		if active, err := p.Runs.Get(who.Tenant, a.RunID); err == nil && !active.Status.Terminal() {
+			if !p.Seer(who).Run(active) {
+				return runs.Run{}, operations.ErrNotFound
+			}
+			return active, nil
+		}
+	}
+	if !a.DueAt.IsZero() && !a.DueAt.After(p.now()) {
+		return runs.Run{}, fmt.Errorf("%w: review the expired assignment deadline before starting new work", operations.ErrInvalid)
+	}
+
 	attempt, auditErr := p.BeginAudit(who, audit.Change{Action: "assignment.run", Resource: "assignment", ID: a.ID, Scope: "project", Project: a.Project, Thread: a.Thread, Agent: a.Agent, Before: map[string]string{"state": string(a.State)}, After: map[string]string{"action": "request_run"}})
 	if auditErr != nil {
 		return runs.Run{}, auditErr
@@ -265,6 +319,13 @@ func (p *Platform) settleOperations(ctx context.Context) {
 			p.log.Error("platform: operation deadlines could not be kept", "error", err)
 		} else {
 			for _, n := range notices {
+				if n.Kind == "assignment" {
+					if a, ok := p.Operations.Assignment(tenant, n.ID); ok && a.Schedule != "" {
+						if err := p.Schedules.SetPaused(tenant, a.Schedule, true); err != nil {
+							p.log.Error("platform: assignment attention schedule pause could not be kept", "error", err)
+						}
+					}
+				}
 				p.operationEscalation(tenant, n.Kind, n.ID, n.Project, n.Thread, n.Run, n.Agent, n.Owner, n.Reason)
 			}
 		}
@@ -272,7 +333,9 @@ func (p *Platform) settleOperations(ctx context.Context) {
 		if v, ok := p.assignmentSettlementCursor.Load(tenant); ok {
 			after = v.(string)
 		}
-		pending, next := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool { return a.State == operations.InProgress })
+		pending, next := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool {
+			return a.State == operations.InProgress || (a.State == operations.NeedsPerson && a.DeadlineMissed && a.RunID != "")
+		})
 		p.assignmentSettlementCursor.Store(tenant, next)
 		for _, a := range pending {
 			run, err := p.Runs.Get(tenant, a.RunID)
