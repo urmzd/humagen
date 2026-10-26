@@ -283,7 +283,14 @@ func (p *Platform) ownerAbove(who auth.Principal, name string) ([]string, error)
 // other member's is a proposal: it waits, and the project's owners are asked
 // in the inbox to keep or discard it. So is an owner's note on the workspace
 // or a company project without projects:govern.
-func (p *Platform) AddProjectNote(who auth.Principal, name, text string) (memory.Note, error) {
+func (p *Platform) AddProjectNote(who auth.Principal, name, text string, metadata ...memory.Details) (memory.Note, error) {
+	details := memory.Details{}
+	if len(metadata) > 1 {
+		return memory.Note{}, memory.ErrInvalid
+	}
+	if len(metadata) == 1 {
+		details = metadata[0]
+	}
 	name = projects.NameOf(name)
 	pr, _, err := p.ProjectRole(who, name, projects.Member)
 	if err != nil {
@@ -294,9 +301,9 @@ func (p *Platform) AddProjectNote(who auth.Principal, name, text string) (memory
 	// owner without it proposes, as a member does.
 	owner := memory.ProjectOwner(name)
 	if p.MayChangeNotes(who, name) == nil {
-		return p.Memory.Add(who.Tenant, owner, text, memory.Person, memory.Approved, who.Subject, p.now())
+		return p.Memory.AddDetailed(who.Tenant, owner, text, memory.Person, memory.Approved, who.Subject, p.now(), details)
 	}
-	note, err := p.Memory.Add(who.Tenant, owner, text, memory.Person, memory.Pending, who.Subject, p.now())
+	note, err := p.Memory.AddDetailed(who.Tenant, owner, text, memory.Person, memory.Pending, who.Subject, p.now(), details)
 	if err != nil {
 		return memory.Note{}, err
 	}

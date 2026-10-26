@@ -110,14 +110,17 @@ type approvalKey struct{ tenant, run, call string }
 // callee is read from the arguments approved: edited ones when the person
 // edited them.
 func (p *Platform) noteApprovedCall(tenant string, q inbox.QuestionPart, ans payload.Answer) bool {
-	if q.Kind != payload.QuestionApproval || q.Tool == nil || q.Tool.Name != ToolCallAgent || q.Tool.CallID == "" {
+	if q.Kind != payload.QuestionApproval || q.Tool == nil || q.Tool.CallID == "" {
 		return false
 	}
 	args := q.Tool.Arguments
 	if len(ans.Arguments) > 0 {
 		args = ans.Arguments
 	}
-	callee := targetOf(args)
+	callee := "tool:" + q.Tool.Name
+	if q.Tool.Name == ToolCallAgent {
+		callee = targetOf(args)
+	}
 	if callee == "" {
 		return false
 	}
@@ -132,6 +135,7 @@ func (p *Platform) noteApprovedCall(tenant string, q inbox.QuestionPart, ans pay
 		return false
 	}
 	a.byID[approvalKey{tenant, q.Run, q.Tool.CallID}] = callee
+	a.byID[approvalKey{tenant, q.Run, q.Tool.CallID + ":action"}] = "tool:" + q.Tool.Name
 	return true
 }
 
@@ -142,6 +146,7 @@ func (p *Platform) dropApprovedCall(tenant string, q inbox.QuestionPart) {
 	p.approved.mu.Lock()
 	defer p.approved.mu.Unlock()
 	delete(p.approved.byID, approvalKey{tenant, q.Run, q.Tool.CallID})
+	delete(p.approved.byID, approvalKey{tenant, q.Run, q.Tool.CallID + ":action"})
 }
 
 // approvedCallTo reports whether a person approved this tool call of this

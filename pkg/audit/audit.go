@@ -381,3 +381,7 @@ func (s *Store) Retain(tenant string, cut time.Time) error {
 		}
 	}
 }
+
+// RedactedSnapshot adapts a legacy explicit snapshot through the same bounds
+// and credential redaction as newly recorded changes.
+func RedactedSnapshot(fields map[string]string) (map[string]string, error) { return safeFields(fields) }

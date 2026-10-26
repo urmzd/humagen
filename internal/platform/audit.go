@@ -43,3 +43,9 @@ func (p *Platform) RecordAudit(who auth.Principal, change audit.Change) error {
 	}
 	return p.Audit.Record(who.Tenant, who.Subject, change, p.now())
 }
+
+// LogAuditCompletionFailure preserves a committed domain result while making a
+// lost completion marker observable. The durable attempt remains pending.
+func (p *Platform) LogAuditCompletionFailure(err error) {
+	p.log.Error("platform: audit completion remains pending", "error", err)
+}

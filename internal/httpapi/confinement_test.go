@@ -18,6 +18,8 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/projects"
 )
@@ -50,6 +52,7 @@ const marker = "zqx"
 type hidden struct {
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
+	personalNote                                                  string
 	handle, alert, channel, announcement, provider                string
 	// open is, in a sweep inside the workspace, a Slack client the outsider
 	// may read, with the hidden channel bound to it: its bindings must not
@@ -66,6 +69,7 @@ type hidden struct {
 	// participants, is an agent that came to live in the hidden project
 	// after.
 	openAgent, openRun, openThread string
+	assignment                     string
 	// inside is true when the outsider is in the same workspace: what
 	// lives outside the project is theirs to see, and is not hidden.
 	inside bool
@@ -143,11 +147,20 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	must("PUT", "/api/projects/"+h.project+"/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
 	h.projectNote = str(must("POST", "/api/projects/"+h.project+"/memory", `{"text":"Project note `+marker+`."}`, http.StatusCreated), "id")
 	h.agentNote = str(must("POST", "/api/agents/"+h.agent+"/memory", `{"text":"Agent note `+marker+`."}`, http.StatusCreated), "id")
+	personal, err := f.p.Memory.Add("acme", memory.PersonalOwner("canary-memory-owner"), "Personal note "+marker+".", memory.Person, memory.Approved, "canary-memory-owner", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.personalNote = personal.ID
 	must("PUT", "/api/agents/"+h.agent+"/call-policy", `{"callers":"anyone","approval":"never"}`, http.StatusOK)
 
 	run := must("POST", "/api/runs", `{"agent":"`+h.agent+`","text":"Run `+marker+`.","project":"`+h.project+`"}`, http.StatusAccepted)
 	h.run, h.thread = str(run, "id"), str(run, "thread")
 	ended(t, f, owner, h.run)
+	h.assignment = "assignment-" + marker
+	if _, err := f.p.Operations.SetAssignment("acme", operations.Assignment{ID: h.assignment, Agent: h.agent, Project: h.project, Thread: h.thread, Owner: "svc-acme", Goal: "Assignment " + marker, DoneWhen: "Report " + marker, State: operations.Requested}, 0, "svc-acme", time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := f.p.PutFile("acme", h.thread, "plan-"+marker+".txt", "Plan "+marker+"."); err != nil {
 		t.Fatal(err)
@@ -327,6 +340,10 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	h.thread = started["thread"].(map[string]any)["id"].(string)
 	h.run = started["runs"].([]any)[0].(map[string]any)["id"].(string)
 	ended(t, f, ana, h.run)
+	h.assignment = "private-assignment-" + marker
+	if _, err := f.p.Operations.SetAssignment("acme", operations.Assignment{ID: h.assignment, Agent: h.agent, Project: h.project, Thread: h.thread, Owner: "00u-ana", Goal: "Private assignment " + marker, DoneWhen: "Report " + marker, State: operations.Requested}, 0, "00u-ana", time.Now()); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := f.p.PutFile("acme", h.thread, "plan-"+marker+".txt", "Plan "+marker+"."); err != nil {
 		t.Fatal(err)
@@ -438,7 +455,7 @@ func (h hidden) unplaced(path, param string) bool {
 		case strings.HasPrefix(path, "/api/inbox/"):
 			return h.message == ""
 		}
-		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/artifacts/", "/api/alerts/"}, func(p string) bool { return strings.HasPrefix(path, p) })
+		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/artifacts/", "/api/alerts/", "/api/assignments/"}, func(p string) bool { return strings.HasPrefix(path, p) })
 	}
 	if !h.inside {
 		return false
@@ -474,12 +491,16 @@ func (h hidden) value(path, param string) (string, bool) {
 		}
 	case "id":
 		switch {
+		case prefix("/api/me/memory/"):
+			return h.personalNote, true
 		case prefix("/api/agents/{name}/memory/"):
 			return h.agentNote, true
 		case prefix("/api/projects/{name}/memory/"):
 			return h.projectNote, true
 		case prefix("/api/knowledge/{name}/documents/"):
 			return h.doc, true
+		case prefix("/api/assignments/"):
+			return h.assignment, true
 		case prefix("/api/runs/"):
 			return h.run, true
 		case prefix("/api/threads/"):

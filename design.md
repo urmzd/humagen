@@ -22,6 +22,7 @@ govern implementation, including shared presentation and agent identity.
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Board interaction checked in Chromium; native conversation-fork API pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
+| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
 
@@ -161,3 +162,14 @@ its text. Long scope labels truncate within the badge without losing their
 accessible text. The `agent-status-badges` browser state makes the analyst the
 workspace default and checks both badges in dark mode with enlarged text.
 The containment assertion reproduces the reported failure before the fix.
+
+### Library subsystem implementation evidence
+
+- `pkg/audit`, `internal/platform/audit_view.go`: durable pending/succeeded/failed change attempts,
+  bounded redacted snapshots, retained legacy adapters and exact-owner personal filtering.
+- `pkg/memory`, `internal/httpapi/personal_memory.go`: private personal owner namespace,
+  reviewed kind/provenance, expiry at composition, immediate audited forget and persisted use counts.
+- `pkg/prefs/personal.go`: persisted briefing, notification delivery policy, midnight/DST quiet
+  hours and privacy choices. Provider dispatch is an explicit integration boundary.
+- `apps/web/src/Audit.tsx`, `MemoryLibrary.tsx`, `PersonalPreferences.tsx`: standalone views for
+  shared navigation integration. Broader versioned skill workflows remain in progress.

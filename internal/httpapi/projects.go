@@ -575,11 +575,12 @@ func (s *Server) projectMemory(w http.ResponseWriter, r *http.Request, who auth.
 func (s *Server) addProjectMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		Text string `json:"text"`
+		memory.Details
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	note, err := s.P.AddProjectNote(who, r.PathValue("name"), body.Text)
+	note, err := s.P.AddProjectNote(who, r.PathValue("name"), body.Text, body.Details)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -611,11 +612,7 @@ func (s *Server) removeProjectMemory(w http.ResponseWriter, r *http.Request, who
 	if !found {
 		return
 	}
-	if err := s.P.RemoveMemory(who.Tenant, owner, r.PathValue("id")); err != nil {
-		s.problem(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	s.forgetOwnedMemory(w, r, who, owner, "DELETE /api/projects/{name}/memory/{id}", string(auth.ProjectsWrite))
 }
 
 // filed runs fn while a project, when one is named, exists and cannot be
