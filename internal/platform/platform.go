@@ -49,6 +49,7 @@ import (
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
@@ -217,6 +218,7 @@ type Platform struct {
 	Usage        *usage.Ledger
 	Inbox        *inbox.Store
 	ReadAudit    *readaudit.Store
+	Audit        *audit.Store
 	Artifacts    *artifacts.Index
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
