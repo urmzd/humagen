@@ -14,7 +14,8 @@ import (
 )
 
 // Provider imports one explicitly selected resource with the current reader's credential.
-// It must fail rather than return a truncated snapshot. Implementations must not log credentials.
+// It must honor context cancellation and fail rather than return a truncated
+// snapshot. Implementations must not log credentials.
 type Provider interface {
 	Fetch(context.Context, string, mcptools.Secret) ([]ImportDocument, error)
 }
@@ -63,6 +64,9 @@ func (p HTTPProvider) read(ctx context.Context, secret mcptools.Secret, address 
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	response, err := client.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ProviderError{Interrupted}
+		}
 		return nil, ProviderError{Unavailable}
 	}
 	defer response.Body.Close()

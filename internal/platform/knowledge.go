@@ -132,10 +132,27 @@ var ErrSourceInUse = errors.New("platform: knowledge source in use")
 // that a project names it, not which. A source that does not exist is not
 // found, whoever names it.
 func (p *Platform) DeleteSource(who auth.Principal, name string) error {
+	return p.deleteSource(who, name, nil, false)
+}
+
+// DeleteSourceForScope binds deletion to the caller's exact authorized source.
+func (p *Platform) DeleteSourceForScope(who auth.Principal, name string, expected *knowledge.SourceConfig) error {
+	return p.deleteSource(who, name, expected, true)
+}
+func (p *Platform) deleteSource(who auth.Principal, name string, wanted *knowledge.SourceConfig, guard bool) error {
 	snapshot, err := p.Knowledge.Get(who.Tenant, name)
 	if err != nil || (snapshot.Lifecycle != nil && snapshot.Lifecycle.Project != "" && !p.Sees(who, Place{Project: snapshot.Lifecycle.Project})) {
 		return knowledge.ErrNotFound
 	}
+	if guard {
+		if wanted == nil && snapshot.Lifecycle != nil {
+			return knowledge.ErrNotFound
+		}
+		if wanted != nil && (snapshot.Lifecycle == nil || snapshot.Lifecycle.SourceConfig != *wanted) {
+			return knowledge.ErrNotFound
+		}
+	}
+
 	var expected *knowledge.SourceConfig
 	if snapshot.Lifecycle != nil {
 		cfg := snapshot.Lifecycle.SourceConfig

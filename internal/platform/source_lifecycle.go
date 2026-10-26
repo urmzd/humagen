@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/mcptools"
 	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -66,7 +68,13 @@ func (p *Platform) ConfigureSource(who auth.Principal, name string, cfg knowledg
 		copy := current.Lifecycle.SourceConfig
 		expected = &copy
 	}
-	return p.Knowledge.ConfigureIfCurrent(who.Tenant, name, cfg, p.now(), expected)
+	attempt, err := p.beginSourceAudit(who, "source.configure", current, map[string]string{"mode": string(cfg.Mode), "provider": cfg.Provider, "origin": cfg.Origin, "project": cfg.Project})
+	if err != nil {
+		return knowledge.Source{}, err
+	}
+	result, err := p.Knowledge.ConfigureIfCurrent(who.Tenant, name, cfg, p.now(), expected)
+	p.finishSourceAudit(attempt, err)
+	return result, err
 }
 
 func (p *Platform) sourceProvider(kind string) knowledge.Provider {
@@ -99,7 +107,12 @@ func (p *Platform) ConnectSource(who auth.Principal, name, ref string) error {
 	if src.Lifecycle == nil || p.sourceProvider(src.Lifecycle.Provider) == nil {
 		return fmt.Errorf("%w: configure an external source first", knowledge.ErrInvalid)
 	}
-	_, err := p.Credentials.Put(who.Tenant, who.Subject, sourceCredentialID(src), credentials.Input{Ref: ref}, p.now())
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "source.reference.save", Resource: "source_connection", ID: name, Scope: "personal", Subject: who.Subject, After: map[string]string{"reference_saved": "true"}})
+	if err != nil {
+		return err
+	}
+	_, err = p.Credentials.Put(who.Tenant, who.Subject, sourceCredentialID(src), credentials.Input{Ref: ref}, p.now())
+	p.finishSourceAudit(attempt, err)
 	return err
 }
 
@@ -116,6 +129,9 @@ func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src kno
 		resolver = mcptools.EnvResolver()
 	}
 	secret, err := resolver.Resolve(ctx, c.Ref)
+	if ctx.Err() != nil {
+		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.Interrupted}
+	}
 	if err != nil || secret.Empty() {
 		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
@@ -123,7 +139,9 @@ func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src kno
 }
 
 // SyncSource publishes a full snapshot only after every provider read succeeds.
-func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name string) (knowledge.Source, error) {
+func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name string) (result knowledge.Source, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
 	src, readErr := p.SourceAs(who, name)
 	if readErr != nil {
 		return knowledge.Source{}, knowledge.ErrNotFound
@@ -138,6 +156,18 @@ func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name stri
 	if provider == nil {
 		return knowledge.Source{}, fmt.Errorf("%w: provider is not registered", knowledge.ErrInvalid)
 	}
+	attempt, auditErr := p.beginSourceAudit(who, "source.refresh", src, map[string]string{"requested": "true"})
+	if auditErr != nil {
+		return knowledge.Source{}, auditErr
+	}
+	defer func() {
+		outcome := err
+		if outcome == nil && result.Lifecycle != nil && result.Lifecycle.Status == knowledge.NeedsAttention {
+			outcome = knowledge.ProviderError{Cause: result.Lifecycle.Cause}
+		}
+		p.finishSourceAudit(attempt, outcome)
+	}()
+
 	id, err := p.Knowledge.BeginSyncIfCurrent(who.Tenant, name, p.now(), &src.Lifecycle.SourceConfig)
 	if err != nil {
 		return knowledge.Source{}, err
@@ -157,7 +187,7 @@ func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name stri
 	if err := p.Knowledge.IndexSync(who.Tenant, name, id, p.now()); err != nil {
 		return knowledge.Source{}, err
 	}
-	result, err := p.Knowledge.CompleteSync(who.Tenant, name, id, docs, who.Subject, p.now())
+	result, err = p.Knowledge.CompleteSync(who.Tenant, name, id, docs, who.Subject, p.now())
 	if err != nil {
 		failed, failErr := p.Knowledge.FailSync(who.Tenant, name, id, knowledge.Unsupported, p.now())
 		if failErr != nil {
@@ -191,6 +221,8 @@ func (p *Platform) SearchSources(ctx context.Context, who auth.Principal, names 
 }
 
 func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal, names []string, query, variant string) (SourceSearch, error) {
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
 	out := SourceSearch{Hits: []knowledge.Hit{}, Warnings: []SourceSearchWarning{}}
 	if len(names) > 50 {
 		return out, fmt.Errorf("%w: at most 50 sources", knowledge.ErrInvalid)

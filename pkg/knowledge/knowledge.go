@@ -278,6 +278,9 @@ func (s *Store) get(tenant, name string) (*source, error) {
 
 // Create adds an empty source.
 func (s *Store) Create(tenant, name, description, by string, at time.Time) (Source, error) {
+	if len(description) > 4096 {
+		return Source{}, fmt.Errorf("%w: source description is at most 4096 bytes", ErrInvalid)
+	}
 	if !validName.MatchString(name) {
 		return Source{}, fmt.Errorf("%w: a source name is lowercase letters, digits and dashes", ErrInvalid)
 	}

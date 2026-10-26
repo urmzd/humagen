@@ -2,12 +2,15 @@ package platform_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/urmzd/fiber/pkg/mcptools"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -97,6 +100,34 @@ func TestManagedSourceConfinementAttentionAndPersonalAccess(t *testing.T) {
 		}
 		if count := p.InboxCount(ana); count.Open != 0 {
 			t.Fatalf("attention not settled: %+v", count)
+		}
+		rows, err := p.Audit.List(tenant, audit.Query{From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 50}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		failed, succeeded, personal := 0, 0, 0
+		for _, row := range rows {
+			if row.Action == "source.refresh" {
+				if row.Outcome == audit.Failed {
+					failed++
+				}
+				if row.Outcome == audit.Succeeded {
+					succeeded++
+				}
+			}
+			if row.Action == "source.reference.save" {
+				if row.Scope != "personal" || row.Subject != "ana" || row.Actor != "ana" {
+					t.Fatalf("reference audience: %+v", row)
+				}
+				personal++
+			}
+		}
+		if failed != 3 || succeeded != 2 || personal != 1 {
+			t.Fatalf("audit outcomes failed=%d succeeded=%d personal=%d", failed, succeeded, personal)
+		}
+		raw, _ := json.Marshal(rows)
+		if strings.Contains(string(raw), "op://") || strings.Contains(string(raw), "test-only-secret") {
+			t.Fatal("source audit retained credential material")
 		}
 		if !src.HardStale(time.Now().Add(25 * time.Hour)) {
 			t.Fatal("stop rule did not expire")
