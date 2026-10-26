@@ -578,7 +578,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRuns(who.Tenant, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -674,7 +674,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusAccepted, run)
+	ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 }
 
 // listThreads pages a tenant's conversations, newest activity first.
@@ -791,7 +791,7 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request, who auth.Princip
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.P.ShownRun(who.Tenant, run))
+	ok(w, http.StatusOK, s.P.ShownRunAs(person, run))
 }
 
 func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -800,7 +800,7 @@ func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Princi
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree)})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRunsAs(who, tree)})
 }
 
 func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -830,7 +830,7 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusAccepted, run)
+	ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 }
 
 // stopRun asks a run and everything attached to it to stop. Runs it delegated
@@ -845,10 +845,10 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request, who auth.Princi
 		return
 	}
 	if run.Stopping && !run.Status.Terminal() {
-		ok(w, http.StatusAccepted, run)
+		ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 		return
 	}
-	ok(w, http.StatusOK, run)
+	ok(w, http.StatusOK, s.P.ShownRunAs(who, run))
 }
 
 // events streams the caller's tenant's events as server-sent events.
@@ -971,7 +971,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// behind is ended here rather than fed a gap.
 				return
 			}
-			if !gate.seen(e.RunID) {
+			if !gate.seen(e.RunID) || !s.P.CitationEventVisible(who, e) {
 				continue
 			}
 			e = s.P.ShownEvent(who, e)

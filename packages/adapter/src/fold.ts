@@ -1,5 +1,5 @@
 import { emptyTurn, reduce, type Turn, type TurnEvent } from "@humagen/core";
-import { adapter, type BusEvent, type Run, turnOf } from "./run.ts";
+import { adapter, citationOf, type BusEvent, type Run, turnOf } from "./run.ts";
 
 /**
  * A run as one shared UI turn, kept current. This is the state every surface
@@ -29,12 +29,11 @@ export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "threa
   const sessionUrl = opts.href?.(`/conversations/${encodeURIComponent(run.thread || run.id)}`);
   let turn = emptyTurn(run.id, { name: run.agent });
   if (sessionUrl) turn = { ...turn, sessionUrl };
+  if(run.citations !== undefined) turn={...turn,citations:run.citations.map(citationOf)};
   const push = (...events: TurnEvent[]) => {
     turn = events.reduce(reduce, turn);
     if (sessionUrl) turn = { ...turn, sessionUrl };
-    const citations = new Map((run.citations ?? []).map(citation => [citation.id,citation]));
-    for (const citation of turn.citations) citations.set(citation.id,citation);
-    turn = {...turn,citations:[...citations.values()],...(!turn.outcome && run.outcome ? {outcome:{kind:run.outcome.kind,summary:run.outcome.summary,decisions:run.outcome.decisions,nextAction:run.outcome.next_action}} : {})};
+    turn = {...turn,...(!turn.outcome && run.outcome ? {outcome:{kind:run.outcome.kind,summary:run.outcome.summary,decisions:run.outcome.decisions,nextAction:run.outcome.next_action}} : {})};
     return turn;
   };
   return {
@@ -44,6 +43,10 @@ export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "threa
     apply: (e) => push(...to(e)),
     push,
     settle: (record) => {
+      // Present lists are the reader's authoritative projection, including
+      // an empty list after source access is revoked. Older APIs omit it.
+      if (record.citations !== undefined)
+        turn = { ...turn, citations: record.citations.map(citationOf) };
       // The record's answer is the whole answer. When the streamed text is not
       // where it begins, the stream missed or changed something: the record wins.
       if (record.status === "completed" && record.answer && !ended(turn)) {
@@ -51,9 +54,7 @@ export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "threa
       }
       const drawn = push(...settled(turn, record));
       const metadata = turnOf(record);
-      const citations = new Map(drawn.citations.map(citation=>[citation.id,citation]));
-      for (const citation of metadata.citations) citations.set(citation.id,citation);
-      turn = {...drawn,citations:[...citations.values()],...(metadata.outcome?{outcome:metadata.outcome}:{})};
+      turn = {...drawn,...(record.citations !== undefined ? {citations:metadata.citations}:{}),...(metadata.outcome?{outcome:metadata.outcome}:{})};
       return turn;
     },
   };

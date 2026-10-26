@@ -1,4 +1,5 @@
 import type { Citation } from "@humagen/core";
+import type { CitationLabels } from "@humagen/primitives";
 import {
   createContext,
   type ReactNode,
@@ -11,6 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { ExternalLinkIcon } from "./icons";
+import { useTurnMeta } from "./meta";
 
 /**
  * Shared components emit citations as numbered markdown links (`[[1]](url)`)
@@ -18,51 +20,136 @@ import { ExternalLinkIcon } from "./icons";
  * registers its items here, and each inline marker looks its source up by URL
  * to show a hover card. No contract change, no app hooks.
  */
+interface RegisteredCitation {
+  citation: Citation;
+  n: number;
+  labels?: CitationLabels;
+}
+
 export class CitationRegistry {
-  private byUrl = new Map<string, { citation: Citation; n: number }>();
+  private scopes = new Map<
+    string,
+    { items: Citation[]; labels?: CitationLabels; byUrl: Map<string, RegisteredCitation[]> }
+  >();
   private listeners = new Set<() => void>();
+  private ambiguous = new Set<string>();
   private version = 0;
-
-  register(items: Citation[]) {
-    let changed = false;
-    items.forEach((citation, i) => {
-      if (!citation.url) return;
-      const prev = this.byUrl.get(citation.url);
-      if (prev?.citation === citation && prev.n === i + 1) return;
-      this.byUrl.set(citation.url, { citation, n: i + 1 });
-      changed = true;
+  register(items: Citation[], labels?: CitationLabels, scope = "") {
+    const previous = this.scopes.get(scope);
+    if (previous?.items === items && previous.labels === labels) return;
+    const byUrl = new Map<string, RegisteredCitation[]>();
+    items.forEach((citation, index) => {
+      if (citation.url)
+        byUrl.set(citation.url, [
+          ...(byUrl.get(citation.url) ?? []),
+          { citation, n: index + 1, labels },
+        ]);
     });
-    if (changed) {
-      this.version += 1;
-      for (const l of this.listeners) l();
-    }
+    for (const url of byUrl.keys())
+      if (
+        [...this.scopes.entries()].some(([other, group]) => other !== scope && group.byUrl.has(url))
+      )
+        this.ambiguous.add(url);
+    this.scopes.set(scope, { items, labels, byUrl });
+    this.changed();
   }
-
-  get(url: string) {
-    return this.byUrl.get(url);
+  unregister(scope: string, items: Citation[]) {
+    if (this.scopes.get(scope)?.items !== items) return;
+    this.scopes.delete(scope);
+    this.changed();
   }
-
+  get(url: string, scope?: string, index?: number) {
+    const select = (records: RegisteredCitation[]) =>
+      index === undefined
+        ? records.length === 1
+          ? records[0]
+          : undefined
+        : records.find((record) => record.n === index);
+    if (scope !== undefined) return select(this.scopes.get(scope)?.byUrl.get(url) ?? []);
+    if (this.ambiguous.has(url)) return undefined;
+    const matches = [...this.scopes.values()].flatMap((group) => group.byUrl.get(url) ?? []);
+    return select(matches);
+  }
+  private changed() {
+    this.version++;
+    for (const listener of this.listeners) listener();
+  }
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   };
-
   snapshot = () => this.version;
 }
 
 export const CitationContext = createContext<CitationRegistry | null>(null);
 
-export function useRegisterCitations(items: Citation[]) {
+export function useRegisterCitations(items: Citation[], labels: CitationLabels, scope?: string) {
   const registry = useContext(CitationContext);
+  const turn = useTurnMeta();
+  const generated = useId();
+  const key = scope ?? turn?.id ?? generated;
   useLayoutEffect(() => {
-    registry?.register(items);
-  }, [registry, items]);
+    registry?.register(items, labels, key);
+    return () => registry?.unregister(key, items);
+  }, [registry, items, labels, key]);
 }
 
-function useCitation(url: string | undefined) {
+function useCitation(url: string | undefined, label: string) {
   const registry = useContext(CitationContext);
+  const turn = useTurnMeta();
   useSyncExternalStore(registry?.subscribe ?? noopSubscribe, registry?.snapshot ?? zero, zero);
-  return url ? registry?.get(url) : undefined;
+  return url ? registry?.get(url, turn?.id, Number(label)) : undefined;
+}
+
+/** Only recorded facts are rendered. Historic citations never borrow current configuration. */
+export function CitationProvenance({
+  citation,
+  labels,
+}: {
+  citation: Citation;
+  labels?: CitationLabels;
+}) {
+  if (!labels) return null;
+  const known = citation.mode === "indexed" || citation.mode === "live";
+  const copy =
+    known &&
+    citation.mode === "indexed" &&
+    citation.copyAt &&
+    /^\d{4}-\d{2}-\d{2}T/.test(citation.copyAt) &&
+    Number.isFinite(Date.parse(citation.copyAt))
+      ? citation.copyAt
+      : undefined;
+  return (
+    <span
+      className="flex max-w-full flex-wrap gap-x-2 gap-y-0.5 break-words text-aui-2xs text-aui-muted"
+      data-aui="citation-provenance"
+    >
+      <span>
+        {citation.mode === "indexed"
+          ? labels.indexed
+          : citation.mode === "live"
+            ? labels.live
+            : labels.unknown}
+      </span>
+      {citation.mode === "live" ? (
+        <span>{labels.queriedLive}</span>
+      ) : copy ? (
+        <span>
+          {citation.refreshFailed ? labels.lastGoodCopy : labels.copyFrom}:{" "}
+          <time dateTime={copy}>
+            {new Date(copy).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+          </time>
+        </span>
+      ) : (
+        <span>
+          {known && citation.refreshFailed ? `${labels.lastGoodCopy} · ` : ""}
+          {labels.freshnessUnknown}
+        </span>
+      )}
+    </span>
+  );
 }
 
 const noopSubscribe = () => () => {};
@@ -127,7 +214,7 @@ export function Favicon({
  * Hover or focus shows a card with the title, origin, and cited snippet.
  */
 export function CitationChip({ href, label }: { href?: string; label: string }) {
-  const found = useCitation(href);
+  const found = useCitation(href, label);
   const [open, setOpen] = useState(false);
   const [alignEnd, setAlignEnd] = useState(false);
   const wrapper = useRef<HTMLSpanElement>(null);
@@ -204,6 +291,7 @@ export function CitationChip({ href, label }: { href?: string; label: string }) 
             <ExternalLinkIcon size={12} className="ml-auto" />
           </span>
           <span className="font-medium leading-snug">{citation.title}</span>
+          <CitationProvenance citation={citation} labels={found?.labels} />
           {citation.snippet && (
             <span className="line-clamp-3 border-aui-border border-l-2 pl-2 text-aui-muted text-aui-xs">
               {citation.snippet}

@@ -702,7 +702,12 @@ func (s *Store) SearchForScopes(tenant string, names []string, query string, lim
 	return s.search(tenant, names, query, limit, variant, expected, true)
 }
 func (s *Store) search(tenant string, names []string, query string, limit int, variant string, expected map[string]*SourceConfig, guard bool) ([]Hit, error) {
+	if len(query) > 1000 {
+		return nil, fmt.Errorf("%w: search query is at most 1000 bytes", ErrInvalid)
+	}
 	q := tokens(query)
+	slices.Sort(q)
+	q = slices.Compact(q)
 	if len(q) == 0 {
 		return nil, fmt.Errorf("%w: a search needs words to look for", ErrInvalid)
 	}
@@ -785,14 +790,20 @@ func (s *Store) search(tenant string, names []string, query string, limit int, v
 				score += idf * tf * (k1 + 1) / (tf + k1*(1-b+b*float64(p.n)/avg))
 			}
 			if score > 0 {
-				hit := Hit{Source: src.Name, DocumentID: p.doc.ID, Title: p.doc.Title, URI: p.doc.URI, Index: p.index, Text: p.text, Score: score}
+				hit := Hit{Source: src.Name, DocumentID: p.doc.ID, Title: p.doc.Title, URI: p.doc.URI, Index: p.index, Text: p.text, Score: score, Mode: Indexed}
 				if src.Lifecycle != nil {
 					hit.Mode = Indexed
-					hit.RefreshFailed = src.Lifecycle.Status == NeedsAttention
+					if len(src.Lifecycle.Attempts) > 0 {
+						hit.RefreshFailed = src.Lifecycle.Attempts[len(src.Lifecycle.Attempts)-1].Status == "failed"
+					}
 					if src.Lifecycle.LastGoodAt != nil {
 						at := *src.Lifecycle.LastGoodAt
 						hit.CopyAt = &at
 					}
+				}
+				if hit.CopyAt == nil && (src.Lifecycle == nil || src.Lifecycle.Provider == "manual") && !p.doc.AddedAt.IsZero() {
+					at := p.doc.AddedAt
+					hit.CopyAt = &at
 				}
 				hits = append(hits, hit)
 			}

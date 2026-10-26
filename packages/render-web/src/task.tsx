@@ -5,7 +5,7 @@ import {
   type Subagent,
   type TaskStatus,
 } from "@humagen/core";
-import type { PrimitiveProps } from "@humagen/primitives";
+import type { CitationLabels, PrimitiveProps } from "@humagen/primitives";
 import {
   Children,
   type CSSProperties,
@@ -18,7 +18,7 @@ import {
   useState,
 } from "react";
 import { ActionContext, Actions, Button, DenseContext, Menu } from "./buttons";
-import { Favicon, hostOf } from "./citations";
+import { CitationProvenance, Favicon, hostOf } from "./citations";
 import {
   BanIcon,
   BotIcon,
@@ -136,7 +136,7 @@ export function StatusIcon({ status, size = 16 }: { status: TaskStatus; size?: n
   );
 }
 
-function SourceChips({ sources }: { sources: Citation[] }) {
+function SourceChips({ sources, labels }: { sources: Citation[]; labels?: CitationLabels }) {
   return (
     <ul className="flex flex-wrap gap-1.5" aria-label="Sources">
       {sources.map((c) => {
@@ -150,7 +150,7 @@ function SourceChips({ sources }: { sources: Citation[] }) {
         const cls =
           "inline-flex h-5 items-center gap-1 rounded-full bg-aui-subtle/70 pr-2 pl-1 text-aui-2xs text-aui-muted";
         return (
-          <li key={c.id}>
+          <li key={c.id} className="flex min-w-0 max-w-full flex-col gap-1">
             {c.url ? (
               <a
                 href={c.url}
@@ -163,6 +163,7 @@ function SourceChips({ sources }: { sources: Citation[] }) {
             ) : (
               <span className={cls}>{inner}</span>
             )}
+            <CitationProvenance citation={c} labels={labels} />
           </li>
         );
       })}
@@ -353,6 +354,7 @@ export function TaskRow({
   details,
   output,
   sources,
+  sourceLabels,
   decision,
 }: PrimitiveProps["Task"]) {
   const turn = useTurnMeta();
@@ -500,7 +502,9 @@ export function TaskRow({
                   </pre>
                 </details>
               )}
-              {sources && sources.length > 0 && <SourceChips sources={sources} />}
+              {sources && sources.length > 0 && (
+                <SourceChips sources={sources} labels={sourceLabels} />
+              )}
             </div>
           </Collapse>
         </>

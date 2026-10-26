@@ -102,3 +102,29 @@ test("record-loaded outcomes and evidence survive without journal events", () =>
   assert.equal(turn.citations[0]?.title,"Agreement");
   assert.equal(turn.citations[0]?.snippet,"The source passage");
 });
+
+
+test("persisted citations recover without events and an explicit projected empty list revokes streamed references", () => {
+  const record = {
+    ...run(),
+    status: "completed" as const,
+    answer: "Recorded",
+    citations: [
+      {
+        id: "c1",
+        title: "Recorded source",
+        url: "https://example.com/source",
+        mode: "indexed" as const,
+        copy_at: "2026-10-20T12:00:00Z",
+        refresh_failed: true,
+      },
+    ],
+  };
+  const f = follow(record);
+  f.settle(record);
+  assert.equal(f.turn.citations[0]?.mode, "indexed");
+  assert.equal(f.turn.citations[0]?.copyAt, "2026-10-20T12:00:00Z");
+  assert.equal(f.turn.citations[0]?.refreshFailed, true);
+  f.settle({ ...record, citations: [] });
+  assert.deepEqual(f.turn.citations, []);
+});

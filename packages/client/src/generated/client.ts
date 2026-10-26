@@ -22,6 +22,7 @@ import type {
   Artifact,
   Assignment,
   AssignmentInput,
+  AttachKnowledgeSourceBody,
   BringBackThreadResultBody,
   CallPolicy,
   CallPolicyInput,
@@ -37,6 +38,7 @@ import type {
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
+  DecideSourceLinkSuggestionBody,
   DiscoverWorkspaceResponse,
   DraftLibrarySkillBody,
   DraftSkillFromOutcomeBody,
@@ -59,6 +61,7 @@ import type {
   InboxDeliveryInput,
   InboxMessage,
   InstallationCapabilities,
+  KnowledgeAttachment,
   KnowledgeDocument,
   KnowledgeSource,
   KnowledgeSourceConfig,
@@ -78,6 +81,7 @@ import type {
   ListEvalRunsResponse,
   ListEvalSuitesResponse,
   ListInboxResponse,
+  ListKnowledgeAttachmentsResponse,
   ListKnowledgeDocumentsResponse,
   ListKnowledgeResourcesResponse,
   ListKnowledgeSourcesResponse,
@@ -98,6 +102,7 @@ import type {
   ListRunFeedbackResponse,
   ListSchedulesResponse,
   ListSkillsResponse,
+  ListSourceLinkSuggestionsResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -159,6 +164,7 @@ import type {
   SourceLinkResource,
   SourceLinkRule,
   SourceLinkRuleInput,
+  SourceLinkSuggestion,
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
@@ -3640,6 +3646,56 @@ in a project takes a member of that project (403).
     });
   }
 
+  /** List bounded visible verified resource links and suggestions */
+  async listSourceLinkSuggestions(knowledge?: string, client?: string, state?: "suggested" | "linked" | "ignored", limit?: number, options?: RequestOptions): Promise<ListSourceLinkSuggestionsResponse> {
+    let path = "/api/source-link-suggestions";
+    const _q = new URLSearchParams();
+    if (knowledge !== undefined && knowledge !== null) _q.set("knowledge", String(knowledge));
+    if (client !== undefined && client !== null) _q.set("client", String(client));
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListSourceLinkSuggestionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSourceLinkSuggestionsRaw(knowledge?: string, client?: string, state?: "suggested" | "linked" | "ignored", limit?: number, options?: RequestOptions): Promise<ApiResponse<ListSourceLinkSuggestionsResponse>> {
+    let path = "/api/source-link-suggestions";
+    const _q = new URLSearchParams();
+    if (knowledge !== undefined && knowledge !== null) _q.set("knowledge", String(knowledge));
+    if (client !== undefined && client !== null) _q.set("client", String(client));
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListSourceLinkSuggestionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Link or ignore a verified suggested resource */
+  async decideSourceLinkSuggestion(id: string, body: DecideSourceLinkSuggestionBody, options?: RequestOptions): Promise<SourceLinkSuggestion> {
+    let path = "/api/source-link-suggestions/{id}/decision";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SourceLinkSuggestion>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async decideSourceLinkSuggestionRaw(id: string, body: DecideSourceLinkSuggestionBody, options?: RequestOptions): Promise<ApiResponse<SourceLinkSuggestion>> {
+    let path = "/api/source-link-suggestions/{id}/decision";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SourceLinkSuggestion>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** listSourceLinkRules */
   async listSourceLinkRules(options?: RequestOptions): Promise<SourceLinkRule[]> {
     const path = "/api/source-link-rules";
@@ -3727,6 +3783,71 @@ in a project takes a member of that project (403).
     return this.rawRequest<PreviewSourceLinkRulesResponse>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** List visible actual source context attachments */
+  async listKnowledgeAttachments(name: string, options?: RequestOptions): Promise<ListKnowledgeAttachmentsResponse> {
+    let path = "/api/knowledge/{name}/attachments";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ListKnowledgeAttachmentsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listKnowledgeAttachmentsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ListKnowledgeAttachmentsResponse>> {
+    let path = "/api/knowledge/{name}/attachments";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ListKnowledgeAttachmentsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Attach a source to actual project or channel context */
+  async attachKnowledgeSource(name: string, body: AttachKnowledgeSourceBody, options?: RequestOptions): Promise<KnowledgeAttachment> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeAttachment>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async attachKnowledgeSourceRaw(name: string, body: AttachKnowledgeSourceBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeAttachment>> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeAttachment>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Detach an exact source context target without deleting its retained copy */
+  async detachKnowledgeSource(name: string, project: string, channel?: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async detachKnowledgeSourceRaw(name: string, project: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
   }

@@ -578,7 +578,16 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 		if part.Source == nil {
 			return inbox.Message{}, knowledge.ErrInvalid
 		}
-		src, err := p.SyncSource(ctx, who, part.Source.Name)
+		before, err := p.SourceAs(who, part.Source.Name)
+		if err != nil {
+			return inbox.Message{}, err
+		}
+		var src knowledge.Source
+		if before.Lifecycle != nil && before.Lifecycle.Snapshot {
+			src, err = p.ReplaceSource(ctx, who, part.Source.Name)
+		} else {
+			src, err = p.SyncSource(ctx, who, part.Source.Name)
+		}
 		if err != nil {
 			return inbox.Message{}, err
 		}

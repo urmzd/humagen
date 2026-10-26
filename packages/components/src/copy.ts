@@ -55,8 +55,9 @@ export const defaultCopy = {
   },
 
   agentOperations: {
-    skillsReview:"Default skills require review against the current agent revision before work can run.",
-    reviewSkills:"Review Default Skills",
+    skillsReview:
+      "Default skills require review against the current agent revision before work can run.",
+    reviewSkills: "Review Default Skills",
     reviewDrafts: "Review Drafts",
     addAssignment: "Add Assignment",
     pauseAll: "Pause All",
@@ -225,7 +226,32 @@ export const defaultCopy = {
     appearance: "Appearance",
   },
   attachedFilesPrompt: "Please review the attached files.",
+
+  citation: {
+    indexed: "Indexed Copy",
+    live: "Live Results",
+    unknown: "Source Mode Unknown",
+    freshnessUnknown: "Freshness Unknown",
+    lastGoodCopy: "Last Good Copy",
+    copyFrom: "Copy from",
+    queriedLive: "Retrieved for This Turn",
+  },
   sourceOperations: {
+    contextPlacement: "Context Placement",
+    attachmentHint:
+      "Choose where context is included. Source read access follows its project scope; this does not change channel membership.",
+    targetProject: "Target Project",
+    targetChannel: "Target Channel (Optional)",
+    attachProject: "Attach to Project",
+    attachChannel: "Attach to Channel (Optional)",
+    attach: "Attach Context",
+    detach: "Detach Context",
+    explicitGrants: "Explicit agent source grants remain active after detaching context.",
+    noAttachments: "This source is not attached to readable project or channel context.",
+    liveAttachment:
+      "Attaching a live source records where it may be queried. It does not verify provider access.",
+    importPlacement:
+      "Import the selected copy, then attach it to the context below after the provider import succeeds.",
     health: "Context Health",
     healthHint: "Where readable sources come from, how fresh they are and who depends on them.",
     integrations: "Integrations",
@@ -267,6 +293,22 @@ export const defaultCopy = {
     refreshCapabilities: "Reload Connection Limits",
     bridgeSemantics:
       "Inbound Only mirrors human messages passively without waking agents or sending output. Outcomes Only ignores incoming human messages and delivers permitted outcomes and decisions.",
+
+    inactive: "Inactive",
+    linkHistory: "Link History",
+    linkStates: {
+      suggested: "Pending Suggestions",
+      linked: "Linked History",
+      ignored: "Ignored History",
+    },
+    refreshSuggestions: "Refresh Suggestions",
+    linked: "Linked",
+    ignored: "Ignored",
+    noSuggestions: "No pending readable suggestions.",
+    matchedRules: "Matched Rules",
+    verifiedResource: "Verified Resource",
+    ruleDraftHint:
+      "A suggested rule is a draft. Preview it and save explicitly; linking this resource remains a separate decision.",
     saveAccess: "Save Access Mode",
     connectionType: "Connection Type",
     connectSystem: "Connect a System",
@@ -398,7 +440,7 @@ export const defaultCopy = {
     neverAction: "Never",
     policies: "Open Policies",
     reconnectRequired:
-      "Your access needs reconnecting. Save your own credential reference in Connect, then retry.",
+      "Your access needs reconnecting. Save your own credential reference, then retry.",
     healthMissing:
       "Missing access or provider failures are shown here. Provider test fixtures are not live validation.",
   },
@@ -458,6 +500,7 @@ export const defaultCopy = {
     },
     cause: {
       auth_expired: "Your access needs reconnecting",
+      stale: "Freshness stop rule reached. Refresh or keep a snapshot.",
       quota: "Provider quota reached",
       unsupported: "Resource format or size is unsupported",
       unavailable: "Provider unavailable",
@@ -936,7 +979,7 @@ export const defaultCopy = {
       "Console updates arrive immediately or in hourly digests. Quiet hours delay delivery.",
   },
   agentSkillDefaults: {
-    inspect:(name:string,version:number)=>`Open ${name}, Version ${version}, in a new tab`,
+    inspect: (name: string, version: number) => `Open ${name}, Version ${version}, in a new tab`,
     tools: "Tool Restrictions",
     noTools: "No Tools",
     title: "Default skills",

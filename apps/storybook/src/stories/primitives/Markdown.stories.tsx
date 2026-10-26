@@ -1,4 +1,4 @@
-import { linkCitations } from "@humagen/components";
+import { defaultCopy, linkCitations } from "@humagen/components";
 import * as fx from "@humagen/core/fixtures";
 import { Markdown, Sources } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -15,7 +15,7 @@ const meta = {
   render: ({ text, streaming }) => (
     <Canvas>
       <Markdown text={text} streaming={streaming} />
-      <Sources items={fx.doneTurn.citations} />
+      <Sources labels={defaultCopy.citation} items={fx.doneTurn.citations} />
     </Canvas>
   ),
 } satisfies Meta<{ text: string; streaming: boolean }>;

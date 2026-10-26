@@ -7,7 +7,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Activity } from "./Activity.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { MessageTime } from "./MessageTime.tsx";
-import { actedFor, turnOf, type Run } from "./adapter.ts";
+import { actedFor, citationOf, turnOf, type Run } from "./adapter.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
@@ -130,7 +130,10 @@ function TurnView({
   const refused = notAskable(run, me, siblings);
   const drawn = useMemo(
     () =>
-      turn ?? turnOf(run),
+      {
+      const base = turn ?? turnOf(run);
+      return run.citations !== undefined ? {...base,citations:run.citations.map(citationOf)} : base;
+    },
     [turn, run],
   );
   // Neither Retry nor Regenerate is offered on a turn the reader may not ask

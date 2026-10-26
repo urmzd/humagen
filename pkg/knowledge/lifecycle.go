@@ -43,6 +43,7 @@ const (
 	Unsupported Cause = "unsupported"
 	Unavailable Cause = "unavailable"
 	Interrupted Cause = "interrupted"
+	Stale       Cause = "stale"
 )
 
 const MaxAttempts = 20
@@ -135,15 +136,21 @@ func (s *Store) Get(tenant, name string) (Source, error) {
 
 // Configure replaces public metadata. An active import cannot change identity.
 func (s *Store) Configure(tenant, name string, cfg SourceConfig, at time.Time) (Source, error) {
-	return s.configure(tenant, name, cfg, at, nil, false)
+	return s.configure(tenant, name, cfg, at, nil, false, false)
 }
 
 // ConfigureIfCurrent checks the exact authorized connection snapshot under the
 // source lock. Nil expects a legacy source without lifecycle configuration.
 func (s *Store) ConfigureIfCurrent(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig) (Source, error) {
-	return s.configure(tenant, name, cfg, at, expected, true)
+	return s.configure(tenant, name, cfg, at, expected, true, false)
 }
-func (s *Store) configure(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig, guard bool) (Source, error) {
+
+// KeepSnapshot explicitly acknowledges retaining the last good copy, including
+// after a failed replacement, without claiming another provider read.
+func (s *Store) KeepSnapshot(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig) (Source, error) {
+	return s.configure(tenant, name, cfg, at, expected, true, true)
+}
+func (s *Store) configure(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig, guard bool, snapshotDecision bool) (Source, error) {
 	var configErr error
 	cfg, configErr = normalizeSourceConfig(cfg)
 	if configErr != nil {
@@ -169,7 +176,7 @@ func (s *Store) configure(tenant, name string, cfg SourceConfig, at time.Time, e
 	if cfg.Snapshot && (cfg.Mode != Indexed || lc.LastGoodAt == nil || cfg.Provider == "manual") {
 		return Source{}, fmt.Errorf("%w: snapshot requires a successful external indexed copy", ErrInvalid)
 	}
-	if cfg.Snapshot {
+	if cfg.Snapshot && (!lc.Snapshot || snapshotDecision) {
 		lc.Status = Available
 		lc.Cause = ""
 	}
@@ -440,4 +447,16 @@ func normalizeSourceConfig(cfg SourceConfig) (SourceConfig, error) {
 		return SourceConfig{}, fmt.Errorf("%w: stop rule must be between a minute and 30 days", ErrInvalid)
 	}
 	return cfg, nil
+}
+
+// HealthAt projects an elapsed stop rule without inventing a refresh attempt.
+// Last-good data and the recorded latest refresh outcome remain unchanged.
+func (src Source) HealthAt(at time.Time) Source {
+	if !src.HardStale(at) || src.Lifecycle == nil || src.Lifecycle.Status == NeedsAttention {
+		return src
+	}
+	src = cloneSource(src)
+	src.Lifecycle.Status = NeedsAttention
+	src.Lifecycle.Cause = Stale
+	return src
 }

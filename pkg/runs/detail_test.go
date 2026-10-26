@@ -24,7 +24,9 @@ func TestOutcomeAndCitationsSurviveRestartWithoutJournal(t *testing.T) {
 		action, _ := payload.Encode(payload.Action{Name: "record_outcome", Data: json.RawMessage(outcome)})
 		index.Observe(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindActionTaken, Payload: action, At: t0.Add(time.Second)})
 		citation, _ := payload.Encode(payload.Citation{Label: "[1]", Text: "The source passage", Source: payload.Provenance{DocumentTitle: "Agreement", SourceURI: "https://example.test/agreement"}})
-		index.Observe(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindCitation, Payload: citation, At: t0.Add(time.Second)})
+		if err := index.RecordCitation(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindCitation, Payload: citation, At: t0.Add(time.Second)}, nil); err != nil {
+			t.Fatal(err)
+		}
 		end(t, index, "acme", "r1", 2*time.Second, envelope.KindCompleted, payload.Lifecycle{Text: "Renew it. [[1]]"})
 		if err := index.Flush(); err != nil {
 			t.Fatal(err)
@@ -48,7 +50,9 @@ func TestOutcomeAndEvidenceProjectionIsBoundedAndTenantConfined(t *testing.T) {
 	record(t, index, "acme", "r1", "lead", OriginAPI, 0, nil)
 	for i := range 100 {
 		citation, _ := payload.Encode(payload.Citation{Label: fmt.Sprintf("[%d]", i), Text: "source"})
-		index.Observe(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindCitation, Payload: citation, At: t0})
+		if err := index.RecordCitation(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindCitation, Payload: citation, At: t0}, nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 	bad, _ := payload.Encode(payload.Action{Name: "record_outcome", Data: json.RawMessage(`{"kind":"executed","summary":"I approved myself"}`)})
 	index.Observe(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindActionTaken, Payload: bad, At: t0})

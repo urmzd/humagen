@@ -1,4 +1,4 @@
-import type { ArtifactKind, Interrupt, Task, Turn, TurnEvent } from "@humagen/core";
+import type { ArtifactKind, Citation, Interrupt, Task, Turn, TurnEvent } from "@humagen/core";
 import { interruptOf, settledOf, type WireQuestion } from "./question.ts";
 
 /**
@@ -73,8 +73,48 @@ export interface RunUsage {
   context?: { model?: string; window?: number; tokens?: number };
 }
 
+/** The API's read-confined public citation, never a private retrieval proof. */
+export interface RunCitation {
+  id: string;
+  title: string;
+  url?: string;
+  snippet?: string;
+  mode?: "indexed" | "live";
+  copy_at?: string;
+  refresh_failed?: boolean;
+}
+
+export function citationOf(c: RunCitation): Citation {
+  return {
+    id: c.id,
+    title: c.title,
+    ...(c.url ? { url: c.url } : {}),
+    ...(c.snippet ? { snippet: c.snippet } : {}),
+    ...citationMetadata(c),
+  };
+}
+
+function citationMetadata(c: {
+  mode?: unknown;
+  copy_at?: unknown;
+  refresh_failed?: unknown;
+}): Pick<Citation, "mode" | "copyAt" | "refreshFailed"> {
+  if (c.mode !== "indexed" && c.mode !== "live") return {};
+  return {
+    mode: c.mode,
+    ...(typeof c.copy_at === "string" &&
+    /^\d{4}-\d{2}-\d{2}T/.test(c.copy_at) &&
+    Number.isFinite(Date.parse(c.copy_at))
+      ? { copyAt: c.copy_at }
+      : {}),
+    ...(typeof c.refresh_failed === "boolean" ? { refreshFailed: c.refresh_failed } : {}),
+  };
+}
+
 /** A run as the platform's index reports it. */
 export interface Run {
+  /** Explicit empty lists clear prior streamed references after a privacy projection. */
+  citations?: RunCitation[];
   id: string;
   tenant: string;
   agent: string;
@@ -140,7 +180,6 @@ export interface Run {
   finishing?: boolean;
   answer?: string;
   outcome?: {kind: "recommendation" | "decision" | "update"; summary: string; decisions?: string[]; next_action?: string};
-  citations?: {id:string;title:string;url?:string;snippet?:string}[];
   error?: string;
   reason?: string;
   created_at: string;
@@ -205,6 +244,9 @@ export function delegateOf(tool?: string): string | undefined {
 }
 
 interface Cite {
+  mode?: unknown;
+  copy_at?: unknown;
+  refresh_failed?: unknown;
   label: string;
   text: string;
   index: number;
@@ -454,6 +496,7 @@ export function adapter(
               title: c.source?.document_title ?? c.source?.section_heading ?? "Source",
               url: c.source?.source_uri,
               snippet: c.text,
+              ...citationMetadata(c),
             },
           },
         ];
@@ -553,7 +596,7 @@ export function turnOf(run: Run): Turn {
     status,
     text: run.answer ?? "",
     tasks: [],
-    citations: run.citations ?? [],
+    citations: (run.citations ?? []).map(citationOf),
     ...(run.outcome ? {outcome:{kind:run.outcome.kind,summary:run.outcome.summary,decisions:run.outcome.decisions,nextAction:run.outcome.next_action}} : {}),
     // The record says what a parked run waits on, for a reader who missed
     // the event that raised it.

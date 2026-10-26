@@ -235,7 +235,8 @@ func lifecycleOf(parent string, mode call.Mode) Lifecycle {
 
 // Run is one run and its place in the tree.
 type Run struct {
-	ID string `json:"id"`
+	Citations []Citation `json:"citations"`
+	ID        string     `json:"id"`
 	// TagID is the id of the tag the run was accepted with: the trigger's
 	// event id, or the one the API made from its caller and idempotency key.
 	// The run's id is derived from it and the tenant, and cannot be turned
@@ -317,10 +318,9 @@ type Run struct {
 	// Answer is the final text of a completed run. On a stopped run it is the
 	// partial answer: what the agent had said when it stopped, which people
 	// may already have read. It is never the whole answer, and Status says so.
-	Answer    string     `json:"answer,omitempty"`
-	Outcome   *Outcome   `json:"outcome,omitempty"`
-	Citations []Citation `json:"citations,omitempty"`
-	Error     string     `json:"error,omitempty"`
+	Answer  string   `json:"answer,omitempty"`
+	Outcome *Outcome `json:"outcome,omitempty"`
+	Error   string   `json:"error,omitempty"`
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`
@@ -483,7 +483,8 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 		thread, project, client, within, channel, message = top.Thread, top.Project, top.Client, top.Within, top.Channel, ""
 	}
 	r := &Run{
-		ID: runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: tag.Agent, Rev: rev, Origin: tag.Origin,
+		Citations: []Citation{},
+		ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: tag.Agent, Rev: rev, Origin: tag.Origin,
 		Text: text, Input: input, Actor: tag.Actor, Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
 		Channel: channel, Message: message,
 		Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
@@ -517,7 +518,7 @@ func (x *Index) Called(runID string, lease int64) {
 // caller can react to an ending exactly once. Other kinds, and events for runs
 // this index never recorded, change nothing.
 func (x *Index) Observe(e envelope.Event) (Run, bool) {
-	if e.Kind == envelope.KindCitation || e.Kind == envelope.KindActionTaken {
+	if e.Kind == envelope.KindActionTaken {
 		return x.observeDetail(e), false
 	}
 	if e.Kind.Family() != "lifecycle" {
@@ -551,7 +552,7 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 			r.Usage, r.final = &u, true
 		}
 		if x.hold(r) {
-			return *r, false
+			return citationSnapshot(r), false
 		}
 		r.Status = Completed
 	case envelope.KindFailed:
@@ -577,7 +578,7 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 		x.finishAssistance(r)
 		r.Stopping, r.Question = false, nil
 	}
-	return *r, r.Status.Terminal()
+	return citationSnapshot(r), r.Status.Terminal()
 }
 
 // ObserveUsage folds a usage.call or usage.child event into the usage of the
@@ -598,7 +599,7 @@ func (x *Index) ObserveUsage(e envelope.Event) (Run, bool) {
 	if r.final {
 		// The runtime's record stands. The call is still the ledger's to
 		// judge, so the run is returned.
-		return *r, true
+		return citationSnapshot(r), true
 	}
 	x.touch(r.ID)
 	if r.tally == nil {
@@ -620,7 +621,7 @@ func (x *Index) ObserveUsage(e envelope.Event) (Run, bool) {
 	}
 	u := r.tally.Usage()
 	r.Usage = &u
-	return *r, true
+	return citationSnapshot(r), true
 }
 
 // SetUsage closes a run's spending once it has ended: the runtime's own
@@ -657,11 +658,11 @@ func (x *Index) Spend(runID string, micros int64) (Run, bool) {
 		return Run{}, false
 	}
 	if r.closed {
-		return *r, false
+		return citationSnapshot(r), false
 	}
 	r.Spent += micros
 	x.touch(runID)
-	return *r, true
+	return citationSnapshot(r), true
 }
 
 // SettleCall settles a call that has ended with the run that made it: the
@@ -733,7 +734,7 @@ func (x *Index) Unfinished() []Run {
 	var out []Run
 	for _, id := range x.order {
 		if r := x.runs[id]; !r.Status.Terminal() {
-			out = append(out, *r)
+			out = append(out, citationSnapshot(r))
 		}
 	}
 	return out
@@ -765,7 +766,7 @@ func (x *Index) End(runID string, status Status, answer, failure string, at time
 	}
 	r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = status, at, false, "", false, nil
 	x.finishAssistance(r)
-	return *r, true
+	return citationSnapshot(r), true
 }
 
 // openAttached counts the runs attached to a run that have not ended. The
@@ -805,7 +806,7 @@ func (x *Index) Settle(runID string, at time.Time) (Run, bool) {
 	x.touch(runID)
 	r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping = Completed, at, false, "", false
 	x.finishAssistance(r)
-	return *r, true
+	return citationSnapshot(r), true
 }
 
 // AskStop records that a run was asked to stop. From now on the run
@@ -825,7 +826,7 @@ func (x *Index) AskStop(runID string, at time.Time) (Run, bool) {
 		x.touch(runID)
 		x.recount(r)
 	}
-	return *r, true
+	return citationSnapshot(r), true
 }
 
 // Stop ends a run as stopped from a source other than its own events: one the
@@ -846,7 +847,7 @@ func (x *Index) Stop(runID, answer, cause string, at time.Time) (Run, bool) {
 	}
 	r.Status, r.Cause, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = Stopped, causeOf(cause, ""), at, false, "", false, nil
 	x.finishAssistance(r)
-	return *r, true
+	return citationSnapshot(r), true
 }
 
 // AttachedTo returns the runs attached to a run that have not ended.
@@ -856,7 +857,7 @@ func (x *Index) AttachedTo(runID string) []Run {
 	var out []Run
 	for _, id := range x.order {
 		if c := x.runs[id]; c.Parent == runID && c.Lifecycle == Attached && !c.Status.Terminal() {
-			out = append(out, *c)
+			out = append(out, citationSnapshot(c))
 		}
 	}
 	return out
@@ -903,7 +904,7 @@ func (x *Index) Get(tenant, runID string) (Run, error) {
 	if !ok || r.Tenant != tenant {
 		return Run{}, ErrNotFound
 	}
-	return *r, nil
+	return citationSnapshot(r), nil
 }
 
 // List returns a tenant's runs, newest first, at most limit of them.
@@ -913,7 +914,7 @@ func (x *Index) List(tenant string, limit int) []Run {
 	var out []Run
 	for _, id := range slices.Backward(x.order) {
 		if r := x.runs[id]; r.Tenant == tenant {
-			out = append(out, *r)
+			out = append(out, citationSnapshot(r))
 			if limit > 0 && len(out) == limit {
 				break
 			}
@@ -934,7 +935,7 @@ func (x *Index) Tree(tenant, runID string) ([]Run, error) {
 	var out []Run
 	for _, id := range x.order {
 		if c := x.runs[id]; c.Tenant == tenant && c.Root == r.Root {
-			out = append(out, *c)
+			out = append(out, citationSnapshot(c))
 		}
 	}
 	return out, nil
@@ -977,7 +978,7 @@ func (x *Index) Conversation(tenant, thread string) ([]Run, error) {
 	var out []Run
 	for _, id := range x.order {
 		if r := x.runs[id]; r.Tenant == tenant && r.Thread == thread && r.Parent == "" {
-			out = append(out, *r)
+			out = append(out, citationSnapshot(r))
 		}
 	}
 	if len(out) == 0 {
@@ -999,7 +1000,7 @@ func (x *Index) Path(tenant, runID string) ([]Run, error) {
 			break
 		}
 		seen[id] = true
-		out = append(out, *r)
+		out = append(out, citationSnapshot(r))
 		id = r.Prev
 	}
 	if len(out) == 0 {

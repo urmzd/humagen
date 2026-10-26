@@ -29,6 +29,7 @@ const maxWindow = 30 * 24 * time.Hour
 
 func (s *Server) observeRoutes(mux *http.ServeMux) {
 	s.sourceRuleRoutes(mux)
+	s.sourceSuggestionRoutes(mux)
 	s.sourceRecoveryRoutes(mux)
 	mux.HandleFunc("GET /api/analytics", s.authed(auth.RunsRead, s.analytics))
 	mux.HandleFunc("GET /api/journal", s.authed(auth.RunsRead, s.journal))
@@ -142,6 +143,16 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
 		ProjectEvent: func(e envelope.Event) envelope.Event { return s.P.ShownEvent(who, e) },
+		Visible: func(e envelope.Event) bool {
+			if !s.P.CitationEventVisible(who, e) {
+				return false
+			}
+			seer := s.P.Seer(who)
+			if e.RunID == "" {
+				return seer.Agent(e.Agent)
+			}
+			return seer.RunID(e.RunID)
+		},
 	})
 	// An event of a run the caller may not read is left out, as is one of
 	// an agent that lives in a project they cannot see.
@@ -172,7 +183,7 @@ func (s *Server) trace(w http.ResponseWriter, r *http.Request, who auth.Principa
 	for i, run := range tree {
 		ids[i] = run.ID
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree), "spans": orEmpty(s.P.ShownSpans(who, s.P.Journal.Trace(who.Tenant, ids)))})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRunsAs(who, tree), "spans": orEmpty(s.P.ShownSpans(who, s.P.Journal.Trace(who.Tenant, ids)))})
 }
 
 // runEvents returns one run's events as they were published, oldest first, for
@@ -184,7 +195,7 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	events := s.P.Journal.Events(who.Tenant, []string{run.ID})
+	events := slices.DeleteFunc(s.P.Journal.Events(who.Tenant, []string{run.ID}), func(e envelope.Event) bool { return !s.P.CitationEventVisible(who, e) })
 	for i, event := range events {
 		events[i] = s.P.ShownEvent(who, event)
 	}
@@ -233,7 +244,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 	out := make([]entry, 0, len(tree))
 	seer := s.P.Seer(who)
 	for _, run := range tree {
-		e := entry{Run: s.P.ShownRun(who.Tenant, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
+		e := entry{Run: s.P.ShownRunAs(who, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
 		if run.Stopping {
 			e.State = "stopping"
 		}
@@ -252,6 +263,9 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		held := s.P.Journal.Events(who.Tenant, []string{run.ID})
 		e.Complete = complete(held)
 		for _, ev := range held {
+			if !s.P.CitationEventVisible(who, ev) {
+				continue
+			}
 			ev = s.P.ShownEvent(who, ev)
 			item := event{Seq: ev.Seq, At: ev.At, Kind: ev.Kind}
 			if json.Valid(ev.Payload) {

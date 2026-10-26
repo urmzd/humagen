@@ -30,6 +30,7 @@ const source: Source = {
 };
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
+  if (!net) return;
   cleanup();
   net?.restore();
   net = undefined;

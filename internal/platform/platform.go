@@ -222,6 +222,8 @@ type Platform struct {
 	skillDefaultsMu    sync.Mutex
 	Notifications      *notifications.Store
 	ContextFlags       *contextflags.Store
+	SourceSuggestions  *sourcelinks.Suggestions
+	SourceEvidence     *knowledge.EvidenceStore
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -897,6 +899,12 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 		return
 	}
 	p.admission.Lock()
+	if e.Kind == envelope.KindCitation {
+		metadata, _, _ := p.trustedCitation(e)
+		if err := p.Runs.RecordCitation(e, metadata); err != nil {
+			p.log.Error("citation could not be retained", "error", err)
+		}
+	}
 	run, ended := p.Runs.Observe(e)
 	if ended {
 		p.free(run)

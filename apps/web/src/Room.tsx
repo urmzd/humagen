@@ -4,7 +4,7 @@ import { ActionId, type UiAction } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, MessageActionRow, messageTextActionButton, Thread as ThreadList, useQueue } from "@humagen/web";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { actedFor, turnOf, type Run } from "./adapter.ts";
+import { actedFor, citationOf, turnOf, type Run } from "./adapter.ts";
 import {
   ApiError,
   api,
@@ -323,7 +323,10 @@ function AnswerView({
   const turn = useRunTurn(run);
   const drawn = useMemo(
     () =>
-      turn ?? turnOf(run),
+      {
+      const base = turn ?? turnOf(run);
+      return run.citations !== undefined ? {...base,citations:run.citations.map(citationOf)} : base;
+    },
     [turn, run],
   );
   const shown = useMemo(() => {

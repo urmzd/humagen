@@ -29,6 +29,10 @@ export type AgentActivity =
   | "waiting";
 
 export interface Citation {
+  /** Recorded retrieval facts from the platform. Absent means unproven history. */
+  mode?: "indexed" | "live";
+  copyAt?: string;
+  refreshFailed?: boolean;
   id: string;
   title: string;
   url?: string;
