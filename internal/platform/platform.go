@@ -72,6 +72,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -203,11 +204,13 @@ type Platform struct {
 	Journal      *journal.Journal
 	Alerts       *alerts.Engine
 	Knowledge    *knowledge.Store
+	SourceLinks  *sourcelinks.Store
 	Evals        *evals.Store
 	Feedback     *feedback.Store
 	Prefs        *prefs.Store
 	Memory       *memory.Store
 	SkillLibrary *library.Store
+
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.

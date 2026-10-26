@@ -32,6 +32,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -125,6 +126,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("journal", err)
 	p.Alerts, err = alerts.Open(st)
 	keep("alerts", err)
+	p.SourceLinks, err = sourcelinks.Open(st)
+	keep("source link rules", err)
 	p.Knowledge, err = knowledge.Open(st)
 	keep("knowledge", err)
 	p.Evals, err = evals.Open(st)
