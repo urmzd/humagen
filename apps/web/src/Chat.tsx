@@ -669,7 +669,7 @@ export function Chat({
           // One line, never one left alone on a line of its own: a phone
           // shows the first two, which fit inside its gutter, and a wider
           // screen all of them.
-          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-4 overflow-hidden px-7">
+          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-3 overflow-hidden px-4 sm:gap-x-4 sm:px-7">
             {starters.map((st, i) => (
               <li key={st.agent} className={`shrink-0 ${i >= 2 ? "hidden sm:block" : ""}`}>
                 <button

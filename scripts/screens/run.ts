@@ -62,9 +62,12 @@ const defaultViewports: Viewport[] = [
   { name: "phone", width: 390, height: 844, rules: PHONE },
   { name: "desktop", width: 1280, height: 800, rules: DESKTOP },
 ];
-const colorScheme = process.env.SCREENS_COLOR_SCHEME ?? "light";
-if (colorScheme !== "light" && colorScheme !== "dark")
-  throw new Error("SCREENS_COLOR_SCHEME must be light or dark");
+const colorScheme: "light" | "dark" = (() => {
+  const value = process.env.SCREENS_COLOR_SCHEME ?? "light";
+  if (value !== "light" && value !== "dark")
+    throw new Error("SCREENS_COLOR_SCHEME must be light or dark");
+  return value;
+})();
 const VIEWPORTS: Viewport[] = process.env.SCREENS_VIEWPORTS
   ? process.env.SCREENS_VIEWPORTS.split(",").map((value) => {
       const match = /^(\d+)x(\d+)$/.exec(value);
@@ -222,6 +225,9 @@ function chats(ids: Ids): Screen[] {
       path: `/conversations/${ids.nativeThread}/deliverables/${ids.nativeArtifact}`,
       act: async (page) => {
         const endpoint = new URL(`/api/artifacts?thread=${ids.nativeThread}`, page.url()).href;
+        const sourceVersion = await (
+          await page.request.get(new URL(`/api/artifacts/${ids.nativeArtifact}`, page.url()).href)
+        ).json();
         const before = await (await page.request.get(endpoint)).json();
         const previous = before.artifacts.find(
           (file: { title: string }) => file.title === "native-launch.pptx",
@@ -253,11 +259,12 @@ function chats(ids: Ids): Screen[] {
           return Boolean(revised);
         }, "The real revision tool pipeline did not publish a newer version");
         assert.ok(revised);
-        assert.notEqual(revised.sha256, previous.sha256);
+        assert.notEqual(revised.sha256, sourceVersion.sha256);
         const original = await (
           await page.request.get(new URL(`/api/artifacts/${ids.nativeArtifact}`, page.url()).href)
         ).json();
         assert.equal(original.version, 1);
+        assert.equal(original.sha256, sourceVersion.sha256);
         await page.goto(
           new URL(`/conversations/${ids.nativeThread}/deliverables/${revised.id}`, page.url()).href,
         );
@@ -630,8 +637,9 @@ function screens(ids: Ids, call: Call): Screen[] {
         });
         await page.reload({ waitUntil: "domcontentloaded" });
         await page.emulateMedia({ colorScheme: "dark" });
-        const agent = page.getByRole("button", { name: /^humagen-analyst Workspace Default/ });
+        const agent = page.getByRole("button", { name: /^humagen-analyst(?:\s|$)/ });
         await agent.waitFor();
+        await agent.getByText("Workspace Default", { exact: true }).waitFor();
         const badges = agent.locator("span.rounded-full");
         const labels = await badges.allTextContents();
         assert.ok(
@@ -676,7 +684,7 @@ function screens(ids: Ids, call: Call): Screen[] {
             default: fallback,
           });
         }
-        await badgePage?.emulateMedia({ colorScheme: "light" });
+        await badgePage?.emulateMedia({ colorScheme });
       },
     },
     {
@@ -1296,6 +1304,12 @@ async function shoot(
     )
     .catch(() => {});
   await page.evaluate(() => document.fonts.ready);
+  if (process.env.SCREENS_COLOR_SCHEME) {
+    await page.waitForFunction(
+      (expected) => document.documentElement.dataset.theme === expected,
+      colorScheme,
+    );
+  }
   if (s.act) {
     try {
       await s.act(page);
@@ -1428,9 +1442,9 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
   mkdirSync(target, { recursive: true });
   for (const [name, screen] of Object.entries({
     agents: "agents",
-    analytics: "monitor",
+    analytics: "usage-chart",
     home: "home",
-    onboarding: "home-new",
+    onboarding: "agent-setup-role",
     runs: "task",
     "ui-agent-turn": "chat-private",
   })) {

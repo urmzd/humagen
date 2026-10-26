@@ -155,7 +155,7 @@ export function workspaceScreens(call: Call): Screen[] {
       name: "workspace-find-help",
       path: "/",
       act: async (page) => {
-        await page.getByText(defaultCopy.home.findHelp.title, { exact: true }).click();
+        await page.locator("summary").filter({ hasText: defaultCopy.home.findHelp.title }).click();
         await page.getByLabel(defaultCopy.home.findHelp.label).fill("launch plan");
         await page
           .getByRole("button", { name: defaultCopy.home.findHelp.search, exact: true })
