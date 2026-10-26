@@ -94,6 +94,8 @@ type Config struct {
 
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
+	// SourceDependencies optionally projects authoritative extra-store origin references.
+	SourceDependencies SourceDependencyReader
 
 	// Backends are where everything the platform keeps is kept. The zero
 	// value is in memory, lost with the process. OpenPostgres fills it from
@@ -204,10 +206,12 @@ type Config struct {
 type Platform struct {
 	files filesblob.Store
 
-	cfg       Config
-	log       *slog.Logger
-	now       func() time.Time
-	grounding sourceGrounding
+	cfg                    Config
+	log                    *slog.Logger
+	now                    func() time.Time
+	grounding              sourceGrounding
+	sourceDependencyMu     sync.RWMutex
+	sourceDependencyReader SourceDependencyReader
 
 	Agents               registry.Store
 	Runs                 *runs.Index

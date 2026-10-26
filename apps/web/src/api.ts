@@ -5,6 +5,7 @@ import type {
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
   KnowledgeLifecycle,
+  SourceDependencies,
   KnowledgeSourceConfig,
   Note as GeneratedNote,
   NoteInput,
@@ -43,6 +44,7 @@ import type { BusEvent, Run } from "./adapter.ts";
 // The project tree's shapes are the generated client's own, from
 // api/openapi.yaml, so this file cannot drift from the contract on them.
 export type {
+  SourceDependencies,
   ProjectContext,
   ContextLayer,
   AgentHome,
@@ -981,7 +983,7 @@ export const api = {
 
   sourceLinkSuggestions:(client?:string,knowledge?:string,state:SourceLinkSuggestion["state"]="suggested")=>call<ListSourceLinkSuggestionsResponse>("GET",`/api/source-link-suggestions?${new URLSearchParams({state,limit:"200",...(client?{client}:{}),...(knowledge?{knowledge}:{})})}`).then(result=>result.suggestions),
   decideSourceLink:(id:string,action:DecideSourceLinkSuggestionBody["action"],version:number)=>call<SourceLinkSuggestion>("POST",`/api/source-link-suggestions/${encodeURIComponent(id)}/decision`,{action,version}),
-  sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
+  sourceDependencies: (name: string) => call<SourceDependencies>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
   configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
   connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
   syncSource: (name: string) => call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),

@@ -605,6 +605,24 @@ export interface RunOutcome {
   next_action?: string;
 }
 
+export interface SourceDependency {
+  id: string;
+  title: string;
+  relation: "retrieved_in" | "published_by_retrieving_run" | "recorded_origin_run";
+  path?: string;
+}
+
+export interface SourceDependencies {
+  agents: string[];
+  projects: string[];
+  conversations: SourceDependency[];
+  deliverables: SourceDependency[];
+  skills: SourceDependency[];
+  memory: SourceDependency[];
+  /** This layer has no authoritative source relationships for these object types. No text matching is used to invent them. */
+  unsupported: ("skills" | "memory")[];
+}
+
 /** One run and its place in the call tree and in its conversation. */
 export interface Run {
   /** The run's id, `r` and 32 hex digits, derived from the workspace and the trigger's id. */
@@ -3854,11 +3872,6 @@ export interface CreateKnowledgeSourceBody {
   name: string;
   description?: string;
   configuration?: KnowledgeSourceConfig;
-}
-
-export interface KnowledgeSourceDependenciesResponse {
-  agents: string[];
-  projects: string[];
 }
 
 export interface ListSourceLinkSuggestionsResponse {

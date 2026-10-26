@@ -3880,15 +3880,10 @@ paths:
         - {name: name, in: path, required: true, schema: {type: string}}
       responses:
         "200":
-          description: Visible declarations, at most 200 agents and projects. Hidden dependencies are not counted.
+          description: Visible declarations and recorded retrieval relationships. At most 200 agents/projects and 50 conversations/deliverables; hidden objects are never counted. Deliverables identify the publishing run's retrieval, not an inferred content dependency.
           content:
             application/json:
-              schema:
-                type: object
-                required: [agents, projects]
-                properties:
-                  agents: {type: array, maxItems: 200, items: {type: string}}
-                  projects: {type: array, maxItems: 200, items: {type: string}}
+              schema: {$ref: '#/components/schemas/SourceDependencies'}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -7981,6 +7976,29 @@ components:
         summary: {type: string, minLength: 1, maxLength: 4000}
         decisions: {type: array, maxItems: 20, items: {type: string, maxLength: 1000}}
         next_action: {type: string, maxLength: 2000}
+    SourceDependency:
+      type: object
+      required: [id, title, relation]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        relation: {type: string, enum: [retrieved_in, published_by_retrieving_run, recorded_origin_run]}
+        path: {type: string, maxLength: 2048, pattern: "^/[^/]"}
+    SourceDependencies:
+      type: object
+      required: [agents, projects, conversations, deliverables, skills, memory, unsupported]
+      properties:
+        agents: {type: array, maxItems: 200, items: {type: string}}
+        projects: {type: array, maxItems: 200, items: {type: string}}
+        conversations: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/SourceDependency'}}
+        deliverables: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/SourceDependency'}}
+        skills: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/SourceDependency'}}
+        memory: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/SourceDependency'}}
+        unsupported:
+          description: This layer has no authoritative source relationships for these object types. No text matching is used to invent them.
+          type: array
+          maxItems: 2
+          items: {type: string, enum: [skills, memory]}
     Run:
       description: One run and its place in the call tree and in its conversation.
       type: object
