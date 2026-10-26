@@ -203,20 +203,22 @@ type Platform struct {
 	now       func() time.Time
 	grounding sourceGrounding
 
-	Agents        registry.Store
-	Runs          *runs.Index
-	Schedules     *Schedules
-	Journal       *journal.Journal
-	Alerts        *alerts.Engine
-	Knowledge     *knowledge.Store
-	SourceLinks   *sourcelinks.Store
-	Evals         *evals.Store
-	Feedback      *feedback.Store
-	Prefs         *prefs.Store
-	Memory        *memory.Store
-	SkillLibrary  *library.Store
-	Notifications *notifications.Store
-	ContextFlags  *contextflags.Store
+	Agents             registry.Store
+	Runs               *runs.Index
+	Schedules          *Schedules
+	Journal            *journal.Journal
+	Alerts             *alerts.Engine
+	Knowledge          *knowledge.Store
+	SourceLinks        *sourcelinks.Store
+	Evals              *evals.Store
+	Feedback           *feedback.Store
+	Prefs              *prefs.Store
+	Memory             *memory.Store
+	SkillLibrary       *library.Store
+	AgentSkillDefaults *library.DefaultsStore
+	skillDefaultsMu    sync.Mutex
+	Notifications      *notifications.Store
+	ContextFlags       *contextflags.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -561,6 +563,10 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 		return runs.Run{}, err
 	}
 	tag = p.pin(tag, edge, project, within, p.sourcesFor(tag, edge, project))
+	tag, err = p.pinAgentSkillDefaults(ctx, tag, edge, project)
+	if err != nil {
+		return runs.Run{}, err
+	}
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
