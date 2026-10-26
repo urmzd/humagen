@@ -773,6 +773,8 @@ func (p *Platform) ReviseBy(ctx context.Context, who auth.Principal, spec agents
 		return agentspec.Revision{}, err
 	}
 	defer unlock()
+	p.skillDefaultsMu.Lock()
+	defer p.skillDefaultsMu.Unlock()
 	for merges := 0; ; merges++ {
 		old, err := p.Agents.Get(ctx, who.Tenant, spec.Name, 0)
 		if err != nil {

@@ -142,6 +142,9 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		}
 		out.Layers = append(out.Layers, layer)
 	}
+	if defaults := p.defaultSkillPreview(ctx, who, project, agent); defaults != nil {
+		out.Layers = append(out.Layers, *defaults)
+	}
 	names := []string{}
 	for _, s := range p.AvailableSkills(who.Tenant, project, humanSubject(who)) {
 		if seer.Project(s.From) {

@@ -651,6 +651,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
+		"AgentSkillRef": {typ: platform.AgentSkillRef{}}, "AgentSkillDefaults": {typ: platform.AgentSkillDefaults{}}, "AgentSkillDefaultsUpdate": {typ: agentSkillDefaultsUpdate{}, written: true},
 		"ClientCapabilityPolicy": {typ: clients.Capabilities{}},
 		"InstallationEvent":      {typ: platform.InstallationEvent{}}, "InstallationAction": {typ: platform.InstallationAction{}}, "InstallationCapabilities": {typ: platform.InstallationCapabilities{}},
 		"ClientIdentity": {typ: clients.Identity{}}, "SecretRef": {typ: clients.SecretRef{}}, "SecretInput": {typ: clients.SecretInput{}},
@@ -1206,6 +1207,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(globex, "GET", "/api/threads/{id}", "/api/threads/"+first.str("thread"), "", http.StatusNotFound)
 	c.call(globex, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"hi","after":"`+id+`"}`, http.StatusNotFound)
 
+	defaultSkills := c.call(acme, "GET", "/api/agents/{name}/skills", "/api/agents/helper/skills", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/skills", "/api/agents/helper/skills", fmt.Sprintf(`{"agent_revision":%v,"version":0,"skills":[]}`, defaultSkills.field("agent_revision")), http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/skills", "/api/agents/helper/skills", fmt.Sprintf(`{"agent_revision":%v,"version":0,"skills":[]}`, defaultSkills.field("agent_revision")), http.StatusConflict)
+	c.call(acme, "PUT", "/api/agents/{name}/skills", "/api/agents/helper/skills", fmt.Sprintf(`{"agent_revision":%v,"version":1,"skills":null}`, defaultSkills.field("agent_revision")), http.StatusBadRequest)
 	// Limits: a refusal, the inbox message it raises, and resolving it.
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Launch","description":"The launch."}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Launch"}`, http.StatusConflict)
