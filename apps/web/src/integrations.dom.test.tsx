@@ -589,3 +589,33 @@ test("automatic link history shows inactive relationships without implying curre
   await screen.findByText("Inactive");
   assert.equal(screen.queryByRole("button", { name: "Link" }), null);
 });
+
+
+test("a direction chosen as a binding appears survives its initial effects", async () => {
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [client], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [] }),
+    "GET /api/clients/local/bindings": () => ({
+      bindings: [{ project: "Launch", channel: "general", slack_channel: "C123", direction: "two_way" }],
+    }),
+  });
+  let edited = false;
+  // Edit at insertion, before the newly mounted editor runs its passive effects.
+  const observer = new MutationObserver(() => {
+    const select = document.querySelector<HTMLSelectElement>('select[aria-label="Bridge Direction: C123"]');
+    if (!select || edited) return;
+    edited = true;
+    fireEvent.change(select, { target: { value: "inbound" } });
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  try {
+    render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="resources" />);
+    await waitFor(() => assert.equal(edited, true));
+    await waitFor(() => {
+      assert.equal((screen.getByRole("combobox", { name: "Bridge Direction: C123" }) as HTMLSelectElement).value, "inbound");
+      assert.equal((screen.getByRole("button", { name: "Save Direction" }) as HTMLButtonElement).disabled, false);
+    });
+  } finally {
+    observer.disconnect();
+  }
+});
