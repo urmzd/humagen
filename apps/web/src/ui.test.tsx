@@ -1442,3 +1442,19 @@ test("server hue reservations color marks, tints and strokes consistently", () =
     assert.equal(hueOf("custom"), 15);
   } finally { setAgentHues({ custom: hueOf("custom"), second: hueOf("second") }); }
 });
+
+test("operation notices use canonical links on every mailbox host", () => {
+  for (const kind of ["assignment", "handoff"] as const) {
+    const id = "review/a b";
+    const message = fromServer({
+      id: `notice-${kind}`, kind: "operation", subject: "Work needs review",
+      from: { kind: "agent", name: "oncall" }, at: "2026-10-25T12:00:00Z",
+      updated_at: "2026-10-25T12:00:00Z", severity: "warning", state: "open", unread: true,
+      source: { agent: "oncall" },
+      parts: [{ id: "p1", type: "operation", state: "open", actions: ["acknowledge"], operation: { kind, id, reason: "Review this work" } }],
+    });
+    const out = mailbox(message.id, [message]);
+    const route = kind === "assignment" ? "/assignments/" : "/agent-network/handoffs/";
+    assert.ok(out.includes(`href="${route}${encodeURIComponent(id)}"`), `${kind} must navigate without an inbox mutation dispatcher`);
+  }
+});
