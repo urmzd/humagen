@@ -191,9 +191,6 @@ func TestOpenRefusesAHomeThatIsNoProject(t *testing.T) {
 		"a project that is not there": func(t *testing.T, st state.Store) {
 			put(t, st, "a:helper", map[string]string{"agent": "helper", "project": "Gone"})
 		},
-		"the root": func(t *testing.T, st state.Store) {
-			put(t, st, "a:helper", map[string]string{"agent": "helper", "project": ""})
-		},
 		"kept under another agent": func(t *testing.T, st state.Store) {
 			put(t, st, "p:Field", field)
 			put(t, st, "a:helper", map[string]string{"agent": "other", "project": "Field"})
@@ -245,4 +242,32 @@ func TestEnsureRootWritesTheRootOnce(t *testing.T) {
 	if got := s.Tenants(); len(got) != 1 || got[0] != "acme" {
 		t.Fatalf("tenants = %v", got)
 	}
+}
+
+func TestCompanyHomeIsExplicitAndKeepsAvailability(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := projects.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := s.Tree("acme").IsAvailable(projects.Root, "helper")
+		if err := s.SetHome("acme", "helper", projects.Root, projects.Writer{By: "ada", Govern: true}, t0, nil); err != nil {
+			t.Fatal(err)
+		}
+		home, ok := s.Tree("acme").Home("helper")
+		if !ok || home != projects.Root {
+			t.Fatalf("Company home missing: %q %v", home, ok)
+		}
+		if s.Tree("acme").IsAvailable(projects.Root, "helper") != before {
+			t.Fatal("a home changed availability")
+		}
+		again, err := projects.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := again.Tree("acme").Home("helper"); !ok {
+			t.Fatal("Company home lost on restart")
+		}
+	})
 }

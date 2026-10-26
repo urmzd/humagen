@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/projects"
 	"slices"
 	"sort"
 	"strconv"
@@ -327,7 +328,7 @@ func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string
 	if IsBuiltin(name) {
 		return agentspec.Revision{}, false, fmt.Errorf("%w: %s belongs to the platform", ErrBuilder, name)
 	}
-	if _, homed := p.ProjectTree(tenant).Home(agentspec.NormalizeName(name)); homed {
+	if home, homed := p.ProjectTree(tenant).Home(agentspec.NormalizeName(name)); homed && home != projects.Root {
 		return agentspec.Revision{}, false, fmt.Errorf("%w: %s lives in a project, so only that project's owners change it", ErrBuilder, name)
 	}
 	var tools []string

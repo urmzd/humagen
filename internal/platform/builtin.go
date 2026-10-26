@@ -154,6 +154,32 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 			}
 		}
 	}
+	return p.EnsureAgentHomes(ctx, tenant)
+}
+
+// EnsureAgentHomes upgrades absent legacy homes without changing enable rules.
+// Registry pagination bounds each read and existing explicit homes are preserved.
+func (p *Platform) EnsureAgentHomes(ctx context.Context, tenant string) error {
+	page := registry.Page{Size: 100}
+	for {
+		rows, next, err := p.Agents.List(ctx, tenant, page)
+		if err != nil {
+			return err
+		}
+		names := make([]string, len(rows))
+		for i, row := range rows {
+			names[i] = row.Spec.Name
+		}
+		if err := p.Projects.EnsureCompanyHomes(tenant, names, p.now()); err != nil {
+			return err
+		}
+
+		if next == "" {
+			break
+		}
+		page.Token = next
+	}
+
 	return nil
 }
 
