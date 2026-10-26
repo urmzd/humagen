@@ -47,7 +47,10 @@ func (p *Platform) SourceVisible(who auth.Principal, name string) bool {
 
 func (p *Platform) runtimeSourceAllowed(tenant, name, project string) bool {
 	src, err := p.Knowledge.Get(tenant, name)
-	if err != nil || src.Lifecycle == nil || src.Lifecycle.Project == "" {
+	if err != nil {
+		return false
+	}
+	if src.Lifecycle == nil || src.Lifecycle.Project == "" {
 		return true
 	}
 	return slices.ContainsFunc(p.Projects.Tree(tenant).Chain(project), func(pr projects.Project) bool { return pr.Name == src.Lifecycle.Project })
@@ -58,13 +61,20 @@ func (p *Platform) runtimeReaderSourceAllowed(tenant, name, project, person stri
 		return false
 	}
 	src, err := p.Knowledge.Get(tenant, name)
-	if err != nil || src.Lifecycle == nil || src.Lifecycle.Project == "" {
-		return true
-	}
-	if person == "" {
+	if err != nil {
 		return false
 	}
-	return p.Sees(auth.Principal{Tenant: tenant, Subject: person, Kind: auth.User}, Place{Project: src.Lifecycle.Project})
+	if src.Lifecycle == nil || src.Lifecycle.Project == "" {
+		return true
+	}
+	if person == "" || src.Lifecycle.Owner != person {
+		return false
+	}
+	// A durable actor records a subject, not their sign-in groups. Do not
+	// fabricate a Principal or infer its roles. Until an authoritative reader
+	// snapshot is available, only the exact connecting owner with a current
+	// subject-based project role may ground a turn in a managed private copy.
+	return p.Projects.Tree(tenant).Resolve(src.Lifecycle.Project, projects.Reader{Subject: person}).Role.AtLeast(projects.Viewer)
 }
 
 func (p *Platform) RunUsesPersonalSources(ctx context.Context, run runs.Run) bool {
