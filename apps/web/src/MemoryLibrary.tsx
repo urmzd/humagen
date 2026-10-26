@@ -22,7 +22,8 @@ export function MemoryLibrary() {
       .catch(() => {
         if (live) setFailed(true);
       });
-    return () => {
+    const approve=async(id:string)=>{setBusy(true);setFailed(false);try{await api.approvePersonal([id]);setNotes(await api.personalMemory())}catch{setFailed(true)}finally{setBusy(false)}};
+  return () => {
       live = false;
     };
   }, []);
@@ -130,7 +131,8 @@ export function MemoryLibrary() {
                       ? copy.confirmed
                       : copy.suggested}
                 </span>
-                <button
+                {note.status==="pending"&&<button type="button" disabled={busy} onClick={()=>void approve(note.id)} className="min-h-11 text-aui-accent disabled:opacity-50">{copy.approve}</button>}
+                    <button
                   type="button"
                   disabled={busy}
                   onClick={() => void forget(note.id)}

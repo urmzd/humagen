@@ -1088,6 +1088,25 @@ owner is no agent's, and answers 404.
     });
   }
 
+  /** Review your proposed private memory */
+  async approvePersonalMemory(body: NoteSelection, options?: RequestOptions): Promise<Approved> {
+    const path = "/api/me/memory/approve";
+    return this.request<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async approvePersonalMemoryRaw(body: NoteSelection, options?: RequestOptions): Promise<ApiResponse<Approved>> {
+    const path = "/api/me/memory/approve";
+    return this.rawRequest<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** Immediately forget a private note */
   async forgetPersonalMemory(id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/me/memory/{id}";

@@ -63,6 +63,7 @@ import (
 	"github.com/urmzd/humagen/pkg/integrations/slack"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
@@ -210,6 +211,18 @@ type Platform struct {
 	Feedback    *feedback.Store
 	Prefs       *prefs.Store
 	Memory      *memory.Store
+||||||| parent of 3ed5a4b (feat(memory): compose private context only with explicit owner consent)
+	Agents    registry.Store
+	Runs      *runs.Index
+	Schedules *Schedules
+	Journal   *journal.Journal
+	Alerts    *alerts.Engine
+	Knowledge *knowledge.Store
+	Evals     *evals.Store
+	Feedback  *feedback.Store
+	Prefs     *prefs.Store
+	Memory    *memory.Store
+	SkillLibrary *library.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.

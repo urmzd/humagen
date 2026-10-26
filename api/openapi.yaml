@@ -829,6 +829,26 @@ paths:
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+  /api/me/memory/approve:
+    post:
+      operationId: approvePersonalMemory
+      tags: [agents]
+      summary: Review your proposed private memory
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteSelection'}
+      responses:
+        '200':
+          description: Number of proposals approved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Approved'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /api/me/memory/{id}:
     delete:
       parameters:
@@ -6295,7 +6315,7 @@ components:
         reviewed_at: {type: string, format: date-time}
         id: {type: string}
         text: {type: string}
-        source: {type: string, enum: [person, consolidated]}
+        source: {type: string, enum: [person, consolidated, artifact]}
         status:
           description: A pending note is a proposal, not used until a person approves it.
           type: string

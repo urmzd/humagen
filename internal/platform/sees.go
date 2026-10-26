@@ -375,7 +375,7 @@ func (s *Seer) Agent(name string) bool {
 // project's where they see the project, an agent's where they see the agent.
 func (s *Seer) MemoryOwner(owner string) bool {
 	if subject, ok := memory.OwnerPerson(owner); ok {
-		return s.who.Kind != auth.Machine && s.who.Subject == subject
+		return subject != "" && s.who.Kind == auth.User && s.who.Subject == subject
 	}
 
 	if project, ok := memory.OwnerProject(owner); ok {

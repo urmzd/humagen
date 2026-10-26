@@ -304,6 +304,7 @@ export const defaultCopy = {
   },
   memoryLibrary: {
     title: "Memory",
+    approve: "Confirm",
     description:
       "Private notes stay yours. Project and workspace notes are reviewed where the work happens.",
     personal: "Personal",

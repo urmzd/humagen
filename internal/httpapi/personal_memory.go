@@ -114,3 +114,31 @@ func (s *Server) forgetOwnedMemory(w http.ResponseWriter, r *http.Request, who a
 	}
 	w.WriteHeader(204)
 }
+
+func (s *Server) approvePersonalMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	owner := memory.PersonalOwner(who.Subject)
+	if !s.P.Seer(who).MemoryOwner(owner) {
+		fail(w, 403, "personal memory requires a person")
+		return
+	}
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	attempt, err := s.P.BeginAudit(who, audit.Change{Action: "memory.review", Resource: "memory", ID: owner, Subject: who.Subject, Route: "POST /api/me/memory/approve", Rule: string(auth.RunsWrite)})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	approved, err := s.P.Memory.Approve(who.Tenant, owner, body.IDs, memory.Review{By: who.Subject, At: time.Now()})
+	if completion := attempt.Finish(err); completion != nil {
+		s.P.LogAuditCompletionFailure(completion)
+	}
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, 200, map[string]int{"approved": approved})
+}

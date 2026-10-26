@@ -71,6 +71,7 @@ const (
 	Person Source = "person"
 	// Consolidated is a note the memory agent wrote after a turn.
 	Consolidated Source = "consolidated"
+	Artifact     Source = "artifact"
 )
 
 type Kind string
@@ -268,7 +269,13 @@ func makeRoom(notes []Note, status Status) ([]Note, error) {
 
 // Approve turns the named proposals into memories. Ids that are not pending
 // proposals of this agent are ignored. It returns how many were approved.
-func (s *Store) Approve(tenant, agent string, ids []string) (int, error) {
+func (s *Store) Approve(tenant, agent string, ids []string, reviews ...Review) (int, error) {
+	if len(reviews) > 1 || len(ids) > MaxNotes+MaxPending {
+		return 0, ErrInvalid
+	}
+	if len(reviews) == 1 && (reviews[0].By == "" || reviews[0].At.IsZero()) {
+		return 0, ErrInvalid
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	notes := s.by[key(tenant, agent)]
@@ -286,6 +293,10 @@ func (s *Store) Approve(tenant, agent string, ids []string) (int, error) {
 			break
 		}
 		note.Status = Approved
+		if len(reviews) == 1 {
+			note.ReviewedBy = reviews[0].By
+			note.ReviewedAt = reviews[0].At
+		}
 		notes = append(rest, note)
 		approved++
 	}
@@ -416,4 +427,10 @@ func (s *Store) UsedRendered(tenant, owner, text string, at time.Time) error {
 		return nil
 	}
 	return s.set(tenant, owner, notes, s.next)
+}
+
+// Review identifies a human decision without replacing original provenance.
+type Review struct {
+	By string
+	At time.Time
 }
