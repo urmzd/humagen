@@ -119,6 +119,7 @@ agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"
       reserved: "Name Reserved",
       created: "Inactive Agent Created",
       home: "Project Saved",
+      skills:"Published Skills Saved",
       controls: "Controls Saved",
       policy: "Action Policy Saved",
       budget: "Budget Saved",

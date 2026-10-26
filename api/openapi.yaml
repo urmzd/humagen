@@ -7359,6 +7359,17 @@ components:
       properties:
         spec: {$ref: "#/components/schemas/AgentSpec"}
         project: {type: string, maxLength: 63}
+        skills:
+          description: Up to four exact published default skill revisions, read-confined to the selected home. Changing them invalidates the previous dry run.
+          type: array
+          maxItems: 4
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, version]
+            properties:
+              id: {type: string}
+              version: {type: integer, minimum: 1}
         manager: {type: string, maxLength: 200}
         stop_rules: {type: string, maxLength: 4000}
         rules:
@@ -7390,13 +7401,14 @@ components:
         name: {type: string}
         owner: {type: string}
         plan: {$ref: "#/components/schemas/AgentSetupPlan"}
-        phase: {type: string, enum: [reserved, created, home, controls, policy, budget, assignment, configured, amending, activating, ready]}
+        phase: {type: string, enum: [reserved, created, home, skills, controls, policy, budget, assignment, configured, amending, activating, ready]}
         version: {type: integer, minimum: 1}
         revision: {type: integer, minimum: 1}
         revision_hash: {type: string}
         problem: {type: string}
         test_run: {type: string}
         assignment_id: {type: string}
+        skill_bindings_version: {type: integer, minimum: 0}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
     AgentSpec:

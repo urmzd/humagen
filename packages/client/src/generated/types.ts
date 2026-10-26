@@ -275,6 +275,8 @@ kept.
 export interface AgentSetupPlan {
   spec: AgentSpec;
   project: string;
+  /** Up to four exact published default skill revisions, read-confined to the selected home. Changing them invalidates the previous dry run. */
+  skills?: AgentSetupPlanSkillsItem[];
   manager?: string;
   stop_rules?: string;
   rules?: Record<string, "allow" | "ask" | "never">;
@@ -292,13 +294,14 @@ export interface AgentSetup {
   name: string;
   owner: string;
   plan: AgentSetupPlan;
-  phase: "reserved" | "created" | "home" | "controls" | "policy" | "budget" | "assignment" | "configured" | "amending" | "activating" | "ready";
+  phase: "reserved" | "created" | "home" | "skills" | "controls" | "policy" | "budget" | "assignment" | "configured" | "amending" | "activating" | "ready";
   version: number;
   revision?: number;
   revision_hash?: string;
   problem?: string;
   test_run?: string;
   assignment_id?: string;
+  skill_bindings_version?: number;
   created_at: string;
   updated_at: string;
 }
@@ -3443,6 +3446,11 @@ export interface RefusalPolicy {
   scope: PolicyScope;
   version: number;
   period: PolicyPeriod;
+}
+
+export interface AgentSetupPlanSkillsItem {
+  id: string;
+  version: number;
 }
 
 export interface AgentSetupPlanAssignment {

@@ -28,11 +28,15 @@ func TestSetupCapabilityUsesAuthoritativeAdmissionBeforeRunProjection(t *testing
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
-	record := AgentSetup{Name: "draft", Owner: "ada", Phase: "configured", Version: 1, Revision: 1, RevisionHash: "pinned", TestTag: "reserved-test"}
+	rev, err := p.Agents.Create(t.Context(), "t", agentspec.AgentSpec{Name: "draft", Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Test the exact capability"}, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := AgentSetup{Name: "draft", Owner: "ada", Phase: "configured", Version: 1, Revision: rev.Rev, RevisionHash: rev.Hash, TestTag: "reserved-test"}
 	if err := p.setups.put("t", record); err != nil {
 		t.Fatal(err)
 	}
-	req := runtime.Request{Tenant: "t", RunID: runtime.RunID("t", record.TestTag), Meta: map[string]string{operations.MetaForceAsk: "true"}, Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "draft"}, Rev: 1, Hash: "pinned"}}
+	req := runtime.Request{Tenant: "t", RunID: runtime.RunID("t", record.TestTag), Meta: map[string]string{operations.MetaForceAsk: "true"}, Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "draft"}, Rev: rev.Rev, Hash: rev.Hash}}
 	gate := setupGate{p: p}
 	if gate.AllowRequest(req) {
 		t.Fatal("missing actor context admitted a draft test")

@@ -82,6 +82,11 @@ func skillScopeAt(tree *projects.Tree, scope library.Scope, project, person stri
 	return false
 }
 func (p *Platform) SetAgentSkills(who auth.Principal, agent string, agentRevision, expectedVersion int, refs []AgentSkillRef) (AgentSkillsView, error) {
+	unlock, err := p.lockSetupRevision(who.Tenant, agent)
+	if err != nil {
+		return AgentSkillsView{}, err
+	}
+	defer unlock()
 	if !p.agentReady(who.Tenant, agent) {
 		return AgentSkillsView{}, library.ErrConflict
 	}

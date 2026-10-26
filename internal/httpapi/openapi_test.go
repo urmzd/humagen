@@ -2026,6 +2026,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(globex, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":1,"accepted":true}`, http.StatusNotFound)
 
 	setupPlanJSON := `{"spec":{"name":"reviewed-setup","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help with reviewed company work."},"project":"Launch"}`
+	setupPlanJSON = strings.Replace(setupPlanJSON, `"project":"Launch"`, `"project":"Launch","skills":[{"id":"`+libraryID+`","version":1}]`, 1)
 	setupReply := c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", setupPlanJSON, http.StatusOK)
 	if setupReply.str("phase") != "configured" {
 		t.Fatalf("setup phase=%s", setupReply.raw)

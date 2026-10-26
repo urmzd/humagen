@@ -21,7 +21,9 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/operations"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -52,6 +54,22 @@ func (s *setupFault) Write(ctx context.Context, namespace string, ops ...state.O
 func setupPlan(name string) platform.AgentSetupPlan {
 	return platform.AgentSetupPlan{Spec: agentspec.AgentSpec{Name: name, Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Help the company."}, Project: "~", Rules: map[operations.Category]operations.Level{operations.Other: operations.Ask}}
 }
+func publishedSetupSkill(t *testing.T, p *platform.Platform, tools []string) platform.AgentSkillRef {
+	t.Helper()
+	scope := library.Scope{Kind: "workspace"}
+	draft, err := p.SkillLibrary.Draft(tenant, admin.Subject, scope, library.Definition{Skill: projects.Skill{Name: "setup-checklist", Description: "Review native setup", Instructions: "FOLLOW THE EXACT PUBLISHED SETUP CHECKLIST"}, Tools: tools}, 0, nil, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SkillLibrary.Tested(tenant, scope, draft.Name, draft.Version, "trusted-published-fixture"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SkillLibrary.Publish(tenant, admin.Subject, scope, draft.Name, draft.Version, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	return platform.AgentSkillRef{ID: draft.ID, Version: draft.Version}
+}
+
 func TestAgentSetupResumesAfterRegistryCreationAndNeverHijacksExistingNames(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := &setupFault{Store: open(t), fail: true}
@@ -60,12 +78,18 @@ func TestAgentSetupResumesAfterRegistryCreationAndNeverHijacksExistingNames(t *t
 			t.Fatal(err)
 		}
 		defer func() { _ = p.Close() }()
-		saved, err := p.CreateAgentSetup(t.Context(), admin, setupPlan("draft"))
+		plan := setupPlan("draft")
+		plan.Skills = []platform.AgentSkillRef{publishedSetupSkill(t, p, []string{})}
+		saved, err := p.CreateAgentSetup(t.Context(), admin, plan)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if saved.Phase != "home" || saved.Problem == "" {
+		if saved.Phase != "skills" || saved.Problem == "" {
 			t.Fatalf("saved partial=%+v", saved)
+		}
+		bindings, err := p.AgentSkills(tenant, "draft")
+		if err != nil || bindings.Version == 0 || len(bindings.Skills) != 1 || saved.SkillBindingsVersion != bindings.Version {
+			t.Fatalf("skill phase=%+v,%v", bindings, err)
 		}
 		first, err := p.Agents.Get(t.Context(), tenant, "draft", 0)
 		if err != nil {
@@ -78,7 +102,7 @@ func TestAgentSetupResumesAfterRegistryCreationAndNeverHijacksExistingNames(t *t
 			t.Fatalf("ordinary draft invocation=%v", err)
 		}
 		resumed, err := p.ResumeAgentSetup(t.Context(), admin, "draft")
-		if err != nil || resumed.Phase != "configured" {
+		if err != nil || resumed.Phase != "configured" || resumed.SkillBindingsVersion != bindings.Version {
 			t.Fatalf("resume=%+v,%v", resumed, err)
 		}
 		after, _ := p.Agents.Get(t.Context(), tenant, "draft", 0)
@@ -156,16 +180,21 @@ func TestAgentSetupNormalCreateRaceKeepsTheWinningAgentUnchanged(t *testing.T) {
 }
 func TestAgentSetupDryRunUsesRealAdapterAndApprovalBeforeActivation(t *testing.T) {
 	var requests atomic.Int32
+	var skillSeen atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			Messages []struct {
-				Role string `json:"role"`
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
 			} `json:"messages"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&request)
 		hasTool := false
 		for _, message := range request.Messages {
 			hasTool = hasTool || message.Role == "tool"
+			if strings.Contains(string(message.Content), "FOLLOW THE EXACT PUBLISHED SETUP CHECKLIST") {
+				skillSeen.Store(true)
+			}
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		requests.Add(1)
@@ -196,6 +225,7 @@ func TestAgentSetupDryRunUsesRealAdapterAndApprovalBeforeActivation(t *testing.T
 	plan := setupPlan("real-draft")
 	plan.Spec.Provider = "local-real"
 	plan.Spec.Tools = []string{platform.ToolFileWrite}
+	plan.Skills = []platform.AgentSkillRef{publishedSetupSkill(t, p, []string{platform.ToolFileWrite})}
 	saved, err := p.CreateAgentSetup(t.Context(), admin, plan)
 	if err != nil || saved.Phase != "configured" {
 		t.Fatalf("setup=%+v,%v", saved, err)
@@ -219,7 +249,7 @@ func TestAgentSetupDryRunUsesRealAdapterAndApprovalBeforeActivation(t *testing.T
 		t.Fatal(err)
 	}
 	completed := await(t, p, tested.TestRun, runs.Completed)
-	if completed.Answer == "" || requests.Load() < 2 {
+	if completed.Answer == "" || requests.Load() < 2 || !skillSeen.Load() {
 		t.Fatal("native adapter did not complete the real approved tool round trip")
 	}
 	// A reviewed correction must invalidate this successful test and use the
@@ -278,7 +308,11 @@ func TestAgentSetupReadOmitsSourcesWhoseAudienceChanged(t *testing.T) {
 		if _, err := p.Knowledge.Create(tenant, "retained-source", "", admin.Subject, time.Now()); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := p.Projects.Create(tenant, projects.Project{Name: "Owned", Members: []projects.Entry{{Who: admin.Subject, Role: projects.Owner}}}, platform.WriterOf(admin), time.Now()); err != nil {
+			t.Fatal(err)
+		}
 		plan := setupPlan("source-draft")
+		plan.Project = "Owned"
 		plan.Spec.Sources = []agentspec.Source{{Name: "retained-source", URI: "https://private.example.test/source"}}
 		saved, err := p.CreateAgentSetup(t.Context(), admin, plan)
 		if err != nil || saved.Phase != "configured" {
@@ -294,7 +328,7 @@ func TestAgentSetupReadOmitsSourcesWhoseAudienceChanged(t *testing.T) {
 			t.Fatal(err)
 		}
 		reader := admin
-		reader.Roles = []auth.Role{auth.Operator}
+		reader.Roles = []auth.Role{auth.Manager}
 		shown, err := p.AgentSetup(reader, saved.Name)
 		if err != nil {
 			t.Fatal(err)
@@ -303,6 +337,17 @@ func TestAgentSetupReadOmitsSourcesWhoseAudienceChanged(t *testing.T) {
 		if len(shown.Plan.Spec.Sources) != 0 || strings.Contains(string(raw), "retained-source") || strings.Contains(string(raw), "private.example.test") {
 			t.Fatalf("hidden source leaked=%s", raw)
 		}
+		changed := shown.Plan
+		changed.Spec.SystemPrompt = "Updated visible instructions."
+		amended, err := p.AmendAgentSetup(t.Context(), reader, saved.Name, changed, shown.Version)
+		if err != nil || amended.Phase != "configured" {
+			t.Fatalf("confined amendment=%+v,%v", amended, err)
+		}
+		stored, err := p.Agents.Get(t.Context(), tenant, saved.Name, 0)
+		if err != nil || len(stored.Spec.Sources) != 1 || stored.Spec.Sources[0].Name != "retained-source" {
+			t.Fatalf("unseen reference lost=%+v,%v", stored, err)
+		}
+
 	})
 }
 

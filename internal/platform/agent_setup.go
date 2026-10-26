@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -36,6 +37,7 @@ type SetupAssignment struct {
 	Source   string `json:"source,omitempty"`
 }
 type AgentSetupPlan struct {
+	Skills     []AgentSkillRef                          `json:"skills,omitempty"`
 	Spec       agentspec.AgentSpec                      `json:"spec"`
 	Project    string                                   `json:"project"`
 	Manager    string                                   `json:"manager,omitempty"`
@@ -46,19 +48,20 @@ type AgentSetupPlan struct {
 	Assignment *SetupAssignment                         `json:"assignment,omitempty"`
 }
 type AgentSetup struct {
-	Name         string         `json:"name"`
-	Owner        string         `json:"owner"`
-	Plan         AgentSetupPlan `json:"plan"`
-	Phase        string         `json:"phase"`
-	Version      int            `json:"version"`
-	Revision     int            `json:"revision,omitempty"`
-	RevisionHash string         `json:"revision_hash,omitempty"`
-	Problem      string         `json:"problem,omitempty"`
-	TestRun      string         `json:"test_run,omitempty"`
-	AssignmentID string         `json:"assignment_id,omitempty"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	TestTag      string         `json:"test_tag,omitempty"`
+	SkillBindingsVersion int            `json:"skill_bindings_version,omitempty"`
+	Name                 string         `json:"name"`
+	Owner                string         `json:"owner"`
+	Plan                 AgentSetupPlan `json:"plan"`
+	Phase                string         `json:"phase"`
+	Version              int            `json:"version"`
+	Revision             int            `json:"revision,omitempty"`
+	RevisionHash         string         `json:"revision_hash,omitempty"`
+	Problem              string         `json:"problem,omitempty"`
+	TestRun              string         `json:"test_run,omitempty"`
+	AssignmentID         string         `json:"assignment_id,omitempty"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+	TestTag              string         `json:"test_tag,omitempty"`
 }
 
 type agentSetups struct {
@@ -133,7 +136,7 @@ func (p *Platform) CreateAgentBy(ctx context.Context, who auth.Principal, spec a
 	}
 	return p.Agents.Create(ctx, who.Tenant, spec, who.Subject)
 }
-func (p *Platform) checkSetupSpec(ctx context.Context, who auth.Principal, spec agentspec.AgentSpec) (agentspec.AgentSpec, error) {
+func (p *Platform) checkSetupSpec(ctx context.Context, who auth.Principal, spec agentspec.AgentSpec, old ...*agentspec.Revision) (agentspec.AgentSpec, error) {
 	spec.Name = agentspec.NormalizeName(spec.Name)
 	if !who.Can(auth.AgentsWrite) {
 		return agentspec.AgentSpec{}, auth.ErrForbidden
@@ -147,7 +150,11 @@ func (p *Platform) checkSetupSpec(ctx context.Context, who auth.Principal, spec 
 	if err := p.CheckAgentModel(who.Tenant, spec); err != nil {
 		return agentspec.AgentSpec{}, err
 	}
-	return p.SpecWrittenBy(ctx, who, nil, spec)
+	var previous *agentspec.Revision
+	if len(old) > 0 {
+		previous = old[0]
+	}
+	return p.SpecWrittenBy(ctx, who, previous, spec)
 }
 func (p *Platform) AgentSetup(who auth.Principal, name string) (AgentSetup, error) {
 	record, ok := p.setups.get(who.Tenant, name)
@@ -155,6 +162,9 @@ func (p *Platform) AgentSetup(who auth.Principal, name string) (AgentSetup, erro
 		return AgentSetup{}, operations.ErrNotFound
 	}
 
+	if _, err := p.ValidateAgentSkills(who, record.Plan.Project, append([]AgentSkillRef{}, record.Plan.Skills...)); err != nil {
+		return AgentSetup{}, operations.ErrNotFound
+	}
 	seer := p.Seer(who)
 	if _, err := p.Agents.Get(context.Background(), who.Tenant, name, 0); err == nil && !seer.Agent(name) {
 		return AgentSetup{}, operations.ErrNotFound
@@ -214,8 +224,8 @@ func (p *Platform) checkSetupRealModels(tenant string, spec agentspec.AgentSpec)
 	return nil
 }
 
-func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, plan AgentSetupPlan) (AgentSetupPlan, error) {
-	spec, err := p.checkSetupSpec(ctx, who, plan.Spec)
+func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, plan AgentSetupPlan, old ...*agentspec.Revision) (AgentSetupPlan, error) {
+	spec, err := p.checkSetupSpec(ctx, who, plan.Spec, old...)
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}
@@ -230,6 +240,10 @@ func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, pl
 	}
 	plan.Project = projects.NameOf(plan.Project)
 	if _, _, err := p.ProjectRole(who, plan.Project, projects.Owner); err != nil {
+		return AgentSetupPlan{}, err
+	}
+	plan.Skills, err = p.ValidateAgentSkills(who, plan.Project, append([]AgentSkillRef{}, plan.Skills...))
+	if err != nil {
 		return AgentSetupPlan{}, err
 	}
 	if plan.Spec.Provider == "offline" || plan.DailySpend < 0 || plan.MaxLease < 0 || len(plan.StopRules) > 4000 || len(plan.Manager) > 200 {
@@ -327,13 +341,14 @@ func (p *Platform) AmendAgentSetup(ctx context.Context, who auth.Principal, name
 		return AgentSetup{}, operations.ErrConflict
 	}
 	p.admission.Lock()
-	plan, err := p.validateSetupPlan(ctx, who, plan)
+	plan, err := p.validateSetupPlan(ctx, who, plan, &agentspec.Revision{Spec: record.Plan.Spec})
 	if err != nil {
 		p.admission.Unlock()
 		return AgentSetup{}, err
 	}
 	unchanged := record.Plan
 	unchanged.Spec = plan.Spec
+	unchanged.Skills = plan.Skills
 	if plan.Spec.Name != name || !reflect.DeepEqual(unchanged, plan) {
 		p.admission.Unlock()
 		return AgentSetup{}, operations.ErrInvalid
@@ -394,13 +409,16 @@ func (p *Platform) setupTestSettled(ctx context.Context, tenant string, record A
 func (p *Platform) applySetupAmendment(ctx context.Context, who auth.Principal, record *AgentSetup) error {
 	p.admission.Lock()
 	defer p.admission.Unlock()
-	plan, err := p.validateSetupPlan(ctx, who, record.Plan)
+	plan, err := p.validateSetupPlan(ctx, who, record.Plan, &agentspec.Revision{Spec: record.Plan.Spec})
 	if err != nil {
 		return err
 	}
-	if !reflect.DeepEqual(plan, record.Plan) {
+	currentPlan := record.Plan
+	currentPlan.Skills = append([]AgentSkillRef{}, currentPlan.Skills...)
+	if !reflect.DeepEqual(plan, currentPlan) {
 		return operations.ErrConflict
 	}
+	record.Plan = plan
 	if home, ok := p.Projects.Tree(who.Tenant).Home(record.Name); ok && home != record.Plan.Project {
 		return operations.ErrConflict
 	}
@@ -513,6 +531,27 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 		err = step("home", func() error { return p.setAgentHome(ctx, who.Tenant, name, record.Plan.Project, WriterOf(who)) })
 	}
 	if err == nil && record.Phase == "home" {
+		err = step("skills", func() error {
+			current, e := p.AgentSkills(who.Tenant, name)
+			if e != nil {
+				return e
+			}
+			if current.AgentRevision == record.Revision && slices.Equal(current.Skills, record.Plan.Skills) && (current.Version == record.SkillBindingsVersion || current.Version == record.SkillBindingsVersion+1) {
+				record.SkillBindingsVersion = current.Version
+				return nil
+			}
+			if current.Version != record.SkillBindingsVersion {
+				return operations.ErrConflict
+			}
+			bound, e := p.setAgentSkills(who, name, record.Revision, record.SkillBindingsVersion, record.Plan.Skills)
+			if e != nil {
+				return e
+			}
+			record.SkillBindingsVersion = bound.Version
+			return nil
+		})
+	}
+	if err == nil && record.Phase == "skills" {
 		err = step("controls", func() error {
 			current := p.AgentControl(who.Tenant, name)
 			_, err := p.SetAgentControl(who, name, operations.Control{Paused: true, Manager: record.Plan.Manager, StopRules: record.Plan.StopRules}, current.Version)
@@ -567,6 +606,11 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 	return record, nil
 }
 
+func (p *Platform) setupSkillsMatch(tenant string, record AgentSetup) bool {
+	current, err := p.AgentSkills(tenant, record.Name)
+	return err == nil && current.AgentRevision == record.Revision && current.Version == record.SkillBindingsVersion && slices.Equal(current.Skills, record.Plan.Skills)
+}
+
 type setupGate struct{ p *Platform }
 
 func (g setupGate) Ready(tenant, name string) bool {
@@ -595,14 +639,14 @@ func (g setupGate) AllowTag(tag envelope.Tag) bool {
 		return false
 	}
 	rev, err := g.p.Agents.Get(context.Background(), tag.Tenant, tag.Agent, 0)
-	return err == nil && rev.Rev == record.Revision && rev.Hash == record.RevisionHash
+	return err == nil && rev.Rev == record.Revision && rev.Hash == record.RevisionHash && g.p.setupSkillsMatch(tag.Tenant, record)
 }
 func (g setupGate) AllowRequest(req runtime.Request) bool {
 	record, ok := g.p.setups.get(req.Tenant, req.Agent())
 	if !ok || record.TestTag == "" || req.RunID != runtime.RunID(req.Tenant, record.TestTag) || record.Phase != "configured" {
 		return false
 	}
-	if req.Revision.Rev != record.Revision || req.Revision.Hash != record.RevisionHash {
+	if req.Revision.Rev != record.Revision || req.Revision.Hash != record.RevisionHash || !g.p.setupSkillsMatch(req.Tenant, record) {
 		return false
 	}
 
@@ -630,6 +674,12 @@ func (p *Platform) TestAgentSetup(ctx context.Context, who auth.Principal, name,
 	record, _ = p.setups.get(who.Tenant, name)
 	if record.Phase != "configured" || len(text) == 0 || len(text) > 8000 {
 		return AgentSetup{}, operations.ErrInvalid
+	}
+	if !p.setupSkillsMatch(who.Tenant, record) {
+		return AgentSetup{}, operations.ErrConflict
+	}
+	if _, err := p.ValidateAgentSkills(who, record.Plan.Project, append([]AgentSkillRef{}, record.Plan.Skills...)); err != nil {
+		return AgentSetup{}, err
 	}
 	if err := p.checkSetupRealModels(who.Tenant, record.Plan.Spec); err != nil {
 		return AgentSetup{}, err
@@ -678,6 +728,12 @@ func (p *Platform) ActivateAgentSetup(ctx context.Context, who auth.Principal, n
 	run, err := p.Runs.Get(who.Tenant, record.TestRun)
 	if err != nil || run.Status != runs.Completed || run.Usage == nil || run.Usage.Own.ModelCalls < 1 {
 		return AgentSetup{}, fmt.Errorf("%w: a completed real dry run is required", operations.ErrInvalid)
+	}
+	if !p.setupSkillsMatch(who.Tenant, record) {
+		return AgentSetup{}, operations.ErrConflict
+	}
+	if _, err := p.ValidateAgentSkills(who, record.Plan.Project, append([]AgentSkillRef{}, record.Plan.Skills...)); err != nil {
+		return AgentSetup{}, err
 	}
 	if err := p.checkSetupRealModels(who.Tenant, record.Plan.Spec); err != nil {
 		return AgentSetup{}, err
