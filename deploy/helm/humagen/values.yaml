@@ -31,7 +31,8 @@ nameOverride: ""
 fullnameOverride: ""
 
 # -- The System document: how and where humagen runs (docs/spec.md#system).
-# Rendered as written, except that the chart passes -addr=0.0.0.0:8080 and
+# Null store entries are omitted; other values are rendered as written.
+# The chart passes -addr=0.0.0.0:8080 and
 # -web=/usr/share/warp/web as flags, which win over server.addr and
 # server.console. auth.kind must be oidc: dev, mock and tailscale trust
 # loopback and refuse any other listen address.
@@ -57,6 +58,8 @@ system:
       # An authorization policy: put it in `files` and name it here, as
       # /etc/warp/policy.authz.
       # policy_file: /etc/warp/policy.authz
+    # For memory, set kind: memory and postgres: null. Null store entries are
+    # omitted from the spec, including when an upgrade reuses old values.
     stores:
       kind: postgres
       postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}

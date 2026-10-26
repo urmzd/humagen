@@ -52,6 +52,21 @@ jobs:
           go-version-file: go.mod
       - run: go test ./... -race
 
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.0
+      - run: python3 -m pip install PyYAML==6.0.3
+      - run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+      - run: make chart-check
+
   js:
     name: UI, console and Slack
     runs-on: ubuntu-latest

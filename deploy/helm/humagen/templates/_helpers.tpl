@@ -37,12 +37,20 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{/*
 The spec documents the pod reads: the System document, then one Platform
-document per workspace, separated by "---". Rendered from the values as
-written; the chart adds only api_version and kind.
+document per workspace, separated by "---". The chart omits null store
+entries from the values and adds api_version and kind.
 */}}
 {{- define "humagen.spec" -}}
-{{- $sys := .Values.system | default dict -}}
+{{- $sys := deepCopy (.Values.system | default dict) -}}
 {{- $spec := $sys.spec | default dict -}}
+{{/* Helm reuse-values may retain null entries that normal coalescing drops.
+Omit only null store entries, leaving configured inactive blocks for the
+strict spec decoder to refuse. Never mutate the release's values. */}}
+{{- range $key, $value := ($spec.stores | default dict) -}}
+{{- if eq $value nil -}}
+{{- $_ := unset $spec.stores $key -}}
+{{- end -}}
+{{- end -}}
 {{- $auth := $spec.auth | default dict -}}
 {{- $kind := $auth.kind | default "dev" -}}
 {{- if has $kind (list "dev" "mock" "tailscale") -}}

@@ -142,6 +142,12 @@ chart writes, so name the new one; `--atomic` rolls back if the pod does not
 come up. The container keeps the name `warp` too, so patches and
 `kubectl logs -c warp` keep working.
 
+For a memory store, set `system.spec.stores.kind: memory` and
+`system.spec.stores.postgres: null` in the chart values. The chart omits null
+store entries from the generated spec, including nulls retained by Helm 4's
+`--reuse-values`. Non-null blocks for an inactive backend are still refused;
+a selected Postgres backend still needs its database reference.
+
 `humagen deploy` does this itself, on every deploy that applies: it asks helm
 whether the release was installed by the warp chart, or was given
 `nameOverride: warp`, and keeps the name. `humagen deploy -o` applies nothing

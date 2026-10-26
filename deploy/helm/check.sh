@@ -84,4 +84,5 @@ EOF
 	echo "a new install is not named humagen"
 	exit 1
 }
+python3 -I "$root/deploy/helm/reused_values_test.py" "$chart" "$helm" "$humagen"
 echo "chart ok"
