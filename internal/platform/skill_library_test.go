@@ -161,3 +161,70 @@ func TestPersonalSkillClassifiedBeforeDispatchAndSurvivesReplay(t *testing.T) {
 		}
 	})
 }
+
+func TestPersonalSkillRunsThroughOwnedPersonalAgentWithoutBroadeningScope(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := &faultyIn{Store: open(t)}
+		provider := &privateContextWitness{Provider: script(say("Private skill test complete.")), calls: make(chan struct{}, 10)}
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}, AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return provider, nil })}})
+		who := auth.Principal{Kind: auth.User, Tenant: tenant, Subject: "ada", Roles: []auth.Role{auth.Admin}}
+		home, err := p.PersonalProject(who)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := p.SetAgentHome(t.Context(), tenant, "helper", home.Name, projects.Writer{By: who.Subject, Govern: true}); err != nil {
+			t.Fatal(err)
+		}
+		definition := library.Definition{Skill: projects.Skill{Name: "personal-owned-test", Description: "Test personal instructions", Instructions: "Follow the private review checklist."}, Tools: []string{}}
+		draft, err := p.DraftSkill(who, library.Scope{Kind: "personal", Subject: who.Subject}, definition, 0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.TestSkill(t.Context(), who, draft.ID, 1, "helper", "~", "Test"); !errors.Is(err, projects.ErrForbidden) {
+			t.Fatal("explicit shared destination was coerced", err)
+		}
+		other := who
+		other.Subject = "eve"
+		if _, err := p.TestSkill(t.Context(), other, draft.ID, 1, "helper", home.Name, "Test"); !errors.Is(err, library.ErrNotFound) {
+			t.Fatal("other owner accessed personal draft", err)
+		}
+		st.fail("context.flags")
+		if _, err := p.TestSkill(t.Context(), who, draft.ID, 1, "helper", home.Name, "Test private instructions"); err == nil {
+			t.Fatal("test dispatched after failed private classification")
+		}
+		select {
+		case <-provider.calls:
+			t.Fatal("model consumed instructions after refused scope or failed classification")
+		default:
+		}
+		st.fail("")
+		accepted, err := p.TestSkill(t.Context(), who, draft.ID, 1, "helper", home.Name, "Test private instructions")
+		if err != nil {
+			t.Fatal(err)
+		}
+		completed := await(t, p, accepted.ID, runs.Completed)
+		select {
+		case <-provider.calls:
+		default:
+			t.Fatal("actual configured adapter was never called")
+		}
+		if p.RunPlace(tenant, completed).Project != home.Name || completed.Tag().Meta[operations.MetaForceAsk] != "true" || completed.Tag().Meta[operations.MetaTools] != "[]" || completed.Tag().Meta[platform.MetaPrivateLibraryContext] != "true" {
+			t.Fatal("personal test lost placement or private action bounds", completed.Tag())
+		}
+		if !strings.Contains(completed.Tag().Meta[runs.MetaSkills], definition.Instructions) || !p.ContextFlags.Has(tenant, completed.ID) {
+			t.Fatal("exact private skill not durably pinned")
+		}
+		again, err := library.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recorded, err := again.Get(tenant, draft.Scope, draft.Name, 1)
+		if err != nil || len(recorded.Tests) != 1 || recorded.Tests[0] != completed.ID {
+			t.Fatal("personal skill test did not replay", recorded, err)
+		}
+		flags, err := contextflags.Open(st)
+		if err != nil || !flags.Has(tenant, completed.ID) {
+			t.Fatal("private classification did not replay", err)
+		}
+	})
+}

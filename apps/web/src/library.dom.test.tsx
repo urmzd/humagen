@@ -437,6 +437,7 @@ test("publishing waits for a completed readable test of the selected exact revis
     "GET /api/library/skills/sk-tested": () => ({
       revisions: [first, second],
     }),
+    "GET /api/projects/personal/agents": () => ({ available: { all: false, names: ["reviewer"] } }),
     "GET /api/library/skills/sk-tested/versions/1/agents": () => ({ agents: [], more: false }),
     "GET /api/library/skills/sk-tested/versions/2/agents": () => ({ agents: [], more: false }),
     "POST /api/library/skills/sk-tested/versions/2/test": () => {
@@ -460,6 +461,12 @@ test("publishing waits for a completed readable test of the selected exact revis
   fireEvent.change(screen.getByLabelText("Test Request"), {
     target: { value: "Validate the proposed output" },
   });
+  await waitFor(() =>
+    assert.equal(
+      (screen.getByRole("button", { name: "Test Skill" }) as HTMLButtonElement).disabled,
+      false,
+    ),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Test Skill" }));
   await screen.findByText(defaultCopy.skillsLibrary.testPending);
   assert.equal(publish.disabled, true);
@@ -503,4 +510,96 @@ test("an unreadable recorded test cannot enable skill publication", async () => 
     (screen.getByRole("button", { name: "Publish Version" }) as HTMLButtonElement).disabled,
     true,
   );
+});
+
+test("a newly saved personal draft tests with an eligible personal agent in the canonical personal project", async () => {
+  const skill = {
+    id: "sk-personal-test",
+    scope: { kind: "personal", subject: "ada" },
+    name: "personal-test",
+    description: "Personal review",
+    instructions: "Review privately",
+    tools: [],
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    tests: [],
+  };
+  let created = false;
+  let tested: unknown;
+  net = stubFetch({
+    "GET /api/me": () => ({ ...me, personal_project: "~personal-canonical" }),
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({
+      agents: [
+        {
+          rev: 1,
+          spec: {
+            name: "foreign-agent",
+            provider: "configured",
+            model: "real",
+            system_prompt: "Other",
+          },
+        },
+        {
+          rev: 1,
+          spec: {
+            name: "personal-agent",
+            provider: "configured",
+            model: "real",
+            system_prompt: "Personal",
+          },
+        },
+      ],
+      homes: { "foreign-agent": "Another", "personal-agent": "personal-canonical" },
+    }),
+    "GET /api/projects/personal-canonical/agents": () => ({
+      available: { all: false, names: ["personal-agent"] },
+    }),
+    "GET /api/library/skills": () => ({ skills: created ? [skill] : [] }),
+    "POST /api/library/skills": () => {
+      created = true;
+      return skill;
+    },
+    "GET /api/library/skills/sk-personal-test": () => ({ revisions: [skill] }),
+    "GET /api/library/skills/sk-personal-test/versions/1/agents": () => ({
+      agents: [],
+      more: false,
+    }),
+    "POST /api/library/skills/sk-personal-test/versions/1/test": (body) => {
+      tested = body;
+      return {
+        id: "personal-test-run",
+        agent: "personal-agent",
+        thread: "personal-test-thread",
+        status: "accepted",
+      };
+    },
+  });
+  render(<SkillsLibrary />);
+  fireEvent.change(await screen.findByLabelText("Name"), { target: { value: skill.name } });
+  fireEvent.change(screen.getByLabelText("Purpose"), { target: { value: skill.description } });
+  fireEvent.change(screen.getByLabelText("Instructions"), {
+    target: { value: skill.instructions },
+  });
+  await waitFor(() =>
+    assert.equal(
+      (screen.getByRole("button", { name: "Save Draft" }) as HTMLButtonElement).disabled,
+      false,
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+  await screen.findByLabelText("Test Request");
+  fireEvent.change(screen.getByLabelText("Test Agent"), { target: { value: "personal-agent" } });
+  fireEvent.change(screen.getByLabelText("Test Request"), {
+    target: { value: "Validate my private skill" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Test Skill" }));
+  await waitFor(() => assert.ok(tested));
+  assert.deepEqual(tested, {
+    agent: "personal-agent",
+    project: "personal-canonical",
+    text: "Validate my private skill",
+  });
+  assert.equal(screen.queryByRole("option", { name: "foreign-agent" }), null);
 });
