@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.26.1 (2026-10-26)
+
+### Bug Fixes
+
+- **helm**: omit retained null store values during upgrades ([b959877](https://github.com/urmzd/humagen/commit/b9598770359371b55b2fc8ae8d80c9b0d402a12a))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.26.0...v0.26.1)
+
+
 ## 0.26.0 (2026-10-26)
 
 ### Features
