@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/pkg/audit"
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/state"
@@ -93,6 +95,62 @@ func TestBlockedHandoffKeepsRequesterAndManagerAudienceAcrossRestart(t *testing.
 		}
 		if strings.Contains(string(wire), "requester") {
 			t.Fatal("internal requester subject leaked into the contract DTO")
+		}
+	})
+}
+
+func TestReminderControlAuditSurvivesRestartAndRecordsRefusedVersion(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		at := time.Now().UTC()
+		p, err := New(Config{Workspace: t.TempDir(), Backends: Backends{State: st}, Now: func() time.Time { return at }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		who := auth.Principal{Tenant: "t", Subject: "owner"}
+		seconds := 300
+		control := operations.Control{ReminderAfterSeconds: &seconds, StopRules: "DO-NOT-COPY-PRIVATE-INSTRUCTIONS"}
+		if _, err = p.SetAgentControl(who, "", control, 0); err != nil {
+			t.Fatal(err)
+		}
+		seconds = 600
+		if _, err = p.SetAgentControl(who, "", control, 0); err == nil {
+			t.Fatal("stale timer edit succeeded")
+		}
+		if err = p.Close(); err != nil {
+			t.Fatal(err)
+		}
+		restarted, err := New(Config{Workspace: t.TempDir(), Backends: Backends{State: st}, Now: func() time.Time { return at }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = restarted.Close() }()
+		kept := restarted.AgentControl("t", "")
+		if kept.ReminderAfterSeconds == nil || *kept.ReminderAfterSeconds != 300 {
+			t.Fatal("refused timer edit changed saved control")
+		}
+		rows, err := restarted.Audit.List("t", audit.Query{From: at.Add(-time.Minute), To: at.Add(time.Minute), Limit: 10}, func(audit.Record) bool { return true })
+		if err != nil || len(rows) != 2 {
+			t.Fatalf("timer audit=%+v, %v", rows, err)
+		}
+		successes, failures := 0, 0
+		for _, row := range rows {
+			if row.Actor != "owner" || row.Action != "agent.control" {
+				t.Fatal("timer provenance lost")
+			}
+			if row.Outcome == audit.Succeeded && row.After["reminder_after_seconds"] == "300" {
+				successes++
+			}
+			if row.Outcome == audit.Failed && row.After["reminder_after_seconds"] == "600" {
+				failures++
+			}
+			wire, _ := json.Marshal(row)
+			if strings.Contains(string(wire), "DO-NOT-COPY") {
+				t.Fatal("audit copied private stop instructions")
+			}
+		}
+		if successes != 1 || failures != 1 {
+			t.Fatalf("timer outcomes successes%d failures%d", successes, failures)
 		}
 	})
 }
