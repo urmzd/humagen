@@ -111,20 +111,20 @@ const draft = {
   id: "m-12",
   kind: "announcement",
   subject: "Field shipped two fixes",
-  from: { kind: "agent", name: "warp-analyst" },
+  from: { kind: "agent", name: "humagen-analyst" },
   at: "2026-10-21T09:00:00Z",
   updated_at: "2026-10-21T09:00:00Z",
   severity: "info",
   state: "open",
   unread: true,
-  source: { project: "Field", run: "r1", agent: "warp-analyst" },
+  source: { project: "Field", run: "r1", agent: "humagen-analyst" },
   parts: [
     {
       id: "p1",
       type: "draft",
       state: "open",
       actions: ["publish", "discard"],
-      draft: { project: "Field", agent: "warp-analyst", run: "r1", subject: "Field shipped two fixes", text: "The export is faster." },
+      draft: { project: "Field", agent: "humagen-analyst", run: "r1", subject: "Field shipped two fixes", text: "The export is faster." },
     },
   ],
 };
@@ -137,7 +137,7 @@ test("a draft asks its owner to publish or discard it, and sits in Needs you", (
     {
       id: "p1",
       type: "draft",
-      draft: { subject: "Field shipped two fixes", text: "The export is faster.", agent: "warp-analyst", project: "Field" },
+      draft: { subject: "Field shipped two fixes", text: "The export is faster.", agent: "humagen-analyst", project: "Field" },
       allowed: [ActionId.publishDraft, ActionId.discardDraft],
     },
   ]);
@@ -243,7 +243,7 @@ test("what needs the reader on Home is every open message but posted announcemen
     { kind: "inbox", id: "m-mention", from: "Ana", summary: "mentioned you in #renewals", at: announcement.at, url: "/inbox?message=m-mention" },
     // Above normal, so it says so; a normal one carries no severity.
     { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, severity: "critical", url: "/inbox?message=m-alert" },
-    { kind: "inbox", id: "m-12", from: "warp-analyst", summary: "Field shipped two fixes", at: draft.at, url: "/inbox?message=m-12" },
+    { kind: "inbox", id: "m-12", from: "humagen-analyst", summary: "Field shipped two fixes", at: draft.at, url: "/inbox?message=m-12" },
   ]);
   // The same page makes What's new from what is left: the posted announcement, and never the draft.
   assert.deepEqual(
@@ -275,7 +275,7 @@ test("what needs the reader on Home is every open message but published announce
     { kind: "inbox", id: "m-mention", from: "Ana", summary: "mentioned you in #renewals", at: announcement.at, url: "/inbox?message=m-mention" },
     { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, url: "/inbox?message=m-alert" },
     // A draft is kind announcement, but it waits on its owners: it needs them.
-    { kind: "inbox", id: "m-12", from: "warp-analyst", summary: "Field shipped two fixes", at: draft.at, url: "/inbox?message=m-12" },
+    { kind: "inbox", id: "m-12", from: "humagen-analyst", summary: "Field shipped two fixes", at: draft.at, url: "/inbox?message=m-12" },
   ]);
   // And it is not news yet.
   assert.deepEqual(updatesOf([draft].map(fromServer), (p) => p), []);

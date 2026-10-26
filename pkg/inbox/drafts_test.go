@@ -10,7 +10,7 @@ import (
 )
 
 func draftPart() Part {
-	return Part{Type: PartDraft, Draft: &DraftPart{Project: "Field", Agent: "warp-analyst", Run: "r1", Subject: "Field shipped", Text: "Two things."}}
+	return Part{Type: PartDraft, Draft: &DraftPart{Project: "Field", Agent: "humagen-analyst", Run: "r1", Subject: "Field shipped", Text: "Two things."}}
 }
 
 // A draft is kept as it was raised, through a restart and a rebuild, and a

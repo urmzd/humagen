@@ -505,3 +505,15 @@ test("the README's least privilege and the app's own lists cover every route it 
     assert.ok(scopes.has(`humagen:${permission}`), `${permission} is needed, not in the README`);
   }
 });
+
+test("old built-in mentions keep their existing grants without granting the new handle", () => {
+  const known = [{ name: "humagen-analyst" }];
+  const routing = { client: client({ agents: ["warp-analyst"] }) };
+  assert.deepEqual(choose("@warp-analyst report", known, routing), {
+    agent: "warp-analyst",
+    text: "report",
+    how: "named",
+  });
+  assert.equal(choose("@humagen-analyst report", known, routing).how, "none");
+  assert.equal(choose("@warp-analyst report", [], routing).how, "none");
+});

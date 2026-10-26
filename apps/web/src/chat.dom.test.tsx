@@ -141,12 +141,12 @@ test("a link that names an agent, or a suggestion, adds the agent as a chip, not
   assert.deepEqual(chips(), ["helper"]);
   assert.ok(screen.getByPlaceholderText(chat.placeholderOne("helper")));
   close();
-  const writer = [...agents, agent("warp-writer", "Writes reports.")];
+  const writer = [...agents, agent("humagen-writer", "Writes reports.")];
   openChat(workspace("lead"), { agents: writer });
   const suggestions = await screen.findByRole("list", { name: chat.suggestions });
   fireEvent.click(within(suggestions).getByRole("button", { name: /Write a report/ }));
   await waitFor(() => assert.equal(box().value, "Write a one-page report on "));
-  assert.deepEqual(chips(), ["warp-writer"]);
+  assert.deepEqual(chips(), ["humagen-writer"]);
   // Typed in, the suggestions step aside.
   assert.equal(screen.queryByRole("list", { name: chat.suggestions }), null);
   fireEvent.change(box(), { target: { value: "" } });
@@ -606,7 +606,7 @@ test("+ closes the menu it opened, though focus moves to it from the menu first"
 });
 
 test("suggestions keep to one line, a phone showing the first two, so none is left alone on a line of its own", async () => {
-  const builtin = [...agents, agent("warp-analyst"), agent("warp-builder"), agent("warp-writer")];
+  const builtin = [...agents, agent("humagen-analyst"), agent("humagen-builder"), agent("humagen-writer")];
   openChat(workspace("lead"), { agents: builtin });
   const list = await screen.findByRole("list", { name: chat.suggestions });
   const classes = list.className.split(/\s+/);
@@ -620,7 +620,7 @@ test("suggestions keep to one line, a phone showing the first two, so none is le
 });
 
 test("a suggestion adds its agent as the + menu would: All of Them gives way past three, and a full selection says so", async () => {
-  const builtin = [agent("a1"), agent("a2"), agent("a3"), agent("a4"), agent("a5"), agent("warp-writer")];
+  const builtin = [agent("a1"), agent("a2"), agent("a3"), agent("a4"), agent("a5"), agent("humagen-writer")];
   openChat({ ...workspace(), available: { all: true, names: [] } }, { agents: builtin, startAgent: "a1" });
   await waitFor(() => assert.deepEqual(chips(), ["a1"]));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
@@ -629,10 +629,10 @@ test("a suggestion adds its agent as the + menu would: All of Them gives way pas
   fireEvent.keyDown(menu, { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: chat.all }));
   fireEvent.click(within(await screen.findByRole("list", { name: chat.suggestions })).getByRole("button", { name: /Write a report/ }));
-  await waitFor(() => assert.deepEqual(chips().slice(0, 4), ["a1", "a2", "a3", "warp-writer"]));
+  await waitFor(() => assert.deepEqual(chips().slice(0, 4), ["a1", "a2", "a3", "humagen-writer"]));
   assert.equal(screen.getByRole("button", { name: chat.bestFit }).getAttribute("aria-pressed"), "true");
   // Five selected, a suggestion for another agent is refused in words.
-  fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("warp-writer") }));
+  fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("humagen-writer") }));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const full = await screen.findByRole("dialog", { name: chat.menu });
   for (const n of ["a4", "a5"]) fireEvent.click(await within(full).findByRole("checkbox", { name: new RegExp(`^${n}`) }));
@@ -642,7 +642,7 @@ test("a suggestion adds its agent as the + menu would: All of Them gives way pas
   fireEvent.change(box(), { target: { value: "" } });
   fireEvent.click(within(await screen.findByRole("list", { name: chat.suggestions })).getByRole("button", { name: /Write a report/ }));
   assert.ok(await screen.findByText(chat.maxAgents(5)));
-  assert.ok(!chips().includes("warp-writer"));
+  assert.ok(!chips().includes("humagen-writer"));
 });
 
 test("Home's first message says what it did in the conversation it opens", async () => {

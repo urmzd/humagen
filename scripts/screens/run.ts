@@ -362,6 +362,15 @@ function screens(ids: Ids): Screen[] {
     { name: "context", path: "/context" },
     { name: "agents", path: "/agents" },
     {
+      name: "humagen-builtins",
+      path: "/agents",
+      act: async (page) => {
+        await page.getByRole("searchbox", { name: "Find an agent" }).fill("humagen-");
+        for (const name of ["humagen-analyst", "humagen-writer", "humagen-builder"])
+          await page.getByText(name, { exact: true }).first().waitFor();
+      },
+    },
+    {
       name: "agent-colors",
       path: "/agents",
       act: async (page) => {

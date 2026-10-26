@@ -7,7 +7,7 @@ import { stubFetch } from "./dom.ts";
 
 const writer: Revision = {
   rev: 2,
-  spec: { name: "warp-writer", description: "Writes a document.", provider: "offline", model: "offline", system_prompt: "Write it.", access: { spawn: [] } },
+  spec: { name: "humagen-writer", description: "Writes a document.", provider: "offline", model: "offline", system_prompt: "Write it.", access: { spawn: [] } },
   created_at: new Date().toISOString(),
   created_by: "humagen",
   hash: "h2",
@@ -46,11 +46,11 @@ afterEach(() => {
 
 function open(builtin: boolean, onHomed: () => void = () => {}) {
   net = stubFetch({
-    "PUT /api/agents/warp-writer/home": () => ({ agent: "warp-writer", home: "Field", enabled_in: [] }),
-    "GET /api/agents/warp-writer/history": () => ({ revisions: [writer, older] }),
-    "GET /api/agents/warp-writer/memory": () => ({ notes }),
-    "POST /api/agents/warp-writer/memory": () => ({ id: "n2" }),
-    "DELETE /api/agents/warp-writer/memory/n1": () => undefined,
+    "PUT /api/agents/humagen-writer/home": () => ({ agent: "humagen-writer", home: "Field", enabled_in: [] }),
+    "GET /api/agents/humagen-writer/history": () => ({ revisions: [writer, older] }),
+    "GET /api/agents/humagen-writer/memory": () => ({ notes }),
+    "POST /api/agents/humagen-writer/memory": () => ({ id: "n2" }),
+    "DELETE /api/agents/humagen-writer/memory/n1": () => undefined,
   });
   const noop = () => {};
   render(
@@ -104,9 +104,9 @@ test("a built-in agent: the spec cannot be changed or saved, nor moved into a pr
   await screen.findByText("Releases go out on Tuesdays.");
   fireEvent.change(screen.getByLabelText("Something to remember"), { target: { value: "Ship on Fridays." } });
   fireEvent.click(screen.getByRole("button", { name: "Remember" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST" && r.path === "/api/agents/warp-writer/memory")));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST" && r.path === "/api/agents/humagen-writer/memory")));
   fireEvent.click(screen.getByRole("button", { name: "Forget" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "DELETE" && r.path === "/api/agents/warp-writer/memory/n1")));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "DELETE" && r.path === "/api/agents/humagen-writer/memory/n1")));
   assert.ok(!net.seen.some((r) => r.method === "PUT"), "nothing revised the agent");
 });
 
@@ -130,6 +130,6 @@ test("an agent of the workspace's own comes to live in a project from its Access
   tab("Access");
   fireEvent.click(screen.getByRole("button", { name: /^Lives in:/ }));
   fireEvent.click(await screen.findByRole("option", { name: /Field/ }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/warp-writer/home")));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/humagen-writer/home")));
   await waitFor(() => assert.equal(homed, 1));
 });

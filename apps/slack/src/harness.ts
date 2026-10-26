@@ -1198,13 +1198,13 @@ export function draftMail(over: Record<string, unknown> = {}): Record<string, un
     id: "m-draft",
     kind: "announcement",
     subject: "Field shipped two fixes",
-    from: { kind: "agent", name: "warp-analyst" },
+    from: { kind: "agent", name: "humagen-analyst" },
     at: "2026-10-09T00:45:00Z",
     updated_at: "2026-10-09T00:45:00Z",
     severity: "info",
     state: "open",
     unread: true,
-    source: { project: "Field", run: "r-recap", agent: "warp-analyst" },
+    source: { project: "Field", run: "r-recap", agent: "humagen-analyst" },
     parts: [
       {
         id: "p1",
@@ -1213,7 +1213,7 @@ export function draftMail(over: Record<string, unknown> = {}): Record<string, un
         actions: ["publish", "discard"],
         draft: {
           project: "Field",
-          agent: "warp-analyst",
+          agent: "humagen-analyst",
           run: "r-recap",
           subject: "Field shipped two fixes",
           text: "The export is faster.",

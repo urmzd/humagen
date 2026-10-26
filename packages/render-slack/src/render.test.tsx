@@ -47,10 +47,13 @@ describe("renderToSlack", () => {
         });
         expect(link?.type, where).toBe("context");
         expect(link?.elements, where).toHaveLength(1);
-        // The block is the session link and nothing else: no label, no prefix.
-        expect(link?.elements[0]?.text, where).toBe(`<${turn.sessionUrl}|${turn.sessionUrl}>`);
+        // The link has a descriptive label and points to the session.
+        expect(link?.elements[0]?.text, where).toBe(`<${turn.sessionUrl}|Open Conversation>`);
         // The link appears nowhere else in the message.
-        expect(JSON.stringify(blocks).split(`|${turn.sessionUrl}>`), where).toHaveLength(2);
+        expect(
+          JSON.stringify(blocks).split(`<${turn.sessionUrl}|Open Conversation>`),
+          where,
+        ).toHaveLength(2);
         if (turn.citations.length > 0) {
           expect(JSON.stringify(blocks.at(-3)), where).toMatch(/"\[\d+\] /);
         }
@@ -130,7 +133,7 @@ describe("renderToSlack", () => {
     expect(pages.length).toBeGreaterThan(1);
     expect(warnings).toHaveLength(1);
     // Once, on the last page only, directly above the disclaimer.
-    const link = `<${session}|${session}>`;
+    const link = `<${session}|Open Conversation>`;
     expect(JSON.stringify(pages).split(link)).toHaveLength(2);
     expect(JSON.stringify(pages.slice(0, -1))).not.toContain(link);
     expect(pages.at(-1)?.at(-2)).toEqual({

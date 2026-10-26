@@ -256,20 +256,20 @@ const draft = {
   id: "d-1",
   kind: "announcement",
   subject: "Field shipped two fixes",
-  from: { kind: "agent", name: "warp-analyst" },
+  from: { kind: "agent", name: "humagen-analyst" },
   at: "2026-10-21T09:00:00Z",
   updated_at: "2026-10-21T09:00:00Z",
   severity: "info",
   state: "open",
   unread: false,
-  source: { project: "Field", run: "r1", agent: "warp-analyst" },
+  source: { project: "Field", run: "r1", agent: "humagen-analyst" },
   parts: [
     {
       id: "p1",
       type: "draft",
       state: "open",
       actions: ["publish", "discard"],
-      draft: { project: "Field", agent: "warp-analyst", run: "r1", subject: "Field shipped two fixes", text: "The export is faster." },
+      draft: { project: "Field", agent: "humagen-analyst", run: "r1", subject: "Field shipped two fixes", text: "The export is faster." },
     },
   ],
 };

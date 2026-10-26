@@ -161,7 +161,7 @@ test("Home starts a question or an agent as the person, and searches in the cons
   const w = mapping();
   w.humagen.agentList = [
     ...w.humagen.agentList,
-    { name: "warp-builder", description: "Builds agents." },
+    { name: "humagen-builder", description: "Builds agents." },
   ];
   await w.app.handle(homeOpened(USER));
   await settle();
@@ -209,13 +209,13 @@ test("Home starts a question or an agent as the person, and searches in the cons
     }),
   );
   await answered(w);
-  assert.equal(w.humagen.posts.at(-1)?.text, "@warp-builder one that triages support tickets");
+  assert.equal(w.humagen.posts.at(-1)?.text, "@humagen-builder one that triages support tickets");
   assert.deepEqual(w.humagen.posts.at(-1)?.act_as, { client: "app", user: USER });
 });
 
 test("Build an Agent is offered only where this app may reach the builder", async () => {
   const w = mapping();
-  w.humagen.agentList = [...w.humagen.agentList, { name: "warp-builder" }];
+  w.humagen.agentList = [...w.humagen.agentList, { name: "humagen-builder" }];
   w.humagen.clients.set("app", {
     ...(w.humagen.clients.get("app") as NonNullable<ReturnType<typeof w.humagen.clients.get>>),
     agents: ["lead"],
@@ -351,7 +351,7 @@ test("an agent's draft waits in Needs you, counted as humagen counts it, and is 
   const needs = under(blocks, defaultCopy.home.needsYou);
   const rows = needs.filter((b) => b.type === "section").map((b) => b.text?.text ?? "");
   assert.equal(rows.length, 2, JSON.stringify(needs));
-  assert.match(rows[0] ?? "", /^\*warp-analyst\* Field shipped two fixes @here/);
+  assert.match(rows[0] ?? "", /^\*humagen-analyst\* Field shipped two fixes @here/);
   assert.match(rows[0] ?? "", /https:\/\/humagen\.test\/inbox\?message=m-draft/);
   assert.match(rows[1] ?? "", /^\*Ana\* mentioned you in #renewals/);
   // Two need her, and both are shown: nothing more is counted.

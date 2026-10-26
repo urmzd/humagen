@@ -141,7 +141,7 @@ func TestRacingAnnouncementsStopAtTheProjectsCap(t *testing.T) {
 	made, refused := 0, 0
 	for i := range 40 {
 		wg.Go(func() {
-			_, err := p.Announce(tenant, "Field", inbox.From{Kind: "agent", Name: "warp-analyst"}, platform.Announcement{Subject: fmt.Sprintf("Recap %d", i), Text: "What changed."}, posted)
+			_, err := p.Announce(tenant, "Field", inbox.From{Kind: "agent", Name: "humagen-analyst"}, platform.Announcement{Subject: fmt.Sprintf("Recap %d", i), Text: "What changed."}, posted)
 			mu.Lock()
 			defer mu.Unlock()
 			switch {

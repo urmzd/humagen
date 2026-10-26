@@ -291,3 +291,7 @@ of agents. Names remain beside marks wherever people choose an agent.
 
 The `agent-colors` screenshot state includes more than twelve custom agents,
 checked at phone and desktop widths by `make screens`.
+
+The built-in handle rename retains each agent's original color reservation.
+Both spellings resolve to that reservation, so history and new conversations
+keep the same mark; unrelated agents retain distinct assignments.

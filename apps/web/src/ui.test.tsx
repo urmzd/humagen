@@ -1415,7 +1415,7 @@ test("what floats above the page is opaque, so nothing under a menu shows throug
 
 
 test("agents shown together are told apart by color: humagen's own and the seeded agents each take a hue of their own", () => {
-  const builtin = ["warp-analyst", "warp-builder", "warp-writer"];
+  const builtin = ["humagen-analyst", "humagen-builder", "humagen-writer"];
   const seeded = ["helper", "lead", "intake", "triage"];
   const hues = [...builtin, ...seeded].map(hueOf);
   assert.equal(new Set(hues).size, hues.length, JSON.stringify(hues));

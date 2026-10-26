@@ -1,4 +1,5 @@
 import type { Agent, ClientRecord } from "./humagen.ts";
+import { builtinAgent } from "./legacy.ts";
 
 /**
  * Who answers a message. In order:
@@ -39,7 +40,7 @@ export const AUTO = "auto";
  * change after someone approves it. Home offers Build an Agent only where
  * this app may reach it.
  */
-export const BUILDER = "warp-builder";
+export const BUILDER = "humagen-builder";
 
 /**
  * Whether this surface may route to an agent. Without a client, any agent in
@@ -63,7 +64,7 @@ export function choose(text: string, agents: Agent[], routing: Routing): Choice 
   const known = new Set(agents.map((a) => a.name));
   for (const m of said.matchAll(NAMED)) {
     const name = m[2] as string;
-    if ((!known.has(name) && name !== AUTO) || !mayRoute(routing, name)) continue;
+    if ((!known.has(builtinAgent(name)) && name !== AUTO) || !mayRoute(routing, name)) continue;
     const at = (m.index ?? 0) + (m[1] ?? "").length;
     const rest = `${said.slice(0, at)}${said.slice(at + name.length + 1)}`
       .replace(/\s{2,}/g, " ")

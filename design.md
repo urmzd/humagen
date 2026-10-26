@@ -132,3 +132,15 @@ Mark a requirement verified only when its acceptance evidence is recorded.
 Keep [docs/architecture.md](docs/architecture.md#status) current when a capability
 lands. The documentation entry for DES-005 does not imply DES-001 through
 DES-004 have been implemented or live-validated.
+
+### Built-in handles and Slack conversation navigation
+
+New agent choices and starter actions use `humagen-analyst`, `humagen-writer`
+and `humagen-builder`. Compatibility registry definitions preserve saved
+revisions, old schedules and existing grants. The `humagen-builtins` screen
+checks all three names at phone and desktop widths.
+
+A Slack task card exposes Open Conversation when the host has configured
+`HUMAGEN_PUBLIC_URL`. It points to the run's conversation, including a later
+run in an existing conversation, and remains attached throughout streaming
+and settlement. Adapter and Slack rendering regressions cover the link.

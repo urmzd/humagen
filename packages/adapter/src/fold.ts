@@ -24,11 +24,14 @@ export interface Follower {
 type Options = Parameters<typeof adapter>[0];
 
 /** Follow one run from its first event. */
-export function follow(run: Pick<Run, "id" | "agent">, opts: Options = {}): Follower {
+export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread">>, opts: Options = {}): Follower {
   const to = adapter(opts);
+  const sessionUrl = opts.href?.(`/conversations/${encodeURIComponent(run.thread || run.id)}`);
   let turn = emptyTurn(run.id, { name: run.agent });
+  if (sessionUrl) turn = { ...turn, sessionUrl };
   const push = (...events: TurnEvent[]) => {
     turn = events.reduce(reduce, turn);
+    if (sessionUrl) turn = { ...turn, sessionUrl };
     return turn;
   };
   return {
@@ -49,7 +52,7 @@ export function follow(run: Pick<Run, "id" | "agent">, opts: Options = {}): Foll
 }
 
 /** A turn rebuilt from the events the journal still holds. Undefined when it holds none. */
-export function replay(run: Pick<Run, "id" | "agent">, events: BusEvent[], opts: Options = {}): Turn | undefined {
+export function replay(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread">>, events: BusEvent[], opts: Options = {}): Turn | undefined {
   if (events.length === 0) return undefined;
   const f = follow(run, opts);
   for (const e of events) f.apply(e);

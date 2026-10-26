@@ -77,7 +77,7 @@ export function deliverFor(project: string | undefined, deliver: Schedule["deliv
   return deliver === "project" && project === undefined ? undefined : deliver;
 }
 
-/** The agent a recap asks: warp-analyst when it is there, else the first agent offered. */
+/** The agent a recap asks: humagen-analyst when it is there, else the first agent offered. */
 export function recapAgent(agents: string[]): string | undefined {
-  return agents.includes("warp-analyst") ? "warp-analyst" : agents[0];
+  return agents.includes("humagen-analyst") ? "humagen-analyst" : agents[0];
 }

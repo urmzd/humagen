@@ -8,6 +8,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Agents the platform provides.
@@ -22,7 +23,7 @@ import (
 // is told which provider and model to give them.
 
 // BuiltinWriter writes a document and publishes it.
-const BuiltinWriter = "warp-writer"
+const BuiltinWriter = "humagen-writer"
 
 const writerPrompt = `You write documents and publish them as files.
 
@@ -36,7 +37,7 @@ To change a file you published before, read it with file_read, write the new ver
 Write only what you were asked for. If the request does not give you enough to write something true, say what is missing instead of inventing it.`
 
 // BuiltinAnalyst answers questions about how the workspace's agents are doing.
-const BuiltinAnalyst = "warp-analyst"
+const BuiltinAnalyst = "humagen-analyst"
 
 const analystPrompt = `You answer questions about how this workspace's agents are doing: how many runs there were, which failed and why, how long they took, what they cost, and what the alert rules are watching.
 
@@ -50,7 +51,7 @@ When asked what changed in a project, call project_changes for the days the ques
 Use only what the tools return. When they hold no data for the question, say so instead of guessing.`
 
 // BuiltinBuilder writes and revises agents, each change after a person approves it.
-const BuiltinBuilder = "warp-builder"
+const BuiltinBuilder = "humagen-builder"
 
 const builderPrompt = `You help people create and improve agents for this workspace.
 
@@ -66,7 +67,9 @@ You cannot change the platform's own agents, give an agent calls to other agents
 func Builtins() []string { return []string{BuiltinWriter, BuiltinAnalyst, BuiltinBuilder} }
 
 // IsBuiltin reports whether a name belongs to the platform.
-func IsBuiltin(name string) bool { return slices.Contains(Builtins(), agentspec.NormalizeName(name)) }
+func IsBuiltin(name string) bool {
+	return slices.Contains(Builtins(), agentspec.NormalizeName(name)) || legacy.IsBuiltinAgent(agentspec.NormalizeName(name))
+}
 
 func (p *Platform) builtinSpecs() []agentspec.AgentSpec {
 	if p.cfg.BuiltinProvider == "" || p.cfg.BuiltinModel == "" {
@@ -105,8 +108,36 @@ func (p *Platform) builtinSpecs() []agentspec.AgentSpec {
 // definition this server was started with. It is safe to call on every
 // request: when nothing has changed it only reads.
 func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
-	for _, want := range p.builtinSpecs() {
+	specs := p.builtinSpecs()
+	// Keep compatibility definitions under the old keys. No stored revision,
+	// schedule, project list or grant is re-keyed, and a pinned hash stays valid.
+	for _, current := range p.builtinSpecs() {
+		for old, name := range legacy.BuiltinAgents() {
+			if name == current.Name {
+				alias := current
+				alias.Name = old
+				specs = append(specs, alias)
+			}
+		}
+	}
+	for _, want := range specs {
 		have, err := p.Agents.Get(ctx, tenant, want.Name, 0)
+		if err == nil {
+			if err := p.checkBuiltinOwner(ctx, tenant, have); err != nil {
+				return err
+			}
+		}
+		if err != nil && !errors.Is(err, registry.ErrNotFound) {
+			return err
+		}
+	}
+	for _, want := range specs {
+		have, err := p.Agents.Get(ctx, tenant, want.Name, 0)
+		if err == nil {
+			if err := p.checkBuiltinOwner(ctx, tenant, have); err != nil {
+				return err
+			}
+		}
 		switch {
 		case errors.Is(err, registry.ErrNotFound):
 			if _, err := p.Agents.Create(ctx, tenant, want, "platform"); err != nil && !errors.Is(err, registry.ErrExists) {
@@ -122,6 +153,29 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 				return fmt.Errorf("platform: built-in %s: %w", want.Name, err)
 			}
 		}
+	}
+	return nil
+}
+
+// AgentDirectory lists current choices. Compatibility definitions stay in the
+// registry for direct reads, historical revisions and existing routing grants.
+func (p *Platform) AgentDirectory(ctx context.Context, tenant string, page registry.Page) ([]agentspec.Revision, string, error) {
+	rows, next, err := p.Agents.List(ctx, tenant, page)
+	return slices.DeleteFunc(rows, func(r agentspec.Revision) bool { return legacy.IsBuiltinAgent(r.Spec.Name) }), next, err
+}
+
+// A platform-owned name can be restored after a drifted revision. A custom
+// agent that used a newly reserved name before the upgrade is never replaced.
+func (p *Platform) checkBuiltinOwner(ctx context.Context, tenant string, have agentspec.Revision) error {
+	if have.CreatedBy == "platform" {
+		return nil
+	}
+	first, err := p.Agents.Get(ctx, tenant, have.Spec.Name, 1)
+	if err != nil {
+		return fmt.Errorf("platform: built-in %s ownership: %w", have.Spec.Name, err)
+	}
+	if first.CreatedBy != "platform" {
+		return fmt.Errorf("platform: built-in %s conflicts with an existing agent; preserve and rename that agent before upgrading", have.Spec.Name)
 	}
 	return nil
 }

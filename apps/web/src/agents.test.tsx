@@ -7,7 +7,7 @@ import type { Note, ProjectView, Revision } from "./api.ts";
 
 const writer: Revision = {
   rev: 2,
-  spec: { name: "warp-writer", description: "Writes a document.", provider: "offline", model: "offline", system_prompt: "Write it.", access: { spawn: [] } },
+  spec: { name: "humagen-writer", description: "Writes a document.", provider: "offline", model: "offline", system_prompt: "Write it.", access: { spawn: [] } },
   created_at: new Date().toISOString(),
   created_by: "humagen",
   hash: "h2",
@@ -54,7 +54,7 @@ const render = (builtin: boolean, canWrite = true, startOn: Tab = "prompt") =>
       rules={[]}
       alerts={[]}
       stats={undefined}
-      workspaceDefault="warp-writer"
+      workspaceDefault="humagen-writer"
       tree={[field]}
       place={{ enabled_in: ["~"] }}
       workspaceName="Acme"

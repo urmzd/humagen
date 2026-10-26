@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Names an agent list holds besides agents.
@@ -27,7 +28,7 @@ const maxAgentList = 64
 // BuiltinAgents are the platform's own agents, which a file may name without
 // declaring and which live in no project. A test holds them to the
 // platform's.
-var BuiltinAgents = []string{"warp-writer", "warp-analyst", "warp-builder"}
+var BuiltinAgents = []string{"humagen-writer", "humagen-analyst", "humagen-builder"}
 
 // level is one place an agent list is set: the workspace or a project.
 type level struct {
@@ -60,6 +61,9 @@ func checkAgents(sp PlatformSpec) error {
 	for _, b := range BuiltinAgents {
 		known[b] = true
 	}
+	for old := range legacy.BuiltinAgents() {
+		known[old] = true
+	}
 	blind := false
 	homes := map[string]string{}
 	inFile := map[string]bool{}
@@ -83,7 +87,7 @@ func checkAgents(sp PlatformSpec) error {
 			return fmt.Errorf("%s.project: %q is not a project in this file; an agent lives in a project the file declares", at, a.Project)
 		case name == "":
 			return fmt.Errorf("%s.project: an agent read from a file lives in a project only when written inline, with spec", at)
-		case slices.Contains(BuiltinAgents, name):
+		case slices.Contains(BuiltinAgents, name) || legacy.IsBuiltinAgent(name):
 			return fmt.Errorf("%s.project: %s is one of the platform's own agents, which live nowhere", at, name)
 		}
 		if other, twice := homes[name]; twice && other != a.Project {

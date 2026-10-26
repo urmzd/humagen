@@ -199,9 +199,9 @@ function TurnView({
  * message in the chat bar.
  */
 export const STARTERS: { agent: string; label: string; text: string }[] = [
-  { agent: "warp-analyst", label: "How are my agents doing?", text: "How did my agents do today?" },
-  { agent: "warp-builder", label: "Build an agent", text: "Help me build an agent that " },
-  { agent: "warp-writer", label: "Write a report", text: "Write a one-page report on " },
+  { agent: "humagen-analyst", label: "How are my agents doing?", text: "How did my agents do today?" },
+  { agent: "humagen-builder", label: "Build an agent", text: "Help me build an agent that " },
+  { agent: "humagen-writer", label: "Write a report", text: "Write a one-page report on " },
 ];
 
 /**

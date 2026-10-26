@@ -1252,7 +1252,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if inUse := c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusConflict); !strings.Contains(inUse.str("error"), "the default of Field") {
 		t.Errorf("homing an agent Field defaults to = %s", inUse.raw)
 	}
-	c.call(acme, "PUT", home, "/api/agents/warp-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", home, "/api/agents/humagen-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", home, "/api/agents/ghost/home", `{"project":"Field"}`, http.StatusNotFound)
 
 	// The directory.

@@ -52,8 +52,8 @@ func TestEachAgentCheckNamesItsPath(t *testing.T) {
 			`agents[0].project: "Initech" is not a project in this file`,
 		},
 		"a home for the platform's own": {
-			"    projects:\n" + field, "    - project: Field\n      spec: {name: warp-writer, provider: p, model: m, system_prompt: X.}\n",
-			`agents[0].project: warp-writer is one of the platform's own agents`,
+			"    projects:\n" + field, "    - project: Field\n      spec: {name: humagen-writer, provider: p, model: m, system_prompt: X.}\n",
+			`agents[0].project: humagen-writer is one of the platform's own agents`,
 		},
 		"enabling an agent that lives in a project": {
 			"    agents: {enable: [globex-helper]}\n    projects:\n" + field, fileAgentsYAML,
@@ -93,8 +93,8 @@ func TestAgentListsTheStoreTakesPass(t *testing.T) {
 	workspace := `    agents: {enable: ["*"], default: auto}
     projects:
       - {name: Field, agents: {enable: [helper], default: helper}}
-      - {name: Globex, parent: Field, kind: account, agents: {allow: [globex-helper, warp-writer], default: globex-helper}}
-      - {name: Initech, parent: Field, agents: {default: warp-analyst}}
+      - {name: Globex, parent: Field, kind: account, agents: {allow: [globex-helper, humagen-writer], default: globex-helper}}
+      - {name: Initech, parent: Field, agents: {default: humagen-analyst}}
 `
 	cfg, err := loadBody(t, platformDoc(workspace, fileAgentsYAML))
 	if err != nil {

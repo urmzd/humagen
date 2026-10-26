@@ -44,3 +44,13 @@ export function apiTarget(
   }
   return "http://127.0.0.1:8080";
 }
+
+/** Keep the built-ins' colors at their original keys across the rename. */
+export function builtinAgentKey(name: string): string {
+  const keys: Record<string, string> = {
+    "humagen-writer": "warp-writer",
+    "humagen-analyst": "warp-analyst",
+    "humagen-builder": "warp-builder",
+  };
+  return keys[name] ?? name;
+}

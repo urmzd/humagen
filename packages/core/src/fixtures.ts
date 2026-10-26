@@ -1429,7 +1429,7 @@ const updates: HomeUpdate[] = [
     project: "Field",
     projectTitle: "Field engineering",
     subject: "Weekly recap: three renewals closed",
-    from: { kind: "agent", name: "warp-analyst" },
+    from: { kind: "agent", name: "humagen-analyst" },
     at: "2026-10-12T08:41:00Z",
     unread: false,
     url: `${CONSOLE}/projects/Field?message=m-recap`,

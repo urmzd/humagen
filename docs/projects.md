@@ -870,7 +870,7 @@ key it is, left out of the directory, and subjects are never searched.
 
 - **A platform agent** belongs to the workspace (no home). It is available in
   a project when the project or an ancestor enables it. Every existing agent,
-  and the built-ins `warp-writer`, `warp-analyst` and `warp-builder`, is a
+  and the built-ins `humagen-writer`, `humagen-analyst` and `humagen-builder`, is a
   platform agent.
 - **A project agent** lives in one project (its home): it is available there
   and in every descendant, and nowhere else. `*` never reaches it, and it is
@@ -1103,14 +1103,14 @@ the reader cannot see never reaches their stream.
 ### A recap is a scheduled agent
 
 Nothing recap-specific is stored. "Add Weekly Recap" on a project creates a
-schedule: a jittered Monday morning, `warp-analyst` (or any agent available
+schedule: a jittered Monday morning, `humagen-analyst` (or any agent available
 there), the text "What changed in {title} since the last recap?",
 `deliver: project`. It is a `cron` run: admitted, counted under every limit on
 the chain, never housekeeping. Its grounding:
 
 - the project's instructions and memory, through the context layers;
 - `project_changes(days <= 31)`, a built-in read tool granted to
-  `warp-analyst` and to any agent an admin grants it. It reads only the run's
+  `humagen-analyst` and to any agent an admin grants it. It reads only the run's
   own project subtree:
   - runs (a `Summarize` filtered by project);
   - threads started and finished;
@@ -1506,7 +1506,7 @@ spec:
       - {name: summarize, description: Summarize a thread in five bullets., instructions: "Summarize the conversation so far in five bullets, newest last."}
     mention_kinds:                          # besides the built-in sme and skill
       - {kind: oncall, title: On call, resolves: role}
-    agents: {enable: [warp-writer, warp-analyst], default: auto}  # the root's (phase 3); replaces baseline
+    agents: {enable: [humagen-writer, humagen-analyst], default: auto}  # the root's (phase 3); replaces baseline
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]  # phase 2
     experts: [{who: "role:security", topics: [security]}]                # phase 2
     project_kinds: [{name: partner, title: Partner, like: account}]      # phase 2
@@ -1525,14 +1525,14 @@ spec:
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
         agents: {enable: [field-helper], default: field-helper}  # phase 3: adds to what the root enables
         schedules:                         # phase 5: file-managed, filed here
-          - {name: field-recap, cron: "41 8 * * 1", agent: warp-analyst, text: What changed in Field this week?, deliver: project}
+          - {name: field-recap, cron: "41 8 * * 1", agent: humagen-analyst, text: What changed in Field this week?, deliver: project}
       - name: Globex
         parent: Field                      # phase 1: a project in this file, or omitted for the root
         kind: account
         account: {customer: Globex Inc, external_id: "sf:0015g00000ABC"}
         members: [{who: "*", role: viewer}, {who: "okta|00u1ana", role: owner}]  # "*" required until phase 7
         experts: [{who: "okta|00u1ana", topics: [billing, renewals]}]
-        agents: {allow: [globex-helper, warp-writer], default: globex-helper}  # narrows: field-helper stops here
+        agents: {allow: [globex-helper, humagen-writer], default: globex-helper}  # narrows: field-helper stops here
         channels:                          # phase 6
           - {name: renewals, purpose: Renewal work, default: globex-helper}
           - {name: general, slack: {client: file-slack, channel: C0123GLOBEX}}  # phase 8
@@ -1845,7 +1845,7 @@ and its total, What's new and Your projects to the same on both renderers.
   to their messages with the app, and What's new and Your projects are shown
   to read. Ask a Question and Build an Agent open a form whose words are
   posted as the person in their messages with the app, Build an Agent tagging
-  `@warp-builder` where the client reaches it; Search Context opens the
+  `@humagen-builder` where the client reaches it; Search Context opens the
   console. Someone the client maps to nobody keeps the mailbox.
 - **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
   a tag; otherwise the client's default; otherwise nothing. As Slack delivers

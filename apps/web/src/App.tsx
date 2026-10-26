@@ -99,8 +99,8 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 /** The platform's own agents the console offers ways into. */
-export const BUILTIN_ANALYST = "warp-analyst";
-export const BUILTIN_BUILDER = "warp-builder";
+export const BUILTIN_ANALYST = "humagen-analyst";
+export const BUILTIN_BUILDER = "humagen-builder";
 
 
 function greeting(name: string): string {
