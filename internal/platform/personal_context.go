@@ -1,6 +1,8 @@
 package platform
 
 import (
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/pkg/runs"
 	"strings"
 	"unicode/utf8"
 
@@ -30,7 +32,7 @@ func (p *Platform) personalLayers(tenant, project, subject string) []ContextLaye
 	}
 	return out
 }
-func (p *Platform) personalContext(tenant, project, subject, body string) string {
+func (p *Platform) personalContext(tenant, project, subject, body string, meta map[string]string) string {
 	layers := p.personalLayers(tenant, project, subject)
 	if len(layers) == 0 {
 		return body
@@ -39,10 +41,29 @@ func (p *Platform) personalContext(tenant, project, subject, body string) string
 	for _, layer := range layers {
 		parts = append(parts, layer.Text)
 		if layer.Kind == "personal_notes" {
-			if err := p.Memory.UsedRendered(tenant, memory.PersonalOwner(subject), layer.Text, p.now()); err != nil {
-				p.log.Warn("platform: personal memory use could not be recorded", "error", err)
-			}
+			meta["_humagen.context.personal_memory"] = "true"
+
 		}
 	}
 	return strings.Join(append(parts, body), "\n\n")
+}
+
+// recordContextUse runs only after durable admission. Replayed IDs join before
+// composition, so they never count the same accepted turn twice.
+func (p *Platform) recordContextUse(tag envelope.Tag, project string) {
+	if tag.Origin != runs.OriginAPI && tag.Origin != runs.OriginManual && tag.Origin != "cron" {
+		return
+	}
+	owners := []string{tag.Agent}
+	for _, pr := range p.Projects.Tree(tag.Tenant).Chain(project) {
+		owners = append(owners, memory.ProjectOwner(pr.Name))
+	}
+	if subject := personOf(tag.Actor); subject != "" && tag.Meta["_humagen.context.personal_memory"] == "true" {
+		owners = append(owners, memory.PersonalOwner(subject))
+	}
+	for _, owner := range owners {
+		if err := p.Memory.UsedRendered(tag.Tenant, owner, tag.Text, p.now()); err != nil {
+			p.log.Warn("platform: memory use could not be recorded", "error", err)
+		}
+	}
 }

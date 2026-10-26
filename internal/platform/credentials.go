@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credentials"
@@ -249,12 +250,18 @@ func (p *Platform) personCredential(_ context.Context, tenant string, prov toolp
 		if !ok {
 			return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
 		}
+		if err := p.Credentials.MarkUsed(tenant, person, prov.Name, p.now()); err != nil {
+			return mcptools.PersonCredential{}, err
+		}
 		return mcptools.PersonCredential{Secret: mcptools.NewSecret(v)}, nil
 	}
 	if !p.refAllowed(tenant, person, c.Ref) {
 		p.log.Warn("platform: a credential reference is not used: it is not this person's own under a start this workspace lists",
 			"tenant", tenant, "person", person, "provider", prov.Name)
 		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
+	}
+	if err := p.Credentials.MarkUsed(tenant, person, prov.Name, p.now()); err != nil {
+		return mcptools.PersonCredential{}, err
 	}
 	return mcptools.PersonCredential{Ref: c.Ref}, nil
 }
@@ -273,9 +280,10 @@ type ToolCredential struct {
 	Connected bool `json:"connected"`
 	// Kind and Ref say how the credential is held: a reference, which is
 	// shown, or a value, which never is.
-	Kind      credentials.Kind `json:"kind,omitempty"`
-	Ref       string           `json:"ref,omitempty"`
-	UpdatedAt *time.Time       `json:"updated_at,omitempty"`
+	Kind       credentials.Kind `json:"kind,omitempty"`
+	Ref        string           `json:"ref,omitempty"`
+	UpdatedAt  *time.Time       `json:"updated_at,omitempty"`
+	LastUsedAt *time.Time       `json:"last_used_at,omitempty"`
 }
 
 // ToolCredentials is the person-scoped providers of a workspace, as one
@@ -336,6 +344,10 @@ func (p *Platform) toolCredential(ctx context.Context, who auth.Principal, prov 
 	if held, ok := p.Credentials.Get(who.Tenant, who.Subject, prov.Name); ok {
 		at := held.UpdatedAt
 		c.Connected, c.Kind, c.Ref, c.UpdatedAt = true, held.Kind, held.Ref, &at
+		if !held.LastUsedAt.IsZero() {
+			used := held.LastUsedAt
+			c.LastUsedAt = &used
+		}
 	}
 	return c, nil
 }
@@ -390,7 +402,14 @@ func (p *Platform) ConnectTool(ctx context.Context, who auth.Principal, provider
 	case in.Ref != "" && !p.refAllowed(who.Tenant, who.Subject, in.Ref):
 		return ToolCredential{}, errPersonRef
 	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "credential.connect", Resource: "credential", ID: prov.Name, Subject: who.Subject, Route: "PUT /api/me/credentials/{provider}", Rule: string(auth.RunsWrite)})
+	if err != nil {
+		return ToolCredential{}, err
+	}
 	held, err := p.Credentials.Put(who.Tenant, who.Subject, prov.Name, in, p.now())
+	if completion := attempt.Finish(err); completion != nil {
+		p.LogAuditCompletionFailure(completion)
+	}
 	if err != nil {
 		return ToolCredential{}, err
 	}
@@ -411,7 +430,18 @@ func (p *Platform) DisconnectTool(_ context.Context, who auth.Principal, provide
 	}
 	// A credential outlives its provider leaving the file, so it can be
 	// removed whatever the provider is now.
-	if err := p.Credentials.Delete(who.Tenant, who.Subject, provider); err != nil {
+	if _, ok := p.Credentials.Get(who.Tenant, who.Subject, provider); !ok {
+		return credentials.ErrNotFound
+	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "credential.disconnect", Resource: "credential", ID: provider, Subject: who.Subject, Route: "DELETE /api/me/credentials/{provider}", Rule: string(auth.RunsWrite)})
+	if err != nil {
+		return err
+	}
+	err = p.Credentials.Delete(who.Tenant, who.Subject, provider)
+	if completion := attempt.Finish(err); completion != nil {
+		p.LogAuditCompletionFailure(completion)
+	}
+	if err != nil {
 		return err
 	}
 	p.log.Info("platform: credential removed", "tenant", who.Tenant, "subject", who.Subject, "provider", provider)

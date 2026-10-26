@@ -40,7 +40,9 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/pick"
@@ -136,6 +138,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/threads", s.authed(auth.RunsRead, s.listThreads))
 	mux.HandleFunc("GET /api/threads/{id}", s.authed(auth.RunsRead, s.seenThread(s.getThread)))
 	mux.HandleFunc("GET /api/pick", s.authed(auth.AgentsRead, s.pickAgent))
+	mux.HandleFunc("GET /api/me/notifications", s.authed(auth.RunsRead, s.listNativeNotifications))
+	mux.HandleFunc("POST /api/me/notifications/{id}/ack", s.authed(auth.RunsRead, s.acknowledgeNativeNotification))
+	mux.HandleFunc("GET /api/library/skills", s.authed(auth.ProjectsRead, s.listLibrarySkills))
+	mux.HandleFunc("POST /api/library/skills", s.authed(auth.ProjectsWrite, s.draftLibrarySkill))
+	mux.HandleFunc("GET /api/library/skills/{id}", s.authed(auth.ProjectsRead, s.getLibrarySkill))
+	mux.HandleFunc("POST /api/library/skills/{id}/versions/{version}/test", s.authed(auth.RunsWrite, s.testLibrarySkill))
+	mux.HandleFunc("POST /api/library/skills/{id}/versions/{version}/publish", s.authed(auth.ProjectsWrite, s.publishLibrarySkill))
+	mux.HandleFunc("POST /api/library/skills/{id}/versions/{version}/promote", s.authed(auth.ProjectsWrite, s.promoteLibrarySkill))
 	mux.HandleFunc("GET /api/audit", s.authed(auth.ProjectsGovern, s.listAudit))
 	mux.HandleFunc("GET /api/read-audit", s.authed(auth.ProjectsGovern, s.listReadAudit))
 	mux.HandleFunc("GET /api/settings", s.authed(auth.AgentsRead, s.getSettings))
@@ -983,6 +993,19 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, notifications.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, notifications.ErrCapacity):
+		fail(w, http.StatusTooManyRequests, "native notification retention capacity reached")
+	case errors.Is(err, notifications.ErrInvalid):
+		fail(w, http.StatusBadRequest, "invalid native notification request")
+
+	case errors.Is(err, library.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, library.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, library.ErrInvalid))
+	case errors.Is(err, library.ErrConflict):
+		fail(w, http.StatusConflict, detail(err, library.ErrConflict))
 	case errors.Is(err, operations.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, operations.ErrNotFound):
