@@ -99,6 +99,7 @@ export interface Principal {
 export interface Me {
   personal_project?: string;
   welcome_announcement?: string;
+  email_notifications_available?: boolean;
   principal: Principal;
   permissions: string[];
   /** The caller is an admin in a workspace nobody has set up yet. */

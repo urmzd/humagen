@@ -150,6 +150,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("native notifications", err)
 	p.AgentSkillDefaults, err = library.OpenDefaults(st)
 	keep("agent skill defaults", err)
+	p.EmailNotifications, err = notifications.OpenEmail(st)
+	keep("email notifications", err)
 	p.SkillLibrary, err = library.Open(st)
 	keep("skill library", err)
 	p.Memory, err = memory.Open(st)

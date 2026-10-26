@@ -269,7 +269,7 @@ func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) 
 	// handle is how the platform names the caller elsewhere, as a thread's
 	// created_by and participants name people: their handle, or their
 	// subject when they have none and it holds no address.
-	out := map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first, "handle": s.P.Names(who.Tenant).Key(who.Subject)}
+	out := map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first, "handle": s.P.Names(who.Tenant).Key(who.Subject), "email_notifications_available": s.P.EmailAvailable(who)}
 	if who.Kind == auth.User && who.Subject != "" && who.Tenant != "" && len(who.Granted()) > 0 {
 		personal, err := s.P.PersonalProject(who)
 		if err != nil {
@@ -996,6 +996,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 // problem maps a domain error to a response. Anything unrecognized is logged
 // and reported without detail, so an internal error never leaks through.
 func (s *Server) problem(w http.ResponseWriter, err error) {
+	if errors.Is(err, prefs.ErrVersion) {
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
 	var tooBig *http.MaxBytesError
 	if denied(w, err) || threadProblem(w, err) {
 		return

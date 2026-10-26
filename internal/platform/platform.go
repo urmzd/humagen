@@ -89,6 +89,9 @@ var ErrForbidden = errors.New("platform: forbidden")
 type Config struct {
 	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
 	ProjectTemplates []projects.Template
+	// Email is a configured relay and explicit tenant/subject recipient mapping. Nil disables email.
+	Email *EmailConfig
+
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
 
@@ -206,24 +209,28 @@ type Platform struct {
 	now       func() time.Time
 	grounding sourceGrounding
 
-	Agents             registry.Store
-	Runs               *runs.Index
-	Schedules          *Schedules
-	Journal            *journal.Journal
-	Alerts             *alerts.Engine
-	Knowledge          *knowledge.Store
-	SourceLinks        *sourcelinks.Store
-	Evals              *evals.Store
-	Feedback           *feedback.Store
-	Prefs              *prefs.Store
-	Memory             *memory.Store
-	SkillLibrary       *library.Store
-	AgentSkillDefaults *library.DefaultsStore
-	skillDefaultsMu    sync.Mutex
-	Notifications      *notifications.Store
-	ContextFlags       *contextflags.Store
-	SourceSuggestions  *sourcelinks.Suggestions
-	SourceEvidence     *knowledge.EvidenceStore
+	Agents               registry.Store
+	Runs                 *runs.Index
+	Schedules            *Schedules
+	Journal              *journal.Journal
+	Alerts               *alerts.Engine
+	Knowledge            *knowledge.Store
+	SourceLinks          *sourcelinks.Store
+	Evals                *evals.Store
+	Feedback             *feedback.Store
+	Prefs                *prefs.Store
+	Memory               *memory.Store
+	SkillLibrary         *library.Store
+	AgentSkillDefaults   *library.DefaultsStore
+	skillDefaultsMu      sync.Mutex
+	Notifications        *notifications.Store
+	ContextFlags         *contextflags.Store
+	SourceSuggestions    *sourcelinks.Suggestions
+	SourceEvidence       *knowledge.EvidenceStore
+	EmailNotifications   *notifications.Store
+	emailCursor          int
+	emailMu              sync.Mutex
+	emailPreferenceLocks [64]sync.Mutex
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -347,6 +354,17 @@ func New(cfg Config) (*Platform, error) {
 	}
 	if err := projects.ValidateTemplates(cfg.ProjectTemplates); err != nil {
 		return nil, err
+	}
+	if err := validateEmail(cfg.Email); err != nil {
+		return nil, err
+	}
+	if cfg.Email != nil {
+		email := *cfg.Email
+		email.Recipients = make(map[string]map[string]string, len(cfg.Email.Recipients))
+		for tenant, people := range cfg.Email.Recipients {
+			email.Recipients[tenant] = maps.Clone(people)
+		}
+		cfg.Email = &email
 	}
 	log := cfg.Log
 	if log == nil {
@@ -1010,6 +1028,7 @@ func (p *Platform) Run(ctx context.Context) error {
 			}
 		}
 	})
+	loop("email notifications", func() error { return p.runEmailNotifications(ctx) })
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
 	loop("source refresh", func() error { return p.refreshSources(ctx) })
 	loop("inbox retention", func() error {

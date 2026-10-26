@@ -29,6 +29,10 @@ type Notification struct {
 // the current identity. It is safe after restart because only opaque references
 // and durable delivery IDs are retained. It changes no authoritative inbox row.
 func (p *Platform) NativeNotifications(who auth.Principal) ([]Notification, error) {
+	return p.notificationsFor(who, p.Notifications)
+}
+
+func (p *Platform) notificationsFor(who auth.Principal, deliveries *notifications.Store) ([]Notification, error) {
 	if who.Kind != auth.User || who.Subject == "" {
 		return nil, ErrForbidden
 	}
@@ -66,7 +70,7 @@ func (p *Platform) NativeNotifications(who auth.Principal) ([]Notification, erro
 	}
 	candidates := []notifications.Candidate{}
 	seen := map[string]bool{}
-	cursor := p.Notifications.Cursor(who.Tenant, who.Subject)
+	cursor := deliveries.Cursor(who.Tenant, who.Subject)
 	nextCursor := cursor
 	// The newest page is checked every poll. Four backfill pages advance a
 	// durable cursor, so a busy inbox cannot permanently starve older updates.
@@ -103,7 +107,7 @@ func (p *Platform) NativeNotifications(who auth.Principal) ([]Notification, erro
 			break
 		}
 	}
-	delivered, err := p.Notifications.Reconcile(who.Tenant, who.Subject, nextCursor, candidates, p.Prefs.Get(who.Tenant, who.Subject).Personal, now, cut, lookup)
+	delivered, err := deliveries.Reconcile(who.Tenant, who.Subject, nextCursor, candidates, p.Prefs.Get(who.Tenant, who.Subject).Personal, now, cut, lookup)
 	if err != nil {
 		return nil, err
 	}

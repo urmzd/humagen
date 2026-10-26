@@ -326,6 +326,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	defer releaseState()
 	cfg := platform.Config{
+		Email:    emailConfiguration(file.cfg.System, *publicURL, keys),
 		Backends: backends,
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.

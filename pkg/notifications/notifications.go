@@ -22,6 +22,7 @@ const MaxDeliveries = 50
 const MaxDeliveryItems = 100
 const DigestEvery = time.Hour
 const namespace = "notifications"
+const emailNamespace = "email_notifications"
 
 var ErrInvalid = errors.New("notifications: invalid")
 var ErrNotFound = errors.New("notifications: not found")
@@ -33,6 +34,7 @@ type Candidate struct {
 	Stamp   time.Time `json:"stamp"`
 }
 type Entry struct {
+	PolicyMode prefs.Delivery `json:"policy_mode,omitempty"`
 	Candidate
 	Subject      string         `json:"subject"`
 	Due          time.Time      `json:"due,omitzero"`
@@ -54,10 +56,11 @@ type Delivery struct {
 	Messages []string
 }
 type Store struct {
-	mu      sync.Mutex
-	st      state.Store
-	rows    map[[2]string]map[string]Entry
-	cursors map[[2]string]string
+	namespace string
+	mu        sync.Mutex
+	st        state.Store
+	rows      map[[2]string]map[string]Entry
+	cursors   map[[2]string]string
 }
 
 func key(subject, message string) string {
@@ -66,12 +69,17 @@ func key(subject, message string) string {
 func valid(subject string, c Candidate) bool {
 	return subject != "" && len(subject) <= 512 && c.Message != "" && len(c.Message) <= 256 && len(c.Kind) <= 64 && !c.Stamp.IsZero() && !strings.ContainsRune(subject+c.Message+c.Kind, 0)
 }
-func Open(st state.Store) (*Store, error) {
-	s := &Store{st: st, rows: map[[2]string]map[string]Entry{}, cursors: map[[2]string]string{}}
+func Open(st state.Store) (*Store, error) { return open(st, namespace) }
+
+// OpenEmail keeps independent delivery and acknowledgment state for email.
+func OpenEmail(st state.Store) (*Store, error) { return open(st, emailNamespace) }
+
+func open(st state.Store, space string) (*Store, error) {
+	s := &Store{namespace: space, st: st, rows: map[[2]string]map[string]Entry{}, cursors: map[[2]string]string{}}
 	if st == nil {
 		return s, nil
 	}
-	records, err := st.Load(context.Background(), namespace)
+	records, err := st.Load(context.Background(), space)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +96,7 @@ func Open(st state.Store) (*Store, error) {
 			s.cursors[owner] = r.Cursor
 			continue
 		}
-		if !valid(r.Subject, r.Candidate) || record.Key != key(r.Subject, r.Message) || r.Mode != prefs.Immediate && r.Mode != prefs.Digest && r.Mode != prefs.Off {
+		if !valid(r.Subject, r.Candidate) || record.Key != key(r.Subject, r.Message) || r.Mode != prefs.Immediate && r.Mode != prefs.Digest && r.Mode != prefs.Off || r.PolicyMode != "" && r.PolicyMode != prefs.Immediate && r.PolicyMode != prefs.Digest && r.PolicyMode != prefs.Off {
 			return nil, ErrInvalid
 		}
 		if s.rows[owner] == nil {
@@ -112,7 +120,7 @@ func (s *Store) write(ops []state.Op) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
 	defer cancel()
-	return s.st.Write(ctx, namespace, ops...)
+	return s.st.Write(ctx, s.namespace, ops...)
 }
 func entryOp(tenant string, e Entry) state.Op {
 	raw, _ := json.Marshal(Record{Entry: e})
@@ -205,6 +213,10 @@ func (s *Store) Reconcile(tenant, subject, cursor string, candidates []Candidate
 			return nil, ErrCapacity
 		}
 		e := Entry{Candidate: candidate, Subject: subject, Mode: mode, Due: due(p, candidate.Kind, now), Suppressed: mode == prefs.Off}
+		if s.namespace == emailNamespace {
+			e.PolicyMode = mode
+			e.Mode = p.NotificationDelivery(candidate.Kind, now)
+		}
 		rows[candidate.Message] = e
 	}
 	pending := []Entry{}
@@ -219,6 +231,9 @@ func (s *Store) Reconcile(tenant, subject, cursor string, candidates []Candidate
 			continue
 		}
 		mode := p.NotificationDelivery(e.Kind, now)
+		if s.namespace == emailNamespace && e.Mode == prefs.Digest && e.PolicyMode == prefs.Immediate {
+			mode = prefs.Digest
+		}
 		if mode == prefs.Off {
 			e.Suppressed = true
 			rows[id] = e

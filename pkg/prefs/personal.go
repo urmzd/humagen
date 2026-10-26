@@ -18,6 +18,8 @@ const (
 // Personal settings only narrow a person's defaults. They never grant access
 // or turn a project action into an allowed one.
 type Personal struct {
+	EmailVersion                int64               `json:"email_version,omitempty"`
+	Email                       bool                `json:"email,omitempty"`
 	Briefing                    string              `json:"briefing"`
 	Notifications               map[string]Delivery `json:"notifications"`
 	QuietStart                  string              `json:"quiet_start"`
@@ -34,6 +36,9 @@ func DefaultPersonal() Personal {
 var notificationKinds = map[string]bool{"approval": true, "clarification": true, "failure": true, "result": true, "mention": true, "announcement": true, "memory": true, "budget": true, "artifact": true, "alert": true}
 
 func CleanPersonal(next Personal) (Personal, error) {
+	if next.EmailVersion < 0 || next.EmailVersion > 9007199254740991 {
+		return Personal{}, ErrInvalid
+	}
 	next.Briefing = strings.TrimSpace(next.Briefing)
 	if !utf8.ValidString(next.Briefing) || utf8.RuneCountInString(next.Briefing) > 500 || strings.ContainsAny(next.Briefing, "\x00\r\n") {
 		return Personal{}, fmt.Errorf("%w: briefing is one line of at most 500 characters", ErrInvalid)

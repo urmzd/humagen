@@ -4524,6 +4524,7 @@ paths:
               schema: {$ref: "#/components/schemas/Preferences"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -7484,6 +7485,9 @@ components:
           description: Everything the caller may do. Null, not an empty list, for a caller with no permission at all.
           type: [array, "null"]
           items: {$ref: "#/components/schemas/Permission"}
+        email_notifications_available:
+          description: This human has an operator-configured email recipient and current standing permissions. No mailbox address is exposed.
+          type: boolean
         welcome_announcement:
           description: Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements.
           type: string
@@ -10014,6 +10018,8 @@ components:
       type: object
       required: [briefing, notifications, quiet_start, quiet_end, timezone, remember, use_personal_memory_in_projects]
       properties:
+        email_version: {type: integer, minimum: 0, maximum: 9007199254740991, description: Read version required when replacing email opt-in. Stale changes return 409.}
+        email: {type: boolean, default: false, description: Opt in to the configured email relay using the same event preferences and quiet hours.}
         briefing: {type: string, maxLength: 500}
         notifications:
           type: object
