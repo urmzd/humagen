@@ -15,6 +15,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/envelope"
 
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/pick"
@@ -279,7 +280,7 @@ func (p *Platform) changesThread(who auth.Principal, th threads.Thread) error {
 // MayFollow holds the person a turn is posted by to what adding it after a
 // run takes: posting where the run lives (MayPost).
 func (p *Platform) MayFollow(person auth.Principal, prev runs.Run) error {
-	return p.MayPost(person, placeOfRun(prev))
+	return p.MayPost(person, p.RunPlace(person.Tenant, prev))
 }
 
 // mayChangeThread holds a caller to what changing a thread's visibility,
@@ -1610,7 +1611,7 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
-	return p.Threads.UpdateMoving(who.Tenant, id, th.Version, p.now(), func(t *threads.Thread) error {
+	return p.Threads.UpdateMovingAs(who.Tenant, id, th.Version, who.Subject, p.now(), func(t *threads.Thread) error {
 		t.Title, t.Visibility = strings.TrimSpace(in.Title), cmp.Or(in.Visibility, t.Visibility)
 		if !keepsDefault {
 			t.Default = in.Default
@@ -1714,6 +1715,7 @@ var (
 // ThreadShare shares a conversation: the project and channel it is shared
 // in, and people to add to it by handle.
 type ThreadShare struct {
+	PlacementToken string `json:"placement_token,omitempty"`
 	// Project is where it is shared: "" keeps the thread's own, "~" is the
 	// workspace.
 	Project string `json:"project,omitempty"`
@@ -1785,6 +1787,8 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 	mu := p.moves.of(who.Tenant, id)
 	mu.Lock()
 	defer mu.Unlock()
+	p.admission.Lock()
+	defer p.admission.Unlock()
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return Shared{}, err
@@ -1833,6 +1837,17 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 		}
 		add = append(add, threads.Participant{Kind: threads.Person, Name: subject})
 	}
+	if moves {
+		if turns, err := p.Runs.Conversation(who.Tenant, id); err == nil && len(turns) > 0 {
+			preview, err := p.previewPlacement(ctx, who, th, project, channel)
+			if err != nil {
+				return Shared{}, err
+			}
+			if in.PlacementToken == "" || in.PlacementToken != preview.Token {
+				return Shared{}, fmt.Errorf("%w: review and confirm the current publication preview", threads.ErrVersion)
+			}
+		}
+	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return Shared{}, err
 	}
@@ -1852,15 +1867,23 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 	}
 	shown := p.Seer(who).participantShownNow(th)
 	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
+	var attempt *AuditAttempt
 	if moves {
-		if _, err := p.Runs.Conversation(who.Tenant, id); err == nil {
-			if project != th.Project {
-				return Shared{}, ErrStaysInProject
-			}
-			return Shared{}, ErrStaysInChannel
+		change := audit.Change{Action: "publish", Resource: "conversation", ID: th.ID, Scope: "project", Project: th.Project, Thread: th.ID, Before: map[string]string{"project": th.Project, "channel": th.Channel, "visibility": string(th.Visibility)}, After: map[string]string{"project": project, "channel": channel, "visibility": "shared"}}
+		if source, ok := tree.Get(th.Project); ok && source.PersonalOwner != "" {
+			change.Scope, change.Subject = "personal", source.PersonalOwner
+		}
+		attempt, err = p.BeginAudit(who, change)
+		if err != nil {
+			return Shared{}, err
 		}
 	}
 	stored, err := p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, agents, mode, add, counted, who.Subject, p.now())
+	if attempt != nil {
+		if auditErr := attempt.Finish(err); auditErr != nil {
+			p.log.Error("platform: publication audit completion pending", "audit", attempt.ID(), "error", auditErr)
+		}
+	}
 	if err != nil {
 		return Shared{}, err
 	}

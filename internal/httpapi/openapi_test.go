@@ -1587,6 +1587,18 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatal("governance-only private read was not in the audit")
 	}
 
+	placementRoute := "/api/threads/{id}/placement"
+	draftID := obj(draft.field("thread"))["id"].(string)
+	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement?project=Field&channel=renewals", "", http.StatusOK)
+	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement", "", http.StatusBadRequest)
+	activeDraft := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"preview only"}`, http.StatusCreated)
+	activeID := obj(activeDraft.field("thread"))["id"].(string)
+	activeTag := envelope.Tag{ID: "placement-active", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "active", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: activeID}, At: time.Now()}
+	if err := c.f.p.Runs.Record(runtime.RunID("acme", activeTag.ID), activeTag, 1); err != nil {
+		t.Fatal(err)
+	}
+	c.call(ana, "GET", placementRoute, "/api/threads/"+activeID+"/placement?project=Field&channel=renewals", "", http.StatusConflict)
+
 	share, draftPath := "/api/threads/{id}/share", "/api/threads/"+obj(draft.field("thread"))["id"].(string)+"/share"
 	c.call(ana, "POST", share, draftPath, `{"add":["nobody"]}`, http.StatusBadRequest)
 	sharedDraft := c.call(ana, "POST", share, draftPath, `{"channel":"renewals"}`, http.StatusOK)

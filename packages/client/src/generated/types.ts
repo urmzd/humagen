@@ -689,8 +689,20 @@ export interface ThreadInput {
   surface?: SurfaceRef;
 }
 
+export interface PlacementPreview {
+  thread: string;
+  project: string;
+  channel: string;
+  audience: string;
+  runs: number;
+  token: string;
+  exclusions: string[];
+}
+
 /** Where a conversation is shared, and the people to add to it. */
 export interface ThreadShare {
+  /** Required to move a conversation with completed runs, from its current placement preview. */
+  placement_token?: string;
   /** The project it is shared in. Empty keeps the thread's own; `~` is the workspace. */
   project?: string;
   /** The project's channel. Empty keeps the thread's own in its own project, and is `general` in another. */

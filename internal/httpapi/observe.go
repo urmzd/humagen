@@ -142,7 +142,7 @@ func (s *Server) trace(w http.ResponseWriter, r *http.Request, who auth.Principa
 	for i, run := range tree {
 		ids[i] = run.ID
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree), "spans": orEmpty(s.P.Journal.Trace(who.Tenant, ids))})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree), "spans": orEmpty(s.P.ShownSpans(who, s.P.Journal.Trace(who.Tenant, ids)))})
 }
 
 // runEvents returns one run's events as they were published, oldest first, for
@@ -155,6 +155,9 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	events := s.P.Journal.Events(who.Tenant, []string{run.ID})
+	for i, event := range events {
+		events[i] = s.P.ShownEvent(who, event)
+	}
 	ok(w, http.StatusOK, map[string]any{"events": shownEvents(s.P.Names(who.Tenant), events), "complete": complete(events)})
 }
 
@@ -219,6 +222,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		held := s.P.Journal.Events(who.Tenant, []string{run.ID})
 		e.Complete = complete(held)
 		for _, ev := range held {
+			ev = s.P.ShownEvent(who, ev)
 			item := event{Seq: ev.Seq, At: ev.At, Kind: ev.Kind}
 			if json.Valid(ev.Payload) {
 				item.Body = ev.Payload

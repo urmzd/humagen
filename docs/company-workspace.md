@@ -187,5 +187,11 @@ replay. Machines receive no personal project.
 Personal ownership narrows inherited Company ownership before role resolution.
 Membership widening, reparenting, deletion, subprojects, file adoption and Slack
 bindings are refused. Invitations and notification routing cannot add another
-human to that private audience. Completed-run publication remains disabled
-until all current-placement projections and admission checks are implemented.
+human to that private audience. Completed ordinary work can be published after an explicit versioned audience
+preview. Private connected-source history requires a reviewed summary path; raw
+publication is refused. The run index retains its original accounting, while
+operational lists, counts, files, inbox addressing, manifests and live event
+streams resolve the conversation's current placement. Publication attempts are
+recorded under the source's private scope and placement/history commit in the
+same thread-store write. Historical runs cannot replay old private inputs
+after publication; the person posts a fresh turn in the destination instead.

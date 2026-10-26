@@ -913,6 +913,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if !gate.seen(e.RunID) {
 				continue
 			}
+			e = s.P.ShownEvent(who, e)
 			// Who answered a question is called by name (shownEvent).
 			if e.Kind == envelope.KindResumed {
 				e = shownEvent(s.P.Names(who.Tenant), e)
