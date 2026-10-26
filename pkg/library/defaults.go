@@ -2,6 +2,7 @@ package library
 
 import (
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/urmzd/humagen/pkg/state"
@@ -97,4 +98,21 @@ func (s *DefaultsStore) Set(tenant, agent string, revision, expected int, refs [
 	s.by[tenant][agent] = next
 	next.Skills = slices.Clone(next.Skills)
 	return next, nil
+}
+
+// Using snapshots only exact matching bindings. It releases the store lock
+// before callers apply project visibility, avoiding cross-store lock ordering.
+// The durable tenant capacity bounds the scan independently of returned rows.
+func (s *DefaultsStore) Using(tenant string, ref SkillRef) []AgentDefaults {
+	s.mu.Lock()
+	out := []AgentDefaults{}
+	for _, row := range s.by[tenant] {
+		if slices.Contains(row.Skills, ref) {
+			row.Skills = slices.Clone(row.Skills)
+			out = append(out, row)
+		}
+	}
+	s.mu.Unlock()
+	slices.SortFunc(out, func(a, b AgentDefaults) int { return strings.Compare(a.Agent, b.Agent) })
+	return out
 }

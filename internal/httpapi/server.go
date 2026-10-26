@@ -150,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/library/skills", s.authed(auth.ProjectsRead, s.listLibrarySkills))
 	mux.HandleFunc("POST /api/library/skills", s.authed(auth.ProjectsWrite, s.draftLibrarySkill))
 	mux.HandleFunc("GET /api/library/skills/{id}", s.authed(auth.ProjectsRead, s.getLibrarySkill))
+	mux.HandleFunc("GET /api/library/skills/{id}/versions/{version}/agents", s.authed(auth.ProjectsRead, s.listSkillAgents))
 	mux.HandleFunc("POST /api/library/skills/{id}/versions/{version}/test", s.authed(auth.RunsWrite, s.testLibrarySkill))
 	mux.HandleFunc("POST /api/library/skills/{id}/versions/{version}/publish", s.authed(auth.ProjectsWrite, s.publishLibrarySkill))
 	mux.HandleFunc("POST /api/library/skills/{id}/versions/{version}/promote", s.authed(auth.ProjectsWrite, s.promoteLibrarySkill))

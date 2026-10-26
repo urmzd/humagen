@@ -4,9 +4,10 @@ import type {
   LibraryScope,
   LibrarySkill,
   LibrarySkillDefinition,
+  SkillUsage,
 } from "../../../packages/client/src/generated/types.ts";
 import { api, type ProjectView, type Revision } from "./api.ts";
-import { card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
+import { AgentMark, card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 const blank: LibrarySkillDefinition = {
   name: "",
@@ -68,6 +69,10 @@ export function SkillsLibrary({
   const [agent, setAgent] = useState("");
   const [request, setRequest] = useState("");
   const [testThread, setTestThread] = useState("");
+  const [uses, setUses] = useState<SkillUsage | null>(null);
+  const [usesFailed, setUsesFailed] = useState(false);
+  const [testPassed, setTestPassed] = useState(false);
+  const [testPending, setTestPending] = useState(false);
   const [testUses, setTestUses] = useState<{ id: string; thread: string; agent: string }[]>([]);
   const [testProject, setTestProject] = useState("");
   const [destination, setDestination] = useState<LibraryScope>({ kind: "project", project: "" });
@@ -142,26 +147,51 @@ export function SkillsLibrary({
 
   useEffect(() => {
     let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     setTestUses([]);
-    if (selected)
-      void Promise.allSettled(selected.tests.slice(0, 10).map((id) => api.run(id))).then(
-        (results) => {
-          if (live)
-            setTestUses(
-              results.flatMap((result) =>
-                result.status === "fulfilled" && result.value.thread
-                  ? [
-                      {
-                        id: result.value.id,
-                        thread: result.value.thread,
-                        agent: result.value.agent,
-                      },
-                    ]
-                  : [],
-              ),
-            );
-        },
+    setTestPassed(false);
+    setTestPending(false);
+    const read = async () => {
+      if (!selected) return;
+      const results = await Promise.allSettled(
+        selected.tests.slice(0, 10).map((id) => api.run(id)),
       );
+      if (!live) return;
+      const readable = results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      setTestPassed(readable.some((run) => run.status === "completed"));
+      const pending = readable.some((run) =>
+        ["accepted", "running", "parked"].includes(run.status),
+      );
+      setTestPending(pending);
+      setTestUses(
+        readable.flatMap((run) =>
+          run.thread ? [{ id: run.id, thread: run.thread, agent: run.agent }] : [],
+        ),
+      );
+      if (pending) timer = setTimeout(() => void read(), 1000);
+    };
+    if (selected) void read();
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [selected]);
+
+  useEffect(() => {
+    let live = true;
+    setUses(null);
+    setUsesFailed(false);
+    if (selected)
+      api
+        .skillAgents(selected.id, selected.version)
+        .then((value) => {
+          if (live) setUses(value);
+        })
+        .catch(() => {
+          if (live) setUsesFailed(true);
+        });
     return () => {
       live = false;
     };
@@ -228,7 +258,10 @@ export function SkillsLibrary({
         request,
       );
       setTestThread(run.thread);
-      setHistory(await api.librarySkill(selected.id));
+      const revisions = await api.librarySkill(selected.id);
+      setHistory(revisions);
+      const tested = revisions.find((row) => row.version === selected.version);
+      if (tested) setSelected(tested);
     } catch (error) {
       failed(error);
     } finally {
@@ -369,6 +402,7 @@ export function SkillsLibrary({
                 <select
                   className={`${field} mt-2 block max-w-full`}
                   value={selected.version}
+                  disabled={busy}
                   onChange={(e) => {
                     const row = history.find((value) => value.version === Number(e.target.value));
                     if (row) {
@@ -501,6 +535,11 @@ export function SkillsLibrary({
                     onChange={(e) => setRequest(e.target.value)}
                   />
                 </label>
+                {!selected.published_at && !testPassed && (
+                  <p className="text-aui-sm text-aui-muted">
+                    {testPending ? copy.testPending : copy.publishNeedsTest}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-4">
                   <button
                     type="submit"
@@ -511,7 +550,7 @@ export function SkillsLibrary({
                   </button>
                   <button
                     type="button"
-                    disabled={!mayWrite || busy || !!selected.published_at}
+                    disabled={!mayWrite || busy || !!selected.published_at || !testPassed}
                     className="min-h-11 text-aui-accent disabled:opacity-50"
                     onClick={() => void publish()}
                   >
@@ -528,6 +567,42 @@ export function SkillsLibrary({
                 </div>
               </form>
 
+              <section className={`${card} space-y-3 p-4`} aria-label={copy.usedBy}>
+                <h2 className="font-medium">{copy.usedBy}</h2>
+                {usesFailed ? (
+                  <Problem message={copy.usesFailed} />
+                ) : uses === null ? (
+                  <output>{copy.loadingUses}</output>
+                ) : (
+                  <>
+                    {uses.agents.length === 0 ? (
+                      <p className="text-aui-sm text-aui-muted">{copy.noUses}</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {uses.agents.map((use) => (
+                          <li key={use.agent} className="flex flex-wrap items-center gap-3">
+                            <AgentMark name={use.agent} />
+                            <a
+                              className="inline-flex min-h-11 items-center text-aui-accent"
+                              href={`/agents/${encodeURIComponent(use.agent)}/context`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {use.agent}
+                            </a>
+                            {use.needs_review && (
+                              <span className="text-aui-sm text-aui-muted">
+                                {copy.bindingNeedsReview}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {uses.more && <p className="text-aui-sm text-aui-muted">{copy.moreUses}</p>}
+                  </>
+                )}
+              </section>
               {testUses.length > 0 && (
                 <section className={`${card} space-y-3 p-4`}>
                   <h2 className="font-medium">{copy.testUses}</h2>

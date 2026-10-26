@@ -11,6 +11,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/fiber/pkg/runtime"
@@ -593,6 +594,7 @@ func (p *Platform) ConversationOperationsSettled(tenant, thread string) bool {
 type AgentControlView struct {
 	operations.Control
 	State                                string      `json:"state"`
+	NeedsSkillReview                     bool        `json:"needs_skill_review,omitempty"`
 	EffectivePaused                      bool        `json:"effective_paused"`
 	PauseReason                          string      `json:"pause_reason,omitempty"`
 	EffectiveReminderAfterSeconds        int         `json:"effective_reminder_after_seconds"`
@@ -607,6 +609,18 @@ type AgentControlView struct {
 func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView {
 	c := p.AgentControl(who.Tenant, agent)
 	view := AgentControlView{Control: c, State: "ready", EffectivePaused: p.Operations.Paused(who.Tenant, legacy.BuiltinAgent(agent)) || !p.agentReady(who.Tenant, agent), ManagerName: p.NameOf(who.Tenant, c.Manager)}
+
+	if agent != "" && who.Can(auth.AgentsRead) && p.Seer(who).Agent(agent) {
+		binding := p.AgentSkillDefaults.Get(who.Tenant, agentspec.NormalizeName(legacy.BuiltinAgent(agent)))
+		if len(binding.Skills) > 0 {
+			revision, err := p.Agents.Get(context.Background(), who.Tenant, agent, 0)
+			home, homed := p.Projects.Tree(who.Tenant).Home(agent)
+			view.NeedsSkillReview = err != nil || binding.AgentRevision != revision.Rev || !homed || !p.defaultSkillsFitHome(who.Tenant, agent, home, p.Projects.Tree(who.Tenant))
+			if view.NeedsSkillReview {
+				view.State = "needs_review"
+			}
+		}
+	}
 	view.EffectiveReminderAfterSeconds = int(p.operationReminderDelay(who.Tenant, agent, false).Seconds())
 	view.EffectiveBlockedReminderAfterSeconds = int(p.operationReminderDelay(who.Tenant, agent, true).Seconds())
 	if view.EffectivePaused {

@@ -17,6 +17,17 @@ export interface InstallationAction {
   category: string;
 }
 
+export interface SkillAgentUse {
+  agent: string;
+  agent_revision: number;
+  needs_review: boolean;
+}
+
+export interface SkillUsage {
+  agents: SkillAgentUse[];
+  more: boolean;
+}
+
 export interface AgentSkillRef {
   id: string;
   version: number;
@@ -66,7 +77,8 @@ export interface HandoffTerms {
 }
 
 export interface AgentControl {
-  state?: "ready" | "working" | "waiting_on_people" | "watching" | "paused" | "failed";
+  state?: "ready" | "working" | "waiting_on_people" | "watching" | "paused" | "failed" | "needs_review";
+  needs_skill_review?: boolean;
   effective_paused?: boolean;
   pause_reason?: "workspace" | "agent" | "setup";
   effective_reminder_after_seconds?: number;

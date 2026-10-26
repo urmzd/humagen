@@ -143,6 +143,7 @@ import type {
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
   Settings,
+  SkillUsage,
   SnoozeInboxMessageBody,
   SourceLinkResource,
   SourceLinkRule,
@@ -667,6 +668,33 @@ export class ApiClient {
     let path = "/api/library/skills/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<GetLibrarySkillResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List readable agents bound to this exact published skill revision */
+  async listSkillAgents(id: string, version: number, limit?: number, options?: RequestOptions): Promise<SkillUsage> {
+    let path = "/api/library/skills/{id}/versions/{version}/agents";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<SkillUsage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSkillAgentsRaw(id: string, version: number, limit?: number, options?: RequestOptions): Promise<ApiResponse<SkillUsage>> {
+    let path = "/api/library/skills/{id}/versions/{version}/agents";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<SkillUsage>("GET", path, {
       ...options,
     });
   }

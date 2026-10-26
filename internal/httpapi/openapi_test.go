@@ -650,6 +650,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
+		"SkillAgentUse": {typ: platform.SkillAgentUse{}}, "SkillUsage": {typ: platform.SkillUsage{}},
 		"AgentSkillRef": {typ: platform.AgentSkillRef{}}, "AgentSkillDefaults": {typ: platform.AgentSkillDefaults{}}, "AgentSkillDefaultsUpdate": {typ: agentSkillDefaultsUpdate{}, written: true},
 		"ClientCapabilityPolicy": {typ: clients.Capabilities{}},
 		"InstallationEvent":      {typ: platform.InstallationEvent{}}, "InstallationAction": {typ: platform.InstallationAction{}}, "InstallationCapabilities": {typ: platform.InstallationCapabilities{}},
@@ -1025,6 +1026,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	libraryTest := c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/test", "/api/library/skills/"+libraryID+"/versions/1/test", `{"agent":"helper","project":"~","text":"Try the skill"}`, http.StatusAccepted)
 	c.settled(auditAdmin, libraryTest.str("id"))
 	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/publish", "/api/library/skills/"+libraryID+"/versions/1/publish", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/library/skills/{id}/versions/{version}/agents", "/api/library/skills/"+libraryID+"/versions/1/agents", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/library/skills/{id}/versions/{version}/agents", "/api/library/skills/"+libraryID+"/versions/1/agents?limit=0", "", http.StatusBadRequest)
 	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/promote", "/api/library/skills/"+libraryID+"/versions/1/promote", `{"scope":{"kind":"personal"},"version":0}`, http.StatusCreated)
 	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/promote", "/api/library/skills/"+libraryID+"/versions/1/promote", `{"scope":{"kind":"personal"},"version":0}`, http.StatusConflict)
 

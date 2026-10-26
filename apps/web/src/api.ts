@@ -1,5 +1,6 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
+  SkillUsage,
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
   KnowledgeLifecycle,
@@ -695,6 +696,7 @@ export const api = {
   agentSkillDefaults: (agent:string) => call<AgentSkillDefaults>("GET",`/api/agents/${encodeURIComponent(agent)}/skills`),
   setAgentSkillDefaults: (agent:string,input:AgentSkillDefaultsUpdate) => call<AgentSkillDefaults>("PUT",`/api/agents/${encodeURIComponent(agent)}/skills`,input),
   librarySkills: (scope: LibraryScope) => call<{skills:LibrarySkill[]}>("GET", `/api/library/skills?${new URLSearchParams({scope:scope.kind,...(scope.project?{project:scope.project}:{})})}`).then(r=>r.skills),
+  skillAgents: (id:string,version:number) => call<SkillUsage>("GET",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/agents?limit=100`),
   librarySkill: (id:string) => call<{revisions:LibrarySkill[]}>("GET", `/api/library/skills/${encodeURIComponent(id)}`).then(r=>r.revisions),
   draftSkill: (scope:LibraryScope, definition:LibrarySkillDefinition, version:number) => call<LibrarySkill>("POST", "/api/library/skills",{scope,definition,version}),
   testSkill: (id:string, version:number, agent:string, project:string, text:string) => call<Run>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/test`,{agent,project,text}),
