@@ -78,7 +78,7 @@ To run the optional real-model case, provide a model ID and a credential referen
 export HUMAGEN_LIVE_OFFICE_TEST=1
 export HUMAGEN_LIVE_OFFICE_MODEL=your-anthropic-model-id
 export HUMAGEN_LIVE_OFFICE_KEY_REF=env:ANTHROPIC_API_KEY
-go test ./internal/platform -run '^TestLiveNativeOfficeAcceptance$' -count=1 -timeout 10m -v
+go test -tags live_integration ./internal/platform -run '^TestLiveNativeOfficeAcceptance$' -count=1 -timeout 10m -v
 ```
 
-This sends synthetic prompts to Anthropic and may incur charges. The case verifies the actual Office parts and PDF text for two published versions. Its model calls are nondeterministic; a skip is not a pass for live verification. Publication approval and original bytes captured before revision are covered by the deterministic case, not this opt-in case. No live execution was performed for this checkpoint.
+This sends synthetic prompts to Anthropic and may incur charges. The case verifies the actual Office parts and PDF text for two published versions. Its model calls are nondeterministic. The `live_integration` build tag keeps paid external checks out of the normal race suite; the tagged case fails unless its opt-in flag, model and credential reference are configured. Publication approval and original bytes captured before revision are covered by the deterministic case, not this opt-in case. No live execution was performed for this checkpoint.
