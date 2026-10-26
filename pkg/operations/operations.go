@@ -179,6 +179,9 @@ func Open(st state.Store) (*Store, error) {
 		if n != 1 {
 			return fmt.Errorf("%w: malformed record", ErrInvalid)
 		}
+		if r.Policy != nil && (!validPolicy(*r.Policy) || k != "policy:"+r.Policy.Scope.key()) {
+			return fmt.Errorf("%w: malformed policy", ErrInvalid)
+		}
 		s.records[key{t, k}] = clone(r)
 		return nil
 	})
@@ -192,6 +195,9 @@ func clone(r record) record {
 	if r.Policy != nil {
 		v := *r.Policy
 		v.Rules = maps.Clone(v.Rules)
+		if v.Rules == nil {
+			v.Rules = map[Category]Level{}
+		}
 		r.Policy = &v
 	}
 	if r.Assignment != nil {
@@ -266,14 +272,20 @@ func (s *Store) Policy(t string, scope Scope) Policy {
 	}
 	return Policy{Scope: scope, Rules: map[Category]Level{}}
 }
-func (s *Store) SetPolicy(t string, p Policy, version int, by string, at time.Time) (Policy, error) {
+func validPolicy(p Policy) bool {
 	if !p.Scope.valid() || len(p.Rules) > len(Categories) {
-		return Policy{}, ErrInvalid
+		return false
 	}
 	for c, l := range p.Rules {
 		if !slices.Contains(Categories, c) || (l != Allow && l != Ask && l != Never) {
-			return Policy{}, ErrInvalid
+			return false
 		}
+	}
+	return true
+}
+func (s *Store) SetPolicy(t string, p Policy, version int, by string, at time.Time) (Policy, error) {
+	if !validPolicy(p) {
+		return Policy{}, ErrInvalid
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -287,6 +299,9 @@ func (s *Store) SetPolicy(t string, p Policy, version int, by string, at time.Ti
 	}
 	p.Version, p.UpdatedBy, p.UpdatedAt = v+1, by, at
 	p.Rules = maps.Clone(p.Rules)
+	if p.Rules == nil {
+		p.Rules = map[Category]Level{}
+	}
 	return p, s.put(t, "policy:"+p.Scope.key(), record{Policy: &p})
 }
 
