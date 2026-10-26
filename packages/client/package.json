@@ -1,6 +1,6 @@
 {
   "name": "@humagen/client",
-  "version": "0.26.3",
+  "version": "0.26.4",
   "private": true,
   "description": "TypeScript client for the humagen HTTP API, generated from api/openapi.yaml by oag.",
   "license": "Apache-2.0",
