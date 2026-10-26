@@ -253,3 +253,10 @@ test("Company policy links use workspace authority rather than an empty project 
  assert.equal(href({page:"action-policy",scope:"project",name:""}),"/operations/policies");
  assert.equal(at(href({page:"action-policy",scope:"project",name:"Launch"})).page,"action-policy");
 });
+
+
+test("exact published skill links preserve the selected immutable version",()=>{
+ const route:Route={page:"library",section:"skills",scope:"personal",skill:"opaque-skill",version:1};
+ assert.deepEqual(at(href(route)),route);
+ assert.equal(at("/library/skills?skill=x&version=-1").page,"library");
+});

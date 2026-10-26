@@ -62,7 +62,7 @@ export interface ConversationView {
 export type LibrarySection = "sources" | "skills" | "memory";
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
-  | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string}
+  | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string;version?:number}
   | {page:"operations";section:"context"|"integrations";selected?:string;tab?:"connect"|"resources"|"links"|"access"|"events"|"actions"}
   | {page:"assignments";id?:string;agent?:string}
   | {page:"agent-network";handoff?:string}
@@ -146,7 +146,7 @@ export function documentTitle(r: Route, unread = 0): string {
 export function href(r: Route): string {
   switch (r.page) {
     case "library": {
-      const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);return `/library/${r.section}${q.size?`?${q}`:""}`;
+      const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);if(r.version&&Number.isSafeInteger(r.version)&&r.version>0)q.set("version",String(r.version));return `/library/${r.section}${q.size?`?${q}`:""}`;
     }
     case "operations":return `/operations/${r.section}${r.selected?`/${enc(r.selected)}${r.section==="integrations"&&r.tab&&r.tab!=="connect"?`/${r.tab}`:""}`:""}`;
     case "assignments":return `${r.id?`/assignments/${enc(r.id)}`:"/assignments"}${r.agent?`?agent=${enc(r.agent)}`:""}`;
@@ -291,7 +291,7 @@ function read(pathname: string, search: string): Route {
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
   switch (head) {
-    case "library":return {page:"library",section:pick(a,["sources","skills","memory"] as const,"sources"),scope:oneOf(q.get("scope"),["personal","workspace","project","agent"] as const),project:queryText(q,"project",63),owner:queryText(q,"owner",512),skill:queryText(q,"skill",160)};
+    case "library":return {page:"library",section:pick(a,["sources","skills","memory"] as const,"sources"),scope:oneOf(q.get("scope"),["personal","workspace","project","agent"] as const),project:queryText(q,"project",63),owner:queryText(q,"owner",512),skill:queryText(q,"skill",160),version:Number.isSafeInteger(Number(q.get("version")))&&Number(q.get("version"))>0?Number(q.get("version")):undefined};
     case "operations":
       if(a==="audit")return {page:"audit"};
       if(a==="usage"){

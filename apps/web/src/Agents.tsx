@@ -55,7 +55,7 @@ export function Agents({
   const matching = q
     ? agents.filter((a) => `${a.spec.name} ${a.spec.description ?? ""} ${a.spec.model}`.toLowerCase().includes(q))
     : agents;
-  const shown=matching.filter(agent=>!state||(state==="draft"?roster[agent.spec.name]?.effective_paused&&!roster[agent.spec.name]?.paused:roster[agent.spec.name]?.state===state));
+  const shown=matching.filter(agent=>!state||(state==="draft"?roster[agent.spec.name]?.pause_reason==="setup":roster[agent.spec.name]?.state===state));
   return (
     <Page
       title="Agents"
@@ -63,6 +63,7 @@ export function Agents({
       actions={
         canWrite || onBuild ? (
           <div className="flex flex-wrap gap-2">
+            {operational&&canWrite&&<button type="button" className={button} onClick={()=>setState("draft")}>{words.reviewDrafts}</button>}
             {operational&&canWrite&&<button type="button" className={button} disabled={!workspace||busyPause} onClick={()=>void pauseAll()}>{workspace?.paused?words.resumeAll:words.pauseAll}</button>}
             {onBuild && (
               <button type="button" className={canWrite ? button : primary} onClick={onBuild}>
@@ -79,7 +80,7 @@ export function Agents({
       }
     >
       <Problem message={problem}/>
-      {operational&&<Label text={words.filter}><select className={`${field} max-w-sm`} value={state} onChange={event=>setState(event.target.value)}><option value="">{words.all}</option>{Object.entries(words.states).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></Label>}
+      {operational&&<Label text={words.filter}><select className={`${field} max-w-sm`} value={state} onChange={event=>setState(event.target.value)}><option value="">{words.all}</option><option value="draft">{words.reviewDrafts}</option>{Object.entries(words.states).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></Label>}
       {/* A long list is found by name, not by scrolling. */}
       {agents.length > 6 && (
         <input

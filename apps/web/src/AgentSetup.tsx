@@ -1,4 +1,6 @@
 import {defaultCopy} from "@humagen/components";
+import {SetupPolicies} from "./SetupPolicies.tsx";
+import {PublishedSkillPicker} from "./AgentDefaultSkills.tsx";
 import {AgentMessage} from "@humagen/web";
 import {answerOfAction,answers} from "@humagen/adapter/question";
 import {WebSurface} from "@humagen/render-web";
@@ -15,8 +17,6 @@ import {href} from "./route.ts";
 import {button,field,Label,Page,primary,Problem,SkeletonRows} from "./ui.tsx";
 
 const words=defaultCopy.agentSetup;
-type Rules=NonNullable<AgentSetupPlan["rules"]>;
-const categories=["read_context","write_files","publish_artifacts","external_messages","call_agents","other"] as const;
 const terminal=(run?:Run)=>!!run&&["completed","failed","stopped"].includes(run.status);
 
 function TestResult({run,onRefresh}:{run:Run;onRefresh:()=>void}) {
@@ -76,10 +76,10 @@ export function AgentSetupWizard({name,me,agents,projects,sources,policies,canBi
  },[name]);
  useEffect(()=>{
   let active=true;const id=saved?.test_run;if(!id){setRun(undefined);return}
-  let reading=false;
-  const read=async()=>{if(reading)return;reading=true;try{const latest=await api.run(id);if(active)setRun(latest)}catch{if(active)setProblem(words.failed)}finally{reading=false}};
-  void read();const timer=setInterval(()=>void read(),1000);
-  return()=>{active=false;clearInterval(timer)};
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const read=async()=>{try{const latest=await api.run(id);if(active){setRun(latest);if(!terminal(latest))timer=setTimeout(()=>void read(),latest.status==="parked"?5000:1000)}}catch{if(active){setProblem(words.failed);timer=setTimeout(()=>void read(),5000)}}};
+  void read();
+  return()=>{active=false;clearTimeout(timer)};
  },[saved?.test_run,refresh]);
  useEffect(()=>{
   let active=true;if(!reviewQuery.trim()){setReviewers([]);return}
@@ -124,10 +124,11 @@ export function AgentSetupWizard({name,me,agents,projects,sources,policies,canBi
    <div className="sm:col-span-2"><Label text={words.instructions}><textarea className={field} rows={7} value={plan.spec.system_prompt} disabled={!canEdit} onChange={event=>spec({system_prompt:event.target.value})}/></Label></div>
   </div>}
   {step===1&&<div className="flex min-w-0 flex-col gap-5">
+   <fieldset className="space-y-2"><legend className="text-aui-sm font-medium">{words.skills}</legend><p className="text-aui-xs text-aui-muted">{defaultCopy.agentSkillDefaults.help}</p><PublishedSkillPicker home={plan.project} refs={plan.skills??[]} disabled={!canEdit} onChange={skills=>setPlan(current=>({...current,skills}))}/></fieldset>
    <fieldset className="space-y-2"><legend className="mb-2 text-aui-sm font-medium">{words.sources}</legend>{!contextSources.length&&<p className="text-aui-xs text-aui-muted">{words.noSources}</p>}{contextSources.map(source=><label key={source.name} className="flex min-h-10 items-center gap-2 text-aui-sm"><input type="checkbox" disabled={!canEdit} checked={!!plan.spec.sources?.some(item=>item.name===source.name)} onChange={event=>spec({sources:event.target.checked?[...(plan.spec.sources??[]),{name:source.name,uri:`knowledge://${source.name}`}]:plan.spec.sources?.filter(item=>item.name!==source.name)})}/>{source.name}</label>)}</fieldset>
    <fieldset className="space-y-2"><legend className="mb-2 text-aui-sm font-medium">{words.tools}</legend><p className="text-aui-xs text-aui-muted">{words.toolsHint}</p><div className="grid grid-cols-1 sm:grid-cols-2">{setupTools.map(tool=><label key={tool} className="flex min-h-10 items-center gap-2 text-aui-sm"><input type="checkbox" disabled={!canEdit} checked={plan.spec.tools?.includes(tool)??false} onChange={event=>spec({tools:event.target.checked?[...(plan.spec.tools??[]),tool]:plan.spec.tools?.filter(item=>item!==tool)})}/>{words.toolNames[tool]}</label>)}</div></fieldset>
    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><div><Label text={words.manager} hint={words.managerHint}><input className={field} value={reviewer?reviewer.name||reviewer.handle:reviewQuery||(saved?.plan.manager?words.reviewerSaved:"")} disabled={!!saved} placeholder={words.searchPeople} onChange={event=>{setReviewer(undefined);setReviewQuery(event.target.value);setPlan(current=>({...current,manager:undefined}))}}/></Label>{!reviewer&&reviewers.length>0&&<ul className="max-h-40 overflow-y-auto rounded-aui border border-aui-border">{reviewers.map(person=><li key={person.subject}><button type="button" className={`${button} w-full justify-start`} onClick={()=>{setReviewer(person);setReviewQuery("");setPlan(current=>({...current,manager:person.subject,spec:current.spec.self_approval?{...current.spec,approvers:[...new Set([...(current.spec.approvers??[]),person.subject])]}:current.spec}))}}>{person.name||person.handle}</button></li>)}</ul>}</div><div><label className="flex min-h-10 items-start gap-2 text-aui-sm"><input type="checkbox" className="mt-1" disabled={!canEdit} checked={self} onChange={event=>spec({self_approval:event.target.checked,approvers:event.target.checked?[...new Set([...(plan.spec.approvers??[]),me.principal.subject,...(plan.manager?[plan.manager]:[])])]:(plan.spec.approvers??[]).filter(person=>person!==me.principal.subject)})}/>{words.selfApproval}</label><p className="text-aui-xs text-aui-muted">{words.selfHint}</p></div></div>
-   <fieldset className="space-y-2"><legend className="mb-2 text-aui-sm font-medium">{words.policy}</legend><p className="text-aui-xs text-aui-muted">{words.policyHint}</p><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{categories.map(category=><Label key={category} text={words.categories[category]}><select className={field} value={plan.rules?.[category]??""} disabled={!!saved} onChange={event=>setPlan(current=>{const rules={...current.rules};if(event.target.value)rules[category]=event.target.value as Rules[string];else delete rules[category];return {...current,rules}})}><option value="">{words.inherit}</option>{(["allow","ask","never"] as const).map(level=><option key={level} value={level}>{words.levels[level]}</option>)}</select></Label>)}</div></fieldset>
+   <SetupPolicies home={plan.project} rules={plan.rules??{}} disabled={!!saved} onChange={rules=>setPlan(current=>({...current,rules}))}/>
    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><Label text={words.budget} hint={canBill?words.budgetHint:words.budgetReadOnly}><input className={field} type="number" min="0" step="0.01" max="1000000" value={(plan.daily_spend??0)/1e6} disabled={!canBill||!!saved} onChange={event=>setPlan(current=>({...current,daily_spend:Math.round(Number(event.target.value)*1e6)}))}/></Label><Label text={words.lease}><input className={field} type="number" min="0" step="0.01" max="1000000" value={(plan.max_lease??0)/1e6} disabled={!canBill||!!saved} onChange={event=>setPlan(current=>({...current,max_lease:Math.round(Number(event.target.value)*1e6)}))}/></Label></div>
    <p className="text-aui-xs text-aui-muted">{words.assignmentHint}</p>
    {!plan.assignment?<button type="button" className={`${button} self-start`} disabled={!!saved} onClick={()=>setPlan(current=>({...current,assignment:{goal:"",done_when:"",trigger:"manual"}}))}>{words.addAssignment}</button>:<fieldset className="grid grid-cols-1 gap-3 rounded-aui border border-aui-border p-3 sm:grid-cols-2"><Label text={words.goal}><textarea className={field} rows={3} value={plan.assignment.goal} disabled={!!saved} onChange={event=>setPlan(current=>({...current,assignment:{...current.assignment!,goal:event.target.value}}))}/></Label><Label text={words.doneWhen}><textarea className={field} rows={3} value={plan.assignment.done_when} disabled={!!saved} onChange={event=>setPlan(current=>({...current,assignment:{...current.assignment!,done_when:event.target.value}}))}/></Label><Label text={words.trigger}><select className={field} value={plan.assignment.trigger??"manual"} disabled={!!saved} onChange={event=>setPlan(current=>({...current,assignment:{...current.assignment!,trigger:event.target.value as "manual"|"cron"|"source_change",cron:undefined,source:undefined}}))}><option value="manual">{words.manual}</option><option value="cron">{words.cron}</option><option value="source_change">{words.sourceChange}</option></select></Label>{plan.assignment.trigger==="cron"&&<Label text={words.cronExpression}><input className={field} value={plan.assignment.cron??""} disabled={!!saved} onChange={event=>setPlan(current=>({...current,assignment:{...current.assignment!,cron:event.target.value}}))}/></Label>}{plan.assignment.trigger==="source_change"&&<Label text={words.triggerSource}><select className={field} value={plan.assignment.source??""} disabled={!!saved} onChange={event=>setPlan(current=>({...current,assignment:{...current.assignment!,source:event.target.value}}))}><option value="">{words.triggerSource}</option>{contextSources.map(source=><option key={source.name} value={source.name}>{source.name}</option>)}</select></Label>}<button type="button" className={`${button} justify-self-start`} disabled={!!saved} onClick={()=>setPlan(current=>({...current,assignment:undefined}))}>{words.removeAssignment}</button></fieldset>}
@@ -141,7 +142,7 @@ export function AgentSetupWizard({name,me,agents,projects,sources,policies,canBi
     {saved.phase==="ready"&&<p role="status" className="text-aui-sm">{words.ready}</p>}
    </>}
   </div>}
-  {editing&&saved&&<button type="button" className={`${primary} self-start`} disabled={busy||!valid||inFlight} onClick={()=>void act(()=>api.amendAgentSetup(saved.name,saved.version,{...saved.plan,spec:plan.spec}))}>{words.saveCorrection}</button>}
+  {editing&&saved&&<button type="button" className={`${primary} self-start`} disabled={busy||!valid||inFlight} onClick={()=>void act(()=>api.amendAgentSetup(saved.name,saved.version,{...saved.plan,spec:plan.spec,skills:plan.skills}))}>{words.saveCorrection}</button>}
   <div className="flex flex-wrap gap-2 border-aui-border border-t pt-4"><button type="button" className={button} onClick={step>0?()=>setStep(step-1):onBack}>{step>0?words.back:words.cancel}</button>{step<2&&<button type="button" className={primary} disabled={step===0&&!valid} onClick={()=>setStep(step+1)}>{words.next}</button>}</div>
   </div>
  </Page>;

@@ -1,3 +1,4 @@
+import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import { defaultCopy } from "@humagen/components";
 import { type ReactNode,useEffect, useMemo, useState } from "react";
 import {
@@ -727,6 +728,7 @@ export function AgentDetail({
           <ApprovalQueue agent={name} viewer={viewer} onOpenTask={onOpenTask} onCount={setWaiting} />
         )}
 
+        {tab === "context" && revision && <AgentDefaultSkills agent={revision.spec.name} home={place?.home??""} agentRevision={revision.rev} canWrite={canWrite}/>}
         {tab === "context" && (
           <Section
             title="Context"

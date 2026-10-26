@@ -491,7 +491,7 @@ export function Deliverables({
               >
                 Download Original
               </a>
-              <ExportPDF key={file.id} file={file} />
+              <ExportPDF key={`pdf:${file.id}`} file={file} />
               <div className="flex gap-4 border-aui-border border-b" aria-label="Artifact views">
                 {(["preview", "versions", "provenance"] as const).map((value) => (
                   <button
@@ -511,7 +511,7 @@ export function Deliverables({
               </div>
               {tab === "preview" ? (
                 <FileBody
-                  key={file.id}
+                  key={`preview:${file.id}`}
                   file={file}
                   slide={slide}
                   onSlide={setSlide}

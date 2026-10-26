@@ -110,9 +110,12 @@ test("read-only default skills offer no mutation and keep exact saved revision",
   assert.equal((choice as HTMLInputElement).disabled, true);
   assert.equal(screen.queryByRole("button", { name: copy.save }), null);
   assert.match(
-    screen.getByRole("link", { name: "checklist" }).getAttribute("href") ?? "",
+    screen.getByRole("link", { name: defaultCopy.agentSkillDefaults.inspect("checklist",1) }).getAttribute("href") ?? "",
     /scope=workspace/,
   );
+  const link=screen.getByRole("link",{name:copy.inspect("checklist",1)});
+  assert.equal(link.getAttribute("target"),"_blank");
+  assert.ok(link.getAttribute("href")?.includes("version=1"));
   assert.equal(
     net.seen.some((r) => r.method !== "GET"),
     false,

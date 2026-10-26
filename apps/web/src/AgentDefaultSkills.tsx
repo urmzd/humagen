@@ -7,7 +7,7 @@ import type {
   LibrarySkill,
 } from "../../../packages/client/src/generated/types.ts";
 import { api } from "./api.ts";
-import { field, Problem } from "./ui.tsx";
+import { field, Problem,button,primary,textLink,Label } from "./ui.tsx";
 
 // The picker only reads the library. Both an unsaved setup and an existing
 // agent editor submit its exact references through their own durable APIs.
@@ -117,7 +117,7 @@ export function PublishedSkillPicker({
     };
   }, [scope, scopes, mayRead]);
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 gap-3 text-aui-sm">
       {problem && <Problem message={problem} />}
       <div>
         <h4>{copy.selected}</h4>
@@ -128,11 +128,12 @@ export function PublishedSkillPicker({
             );
             return (
               <li key={ref.id} className="flex flex-wrap items-center gap-2">
-                <a href={skillHref(row, ref.id)}>{row?.name ?? copy.savedRevision}</a>
+                <>{row?<a className={`${textLink} inline-flex min-h-10 items-center break-words`} href={skillHref(row, ref.id,ref.version)} target="_blank" rel="noreferrer" aria-label={copy.inspect(row.name,ref.version)}>{row.name}</a>:<span>{copy.savedRevision}</span>}</>
                 <span>{copy.version(ref.version)}</span>
                 {!disabled && (
                   <button
                     type="button"
+                    className={button}
                     onClick={() => onChange(refs.filter((s) => s.id !== ref.id))}
                   >
                     {copy.remove}
@@ -149,8 +150,7 @@ export function PublishedSkillPicker({
         <p>{copy.unavailable}</p>
       ) : (
         <>
-          <label className="grid gap-1">
-            {copy.scope}
+          <Label text={copy.scope}>
             <select
               className={field}
               value={scope}
@@ -163,13 +163,13 @@ export function PublishedSkillPicker({
                 </option>
               ))}
             </select>
-          </label>
+          </Label>
           {!choices.length && <p>{copy.empty}</p>}
           <div className="grid gap-2">
             {choices.map((row) => {
               const checked = refs.some((s) => s.id === row.id && s.version === row.version);
               return (
-                <label key={`${row.id}:${row.version}`} className="flex items-start gap-2">
+                <label key={`${row.id}:${row.version}`} className="flex min-h-11 min-w-0 items-start gap-2 py-2">
                   <input
                     type="checkbox"
                     checked={checked}
@@ -190,7 +190,7 @@ export function PublishedSkillPicker({
                   />
                   <span>
                     {row.name} {copy.version(row.version)}
-                    <span className="block text-sm text-muted">{row.description}</span>
+                    <span className="block text-aui-xs text-aui-muted">{row.description}</span><span className="block text-aui-xs text-aui-muted">{copy.tools}: {row.tools.length?row.tools.join(", "):copy.noTools}</span>
                   </span>
                 </label>
               );
@@ -262,9 +262,9 @@ export function AgentDefaultSkills({
     }
   };
   return (
-    <section aria-label={copy.title} className="grid gap-3">
+    <section aria-label={copy.title} className="grid min-w-0 gap-3 rounded-aui border border-aui-border p-4 text-aui-sm">
       <h3 className="font-medium">{copy.title}</h3>
-      <p className="text-sm text-muted">{copy.help}</p>
+      <p className="text-aui-sm text-aui-muted">{copy.help}</p>
       {problem && <Problem message={problem} />}
       {notice && <output>{notice}</output>}
       {!saved ? (
@@ -284,11 +284,11 @@ export function AgentDefaultSkills({
           />
           <div className="flex flex-wrap gap-3">
             {canWrite && (
-              <button type="button" disabled={busy} onClick={() => void save()}>
+              <button type="button" className={primary} disabled={busy} onClick={() => void save()}>
                 {copy.save}
               </button>
             )}
-            <button type="button" disabled={busy} onClick={() => setRefresh((v) => v + 1)}>
+            <button type="button" className={button} disabled={busy} onClick={() => setRefresh((v) => v + 1)}>
               {copy.reload}
             </button>
           </div>
@@ -297,8 +297,8 @@ export function AgentDefaultSkills({
     </section>
   );
 }
-function skillHref(row: LibrarySkill | undefined, id: string) {
-  const query = new URLSearchParams({ scope: row?.scope.kind ?? "workspace", skill: id });
+function skillHref(row: LibrarySkill | undefined, id: string,version:number) {
+  const query = new URLSearchParams({ scope: row?.scope.kind ?? "workspace", skill: id,version:String(version) });
   if (row?.scope.project) query.set("project", row.scope.project);
   return `/library/skills?${query}`;
 }

@@ -16,9 +16,67 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
- outcomeLearning:{skill:"Save as Skill",remember:"Remember a Decision",skillTitle:"Review Skill Draft",decisionTitle:"Review Decision Memory",scope:"Destination",personal:"Personal",project:"Current Project",name:"Skill Name",purpose:"Purpose",steps:"Instructions",inputs:"Inputs",outputs:"Outputs",decision:"Recorded Decision",text:"Reviewed Memory",reviewHint:"Review the whole text for its destination audience. Private sources and hidden execution details are not copied automatically.",noExternalApproval:"This remembers a human-reviewed decision. It grants no tool or external action approval.",draftHint:"Saved as a draft with no tools. Test and publish the exact revision before using it.",createDraft:"Create Skill Draft",approveRemember:"Approve Decision and Remember",cancel:"Cancel",loading:"Loading Current Outcome",saving:"Saving",retry:"Retry",failed:"The outcome could not be loaded or saved. Your review remains available.",stale:"The outcome or its audience changed. Reload it and review the current snapshot before saving.",skillSaved:"The new tool-free skill draft is saved.",memorySaved:"Decision approved and remembered.",openSkill:"Open Skill Draft",openMemory:"Open Memory",close:"Close",noProject:"Project learning requires ordinary ownership of the current shared project."},
+  outcomeLearning: {
+    skill: "Save as Skill",
+    remember: "Remember a Decision",
+    skillTitle: "Review Skill Draft",
+    decisionTitle: "Review Decision Memory",
+    scope: "Destination",
+    personal: "Personal",
+    project: "Current Project",
+    name: "Skill Name",
+    purpose: "Purpose",
+    steps: "Instructions",
+    inputs: "Inputs",
+    outputs: "Outputs",
+    decision: "Recorded Decision",
+    text: "Reviewed Memory",
+    reviewHint:
+      "Review the whole text for its destination audience. Private sources and hidden execution details are not copied automatically.",
+    noExternalApproval:
+      "This remembers a human-reviewed decision. It grants no tool or external action approval.",
+    draftHint:
+      "Saved as a draft with no tools. Test and publish the exact revision before using it.",
+    createDraft: "Create Skill Draft",
+    approveRemember: "Approve Decision and Remember",
+    cancel: "Cancel",
+    loading: "Loading Current Outcome",
+    saving: "Saving",
+    retry: "Retry",
+    failed: "The outcome could not be loaded or saved. Your review remains available.",
+    stale:
+      "The outcome or its audience changed. Reload it and review the current snapshot before saving.",
+    skillSaved: "The new tool-free skill draft is saved.",
+    memorySaved: "Decision approved and remembered.",
+    openSkill: "Open Skill Draft",
+    openMemory: "Open Memory",
+    close: "Close",
+    noProject: "Project learning requires ordinary ownership of the current shared project.",
+  },
 
-agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"Resume All",filter:"Operational State",all:"All States",title:"Agent Operations",loading:"Reading operational state",failed:"Operational state could not be read. Retry to refresh it.",manager:(name:string)=>`Manager: ${name}`,lastRun:"Open Last Run",states:{ready:"Ready",working:"Working",waiting_on_people:"Waiting on People",watching:"Watching",paused:"Paused",failed:"Needs Attention"}},
+  agentOperations: {
+    skillsReview:"Default skills require review against the current agent revision before work can run.",
+    reviewSkills:"Review Default Skills",
+    reviewDrafts: "Review Drafts",
+    addAssignment: "Add Assignment",
+    pauseAll: "Pause All",
+    resumeAll: "Resume All",
+    filter: "Operational State",
+    all: "All States",
+    title: "Agent Operations",
+    loading: "Reading operational state",
+    failed: "Operational state could not be read. Retry to refresh it.",
+    manager: (name: string) => `Manager: ${name}`,
+    lastRun: "Open Last Run",
+    states: {
+      ready: "Ready",
+      working: "Working",
+      waiting_on_people: "Waiting on People",
+      watching: "Watching",
+      paused: "Paused",
+      failed: "Needs Attention",
+    },
+  },
   agentSetup: {
     title: "New Agent",
     lede: "Review its role, context and actions, then test the inactive draft before activation.",
@@ -39,6 +97,7 @@ agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"
     noModels: "No real provider is registered. Configure a provider before testing this agent.",
     models: "Open Model Settings",
     instructions: "Instructions",
+    skills: "Published Default Skills",
     sources: "Context Sources",
     noSources: "No readable sources are available in this project chain.",
     tools: "Allowed Actions",
@@ -52,7 +111,7 @@ agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"
       record_outcome: "Record Outcomes",
       source_search: "Search Connected Accounts",
     },
-    reviewerSaved:"A reviewer is saved",
+    reviewerSaved: "A reviewer is saved",
     manager: "Reviewer or Manager",
     managerHint:
       "Choose a person by name or handle. Eligibility follows the saved reviewer list and native approval rules.",
@@ -64,6 +123,9 @@ agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"
     reviewerNeeded:
       "A different authorized reviewer must approve this test’s actions. You can share its conversation, or stop the test and correct the draft’s approval settings.",
     policy: "Action Policy",
+    draftPolicy: "Draft Choice",
+    policyUnknown:
+      "Current inherited policy could not be read. Retry to review it; the server still enforces every restriction.",
     policyHint: "Inherited restrictions still apply. A local Allow cannot override Never above it.",
     inherit: "Inherit",
     levels: { allow: "Allow", ask: "Ask", never: "Never" },
@@ -119,7 +181,7 @@ agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"
       reserved: "Name Reserved",
       created: "Inactive Agent Created",
       home: "Project Saved",
-      skills:"Published Skills Saved",
+      skills: "Published Skills Saved",
       controls: "Controls Saved",
       policy: "Action Policy Saved",
       budget: "Budget Saved",
@@ -874,6 +936,9 @@ agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"
       "Console updates arrive immediately or in hourly digests. Quiet hours delay delivery.",
   },
   agentSkillDefaults: {
+    inspect:(name:string,version:number)=>`Open ${name}, Version ${version}, in a new tab`,
+    tools: "Tool Restrictions",
+    noTools: "No Tools",
     title: "Default skills",
     help: "Choose up to four published revisions. Every turn uses these exact instructions and their tool restrictions.",
     scope: "Skill library scope",
@@ -1453,7 +1518,8 @@ agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"
   report: "Report Issue",
   retryIn: (seconds: number) =>
     `Try again in ${seconds < 90 ? `${seconds}s` : `${Math.round(seconds / 60)} min`}.`,
-  credentialUnavailable: "The model credential is unavailable. Ask your workspace operator to check the provider configuration, then retry.",
+  credentialUnavailable:
+    "The model credential is unavailable. Ask your workspace operator to check the provider configuration, then retry.",
   reference: (ref: string) => `Reference: ${ref}`,
   failure: {
     auth_required: (service = "A connected app") => `${service} needs a reconnect`,
