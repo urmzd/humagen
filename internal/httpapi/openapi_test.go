@@ -33,6 +33,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/mcptools"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 	"github.com/urmzd/saige/agent/agenttest"
@@ -893,7 +894,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	},
 		// A tool that acts as each person, and one the workspace reaches as
 		// itself. Neither is reached here.
-		Ext: platform.Extensions{ToolProviders: []platform.ToolProviderSeed{
+		Ext: platform.Extensions{SourceProviders: map[string]knowledge.Provider{"contract-source": contractSourceBoundary{}}, Resolver: mcptools.ResolverFunc(func(context.Context, string) (mcptools.Secret, error) {
+			return mcptools.NewSecret("contract-only-source-token"), nil
+		}), ToolProviders: []platform.ToolProviderSeed{
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: "https://issues.example.com/mcp", CredentialScope: toolprovider.ScopePerson}},
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "wiki", Transport: toolprovider.TransportHTTP, Endpoint: "https://wiki.example.com/mcp", CredentialRef: "env:WIKI_TOKEN"}},
 		}},
@@ -1461,6 +1464,39 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// A machine has no person's credential: this records a real failed attempt,
 	// without calling Drive or representing a fake boundary as a live connection.
 	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusOK)
+
+	c.call(acme, "GET", "/api/knowledge/{name}/resources", "/api/knowledge/remote/resources", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/knowledge/{name}/snapshot", "/api/knowledge/remote/snapshot", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/knowledge/{name}/replace", "/api/knowledge/remote/replace", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/knowledge/{name}/sync-settings", "/api/knowledge/remote/sync-settings", `{"every_seconds":0,"stop_after_seconds":600}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/knowledge/{name}/sync-settings", "/api/knowledge/remote/sync-settings", `{"every_seconds":1,"stop_after_seconds":600}`, http.StatusForbidden)
+	c.call(acme, "PUT", "/api/knowledge/{name}/sync-settings", "/api/knowledge/remote/sync-settings", `{"every_seconds":0,"stop_after_seconds":1}`, http.StatusBadRequest)
+	pendingSettings, err := f.p.Knowledge.BeginSync("acme", "remote", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(acme, "PUT", "/api/knowledge/{name}/sync-settings", "/api/knowledge/remote/sync-settings", `{"every_seconds":0,"stop_after_seconds":600}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/knowledge/{name}/snapshot", "/api/knowledge/remote/snapshot", "", http.StatusConflict)
+	if _, err := f.p.Knowledge.FailSync("acme", "remote", pendingSettings, knowledge.Interrupted, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	c.call(ana, "POST", "/api/knowledge", "/api/knowledge", `{"name":"contract-copy"}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/knowledge", "/api/knowledge", `{"name":"not-created","configuration":{"mode":"indexed","provider":"contract-source","origin":"folder1","project":"missing"}}`, http.StatusNotFound)
+	c.call(ana, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/contract-copy/configuration", `{"mode":"indexed","provider":"contract-source","origin":"folder1","project":"~","resources":["doc"]}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/contract-copy/credential", `{"ref":"op://People/ana/contract-source"}`, http.StatusOK)
+	c.call(ana, "GET", "/api/knowledge/{name}/resources", "/api/knowledge/contract-copy/resources", "", http.StatusOK)
+	c.call(ana, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/contract-copy/sync", "", http.StatusOK)
+	c.call(ana, "POST", "/api/knowledge/{name}/snapshot", "/api/knowledge/contract-copy/snapshot", "", http.StatusOK)
+	c.call(ana, "POST", "/api/knowledge/{name}/replace", "/api/knowledge/contract-copy/replace", "", http.StatusOK)
+	frozenAttempt, err := f.p.Knowledge.BeginSync("acme", "contract-copy", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(ana, "POST", "/api/knowledge/{name}/replace", "/api/knowledge/contract-copy/replace", "", http.StatusConflict)
+	if _, err := f.p.Knowledge.FailSync("acme", "contract-copy", frozenAttempt, knowledge.Interrupted, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
 	c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/remote", "", http.StatusNoContent)
 
 	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"handbook","description":"How we work."}`, http.StatusCreated)
@@ -1891,6 +1927,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/agents/{name}/memory/{id}":     {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
 		"/api/clients/{id}": {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
+		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
 		"/api/knowledge/{name}/dependencies":  {"name": "handbook"},
 		"/api/knowledge/{name}/configuration": {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},

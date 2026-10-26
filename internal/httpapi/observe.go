@@ -16,7 +16,6 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
-	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/journal"
@@ -30,6 +29,7 @@ const maxWindow = 30 * 24 * time.Hour
 
 func (s *Server) observeRoutes(mux *http.ServeMux) {
 	s.sourceRuleRoutes(mux)
+	s.sourceRecoveryRoutes(mux)
 	mux.HandleFunc("GET /api/analytics", s.authed(auth.RunsRead, s.analytics))
 	mux.HandleFunc("GET /api/journal", s.authed(auth.RunsRead, s.journal))
 	mux.HandleFunc("GET /api/runs/{id}/trace", s.authed(auth.RunsRead, s.seenRun(s.trace)))
@@ -421,32 +421,19 @@ func (s *Server) listSources(w http.ResponseWriter, _ *http.Request, who auth.Pr
 
 func (s *Server) createSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name          string                  `json:"name"`
+		Description   string                  `json:"description"`
+		Configuration *knowledge.SourceConfig `json:"configuration,omitempty"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if !knowledge.ValidName(body.Name) {
-		s.problem(w, fmt.Errorf("%w: a source name is lowercase letters, digits and dashes", knowledge.ErrInvalid))
-		return
-	}
-	attempt, auditErr := s.P.BeginAudit(who, audit.Change{Action: "source.create", Resource: "source", ID: body.Name, Scope: "workspace", After: map[string]string{"mode": "indexed", "provider": "manual", "route": r.Pattern, "rule": "knowledge:write"}})
-	if auditErr != nil {
-		s.problem(w, auditErr)
-		return
-	}
-
-	src, err := s.P.Knowledge.Create(who.Tenant, body.Name, body.Description, who.Subject, time.Now())
-	if finishErr := attempt.Finish(err); finishErr != nil {
-		s.Log.Error("source creation audit completion remains pending", "audit", attempt.ID(), "error", finishErr)
-	}
-
+	source, err := s.P.CreateSource(who, body.Name, body.Description, body.Configuration)
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, src)
+	ok(w, http.StatusCreated, source)
 }
 
 func (s *Server) deleteSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {

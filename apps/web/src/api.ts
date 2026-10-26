@@ -308,6 +308,13 @@ export interface Alert {
   acked_at?: string;
 }
 
+import type {KnowledgeResource, SourceLinkRule as GeneratedSourceLinkRule, SourceLinkResource, SourceLinkMatch,ListKnowledgeResourcesResponse} from "../../../packages/client/src/generated/types.ts";
+export type SourceResource=KnowledgeResource;
+export type SourceConfiguration=KnowledgeSourceConfig;
+export type SourceLinkRule=GeneratedSourceLinkRule;
+export type SourceRuleResource=SourceLinkResource;
+export type SourceRuleMatch=SourceLinkMatch;
+
 export interface Source {
   lifecycle?: KnowledgeLifecycle;
   name: string;
@@ -899,9 +906,18 @@ export const api = {
   deleteAlertRule: (name: string) => call<void>("DELETE", `/api/alert-rules/${encodeURIComponent(name)}`),
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
-  createSource: (name: string, description: string) => call<Source>("POST", "/api/knowledge", { name, description }),
+  createSource: (name: string, description: string, configuration?:SourceConfiguration) => call<Source>("POST", "/api/knowledge", { name, description,...(configuration?{configuration}:{}) }),
+  sourceResources: (name:string) => call<ListKnowledgeResourcesResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/resources`),
+  snapshotSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/snapshot`),
+  replaceSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/replace`),
+  sourceSyncSettings: (name:string,input:{every_seconds:number;stop_after_seconds:number}) => call<Source>("PUT",`/api/knowledge/${encodeURIComponent(name)}/sync-settings`,input),
+  sourceLinkRules: () => call<SourceLinkRule[]>("GET","/api/source-link-rules"),
+  saveSourceLinkRule: (rule:SourceLinkRule,creating=false) => { const {id,copied_from,...input}=rule; return call<SourceLinkRule>(creating?"POST":"PUT",creating?"/api/source-link-rules":`/api/source-link-rules/${encodeURIComponent(id)}`,input); },
+  deleteSourceLinkRule: (id:string) => call<void>("DELETE",`/api/source-link-rules/${encodeURIComponent(id)}`),
+  previewSourceLinkRules: (resource:SourceRuleResource) => call<{matches:SourceRuleMatch[]}>("POST","/api/source-link-rules/preview",resource),
+  clientBindings: (id:string) => call<{bindings:{slack_channel:string;project:string;channel:string;bound_at?:string}[]}>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(r=>r.bindings),
   sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
-  configureSource: (name: string, config: KnowledgeSourceConfig) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
+  configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
   connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
   syncSource: (name: string) => call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),
   deleteSource: (name: string) => call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}`),

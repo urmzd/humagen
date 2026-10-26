@@ -943,6 +943,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("source refresh", func() error { return p.refreshSources(ctx) })
 	loop("inbox retention", func() error {
 		tick := time.NewTicker(retainEvery)
 		defer tick.Stop()

@@ -1,0 +1,266 @@
+import assert from "node:assert/strict";
+import { afterEach, test } from "node:test";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { defaultCopy } from "@humagen/components";
+import type { Source } from "./api.ts";
+import { stubFetch } from "./dom.ts";
+import { ContextHealth } from "./ContextHealth.tsx";
+import { Integrations } from "./Integrations.tsx";
+import { SourceResources, SourceSyncSettings, SourceAccessMode, sourceConfiguration } from "./SourceLifecycle.tsx";
+
+const at = "2026-10-26T12:00:00Z";
+const source: Source = {
+  name: "runbooks",
+  documents: 1,
+  passages: 1,
+  excluded: 0,
+  variants: [],
+  updated_at: at,
+  lifecycle: {
+    mode: "hybrid",
+    provider: "drive",
+    origin: "folder",
+    project: "Launch",
+    owner: "ana",
+    status: "needs_attention",
+    cause: "auth_expired",
+    connected_at: at,
+    last_good_at: at,
+    stop_after_seconds: 86400,
+    attempts: [],
+  },
+};
+let net: ReturnType<typeof stubFetch> | undefined;
+afterEach(() => {
+  cleanup();
+  net?.restore();
+  net = undefined;
+});
+
+test("remote resource selection requires complete listing and blocks unsupported resources", async () => {
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/resources": () => ({
+      complete: false,
+      resources: [
+        {
+          id: "a",
+          name: "Allowed Page",
+          kind: "page",
+          uri: "https://example.com/a",
+          supported: true,
+        },
+        {
+          id: "b",
+          name: "Unsupported Binary",
+          kind: "file",
+          uri: "",
+          supported: false,
+          unsupported_reason: "format",
+        },
+      ],
+    }),
+  });
+  render(<SourceResources source={source} canWrite onChanged={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Load Remote Resources" }));
+  await screen.findByText(defaultCopy.sourceOperations.incomplete);
+  assert.equal(
+    (screen.getByRole("checkbox", { name: /Allowed Page/ }) as HTMLInputElement).disabled,
+    true,
+  );
+  assert.equal(
+    (screen.getByRole("checkbox", { name: /Unsupported Binary/ }) as HTMLInputElement).disabled,
+    true,
+  );
+  assert.equal(
+    (screen.getByRole("button", { name: /Add Selected/ }) as HTMLButtonElement).disabled,
+    true,
+  );
+  assert.equal(
+    net.seen.some((r) => r.method !== "GET"),
+    false,
+  );
+});
+
+test("Add Selected pins exact provider IDs before actual import and preserves existing settings", async () => {
+  let changed = 0;
+  const configured = {
+    ...source,
+    lifecycle: {
+      ...source.lifecycle!,
+      resources: ["old"],
+      snapshot: false,
+      sync_every_seconds: 7200,
+    },
+  };
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/resources": () => ({
+      complete: true,
+      resources: [{ id: "a", name: "Allowed Page", kind: "page", uri: "", supported: true }],
+    }),
+    "PUT /api/knowledge/runbooks/configuration": (body) => {
+      assert.deepEqual(body, { ...sourceConfiguration(configured), resources: ["a"] });
+      return configured;
+    },
+    "POST /api/knowledge/runbooks/sync": () => source,
+  });
+  render(<SourceResources source={configured} canWrite onChanged={() => changed++} />);
+  fireEvent.click(screen.getByRole("button", { name: "Load Remote Resources" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: /Allowed Page/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Add Selected/ }));
+  await waitFor(() => assert.equal(changed, 1));
+  assert.deepEqual(
+    net.seen.map((r) => r.method),
+    ["GET", "PUT", "POST"],
+  );
+});
+
+test("snapshot failure shows the backend refusal without claiming a frozen or live source", async () => {
+  net = stubFetch({
+    "POST /api/knowledge/runbooks/snapshot": () =>
+      new Response(JSON.stringify({ error: "last good copy changed" }), { status: 409 }),
+  });
+  render(
+    <SourceSyncSettings
+      source={source}
+      canWrite
+      onChanged={() => assert.fail("failed snapshot reported changed")}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Keep as Snapshot" }));
+  assert.ok(await screen.findByText("last good copy changed"));
+  assert.equal(screen.queryByText("Saved"), null);
+});
+
+test("context health reads server-filtered sources and addresses selection", async () => {
+  const picked: string[] = [];
+  net = stubFetch({
+    "GET /api/knowledge": () => ({ sources: [source] }),
+    "GET /api/knowledge/runbooks/dependencies": () => ({ agents: [], projects: [] }),
+  });
+  render(
+    <ContextHealth
+      canWrite={false}
+      onSelect={(name) => {
+        if (name) picked.push(name);
+      }}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: /runbooks/ }));
+  await waitFor(() => assert.deepEqual(picked, ["runbooks"]));
+  assert.ok(screen.getByText(defaultCopy.sourceLifecycle.cause.auth_expired));
+  assert.equal(screen.queryByRole("button", { name: "Refresh Copy" }), null);
+});
+
+test("integrations link rules are persisted with exact input and previews do not link anything", async () => {
+  let posted: unknown;
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [source] }),
+    "GET /api/source-link-rules": () => [],
+    "POST /api/source-link-rules": (body) => {
+      posted = body;
+      return { id: "new", ...(body as object) };
+    },
+    "POST /api/source-link-rules/preview": () => ({
+      matches: [{ project: "Launch", mode: "suggest", rules: ["rule-a"] }],
+    }),
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="source:runbooks" tab="links" />);
+  fireEvent.click(await screen.findByRole("button", { name: "New Rule" }));
+  fireEvent.change(screen.getByLabelText("Match Pattern"), { target: { value: "launch-*" } });
+  fireEvent.change(screen.getByLabelText("Destination Project"), { target: { value: "Launch" } });
+  assert.equal((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled, true);
+  fireEvent.change(screen.getByLabelText("Resource ID"), { target: { value: "remote-a" } });
+  fireEvent.change(screen.getByLabelText("Attributes (JSON)"), {
+    target: { value: '{"name":["launch-docs"]}' },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Preview Rules" }));
+  assert.ok(await screen.findByText("rule-a"));
+  const preview = net.seen.find((r) => r.path.endsWith("/preview"));
+  assert.ok((preview?.body as { candidate?: unknown }).candidate);
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    assert.deepEqual(posted, {
+      provider: "drive",
+      attribute: "name",
+      pattern: "launch-*",
+      project: "Launch",
+      channel: "",
+      mode: "suggest",
+    }),
+  );
+  assert.equal(
+    net.seen.some((r) => r.path.endsWith("/link")),
+    false,
+  );
+});
+
+test("external source creation includes its private project in one atomic request", async () => {
+  let body: unknown;
+  const picked: string[] = [];
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [] }),
+    "POST /api/knowledge": (input) => {
+      body = input;
+      return { ...source, name: "private-source" };
+    },
+  });
+  render(
+    <Integrations
+      canWrite={false}
+      canKnowledgeWrite
+      onSelect={(id) => {
+        if (id) picked.push(id);
+      }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Connect a System" }));
+  const form = screen.getByRole("form", { name: "Connect Source" });
+  fireEvent.change(within(form).getByLabelText("Source Name"), {
+    target: { value: "private-source" },
+  });
+  fireEvent.change(within(form).getByLabelText("Folder or Page ID"), {
+    target: { value: "folder-private" },
+  });
+  fireEvent.change(within(form).getByLabelText("Project"), {
+    target: { value: "Private Project" },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Create Source" }));
+  await waitFor(() => assert.deepEqual(picked, ["source:private-source"]));
+  assert.deepEqual(body, {
+    name: "private-source",
+    description: "",
+    configuration: {
+      provider: "drive",
+      origin: "folder-private",
+      project: "Private Project",
+      mode: "indexed",
+    },
+  });
+  assert.equal(
+    net.seen.some((request) => request.method === "PUT"),
+    false,
+  );
+});
+
+test("Access changes live mode explicitly and clears indexed resource pins", async () => {
+  let sent: unknown;
+  const configured = {
+    ...source,
+    lifecycle: { ...source.lifecycle!, resources: ["private-pin"], sync_every_seconds: 3600 },
+  };
+  net = stubFetch({
+    "PUT /api/knowledge/runbooks/configuration": (body) => {
+      sent = body;
+      return source;
+    },
+  });
+  render(<SourceAccessMode source={configured} canWrite onChanged={() => {}} />);
+  fireEvent.change(screen.getByLabelText("Access Mode"), { target: { value: "live" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save Access Mode" }));
+  await waitFor(() => assert.ok(sent));
+  assert.equal((sent as { mode: string }).mode, "live");
+  assert.equal(Object.hasOwn(sent as object, "resources"), false);
+  assert.equal((sent as { project: string }).project, "Launch");
+});

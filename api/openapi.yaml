@@ -2818,6 +2818,7 @@ paths:
               properties:
                 name: {type: string}
                 description: {type: string}
+                configuration: {$ref: "#/components/schemas/KnowledgeSourceConfig"}
       responses:
         "201":
           description: The source.
@@ -2827,6 +2828,7 @@ paths:
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -2955,6 +2957,91 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/resources:
+    get:
+      operationId: listKnowledgeResources
+      tags: [knowledge]
+      summary: listKnowledgeResources
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Actual provider inventory or durable source state.
+          content:
+            application/json:
+              schema: {type: object, required: [resources, complete], properties: {complete: {type: boolean}, resources: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/KnowledgeResource"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/snapshot:
+    post:
+      operationId: snapshotKnowledgeSource
+      tags: [knowledge]
+      summary: snapshotKnowledgeSource
+      x-permission: knowledge:write
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Actual provider inventory or durable source state.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeSource"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/replace:
+    post:
+      operationId: replaceKnowledgeSource
+      tags: [knowledge]
+      summary: replaceKnowledgeSource
+      x-permission: knowledge:write
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Actual provider inventory or durable source state.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeSource"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/sync-settings:
+    put:
+      operationId: setKnowledgeSyncSettings
+      tags: [knowledge]
+      summary: setKnowledgeSyncSettings
+      x-permission: knowledge:write
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [every_seconds, stop_after_seconds], properties: {every_seconds: {type: integer, minimum: 0, maximum: 604800}, stop_after_seconds: {type: integer, minimum: 60, maximum: 2592000}}}
+      responses:
+        "200":
+          description: Actual provider inventory or durable source state.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeSource"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "413": {$ref: "#/components/responses/TooLarge"}
   /api/knowledge/{name}/configuration:
     put:
       parameters:
@@ -9369,6 +9456,7 @@ components:
           required: [id, mode]
           properties:
             id: {type: string}
+            mode: {type: string, enum: [suggest, auto_link, off]}
             copied_from: {type: string}
     SourceLinkResource:
       type: object
@@ -9392,10 +9480,23 @@ components:
         channel: {type: string}
         mode: {type: string, enum: [suggest]}
         rules: {type: array, maxItems: 200, items: {type: string}}
+    KnowledgeResource:
+      type: object
+      required: [id, name, uri, kind, supported]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        uri: {type: string}
+        kind: {type: string}
+        supported: {type: boolean}
+        unsupported_reason: {type: string}
     KnowledgeSourceConfig:
       type: object
       required: [mode, provider]
       properties:
+        resources: {type: array, maxItems: 200, items: {type: string, minLength: 1, maxLength: 128}}
+        snapshot: {type: boolean, default: false}
+        sync_every_seconds: {type: integer, minimum: 0, maximum: 604800, default: 0}
         mode: {type: string, enum: [indexed, live, hybrid]}
         provider: {type: string}
         origin: {type: string, maxLength: 1024}
@@ -9406,6 +9507,9 @@ components:
       type: object
       required: [mode, provider, status, stop_after_seconds, attempts, connected_at]
       properties:
+        resources: {type: array, maxItems: 200, items: {type: string, minLength: 1, maxLength: 128}}
+        snapshot: {type: boolean, default: false}
+        sync_every_seconds: {type: integer, minimum: 0, maximum: 604800, default: 0}
         connected_at: {type: string, format: date-time}
         mode: {type: string, enum: [indexed, live, hybrid]}
         provider: {type: string}

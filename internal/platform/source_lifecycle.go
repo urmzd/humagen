@@ -44,24 +44,10 @@ func (p *Platform) ConfigureSource(who auth.Principal, name string, cfg knowledg
 	if readErr != nil {
 		return knowledge.Source{}, knowledge.ErrNotFound
 	}
-	if !who.Can(auth.KnowledgeWrite) {
-		return knowledge.Source{}, auth.ErrForbidden
-	}
-	if cfg.Provider != "manual" && cfg.Project == "" {
-		return knowledge.Source{}, fmt.Errorf("%w: choose a project, or ~ for the workspace", knowledge.ErrInvalid)
-	}
-	cfg.Project = projects.NameOf(cfg.Project)
-	if cfg.Project != "" && !p.Sees(who, Place{Project: cfg.Project}) {
-		return knowledge.Source{}, knowledge.ErrNotFound
-	}
-	if cfg.Provider != "manual" && p.sourceProvider(cfg.Provider) == nil {
-		return knowledge.Source{}, fmt.Errorf("%w: provider is not registered", knowledge.ErrInvalid)
-	}
-	if cfg.Owner == "" {
-		cfg.Owner = who.Subject
-	}
-	if cfg.Owner != who.Subject {
-		return knowledge.Source{}, fmt.Errorf("%w: connect a source as yourself", knowledge.ErrInvalid)
+	var configErr error
+	cfg, configErr = p.authorizeSourceConfig(who, cfg)
+	if configErr != nil {
+		return knowledge.Source{}, configErr
 	}
 	var expected *knowledge.SourceConfig
 	if current.Lifecycle != nil {
@@ -139,7 +125,13 @@ func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src kno
 }
 
 // SyncSource publishes a full snapshot only after every provider read succeeds.
-func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name string) (result knowledge.Source, err error) {
+func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name string) (knowledge.Source, error) {
+	return p.syncSource(ctx, who, name, false)
+}
+func (p *Platform) syncSource(ctx context.Context, who auth.Principal, name string, replace bool) (knowledge.Source, error) {
+	return p.syncSourceExpected(ctx, who, name, replace, nil)
+}
+func (p *Platform) syncSourceExpected(ctx context.Context, who auth.Principal, name string, replace bool, expected *knowledge.SourceConfig) (result knowledge.Source, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	src, readErr := p.SourceAs(who, name)
@@ -151,6 +143,15 @@ func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name stri
 	}
 	if src.Lifecycle == nil || src.Lifecycle.Mode == knowledge.Live {
 		return knowledge.Source{}, fmt.Errorf("%w: indexed or hybrid source required", knowledge.ErrInvalid)
+	}
+	if expected != nil && !src.Lifecycle.Equal(*expected) {
+		return knowledge.Source{}, knowledge.ErrExists
+	}
+	if src.Lifecycle.Snapshot && !replace {
+		return knowledge.Source{}, fmt.Errorf("%w: snapshot is frozen; choose Replace With New Version", knowledge.ErrInvalid)
+	}
+	if replace && !src.Lifecycle.Snapshot {
+		return knowledge.Source{}, fmt.Errorf("%w: replacement requires a frozen snapshot", knowledge.ErrInvalid)
 	}
 	provider := p.sourceProvider(src.Lifecycle.Provider)
 	if provider == nil {
@@ -175,7 +176,15 @@ func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name stri
 	secret, fetchErr := p.sourceSecret(ctx, who, src)
 	var docs []knowledge.ImportDocument
 	if fetchErr == nil {
-		docs, fetchErr = provider.Fetch(ctx, src.Lifecycle.Origin, secret)
+		if len(src.Lifecycle.Resources) > 0 {
+			if selected, ok := provider.(knowledge.ResourceProvider); ok {
+				docs, fetchErr = selected.FetchSelected(ctx, src.Lifecycle.Origin, src.Lifecycle.Resources, secret)
+			} else {
+				fetchErr = knowledge.ProviderError{Cause: knowledge.Unsupported}
+			}
+		} else {
+			docs, fetchErr = provider.Fetch(ctx, src.Lifecycle.Origin, secret)
+		}
 	}
 	if fetchErr != nil {
 		failed, err := p.Knowledge.FailSync(who.Tenant, name, id, knowledge.FailureCause(fetchErr), p.now())
@@ -410,4 +419,30 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 		hits[i].RefreshFailed = false
 	}
 	return hits, err
+}
+
+func (p *Platform) authorizeSourceConfig(who auth.Principal, cfg knowledge.SourceConfig) (knowledge.SourceConfig, error) {
+	if !who.Can(auth.KnowledgeWrite) {
+		return knowledge.SourceConfig{}, auth.ErrForbidden
+	}
+	if cfg.Provider != "manual" && cfg.Project == "" {
+		return knowledge.SourceConfig{}, fmt.Errorf("%w: choose a project, or ~ for the workspace", knowledge.ErrInvalid)
+	}
+	cfg.Project = projects.NameOf(cfg.Project)
+	if cfg.Project != "" && (!p.Projects.Tree(who.Tenant).Has(cfg.Project) || !p.Sees(who, Place{Project: cfg.Project})) {
+		return knowledge.SourceConfig{}, knowledge.ErrNotFound
+	}
+	if cfg.Provider != "manual" && p.sourceProvider(cfg.Provider) == nil {
+		return knowledge.SourceConfig{}, fmt.Errorf("%w: provider is not registered", knowledge.ErrInvalid)
+	}
+	if cfg.Owner == "" {
+		cfg.Owner = who.Subject
+	}
+	if cfg.SyncEverySeconds != 0 && !p.mayScheduleSource(who.Tenant, cfg.Owner, cfg.Project) {
+		return knowledge.SourceConfig{}, fmt.Errorf("%w: automatic refresh requires current subject-based policy grants and project membership", auth.ErrForbidden)
+	}
+	if cfg.Owner != who.Subject {
+		return knowledge.SourceConfig{}, fmt.Errorf("%w: connect a source as yourself", knowledge.ErrInvalid)
+	}
+	return cfg, nil
 }

@@ -278,6 +278,23 @@ func (s *Store) get(tenant, name string) (*source, error) {
 
 // Create adds an empty source.
 func (s *Store) Create(tenant, name, description, by string, at time.Time) (Source, error) {
+	return s.CreateWithConfig(tenant, name, description, by, at, nil)
+}
+
+// CreateWithConfig publishes a scoped source in one durable write. No unscoped
+// intermediate name appears in inventory when configuration validation fails.
+func (s *Store) CreateWithConfig(tenant, name, description, by string, at time.Time, cfg *SourceConfig) (Source, error) {
+	var configured *Lifecycle
+	if cfg != nil {
+		checked, err := normalizeSourceConfig(*cfg)
+		if err != nil {
+			return Source{}, err
+		}
+		if checked.Snapshot {
+			return Source{}, fmt.Errorf("%w: a new source has no last good copy to freeze", ErrInvalid)
+		}
+		configured = &Lifecycle{ConnectedAt: at, SourceConfig: checked, Status: Connected, Attempts: []Attempt{}}
+	}
 	if len(description) > 4096 {
 		return Source{}, fmt.Errorf("%w: source description is at most 4096 bytes", ErrInvalid)
 	}
@@ -296,6 +313,7 @@ func (s *Store) Create(tenant, name, description, by string, at time.Time) (Sour
 		return Source{}, fmt.Errorf("%w: source name history capacity reached", ErrInvalid)
 	}
 	src := &source{Source: Source{Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}, seqs: map[string]int64{}}
+	src.Lifecycle = configured
 	src.ContentVersion = s.versions[tenant][name]
 	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &src.Source}); err != nil {
 		return Source{}, fmt.Errorf("knowledge: write: %w", err)
@@ -305,7 +323,7 @@ func (s *Store) Create(tenant, name, description, by string, at time.Time) (Sour
 	}
 	s.tenants[tenant][name] = src
 	s.rememberVersion(tenant, name, src.ContentVersion)
-	return src.Source, nil
+	return cloneSource(src.Source), nil
 }
 
 // Delete removes a source and everything in it.
@@ -429,7 +447,7 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 			if src.Lifecycle != nil {
 				return Document{}, fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
 			}
-		} else if src.Lifecycle == nil || src.Lifecycle.SourceConfig != *expected || src.Lifecycle.Mode != Indexed || src.Lifecycle.Provider != "manual" {
+		} else if src.Lifecycle == nil || !src.Lifecycle.Equal(*expected) || src.Lifecycle.Mode != Indexed || src.Lifecycle.Provider != "manual" {
 			return Document{}, fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
 		}
 	}

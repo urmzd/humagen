@@ -973,6 +973,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, auth.ErrForbidden):
+		fail(w, http.StatusForbidden, detail(err, auth.ErrForbidden))
 	case errors.Is(err, sourcelinks.ErrInvalid):
 		fail(w, http.StatusBadRequest, "invalid source link rule")
 	case errors.Is(err, sourcelinks.ErrNotFound):

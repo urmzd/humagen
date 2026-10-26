@@ -52,12 +52,20 @@ const MaxImportBytes = 8 << 20
 // SourceConfig contains only public source metadata, never a credential.
 // Provider identifies a registered implementation; origin is its resource ID.
 type SourceConfig struct {
-	Mode             Mode   `json:"mode"`
-	Provider         string `json:"provider"`
-	Origin           string `json:"origin,omitempty"`
-	Owner            string `json:"owner,omitempty"`
-	Project          string `json:"project,omitempty"`
-	StopAfterSeconds int    `json:"stop_after_seconds"`
+	Resources        []string `json:"resources,omitempty"`
+	Snapshot         bool     `json:"snapshot,omitempty"`
+	SyncEverySeconds int      `json:"sync_every_seconds,omitempty"`
+	Mode             Mode     `json:"mode"`
+	Provider         string   `json:"provider"`
+	Origin           string   `json:"origin,omitempty"`
+	Owner            string   `json:"owner,omitempty"`
+	Project          string   `json:"project,omitempty"`
+	StopAfterSeconds int      `json:"stop_after_seconds"`
+}
+
+// Equal compares public metadata, including the exact selected resource set.
+func (c SourceConfig) Equal(other SourceConfig) bool {
+	return c.Mode == other.Mode && c.Provider == other.Provider && c.Origin == other.Origin && c.Owner == other.Owner && c.Project == other.Project && c.StopAfterSeconds == other.StopAfterSeconds && c.Snapshot == other.Snapshot && c.SyncEverySeconds == other.SyncEverySeconds && slices.Equal(c.Resources, other.Resources)
 }
 
 // Attempt is one bounded refresh. A pending attempt after restart is not success.
@@ -86,6 +94,7 @@ func cloneSource(src Source) Source {
 	}
 	if src.Lifecycle != nil {
 		lc := *src.Lifecycle
+		lc.Resources = slices.Clone(lc.Resources)
 		lc.Attempts = slices.Clone(lc.Attempts)
 		if lc.LastGoodAt != nil {
 			at := *lc.LastGoodAt
@@ -135,23 +144,10 @@ func (s *Store) ConfigureIfCurrent(tenant, name string, cfg SourceConfig, at tim
 	return s.configure(tenant, name, cfg, at, expected, true)
 }
 func (s *Store) configure(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig, guard bool) (Source, error) {
-	if cfg.Mode != "indexed" && cfg.Mode != "live" && cfg.Mode != "hybrid" {
-		return Source{}, fmt.Errorf("%w: source mode", ErrInvalid)
-	}
-	if !ValidName(cfg.Provider) || len(cfg.Origin) > 1024 || len(cfg.Owner) > 256 || len(cfg.Project) > 256 || strings.ContainsAny(cfg.Origin, "\r\n") {
-		return Source{}, fmt.Errorf("%w: source configuration", ErrInvalid)
-	}
-	if cfg.Provider == "manual" && cfg.Mode != Indexed {
-		return Source{}, fmt.Errorf("%w: manual sources are indexed", ErrInvalid)
-	}
-	if cfg.Provider != "manual" && !resourceID.MatchString(cfg.Origin) {
-		return Source{}, fmt.Errorf("%w: provider resource ID", ErrInvalid)
-	}
-	if cfg.StopAfterSeconds == 0 {
-		cfg.StopAfterSeconds = 86400
-	}
-	if cfg.StopAfterSeconds < 60 || cfg.StopAfterSeconds > 2592000 {
-		return Source{}, fmt.Errorf("%w: stop rule must be between a minute and 30 days", ErrInvalid)
+	var configErr error
+	cfg, configErr = normalizeSourceConfig(cfg)
+	if configErr != nil {
+		return Source{}, configErr
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -167,8 +163,15 @@ func (s *Store) configure(tenant, name string, cfg SourceConfig, at time.Time, e
 		return Source{}, fmt.Errorf("%w: refresh in progress", ErrExists)
 	}
 	// Changing origin/provider cannot retain a copy from a different authority.
-	if src.Documents > 0 && (cfg.Provider != lc.Provider || cfg.Origin != lc.Origin || cfg.Project != lc.Project || cfg.Owner != lc.Owner) {
+	if (src.Documents > 0 || lc.LastGoodAt != nil) && (cfg.Provider != lc.Provider || cfg.Origin != lc.Origin || cfg.Project != lc.Project || cfg.Owner != lc.Owner) {
 		return Source{}, fmt.Errorf("%w: create a new source for a different origin, owner or project", ErrInvalid)
+	}
+	if cfg.Snapshot && (cfg.Mode != Indexed || lc.LastGoodAt == nil || cfg.Provider == "manual") {
+		return Source{}, fmt.Errorf("%w: snapshot requires a successful external indexed copy", ErrInvalid)
+	}
+	if cfg.Snapshot {
+		lc.Status = Available
+		lc.Cause = ""
 	}
 	lc.SourceConfig = cfg
 	next := cloneSource(src.Source)
@@ -353,7 +356,7 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 // HardStale enforces a stop rule only for managed sources, including never-synced ones.
 func (src Source) HardStale(at time.Time) bool {
 	lc := src.Lifecycle
-	if lc == nil || lc.Provider == "manual" || lc.Mode == Live {
+	if lc == nil || lc.Provider == "manual" || lc.Mode == Live || lc.Snapshot {
 		return false
 	}
 	since := lc.ConnectedAt
@@ -395,5 +398,46 @@ func sameConfiguration(src Source, expected *SourceConfig) bool {
 	if expected == nil {
 		return src.Lifecycle == nil
 	}
-	return src.Lifecycle != nil && src.Lifecycle.SourceConfig == *expected
+	return src.Lifecycle != nil && src.Lifecycle.Equal(*expected)
+}
+
+func normalizeSourceConfig(cfg SourceConfig) (SourceConfig, error) {
+	cfg.Resources = slices.Clone(cfg.Resources)
+	slices.Sort(cfg.Resources)
+	if len(cfg.Resources) > MaxImportDocuments || len(slices.Compact(slices.Clone(cfg.Resources))) != len(cfg.Resources) {
+		return SourceConfig{}, fmt.Errorf("%w: resource selection", ErrInvalid)
+	}
+	for _, id := range cfg.Resources {
+		if !resourceID.MatchString(id) {
+			return SourceConfig{}, fmt.Errorf("%w: selected resource ID", ErrInvalid)
+		}
+	}
+	if cfg.Mode == Live && len(cfg.Resources) > 0 {
+		return SourceConfig{}, fmt.Errorf("%w: live mode does not import resource selections", ErrInvalid)
+	}
+	if cfg.SyncEverySeconds != 0 && (cfg.SyncEverySeconds < 60 || cfg.SyncEverySeconds > 604800) {
+		return SourceConfig{}, fmt.Errorf("%w: sync interval must be zero or between a minute and seven days", ErrInvalid)
+	}
+	if (cfg.Provider == "manual" || cfg.Mode == Live || cfg.Snapshot) && cfg.SyncEverySeconds != 0 {
+		return SourceConfig{}, fmt.Errorf("%w: scheduled refresh requires an unfrozen external copy", ErrInvalid)
+	}
+	if cfg.Mode != "indexed" && cfg.Mode != "live" && cfg.Mode != "hybrid" {
+		return SourceConfig{}, fmt.Errorf("%w: source mode", ErrInvalid)
+	}
+	if !ValidName(cfg.Provider) || len(cfg.Origin) > 1024 || len(cfg.Owner) > 256 || len(cfg.Project) > 256 || strings.ContainsAny(cfg.Origin, "\r\n") {
+		return SourceConfig{}, fmt.Errorf("%w: source configuration", ErrInvalid)
+	}
+	if cfg.Provider == "manual" && cfg.Mode != Indexed {
+		return SourceConfig{}, fmt.Errorf("%w: manual sources are indexed", ErrInvalid)
+	}
+	if cfg.Provider != "manual" && !resourceID.MatchString(cfg.Origin) {
+		return SourceConfig{}, fmt.Errorf("%w: provider resource ID", ErrInvalid)
+	}
+	if cfg.StopAfterSeconds == 0 {
+		cfg.StopAfterSeconds = 86400
+	}
+	if cfg.StopAfterSeconds < 60 || cfg.StopAfterSeconds > 2592000 {
+		return SourceConfig{}, fmt.Errorf("%w: stop rule must be between a minute and 30 days", ErrInvalid)
+	}
+	return cfg, nil
 }

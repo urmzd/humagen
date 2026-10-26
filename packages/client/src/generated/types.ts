@@ -2381,7 +2381,7 @@ export interface SourceLinkRuleInput {
   mode?: "suggest" | "auto_link" | "off";
 }
 
-export type SourceLinkRule = SourceLinkRuleInput & { id: string; copied_from?: string };
+export type SourceLinkRule = SourceLinkRuleInput & { id: string; mode: "suggest" | "auto_link" | "off"; copied_from?: string };
 
 export interface SourceLinkResource {
   provider: "github" | "slack" | "drive" | "notion";
@@ -2397,7 +2397,19 @@ export interface SourceLinkMatch {
   rules: string[];
 }
 
+export interface KnowledgeResource {
+  id: string;
+  name: string;
+  uri: string;
+  kind: string;
+  supported: boolean;
+  unsupported_reason?: string;
+}
+
 export interface KnowledgeSourceConfig {
+  resources?: string[];
+  snapshot?: boolean;
+  sync_every_seconds?: number;
   mode: "indexed" | "live" | "hybrid";
   provider: string;
   origin?: string;
@@ -2407,6 +2419,9 @@ export interface KnowledgeSourceConfig {
 }
 
 export interface KnowledgeLifecycle {
+  resources?: string[];
+  snapshot?: boolean;
+  sync_every_seconds?: number;
   connected_at: string;
   mode: "indexed" | "live" | "hybrid";
   provider: string;
@@ -3323,6 +3338,7 @@ export interface ListKnowledgeSourcesResponse {
 export interface CreateKnowledgeSourceBody {
   name: string;
   description?: string;
+  configuration?: KnowledgeSourceConfig;
 }
 
 export interface KnowledgeSourceDependenciesResponse {
@@ -3332,6 +3348,16 @@ export interface KnowledgeSourceDependenciesResponse {
 
 export interface PreviewSourceLinkRulesResponse {
   matches: SourceLinkMatch[];
+}
+
+export interface ListKnowledgeResourcesResponse {
+  complete: boolean;
+  resources: KnowledgeResource[];
+}
+
+export interface SetKnowledgeSyncSettingsBody {
+  every_seconds: number;
+  stop_after_seconds: number;
 }
 
 export interface ConnectKnowledgeSourceBody {

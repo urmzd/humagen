@@ -61,6 +61,7 @@ import type {
   ListEvalSuitesResponse,
   ListInboxResponse,
   ListKnowledgeDocumentsResponse,
+  ListKnowledgeResourcesResponse,
   ListKnowledgeSourcesResponse,
   ListMentionsResponse,
   ListPendingMemoryResponse,
@@ -121,6 +122,7 @@ import type {
   SearchKnowledgeResponse,
   SetAgentHomeBody,
   SetKnowledgeDocumentExcludedBody,
+  SetKnowledgeSyncSettingsBody,
   Settings,
   SnoozeInboxMessageBody,
   SourceLinkResource,
@@ -2858,6 +2860,78 @@ in a project takes a member of that project (403).
   async previewSourceLinkRulesRaw(body: SourceLinkResource, options?: RequestOptions): Promise<ApiResponse<PreviewSourceLinkRulesResponse>> {
     const path = "/api/source-link-rules/preview";
     return this.rawRequest<PreviewSourceLinkRulesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** listKnowledgeResources */
+  async listKnowledgeResources(name: string, options?: RequestOptions): Promise<ListKnowledgeResourcesResponse> {
+    let path = "/api/knowledge/{name}/resources";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ListKnowledgeResourcesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listKnowledgeResourcesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ListKnowledgeResourcesResponse>> {
+    let path = "/api/knowledge/{name}/resources";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ListKnowledgeResourcesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** snapshotKnowledgeSource */
+  async snapshotKnowledgeSource(name: string, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/snapshot";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  async snapshotKnowledgeSourceRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/snapshot";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** replaceKnowledgeSource */
+  async replaceKnowledgeSource(name: string, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/replace";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  async replaceKnowledgeSourceRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/replace";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** setKnowledgeSyncSettings */
+  async setKnowledgeSyncSettings(name: string, body: SetKnowledgeSyncSettingsBody, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/sync-settings";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setKnowledgeSyncSettingsRaw(name: string, body: SetKnowledgeSyncSettingsBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/sync-settings";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,
