@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/mcptools"
 	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/credentials"
@@ -341,12 +343,28 @@ func (p *Platform) settleSourceAttention(tenant string, src knowledge.Source) {
 // SourceDependencies is a bounded projection of visible declarations, never a
 // count of hidden projects or agents. Readers need each directory permission.
 type SourceDependencies struct {
-	Agents   []string `json:"agents"`
-	Projects []string `json:"projects"`
+	Agents        []string           `json:"agents"`
+	Projects      []string           `json:"projects"`
+	Conversations []SourceDependency `json:"conversations"`
+	Deliverables  []SourceDependency `json:"deliverables"`
+	Unsupported   []string           `json:"unsupported"`
+	Skills        []SourceDependency `json:"skills"`
+	Memory        []SourceDependency `json:"memory"`
+}
+
+// SourceDependency records an observed relationship, not a text-inferred claim
+// that an artifact's content derives from a source.
+type SourceDependency struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Relation string `json:"relation"`
+	Path     string `json:"path,omitempty"`
+	// OriginRun is a private adapter binding, never part of the API.
+	OriginRun string `json:"-"`
 }
 
 func (p *Platform) SourceDependenciesAs(ctx context.Context, who auth.Principal, name string) (SourceDependencies, error) {
-	out := SourceDependencies{Agents: []string{}, Projects: []string{}}
+	out := SourceDependencies{Agents: []string{}, Projects: []string{}, Conversations: []SourceDependency{}, Deliverables: []SourceDependency{}, Unsupported: []string{"skills", "memory"}, Skills: []SourceDependency{}, Memory: []SourceDependency{}}
 	if !p.SourceVisible(who, name) {
 		return out, knowledge.ErrNotFound
 	}
@@ -389,6 +407,50 @@ func (p *Platform) SourceDependenciesAs(ctx context.Context, who auth.Principal,
 			}
 			page.Token = next
 		}
+	}
+	visibleRuns := []string{}
+	if who.Can(auth.RunsRead) {
+		runIDs := p.SourceEvidence.RunReferences(who.Tenant, name, 200, func(id string, proof knowledge.CitationEvidence) bool {
+			run, err := p.Runs.Get(who.Tenant, id)
+			return err == nil && seer.Run(run) && p.citationEvidenceVisible(who, proof)
+		})
+		visibleRuns = p.ordinarySourceDependencyRuns(who, name)
+		proven := map[string]bool{}
+		conversations := map[string]bool{}
+		for _, id := range runIDs {
+			proven[id] = true
+			run, _ := p.Runs.Get(who.Tenant, id)
+			thread := run.Thread
+			if thread == "" {
+				thread = run.ID
+			}
+			if conversations[thread] || len(out.Conversations) >= 50 {
+				continue
+			}
+			title := strings.Join(strings.Fields(p.ShownRunAs(who, run).Text), " ")
+			runes := []rune(title)
+			if len(runes) > 120 {
+				title = string(runes[:120])
+			}
+			if th, err := p.Threads.Get(who.Tenant, thread); err == nil && th.Title != "" {
+				title = th.Title
+			}
+			conversations[thread] = true
+			out.Conversations = append(out.Conversations, SourceDependency{ID: thread, Title: title, Relation: "retrieved_in"})
+		}
+		if who.Can(auth.ArtifactsRead) {
+			rows, _, err := p.Artifacts.Page(who.Tenant, artifacts.Query{Limit: 50, Keep: func(a artifacts.Artifact) bool { return proven[a.Run] && seer.Artifact(a) }})
+			if err != nil {
+				return out, err
+			}
+			for _, artifact := range rows {
+				out.Deliverables = append(out.Deliverables, SourceDependency{ID: artifact.ID, Title: artifact.Title, Relation: "published_by_retrieving_run"})
+			}
+		}
+	}
+
+	if err := p.extraSourceDependencies(ctx, who, visibleRuns, &out); err != nil {
+		return SourceDependencies{}, err
 	}
 	return out, nil
 }

@@ -67,6 +67,7 @@ export function libraryScreens(call: Call): Screen[] {
         );
         await page.getByLabel("Name", { exact: true }).waitFor();
         await page.getByRole("button", { name: "Test Skill", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Used By", exact: true }).waitFor();
       },
     },
     {

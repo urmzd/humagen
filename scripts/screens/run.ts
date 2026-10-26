@@ -389,6 +389,19 @@ function screens(ids: Ids, call: Call): Screen[] {
     },
     { name: "source-available", path: "/context/launch-context" },
     {
+      name: "source-used-by",
+      path: "/context/launch-context",
+      act: async (page) => {
+        await page
+          .getByRole("heading", { name: "What relies on this source", exact: true })
+          .scrollIntoViewIfNeeded();
+        await page
+          .getByRole("link", { name: /^Conversations:/ })
+          .first()
+          .waitFor();
+      },
+    },
+    {
       name: "source-attachments",
       path: "/context/launch-context",
       act: async (page) => {
@@ -941,7 +954,11 @@ async function seedChats(
   // This goes through native retained-document retrieval and the offline model.
   // The capture is refused unless the API returns durable retrieval evidence.
   const requestedScreens = process.env.SCREENS_ONLY?.split(",");
-  if (!requestedScreens || requestedScreens.includes("source-citation-indexed")) {
+  if (
+    !requestedScreens ||
+    requestedScreens.includes("source-citation-indexed") ||
+    requestedScreens.includes("source-used-by")
+  ) {
     const grounded = await call<Posted>("POST", `/api/threads/${mine.thread.id}/messages`, {
       text: "@helper When does packaging arrive, and what are the November press embargo and retail availability dates?",
     });

@@ -313,6 +313,27 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /api/library/skills/{id}/versions/{version}/agents:
+    get:
+      operationId: listSkillAgents
+      tags: [projects]
+      summary: List readable agents bound to this exact published skill revision
+      x-permission: projects:read
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, maxLength: 160}}
+        - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        '200':
+          description: Only readable current agent bindings, with no hidden total.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SkillUsage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/ServerError'}
   /api/library/skills/{id}/versions/{version}/test:
     post:
       operationId: testLibrarySkill
@@ -3530,15 +3551,10 @@ paths:
         - {name: name, in: path, required: true, schema: {type: string}}
       responses:
         "200":
-          description: Visible declarations, at most 200 agents and projects. Hidden dependencies are not counted.
+          description: Visible declarations and recorded retrieval relationships. At most 200 agents/projects and 50 conversations/deliverables; hidden objects are never counted. Deliverables identify the publishing run's retrieval, not an inferred content dependency.
           content:
             application/json:
-              schema:
-                type: object
-                required: [agents, projects]
-                properties:
-                  agents: {type: array, maxItems: 200, items: {type: string}}
-                  projects: {type: array, maxItems: 200, items: {type: string}}
+              schema: {$ref: '#/components/schemas/SourceDependencies'}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -6547,6 +6563,21 @@ components:
         description: {type: string}
         enabled: {type: boolean}
         category: {type: string}
+    SkillAgentUse:
+      type: object
+      additionalProperties: false
+      required: [agent, agent_revision, needs_review]
+      properties:
+        agent: {type: string}
+        agent_revision: {type: integer, minimum: 1}
+        needs_review: {type: boolean}
+    SkillUsage:
+      type: object
+      additionalProperties: false
+      required: [agents, more]
+      properties:
+        agents: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/SkillAgentUse'}}
+        more: {type: boolean}
     AgentSkillRef:
       type: object
       additionalProperties: false
@@ -6611,7 +6642,8 @@ components:
     AgentControl:
       type: object
       properties:
-        state: {type: string, enum: [ready, working, waiting_on_people, watching, paused, failed]}
+        state: {type: string, enum: [ready, working, waiting_on_people, watching, paused, failed, needs_review]}
+        needs_skill_review: {type: boolean}
         effective_paused: {type: boolean}
         pause_reason: {type: string, enum: [workspace, agent, setup]}
         effective_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800}
@@ -7541,6 +7573,29 @@ components:
         reason: {type: string}
         comment: {type: string}
         updated_at: {type: string, format: date-time}
+    SourceDependency:
+      type: object
+      required: [id, title, relation]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        relation: {type: string, enum: [retrieved_in, published_by_retrieving_run, recorded_origin_run]}
+        path: {type: string, maxLength: 2048, pattern: "^/[^/]"}
+    SourceDependencies:
+      type: object
+      required: [agents, projects, conversations, deliverables, skills, memory, unsupported]
+      properties:
+        agents: {type: array, maxItems: 200, items: {type: string}}
+        projects: {type: array, maxItems: 200, items: {type: string}}
+        conversations: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/SourceDependency'}}
+        deliverables: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/SourceDependency'}}
+        skills: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/SourceDependency'}}
+        memory: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/SourceDependency'}}
+        unsupported:
+          description: This layer has no authoritative source relationships for these object types. No text matching is used to invent them.
+          type: array
+          maxItems: 2
+          items: {type: string, enum: [skills, memory]}
     Run:
       description: One run and its place in the call tree and in its conversation.
       type: object

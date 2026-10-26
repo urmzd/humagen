@@ -301,7 +301,24 @@ export const defaultCopy = {
     dependents: "What relies on this source",
     agents: "Agents",
     projects: "Projects",
-    noDependents: "No visible declarations in this directory window",
+    noDependents: "No visible declarations or recorded uses in this window",
+    conversations: "Conversations",
+    untitledConversation: "Untitled Conversation",
+    deliverables: "Deliverables",
+    skills: "Skills",
+    memory: "Memory",
+    relations: {
+      retrieved_in: "This conversation retrieved this source.",
+      recorded_origin_run: "Recorded origin: a run that retrieved this source.",
+      published_by_retrieving_run:
+        "Published by a run that retrieved this source. Content dependency is not inferred.",
+    },
+    unsupported: {
+      skills:
+        "Skill-to-source relationships are not recorded; instruction text is not treated as a dependency.",
+      memory:
+        "Memory-to-source relationships are not recorded by this source index; note text is not treated as a dependency.",
+    },
     dependencyFailed: "Source dependencies could not be loaded.",
     providers: { manual: "Manual", drive: "Google Drive", notion: "Notion" },
     grounding:
@@ -628,6 +645,8 @@ export const defaultCopy = {
     context: "Context",
     people: "People & Access",
     deliverables: "Deliverables",
+    skills: "Skills",
+    memory: "Memory",
     project: "Project",
     projectAction: "Project and sharing",
     private: "Private",
@@ -735,6 +754,8 @@ export const defaultCopy = {
       "Console updates arrive immediately or in hourly digests. Quiet hours delay delivery.",
   },
   agentSkillDefaults: {
+    review: "Review Default Skills",
+    needsReview: "Default skills need review before another turn can start.",
     title: "Default skills",
     help: "Choose up to four published revisions. Every turn uses these exact instructions and their tool restrictions.",
     scope: "Skill library scope",
@@ -755,6 +776,12 @@ export const defaultCopy = {
     version: (version: number) => `Version ${version}`,
   },
   skillsLibrary: {
+    usedBy: "Used By",
+    noUses: "No readable agent default bindings use this revision.",
+    loadingUses: "Loading agent bindings",
+    usesFailed: "Agent bindings could not be loaded.",
+    bindingNeedsReview: "Agent revision needs skill review",
+    moreUses: "More readable agent bindings match this revision. Open Agents to review them.",
     versionUnavailable: "This skill revision is not available.",
     title: "Skills",
     description:
@@ -784,6 +811,9 @@ export const defaultCopy = {
     request: "Test Request",
     testHint: "Tests use the exact selected version. Every permitted action requires approval.",
     publish: "Publish Version",
+    publishNeedsTest: "Complete a readable test for this exact revision before publishing.",
+    testPending:
+      "A test for this revision is still waiting or running. Open its conversation to review progress.",
     promotion: "Promote to Another Scope",
     promote: "Create Promotion Draft",
     promotionHint:

@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useEffect, useState } from "react";
 
-import { api, type Source, type SourceConfiguration } from "./api.ts";
+import { api, type Source, type SourceConfiguration, type SourceDependencies } from "./api.ts";
 import { ago, button, Chip, card, field, Label, Problem } from "./ui.tsx";
 
 const words = defaultCopy.sourceLifecycle;
@@ -44,7 +44,7 @@ export function SourceLifecycle({
   const [config, setConfig] = useState<SourceConfiguration>(() => sourceConfiguration(source));
   const [reference, setReference] = useState("");
   const [dependencies, setDependencies] = useState<
-    { agents: string[]; projects: string[] } | null | undefined
+    SourceDependencies | null | undefined
   >(undefined);
   useEffect(() => {
     let active = true;
@@ -233,7 +233,7 @@ export function SourceLifecycle({
         {dependencies === undefined ? (
           <output className="text-aui-xs text-aui-muted">{words.working}</output>
         ) : dependencies ? (
-          dependencies.agents.length + dependencies.projects.length === 0 ? (
+          dependencies.agents.length + dependencies.projects.length + (dependencies.conversations?.length ?? 0) + (dependencies.deliverables?.length ?? 0) + (dependencies.skills?.length ?? 0) + (dependencies.memory?.length ?? 0) === 0 ? (
             <p className="text-aui-xs text-aui-muted">{words.noDependents}</p>
           ) : (
             <ul className="flex flex-wrap gap-3">
@@ -257,11 +257,32 @@ export function SourceLifecycle({
                   </a>
                 </li>
               ))}
+              {(dependencies.conversations ?? []).map((item) => (
+                <li key={`conversation:${item.id}`} className="min-w-0 max-w-full">
+                  <a className="inline-flex min-h-8 max-w-full items-center break-words px-1 text-aui-sm underline" href={`/conversations/${encodeURIComponent(item.id)}`}>{words.conversations}: {item.title || words.untitledConversation}</a>
+                  <p className="text-aui-xs text-aui-muted">{words.relations.retrieved_in}</p>
+                </li>
+              ))}
+              {(dependencies.deliverables ?? []).map((item) => (
+                <li key={`deliverable:${item.id}`} className="min-w-0 max-w-full">
+                  <a className="inline-flex min-h-8 max-w-full items-center break-words px-1 text-aui-sm underline" href={`/artifacts/${encodeURIComponent(item.id)}`}>{words.deliverables}: {item.title}</a>
+                  <p className="text-aui-xs text-aui-muted">{words.relations.published_by_retrieving_run}</p>
+                </li>
+              ))}
+              {(["skills", "memory"] as const).flatMap((kind) => (dependencies[kind] ?? []).map((item) => item.path && (
+                <li key={`${kind}:${item.id}`} className="min-w-0 max-w-full">
+                  <a className="inline-flex min-h-8 max-w-full items-center break-words px-1 text-aui-sm underline" href={item.path}>{words[kind]}: {item.title}</a>
+                  <p className="text-aui-xs text-aui-muted">{words.relations.recorded_origin_run}</p>
+                </li>
+              )))}
             </ul>
           )
         ) : (
           <p className="text-aui-xs text-aui-muted">{words.dependencyFailed}</p>
         )}
+        {dependencies && (dependencies.unsupported ?? []).map((kind) => (
+          <p key={kind} className="text-aui-xs text-aui-muted">{words.unsupported[kind]}</p>
+        ))}
       </div>
       <details>
         <summary className="min-h-8 cursor-pointer py-2 text-aui-sm">{words.attempts}</summary>
