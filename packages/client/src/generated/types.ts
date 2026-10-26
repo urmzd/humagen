@@ -63,6 +63,8 @@ export interface Me {
   principal: Principal;
   /** Everything the caller may do. Null, not an empty list, for a caller with no permission at all. */
   permissions: Permission[] | null;
+  /** Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements. */
+  welcome_announcement?: string;
   /** The signed-in human's private project address, absent for machines. */
   personal_project?: string;
   /** The caller is an admin in a workspace nobody has set up yet. */
@@ -689,7 +691,16 @@ export interface ThreadInput {
   surface?: SurfaceRef;
 }
 
+export interface HelpSuggestion {
+  project: string;
+  title: string;
+  agent: string;
+  reason: string;
+}
+
 export interface PlacementPreview {
+  /** Raw private-source history cannot move; publish only a person-reviewed summary copy. */
+  summary_required?: boolean;
   thread: string;
   project: string;
   channel: string;
@@ -748,6 +759,8 @@ owner of its project. The selected agents and default must be able
 to answer where the thread is after the change.
  */
 export interface ThreadUpdate {
+  /** Explicit consent to publish completed private work, from its current placement preview. */
+  placement_token?: string;
   version: number;
   title?: string;
   visibility?: ThreadVisibility;
@@ -3060,6 +3073,13 @@ export interface ListThreadsResponse {
   next: string | null;
 }
 
+export interface PublishThreadSummaryBody {
+  project: string;
+  channel?: string;
+  summary: string;
+  placement_token: string;
+}
+
 export interface ListSchedulesResponse {
   schedules: ScheduleView[];
 }
@@ -3152,6 +3172,10 @@ export interface UpdatePreferencesBody {
   onboarded?: boolean;
   pinned?: string[];
   muted?: string[];
+}
+
+export interface FindHelpResponse {
+  suggestions: HelpSuggestion[];
 }
 
 export interface ListProjectsResponse {

@@ -1587,9 +1587,20 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatal("governance-only private read was not in the audit")
 	}
 
+	c.call(ana, "GET", "/api/find-help", "/api/find-help?q=renewal", "", http.StatusOK)
+	c.call(ana, "GET", "/api/find-help", "/api/find-help", "", http.StatusBadRequest)
 	placementRoute := "/api/threads/{id}/placement"
 	draftID := obj(draft.field("thread"))["id"].(string)
-	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement?project=Field&channel=renewals", "", http.StatusOK)
+	previewed := c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement?project=Field&channel=renewals", "", http.StatusOK)
+	publicationRoute := "/api/threads/{id}/publication"
+	publicationPath := "/api/threads/" + draftID + "/publication"
+	summaryPublished := c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"Reviewed summary for the project","placement_token":%q}`, previewed.str("token")), http.StatusCreated)
+	if summaryPublished.str("id") == draftID || strings.Contains(string(summaryPublished.raw), draftID) {
+		t.Fatal("summary publication copied private source linkage")
+	}
+	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"reviewed","placement_token":"stale"}`, http.StatusConflict)
+	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"","placement_token":"stale"}`, http.StatusConflict)
+	c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"","placement_token":%q}`, previewed.str("token")), http.StatusBadRequest)
 	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement", "", http.StatusBadRequest)
 	activeDraft := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"preview only"}`, http.StatusCreated)
 	activeID := obj(activeDraft.field("thread"))["id"].(string)
@@ -1808,7 +1819,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
 		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
-		"/api/threads/{id}/share": {"id": tid},
+		"/api/threads/{id}/share":       {"id": tid},
+		"/api/threads/{id}/publication": {"id": draftID},
 	}
 	valid := map[string]string{
 		"/api/runs/{id}/feedback": `{"rating":"up"}`,

@@ -100,6 +100,7 @@ type MessageInput struct {
 // ThreadUpdate changes a thread's title, visibility, default and routing,
 // as a whole.
 type ThreadUpdate struct {
+	PlacementToken string `json:"placement_token,omitempty"`
 	// Version is the one read. A conversation with no record reads 0.
 	Version    int                `json:"version"`
 	Title      string             `json:"title"`
@@ -1536,6 +1537,8 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	mu := p.moves.of(who.Tenant, id)
 	mu.Lock()
 	defer mu.Unlock()
+	p.admission.Lock()
+	defer p.admission.Unlock()
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
@@ -1590,6 +1593,21 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 			return threads.Thread{}, ErrStaysInChannel
 		}
 	}
+	if th.Visibility == threads.Private && in.Visibility == threads.Shared {
+		if turns, err := p.Runs.Conversation(who.Tenant, id); err == nil && len(turns) > 0 {
+			preview, err := p.previewPlacement(ctx, who, th, project, channel)
+			if err != nil {
+				return threads.Thread{}, err
+			}
+			if preview.SummaryRequired {
+				return threads.Thread{}, fmt.Errorf("%w: private sources or operational contracts require a reviewed summary copy", threads.ErrInvalid)
+			}
+			if in.PlacementToken == "" || in.PlacementToken != preview.Token {
+				return threads.Thread{}, fmt.Errorf("%w: review the current publication preview", threads.ErrVersion)
+			}
+		}
+	}
+
 	if err := p.checkDefault(ctx, who.Tenant, project, in.Default, seer.Agent); err != nil {
 		return threads.Thread{}, err
 	}
@@ -1635,6 +1653,11 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 // directory. People are named by handle, as a thread shows them, and kept by
 // subject.
 func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id string, in ParticipantsUpdate) (threads.Thread, error) {
+	mu := p.moves.of(who.Tenant, id)
+	mu.Lock()
+	defer mu.Unlock()
+	p.admission.Lock()
+	defer p.admission.Unlock()
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
@@ -1670,6 +1693,9 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, a.Name)
 			}
 			a.Name = subject
+			if subject != who.Subject && !takesPart(th, subject) && th.Visibility == threads.Private && p.threadNeedsSummary(ctx, who.Tenant, th.ID, th.Project) {
+				return threads.Thread{}, fmt.Errorf("%w: private sources require a reviewed summary before adding people", threads.ErrInvalid)
+			}
 			if pr, ok := p.Projects.Tree(who.Tenant).Get(th.Project); ok && pr.PersonalOwner != "" && pr.PersonalOwner != subject {
 				return threads.Thread{}, fmt.Errorf("%w: publish a conversation to a shared project before adding people", threads.ErrInvalid)
 			}
@@ -1837,11 +1863,14 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 		}
 		add = append(add, threads.Participant{Kind: threads.Person, Name: subject})
 	}
-	if moves {
+	if moves || th.Visibility == threads.Private {
 		if turns, err := p.Runs.Conversation(who.Tenant, id); err == nil && len(turns) > 0 {
 			preview, err := p.previewPlacement(ctx, who, th, project, channel)
 			if err != nil {
 				return Shared{}, err
+			}
+			if preview.SummaryRequired {
+				return Shared{}, fmt.Errorf("%w: private sources or operational contracts require a reviewed summary copy before publication", threads.ErrInvalid)
 			}
 			if in.PlacementToken == "" || in.PlacementToken != preview.Token {
 				return Shared{}, fmt.Errorf("%w: review and confirm the current publication preview", threads.ErrVersion)
@@ -1869,7 +1898,7 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
 	var attempt *AuditAttempt
 	if moves {
-		change := audit.Change{Action: "publish", Resource: "conversation", ID: th.ID, Scope: "project", Project: th.Project, Thread: th.ID, Before: map[string]string{"project": th.Project, "channel": th.Channel, "visibility": string(th.Visibility)}, After: map[string]string{"project": project, "channel": channel, "visibility": "shared"}}
+		change := audit.Change{Route: "POST /api/threads/{id}/share", Rule: "runs:write; participating owner; destination membership", Action: "publish", Resource: "conversation", ID: th.ID, Scope: "project", Project: th.Project, Thread: th.ID, Before: map[string]string{"project": th.Project, "channel": th.Channel, "visibility": string(th.Visibility)}, After: map[string]string{"project": project, "channel": channel, "visibility": "shared"}}
 		if source, ok := tree.Get(th.Project); ok && source.PersonalOwner != "" {
 			change.Scope, change.Subject = "personal", source.PersonalOwner
 		}
