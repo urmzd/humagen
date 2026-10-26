@@ -233,6 +233,9 @@ func (p *Platform) MayPost(person auth.Principal, at Place) error {
 // unasked: only when the poster could keep it themselves.
 func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) (keeps bool, err error) {
 	project := projects.NameOf(at.Project)
+	if pr, ok := p.Projects.Tree(person.Tenant).Get(project); ok && pr.PersonalOwner != "" && (person.Kind != auth.User || pr.PersonalOwner != person.Subject) {
+		return false, ErrForbidden
+	}
 	switch {
 	case project == projects.Root && need == projects.Member:
 	case !p.HasProject(person.Tenant, project):
@@ -1423,6 +1426,9 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 // ("role:<name>") only in a shared thread, since a private one is read by
 // its participants and a role is none.
 func (p *Platform) mayBeTold(tenant string, tree *projects.Tree, th threads.Thread, who string) bool {
+	if pr, ok := tree.Get(th.Project); ok && pr.PersonalOwner != "" {
+		return who == pr.PersonalOwner
+	}
 	if strings.HasPrefix(who, projects.RolePrefix) {
 		return th.Visibility != threads.Private
 	}
@@ -1669,6 +1675,9 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, a.Name)
 			}
 			a.Name = subject
+			if pr, ok := p.Projects.Tree(who.Tenant).Get(th.Project); ok && pr.PersonalOwner != "" && pr.PersonalOwner != subject {
+				return threads.Thread{}, fmt.Errorf("%w: publish a conversation to a shared project before adding people", threads.ErrInvalid)
+			}
 		}
 		add[i] = a
 	}

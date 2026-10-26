@@ -92,7 +92,11 @@ grant runner to subject "dee"`)
 
 	// Ana: everyone's projects, as a member, and her private thread counted.
 	hers := byName(c.call(app, "GET", list, as("U0ANA", ""), "", http.StatusOK))
-	if got := sorted(hers); !slices.Equal(got, []string{"Field", "Renewals"}) {
+	self := want(t, f, ana, "GET", "/api/me", "", http.StatusOK)
+	personal := strings.TrimPrefix(self["personal_project"].(string), "~")
+	expected := []string{"Field", "Renewals", personal}
+	slices.Sort(expected)
+	if got := sorted(hers); !slices.Equal(got, expected) {
 		t.Fatalf("ana's projects = %v", got)
 	}
 	field := hers["Field"]

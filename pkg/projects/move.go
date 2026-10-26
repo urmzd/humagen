@@ -147,6 +147,9 @@ func (s *Store) Move(tenantName, name string, version int, parent string, w Writ
 	if !ok {
 		return Project{}, fmt.Errorf("%w: %q", ErrNotFound, name)
 	}
+	if cur.PersonalOwner != "" {
+		return Project{}, fmt.Errorf("%w: personal projects cannot move", ErrInvalid)
+	}
 	if cur.Kind == Company && !w.Govern {
 		return Project{}, fmt.Errorf("%w: company projects are moved with projects:govern", ErrForbidden)
 	}

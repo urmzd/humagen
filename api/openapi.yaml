@@ -4891,6 +4891,9 @@ components:
           description: Everything the caller may do. Null, not an empty list, for a caller with no permission at all.
           type: [array, "null"]
           items: {$ref: "#/components/schemas/Permission"}
+        personal_project:
+          description: The signed-in human's private project address, absent for machines.
+          type: string
         first_admin:
           description: The caller is an admin in a workspace nobody has set up yet.
           type: boolean
@@ -6411,6 +6414,9 @@ components:
       type: object
       required: [name, kind, experts, members, agents, version, created_at, updated_at]
       properties:
+        personal_owner:
+          description: Immutable human subject for a server-provisioned personal project.
+          type: string
         name: {type: string, maxLength: 63}
         title:
           description: What people see. Shown instead of the name when set.

@@ -145,6 +145,11 @@ func (s *Seer) Place(at Place) bool {
 }
 
 func (s *Seer) placeDirect(at Place) bool {
+	at = s.p.CurrentPlace(s.who.Tenant, at)
+	if pr, ok := s.tree.Get(at.Project); ok && pr.PersonalOwner != "" && s.who.Kind == auth.Machine {
+		return false
+	}
+
 	if s.govern {
 		ordinary := *s
 		ordinary.govern = false

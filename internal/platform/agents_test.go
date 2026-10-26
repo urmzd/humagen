@@ -357,8 +357,8 @@ func TestHomingAnAgentIsRefusedWhileSomethingElsewhereUsesIt(t *testing.T) {
 			t.Fatalf("the refusal %q does not name %s", err, want)
 		}
 	}
-	if _, homed := p.ProjectTree(tenant).Home("helper"); homed {
-		t.Fatal("a refused home was kept")
+	if home, homed := p.ProjectTree(tenant).Home("helper"); !homed || home != projects.Root {
+		t.Fatal("a refused move changed the Company home")
 	}
 	// Everything that uses it is in Field's subtree, so nothing is lost.
 	if err := p.SetAgentHome(t.Context(), tenant, "helper", "Field", ada); err != nil {
@@ -444,7 +444,7 @@ func TestAProjectsAgentsSayWhereEachComesFrom(t *testing.T) {
 	if g := places["globex-helper"]; g.Home != "Globex" || len(g.EnabledIn) != 0 {
 		t.Fatalf("globex-helper's place = %+v", g)
 	}
-	if l := places["lead"]; l.Home != "" || len(l.EnabledIn) != 2 || l.EnabledIn[0] != "~" || l.EnabledIn[1] != "Field" {
+	if l := places["lead"]; l.Home != "~" || len(l.EnabledIn) != 2 || l.EnabledIn[0] != "~" || l.EnabledIn[1] != "Field" {
 		t.Fatalf("lead's place = %+v", l)
 	}
 }
