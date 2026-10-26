@@ -269,3 +269,51 @@ func TestAgentSetupReadOmitsSourcesWhoseAudienceChanged(t *testing.T) {
 		}
 	})
 }
+
+type observedSetupRegistry struct {
+	registry.Store
+	after func(agentspec.Revision)
+}
+
+func (s *observedSetupRegistry) Create(ctx context.Context, tenant string, spec agentspec.AgentSpec, by string) (agentspec.Revision, error) {
+	rev, err := s.Store.Create(ctx, tenant, spec, by)
+	if err == nil && s.after != nil {
+		s.after(rev)
+	}
+	return rev, err
+}
+func TestAgentSetupReservesPrivateHomeBeforeRegistryVisibility(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		store := &observedSetupRegistry{Store: registry.NewMemory()}
+		p, err := platform.New(platform.Config{Workspace: t.TempDir(), Backends: platform.Backends{State: open(t), Agents: store}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = p.Close() }()
+		personal, err := p.PersonalProject(admin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		observed := false
+		store.after = func(rev agentspec.Revision) {
+			if rev.Spec.Name != "private-draft" {
+				return
+			}
+			observed = true
+			foreign := auth.Principal{Tenant: tenant, Subject: "ben", Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
+			if p.Seer(foreign).Agent(rev.Spec.Name) {
+				t.Fatal("private draft was briefly readable in Company after registry creation")
+			}
+			if home, ok := p.Projects.Tree(tenant).Home(rev.Spec.Name); !ok || home != personal.Name {
+				t.Fatalf("audience before visibility=%q,%v", home, ok)
+			}
+		}
+		plan := setupPlan("private-draft")
+		plan.Project = personal.Name
+		plan.Spec.SystemPrompt = "Private internal planning instructions"
+		saved, err := p.CreateAgentSetup(t.Context(), admin, plan)
+		if err != nil || saved.Phase != "configured" || !observed {
+			t.Fatalf("private setup=%+v,%v,observed=%v", saved, err, observed)
+		}
+	})
+}

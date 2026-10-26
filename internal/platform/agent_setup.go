@@ -302,6 +302,22 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 		err = step("created", func() error {
 			p.admission.Lock()
 			defer p.admission.Unlock()
+
+			existing, getErr := p.Agents.Get(ctx, who.Tenant, name, 0)
+			if getErr == nil && (existing.CreatedBy != who.Subject || !reflect.DeepEqual(existing.Spec, record.Plan.Spec)) {
+				return registry.ErrConflict
+			}
+			if getErr != nil && !errors.Is(getErr, registry.ErrNotFound) {
+				return getErr
+			}
+			if home, ok := p.Projects.Tree(who.Tenant).Home(name); ok && home != record.Plan.Project {
+				return operations.ErrConflict
+			}
+			// Reserve the intended audience before the registry exposes any prompt or
+			// tool configuration. Company migration preserves this explicit home.
+			if err := p.Projects.SetHome(who.Tenant, name, record.Plan.Project, WriterOf(who), p.now(), nil); err != nil {
+				return err
+			}
 			current := p.Operations.Control(who.Tenant, name)
 			if !current.Paused {
 				if _, err := p.Operations.SetControl(who.Tenant, name, operations.Control{Paused: true}, current.Version, who.Subject, p.now()); err != nil {
@@ -417,8 +433,16 @@ func (g setupGate) AllowRequest(req runtime.Request) bool {
 	if req.Revision.Rev != record.Revision || req.Revision.Hash != record.RevisionHash {
 		return false
 	}
+
 	run, err := g.p.Runs.Get(req.Tenant, req.RunID)
-	return err == nil && run.Actor.User == record.Owner && !run.Actor.Bot
+	if err == nil {
+		return run.Actor.User == record.Owner && !run.Actor.Bot
+	}
+	if transient, ok := g.p.admitting.Load(req.RunID); ok {
+		admission := transient.(admitted)
+		return admission.tenant == req.Tenant && admission.actor.User == record.Owner && !admission.actor.Bot
+	}
+	return false
 }
 func (p *Platform) TestAgentSetup(ctx context.Context, who auth.Principal, name, text string) (AgentSetup, error) {
 	record, err := p.AgentSetup(who, name)
