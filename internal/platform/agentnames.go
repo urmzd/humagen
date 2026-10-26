@@ -759,6 +759,11 @@ const maxMerges = 3
 // expectedRev 0, which takes whatever is latest, the spec is merged again
 // with the newer one.
 func (p *Platform) ReviseBy(ctx context.Context, who auth.Principal, spec agentspec.AgentSpec, expectedRev int) (agentspec.Revision, error) {
+	unlock, err := p.lockSetupRevision(who.Tenant, spec.Name)
+	if err != nil {
+		return agentspec.Revision{}, err
+	}
+	defer unlock()
 	for merges := 0; ; merges++ {
 		old, err := p.Agents.Get(ctx, who.Tenant, spec.Name, 0)
 		if err != nil {

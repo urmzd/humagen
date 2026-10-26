@@ -229,6 +229,37 @@ kept.
   workspace_areas?: string[];
 }
 
+export interface AgentSetupPlan {
+  spec: AgentSpec;
+  project: string;
+  manager?: string;
+  stop_rules?: string;
+  rules?: Record<string, "allow" | "ask" | "never">;
+  /** Optional daily micro-USD cap */
+  daily_spend?: number;
+  max_lease?: number;
+  assignment?: AgentSetupPlanAssignment;
+}
+
+export interface AgentSetupTest {
+  text: string;
+}
+
+export interface AgentSetup {
+  name: string;
+  owner: string;
+  plan: AgentSetupPlan;
+  phase: "reserved" | "created" | "home" | "controls" | "policy" | "budget" | "assignment" | "configured" | "activating" | "ready";
+  version: number;
+  revision?: number;
+  revision_hash?: string;
+  problem?: string;
+  test_run?: string;
+  assignment_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** An agent's definition. */
 export interface AgentSpec {
   name: string;
@@ -3166,6 +3197,14 @@ export interface RefusalPolicy {
   scope: PolicyScope;
   version: number;
   period: PolicyPeriod;
+}
+
+export interface AgentSetupPlanAssignment {
+  goal: string;
+  done_when: string;
+  cron?: string;
+  trigger?: "manual" | "cron" | "source_change";
+  source?: string;
 }
 
 export interface PreparedCallInputMessagesItem {

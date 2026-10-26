@@ -8,6 +8,9 @@ import type {
   AgentControlInput,
   AgentHome,
   AgentNetwork,
+  AgentSetup,
+  AgentSetupPlan,
+  AgentSetupTest,
   AgentSpec,
   Alert,
   AlertRule,
@@ -776,6 +779,97 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<GetProjectAgentHuesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Save an inactive agent setup */
+  async createAgentSetup(body: AgentSetupPlan, options?: RequestOptions): Promise<AgentSetup> {
+    const path = "/api/agent-setups";
+    return this.request<AgentSetup>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createAgentSetupRaw(body: AgentSetupPlan, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    const path = "/api/agent-setups";
+    return this.rawRequest<AgentSetup>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read your saved agent setup */
+  async getAgentSetup(name: string, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentSetupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Resume incomplete setup without duplicating the agent */
+  async resumeAgentSetup(name: string, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}/resume";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("POST", path, {
+      ...options,
+    });
+  }
+
+  async resumeAgentSetupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}/resume";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Test the exact inactive revision through the real runtime */
+  async testAgentSetup(name: string, body: AgentSetupTest, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}/test";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async testAgentSetupRaw(name: string, body: AgentSetupTest, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}/test";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Activate a reviewed setup after its completed dry run */
+  async activateAgentSetup(name: string, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}/activate";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("POST", path, {
+      ...options,
+    });
+  }
+
+  async activateAgentSetupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}/activate";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("POST", path, {
       ...options,
     });
   }

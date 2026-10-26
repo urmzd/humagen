@@ -1821,6 +1821,52 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":2,"accepted":true}`, http.StatusBadRequest)
 	c.call(globex, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":1,"accepted":true}`, http.StatusNotFound)
 
+	setupPlanJSON := `{"spec":{"name":"reviewed-setup","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help with reviewed company work."},"project":"Launch"}`
+	setupReply := c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", setupPlanJSON, http.StatusOK)
+	if setupReply.str("phase") != "configured" {
+		t.Fatalf("setup phase=%s", setupReply.raw)
+	}
+	setupPath := "/api/agent-setups/reviewed-setup"
+	c.call(auditAdmin, "GET", "/api/agent-setups/{name}", setupPath, "", http.StatusOK)
+	c.call(globex, "GET", "/api/agent-setups/{name}", setupPath, "", http.StatusNotFound)
+	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/resume", setupPath+"/resume", "", http.StatusOK)
+	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", setupPath+"/activate", "", http.StatusBadRequest)
+	testedSetup := c.call(auditAdmin, "POST", "/api/agent-setups/{name}/test", setupPath+"/test", `{"text":"Answer a setup check."}`, http.StatusOK)
+	// This contract fixture advances the already server-reserved test record;
+	// the platform integration test executes a real adapter and native approval.
+	setupRunID := testedSetup.str("test_run")
+	if _, err := f.p.Runs.Get("acme", setupRunID); err != nil {
+		if err := f.p.Runs.Record(setupRunID, envelope.Tag{ID: "contract-setup", Tenant: "acme", Agent: "reviewed-setup", Origin: runs.OriginAPI, Text: "Answer a setup check.", Actor: envelope.Actor{User: setupReply.str("owner")}, At: time.Now()}, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.p.Runs.End(setupRunID, runs.Completed, "Setup contract response", "", time.Now())
+	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", setupPath+"/activate", "", http.StatusOK)
+	c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", strings.Replace(setupPlanJSON, "Help with reviewed company work.", "Another definition.", 1), http.StatusConflict)
+	c.call(auditAdmin, "PUT", "/api/agents/{name}/home", "/api/agents/reviewed-setup/home", `{"project":"~"}`, http.StatusOK)
+
+	c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", strings.Replace(setupPlanJSON, "Launch", "no-such-project", 1), http.StatusNotFound)
+	changedPlan := strings.Replace(strings.Replace(setupPlanJSON, "reviewed-setup", "changed-setup", 1), "Launch", "~", 1)
+	c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", changedPlan, http.StatusOK)
+	changedTest := c.call(auditAdmin, "POST", "/api/agent-setups/{name}/test", "/api/agent-setups/changed-setup/test", `{"text":"Check this draft."}`, http.StatusOK)
+	changedID := changedTest.str("test_run")
+	if _, err := f.p.Runs.Get("acme", changedID); err != nil {
+		if err := f.p.Runs.Record(changedID, envelope.Tag{ID: "contract-changed-setup", Tenant: "acme", Agent: "changed-setup", At: time.Now()}, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.p.Runs.End(changedID, runs.Completed, "Checked", "", time.Now())
+	changedRev, err := f.p.Agents.Get(t.Context(), "acme", "changed-setup", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedSpec := changedRev.Spec
+	changedSpec.Description = "Changed after testing"
+	if _, err := f.p.Agents.Revise(t.Context(), "acme", changedSpec, changedRev.Rev, setupReply.str("owner")); err != nil {
+		t.Fatal(err)
+	}
+	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", "/api/agent-setups/changed-setup/activate", "", http.StatusConflict)
+
 	c.call(acme, "GET", "/api/model-providers", "/api/model-providers", "", http.StatusOK)
 	// The busy workspace, read end to end, then taken apart.
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=24h&bucket=1h", "", http.StatusOK)
@@ -1947,6 +1993,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/publication": {"id": draftID},
 	}
 	valid := map[string]string{
+		"/api/agent-setups/{name}/test":         `{"text":"Setup check"}`,
 		"/api/artifacts/{id}/promote-memory":    `{"version":1,"accepted":true}`,
 		"/api/artifacts/{id}/promote-knowledge": `{"version":1,"source":"accepted-native","accepted":true}`,
 		"/api/runs/{id}/feedback":               `{"rating":"up"}`,

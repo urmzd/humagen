@@ -221,6 +221,7 @@ type Platform struct {
 	// CallPolicies is what each agent says about being called.
 	operationContexts      sync.Map
 	agentTestGates         sync.Map
+	setups                 *agentSetups
 	assignmentSources      sync.Map
 	assignmentSourceCursor sync.Map
 	CallPolicies           *callpolicy.Store
