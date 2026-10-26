@@ -1,0 +1,890 @@
+{
+  "baseline": "edc4f00",
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "title": "Complete requirement traceability and native verification",
+      "source": "docs/design/humagen-control-plane/gap-analysis.md",
+      "paths": [
+        "docs/design/implementation/plan.md"
+      ],
+      "owner": "root",
+      "plan_item": "1.1",
+      "task": "T001",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-002",
+      "title": "Badge outlines contain labels at narrow widths and enlarged text",
+      "source": "user supplied badge screenshot",
+      "paths": [
+        "apps/web/src/ui.tsx",
+        "apps/web/src/Agents.tsx",
+        "scripts/screens/run.ts"
+      ],
+      "owner": "root",
+      "plan_item": "1.2",
+      "task": "T002",
+      "status": "verified",
+      "evidence": [
+        "PR #75",
+        "scripts/screens/run.ts: agent-status-badges, phone and desktop at enlarged text; both labels failed before the fix",
+        "make screens: 162 captures passed"
+      ]
+    },
+    {
+      "id": "REQ-003",
+      "title": "Copy and Reply share one consistent accessible action row",
+      "source": "user supplied message-actions screenshot",
+      "paths": [
+        "packages/web/src/AgentMessage.tsx",
+        "apps/web/src/Room.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "1.3",
+      "task": "T003",
+      "status": "verified",
+      "evidence": [
+        "PR #75",
+        "apps/web/src/room.dom.test.tsx: human and agent replies keep Copy and Reply in the same footer",
+        "Local existing conversation: Reply prepared linked draft without submitting"
+      ]
+    },
+    {
+      "id": "REQ-004",
+      "title": "Prototype controls become real authenticated state transitions",
+      "source": "docs/design/humagen-workspace/README.md#try-the-interaction-loop",
+      "paths": [
+        "api/openapi.yaml",
+        "internal/httpapi/server.go"
+      ],
+      "owner": "all",
+      "plan_item": "1.4",
+      "task": "T004",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-005",
+      "title": "Preserve agent identity, stable colors and compatibility history",
+      "source": "AGENTS.md; design.md#built-in-handles-and-slack-conversation-navigation",
+      "paths": [
+        "internal/platform/builtin.go",
+        "pkg/agentcolors/store.go"
+      ],
+      "owner": "root",
+      "plan_item": "1.5",
+      "task": "T005",
+      "status": "verified",
+      "evidence": [
+        "pkg/agentcolors/store_test.go: stable persisted assignment, concurrent uniqueness, kept builtin rename hue",
+        "scripts/screens/run.ts: humagen-builtins phone/desktop",
+        "Full Go race suite with Postgres/S3: 39 passed packages, zero skipped tests"
+      ]
+    },
+    {
+      "id": "REQ-006",
+      "title": "Durable bounded safe audit attempts underpin domain mutations",
+      "source": "docs/design/humagen-control-plane/spec.md#control-plane-operations",
+      "paths": [
+        "pkg/audit",
+        "internal/platform/audit.go"
+      ],
+      "owner": "library_personal",
+      "plan_item": "1.6",
+      "task": "T006",
+      "status": "verified",
+      "evidence": [
+        "pkg/audit/audit_test.go: restart, failed writes, visibility filtering, retention, snapshot sanitization",
+        "internal/platform/audit_test.go: principal attribution and inbox retention",
+        "go test -race ./... with Postgres and S3 fixtures passed"
+      ]
+    },
+    {
+      "id": "REQ-007",
+      "title": "Company is the root and every agent has an explicit home",
+      "source": "docs/company-workspace.md#one-company-project",
+      "paths": [
+        "pkg/projects/homes.go",
+        "internal/platform/agents.go"
+      ],
+      "owner": "company_placement",
+      "plan_item": "2.1",
+      "task": "T007",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-008",
+      "title": "Idempotent durable personal project provisioning for human members",
+      "source": "docs/company-workspace.md#a-personal-project-for-each-person",
+      "paths": [
+        "pkg/projects",
+        "internal/platform/personal_projects.go"
+      ],
+      "owner": "company_placement",
+      "plan_item": "2.2",
+      "task": "T008",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-009",
+      "title": "Exact-owner personal read/write confinement, governance recorded",
+      "source": "docs/company-workspace.md#a-personal-project-for-each-person",
+      "paths": [
+        "internal/platform/sees.go",
+        "pkg/projects/roles.go"
+      ],
+      "owner": "company_placement",
+      "plan_item": "2.3",
+      "task": "T009",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-010",
+      "title": "Versioned current placement separate from immutable accounting",
+      "source": "docs/company-workspace.md#moving-work-into-a-public-project",
+      "paths": [
+        "pkg/threads",
+        "pkg/runs",
+        "internal/platform/threads.go"
+      ],
+      "owner": "company_placement",
+      "plan_item": "2.4",
+      "task": "T010",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-011",
+      "title": "Publish completed private work with audience preview and race safety",
+      "source": "docs/company-workspace.md#moving-work-into-a-public-project",
+      "paths": [
+        "apps/web/src/ConversationShell.tsx",
+        "internal/platform/threads.go"
+      ],
+      "owner": "company_placement",
+      "plan_item": "2.5",
+      "task": "T011",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-012",
+      "title": "One retained announcement banner above the greeting",
+      "source": "docs/company-workspace.md#an-announcement-above-the-greeting",
+      "paths": [
+        "internal/platform/announce.go",
+        "apps/web/src/Home.tsx"
+      ],
+      "owner": "company_placement",
+      "plan_item": "2.6",
+      "task": "T012",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-013",
+      "title": "Permission-filtered Find Help and safe retirement of new SME routing",
+      "source": "docs/company-workspace.md#find-the-project-and-agent-for-the-work",
+      "paths": [
+        "pkg/pick",
+        "internal/platform/threads.go",
+        "apps/web/src/Chat.tsx"
+      ],
+      "owner": "company_placement",
+      "plan_item": "2.7",
+      "task": "T013",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-014",
+      "title": "Durable assignment goal, owner, completion criteria and outcomes",
+      "source": "docs/conversation-workspace.md#follow-through",
+      "paths": [
+        "pkg/operations",
+        "internal/platform/assignments.go",
+        "apps/web/src/Assignments.tsx"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.1",
+      "task": "T014",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-015",
+      "title": "Standing work and triggers reuse scheduler, Invoke and pkg/call",
+      "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
+      "paths": [
+        "pkg/schedules",
+        "pkg/call",
+        "internal/platform/assignments.go"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.2",
+      "task": "T015",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-016",
+      "title": "Inherited tighten-only Allow, Ask, Never action policy",
+      "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
+      "paths": [
+        "pkg/operations",
+        "internal/platform/action_policy.go"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.3",
+      "task": "T016",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-017",
+      "title": "Named managers, escalation, reminders, budgets and stop rules",
+      "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
+      "paths": [
+        "pkg/operations",
+        "internal/platform/hooks.go"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.4",
+      "task": "T017",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-018",
+      "title": "Typed handoff contracts, deadlines, states, cycles and hop limits",
+      "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
+      "paths": [
+        "pkg/operations",
+        "pkg/call",
+        "internal/platform/handoffs.go"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.5",
+      "task": "T018",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-019",
+      "title": "Pause agent, pause all and enforce control at every admission path",
+      "source": "docs/design/humagen-control-plane/gap-analysis.md#not-built",
+      "paths": [
+        "pkg/operations",
+        "internal/platform/agents.go",
+        "apps/web/src/AgentControls.tsx"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.6",
+      "task": "T019",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-020",
+      "title": "Real console Stop control follows terminal ledger state",
+      "source": "docs/design/humagen-control-plane/gap-analysis.md#not-built",
+      "paths": [
+        "apps/web/src/Room.tsx",
+        "packages/web/src/AgentMessage.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "3.7",
+      "task": "T020",
+      "status": "verified",
+      "evidence": [
+        "PR #75",
+        "apps/web/src/room.dom.test.tsx: Stop Turn reports a request and waits for the ledger",
+        "pnpm test:server: in-flight stop acknowledged then ledger confirmed"
+      ]
+    },
+    {
+      "id": "REQ-021",
+      "title": "Bounded Agent Network volumes, waiting time and blocked work",
+      "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
+      "paths": [
+        "internal/platform/agent_network.go",
+        "apps/web/src/AgentNetwork.tsx"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.8",
+      "task": "T021",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-022",
+      "title": "Needs you deduplicates one cause and records its owner",
+      "source": "docs/design/humagen-control-plane/spec.md#control-plane-operations",
+      "paths": [
+        "pkg/inbox",
+        "internal/platform/inbox.go"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.9",
+      "task": "T022",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-023",
+      "title": "Roster exposes working, waiting, watching, paused, failed and last run",
+      "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
+      "paths": [
+        "apps/web/src/Agents.tsx",
+        "apps/web/src/AgentControls.tsx"
+      ],
+      "owner": "agent_operations",
+      "plan_item": "3.10",
+      "task": "T023",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-024",
+      "title": "Source origin, owner, access mode and freshness are real and visible",
+      "source": "docs/design/humagen-control-plane/spec.md#context-provenance-and-the-sync-lifecycle",
+      "paths": [
+        "pkg/knowledge",
+        "apps/web/src/Context.tsx"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.1",
+      "task": "T024",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-025",
+      "title": "Durable source lifecycle, bounded attempts and last good copy",
+      "source": "docs/design/humagen-control-plane/spec.md#context-provenance-and-the-sync-lifecycle",
+      "paths": [
+        "pkg/knowledge",
+        "internal/platform/source_lifecycle.go"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.2",
+      "task": "T025",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-026",
+      "title": "Stale failures raise one cause and pause dependent work by stop rule",
+      "source": "docs/design/humagen-control-plane/spec.md#context-provenance-and-the-sync-lifecycle",
+      "paths": [
+        "internal/platform/source_lifecycle.go",
+        "pkg/inbox",
+        "pkg/operations"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.3",
+      "task": "T026",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-027",
+      "title": "Indexed, live and hybrid honor the reader on every request",
+      "source": "docs/design/humagen-control-plane/spec.md#context-access-modes",
+      "paths": [
+        "pkg/knowledge",
+        "internal/platform/knowledge.go",
+        "pkg/credentials"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.4",
+      "task": "T027",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-028",
+      "title": "Source dependency graph answers Used by without hidden names/counts",
+      "source": "docs/design/humagen-control-plane/spec.md#system-foundations-and-phasing",
+      "paths": [
+        "pkg/knowledge",
+        "internal/platform/dependencies.go"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.5",
+      "task": "T028",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-029",
+      "title": "GitHub resources link to projects with explicit people mapping",
+      "source": "docs/design/humagen-control-plane/spec.md#integrations",
+      "paths": [
+        "pkg/clients",
+        "internal/platform/surfaces.go",
+        "apps/web/src/Clients.tsx"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.6",
+      "task": "T029",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-030",
+      "title": "Slack binding directions and guest approval boundaries",
+      "source": "docs/design/humagen-control-plane/spec.md#integrations",
+      "paths": [
+        "pkg/clients",
+        "pkg/projects/channels.go",
+        "apps/web/src/Clients.tsx"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.7",
+      "task": "T030",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-031",
+      "title": "Drive and Notion provider paths use real API boundaries and references",
+      "source": "docs/design/humagen-control-plane/spec.md#integrations",
+      "paths": [
+        "pkg/knowledge",
+        "internal/platform/source_providers.go"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.8",
+      "task": "T031",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-032",
+      "title": "Connect Resources Links Access Events Actions report real state",
+      "source": "docs/design/humagen-control-plane/spec.md#integrations",
+      "paths": [
+        "apps/web/src/Clients.tsx",
+        "apps/web/src/ClientConnect.tsx"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.9",
+      "task": "T032",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-033",
+      "title": "Suggest, auto-link and off rules are bounded, previewable and auditable",
+      "source": "docs/design/humagen-control-plane/spec.md#integrations",
+      "paths": [
+        "pkg/clients",
+        "internal/platform/link_rules.go"
+      ],
+      "owner": "source_lifecycle",
+      "plan_item": "4.10",
+      "task": "T033",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-034",
+      "title": "Versioned scoped skill drafts, tests, publish and promotion",
+      "source": "docs/design/humagen-control-plane/spec.md#skills-and-memory",
+      "paths": [
+        "pkg/skills",
+        "internal/platform/skills.go",
+        "apps/web/src/Skills.tsx"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.1",
+      "task": "T034",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-035",
+      "title": "Skill and new-agent dry runs force actions to Ask",
+      "source": "docs/design/humagen-control-plane/spec.md#core-flows",
+      "paths": [
+        "pkg/skills",
+        "internal/platform/action_policy.go"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.2",
+      "task": "T035",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-036",
+      "title": "Memory scope, kind, provenance, review, expiry, usage and audited forget",
+      "source": "docs/design/humagen-control-plane/spec.md#skills-and-memory",
+      "paths": [
+        "pkg/memory",
+        "apps/web/src/Memory.tsx"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.3",
+      "task": "T036",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-037",
+      "title": "Personal memory stays out of projects without explicit permission",
+      "source": "docs/design/humagen-control-plane/spec.md#skills-and-memory",
+      "paths": [
+        "pkg/memory",
+        "internal/platform/knowledge.go"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.4",
+      "task": "T037",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-038",
+      "title": "Personal profile and briefing style are persisted and used",
+      "source": "docs/design/humagen-control-plane/spec.md#user-level-configuration-you",
+      "paths": [
+        "pkg/prefs",
+        "apps/web/src/Settings.tsx"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.5",
+      "task": "T038",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-039",
+      "title": "Notification kind, digest and quiet-hour settings drive dispatch",
+      "source": "docs/design/humagen-control-plane/spec.md#user-level-configuration-you",
+      "paths": [
+        "pkg/prefs",
+        "internal/platform/notifications.go"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.6",
+      "task": "T039",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-040",
+      "title": "Personal agents expose ownership, pause and project promotion",
+      "source": "docs/design/humagen-control-plane/spec.md#user-level-configuration-you",
+      "paths": [
+        "pkg/prefs",
+        "internal/platform/agents.go",
+        "apps/web/src/Skills.tsx"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.7",
+      "task": "T040",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-041",
+      "title": "Connected accounts expose actual scopes, use and disconnect",
+      "source": "docs/design/humagen-control-plane/spec.md#user-level-configuration-you",
+      "paths": [
+        "pkg/credentials",
+        "apps/web/src/Connections.tsx"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.8",
+      "task": "T041",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-042",
+      "title": "Cross-domain audit view is bounded, confined, durable and retained",
+      "source": "docs/design/humagen-control-plane/spec.md#control-plane-operations",
+      "paths": [
+        "pkg/audit",
+        "internal/httpapi/audit.go",
+        "apps/web/src/Audit.tsx"
+      ],
+      "owner": "library_personal",
+      "plan_item": "5.9",
+      "task": "T042",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-043",
+      "title": "Saved fork from message preserves bounded read-only history and lineage",
+      "source": "docs/design/humagen-control-plane/spec.md#forking",
+      "paths": [
+        "pkg/threads",
+        "internal/platform/forks.go",
+        "apps/web/src/ForkConversation.tsx"
+      ],
+      "owner": "conversation_actions",
+      "plan_item": "6.1",
+      "task": "T043",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-044",
+      "title": "Bring back result posts a reviewed result and never executes pending actions",
+      "source": "docs/design/humagen-control-plane/spec.md#forking",
+      "paths": [
+        "internal/platform/forks.go",
+        "apps/web/src/ForkConversation.tsx"
+      ],
+      "owner": "conversation_actions",
+      "plan_item": "6.2",
+      "task": "T044",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-045",
+      "title": "Project fork copies chosen structure/config safely, rules disabled",
+      "source": "docs/design/humagen-control-plane/spec.md#forking",
+      "paths": [
+        "pkg/projects",
+        "internal/platform/project_forks.go"
+      ],
+      "owner": "conversation_actions",
+      "plan_item": "6.3",
+      "task": "T045",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-046",
+      "title": "People shows actual audience, roles, removal and safe invitations",
+      "source": "docs/design/humagen-control-plane/gap-analysis.md#partial",
+      "paths": [
+        "apps/web/src/ConversationShell.tsx",
+        "internal/platform/threads.go"
+      ],
+      "owner": "conversation_actions",
+      "plan_item": "6.4",
+      "task": "T046",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-047",
+      "title": "Quick switcher returns bounded readable destinations only",
+      "source": "docs/design/humagen-control-plane/spec.md#hierarchy-initiatives-projects-and-sub-projects",
+      "paths": [
+        "internal/httpapi/discovery.go",
+        "apps/web/src/QuickSwitcher.tsx"
+      ],
+      "owner": "conversation_actions",
+      "plan_item": "6.5",
+      "task": "T047",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-048",
+      "title": "Initiatives roll up status, risks, decisions, usage and needs safely",
+      "source": "docs/design/humagen-control-plane/spec.md#hierarchy-initiatives-projects-and-sub-projects",
+      "paths": [
+        "pkg/projects",
+        "internal/platform/projects.go",
+        "apps/web/src/Projects.tsx"
+      ],
+      "owner": "conversation_actions",
+      "plan_item": "6.6",
+      "task": "T048",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-049",
+      "title": "Create project blank, template, fork or under initiative",
+      "source": "docs/design/humagen-control-plane/spec.md#hierarchy-initiatives-projects-and-sub-projects",
+      "paths": [
+        "apps/web/src/Projects.tsx",
+        "internal/platform/project_forks.go"
+      ],
+      "owner": "conversation_actions",
+      "plan_item": "6.7",
+      "task": "T049",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-050",
+      "title": "Outcomes lead with recommendation, decisions, deliverables and next action",
+      "source": "docs/design/humagen-control-plane/spec.md#summary-and-principles",
+      "paths": [
+        "packages/core/src/types.ts",
+        "packages/components/src/components.tsx",
+        "packages/web/src/AgentMessage.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.1",
+      "task": "T050",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-051",
+      "title": "Redirect records revised intent separately from approval",
+      "source": "docs/design/humagen-workspace/index.html",
+      "paths": [
+        "internal/platform/outcomes.go",
+        "packages/components/src/components.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.2",
+      "task": "T051",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-052",
+      "title": "Completed work collapses; blocked work exposes result/input/output on demand",
+      "source": "docs/conversation-workspace.md#five-interactions",
+      "paths": [
+        "packages/web/src/AgentMessage.tsx",
+        "packages/components/src/components.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.3",
+      "task": "T052",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-053",
+      "title": "Versioned native previews keep real bytes, provenance and parser bounds",
+      "source": "docs/conversation-workspace.md#versioned-deliverables",
+      "paths": [
+        "apps/web/src/Deliverables.tsx",
+        "apps/web/src/artifactPreview.ts"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.4",
+      "task": "T053",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-054",
+      "title": "Native deliverables are real editable files, not prototype exports",
+      "source": "docs/design/humagen-workspace/README.md#try-the-interaction-loop",
+      "paths": [
+        "pkg/artifacts",
+        "internal/platform/sandbox.go",
+        "apps/web/src/Deliverables.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.5",
+      "task": "T054",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-055",
+      "title": "Revision requests retain immutable version/slide context and unsent draft",
+      "source": "docs/conversation-workspace.md#versioned-deliverables",
+      "paths": [
+        "apps/web/src/Deliverables.tsx",
+        "apps/web/src/Room.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.6",
+      "task": "T055",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-056",
+      "title": "Accepted outputs promote to knowledge/reviewed memory with audience checks",
+      "source": "docs/conversation-workspace.md#follow-through",
+      "paths": [
+        "internal/platform/artifacts.go",
+        "pkg/knowledge",
+        "pkg/memory"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.7",
+      "task": "T056",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-057",
+      "title": "Agent and human timestamps use recorded instants, hover/focus/tap and timezone",
+      "source": "design.md#des-004-date-and-time-on-hover-or-focus",
+      "paths": [
+        "packages/web/src/AgentMessage.tsx",
+        "packages/adapter/src/fold.ts",
+        "apps/web/src/Room.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.8",
+      "task": "T057",
+      "status": "verified",
+      "evidence": [
+        "PR #75",
+        "apps/web/src/room.dom.test.tsx: recorded instant and accessible timestamp",
+        "make screens: conversation-message-time phone and desktop passed"
+      ]
+    },
+    {
+      "id": "REQ-058",
+      "title": "Composer is compact, mobile safe, textual and permission aware",
+      "source": "docs/design/humagen-control-plane/gap-analysis.md#partial",
+      "paths": [
+        "apps/web/src/Chat.tsx",
+        "apps/web/src/Room.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.9",
+      "task": "T058",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-059",
+      "title": "Projects Library Operations You navigation exposes working routed pages",
+      "source": "docs/design/humagen-control-plane/spec.md#mental-model-and-information-architecture",
+      "paths": [
+        "apps/web/src/Sidebar.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/route.ts"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.10",
+      "task": "T059",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-060",
+      "title": "Phone/tablet/desktop, dark mode, keyboard and touch complete all journeys",
+      "source": "docs/design/humagen-workspace/README.md",
+      "paths": [
+        "scripts/screens/run.ts",
+        "apps/web/src/styles.css"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.11",
+      "task": "T060",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-061",
+      "title": "Saved-turn citations retain provenance and truthful indexed/live labels",
+      "source": "docs/design/humagen-control-plane/gap-analysis.md#partial",
+      "paths": [
+        "pkg/runs",
+        "packages/adapter/src/run.ts",
+        "packages/web/src/AgentMessage.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.12",
+      "task": "T061",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-062",
+      "title": "Presentation, notes, versions and downloads preserve immutable selection",
+      "source": "docs/design/humagen-workspace/README.md#try-the-interaction-loop",
+      "paths": [
+        "apps/web/src/Deliverables.tsx",
+        "packages/web/src/ArtifactPreview.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.13",
+      "task": "T062",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-063",
+      "title": "Identity, scope chips and punctuation follow repo accessibility/copy rules",
+      "source": "AGENTS.md; docs/design/humagen-control-plane/spec.md#objects-scopes-and-identity",
+      "paths": [
+        "packages/components/src/copy.ts",
+        "packages/core/src/types.ts",
+        "apps/web/src/ui.tsx"
+      ],
+      "owner": "workspace_outcomes",
+      "plan_item": "7.14",
+      "task": "T063",
+      "status": "pending_native_verification"
+    },
+    {
+      "id": "REQ-064",
+      "title": "Every shipped capability has automated and honest live validation evidence",
+      "source": "design.md#implementation-and-review-evidence",
+      "paths": [
+        "docs/design/implementation/plan.md",
+        "docs/architecture.md",
+        "scripts/screens/run.ts"
+      ],
+      "owner": "root",
+      "plan_item": "7.15",
+      "task": "T064",
+      "status": "pending_native_verification"
+    }
+  ]
+}
