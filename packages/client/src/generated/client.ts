@@ -8,6 +8,8 @@ import type {
   AgentControlInput,
   AgentHome,
   AgentNetwork,
+  AgentSkillDefaults,
+  AgentSkillDefaultsUpdate,
   AgentSpec,
   Alert,
   AlertRule,
@@ -1154,6 +1156,44 @@ nowhere (400).
     let path = "/api/agents/{name}/history";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<ListAgentRevisionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Read exact published default skill revisions */
+  async getAgentSkillDefaults(name: string, options?: RequestOptions): Promise<AgentSkillDefaults> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSkillDefaults>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentSkillDefaultsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSkillDefaults>> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSkillDefaults>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Bind exact published skills to the current agent revision */
+  async setAgentSkillDefaults(name: string, body: AgentSkillDefaultsUpdate, options?: RequestOptions): Promise<AgentSkillDefaults> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSkillDefaults>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setAgentSkillDefaultsRaw(name: string, body: AgentSkillDefaultsUpdate, options?: RequestOptions): Promise<ApiResponse<AgentSkillDefaults>> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSkillDefaults>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

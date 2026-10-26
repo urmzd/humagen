@@ -27,6 +27,14 @@ export function libraryScreens(call: Call): Screen[] {
       });
   }
   return [
+    {
+      name: "library-agent-defaults",
+      path: "/agents/lead/context",
+      act: async (page) => {
+        await heading(page, "Default skills");
+        await page.getByRole("button", { name: "Save Default Skills", exact: true }).waitFor();
+      },
+    },
     { name: "library-skills", path: "/library/skills", act: (page) => heading(page, "Skills") },
     {
       name: "library-skills-draft",

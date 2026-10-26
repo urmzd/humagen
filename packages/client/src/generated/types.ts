@@ -17,6 +17,24 @@ export interface InstallationAction {
   category: string;
 }
 
+export interface AgentSkillRef {
+  id: string;
+  version: number;
+}
+
+export interface AgentSkillDefaults {
+  agent: string;
+  agent_revision: number;
+  version: number;
+  skills: AgentSkillRef[];
+}
+
+export interface AgentSkillDefaultsUpdate {
+  agent_revision: number;
+  version: number;
+  skills: AgentSkillRef[];
+}
+
 export interface InstallationCapabilities {
   version: number;
   managed: boolean;

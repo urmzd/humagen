@@ -121,7 +121,7 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 	if err != nil {
 		return AgentSkillsView{}, err
 	}
-	attempt, err := p.BeginAudit(who, audit.Change{Action: "agent.skills", Resource: "agent", ID: agent, Project: home, Rule: string(auth.AgentsWrite), After: map[string]string{"agent_revision": strconv.Itoa(agentRevision), "skill_count": strconv.Itoa(len(refs))}})
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "agent.skills", Resource: "agent", ID: agent, Agent: agent, Project: home, Rule: string(auth.AgentsWrite), After: map[string]string{"agent_revision": strconv.Itoa(agentRevision), "skill_count": strconv.Itoa(len(refs))}})
 	if err != nil {
 		return AgentSkillsView{}, err
 	}
@@ -137,7 +137,7 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 	return saved, err
 }
 func (p *Platform) defaultSkillsFitHome(tenant, agent, project string, tree *projects.Tree) bool {
-	for _, ref := range p.AgentSkillDefaults.Get(tenant, agent).Skills {
+	for _, ref := range p.AgentSkillDefaults.Get(tenant, agentspec.NormalizeName(agent)).Skills {
 		latest, err := p.SkillLibrary.Find(tenant, ref.ID)
 		if err != nil {
 			return false

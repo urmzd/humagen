@@ -907,6 +907,49 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/skills:
+    get:
+      operationId: getAgentSkillDefaults
+      tags: [agents]
+      summary: Read exact published default skill revisions
+      x-permission: agents:read
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: The visible default skill bindings.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSkillDefaults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setAgentSkillDefaults
+      tags: [agents]
+      summary: Bind exact published skills to the current agent revision
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentSkillDefaultsUpdate"}
+      responses:
+        "200":
+          description: The saved exact default skill bindings.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSkillDefaults"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/call-policy:
     get:
       operationId: getCallPolicy
@@ -6182,6 +6225,30 @@ components:
         description: {type: string}
         enabled: {type: boolean}
         category: {type: string}
+    AgentSkillRef:
+      type: object
+      additionalProperties: false
+      required: [id, version]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 160}
+        version: {type: integer, minimum: 1}
+    AgentSkillDefaults:
+      type: object
+      additionalProperties: false
+      required: [agent, agent_revision, version, skills]
+      properties:
+        agent: {type: string}
+        agent_revision: {type: integer, minimum: 1}
+        version: {type: integer, minimum: 0}
+        skills: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/AgentSkillRef"}}
+    AgentSkillDefaultsUpdate:
+      type: object
+      additionalProperties: false
+      required: [agent_revision, version, skills]
+      properties:
+        agent_revision: {type: integer, minimum: 1}
+        version: {type: integer, minimum: 0}
+        skills: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/AgentSkillRef"}}
     InstallationCapabilities:
       type: object
       required: [version, managed, legacy, events, actions, deliver_outcomes]
