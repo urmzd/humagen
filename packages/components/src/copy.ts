@@ -515,7 +515,7 @@ export const defaultCopy = {
     run: "Open Run",
     ended: "Of ended runs, including waiting time",
     dayLabel: (day: string, runs: number, alone: number, needed: number) =>
-      `${day}: ${runs} runs, ${alone} completed without help, ${needed} needed a person`,
+      `${day}: ${runs} ${runs === 1 ? "run" : "runs"}, ${alone} completed without help, ${needed} needed a person`,
   },
   /** The product, as a sender: what every system message is shown from, whatever name its record keeps. */
   product: "Humagen",
