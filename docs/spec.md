@@ -104,6 +104,17 @@ spec:
     default: ["env:HUMAGEN_PERSON_{subject}_"]   # how their references may start, {subject} being the person's; none listed is none
     # deploy local (this machine) may also list "op://People/{subject}/" and "keychain:humagen-people-{subject}/"
 
+  notifications:            # optional outbound delivery; people must also opt in
+    email:
+      address: smtp.example.test:587
+      from: Humagen <notifications@example.test>
+      username: notifications
+      password: {ref: env:HUMAGEN_SMTP_PASSWORD}
+      tls: starttls         # default; implicit also requires verified TLS
+      recipients:
+        default:
+          "issuer|person-subject": person@example.test
+
   extensions: []            # process-wide parts a binary registered, each a slot
 
   deploy:                   # slot: local | compose | kubernetes. Read by humagen deploy
@@ -115,6 +126,13 @@ spec:
     # kind: kubernetes
     # kubernetes: {context: prod, namespace: humagen, host: humagen.example.com, image: {repository: ghcr.io/urmzd/humagen, tag: v0.10.0}}
 ```
+
+Email recipient mappings use the exact authenticated tenant and subject. Delivery
+checks current standing permissions and preferences. It sends a readable update
+count and an inbox link, with event kinds and email off by default. The explicit
+`insecure_loopback` TLS mode accepts only literal loopback addresses without
+credentials. See [Email notifications](email-notifications.md) for quiet hours,
+retry behavior and consent records.
 
 ## Platform
 
