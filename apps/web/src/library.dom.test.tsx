@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { defaultCopy } from "@humagen/components";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { stubFetch } from "./dom.ts";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
-import { SkillsLibrary } from "./SkillsLibrary.tsx";
+import { NotificationPanel } from "./Notifications.tsx";
 import { PersonalAgents } from "./PersonalAgents.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
-import { NotificationPanel } from "./Notifications.tsx";
+import { SkillsLibrary } from "./SkillsLibrary.tsx";
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -269,4 +269,96 @@ test("personal agents may move to an owned file-managed project after audience r
   );
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.personalAgents.confirm }));
   await waitFor(() => assert.equal(moved, true));
+});
+
+test("skill deep link opens the pinned published version and manual selection keeps its address", async () => {
+  const first = {
+    id: "sk-pinned",
+    scope: { kind: "workspace" },
+    name: "pinned",
+    description: "Pinned skill",
+    instructions: "Exact published instructions",
+    tools: [],
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    published_at: "2026-10-26T12:00:00Z",
+    tests: [],
+  };
+  const draft = {
+    ...first,
+    version: 2,
+    published_at: undefined,
+    instructions: "New draft instructions",
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [draft] }),
+    "GET /api/library/skills/sk-pinned": () => ({ revisions: [first, draft] }),
+  });
+  const initial = window.location.href;
+  window.history.replaceState(
+    null,
+    "",
+    "/library/skills?scope=workspace&skill=sk-pinned&version=1",
+  );
+  try {
+    let location: unknown;
+    render(
+      <SkillsLibrary
+        onLocationChange={(next) => {
+          location = next;
+        }}
+      />,
+    );
+    const instructions = (await screen.findByLabelText("Instructions")) as HTMLTextAreaElement;
+    assert.equal(instructions.value, first.instructions);
+    fireEvent.change(screen.getByLabelText("Version"), { target: { value: "2" } });
+    await waitFor(() => assert.equal(instructions.value, draft.instructions));
+    assert.deepEqual(location, {
+      scope: "workspace",
+      project: undefined,
+      skill: first.id,
+      version: 2,
+    });
+  } finally {
+    window.history.replaceState(null, "", initial);
+  }
+});
+
+test("missing pinned skill version does not fall back to another revision", async () => {
+  const draft = {
+    id: "sk-pinned",
+    scope: { kind: "workspace" },
+    name: "pinned",
+    description: "Pinned skill",
+    instructions: "New draft instructions",
+    tools: [],
+    version: 2,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    tests: [],
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [draft] }),
+    "GET /api/library/skills/sk-pinned": () => ({ revisions: [draft] }),
+  });
+  const initial = window.location.href;
+  window.history.replaceState(
+    null,
+    "",
+    "/library/skills?scope=workspace&skill=sk-pinned&version=1",
+  );
+  try {
+    render(<SkillsLibrary />);
+    await screen.findByText(defaultCopy.skillsLibrary.versionUnavailable);
+    assert.equal(screen.queryByLabelText("Version"), null);
+  } finally {
+    window.history.replaceState(null, "", initial);
+  }
 });

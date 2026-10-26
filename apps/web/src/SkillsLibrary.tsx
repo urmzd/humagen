@@ -1,10 +1,10 @@
 import { defaultCopy } from "@humagen/components";
+import { useEffect, useState } from "react";
 import type {
   LibraryScope,
   LibrarySkill,
   LibrarySkillDefinition,
 } from "../../../packages/client/src/generated/types.ts";
-import { useEffect, useState } from "react";
 import { api, type ProjectView, type Revision } from "./api.ts";
 import { card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
 
@@ -31,6 +31,7 @@ export interface SkillsLibraryLocation {
   scope: "personal" | "workspace" | "project";
   project?: string;
   skill?: string;
+  version?: number;
 }
 export function SkillsLibrary({
   onLocationChange,
@@ -48,6 +49,12 @@ export function SkillsLibrary({
         : { kind: "personal" };
   });
   const [requestedSkill] = useState(() => new URLSearchParams(window.location.search).get("skill"));
+  const [requestedVersion] = useState(() => {
+    const raw = new URLSearchParams(window.location.search).get("version");
+    if (raw === null) return undefined;
+    const version = Number(raw);
+    return Number.isSafeInteger(version) && version > 0 && version <= 32 ? version : 0;
+  });
   const [skills, setSkills] = useState<LibrarySkill[] | null>(null);
   const [history, setHistory] = useState<LibrarySkill[]>([]);
   const [selected, setSelected] = useState<LibrarySkill | null>(null);
@@ -107,7 +114,7 @@ export function SkillsLibrary({
         if (live) {
           setSkills(rows);
           if (requestedSkill && rows.some((row) => row.id === requestedSkill))
-            void inspect(requestedSkill, false);
+            void inspect(requestedSkill, false, requestedVersion);
         }
       })
       .catch((error) => {
@@ -159,19 +166,28 @@ export function SkillsLibrary({
       live = false;
     };
   }, [selected]);
-  const inspect = async (id: string, sync = true) => {
+  const inspect = async (id: string, sync = true, version?: number) => {
     setBusy(true);
     setProblem(null);
     try {
       const rows = await api.librarySkill(id);
       setHistory(rows);
-      const row = rows.at(-1);
+      const row = version === undefined ? rows.at(-1) : rows.find((row) => row.version === version);
       if (row) {
         setSelected(row);
         setDefinition(definitionOf(row));
         setTestThread("");
         setTestProject(row.scope.kind === "personal" ? personal : (row.scope.project ?? ""));
-        if (sync) onLocationChange?.({ scope: scope.kind, project: scope.project, skill: row.id });
+        if (sync)
+          onLocationChange?.({
+            scope: scope.kind,
+            project: scope.project,
+            skill: row.id,
+            version: row.version,
+          });
+      } else {
+        setSelected(null);
+        setProblem(copy.versionUnavailable);
       }
     } catch (error) {
       failed(error);
@@ -187,7 +203,12 @@ export function SkillsLibrary({
       setSkills(await api.librarySkills(scope));
       setHistory(await api.librarySkill(row.id));
       setSelected(row);
-      onLocationChange?.({ scope: scope.kind, project: scope.project, skill: row.id });
+      onLocationChange?.({
+        scope: scope.kind,
+        project: scope.project,
+        skill: row.id,
+        version: row.version,
+      });
     } catch (error) {
       failed(error);
     } finally {
@@ -303,7 +324,7 @@ export function SkillsLibrary({
               setSelected(null);
               setHistory([]);
               setDefinition(blank);
-              onLocationChange?.({scope:scope.kind,project:scope.project});
+              onLocationChange?.({ scope: scope.kind, project: scope.project });
             }}
           >
             {copy.new}
@@ -353,6 +374,12 @@ export function SkillsLibrary({
                     if (row) {
                       setSelected(row);
                       setDefinition(definitionOf(row));
+                      onLocationChange?.({
+                        scope: scope.kind,
+                        project: scope.project,
+                        skill: row.id,
+                        version: row.version,
+                      });
                     }
                   }}
                 >

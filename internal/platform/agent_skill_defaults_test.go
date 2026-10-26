@@ -8,6 +8,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/library"
@@ -58,6 +59,14 @@ func TestAgentDefaultSkillsUseExactPublishedRevisionInEveryTurn(t *testing.T) {
 		}
 		if !foundDefault {
 			t.Fatal("actual default missing from composition preview", preview)
+		}
+		limited := auth.Principal{Kind: auth.Machine, Tenant: tenant, Subject: "limited-agent-editor", Scopes: []auth.Permission{auth.AgentsRead, auth.AgentsWrite}}
+		if _, err := p.SetAgentSkills(limited, "lead", 1, saved.Version, []platform.AgentSkillRef{}); !errors.Is(err, projects.ErrForbidden) {
+			t.Fatal("writer without library read removed hidden defaults", err)
+		}
+		retained, err := p.AgentSkills(tenant, "lead")
+		if err != nil || len(retained.Skills) != 1 || retained.Version != saved.Version {
+			t.Fatal("unread default mutated", retained, err)
 		}
 		if _, err := p.SetAgentSkills(who, "lead", 1, 0, []platform.AgentSkillRef{}); !errors.Is(err, library.ErrConflict) {
 			t.Fatal("stale defaults", err)
@@ -144,6 +153,22 @@ func TestPersonalDefaultSkillsRequirePrivateHomeAndPreventPublicMove(t *testing.
 		refs := []platform.AgentSkillRef{{ID: r.ID, Version: 1}}
 		if _, err := p.SetAgentSkills(who, "helper", 1, 0, refs); err != nil {
 			t.Fatal(err)
+		}
+		auditRows, err := p.Audit.List(tenant, audit.Query{Resource: "agent", From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour)}, func(audit.Record) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		foundAudit := false
+		for _, row := range auditRows {
+			if row.Action == "agent.skills" {
+				foundAudit = true
+				if row.Scope != "personal" || row.Subject != "ada" {
+					t.Fatal("personal skill binding audit missing owner scope", row)
+				}
+			}
+		}
+		if !foundAudit {
+			t.Fatal("personal skill binding audit missing")
 		}
 		if err := p.SetAgentHome(t.Context(), tenant, "helper", projects.Root, projects.Writer{By: "ada", Govern: true}); !errors.Is(err, projects.ErrInUse) {
 			t.Fatal("private defaults moved to Company", err)

@@ -43,6 +43,9 @@ func (p *Platform) ValidateAgentSkills(who auth.Principal, project string, refs 
 	if !library.ValidRefs(refs) {
 		return nil, library.ErrInvalid
 	}
+	if len(refs) > 0 && !who.Can(auth.ProjectsRead) {
+		return nil, projects.ErrForbidden
+	}
 	project = projects.NameOf(project)
 	tree := p.Projects.Tree(who.Tenant)
 	if !p.Seer(who).Project(project) {
@@ -113,6 +116,16 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 	if err := p.ownsHome(tree, who, agent); err != nil {
 		return AgentSkillsView{}, err
 	}
+
+	current := p.AgentSkillDefaults.Get(who.Tenant, rev.Spec.Name)
+	for _, ref := range current.Skills {
+		if !who.Can(auth.ProjectsRead) {
+			return AgentSkillsView{}, projects.ErrForbidden
+		}
+		if _, err := p.LibrarySkill(who, ref.ID); err != nil {
+			return AgentSkillsView{}, library.ErrNotFound
+		}
+	}
 	refs, err = p.ValidateAgentSkills(who, home, refs)
 	if err != nil {
 		return AgentSkillsView{}, err
@@ -121,7 +134,12 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 	if err != nil {
 		return AgentSkillsView{}, err
 	}
-	attempt, err := p.BeginAudit(who, audit.Change{Action: "agent.skills", Resource: "agent", ID: agent, Agent: agent, Project: home, Rule: string(auth.AgentsWrite), After: map[string]string{"agent_revision": strconv.Itoa(agentRevision), "skill_count": strconv.Itoa(len(refs))}})
+	change := audit.Change{Action: "agent.skills", Resource: "agent", ID: agent, Agent: agent, Project: home, Scope: "project", Rule: string(auth.AgentsWrite), After: map[string]string{"agent_revision": strconv.Itoa(agentRevision), "skill_count": strconv.Itoa(len(refs))}}
+	if project, ok := tree.Get(home); ok && project.PersonalOwner != "" {
+		change.Scope = "personal"
+		change.Subject = project.PersonalOwner
+	}
+	attempt, err := p.BeginAudit(who, change)
 	if err != nil {
 		return AgentSkillsView{}, err
 	}

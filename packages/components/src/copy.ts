@@ -495,6 +495,7 @@ export const defaultCopy = {
     version: (version: number) => `Version ${version}`,
   },
   skillsLibrary: {
+    versionUnavailable: "This skill revision is not available.",
     title: "Skills",
     description:
       "Draft, test and publish reusable instructions. Editing creates a new version; a draft leaves the published version unchanged.",
