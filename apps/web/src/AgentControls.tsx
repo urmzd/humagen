@@ -131,6 +131,17 @@ export function AgentControls({
           <output className="text-aui-sm text-aui-fg">
             {(control.effective_paused ?? control.paused) ? words.paused : words.active}
           </output>
+          {agent && control.needs_skill_review && (
+            <div className="grid gap-2">
+              <p className="text-aui-sm">{defaultCopy.agentSkillDefaults.needsReview}</p>
+              <a
+                className="inline-flex min-h-11 items-center text-aui-accent"
+                href={`/agents/${encodeURIComponent(agent)}/context`}
+              >
+                {defaultCopy.agentSkillDefaults.review}
+              </a>
+            </div>
+          )}
           {control.pause_reason && (
             <p className="text-aui-sm text-aui-muted">{words.pauseReasons[control.pause_reason]}</p>
           )}

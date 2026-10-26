@@ -149,3 +149,25 @@ test("the agent directory filters authoritative operational states and saves a v
  await screen.findByRole("button",{name:defaultCopy.agentOperations.resumeAll});
  assert.deepEqual(saved,{version:3,paused:true});
 });
+
+test("the roster filters Needs Review without presenting stale skill bindings as ready", async () => {
+  const {Agents}=await import("./Agents.tsx");
+  const {defaultCopy}=await import("@humagen/components");
+  const state={paused:false,version:1,updated_at:"2026-10-01T00:00:00Z",updated_by:"ada"};
+  const ready={...writer,spec:{...writer.spec,name:"ready-agent"}};
+  net=stubFetch({"GET /api/agent-roster":()=>({controls:{"humagen-writer":{...state,state:"needs_review",needs_skill_review:true,effective_paused:false},"ready-agent":{...state,state:"ready",effective_paused:false}},window_days:31}),"GET /api/agent-controls":()=>state});
+  render(<Agents operational agents={[writer,ready]} stats={new Map()} canWrite onOpen={()=>{}} onNew={()=>{}}/>);
+  await screen.findByRole("option",{name:"Needs Review"});
+  fireEvent.change(screen.getByLabelText(defaultCopy.agentOperations.filter),{target:{value:"needs_review"}});
+  assert.ok(await screen.findByRole("button",{name:/humagen-writer/}));
+  assert.ok(!screen.queryByRole("button",{name:/ready-agent/}));
+});
+
+test("agent detail offers Context review for native skill audience review even with current revision", async () => {
+  const {AgentOperations}=await import("./AgentOperations.tsx");
+  net=stubFetch({"GET /api/agent-roster":()=>({controls:{"humagen-writer":{paused:false,version:1,state:"needs_review",needs_skill_review:true,effective_paused:false}},window_days:31}),"GET /api/agents/humagen-writer/skills":()=>({agent:"humagen-writer",agent_revision:2,version:1,skills:[{id:"published-exact",version:1}]}),"GET /api/agent-setups/humagen-writer":()=>new Response(null,{status:404})});
+  render(<AgentOperations name="humagen-writer" revision={2} canReadRuns canWrite onRun={()=>{}}/>);
+  const review=await screen.findByRole("link",{name:"Review Default Skills"});
+  assert.equal(review.getAttribute("href"),"/agents/humagen-writer/context");
+  assert.ok(screen.getByText("Needs Review"));
+});

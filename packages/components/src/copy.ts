@@ -74,6 +74,7 @@ export const defaultCopy = {
       working: "Working",
       waiting_on_people: "Waiting on People",
       watching: "Watching",
+      needs_review: "Needs Review",
       paused: "Paused",
       failed: "Needs Attention",
     },
@@ -1005,6 +1006,8 @@ export const defaultCopy = {
     inspect: (name: string, version: number) => `Open ${name}, Version ${version}, in a new tab`,
     tools: "Tool Restrictions",
     noTools: "No Tools",
+    review: "Review Default Skills",
+    needsReview: "Default skills need review before another turn can start.",
     title: "Default skills",
     help: "Choose up to four published revisions. Every turn uses these exact instructions and their tool restrictions.",
     scope: "Skill library scope",
@@ -1025,6 +1028,12 @@ export const defaultCopy = {
     version: (version: number) => `Version ${version}`,
   },
   skillsLibrary: {
+    usedBy: "Used By",
+    noUses: "No readable agent default bindings use this revision.",
+    loadingUses: "Loading agent bindings",
+    usesFailed: "Agent bindings could not be loaded.",
+    bindingNeedsReview: "Agent revision needs skill review",
+    moreUses: "More readable agent bindings match this revision. Open Agents to review them.",
     versionUnavailable: "This skill revision is not available.",
     title: "Skills",
     description:
@@ -1054,6 +1063,9 @@ export const defaultCopy = {
     request: "Test Request",
     testHint: "Tests use the exact selected version. Every permitted action requires approval.",
     publish: "Publish Version",
+    publishNeedsTest: "Complete a readable test for this exact revision before publishing.",
+    testPending:
+      "A test for this revision is still waiting or running. Open its conversation to review progress.",
     promotion: "Promote to Another Scope",
     promote: "Create Promotion Draft",
     promotionHint:

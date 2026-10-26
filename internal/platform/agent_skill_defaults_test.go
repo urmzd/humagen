@@ -107,6 +107,9 @@ func TestAgentDefaultSkillsUseExactPublishedRevisionInEveryTurn(t *testing.T) {
 				t.Fatal("preview claimed stale binding would be sent", layer)
 			}
 		}
+		if state := p.AgentState(who, "lead"); state.State != "needs_review" {
+			t.Fatal("stale defaults advertised ready", state.State)
+		}
 		changed := turn
 		changed.ID = "new-agent-revision"
 		if _, err := p.Converse(t.Context(), tenant, changed); !errors.Is(err, library.ErrConflict) {
