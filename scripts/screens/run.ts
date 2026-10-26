@@ -237,7 +237,7 @@ function chats(ids: Ids): Screen[] {
         await plus(page).click();
         const menu = page.getByRole("dialog", { name: "Add to this conversation" });
         await menu.getByRole("button", { name: /Choose a project/ }).click();
-        await menu.getByRole("button", { name: /^Launch/ }).click();
+        await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
         await menu.getByRole("radio", { name: "#deals" }).click();
       },
     },
