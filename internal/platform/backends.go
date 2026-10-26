@@ -23,6 +23,7 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -131,6 +132,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("feedback", err)
 	p.Prefs, err = prefs.Open(st)
 	keep("prefs", err)
+	p.SkillLibrary, err = library.Open(st)
+	keep("skill library", err)
 	p.Memory, err = memory.Open(st)
 	keep("memory", err)
 	// A deleted name is forgotten only once nothing is filed under it.

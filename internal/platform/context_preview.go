@@ -102,6 +102,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		}
 		out.Layers = append(out.Layers, l)
 	}
+	out.Layers = append(out.Layers, p.personalLayers(who.Tenant, project, who.Subject)...)
 	if seer.Knowledge() {
 		agentNames := []string{}
 		for _, src := range rev.Spec.Sources {

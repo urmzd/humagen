@@ -200,7 +200,7 @@ export interface Note {
   reviewed_at?: string;
   id: string;
   text: string;
-  source: "person" | "consolidated";
+  source: "person" | "consolidated" | "artifact";
   /** A pending note is a proposal, not used until a person approves it. */
   status: "approved" | "pending";
   by?: string;
