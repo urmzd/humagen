@@ -215,7 +215,16 @@ func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) 
 	// handle is how the platform names the caller elsewhere, as a thread's
 	// created_by and participants name people: their handle, or their
 	// subject when they have none and it holds no address.
-	ok(w, http.StatusOK, map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first, "handle": s.P.Names(who.Tenant).Key(who.Subject)})
+	out := map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first, "handle": s.P.Names(who.Tenant).Key(who.Subject)}
+	if who.Kind == auth.User && who.Subject != "" && who.Tenant != "" {
+		personal, err := s.P.PersonalProject(who)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		out["personal_project"] = "~" + personal.Name
+	}
+	ok(w, http.StatusOK, out)
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Principal) {
