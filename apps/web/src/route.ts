@@ -153,7 +153,7 @@ export function href(r: Route): string {
     case "agent-network":return r.handoff?`/agent-network/handoffs/${enc(r.handoff)}`:"/agent-network";
     case "agent-control":return r.agent?`/agents/${enc(r.agent)}/control`:"/agent-controls";
     case "agent-setup":return r.name?`/agents/${enc(r.name)}/setup`:"/agents/new/setup";
-    case "action-policy":return r.scope&&r.scope!=="workspace"?`/operations/policies/${r.scope}${r.name?`/${enc(r.name)}`:""}`:"/operations/policies";
+    case "action-policy":return r.scope&&r.scope!=="workspace"&&!(r.scope==="project"&&(!r.name||r.name==="~"))?`/operations/policies/${r.scope}${r.name?`/${enc(r.name)}`:""}`:"/operations/policies";
     case "audit":return "/operations/audit";
     case "usage":{
       const q=new URLSearchParams();if(r.days&&r.days!==14)q.set("days",String(r.days));if(r.day)q.set("day",r.day);if(r.display==="table")q.set("display","table");return `/operations/usage${q.size?`?${q}`:""}`;

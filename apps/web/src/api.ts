@@ -655,6 +655,10 @@ export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, 
 import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
+ outcomeLearning:(id:string,scope:"personal"|"project"="personal")=>call<import("../../../packages/client/src/generated/types.ts").OutcomeLearningPreview>("GET",`/api/runs/${encodeURIComponent(id)}/learning?${new URLSearchParams({scope})}`),
+ draftOutcomeSkill:(id:string,input:{snapshot:string;scope?:LibraryScope;definition:LibrarySkillDefinition})=>call<LibrarySkill>("POST",`/api/runs/${encodeURIComponent(id)}/skill-draft`,input),
+ rememberOutcomeDecision:(id:string,input:{snapshot:string;scope?:LibraryScope;decision:number;text:string})=>call<GeneratedNote>("POST",`/api/runs/${encodeURIComponent(id)}/decision-memory`,input),
+
   projectRollup: (name: string) => call<ProjectRollup>("GET", `${projectAt(name)}/rollup`),
 
   agentControl: (agent = "") => call<AgentControl>("GET", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls"),

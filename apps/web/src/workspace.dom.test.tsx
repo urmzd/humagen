@@ -397,3 +397,14 @@ test("private results offer no promotion and query no destination sources",()=>{
   assert.equal(screen.queryByRole("button"),null);
   assert.equal(net.seen.length,0);
 });
+
+
+test("a failed artifact preview can retry its actual content without changing the selected immutable version",async()=>{
+ let reads=0;
+ net=stubFetch({"GET /api/artifacts":()=>({artifacts:[saved],next:null}),"GET /api/artifacts/art-2":()=>saved,"GET /api/artifacts/art-2/versions":()=>({versions:[saved]}),"GET /api/artifacts/art-2/content":()=>++reads===1?new Response(null,{status:503}):new Response("# Retried brief\n\nThe saved file remains intact.")});
+ render(<Deliverables thread="thread-1" view={{panel:"deliverables",artifact:saved.id}} onView={()=>{}} onClose={()=>{}}/>);
+ fireEvent.click(await screen.findByRole("button",{name:defaultCopy.retry}));
+ assert.ok(await screen.findByText("Retried brief"));
+ assert.equal(reads,2);
+ assert.ok(net.seen.every(request=>request.method==="GET"));
+});

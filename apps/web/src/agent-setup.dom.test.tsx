@@ -11,21 +11,30 @@ const me={principal:{tenant:"acme",subject:"ada",kind:"user",name:"Ada",roles:[]
 function mount(){return render(<AgentSetupWizard me={me} agents={[]} projects={[]} sources={[]} policies={[]} canBill={false} onSaved={()=>{}} onActivated={()=>{}} onBack={()=>{}} onModels={()=>{}}/>)}
 test("setup keeps the personal home selected before project hydration and saves an inactive real-provider draft",async()=>{
  let posted:unknown;
- net=stubFetch({"GET /api/model-providers":()=>({providers:[{name:"anthropic",declared:true}]}),"POST /api/agent-setups":body=>{posted=body;return {plan:body,name:"helper",owner:"ada",phase:"configured",version:1,revision:1,revision_hash:"hash"}}});
+ net=stubFetch({"GET /api/people":()=>({people:[{subject:"ben",handle:"ben",name:"Ben"}]}),"GET /api/model-providers":()=>({providers:[{name:"anthropic",declared:true}]}),"POST /api/agent-setups":body=>{posted=body;return {plan:body,name:"helper",owner:"ada",phase:"configured",version:1,revision:1,revision_hash:"hash"}}});
  mount();
  const project=screen.getByLabelText(new RegExp(defaultCopy.agentSetup.project)) as HTMLSelectElement;
  assert.equal(project.value,me.personal_project);
  assert.equal(project.selectedOptions[0]?.textContent,defaultCopy.projects.personalTitle);
+ fireEvent.change(screen.getByLabelText(defaultCopy.agentSetup.template),{target:{value:"writer"}});
  fireEvent.change(screen.getByLabelText(new RegExp(defaultCopy.agentSetup.name)),{target:{value:"helper"}});
  await waitFor(()=>assert.ok(screen.getByRole("option",{name:"anthropic"})));
  fireEvent.change(screen.getByLabelText(new RegExp(defaultCopy.agentSetup.provider)),{target:{value:"anthropic"}});
  fireEvent.change(screen.getByLabelText(defaultCopy.agentSetup.model),{target:{value:"claude-haiku-5-5"}});
  fireEvent.click(screen.getByRole("button",{name:defaultCopy.agentSetup.next}));
+ fireEvent.change(screen.getByLabelText(new RegExp(defaultCopy.agentSetup.manager)),{target:{value:"Ben"}});
+ await waitFor(()=>assert.ok(net?.seen.some(request=>request.path.startsWith("/api/people?")),JSON.stringify(net?.seen)));
+ fireEvent.click(await screen.findByRole("button",{name:"Ben"}));
+ fireEvent.click(screen.getByRole("checkbox",{name:defaultCopy.agentSetup.selfApproval}));
  fireEvent.click(screen.getByRole("button",{name:defaultCopy.agentSetup.next}));
  fireEvent.click(screen.getByRole("button",{name:defaultCopy.agentSetup.save}));
  await waitFor(()=>assert.ok(posted));
  assert.equal((posted as {project:string}).project,me.personal_project);
  assert.equal((posted as {spec:{provider:string}}).spec.provider,"anthropic");
+ assert.deepEqual((posted as {spec:{approvers:string[]}}).spec.approvers,["ada","ben"]);
+ assert.equal((posted as {manager:string}).manager,"ben");
+ assert.ok((posted as {spec:{tools:string[]}}).spec.tools.includes("publish_artifact"));
+ assert.ok(!(posted as {spec:{tools:string[]}}).spec.tools.includes("publish"));
  await screen.findByRole("button",{name:defaultCopy.agentSetup.test});
  assert.ok((screen.getByRole("button",{name:defaultCopy.agentSetup.activate}) as HTMLButtonElement).disabled);
 });

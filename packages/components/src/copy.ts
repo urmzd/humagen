@@ -16,7 +16,9 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
-agentOperations:{pauseAll:"Pause All",resumeAll:"Resume All",filter:"Operational State",all:"All States",title:"Agent Operations",loading:"Reading operational state",failed:"Operational state could not be read. Retry to refresh it.",manager:(name:string)=>`Manager: ${name}`,lastRun:"Open Last Run",states:{ready:"Ready",working:"Working",waiting_on_people:"Waiting on People",watching:"Watching",paused:"Paused",failed:"Needs Attention"}},
+ outcomeLearning:{skill:"Save as Skill",remember:"Remember a Decision",skillTitle:"Review Skill Draft",decisionTitle:"Review Decision Memory",scope:"Destination",personal:"Personal",project:"Current Project",name:"Skill Name",purpose:"Purpose",steps:"Instructions",inputs:"Inputs",outputs:"Outputs",decision:"Recorded Decision",text:"Reviewed Memory",reviewHint:"Review the whole text for its destination audience. Private sources and hidden execution details are not copied automatically.",noExternalApproval:"This remembers a human-reviewed decision. It grants no tool or external action approval.",draftHint:"Saved as a draft with no tools. Test and publish the exact revision before using it.",createDraft:"Create Skill Draft",approveRemember:"Approve Decision and Remember",cancel:"Cancel",loading:"Loading Current Outcome",saving:"Saving",retry:"Retry",failed:"The outcome could not be loaded or saved. Your review remains available.",stale:"The outcome or its audience changed. Reload it and review the current snapshot before saving.",skillSaved:"The new tool-free skill draft is saved.",memorySaved:"Decision approved and remembered.",openSkill:"Open Skill Draft",openMemory:"Open Memory",close:"Close",noProject:"Project learning requires ordinary ownership of the current shared project."},
+
+agentOperations:{addAssignment:"Add Assignment",pauseAll:"Pause All",resumeAll:"Resume All",filter:"Operational State",all:"All States",title:"Agent Operations",loading:"Reading operational state",failed:"Operational state could not be read. Retry to refresh it.",manager:(name:string)=>`Manager: ${name}`,lastRun:"Open Last Run",states:{ready:"Ready",working:"Working",waiting_on_people:"Waiting on People",watching:"Watching",paused:"Paused",failed:"Needs Attention"}},
   agentSetup: {
     title: "New Agent",
     lede: "Review its role, context and actions, then test the inactive draft before activation.",
@@ -46,13 +48,14 @@ agentOperations:{pauseAll:"Pause All",resumeAll:"Resume All",filter:"Operational
       file_list: "List Files",
       file_read: "Read Files",
       file_write: "Write Files",
-      publish: "Publish Deliverables",
+      publish_artifact: "Publish Deliverables",
       record_outcome: "Record Outcomes",
       source_search: "Search Connected Accounts",
     },
+    reviewerSaved:"A reviewer is saved",
     manager: "Reviewer or Manager",
     managerHint:
-      "Choose a person by name or handle. Workspace administrators remain eligible under the native approval rules.",
+      "Choose a person by name or handle. Eligibility follows the saved reviewer list and native approval rules.",
     searchPeople: "Find a Reviewer",
     noReviewer: "No Selected Reviewer",
     selfApproval: "Allow Me to Approve My Own Actions",

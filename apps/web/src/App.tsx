@@ -59,7 +59,7 @@ import { type Source as About, type PlatformMessage, transport as mail } from ".
 import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { type AgentTab, documentTitle, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { defaultCopy } from "@humagen/components";
-import { Page, primary, Problem } from "./ui.tsx";
+import { Page, primary, Problem,SkeletonRows,button } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
 
@@ -167,6 +167,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);
+  const [agentRead,setAgentRead]=useState<"loading"|"ready"|"error">(can("agents:read")?"loading":"ready");
   // The agents the platform provides. They run like any other and cannot be edited.
   const [builtin, setBuiltin] = useState<string[]>([]);
   // Where each agent that lives in a project lives, and which projects enable each.
@@ -220,11 +221,12 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       .then((r) => {
         setAgentHues(r.hues ?? {});
         setAgents(r.agents);
+        setAgentRead("ready");
         setBuiltin(r.builtin ?? []);
         setHomes(r.homes ?? {});
         setEnabledIn(r.enabled_in ?? {});
       })
-      .catch(() => {});
+      .catch(() => setAgentRead("error"));
     api.settings().then(setWorkspace).catch(() => {});
     if (can("projects:read")) {
       api
@@ -364,6 +366,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const openProject = (name: string, tab: ProjectTab = "inbox") => go({ page: "project", name: name === "~" ? "" : name, tab });
   const projectNames = useMemo(() => (projects ?? []).map((p) => p.name), [projects]);
   const workspaceName = workspace?.workspace_name || defaultCopy.projects.companyName;
+  const policyScope=route.page==="action-policy"&&route.scope==="project"&&(!route.name||route.name==="~")?"workspace":route.page==="action-policy"?route.scope??"workspace":"workspace";
+  const policyRead=policyScope==="personal"?me.principal.kind==="user":can(policyScope==="project"?"projects:read":"agents:read");
+  const policyWrite=policyScope==="personal"?me.principal.kind==="user":can(policyScope==="project"?"projects:write":"agents:write");
   const openAgent = (name: string | null, tab: AgentTab = "prompt") => name ? go({ page: "agent", name, tab }) : go({page:"agent-setup"});
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
   // What a message is about, opened where it lives.
@@ -446,7 +451,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         {route.page==="assignments"&&(can("runs:read")?<Assignments selectedId={route.id} agents={agents.map(agent=>agent.spec.name)} sources={sources.map(source=>({name:source.name,label:source.name}))} projects={[{name:"",title:workspaceName},...(projects??[]).filter(project=>project.name!=="").map(project=>({name:project.name,title:project.title||project.name}))]} subject={me.principal.subject} canWrite={can("runs:write")} onRun={openRun} onConversation={openThread}/>:<Page title={defaultCopy.navigation.assignments}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="agent-network"&&(can("runs:read")?<AgentNetwork selectedId={route.handoff} canWrite={can("runs:write")} onAgent={openAgent} onRun={openRun}/>:<Page title={defaultCopy.navigation.network}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="agent-control"&&(can("agents:read")?<AgentControls key={route.agent??"workspace"} agent={route.agent} canWrite={can("agents:write")} onChanged={loadAgents}/>:<Page title={defaultCopy.navigation.controls}><Problem message={defaultCopy.noPermission}/></Page>)}
-        {route.page==="action-policy"&&((route.scope==="personal"||can(route.scope==="project"?"projects:read":"agents:read"))?<ActionPolicies key={`${route.scope}:${route.name}`} scope={route.scope} name={route.name} canWrite={route.scope==="personal"||can(route.scope==="project"?"projects:write":"agents:write")}/>:<Page title={defaultCopy.navigation.policies}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="action-policy"&&(policyRead?<ActionPolicies key={`${policyScope}:${route.name}`} scope={policyScope} name={policyScope==="workspace"?undefined:route.name} canWrite={policyWrite}/>:<Page title={defaultCopy.navigation.policies}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="audit"&&(can("projects:govern")?<Audit/>:<Page title={defaultCopy.navigation.audit}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="usage"&&(can("runs:read")?<Usage agents={agents.map(agent=>agent.spec.name)} tick={tick} onOpenRun={openRun} onOpenAgent={openAgent} view={{days:route.days??defaultUsageView.days,day:route.day,display:route.display??defaultUsageView.display}} onViewChange={view=>go({page:"usage",...view},{replace:true})}/>:<Page title={defaultCopy.navigation.usage}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="operations"&&route.section==="integrations"&&((can("clients:read")||can("knowledge:read"))?<Integrations selected={route.selected} tab={route.tab} onSelect={(selected,tab)=>go({page:"operations",section:"integrations",selected,tab})} canWrite={can("clients:write")} canKnowledgeWrite={can("knowledge:write")} onOpenSource={source=>go({page:"context",source})} onOpenProject={openProject}/>:<Page title={defaultCopy.navigation.integrations}><Problem message={defaultCopy.noPermission}/></Page>)}
@@ -492,6 +497,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             homes={homes}
             projects={can("projects:read") ? projects : []}
             canRun={can("runs:write")}
+            canLearn={me.principal.kind==="user"&&can("projects:write")}
             artifactActions={{knowledge:can("artifacts:read") && can("knowledge:read") && can("knowledge:write"), memory:can("artifacts:read") && can("runs:write")}}
             canCreateProject={can("projects:write")}
             greeting={greeting(shownName)}
@@ -671,7 +677,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         )}
         {(route.page==="agent-setup"||(route.page==="agent"&&route.name===null))&&(can("agents:write")?<AgentSetupWizard key={route.page==="agent-setup"?route.name??"new":"new"} name={route.page==="agent-setup"?route.name:undefined} me={me} agents={agents} projects={projects??[]} sources={sources} policies={workspace?.model_policies??[]} canBill={can("billing:write")} onSaved={name=>{loadAgents();if(route.page!=="agent-setup"||route.name!==name)go({page:"agent-setup",name},{replace:true})}} onActivated={name=>{loadAgents();openAgent(name)}} onBack={()=>go({page:"agents"})} onModels={()=>openSettings("models")}/>:<Page title={defaultCopy.agentSetup.title}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page === "agent" &&route.name!==null&&
-          (route.name !== null && agents.length > 0 && !editing ? (
+          (!editing ? agentRead==="loading" ? <Page title={defaultCopy.navigation.agents}><SkeletonRows count={3}/></Page> : agentRead==="error" ? <Page title={defaultCopy.navigation.agents}><Problem message={defaultCopy.agentOperations.failed}/><button type="button" className={button} onClick={loadAgents}>{defaultCopy.retry}</button></Page> : (
             <Missing what="agent" name={route.name} onBack={() => go({ page: "agents" })} />
           ) : (
             <AgentDetail

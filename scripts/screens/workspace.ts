@@ -31,6 +31,18 @@ export function workspaceScreens(call:Call):Screen[]{
   await page.getByRole("cell",{name:"Developer",exact:true}).waitFor();
   const original=page.waitForEvent("download");await page.getByRole("link",{name:"Download Original",exact:true}).click();const office=await original;const officePath=await office.path();assert.ok(officePath);assert.equal(readFileSync(officePath).subarray(0,2).toString(),"PK");
   const download=page.waitForEvent("download");await page.getByRole("button",{name:"Download PDF",exact:true}).click();const pdf=await download;const pdfPath=await pdf.path();assert.ok(pdfPath);assert.equal(readFileSync(pdfPath).subarray(0,5).toString(),"%PDF-");
+  const originalVersion=await call<{sha256:string}>("GET",`/api/artifacts/${file.id}`);
+  await page.getByRole("button",{name:"Request Changes",exact:true}).click();
+  const composer=page.locator('form[aria-label="Message"] textarea');await composer.waitFor();
+  const draft=await composer.inputValue();assert.ok(draft.includes(`artifact:${file.id}@1`));
+  await composer.fill(`${draft}Confirm the owner as Confirmed Developer and preserve the rest.`);
+  await page.getByRole("button",{name:"Send",exact:true}).click();
+  let revised:{id:string;title:string;version:number}|undefined;
+  for(let attempt=0;attempt<100;attempt++){const latest=await call<{artifacts:{id:string;title:string;version:number}[]}>("GET",`/api/artifacts?${new URLSearchParams({thread:posted.thread.id,limit:"100"})}`);revised=latest.artifacts.find(item=>item.title===file.title&&item.version===2);if(revised)break;assert.ok(attempt<99,"Native revision did not publish");await new Promise(resolve=>setTimeout(resolve,100));}
+  assert.ok(revised);assert.notEqual(revised.id,file.id);assert.equal((await call<{sha256:string}>("GET",`/api/artifacts/${file.id}`)).sha256,originalVersion.sha256);
+  await page.goto(new URL(`/conversations/${posted.thread.id}/deliverables/${revised.id}`,page.url()).href);
+  await page.getByRole("cell",{name:"Confirmed Developer",exact:true}).waitFor();
+
  }});
  return [
   nativeFormat("docx"),nativeFormat("xlsx"),
@@ -40,7 +52,7 @@ export function workspaceScreens(call:Call):Screen[]{
   {name:"agent-setup-permissions",path:"/agents/new/setup",act:async page=>{await prepare(page);await page.getByRole("button",{name:setup.next,exact:true}).click();await page.getByText(setup.toolsHint,{exact:true}).waitFor();}},
   {name:"agent-setup-review",path:"/agents/new/setup",act:async page=>{await prepare(page);await page.getByRole("button",{name:setup.next,exact:true}).click();await page.getByRole("button",{name:setup.next,exact:true}).click();await page.getByRole("button",{name:setup.save,exact:true}).waitFor();}},
   {name:"agents-operational-states",path:"/agents",act:async page=>{await page.getByLabel(defaultCopy.agentOperations.filter).waitFor();await page.getByRole("button",{name:defaultCopy.agentOperations.pauseAll,exact:true}).waitFor();}},
-  {name:"agent-controls-paused",path:"/agents/lead/control",act:async page=>{priorControl=await call("GET","/api/agents/lead/control");await call("PUT","/api/agents/lead/control",{...priorControl,paused:true});await page.reload();await page.getByRole("button",{name:defaultCopy.operations.resume,exact:true}).waitFor();},after:async()=>{if(priorControl){const current=await call<{version:number}>("GET","/api/agents/lead/control");await call("PUT","/api/agents/lead/control",{paused:priorControl.paused,manager:priorControl.manager,stop_rules:priorControl.stop_rules,version:current.version});priorControl=undefined;}}},
+  {name:"agent-controls-paused",path:"/agents/lead/control",act:async page=>{priorControl=await call("GET","/api/agents/lead/control");await call("PUT","/api/agents/lead/control",{version:priorControl!.version,paused:true,manager:priorControl!.manager,stop_rules:priorControl!.stop_rules});await page.reload();await page.getByRole("button",{name:defaultCopy.operations.resume,exact:true}).waitFor();},after:async()=>{if(priorControl){const current=await call<{version:number}>("GET","/api/agents/lead/control");await call("PUT","/api/agents/lead/control",{paused:priorControl.paused,manager:priorControl.manager,stop_rules:priorControl.stop_rules,version:current.version});priorControl=undefined;}}},
   {name:"operations-context-health",path:"/operations/context",act:page=>heading(page,defaultCopy.sourceOperations.health)},
   {name:"operations-integrations",path:"/operations/integrations",act:page=>heading(page,defaultCopy.sourceOperations.integrations)},
   {name:"operations-action-policies",path:"/operations/policies",act:async page=>{await heading(page,defaultCopy.operations.policies);await page.getByLabel(defaultCopy.operations.categories.write_files).waitFor();}},

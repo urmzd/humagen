@@ -9,6 +9,7 @@ import { useRunStop } from "./RunStop.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { actedFor, turnOf, type Run } from "./adapter.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { OutcomeActions } from "./OutcomeActions.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { ConversationForkPanels,type ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
@@ -267,6 +268,7 @@ export function Chat({
   projects,
   canRun,
   artifactActions,
+  canLearn=false,
   forkActions,
   canCreateProject,
   greeting,
@@ -316,6 +318,7 @@ export function Chat({
   /** The project tree a new conversation can be filed in, or null while it loads. */
   projects: ProjectView[] | null;
   canRun: boolean;
+  canLearn?:boolean;
   artifactActions?: {knowledge:boolean;memory:boolean};
   forkActions?:ConversationForkActions;
   /** May make a project from the picker. */
@@ -621,6 +624,7 @@ export function Chat({
         canRun={canRun}
         personalProject={personalProject}
         artifactActions={artifactActions}
+        canLearn={canLearn}
         forkActions={forkActions}
         focus={focus}
         sharing={sharing}
@@ -706,7 +710,7 @@ export function Chat({
               key={run.id}
               run={run}
               canStop={canRun&&!room?.thread.read_only}
-              actions={canRun&&!room?.thread.read_only&&run.status==="completed"?<>{forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(run.id)}>{defaultCopy.forking.fromHere}</button>}{room?.thread.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(run.id)}>{defaultCopy.forking.bringBack}</button>}</>:undefined}
+              actions={!room?.thread.read_only&&run.status==="completed"?<><OutcomeActions run={run} canWrite={canLearn}/>{canRun&&forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(run.id)}>{defaultCopy.forking.fromHere}</button>}{canRun&&room?.thread.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(run.id)}>{defaultCopy.forking.bringBack}</button>}</>:undefined}
               me={me}
               ask={asks[run.id]}
               siblings={siblingsOf(turns, run)}

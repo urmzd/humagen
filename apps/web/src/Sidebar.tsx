@@ -281,7 +281,7 @@ export function Sidebar({
   onSearch?:()=>void;
   notifications?:ReactNode;
 }) {
-  const projectTitle = (project?:string) => project===me.personal_project ? defaultCopy.projects.personalTitle : !project||project==="~" ? workspaceName||defaultCopy.projects.companyName : projects.find(item=>item.name===project)?.title||project;
+  const projectTitle = (project?:string) => me.personal_project&&project===me.personal_project ? defaultCopy.projects.personalTitle : !project||project==="~" ? workspaceName||defaultCopy.projects.companyName : projects.find(item=>item.name===project)?.title||project;
   const who = me.principal;
   const dev = who.subject === "dev";
   const name = prefs?.display_name || who.name || who.email || who.subject;

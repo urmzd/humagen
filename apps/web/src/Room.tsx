@@ -26,6 +26,7 @@ import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { type Completion, useCompletion } from "./completion.ts";
 import { rememberSaid, saidFor } from "./conflicts.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { OutcomeActions } from "./OutcomeActions.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { Activity } from "./Activity.tsx";
@@ -369,6 +370,7 @@ export function ThreadRoom({
   workspaceName,
   canRun,
   artifactActions,
+  canLearn=false,
   forkActions,
   personalProject,
   focus,
@@ -395,6 +397,7 @@ export function ThreadRoom({
   root: ProjectView | null;
   workspaceName: string;
   canRun: boolean;
+  canLearn?:boolean;
   artifactActions?: {knowledge:boolean;memory:boolean};
   forkActions?:ConversationForkActions;
   personalProject?:string;
@@ -618,7 +621,7 @@ export function ThreadRoom({
                 key={t.run.id}
                 run={t.run}
                 canStop={posts}
-                actions={posts&&t.run.status==="completed"?<>{forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.run!.id)}>{defaultCopy.forking.fromHere}</button>}{th.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(t.run!.id)}>{defaultCopy.forking.bringBack}</button>}</>:undefined}
+                actions={!th.read_only&&t.run.status==="completed"?<><OutcomeActions run={t.run} canWrite={canLearn}/>{posts&&forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.run!.id)}>{defaultCopy.forking.fromHere}</button>}{posts&&th.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(t.run!.id)}>{defaultCopy.forking.bringBack}</button>}</>:undefined}
                 routed={routedOf(t.run)}
                 onAsk={posts ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" }) : undefined}
                 onReply={posts ? () => setSeed({ text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `, mode: "prepend" }) : undefined}

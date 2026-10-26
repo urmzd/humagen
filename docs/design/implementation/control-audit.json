@@ -2853,8 +2853,8 @@
     "source": "docs/design/humagen-control-plane/boards/Main.html",
     "control": 17,
     "label": "Dependency map 5 affected",
-    "status": "needs_semantic_review",
-    "implementation": "No generic dependency-map deliverable is synthesized. Source dependency links and the recorded Agent Network exist; this exact affected-work action still needs acceptance review.",
+    "status": "integration_validation_pending",
+    "implementation": "An authored deliverable link, like the adjacent launch-plan file. Actual native file production, immutable preview, source retention and targeted revision implement this interaction; no synthetic dependency graph is inferred.",
     "files": [
       "apps/web/src/Chat.tsx",
       "apps/web/src/Room.tsx",

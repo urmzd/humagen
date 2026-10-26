@@ -247,3 +247,9 @@ test("Library resource links retain their confined scope and selection",()=>{
  for(const route of [{page:"library",section:"skills",scope:"project",project:"Field engineering",skill:"sk-123"},{page:"library",section:"memory",scope:"agent",owner:"helper"}] as Route[]){const url=new URL(href(route),"http://localhost");assert.deepEqual(parse(url.pathname,url.search),route)}
  assert.deepEqual(parse("/library/skills","?scope=unexpected&skill="+"x".repeat(161)),{page:"library",section:"skills"});
 });
+
+test("Company policy links use workspace authority rather than an empty project policy",()=>{
+ assert.equal(href({page:"action-policy",scope:"project",name:"~"}),"/operations/policies");
+ assert.equal(href({page:"action-policy",scope:"project",name:""}),"/operations/policies");
+ assert.equal(at(href({page:"action-policy",scope:"project",name:"Launch"})).page,"action-policy");
+});

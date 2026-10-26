@@ -377,7 +377,7 @@ export interface LibraryProvenance {
   version: number;
 }
 
-export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance };
+export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance; origin_run?: string };
 
 export interface AuditRecord {
   id: string;
@@ -516,6 +516,19 @@ export interface RunFeedback {
   reason?: string;
   comment?: string;
   updated_at: string;
+}
+
+/** A current confined authored outcome snapshot for explicit human review. Personal scope is the default; project scope is derived from current placement and ordinary ownership. */
+export interface OutcomeLearningPreview {
+  run: string;
+  snapshot: string;
+  scope: LibraryScope;
+  outcome: RunOutcome;
+  project?: string;
+  project_title?: string;
+  may_project: boolean;
+  can_draft: boolean;
+  can_remember: boolean;
 }
 
 /** Agent-authored result framing. It never records approval or external execution. */
@@ -3558,6 +3571,19 @@ export interface ListReachableAgentsResponse {
 
 export interface ListPendingMemoryResponse {
   proposals: MemoryProposal[];
+}
+
+export interface DraftSkillFromOutcomeBody {
+  snapshot: string;
+  scope?: LibraryScope;
+  definition: LibrarySkillDefinition;
+}
+
+export interface RememberOutcomeDecisionBody {
+  snapshot: string;
+  scope?: LibraryScope;
+  decision: number;
+  text: string;
 }
 
 export interface ListRunFeedbackResponse {

@@ -1921,6 +1921,37 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/preferences/photo", "/api/preferences/photo", "not a picture", http.StatusBadRequest)
 	c.call(acme, "DELETE", "/api/preferences/photo", "/api/preferences/photo", "", http.StatusOK)
 
+	// Authored outcomes become learning only after a current human review.
+	learningMe := c.call(auditAdmin, "GET", "/api/me", "/api/me", "", http.StatusOK)
+	learningThread, _, err := f.p.Threads.Start("acme", threads.Thread{Channel: "general", Visibility: threads.Private}, threads.Message{By: learningMe.str("handle"), Text: "Review this decision"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	learningID := runtime.RunID("acme", "contract-learning")
+	if err := f.p.Runs.Record(learningID, envelope.Tag{ID: "contract-learning", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "Review the plan", Meta: map[string]string{runs.MetaThread: learningThread.ID}, At: time.Now()}, 1); err != nil {
+		t.Fatal(err)
+	}
+	learningAction, _ := payload.Encode(payload.Action{Name: platform.ToolOutcome, Data: json.RawMessage(`{"kind":"decision","summary":"Use the reviewed plan","decisions":["Keep the Tuesday launch"]}`)})
+	f.p.Runs.Observe(envelope.Event{Tenant: "acme", RunID: learningID, Kind: envelope.KindActionTaken, Payload: learningAction, At: time.Now()})
+	learningEnd, _ := payload.Encode(payload.Lifecycle{Text: "The decision is ready."})
+	f.p.Runs.Observe(envelope.Event{Tenant: "acme", RunID: learningID, Kind: envelope.KindCompleted, Payload: learningEnd, At: time.Now()})
+	if err := f.p.Runs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	learningAt := "/api/runs/" + learningID
+	previewLearning := c.call(auditAdmin, "GET", "/api/runs/{id}/learning", learningAt+"/learning", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/runs/{id}/learning", learningAt+"/learning?scope=invalid", "", http.StatusBadRequest)
+	c.call(auditAdmin, "GET", "/api/runs/{id}/learning", "/api/runs/"+id+"/learning", "", http.StatusConflict)
+	c.call(acme, "GET", "/api/runs/{id}/learning", learningAt+"/learning", "", http.StatusNotFound)
+	learningSkillBody := `{"snapshot":"` + previewLearning.str("snapshot") + `","definition":{"name":"learned-contract","description":"Review the facts","instructions":"State the decision and owner","tools":[]}}`
+	c.call(auditAdmin, "POST", "/api/runs/{id}/skill-draft", learningAt+"/skill-draft", learningSkillBody, http.StatusCreated)
+	c.call(auditAdmin, "POST", "/api/runs/{id}/skill-draft", learningAt+"/skill-draft", strings.Replace(learningSkillBody, previewLearning.str("snapshot"), "stale", 1), http.StatusConflict)
+	c.call(auditAdmin, "POST", "/api/runs/{id}/skill-draft", learningAt+"/skill-draft", strings.Replace(learningSkillBody, `"tools":[]`, `"tools":["file_write"]`, 1), http.StatusBadRequest)
+	learningMemoryBody := `{"snapshot":"` + previewLearning.str("snapshot") + `","decision":0,"text":"Keep the Tuesday launch"}`
+	c.call(auditAdmin, "POST", "/api/runs/{id}/decision-memory", learningAt+"/decision-memory", strings.Replace(learningMemoryBody, previewLearning.str("snapshot"), "stale", 1), http.StatusConflict)
+	c.call(auditAdmin, "POST", "/api/runs/{id}/decision-memory", learningAt+"/decision-memory", strings.Replace(learningMemoryBody, `"decision":0`, `"decision":99`, 1), http.StatusBadRequest)
+	c.call(auditAdmin, "POST", "/api/runs/{id}/decision-memory", learningAt+"/decision-memory", learningMemoryBody, http.StatusCreated)
+
 	// Published files.
 	if err := f.p.PutFile("acme", first.str("thread"), "notes.txt", "Refunds fell by a third."); err != nil {
 		t.Fatal(err)
@@ -2041,7 +2072,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			continue
 		}
 		caller := acme
-		if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") {
+		if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 			caller = auditAdmin
 		}
 		c.call(caller, op.method, op.path, op.path, `{"unknown_field":1}`, http.StatusBadRequest)
@@ -2131,6 +2162,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/runs/{id}/questions/{question}/answer":          {"id": id, "question": "x"},
+		"/api/runs/{id}/feedback":                             {"id": id},
+		"/api/runs/{id}/learning":                             {"id": learningID},
+		"/api/runs/{id}/skill-draft":                          {"id": learningID},
+		"/api/runs/{id}/decision-memory":                      {"id": learningID},
 		"/api/agent-setups/{name}":                            {"name": "amended-setup"},
 		"/api/agent-setups/{name}/test":                       {"name": "amended-setup"},
 		"/api/projects/{name}/memory/{id}":                    {"name": "Launch", "id": freshProjectNote.str("id")},
@@ -2222,7 +2258,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
-			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") {
+			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 				caller = auditAdmin
 			}
 			c.call(caller, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)

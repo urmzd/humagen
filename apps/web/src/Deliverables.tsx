@@ -315,8 +315,10 @@ function FileBody({
 }) {
   const [preview, setPreview] = useState<FilePreview>();
   const [problem, setProblem] = useState<string>();
+  const [attempt,setAttempt]=useState(0);
   useEffect(() => {
     const abort = new AbortController();
+    setProblem(undefined);setPreview(undefined);
     if (file.mime.startsWith("image/") || file.mime === "application/pdf") {
       setPreview({ kind: "none" });
       return () => abort.abort();
@@ -337,8 +339,8 @@ function FileBody({
           setProblem(error instanceof Error ? error.message : words.artifactFailed);
       });
     return () => abort.abort();
-  }, [file.id, file.mime, file.title, onSlides]);
-  if (problem) return <Problem message={problem} />;
+  }, [file.id, file.mime, file.title, onSlides,attempt]);
+  if (problem) return <div className="flex flex-col gap-3"><Problem message={problem}/><button type="button" className={`${button} self-start`} onClick={()=>setAttempt(value=>value+1)}>{defaultCopy.retry}</button></div>;
   if (!preview) return <SkeletonRows count={4} />;
   return <NativePreview file={file} preview={preview} slide={slide} onSlide={onSlide} />;
 }

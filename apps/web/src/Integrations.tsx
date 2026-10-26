@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   type ActionPolicy,
@@ -646,7 +646,10 @@ function SourceRules({
       .catch((error) => setProblem(sourceProblem(error)));
   }, []);
   useEffect(load, [load]);
+  const previousProvider=useRef(provider);
   useEffect(() => {
+    if(previousProvider.current===provider)return;
+    previousProvider.current=provider;
     setEditing(null);
     setMatches(null);
   }, [provider]);

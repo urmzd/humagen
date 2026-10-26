@@ -36,10 +36,11 @@ function plain(content: unknown): string {
     return content.map((part) => (typeof part?.text === "string" ? part.text : "")).join("\n");
   return JSON.stringify(content ?? "");
 }
-function revisionModel(content: unknown): typeof original {
+type RevisionModel={title?:string;paragraphs?:string[];slides?:typeof original.slides;rows?:string[][];sources?:string[]};
+function revisionModel(content: unknown): RevisionModel {
   const text = plain(content);
   const object = JSON.parse(text);
-  if (object.slides) return object;
+  if (object.slides||object.paragraphs||object.rows) return object;
   for (const key of ["result", "output", "content"]) {
     if (object[key]) return revisionModel(object[key]);
   }
@@ -53,7 +54,7 @@ function response(request: ModelRequest) {
   const results = current.filter((message) => message.role === "tool");
   const step = results.length;
   let tool: string | undefined, args: Record<string, unknown> | undefined;
-  let model = structuredClone(original);
+  let model:RevisionModel = structuredClone(original);
   if (revising) {
     const source = /artifact:([A-Za-z0-9_-]+)@(\d+)/.exec(asks);
     assert.ok(source, "Revision must carry the exact immutable source capability");
@@ -62,18 +63,22 @@ function response(request: ModelRequest) {
       args = { path: `artifact:${source[1]}@${source[2]}` };
     } else {
       model = revisionModel(results[0]?.content);
-      assert.equal(model.slides[0]?.title, "Launch decision");
-      const selected = model.slides[1];
-      assert.ok(selected);
-      selected.body = ["Developer owns the briefing", "Review the draft before sharing"];
-      selected.notes =
-        "Owner confirmed for this revision. The launch date and original evidence remain unchanged.";
+      if(model.slides){
+        assert.equal(model.slides[0]?.title, "Launch decision");
+        const selected = model.slides[1];
+        assert.ok(selected);
+        selected.body = ["Developer owns the briefing", "Review the draft before sharing"];
+        selected.notes = "Owner confirmed for this revision. The launch date and original evidence remain unchanged.";
+      }else{
+        assert.equal(model.rows?.[1]?.[1],"Developer");
+        model.rows![1]![1]="Confirmed Developer";
+      }
     }
   }
-  const documentRequested=/native docx evidence table/i.test(asks);
-  const spreadsheetRequested=/native xlsx owner sheet/i.test(asks);
+  const documentRequested=/native docx evidence table|native-evidence\.docx/i.test(asks)||(revising&&!!model.paragraphs);
+  const spreadsheetRequested=/native xlsx owner sheet|native-owners\.xlsx/i.test(asks)||(revising&&!model.slides&&!model.paragraphs&&!!model.rows);
   const filename=documentRequested?"native-evidence.docx":spreadsheetRequested?"native-owners.xlsx":"native-launch.pptx";
-  const authored=documentRequested?{title:"Native evidence brief",paragraphs:["Review the evidence before publication."],rows:[["Decision","Owner"],["Keep the launch date","Developer"]],sources:["https://example.test/launch-decision"]}:spreadsheetRequested?{rows:[["Action","Owner"],["Review evidence","Developer"]]}:model;
+  const authored=revising?model:documentRequested?{title:"Native evidence brief",paragraphs:["Review the evidence before publication."],rows:[["Decision","Owner"],["Keep the launch date","Developer"]],sources:["https://example.test/launch-decision"]}:spreadsheetRequested?{rows:[["Action","Owner"],["Review evidence","Developer"]]}:model;
   const offset = revising ? 1 : 0;
   if (step === offset) {
     tool = "file_write";

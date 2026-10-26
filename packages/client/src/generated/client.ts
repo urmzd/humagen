@@ -35,6 +35,7 @@ import type {
   CreateRunRequest,
   DiscoverWorkspaceResponse,
   DraftLibrarySkillBody,
+  DraftSkillFromOutcomeBody,
   EvalRun,
   EvalSuite,
   FindHelpResponse,
@@ -101,6 +102,7 @@ import type {
   NoteInput,
   NoteList,
   NoteSelection,
+  OutcomeLearningPreview,
   PlacementPreview,
   Policy,
   PolicyInput,
@@ -131,6 +133,7 @@ import type {
   PublishThreadSummaryBody,
   QueryJournalResponse,
   QuestionAnswer,
+  RememberOutcomeDecisionBody,
   Resolution,
   ReviseAgentBody,
   Revision,
@@ -1635,6 +1638,73 @@ agents answering the next message are sent.
       headers: { ..._hdr, ...options?.headers },
       retry: options?.retry,
       timeout: options?.timeout,
+    });
+  }
+
+  /** Preview a confined authored outcome for reviewed learning */
+  async previewOutcomeLearning(id: string, scope?: "personal" | "project", options?: RequestOptions): Promise<OutcomeLearningPreview> {
+    let path = "/api/runs/{id}/learning";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<OutcomeLearningPreview>("GET", path, {
+      ...options,
+    });
+  }
+
+  async previewOutcomeLearningRaw(id: string, scope?: "personal" | "project", options?: RequestOptions): Promise<ApiResponse<OutcomeLearningPreview>> {
+    let path = "/api/runs/{id}/learning";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<OutcomeLearningPreview>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Save a reviewed authored outcome as a new tool-free skill draft */
+  async draftSkillFromOutcome(id: string, body: DraftSkillFromOutcomeBody, options?: RequestOptions): Promise<LibrarySkill> {
+    let path = "/api/runs/{id}/skill-draft";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async draftSkillFromOutcomeRaw(id: string, body: DraftSkillFromOutcomeBody, options?: RequestOptions): Promise<ApiResponse<LibrarySkill>> {
+    let path = "/api/runs/{id}/skill-draft";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Approve an explicitly human-reviewed authored decision as memory */
+  async rememberOutcomeDecision(id: string, body: RememberOutcomeDecisionBody, options?: RequestOptions): Promise<Note> {
+    let path = "/api/runs/{id}/decision-memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async rememberOutcomeDecisionRaw(id: string, body: RememberOutcomeDecisionBody, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/runs/{id}/decision-memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
     });
   }
 

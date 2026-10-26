@@ -1434,6 +1434,94 @@ paths:
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/runs/{id}/learning:
+    get:
+      operationId: previewOutcomeLearning
+      tags: [runs]
+      summary: Preview a confined authored outcome for reviewed learning
+      x-permission: runs:read
+      parameters:
+        - {$ref: '#/components/parameters/RunID'}
+        - name: scope
+          in: query
+          schema: {type: string, enum: [personal, project], default: personal}
+      responses:
+        '200':
+          description: Current confined outcome and permitted learning destinations.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OutcomeLearningPreview'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
+  /api/runs/{id}/skill-draft:
+    post:
+      operationId: draftSkillFromOutcome
+      tags: [runs]
+      summary: Save a reviewed authored outcome as a new tool-free skill draft
+      x-permission: projects:write
+      parameters:
+        - {$ref: '#/components/parameters/RunID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [snapshot, definition]
+              properties:
+                snapshot: {type: string, maxLength: 256}
+                scope: {$ref: '#/components/schemas/LibraryScope'}
+                definition: {$ref: '#/components/schemas/LibrarySkillDefinition'}
+      responses:
+        '201':
+          description: The durable human-reviewed learning record, with no external action or automatic skill activation.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LibrarySkill'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
+  /api/runs/{id}/decision-memory:
+    post:
+      operationId: rememberOutcomeDecision
+      tags: [runs]
+      summary: Approve an explicitly human-reviewed authored decision as memory
+      x-permission: projects:write
+      parameters:
+        - {$ref: '#/components/parameters/RunID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [snapshot, decision, text]
+              properties:
+                snapshot: {type: string, maxLength: 256}
+                scope: {$ref: '#/components/schemas/LibraryScope'}
+                decision: {type: integer, minimum: 0, maximum: 19}
+                text: {type: string, minLength: 1, maxLength: 300}
+      responses:
+        '201':
+          description: The durable human-reviewed learning record, with no external action or automatic skill activation.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
   /api/runs/{id}:
     get:
       operationId: getRun
@@ -7352,6 +7440,9 @@ components:
               maxItems: 10
               items: {type: string}
             from: {$ref: '#/components/schemas/LibraryProvenance'}
+            origin_run:
+              description: Server-recorded authored outcome origin, present only while this reader may read that run. Promotion drops this private lineage.
+              type: string
     AuditRecord:
       type: object
       required: [id, actor, at, outcome, action, resource, resource_id, scope]
@@ -7535,6 +7626,20 @@ components:
         reason: {type: string}
         comment: {type: string}
         updated_at: {type: string, format: date-time}
+    OutcomeLearningPreview:
+      description: A current confined authored outcome snapshot for explicit human review. Personal scope is the default; project scope is derived from current placement and ordinary ownership.
+      type: object
+      required: [run, snapshot, scope, outcome, may_project, can_draft, can_remember]
+      properties:
+        run: {type: string}
+        snapshot: {type: string, maxLength: 256}
+        scope: {$ref: '#/components/schemas/LibraryScope'}
+        outcome: {$ref: '#/components/schemas/RunOutcome'}
+        project: {type: string}
+        project_title: {type: string}
+        may_project: {type: boolean}
+        can_draft: {type: boolean}
+        can_remember: {type: boolean}
     RunOutcome:
       description: Agent-authored result framing. It never records approval or external execution.
       type: object
