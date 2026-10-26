@@ -115,7 +115,7 @@ export function workspaceScreens(call: Call): Screen[] {
       await composer.fill(
         `${draft}Confirm the owner as Confirmed Developer and preserve the rest.`,
       );
-      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await page.getByRole("button", { name: "Send message", exact: true }).click();
       let revised: { id: string; title: string; version: number } | undefined;
       for (let attempt = 0; attempt < 100; attempt++) {
         const latest = await call<{ artifacts: { id: string; title: string; version: number }[] }>(
