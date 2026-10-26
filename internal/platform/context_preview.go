@@ -9,6 +9,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 )
 
@@ -45,7 +46,7 @@ func (p *Platform) turnLayers(tenant string, tree *projects.Tree, chain []projec
 	}
 
 	out = append(out, p.noteLayers(tenant, chain, workspace)...)
-	if text := p.Memory.Prompt(tenant, agent); text != "" {
+	if text := p.Memory.PromptAt(tenant, agent, "What you remember from earlier conversations:", p.now()); text != "" {
 		out = append(out, ContextLayer{Kind: "agent_notes", From: agent, Text: text, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, agent), Sent: true, Unit: "characters"})
 	}
 	return out
@@ -96,6 +97,20 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		}
 		out.Layers = append(out.Layers, l)
 	}
+	out.Layers = append(out.Layers, p.personalLayers(who.Tenant, project, who.Subject)...)
+	decision := p.ActionDecision(who.Tenant, project, agent, humanSubject(who), operations.ReadContext)
+	if decision == operations.Ask || decision == operations.Never {
+		for i := range out.Layers {
+			l := &out.Layers[i]
+			if l.Kind == "agent_notes" || l.Kind == "project_notes" || l.Kind == "ancestor_notes" || l.Kind == "personal_notes" {
+				l.Sent = false
+				l.Omitted += l.Used
+				l.Used = 0
+				l.Text = ""
+			}
+		}
+	}
+
 	if seer.Knowledge() {
 		agentNames := []string{}
 		for _, src := range rev.Spec.Sources {
@@ -127,8 +142,11 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		}
 		out.Layers = append(out.Layers, layer)
 	}
+	if defaults := p.defaultSkillPreview(ctx, who, project, agent); defaults != nil {
+		out.Layers = append(out.Layers, *defaults)
+	}
 	names := []string{}
-	for _, s := range tree.Skills(project) {
+	for _, s := range p.AvailableSkills(who.Tenant, project, humanSubject(who)) {
 		if seer.Project(s.From) {
 			names = append(names, s.Name)
 		}
@@ -154,7 +172,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 func (p *Platform) noteCharacters(tenant, owner string) int {
 	used := 0
 	for _, n := range p.Memory.List(tenant, owner) {
-		if n.Status == memory.Approved {
+		if n.Status == memory.Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(p.now())) {
 			used += utf8.RuneCountInString(n.Text)
 		}
 	}

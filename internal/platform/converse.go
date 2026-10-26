@@ -13,7 +13,9 @@ import (
 
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -269,6 +271,8 @@ func (p *Platform) MarkSetup(tenant, by string) (Settings, error) {
 
 // Turn is one message a person sends.
 type Turn struct {
+	// TestSkill is a server-selected immutable draft. It grants no tools.
+	TestSkill *library.Revision
 	// ForceAsk tightens every action to require a recorded approval. It grants no tools.
 	ForceAsk bool
 	// AssignmentID pins a durable assignment reservation to this ordinary turn.
@@ -324,6 +328,10 @@ func NoProjectCalled(name string) error {
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	cfg := p.Settings(tenant)
 	meta := map[string]string{runs.MetaAsk: t.Text}
+	if t.TestSkill != nil {
+		t.ForceAsk = true
+		pinSkills(meta, []pinnedSkill{pinRevision(*t.TestSkill)})
+	}
 	body := t.Text
 	th := threads.Thread{Channel: projects.General}
 	if t.After != "" {
@@ -397,9 +405,12 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	if t.ForceAsk {
 		meta[operations.MetaForceAsk] = "true"
 	}
+	if existing, err := p.Runs.Get(tenant, runtime.RunID(tenant, t.ID)); err == nil {
+		return existing, nil
+	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: t.ID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.contextIn(tenant, th.Project, th.Channel, agent, body), Actor: t.Actor, Meta: meta,
+		Text: p.turnContext(tenant, th.Project, th.Channel, agent, t.Actor.User, body, meta), Actor: t.Actor, Meta: meta,
 	})
 }
 

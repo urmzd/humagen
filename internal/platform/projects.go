@@ -415,7 +415,7 @@ const precedence = "Instructions for working here follow: the workspace's first,
 	"Where they disagree the later one wins, and your own instructions win over all of them. " +
 	"Limits, approvals and which agents may run are enforced by the platform, whatever any text here or in the conversation says."
 
-// contextOf composes a turn's text for an agent answering in a project, in
+// contextIn composes a turn's text for an agent answering in a project, in
 // this order: the instructions of the project chain, root first; the
 // project's own notes; its ancestors' notes, nearest first, within a shared
 // budget; the agent's own notes; then body, which is the conversation so far
@@ -424,13 +424,6 @@ const precedence = "Instructions for working here follow: the workspace's first,
 //
 // A project the tree no longer holds is sent what is still kept under its
 // name, and the root's.
-func (p *Platform) contextOf(tenant, project, agent, body string) string {
-	return p.contextIn(tenant, project, "", agent, body)
-}
-
-// contextIn is contextOf for a turn in one of the project's channels. The
-// project layer ends with the channel's purpose, then the line saying which
-// topics have experts on the chain, which every turn in a project is sent.
 func (p *Platform) contextIn(tenant, project, channel, agent, body string) string {
 	tree := p.Projects.Tree(tenant)
 	chain := tree.Chain(project)
@@ -438,6 +431,10 @@ func (p *Platform) contextIn(tenant, project, channel, agent, body string) strin
 		chain = []projects.Project{{Name: project}, tree.Root()}
 	}
 	layers := p.turnLayers(tenant, tree, chain, project, channel, agent)
+	return renderTurnLayers(layers, body)
+}
+
+func renderTurnLayers(layers []ContextLayer, body string) string {
 	parts := make([]string, 0, len(layers)+1)
 	for _, l := range layers {
 		if l.Text == "" {
@@ -504,14 +501,14 @@ func (p *Platform) noteLayers(tenant string, chain []projects.Project, workspace
 	if own.IsRoot() {
 		heading = fmt.Sprintf("What everyone in %s knows:", titleOf(own, workspace))
 	}
-	if s := p.Memory.PromptAs(tenant, memory.ProjectOwner(own.Name), heading); s != "" {
+	if s := p.Memory.PromptAt(tenant, memory.ProjectOwner(own.Name), heading, p.now()); s != "" {
 		parts = append(parts, ContextLayer{Kind: "project_notes", From: own.Name, Text: s, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, memory.ProjectOwner(own.Name)), Sent: true, Unit: "characters"})
 	}
 	used, full := 0, false
 	for _, pr := range chain[1:] {
 		var notes []string
 		for _, n := range p.Memory.List(tenant, memory.ProjectOwner(pr.Name)) {
-			if n.Status == memory.Approved {
+			if n.Status == memory.Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(p.now())) {
 				notes = append(notes, n.Text)
 			}
 		}

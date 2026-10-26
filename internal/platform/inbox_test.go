@@ -254,13 +254,9 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 	}
 }
 
-// With the workspace keeping what the memory agent writes without asking, an
-// agent's notes are kept as they come, and a team project's when the turn
-// was one of its owners' (KeepsNotes, which the API sets from
-// MayChangeNotes). A member's turn only proposes, and a company project's
-// notes still wait for someone holding projects:govern: the turn that taught
-// them needed only runs:write, and agents:write turns the setting on.
-func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
+// Auto-approval remains limited to standalone agent memory. Project memory
+// always waits for human review, even when an owner started the turn.
+func TestAutoApproveNeverBypassesProjectMemoryReview(t *testing.T) {
 	p := withMemoryAgent(t)
 	ctx := t.Context()
 	if err := p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe", MemoryAutoApprove: true}); err != nil {
@@ -288,8 +284,12 @@ func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
 		await(t, p, first.ID, runs.Completed)
 		within(t, c.owner+"'s notes are written", func() bool { return len(p.Memory.List(tenant, c.owner)) > 0 })
 		for _, n := range p.Memory.List(tenant, c.owner) {
-			if n.Status != memory.Approved {
-				t.Fatalf("with approval off, %s's note waits: %+v", c.owner, n)
+			want := memory.Approved
+			if c.project != "" {
+				want = memory.Pending
+			}
+			if n.Status != want {
+				t.Fatalf("unexpected review status for %s: %+v", c.owner, n)
 			}
 		}
 	}

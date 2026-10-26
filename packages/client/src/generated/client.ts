@@ -8,6 +8,8 @@ import type {
   AgentControlInput,
   AgentHome,
   AgentNetwork,
+  AgentSkillDefaults,
+  AgentSkillDefaultsUpdate,
   AgentSpec,
   Alert,
   AlertRule,
@@ -32,12 +34,14 @@ import type {
   CreateKnowledgeSourceBody,
   CreateRunRequest,
   DecideSourceLinkSuggestionBody,
+  DraftLibrarySkillBody,
   EvalRun,
   EvalSuite,
   FindHelpResponse,
   GetAgentHuesResponse,
   GetAgentRosterResponse,
   GetInboxMessageResponse,
+  GetLibrarySkillResponse,
   GetProjectAgentHuesResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
@@ -53,12 +57,14 @@ import type {
   KnowledgeSource,
   KnowledgeSourceConfig,
   KnowledgeVariant,
+  LibrarySkill,
   ListAgentRevisionsResponse,
   ListAgentsResponse,
   ListAlertRulesResponse,
   ListAlertsResponse,
   ListArtifactVersionsResponse,
   ListArtifactsResponse,
+  ListAuditResponse,
   ListChannelsResponse,
   ListClientBindingsResponse,
   ListClientsResponse,
@@ -69,7 +75,9 @@ import type {
   ListKnowledgeDocumentsResponse,
   ListKnowledgeResourcesResponse,
   ListKnowledgeSourcesResponse,
+  ListLibrarySkillsResponse,
   ListMentionsResponse,
+  ListNativeNotificationsResponse,
   ListPendingMemoryResponse,
   ListPeopleResponse,
   ListPoliciesResponse,
@@ -113,6 +121,8 @@ import type {
   ProjectSkillsInput,
   ProjectUpdate,
   ProjectView,
+  PromoteLibrarySkillBody,
+  PromoteMemoryBody,
   PublishThreadSummaryBody,
   PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
@@ -132,6 +142,7 @@ import type {
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
   Settings,
+  SkillUsage,
   SnoozeInboxMessageBody,
   SourceDependencies,
   SourceLinkResource,
@@ -141,6 +152,7 @@ import type {
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
+  TestLibrarySkillBody,
   Thread,
   ThreadInput,
   ThreadMessageInput,
@@ -548,6 +560,241 @@ export class ApiClient {
     });
   }
 
+  /** Copies only the selected approved unexpired text, kind and expiry. The new note is pending and attributed to the copier. Private original provenance is never copied. */
+  async promoteMemory(body: PromoteMemoryBody, options?: RequestOptions): Promise<Note> {
+    const path = "/api/memory/promote";
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteMemoryRaw(body: PromoteMemoryBody, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    const path = "/api/memory/promote";
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** A bounded authenticated delivery worker discovers at most 500 current inbox references, releases immediate or hourly digest deliveries outside quiet hours, and rechecks every item with the current identity. It never changes authoritative inbox history. */
+  async listNativeNotifications(options?: RequestOptions): Promise<ListNativeNotificationsResponse> {
+    const path = "/api/me/notifications";
+    return this.request<ListNativeNotificationsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listNativeNotificationsRaw(options?: RequestOptions): Promise<ApiResponse<ListNativeNotificationsResponse>> {
+    const path = "/api/me/notifications";
+    return this.rawRequest<ListNativeNotificationsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Dismiss your own visible native notification */
+  async acknowledgeNativeNotification(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/me/notifications/{id}/ack";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      ...options,
+    });
+  }
+
+  async acknowledgeNativeNotificationRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/me/notifications/{id}/ack";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** List the latest skill revisions in a visible scope */
+  async listLibrarySkills(scope?: "workspace" | "project" | "personal", project?: string, options?: RequestOptions): Promise<ListLibrarySkillsResponse> {
+    let path = "/api/library/skills";
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListLibrarySkillsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listLibrarySkillsRaw(scope?: "workspace" | "project" | "personal", project?: string, options?: RequestOptions): Promise<ApiResponse<ListLibrarySkillsResponse>> {
+    let path = "/api/library/skills";
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListLibrarySkillsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Create an immutable skill draft revision */
+  async draftLibrarySkill(body: DraftLibrarySkillBody, options?: RequestOptions): Promise<LibrarySkill> {
+    const path = "/api/library/skills";
+    return this.request<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async draftLibrarySkillRaw(body: DraftLibrarySkillBody, options?: RequestOptions): Promise<ApiResponse<LibrarySkill>> {
+    const path = "/api/library/skills";
+    return this.rawRequest<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read visible immutable skill revisions */
+  async getLibrarySkill(id: string, options?: RequestOptions): Promise<GetLibrarySkillResponse> {
+    let path = "/api/library/skills/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<GetLibrarySkillResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getLibrarySkillRaw(id: string, options?: RequestOptions): Promise<ApiResponse<GetLibrarySkillResponse>> {
+    let path = "/api/library/skills/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<GetLibrarySkillResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List readable agents bound to this exact published skill revision */
+  async listSkillAgents(id: string, version: number, limit?: number, options?: RequestOptions): Promise<SkillUsage> {
+    let path = "/api/library/skills/{id}/versions/{version}/agents";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<SkillUsage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSkillAgentsRaw(id: string, version: number, limit?: number, options?: RequestOptions): Promise<ApiResponse<SkillUsage>> {
+    let path = "/api/library/skills/{id}/versions/{version}/agents";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<SkillUsage>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Run the exact revision with every permitted action requiring approval */
+  async testLibrarySkill(id: string, version: number, body: TestLibrarySkillBody, options?: RequestOptions): Promise<Run> {
+    let path = "/api/library/skills/{id}/versions/{version}/test";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.request<Run>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async testLibrarySkillRaw(id: string, version: number, body: TestLibrarySkillBody, options?: RequestOptions): Promise<ApiResponse<Run>> {
+    let path = "/api/library/skills/{id}/versions/{version}/test";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.rawRequest<Run>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Publish a successfully tested immutable revision */
+  async publishLibrarySkill(id: string, version: number, options?: RequestOptions): Promise<LibrarySkill> {
+    let path = "/api/library/skills/{id}/versions/{version}/publish";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.request<LibrarySkill>("POST", path, {
+      ...options,
+    });
+  }
+
+  async publishLibrarySkillRaw(id: string, version: number, options?: RequestOptions): Promise<ApiResponse<LibrarySkill>> {
+    let path = "/api/library/skills/{id}/versions/{version}/publish";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.rawRequest<LibrarySkill>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Copy a published revision into a new scoped draft */
+  async promoteLibrarySkill(id: string, version: number, body: PromoteLibrarySkillBody, options?: RequestOptions): Promise<LibrarySkill> {
+    let path = "/api/library/skills/{id}/versions/{version}/promote";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.request<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteLibrarySkillRaw(id: string, version: number, body: PromoteLibrarySkillBody, options?: RequestOptions): Promise<ApiResponse<LibrarySkill>> {
+    let path = "/api/library/skills/{id}/versions/{version}/promote";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.rawRequest<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone. */
+  async listAudit(actor?: string, resource?: string, from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListAuditResponse> {
+    let path = "/api/audit";
+    const _q = new URLSearchParams();
+    if (actor !== undefined && actor !== null) _q.set("actor", String(actor));
+    if (resource !== undefined && resource !== null) _q.set("resource", String(resource));
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListAuditResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listAuditRaw(actor?: string, resource?: string, from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListAuditResponse>> {
+    let path = "/api/audit";
+    const _q = new URLSearchParams();
+    if (actor !== undefined && actor !== null) _q.set("actor", String(actor));
+    if (resource !== undefined && resource !== null) _q.set("resource", String(resource));
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListAuditResponse>("GET", path, {
+      ...options,
+    });
+  }
+
   /** Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end. */
   async listReadAudit(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListReadAuditResponse> {
     let path = "/api/read-audit";
@@ -947,6 +1194,44 @@ nowhere (400).
     });
   }
 
+  /** Read exact published default skill revisions */
+  async getAgentSkillDefaults(name: string, options?: RequestOptions): Promise<AgentSkillDefaults> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSkillDefaults>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentSkillDefaultsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSkillDefaults>> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSkillDefaults>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Bind exact published skills to the current agent revision */
+  async setAgentSkillDefaults(name: string, body: AgentSkillDefaultsUpdate, options?: RequestOptions): Promise<AgentSkillDefaults> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSkillDefaults>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setAgentSkillDefaultsRaw(name: string, body: AgentSkillDefaultsUpdate, options?: RequestOptions): Promise<ApiResponse<AgentSkillDefaults>> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSkillDefaults>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** The agent's stored call policy, or the default an agent with none has
 (`version` 0): any caller its own spec allows, without approval. 404
 for an agent that does not exist in the caller's workspace. An agent
@@ -1088,6 +1373,29 @@ owner is no agent's, and answers 404.
     });
   }
 
+  /** Correct a visible memory while retaining its provenance */
+  async editAgentMemory(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/agents/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editAgentMemoryRaw(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/agents/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** An agent that does not exist, or a note that is not its own, is 404. */
   async removeAgentMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/agents/{name}/memory/{id}";
@@ -1101,6 +1409,97 @@ owner is no agent's, and answers 404.
   async removeAgentMemoryRaw(name: string, id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
     let path = "/api/agents/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Read your private memory */
+  async listPersonalMemory(options?: RequestOptions): Promise<NoteList> {
+    const path = "/api/me/memory";
+    return this.request<NoteList>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listPersonalMemoryRaw(options?: RequestOptions): Promise<ApiResponse<NoteList>> {
+    const path = "/api/me/memory";
+    return this.rawRequest<NoteList>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Remember a private note */
+  async addPersonalMemory(body: NoteInput, options?: RequestOptions): Promise<Note> {
+    const path = "/api/me/memory";
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async addPersonalMemoryRaw(body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    const path = "/api/me/memory";
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Review your proposed private memory */
+  async approvePersonalMemory(body: NoteSelection, options?: RequestOptions): Promise<Approved> {
+    const path = "/api/me/memory/approve";
+    return this.request<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async approvePersonalMemoryRaw(body: NoteSelection, options?: RequestOptions): Promise<ApiResponse<Approved>> {
+    const path = "/api/me/memory/approve";
+    return this.rawRequest<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Correct a visible memory while retaining its provenance */
+  async editPersonalMemory(id: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/me/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editPersonalMemoryRaw(id: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/me/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Immediately forget a private note */
+  async forgetPersonalMemory(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/me/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async forgetPersonalMemoryRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/me/memory/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("DELETE", path, {
       ...options,
@@ -3768,6 +4167,29 @@ inbox to keep or discard it. A viewer is 403.
     let path = "/api/projects/{name}/memory/approve";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Correct a visible memory while retaining its provenance */
+  async editProjectMemory(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/projects/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editProjectMemoryRaw(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/projects/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Note>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,

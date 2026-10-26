@@ -187,3 +187,14 @@ its text. Long scope labels truncate within the badge without losing their
 accessible text. The `agent-status-badges` browser state makes the analyst the
 workspace default and checks both badges in dark mode with enlarged text.
 The containment assertion reproduces the reported failure before the fix.
+
+### Library subsystem implementation evidence
+
+- `pkg/audit`, `internal/platform/audit_view.go`: durable pending/succeeded/failed change attempts,
+  bounded redacted snapshots, retained legacy adapters and exact-owner personal filtering.
+- `pkg/memory`, `internal/httpapi/personal_memory.go`: private personal owner namespace,
+  reviewed kind/provenance, expiry at composition, immediate audited forget and persisted use counts.
+- `pkg/prefs/personal.go`: persisted briefing, notification delivery policy, midnight/DST quiet
+  hours and privacy choices. Native delivery is implemented in `pkg/notifications` and the authenticated console worker, with restart/dedupe, current-reader confinement, hourly digests, quiet hours and projection-only acknowledgements. Email remains unavailable.
+- `apps/web/src/Audit.tsx`, `MemoryLibrary.tsx`, `PersonalPreferences.tsx`: standalone views for
+  shared navigation integration. Versioned skill draft/test/publish/promotion workflows use real configured agents and the existing pinned runtime, with explicit tool intersections and forced Ask on tests.

@@ -1,8 +1,19 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
+  SkillUsage,
+  AgentSkillDefaults,
+  AgentSkillDefaultsUpdate,
   KnowledgeLifecycle,
   SourceDependencies,
   KnowledgeSourceConfig,
+  Note as GeneratedNote,
+  NoteInput,
+  PersonalPreferences,
+  AuditRecord,
+  NativeNotification,
+  LibrarySkill,
+  LibraryScope,
+  LibrarySkillDefinition,
   ProjectContext,
   AgentHome,
   Person,
@@ -80,6 +91,7 @@ export interface Principal {
 }
 
 export interface Me {
+ personal_project?: string;
   principal: Principal;
   permissions: string[];
   /** The caller is an admin in a workspace nobody has set up yet. */
@@ -524,17 +536,7 @@ export interface PolicyChange {
   after?: Policy;
 }
 
-export interface Note {
-  id: string;
-  text: string;
-  source: "person" | "consolidated";
-  /** Pending notes are proposals: not used until a person approves them. */
-  status: "approved" | "pending";
-  by?: string;
-  /** What the person who wrote it is called. Shown in place of `by`, the subject. */
-  by_name?: string;
-  at: string;
-}
+export type Note = GeneratedNote;
 
 /**
  * A tool that acts as you: an MCP provider reached with each person's own
@@ -552,6 +554,7 @@ export interface ToolCredential {
   kind?: "reference" | "value";
   ref?: string;
   updated_at?: string;
+ last_used_at?: string;
 }
 
 /** The tools that act as you, and what this workspace lets people give for them. */
@@ -567,6 +570,7 @@ export interface ToolCredentials {
 export type ToolCredentialInput = { ref: string } | { value: string };
 
 export interface Preferences {
+  personal?: PersonalPreferences;
   display_name: string;
   theme: "system" | "light" | "dark";
   accent: string;
@@ -686,6 +690,26 @@ export const api = {
   saveHandoff: (id:string,input:import("../../../packages/client/src/generated/types.ts").HandoffUpdate) => call<HandoffContract>("PUT",`/api/handoffs/${encodeURIComponent(id)}`,input),
   handoffs: () => call<HandoffContract[]>("GET", "/api/handoffs?limit=200"),
   agentNetwork: () => call<AgentNetwork>("GET", "/api/agent-network"),
+ editPersonalMemory:(id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/me/memory/${encodeURIComponent(id)}`,input),
+ editProjectMemory:(project:string,id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/projects/${projectPath(project)}/memory/${encodeURIComponent(id)}`,input),
+ editAgentMemory:(agent:string,id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`,input),
+  notifications: () => call<{notifications:NativeNotification[]}>("GET","/api/me/notifications").then(r=>r.notifications??[]),
+  acknowledgeNotification: (id:string) => call<void>("POST",`/api/me/notifications/${encodeURIComponent(id)}/ack`),
+  agentSkillDefaults: (agent:string) => call<AgentSkillDefaults>("GET",`/api/agents/${encodeURIComponent(agent)}/skills`),
+  setAgentSkillDefaults: (agent:string,input:AgentSkillDefaultsUpdate) => call<AgentSkillDefaults>("PUT",`/api/agents/${encodeURIComponent(agent)}/skills`,input),
+  librarySkills: (scope: LibraryScope) => call<{skills:LibrarySkill[]}>("GET", `/api/library/skills?${new URLSearchParams({scope:scope.kind,...(scope.project?{project:scope.project}:{})})}`).then(r=>r.skills),
+  skillAgents: (id:string,version:number) => call<SkillUsage>("GET",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/agents?limit=100`),
+  librarySkill: (id:string) => call<{revisions:LibrarySkill[]}>("GET", `/api/library/skills/${encodeURIComponent(id)}`).then(r=>r.revisions),
+  draftSkill: (scope:LibraryScope, definition:LibrarySkillDefinition, version:number) => call<LibrarySkill>("POST", "/api/library/skills",{scope,definition,version}),
+  testSkill: (id:string, version:number, agent:string, project:string, text:string) => call<Run>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/test`,{agent,project,text}),
+  publishSkill: (id:string,version:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/publish`),
+  promoteSkill: (id:string,version:number,scope:LibraryScope,expected:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/promote`,{scope,version:expected}),
+  promoteMemory: (scope:"personal"|"workspace"|"project"|"agent", owner:string, id:string, destination:string) => call<GeneratedNote>("POST","/api/memory/promote",{scope,owner,id,destination}),
+  personalMemory: () => call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then(r => r.notes),
+  rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
+  approvePersonal: (ids:string[]) => call<{approved:number}>("POST","/api/me/memory/approve",{ids}),
+  forgetPersonal: (id: string) => call<void>("DELETE", `/api/me/memory/${encodeURIComponent(id)}`),
+  audit: (filters:Record<string,string>={}) => call<{ records: AuditRecord[] }>("GET", `/api/audit?${new URLSearchParams(filters)}`).then(r => r.records),
  readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
@@ -748,8 +772,8 @@ export const api = {
 
   memory: (agent: string) =>
     call<{ notes: Note[] }>("GET", `/api/agents/${encodeURIComponent(agent)}/memory`).then((r) => r.notes),
-  addMemory: (agent: string, text: string) =>
-    call<Note>("POST", `/api/agents/${encodeURIComponent(agent)}/memory`, { text }),
+  addMemory: (agent: string, text: string,details:Partial<NoteInput>={}) =>
+    call<Note>("POST", `/api/agents/${encodeURIComponent(agent)}/memory`, { ...details,text }),
   approveMemory: (agent: string, ids: string[]) =>
     call<{ approved: number }>("POST", `/api/agents/${encodeURIComponent(agent)}/memory/approve`, { ids }),
   pendingMemory: () => call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
@@ -856,8 +880,8 @@ export const api = {
     call<void>("DELETE", `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then((r) => r.notes),
-  addProjectMemory: (project: string, text: string) =>
-    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { text }),
+  addProjectMemory: (project: string, text: string,details:Partial<NoteInput>={}) =>
+    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { ...details,text }),
   approveProjectMemory: (project: string, ids: string[]) =>
     call<{ approved: number }>("POST", `/api/projects/${projectPath(project)}/memory/approve`, { ids }),
   removeProjectMemory: (project: string, id: string) =>
@@ -866,7 +890,7 @@ export const api = {
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[] }) =>
+  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[]; personal?: PersonalPreferences }) =>
     call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.

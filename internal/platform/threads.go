@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -360,6 +361,7 @@ type tagLookup struct {
 	// chain offers.
 	tree    *projects.Tree
 	project string
+	person  string
 }
 
 // Skill reports whether a skill goes by name on the chain of the project
@@ -368,7 +370,7 @@ func (l tagLookup) Skill(name string) bool {
 	if l.tree == nil {
 		return false
 	}
-	_, _, ok := l.tree.Skill(l.project, name)
+	_, ok := l.p.librarySkill(l.tenant, l.project, l.person, name)
 	return ok
 }
 
@@ -741,7 +743,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project, person: humanSubject(person)})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -828,7 +830,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		surfaceID, slack = on.ref.message(), nil
 	}
 	sees := p.Seer(person).Agent
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project, person: humanSubject(person)})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -1159,7 +1161,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	if routed != "" {
 		meta[runs.MetaRouted] = routed
 	}
-	skills := p.skillsOfMessage(tenant, th, m, via)
+	skills := p.skillsOfMessage(tenant, th, m, via, actor.User)
 	pinSkills(meta, skills)
 	if agent == Auto && len(among) > 0 {
 		who, err := p.bestFit(ctx, tenant, th.Project, pickText(m.Text, skills), among, sees)
@@ -1179,6 +1181,9 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		agent = who.Agent
 		meta[runs.MetaPicked] = who.Picked
 	}
+	if existing, err := p.Runs.Get(tenant, runtime.RunID(tenant, tagID)); err == nil {
+		return existing, nil
+	}
 	cfg := p.Settings(tenant)
 	body := m.Text
 	if cfg.History == HistoryRecent {
@@ -1186,7 +1191,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: tagID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.contextIn(tenant, th.Project, th.Channel, agent, body), Attachments: m.Attachments, Actor: actor, Meta: meta,
+		Text: p.turnContext(tenant, th.Project, th.Channel, agent, actor.User, body, meta), Attachments: m.Attachments, Actor: actor, Meta: meta,
 	})
 }
 

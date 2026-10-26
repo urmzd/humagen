@@ -541,7 +541,7 @@ func (s *Server) projectMemory(w http.ResponseWriter, r *http.Request, who auth.
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": viewNotes(s.P.Names(who.Tenant), s.P.Memory.List(who.Tenant, owner))})
+	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
 }
 
 // addProjectMemory adds a note. An owner's is in use at once; a member's is
@@ -549,16 +549,17 @@ func (s *Server) projectMemory(w http.ResponseWriter, r *http.Request, who auth.
 func (s *Server) addProjectMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		Text string `json:"text"`
+		memory.Details
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	note, err := s.P.AddProjectNote(who, r.PathValue("name"), body.Text)
+	note, err := s.P.AddProjectNote(who, r.PathValue("name"), body.Text, body.Details)
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, viewNote(s.P.Names(who.Tenant), note))
+	ok(w, http.StatusCreated, s.viewNoteAs(who, note))
 }
 
 func (s *Server) approveProjectMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -585,11 +586,7 @@ func (s *Server) removeProjectMemory(w http.ResponseWriter, r *http.Request, who
 	if !found {
 		return
 	}
-	if err := s.P.RemoveMemory(who.Tenant, owner, r.PathValue("id")); err != nil {
-		s.problem(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	s.forgetOwnedMemory(w, r, who, owner, "DELETE /api/projects/{name}/memory/{id}", string(auth.ProjectsWrite))
 }
 
 // filed runs fn while a project, when one is named, exists and cannot be

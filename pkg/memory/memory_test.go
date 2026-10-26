@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 var now = time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
@@ -179,4 +181,85 @@ func TestNoAgentNameIsAProjectsOwner(t *testing.T) {
 	if got := s.List("acme", ProjectOwner("")); len(got) != 1 || got[0].Text != "Everyone's." {
 		t.Fatalf("the workspace's notes are %+v", got)
 	}
+}
+
+func TestExpiredAndPersonalMemoryDoesNotEnterPrompt(t *testing.T) {
+	s := NewStore()
+	now := time.Now()
+	n, err := s.AddDetailed("acme", PersonalOwner("ada"), "Prefer brief answers", Person, Approved, "ada", now, Details{Kind: Preference, ExpiresAt: now.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.PromptAt("acme", PersonalOwner("ada"), "Notes", now.Add(2*time.Hour)); got != "" {
+		t.Fatalf("expired note sent: %q", got)
+	}
+	if n.Kind != Preference || n.ExpiresAt.IsZero() {
+		t.Fatalf("metadata lost: %+v", n)
+	}
+	if person, ok := OwnerPerson(PersonalOwner("ada")); !ok || person != "ada" {
+		t.Fatal("personal namespace lost")
+	}
+}
+
+func TestRenderedMemoryUseSurvivesReplayWithoutCountingPreview(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now()
+		_, err = s.AddDetailed("acme", "lead", "Launch in October", Person, Approved, "ada", now, Details{Kind: Decision, ExpiresAt: now.Add(time.Hour)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		preview := s.PromptAt("acme", "lead", "Notes", now)
+		if s.List("acme", "lead")[0].Uses != 0 {
+			t.Fatal("preview counted as use")
+		}
+		if err := s.UsedRendered("acme", "lead", preview, now); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UsedRendered("acme", "lead", preview, now.Add(2*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		s, err = Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := s.List("acme", "lead")[0]
+		if got.Uses != 1 || got.Kind != Decision || got.LastUsedAt.IsZero() {
+			t.Fatalf("use/provenance lost: %+v", got)
+		}
+		if s.PromptAt("acme", "lead", "Notes", now.Add(2*time.Hour)) != "" {
+			t.Fatal("expired memory replayed into context")
+		}
+	})
+}
+
+func TestCorrectionRetainsProvenanceReviewAndExpiryAcrossReplay(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := time.Now()
+		note, err := s.AddDetailed("acme", ProjectOwner("Field"), "Ship on Tuesday", Artifact, Pending, "humagen://artifacts/a?version=2", at, Details{Kind: Decision, ExpiresAt: at.Add(time.Hour)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		edited, err := s.Edit("acme", ProjectOwner("Field"), note.ID, "Ship on Wednesday", "ada", at.Add(time.Minute), nil)
+		if err != nil || edited.Source != Artifact || edited.By != note.By || edited.Status != Pending || !edited.ExpiresAt.Equal(note.ExpiresAt) {
+			t.Fatalf("correction lost provenance/review: %+v %v", edited, err)
+		}
+		s, err = Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held := s.List("acme", ProjectOwner("Field"))[0]
+		if held.Text != "Ship on Wednesday" || held.EditedBy != "ada" || held.Status != Pending {
+			t.Fatalf("correction not replayed: %+v", held)
+		}
+	})
 }

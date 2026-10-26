@@ -374,6 +374,10 @@ func (s *Seer) Agent(name string) bool {
 // MemoryOwner reports whether the reader sees notes kept under an owner: a
 // project's where they see the project, an agent's where they see the agent.
 func (s *Seer) MemoryOwner(owner string) bool {
+	if subject, ok := memory.OwnerPerson(owner); ok {
+		return subject != "" && s.who.Kind == auth.User && s.who.Subject == subject
+	}
+
 	if project, ok := memory.OwnerProject(owner); ok {
 		return s.Project(project)
 	}

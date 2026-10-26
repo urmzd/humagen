@@ -171,6 +171,278 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /api/memory/promote:
+    post:
+      operationId: promoteMemory
+      tags: [agents]
+      summary: Propose a reviewed note to a project for its owners to review
+      description: Copies only the selected approved unexpired text, kind and expiry. The new note is pending and attributed to the copier. Private original provenance is never copied.
+      x-permission: projects:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, id, destination]
+              properties:
+                scope: {type: string, enum: [personal, workspace, project, agent]}
+                owner: {type: string, maxLength: 255}
+                id: {type: string, maxLength: 128}
+                destination: {type: string, maxLength: 255}
+      responses:
+        '201':
+          description: Pending destination memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/me/notifications:
+    get:
+      operationId: listNativeNotifications
+      tags: [preferences]
+      summary: Deliver visible native notifications under your current preferences
+      description: A bounded authenticated delivery worker discovers at most 500 current inbox references, releases immediate or hourly digest deliveries outside quiet hours, and rechecks every item with the current identity. It never changes authoritative inbox history.
+      x-permission: runs:read
+      responses:
+        '200':
+          description: At most 50 unacknowledged visible deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notifications]
+                properties:
+                  notifications:
+                    type: array
+                    maxItems: 50
+                    items: {$ref: '#/components/schemas/NativeNotification'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/TooMany'}
+  /api/me/notifications/{id}/ack:
+    post:
+      operationId: acknowledgeNativeNotification
+      tags: [preferences]
+      summary: Dismiss your own visible native notification
+      x-permission: runs:read
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '204': {description: 'Notification projection acknowledged, inbox unchanged'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/library/skills:
+    get:
+      operationId: listLibrarySkills
+      tags: [projects]
+      summary: List the latest skill revisions in a visible scope
+      x-permission: projects:read
+      parameters:
+        - {name: scope, in: query, schema: {type: string, enum: [workspace, project, personal], default: workspace}}
+        - {name: project, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: Bounded scoped skill library
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [skills]
+                properties:
+                  skills:
+                    type: array
+                    maxItems: 32
+                    items: {$ref: '#/components/schemas/LibrarySkill'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      operationId: draftLibrarySkill
+      tags: [projects]
+      summary: Create an immutable skill draft revision
+      x-permission: projects:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, definition, version]
+              properties:
+                scope: {$ref: '#/components/schemas/LibraryScope'}
+                definition: {$ref: '#/components/schemas/LibrarySkillDefinition'}
+                version: {type: integer, minimum: 0}
+      responses:
+        '201':
+          description: New immutable draft
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LibrarySkill'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/library/skills/{id}:
+    get:
+      operationId: getLibrarySkill
+      tags: [projects]
+      summary: Read visible immutable skill revisions
+      x-permission: projects:read
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: At most 32 immutable revisions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revisions]
+                properties:
+                  revisions:
+                    type: array
+                    maxItems: 32
+                    items: {$ref: '#/components/schemas/LibrarySkill'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/library/skills/{id}/versions/{version}/agents:
+    get:
+      operationId: listSkillAgents
+      tags: [projects]
+      summary: List readable agents bound to this exact published skill revision
+      x-permission: projects:read
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, maxLength: 160}}
+        - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        '200':
+          description: Only readable current agent bindings, with no hidden total.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SkillUsage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/ServerError'}
+  /api/library/skills/{id}/versions/{version}/test:
+    post:
+      operationId: testLibrarySkill
+      tags: [projects]
+      summary: Run the exact revision with every permitted action requiring approval
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent, project, text]
+              properties:
+                agent: {type: string}
+                project: {type: string}
+                text: {type: string, minLength: 1, maxLength: 32000}
+      responses:
+        '202':
+          description: Skill test result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Run'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/library/skills/{id}/versions/{version}/publish:
+    post:
+      operationId: publishLibrarySkill
+      tags: [projects]
+      summary: Publish a successfully tested immutable revision
+      x-permission: projects:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+      responses:
+        '200':
+          description: Skill publish result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LibrarySkill'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/library/skills/{id}/versions/{version}/promote:
+    post:
+      operationId: promoteLibrarySkill
+      tags: [projects]
+      summary: Copy a published revision into a new scoped draft
+      x-permission: projects:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, version]
+              properties:
+                scope: {$ref: '#/components/schemas/LibraryScope'}
+                version: {type: integer, minimum: 0}
+      responses:
+        '201':
+          description: Skill promote result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LibrarySkill'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/audit:
+    get:
+      operationId: listAudit
+      tags: [projects]
+      summary: List recorded workspace changes
+      description: Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone.
+      x-permission: projects:govern
+      parameters:
+        - {name: actor, in: query, schema: {type: string, maxLength: 512}}
+        - {name: resource, in: query, schema: {type: string, maxLength: 64}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses:
+        '200':
+          description: Newest visible attempts first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records]
+                properties:
+                  records:
+                    type: array
+                    maxItems: 500
+                    items: {$ref: '#/components/schemas/AuditRecord'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /api/read-audit:
     get:
       operationId: listReadAudit
@@ -656,6 +928,49 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/skills:
+    get:
+      operationId: getAgentSkillDefaults
+      tags: [agents]
+      summary: Read exact published default skill revisions
+      x-permission: agents:read
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: The visible default skill bindings.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSkillDefaults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setAgentSkillDefaults
+      tags: [agents]
+      summary: Bind exact published skills to the current agent revision
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentSkillDefaultsUpdate"}
+      responses:
+        "200":
+          description: The saved exact default skill bindings.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSkillDefaults"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/call-policy:
     get:
       operationId: getCallPolicy
@@ -825,6 +1140,29 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/memory/{id}:
+    put:
+      operationId: editAgentMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: agents:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
     delete:
       operationId: removeAgentMemory
       tags: [agents]
@@ -841,6 +1179,94 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/me/memory:
+    get:
+      operationId: listPersonalMemory
+      tags: [agents]
+      summary: Read your private memory
+      x-permission: runs:read
+      responses:
+        '200':
+          description: Your private notes
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NoteList'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      operationId: addPersonalMemory
+      tags: [agents]
+      summary: Remember a private note
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '201':
+          description: Saved private memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/me/memory/approve:
+    post:
+      operationId: approvePersonalMemory
+      tags: [agents]
+      summary: Review your proposed private memory
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteSelection'}
+      responses:
+        '200':
+          description: Number of proposals approved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Approved'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/me/memory/{id}:
+    put:
+      operationId: editPersonalMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      operationId: forgetPersonalMemory
+      tags: [agents]
+      summary: Immediately forget a private note
+      x-permission: runs:write
+      responses:
+        '204': {description: Forgotten}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/memory/pending:
     get:
       operationId: listPendingMemory
@@ -3523,6 +3949,7 @@ paths:
             schema:
               type: object
               properties:
+                personal: {$ref: '#/components/schemas/PersonalPreferences'}
                 display_name: {type: string}
                 theme: {$ref: "#/components/schemas/Theme"}
                 accent: {type: string}
@@ -3999,6 +4426,29 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/memory/{id}:
+    put:
+      operationId: editProjectMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: projects:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
     delete:
       operationId: removeProjectMemory
       tags: [projects]
@@ -5902,6 +6352,45 @@ components:
         description: {type: string}
         enabled: {type: boolean}
         category: {type: string}
+    SkillAgentUse:
+      type: object
+      additionalProperties: false
+      required: [agent, agent_revision, needs_review]
+      properties:
+        agent: {type: string}
+        agent_revision: {type: integer, minimum: 1}
+        needs_review: {type: boolean}
+    SkillUsage:
+      type: object
+      additionalProperties: false
+      required: [agents, more]
+      properties:
+        agents: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/SkillAgentUse'}}
+        more: {type: boolean}
+    AgentSkillRef:
+      type: object
+      additionalProperties: false
+      required: [id, version]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 160}
+        version: {type: integer, minimum: 1}
+    AgentSkillDefaults:
+      type: object
+      additionalProperties: false
+      required: [agent, agent_revision, version, skills]
+      properties:
+        agent: {type: string}
+        agent_revision: {type: integer, minimum: 1}
+        version: {type: integer, minimum: 0}
+        skills: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/AgentSkillRef"}}
+    AgentSkillDefaultsUpdate:
+      type: object
+      additionalProperties: false
+      required: [agent_revision, version, skills]
+      properties:
+        agent_revision: {type: integer, minimum: 1}
+        version: {type: integer, minimum: 0}
+        skills: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/AgentSkillRef"}}
     InstallationCapabilities:
       type: object
       required: [version, managed, legacy, events, actions, deliver_outcomes]
@@ -5942,7 +6431,8 @@ components:
     AgentControl:
       type: object
       properties:
-        state: {type: string, enum: [ready, working, waiting_on_people, watching, paused, failed]}
+        state: {type: string, enum: [ready, working, waiting_on_people, watching, paused, failed, needs_review]}
+        needs_skill_review: {type: boolean}
         effective_paused: {type: boolean}
         pause_reason: {type: string, enum: [workspace, agent, setup]}
         effective_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800}
@@ -6619,14 +7109,117 @@ components:
           type: array
           items: {type: string}
 
+    NativeNotificationItem:
+      type: object
+      required: [inbox, kind, subject, at]
+      properties:
+        inbox: {type: string}
+        kind: {$ref: '#/components/schemas/InboxKind'}
+        subject: {type: string}
+        project: {type: string}
+        thread: {type: string}
+        at: {type: string, format: date-time}
+    NativeNotification:
+      type: object
+      required: [id, mode, at, items]
+      properties:
+        id: {type: string}
+        mode: {type: string, enum: [immediate, digest]}
+        at: {type: string, format: date-time}
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/NativeNotificationItem'}
+    LibraryScope:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [workspace, project, personal]}
+        project: {type: string}
+        subject:
+          description: Present only for the caller's personal scope. Derived from identity when omitted on input.
+          type: string
+    LibrarySkillDefinition:
+      type: object
+      required: [name, description, tools]
+      properties:
+        name: {type: string, maxLength: 64}
+        description: {type: string, maxLength: 1024}
+        instructions: {type: string, maxLength: 8000}
+        argument_hint: {type: string, maxLength: 100}
+        inputs: {type: string, maxLength: 4000}
+        outputs: {type: string, maxLength: 4000}
+        tools:
+          description: Exact permitted tools, intersected with the agent's grants. Empty permits no tools.
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 128}
+    LibraryProvenance:
+      type: object
+      required: [scope, name, version]
+      properties:
+        scope: {$ref: '#/components/schemas/LibraryScope'}
+        name: {type: string}
+        version: {type: integer, minimum: 1}
+    LibrarySkill:
+      allOf:
+        - {$ref: '#/components/schemas/LibrarySkillDefinition'}
+        - type: object
+          required: [id, scope, version, by, at, tests]
+          properties:
+            id: {type: string}
+            scope: {$ref: '#/components/schemas/LibraryScope'}
+            version: {type: integer, minimum: 1}
+            by: {type: string}
+            at: {type: string, format: date-time}
+            published_at: {type: string, format: date-time}
+            published_by: {type: string}
+            tests:
+              type: array
+              maxItems: 10
+              items: {type: string}
+            from: {$ref: '#/components/schemas/LibraryProvenance'}
+    AuditRecord:
+      type: object
+      required: [id, actor, at, outcome, action, resource, resource_id, scope]
+      properties:
+        id: {type: string}
+        actor: {type: string}
+        at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time}
+        route: {type: string, maxLength: 512}
+        rule: {type: string, maxLength: 512}
+        outcome: {type: string, enum: [pending, succeeded, failed]}
+        action: {type: string}
+        resource: {type: string}
+        resource_id: {type: string}
+        scope: {type: string, enum: [workspace, project, personal, agent]}
+        project: {type: string}
+        thread: {type: string}
+        subject: {type: string}
+        agent: {type: string}
+        before: {type: object, additionalProperties: {type: string}}
+        after: {type: object, additionalProperties: {type: string}}
     Note:
       description: One thing an agent or a project remembers.
       type: object
       required: [id, text, source, status, at]
       properties:
+        source_url:
+          description: Current authorized source link, absent when the source is no longer visible.
+          type: string
+        source_name: {type: string}
+        edited_by: {type: string}
+        edited_at: {type: string, format: date-time}
+        kind: {type: string, enum: [fact, decision, preference, person, risk]}
+        expires_at: {type: string, format: date-time}
+        uses: {type: integer, minimum: 0}
+        last_used_at: {type: string, format: date-time}
+        reviewed_by: {type: string}
+        reviewed_at: {type: string, format: date-time}
         id: {type: string}
         text: {type: string}
-        source: {type: string, enum: [person, consolidated]}
+        source: {type: string, enum: [person, consolidated, artifact]}
         status:
           description: A pending note is a proposal, not used until a person approves it.
           type: string
@@ -6648,6 +7241,8 @@ components:
       required: [text]
       properties:
         text: {type: string}
+        kind: {type: string, enum: [fact, decision, preference, person, risk]}
+        expires_at: {type: [string, "null"], format: date-time}
     NoteSelection:
       type: object
       required: [ids]
@@ -6722,6 +7317,10 @@ components:
           description: The reference, when the credential is one. It names where the secret is kept, never the secret.
           type: string
         updated_at: {type: string, format: date-time}
+        last_used_at:
+          description: Last time an agent resolved this credential for the provider. Absent until first use.
+          type: string
+          format: date-time
     CredentialKind:
       description: How a credential is held. A `reference` is a name, and only the name is stored; a `value` is the secret itself, stored in the secrets store client secrets are kept in.
       type: string
@@ -8681,11 +9280,26 @@ components:
     Theme:
       type: string
       enum: [system, light, dark]
+    PersonalPreferences:
+      type: object
+      required: [briefing, notifications, quiet_start, quiet_end, timezone, remember, use_personal_memory_in_projects]
+      properties:
+        briefing: {type: string, maxLength: 500}
+        notifications:
+          type: object
+          maxProperties: 10
+          additionalProperties: {type: string, enum: [immediate, digest, off]}
+        quiet_start: {type: string}
+        quiet_end: {type: string}
+        timezone: {type: string}
+        remember: {type: boolean}
+        use_personal_memory_in_projects: {type: boolean}
     Preferences:
       description: A person's own settings.
       type: object
-      required: [display_name, theme, accent, has_photo, photo_version, pinned, muted]
+      required: [display_name, theme, accent, has_photo, photo_version, pinned, muted, personal]
       properties:
+        personal: {$ref: '#/components/schemas/PersonalPreferences'}
         display_name: {type: string}
         theme: {$ref: "#/components/schemas/Theme"}
         accent: {type: string}

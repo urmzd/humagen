@@ -231,3 +231,24 @@ func TestAFailedWriteChangesNothing(t *testing.T) {
 		t.Fatal("a failed delete dropped the value")
 	}
 }
+
+func TestLastAgentUseIsDurableAndNeverChangesCredentialRevision(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, newStore func(*testing.T) state.Store) {
+		st := newStore(t)
+		s := open(t, st, nil)
+		if _, err := s.Put("acme", "ada", "issues", credentials.Input{Ref: "op://Ada/issues/token"}, at); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.MarkUsed("acme", "ada", "issues", at.Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		s = open(t, st, nil)
+		held, ok := s.Get("acme", "ada", "issues")
+		if !ok || !held.UpdatedAt.Equal(at) || !held.LastUsedAt.Equal(at.Add(time.Hour)) {
+			t.Fatalf("access metadata: %+v", held)
+		}
+		if err := s.MarkUsed("acme", "other", "issues", at); !errors.Is(err, credentials.ErrNotFound) {
+			t.Fatal("another person's access recorded")
+		}
+	})
+}

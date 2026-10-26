@@ -17,6 +17,35 @@ export interface InstallationAction {
   category: string;
 }
 
+export interface SkillAgentUse {
+  agent: string;
+  agent_revision: number;
+  needs_review: boolean;
+}
+
+export interface SkillUsage {
+  agents: SkillAgentUse[];
+  more: boolean;
+}
+
+export interface AgentSkillRef {
+  id: string;
+  version: number;
+}
+
+export interface AgentSkillDefaults {
+  agent: string;
+  agent_revision: number;
+  version: number;
+  skills: AgentSkillRef[];
+}
+
+export interface AgentSkillDefaultsUpdate {
+  agent_revision: number;
+  version: number;
+  skills: AgentSkillRef[];
+}
+
 export interface InstallationCapabilities {
   version: number;
   managed: boolean;
@@ -48,7 +77,8 @@ export interface HandoffTerms {
 }
 
 export interface AgentControl {
-  state?: "ready" | "working" | "waiting_on_people" | "watching" | "paused" | "failed";
+  state?: "ready" | "working" | "waiting_on_people" | "watching" | "paused" | "failed" | "needs_review";
+  needs_skill_review?: boolean;
   effective_paused?: boolean;
   pause_reason?: "workspace" | "agent" | "setup";
   effective_reminder_after_seconds?: number;
@@ -349,11 +379,84 @@ export interface Choice {
   matched?: string[];
 }
 
+export interface NativeNotificationItem {
+  inbox: string;
+  kind: InboxKind;
+  subject: string;
+  project?: string;
+  thread?: string;
+  at: string;
+}
+
+export interface NativeNotification {
+  id: string;
+  mode: "immediate" | "digest";
+  at: string;
+  items: NativeNotificationItem[];
+}
+
+export interface LibraryScope {
+  kind: "workspace" | "project" | "personal";
+  project?: string;
+  /** Present only for the caller's personal scope. Derived from identity when omitted on input. */
+  subject?: string;
+}
+
+export interface LibrarySkillDefinition {
+  name: string;
+  description: string;
+  instructions?: string;
+  argument_hint?: string;
+  inputs?: string;
+  outputs?: string;
+  /** Exact permitted tools, intersected with the agent's grants. Empty permits no tools. */
+  tools: string[];
+}
+
+export interface LibraryProvenance {
+  scope: LibraryScope;
+  name: string;
+  version: number;
+}
+
+export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance };
+
+export interface AuditRecord {
+  id: string;
+  actor: string;
+  at: string;
+  finished_at?: string;
+  route?: string;
+  rule?: string;
+  outcome: "pending" | "succeeded" | "failed";
+  action: string;
+  resource: string;
+  resource_id: string;
+  scope: "workspace" | "project" | "personal" | "agent";
+  project?: string;
+  thread?: string;
+  subject?: string;
+  agent?: string;
+  before?: Record<string, string>;
+  after?: Record<string, string>;
+}
+
 /** One thing an agent or a project remembers. */
 export interface Note {
+  /** Current authorized source link, absent when the source is no longer visible. */
+  source_url?: string;
+  source_name?: string;
+  edited_by?: string;
+  edited_at?: string;
+  kind?: "fact" | "decision" | "preference" | "person" | "risk";
+  expires_at?: string;
+  uses?: number;
+  last_used_at?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
   id: string;
   text: string;
-  source: "person" | "consolidated";
+  source: "person" | "consolidated" | "artifact";
   /** A pending note is a proposal, not used until a person approves it. */
   status: "approved" | "pending";
   by?: string;
@@ -368,6 +471,8 @@ export interface NoteList {
 
 export interface NoteInput {
   text: string;
+  kind?: "fact" | "decision" | "preference" | "person" | "risk";
+  expires_at?: string | null;
 }
 
 export interface NoteSelection {
@@ -417,6 +522,8 @@ export interface ToolCredential {
   /** The reference, when the credential is one. It names where the secret is kept, never the secret. */
   ref?: string;
   updated_at?: string;
+  /** Last time an agent resolved this credential for the provider. Absent until first use. */
+  last_used_at?: string;
 }
 
 /** How a credential is held. A `reference` is a name, and only the name is stored; a `value` is the secret itself, stored in the secrets store client secrets are kept in. */
@@ -1695,8 +1802,19 @@ cannot be removed (409).
 
 export type Theme = "system" | "light" | "dark";
 
+export interface PersonalPreferences {
+  briefing: string;
+  notifications: Record<string, "immediate" | "digest" | "off">;
+  quiet_start: string;
+  quiet_end: string;
+  timezone: string;
+  remember: boolean;
+  use_personal_memory_in_projects: boolean;
+}
+
 /** A person's own settings. */
 export interface Preferences {
+  personal: PersonalPreferences;
   display_name: string;
   theme: Theme;
   accent: string;
@@ -3319,6 +3437,46 @@ export interface ClientBridgeDeliveryResponse {
   allowed: boolean;
 }
 
+export interface PromoteMemoryBody {
+  scope: "personal" | "workspace" | "project" | "agent";
+  owner?: string;
+  id: string;
+  destination: string;
+}
+
+export interface ListNativeNotificationsResponse {
+  notifications: NativeNotification[];
+}
+
+export interface ListLibrarySkillsResponse {
+  skills: LibrarySkill[];
+}
+
+export interface DraftLibrarySkillBody {
+  scope: LibraryScope;
+  definition: LibrarySkillDefinition;
+  version: number;
+}
+
+export interface GetLibrarySkillResponse {
+  revisions: LibrarySkill[];
+}
+
+export interface TestLibrarySkillBody {
+  agent: string;
+  project: string;
+  text: string;
+}
+
+export interface PromoteLibrarySkillBody {
+  scope: LibraryScope;
+  version: number;
+}
+
+export interface ListAuditResponse {
+  records: AuditRecord[];
+}
+
 export interface ListReadAuditResponseRecordsItem {
   subject: string;
   project: string;
@@ -3532,6 +3690,7 @@ export interface SaveKnowledgeVariantBody {
 }
 
 export interface UpdatePreferencesBody {
+  personal?: PersonalPreferences;
   display_name?: string;
   theme?: Theme;
   accent?: string;

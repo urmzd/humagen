@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components";
 import { type FormEvent, type MouseEvent, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type ToolCredential, type ToolCredentials } from "./api.ts";
 import { CONNECT_PERMISSION, cannotConnect, destination, offers, standing, startsAllowed, type Way, ways, whereReferences } from "./connections.ts";
@@ -140,6 +141,7 @@ export function ConnectionCard({
       </div>
       <p className="text-aui-sm text-aui-muted">{standing(c)}</p>
       <p className="text-aui-xs text-aui-muted">{destination(c)}</p>
+      {c.connected&&<dl className="text-aui-xs text-aui-muted"><div><dt>{defaultCopy.personalPreferences.lastAgentUse}</dt><dd>{c.last_used_at?new Date(c.last_used_at).toLocaleString():defaultCopy.personalPreferences.neverUsed}</dd></div><div className="mt-2"><dt>{defaultCopy.personalPreferences.grantedScopes}</dt><dd>{defaultCopy.personalPreferences.scopesUnknown}</dd></div></dl>}
       {!canConnect ? null : open ? (
         <ConnectForm ways={ways} references={references} replacing={c.connected} busy={busy} onSave={onSave} onCancel={onCancel} />
       ) : (

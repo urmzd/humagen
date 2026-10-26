@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -46,7 +47,10 @@ import (
 
 // pinnedSkill is one skill as a run's tag carries it.
 type pinnedSkill struct {
-	Name string `json:"name"`
+	Private bool      `json:"private,omitempty"`
+	Version int       `json:"version,omitempty"`
+	Tools   *[]string `json:"tools,omitempty"`
+	Name    string    `json:"name"`
 	// From is the project that declared it when the message was accepted.
 	From         string `json:"from"`
 	Instructions string `json:"instructions"`
@@ -105,7 +109,11 @@ func skillTags(ms []threads.Mention, surfaced, console, routed bool) ([]threads.
 // the ones it names, then the client command it starts with, each found on
 // the chain of the thread's project now. One deleted since the message was
 // parsed is left out.
-func (p *Platform) skillsOfMessage(tenant string, th threads.Thread, m threads.Message, via string) []pinnedSkill {
+func (p *Platform) skillsOfMessage(tenant string, th threads.Thread, m threads.Message, via string, actors ...string) []pinnedSkill {
+	person := ""
+	if len(actors) == 1 {
+		person = actors[0]
+	}
 	var names []string
 	for _, mn := range m.Mentions {
 		if mn.Kind == threads.Skill && mn.Refused == "" && !slices.Contains(names, mn.Name) {
@@ -120,11 +128,10 @@ func (p *Platform) skillsOfMessage(tenant string, th threads.Thread, m threads.M
 	if name, ok := p.commandSkill(tenant, th, m.Text, via); ok && !slices.Contains(names, name) {
 		names = append(names, name)
 	}
-	tree := p.Projects.Tree(tenant)
 	var out []pinnedSkill
 	for _, n := range names {
-		if s, from, ok := tree.Skill(th.Project, n); ok {
-			out = append(out, pinnedSkill{Name: n, From: from, Instructions: s.Instructions, Description: s.Description})
+		if skill, ok := p.librarySkill(tenant, th.Project, person, n); ok {
+			out = append(out, skill)
 		}
 	}
 	return out
@@ -166,6 +173,30 @@ func (p *Platform) commandSkill(tenant string, th threads.Thread, text, via stri
 // pinSkills writes the skills a run is told to use into its tag's meta.
 func pinSkills(meta map[string]string, skills []pinnedSkill) {
 	delete(meta, runs.MetaSkills)
+	delete(meta, operations.MetaTools)
+	var allowed []string
+	restricted := false
+	for _, skill := range skills {
+		if skill.Private {
+			meta[MetaPrivateLibraryContext] = "true"
+		}
+		if skill.Tools == nil {
+			continue
+		}
+		if !restricted {
+			allowed = slices.Clone(*skill.Tools)
+			restricted = true
+		} else {
+			allowed = slices.DeleteFunc(allowed, func(tool string) bool { return !slices.Contains(*skill.Tools, tool) })
+		}
+	}
+	if restricted {
+		if allowed == nil {
+			allowed = []string{}
+		}
+		raw, _ := json.Marshal(allowed)
+		meta[operations.MetaTools] = string(raw)
+	}
 	if len(skills) == 0 {
 		return
 	}

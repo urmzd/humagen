@@ -12,7 +12,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +59,7 @@ var Accents = []string{"purple", "blue", "yellow", "teal"}
 
 // Preferences is one person's choices.
 type Preferences struct {
+	Personal Personal `json:"personal"`
 	// DisplayName is shown in place of the name the identity provider gave.
 	DisplayName string `json:"display_name"`
 	Theme       Theme  `json:"theme"`
@@ -81,7 +84,7 @@ type Preferences struct {
 
 // Defaults is what a person has before they choose anything.
 func Defaults() Preferences {
-	return Preferences{Theme: System, Accent: Accents[0], Pinned: []string{}, Muted: []string{}}
+	return Preferences{Personal: DefaultPersonal(), Theme: System, Accent: Accents[0], Pinned: []string{}, Muted: []string{}}
 }
 
 type photo struct {
@@ -120,6 +123,12 @@ func Open(st state.Store) (*Store, error) {
 	s.kept = state.NewTable[Preferences](st, "prefs")
 	s.photos = state.NewTable[storedPhoto](st, "prefs.photo")
 	if err := s.kept.Load(func(tenant, subject string, p Preferences) error {
+		if p.Personal.Timezone == "" {
+			p.Personal.Timezone = "UTC"
+		}
+		if p.Personal.Notifications == nil {
+			p.Personal.Notifications = map[string]Delivery{}
+		}
 		if p.Pinned == nil {
 			p.Pinned = []string{}
 		}
@@ -164,7 +173,7 @@ func (s *Store) change(tenant, subject string, photo bool, fn func(e *entry)) (P
 		}
 		return Preferences{}, err
 	}
-	return e.Preferences, nil
+	return clonePreferences(e.Preferences), nil
 }
 
 func (s *Store) write(tenant, subject string, e *entry, photo bool) error {
@@ -204,13 +213,23 @@ func (s *Store) Get(tenant, subject string) Preferences {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if e, ok := s.by[key(tenant, subject)]; ok {
-		return e.Preferences
+		return clonePreferences(e.Preferences)
 	}
 	return Defaults()
 }
 
 // Set replaces what a person can choose. The photo is changed separately.
-func (s *Store) Set(tenant, subject string, next Preferences) (Preferences, error) {
+func (s *Store) Set(tenant, subject string, next Preferences, personal ...Personal) (Preferences, error) {
+	if len(personal) > 1 {
+		return Preferences{}, ErrInvalid
+	}
+	if len(personal) == 1 {
+		checked, err := CleanPersonal(personal[0])
+		if err != nil {
+			return Preferences{}, err
+		}
+		personal[0] = checked
+	}
 	next.DisplayName = strings.TrimSpace(next.DisplayName)
 	switch {
 	case len(next.DisplayName) > maxName:
@@ -231,6 +250,9 @@ func (s *Store) Set(tenant, subject string, next Preferences) (Preferences, erro
 	defer s.mu.Unlock()
 	return s.change(tenant, subject, false, func(e *entry) {
 		e.DisplayName, e.Theme, e.Accent = next.DisplayName, next.Theme, next.Accent
+		if len(personal) == 1 {
+			e.Personal = personal[0]
+		}
 	})
 }
 
@@ -307,7 +329,7 @@ func (s *Store) MarkOnboarded(tenant, subject string, at time.Time) (Preferences
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e, ok := s.by[key(tenant, subject)]; ok && !e.OnboardedAt.IsZero() {
-		return e.Preferences, nil
+		return clonePreferences(e.Preferences), nil
 	}
 	return s.change(tenant, subject, false, func(e *entry) { e.OnboardedAt = at })
 }
@@ -368,4 +390,11 @@ func (s *Store) Photo(tenant, subject string) ([]byte, string, error) {
 		return nil, "", ErrNoPhoto
 	}
 	return e.photo.data, e.photo.mime, nil
+}
+
+func clonePreferences(p Preferences) Preferences {
+	p.Pinned = slices.Clone(p.Pinned)
+	p.Muted = slices.Clone(p.Muted)
+	p.Personal.Notifications = maps.Clone(p.Personal.Notifications)
+	return p
 }
