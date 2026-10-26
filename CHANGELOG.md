@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.26.3 (2026-10-26)
+
+### Bug Fixes
+
+- **web**: use the Humagen mark for icons and title each browser tab (#73) ([ae504dc](https://github.com/urmzd/humagen/commit/ae504dc86adb5bda5a02b061095cf5d57e9f73a7))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.26.2...v0.26.3)
+
+
 ## 0.26.2 (2026-10-26)
 
 ### Bug Fixes
