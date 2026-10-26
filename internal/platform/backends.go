@@ -23,6 +23,7 @@ import (
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
@@ -142,6 +143,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("threads", err)
 	p.Policies, err = policy.Open(st)
 	keep("policies", err)
+	p.Operations, err = operations.Open(st)
+	keep("operations", err)
 	p.CallPolicies, err = callpolicy.Open(st)
 	keep("call policies", err)
 	p.Usage, err = usage.Open(st)

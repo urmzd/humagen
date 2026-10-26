@@ -274,7 +274,12 @@ func (s *Schedules) List(tenant string) []cron.Schedule {
 
 // Add stores a schedule. Names are unique across tenants, because a schedule's
 // name is part of the id of every run it raises.
-func (s *Schedules) Add(sc cron.Schedule, about About) error {
+func (s *Schedules) Add(sc cron.Schedule, about About) error { return s.add(sc, about, false) }
+
+// AddPaused keeps a standing assignment inert until its contract is durable.
+func (s *Schedules) AddPaused(sc cron.Schedule, about About) error { return s.add(sc, about, true) }
+
+func (s *Schedules) add(sc cron.Schedule, about About, paused bool) error {
 	if err := sc.Validate(); err != nil {
 		return err
 	}
@@ -288,10 +293,16 @@ func (s *Schedules) Add(sc cron.Schedule, about About) error {
 			return fmt.Errorf("%w: %q", ErrScheduleExists, sc.Name)
 		}
 	}
-	if err := s.write(sc, false, about); err != nil {
+	if err := s.write(sc, paused, about); err != nil {
 		return err
 	}
 	s.all = append(s.all, sc)
+	if paused {
+		if s.paused == nil {
+			s.paused = map[string]bool{}
+		}
+		s.paused[sc.Name] = true
+	}
 	s.setAbout(sc.Name, about)
 	return nil
 }
