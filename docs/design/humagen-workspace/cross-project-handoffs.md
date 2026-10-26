@@ -65,11 +65,17 @@ grant. Same-tenant projects are in scope; cross-tenant delegation is not.
 A versioned proposal names the destination, goal, done-when, deadline and
 bounded selected material. Resolve references with the source reader's ordinary
 permissions and freeze the exact bytes, version and provenance before review.
-Review includes inline text, derived summaries and material from private or
-person-scoped context. An authorized source reviewer approves disclosure of
-the exact package to the named destination. Edits require a new version and
-approval. Export a frozen copy or reviewed summary, not a live source-project
-thread, run, artifact or retrieval handle.
+An authorized source reviewer approves disclosure of the exact package to the
+named destination. Edits require a new version and approval. Preserve the
+existing [private-context publication guards](../../company-workspace.md):
+private connected sources, personal memory or skills, person-scoped tools and
+retained operation contracts require a reviewed text-only summary. A frozen raw
+copy is still raw and is refused. This summary path copies only the exact
+reviewed human text, with no original thread, run, source, citation, file,
+operation contract, private instruction or capability. Check original and
+current source visibility when building the review preview and again before
+releasing the approved version. Eligible non-private material may use a frozen
+copy; provenance remains in the restricted source/correlation record.
 
 A destination-authorized person separately accepts the package into a
 destination-controlled location. The package is untrusted task data: it grants
