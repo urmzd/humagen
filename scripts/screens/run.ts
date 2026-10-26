@@ -35,6 +35,7 @@ import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
+import { libraryScreens } from "./library.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -558,6 +559,7 @@ function screens(ids: Ids, call: Call): Screen[] {
       path: `/settings/${s}`,
     })),
   ];
+  list.push(...libraryScreens(call));
   return only.length ? list.filter((s) => only.includes(s.name)) : list;
 }
 
@@ -841,7 +843,8 @@ async function seedChats(
     visibility: "private",
   });
   await answered(shared);
-  await call("POST", `/api/threads/${shared.thread.id}/share`, { channel: "general" });
+  const placement = await call<{token:string}>("GET", `/api/threads/${shared.thread.id}/placement?project=Launch&channel=general`);
+  await call("POST", `/api/threads/${shared.thread.id}/share`, { channel: "general", placement_token:placement.token });
   const routed = await call<Posted>("POST", "/api/threads", {
     project: "Launch",
     text: "What should we check before the launch?",
