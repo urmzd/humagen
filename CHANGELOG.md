@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.27.1 (2026-10-26)
+
+### Bug Fixes
+
+- **web**: keep agent discovery inside the composer picker (#86) ([6a2339e](https://github.com/urmzd/humagen/commit/6a2339e54b86bb5c79d17600a81f504e34e99053))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.27.0...v0.27.1)
+
+
 ## 0.27.0 (2026-10-26)
 
 ### Features
