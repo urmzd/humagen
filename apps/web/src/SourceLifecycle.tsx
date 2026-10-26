@@ -107,7 +107,9 @@ export function SourceLifecycle({
       <p className="text-aui-xs text-aui-muted">
         {lifecycle?.last_good_at
           ? `${words.lastGood}: ${ago(lifecycle.last_good_at)}`
-          : words.noCopy}
+          : (!lifecycle || lifecycle.provider === "manual") && source.documents > 0
+            ? words.manualDocuments
+            : words.noCopy}
       </p>
       {lifecycle?.origin && (
         <p className="break-all text-aui-sm">

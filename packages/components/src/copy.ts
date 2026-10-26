@@ -274,6 +274,7 @@ export const defaultCopy = {
       "Live search is unavailable. Any indexed results below come from the retained copy.",
     lastGood: "Last good copy",
     noCopy: "No successful copy yet",
+    manualDocuments: "Manually added documents; no external refresh",
     attempts: "Recent refresh attempts",
     emptyAttempts: "No refresh attempted",
     stopHint: "Dependent work stops after this limit. Manual sources do not expire.",

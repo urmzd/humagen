@@ -375,6 +375,16 @@ function screens(ids: Ids, call: Call): Screen[] {
       },
     },
     { name: "source-available", path: "/context/launch-context" },
+    {
+      name: "source-attachments",
+      path: "/context/launch-context",
+      act: async (page) => {
+        await page
+          .getByRole("heading", { name: "Context Placement", exact: true })
+          .scrollIntoViewIfNeeded();
+        await page.getByRole("link", { name: "Launch / #deals", exact: true }).waitFor();
+      },
+    },
     { name: "source-attention", path: "/context/source-attention" },
     {
       name: "source-configuration",
@@ -894,6 +904,10 @@ async function seedChats(
   });
   // A second channel, so the + menu's channel row has a choice.
   await call("POST", "/api/projects/Launch/channels", { name: "deals", purpose: "Partner deals" });
+  await call("PUT", "/api/knowledge/launch-context/attachment", {
+    project: "Launch",
+    channel: "deals",
+  });
   const answered = async (p: Posted) => {
     for (const r of p.runs) await settled(call, r.id);
   };
