@@ -133,7 +133,7 @@ func (p *Platform) MayBind(who auth.Principal, project, channel string, b *proje
 		return nil
 	}
 	if channel != "" {
-		if cur, err := p.Projects.Channel(who.Tenant, projects.NameOf(project), channel); err == nil && cur.Slack != nil && *cur.Slack == *b {
+		if cur, err := p.Projects.Channel(who.Tenant, projects.NameOf(project), channel); err == nil && cur.Slack != nil && cur.Slack.Equal(*b) {
 			return nil
 		}
 	}

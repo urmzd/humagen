@@ -255,3 +255,19 @@ answered, it is answered twice.
 | Tests, with fakes for Slack and Humagen | `pnpm test` |
 | Every Block Kit payload the tests produce, through Slack's `blocks.validate` (network, no token) | `pnpm validate` |
 | Against a real Humagen server built from this checkout (needs Go, no model) | `pnpm test:server` |
+
+## Project bridges
+
+Bindings use `two_way`, `inbound`, or `outcomes` direction. Inbound only mirrors
+mapped human messages with `post_only`; it does not wake agents or write replies,
+reactions or approval buttons to Slack. Outcomes only ignores incoming human
+messages. Two-way retains explicit agent routing. Bound output contains final
+outcomes or decisions, excluding Activity and retained source metadata.
+
+The host refreshes installation subscriptions and bindings at ingress and output
+boundaries. Before publishing a run it calls
+`GET /api/clients/{id}/delivery?run=...&channel=...`, using its existing machine
+credential. The server checks the actual installation identity, current run
+placement and read access, direction, action policy and private-context flags.
+A refusal or unavailable guard withholds output. Guest approval remains denied.
+These paths have automated native-host tests; live Slack delivery is not claimed.

@@ -324,6 +324,11 @@ export type SourceLinkRule=GeneratedSourceLinkRule;
 export type SourceRuleResource=SourceLinkResource;
 export type SourceRuleMatch=SourceLinkMatch;
 
+import type { InstallationCapabilities,ClientCapabilityPolicy,PutClientCapabilitiesBodyPart2,SlackBinding,ListClientBindingsResponse } from "../../../packages/client/src/generated/types.ts";
+export type BridgeDirection=NonNullable<SlackBinding["direction"]>;
+export type ClientCapabilities=InstallationCapabilities;
+export type ClientCapabilityInput=ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2;
+
 export interface Source {
   lifecycle?: KnowledgeLifecycle;
   name: string;
@@ -933,7 +938,10 @@ export const api = {
   saveSourceLinkRule: (rule:SourceLinkRule,creating=false) => { const {id,copied_from,...input}=rule; return call<SourceLinkRule>(creating?"POST":"PUT",creating?"/api/source-link-rules":`/api/source-link-rules/${encodeURIComponent(id)}`,input); },
   deleteSourceLinkRule: (id:string) => call<void>("DELETE",`/api/source-link-rules/${encodeURIComponent(id)}`),
   previewSourceLinkRules: (resource:SourceRuleResource) => call<{matches:SourceRuleMatch[]}>("POST","/api/source-link-rules/preview",resource),
-  clientBindings: (id:string) => call<{bindings:{slack_channel:string;project:string;channel:string;bound_at?:string}[]}>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(r=>r.bindings),
+  clientCapabilities:(id:string)=>call<ClientCapabilities>("GET",`/api/clients/${encodeURIComponent(id)}/capabilities`),
+  saveClientCapabilities:(id:string,input:ClientCapabilityInput)=>call<ClientCapabilities>("PUT",`/api/clients/${encodeURIComponent(id)}/capabilities`,input),
+  setSlackDirection:(project:string,channel:Channel,direction:BridgeDirection)=>call<Channel>("PUT",`${projectAt(project)}/channels/${encodeURIComponent(channel.name)}`,{version:channel.version,title:channel.title??"",purpose:channel.purpose??"",default:channel.default??"",slack:{...channel.slack,direction}}),
+  clientBindings:(id:string)=>call<ListClientBindingsResponse>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(result=>result.bindings),
   sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
   configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
   connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
@@ -1217,7 +1225,7 @@ export interface Channel {
   purpose?: string;
   default?: string;
   /** The Slack channel it is bound to: a Slack thread there is a shared thread here. */
-  slack?: { client: string; channel: string };
+  slack?: { client: string; channel: string; direction?:BridgeDirection };
   archived?: boolean;
   managed?: string;
   version: number;

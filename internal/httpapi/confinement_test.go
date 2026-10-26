@@ -701,7 +701,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing"}
+	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing"}
 
 	var keys []string
 	for key := range s.ops {

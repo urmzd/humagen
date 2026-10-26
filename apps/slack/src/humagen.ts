@@ -38,6 +38,7 @@ export interface Revision {
 
 /** The part of a client record this app reads: who answers, and who may. */
 export interface ClientRecord {
+  capabilities?: { events: string[]; actions: string[]; deliver_outcomes: boolean };
   id: string;
   surface: string;
   enabled: boolean;
@@ -141,6 +142,7 @@ export interface Receipt {
 
 /** A Slack channel the client is bound to, and the channel it is bound to in humagen. */
 export interface Binding {
+  direction?: "two_way" | "inbound" | "outcomes";
   slack_channel: string;
   project: string;
   channel: string;
@@ -205,6 +207,7 @@ export interface ToolConnections {
   values: boolean;
 }
 export interface Humagen {
+  deliveryAllowed(client: string, channel: string, run: string): Promise<boolean>;
   connections(as: ActAs): Promise<ToolConnections>;
   connect(provider: string, ref: string, as: ActAs): Promise<unknown>;
   disconnect(provider: string, as: ActAs): Promise<void>;
@@ -632,6 +635,11 @@ export function httpHumagen(cfg: {
       orNull(http<{ message: WireMessage }>("GET", `/api/inbox/${enc(id)}`)).then(
         (r) => r?.message ?? null,
       ),
+    deliveryAllowed: (client, channel, run) =>
+      http<{ allowed: boolean }>(
+        "GET",
+        `/api/clients/${enc(client)}/delivery?${new URLSearchParams({ channel, run })}`,
+      ).then((r) => r.allowed),
     bindings: (client) =>
       http<{ bindings: Binding[] }>("GET", `/api/clients/${enc(client)}/bindings`).then(
         (r) => r.bindings,

@@ -810,6 +810,12 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
+	if on != nil {
+		if direction, bound := p.bridgeDirection(on.client, on.ref.Channel); bound && !direction.AllowsOutcomes() {
+			in.PostOnly = true
+		}
+	}
+
 	prev, err := p.prevOf(who.Tenant, th, in.After)
 	if err != nil {
 		return Posted{}, err
