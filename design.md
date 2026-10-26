@@ -23,6 +23,7 @@ govern implementation, including shared presentation and agent identity.
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Board interaction checked in Chromium; native conversation-fork API pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
+| DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
 
 ### DES-001: Working integrations
 
@@ -90,6 +91,20 @@ govern implementation, including shared presentation and agent identity.
 - Acceptance: the displayed detail matches the stored timestamp, works across
   date boundaries, and remains available without a mouse. Showing or hiding
   detail must not make the action target move away from the pointer.
+
+### DES-006: Independent sidebar scrolling
+
+- The console fills the dynamic viewport. Main content scrolls inside its own
+  column without moving the sidebar or the document.
+- Navigation and conversations scroll inside the sidebar only when that area
+  is scrolled. Reaching its boundary must not scroll the main content.
+- Keep the sidebar header and account controls visible while its lists scroll,
+  including in the phone drawer.
+- Evidence: `App.tsx`, `Sidebar.tsx`, and `styles.css` constrain the shell and
+  contain sidebar overscroll. `scripts/screens/sidebar-scroll.ts`, run through
+  the `sidebar-scroll` screen fixture, checks real wheel input, long lists,
+  fixed header/account geometry and independent content scroll in Chromium at
+  phone and desktop widths. Long content is inserted only for the layout test.
 
 ## Review and implementation evidence
 

@@ -34,6 +34,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
+import { sidebarScroll } from "./sidebar-scroll.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -314,6 +315,7 @@ function screens(ids: Ids): Screen[] {
   let releasePending: (() => Promise<void>) | undefined;
   const list: Screen[] = [
     { name: "home", path: "/" },
+    { name: "sidebar-scroll", path: "/settings/profile", act: sidebarScroll },
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids),
     { name: "projects", path: "/projects" },
