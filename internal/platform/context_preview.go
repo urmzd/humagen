@@ -100,13 +100,15 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 	if seer.Knowledge() {
 		agentNames := []string{}
 		for _, src := range rev.Spec.Sources {
-			agentNames = append(agentNames, src.Name)
+			if p.SourceVisible(who, src.Name) {
+				agentNames = append(agentNames, src.Name)
+			}
 		}
 		out.Layers = append(out.Layers, nameLayer("agent_knowledge", agent, agentNames, 0))
 		names := []string{}
 		// Tree.Knowledge is the same bounded selection sourcesFor pins.
-		for _, src := range tree.Knowledge(project) {
-			if seer.Project(src.From) && !slices.Contains(agentNames, src.Name) {
+		for _, src := range p.knowledgeAtPlace(who.Tenant, project, channel) {
+			if seer.Project(src.From) && p.SourceVisible(who, src.Name) && !slices.Contains(agentNames, src.Name) {
 				names = append(names, src.Name)
 			}
 		}
@@ -118,7 +120,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 				continue
 			}
 			for _, name := range pr.Knowledge {
-				if !slices.Contains(seen, name) {
+				if p.SourceVisible(who, name) && !slices.Contains(seen, name) {
 					layer.Omitted++
 					seen = append(seen, name)
 				}

@@ -29,6 +29,7 @@ var (
 	ErrInvalid  = errors.New("source links: invalid")
 	ErrNotFound = errors.New("source links: not found")
 	ErrLimit    = errors.New("source links: limit reached")
+	ErrConflict = errors.New("source links: changed")
 )
 
 // Rule holds no connection credential, external authority or live binding.
@@ -101,7 +102,13 @@ func check(rule Rule) error {
 	}
 	return nil
 }
-func (s *Store) Put(tenant string, rule Rule) (Rule, error) {
+func (s *Store) Put(tenant string, rule Rule) (Rule, error) { return s.put(tenant, rule, nil, false) }
+
+// PutIfCurrent binds an authorized snapshot to the durable write. Nil requires a new ID.
+func (s *Store) PutIfCurrent(tenant string, rule Rule, expected *Rule) (Rule, error) {
+	return s.put(tenant, rule, expected, true)
+}
+func (s *Store) put(tenant string, rule Rule, expected *Rule, guard bool) (Rule, error) {
 	if rule.Mode == "" {
 		rule.Mode = Suggest
 	}
@@ -111,6 +118,9 @@ func (s *Store) Put(tenant string, rule Rule) (Rule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	old, exists := s.by[tenant][rule.ID]
+	if guard && ((expected == nil && exists) || (expected != nil && (!exists || old != *expected))) {
+		return Rule{}, ErrConflict
+	}
 	if exists && old.CopiedFrom != "" && !reflect.DeepEqual(old, rule) {
 		return Rule{}, fmt.Errorf("%w: copied rules remain off", ErrInvalid)
 	}
@@ -145,13 +155,22 @@ func (s *Store) Get(tenant, id string) (Rule, error) {
 	}
 	return rule, nil
 }
-func (s *Store) Delete(tenant, id string) error {
+func (s *Store) Delete(tenant, id string) error { return s.delete(tenant, id, nil) }
+func (s *Store) DeleteIfCurrent(tenant, id string, expected Rule) error {
+	return s.delete(tenant, id, &expected)
+}
+func (s *Store) delete(tenant, id string, expected *Rule) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if expected != nil {
+		if actual, ok := s.by[tenant][id]; !ok || actual != *expected {
+			return ErrConflict
+		}
+	}
 	if existing, ok := s.by[tenant][id]; !ok {
 		return ErrNotFound
 	} else if existing.CopiedFrom != "" {
-		return fmt.Errorf("%w: copied rules remain off", ErrInvalid)
+		return fmt.Errorf("%w: copied rules remain off", ErrConflict)
 	}
 	if err := s.kept.Delete(tenant, id); err != nil {
 		return err
@@ -163,7 +182,25 @@ func (s *Store) Delete(tenant, id string) error {
 // Match evaluates at most 200 rules and 400 metadata values. Ambiguity is
 // calculated across all destinations before a caller filters its visible view.
 func (s *Store) Match(tenant string, resource Resource) ([]Match, error) {
-	if len(resource.ID) == 0 || len(resource.ID) > 256 || len(resource.Attributes) > 8 {
+	return s.MatchCandidate(tenant, resource, nil)
+}
+
+// MatchCandidate previews one unsaved rule without writing state or applying a link.
+func (s *Store) MatchCandidate(tenant string, resource Resource, candidate *Rule) ([]Match, error) {
+	rules := s.List(tenant)
+	if candidate != nil {
+		copy := *candidate
+		copy.ID = "preview-candidate"
+		copy.CopiedFrom = ""
+		if copy.Mode == "" {
+			copy.Mode = Suggest
+		}
+		if err := check(copy); err != nil {
+			return nil, err
+		}
+		rules = append(rules, copy)
+	}
+	if len(resource.Provider) == 0 || len(resource.Provider) > 64 || resource.Attributes == nil || len(resource.ID) == 0 || len(resource.ID) > 256 || len(resource.Attributes) > 8 {
 		return nil, ErrInvalid
 	}
 	for key, values := range resource.Attributes {
@@ -177,7 +214,7 @@ func (s *Store) Match(tenant string, resource Resource) ([]Match, error) {
 		}
 	}
 	byDestination := map[[2]string]Match{}
-	for _, rule := range s.List(tenant) {
+	for _, rule := range rules {
 		if rule.Provider != resource.Provider || rule.Mode == Off {
 			continue
 		}

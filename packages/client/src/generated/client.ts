@@ -16,6 +16,7 @@ import type {
   Artifact,
   Assignment,
   AssignmentInput,
+  AttachKnowledgeSourceBody,
   BringBackThreadResultBody,
   CallPolicy,
   CallPolicyInput,
@@ -23,11 +24,15 @@ import type {
   ChannelUpdate,
   ChannelView,
   Choice,
+  ClientBridgeDeliveryResponse,
+  ClientCapabilityPolicy,
   ClientInput,
   ClientView,
+  ConnectKnowledgeSourceBody,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
+  DecideSourceLinkSuggestionBody,
   DiscoverWorkspaceResponse,
   DraftLibrarySkillBody,
   EvalRun,
@@ -36,6 +41,7 @@ import type {
   ForkProjectBody,
   ForkThreadBody,
   GetAgentHuesResponse,
+  GetAgentRosterResponse,
   GetInboxMessageResponse,
   GetLibrarySkillResponse,
   GetProjectAgentHuesResponse,
@@ -43,11 +49,16 @@ import type {
   GetRunTraceResponse,
   GetUsageResponse,
   HandoffContract,
+  HandoffUpdate,
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
+  InstallationCapabilities,
+  KnowledgeAttachment,
   KnowledgeDocument,
   KnowledgeSource,
+  KnowledgeSourceConfig,
+  KnowledgeSourceDependenciesResponse,
   KnowledgeVariant,
   LibrarySkill,
   ListAgentRevisionsResponse,
@@ -63,7 +74,9 @@ import type {
   ListEvalRunsResponse,
   ListEvalSuitesResponse,
   ListInboxResponse,
+  ListKnowledgeAttachmentsResponse,
   ListKnowledgeDocumentsResponse,
+  ListKnowledgeResourcesResponse,
   ListKnowledgeSourcesResponse,
   ListLibrarySkillsResponse,
   ListMentionsResponse,
@@ -81,6 +94,7 @@ import type {
   ListRunFeedbackResponse,
   ListSchedulesResponse,
   ListSkillsResponse,
+  ListSourceLinkSuggestionsResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -94,6 +108,7 @@ import type {
   Policy,
   PolicyInput,
   Preferences,
+  PreviewSourceLinkRulesResponse,
   ProjectAgentsInput,
   ProjectAgentsView,
   ProjectContext,
@@ -114,6 +129,7 @@ import type {
   ProjectView,
   PromoteLibrarySkillBody,
   PublishThreadSummaryBody,
+  PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -129,8 +145,13 @@ import type {
   SearchKnowledgeResponse,
   SetAgentHomeBody,
   SetKnowledgeDocumentExcludedBody,
+  SetKnowledgeSyncSettingsBody,
   Settings,
   SnoozeInboxMessageBody,
+  SourceLinkResource,
+  SourceLinkRule,
+  SourceLinkRuleInput,
+  SourceLinkSuggestion,
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
@@ -659,6 +680,71 @@ export class ApiClient {
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListAuditResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Read this installation's actual event and action inventory */
+  async getClientCapabilities(id: string, options?: RequestOptions): Promise<InstallationCapabilities> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InstallationCapabilities>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getClientCapabilitiesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InstallationCapabilities>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Explicit empty lists deny every event or action. These controls add no provider scopes, agent tool grants or approval rights. Existing managed installations keep their file-defined settings. */
+  async putClientCapabilities(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<InstallationCapabilities> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InstallationCapabilities>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putClientCapabilitiesRaw(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InstallationCapabilities>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Recheck a native host's current permission to deliver this visible run */
+  async clientBridgeDelivery(id: string, run: string, channel: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
+    let path = "/api/clients/{id}/delivery";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ClientBridgeDeliveryResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
+    let path = "/api/clients/{id}/delivery";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ClientBridgeDeliveryResponse>("GET", path, {
       ...options,
     });
   }
@@ -2423,7 +2509,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -2445,7 +2531,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -3155,6 +3241,360 @@ in a project takes a member of that project (403).
     return this.rawRequest<KnowledgeSource>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Show visible source dependents in a bounded directory window */
+  async knowledgeSourceDependencies(name: string, options?: RequestOptions): Promise<KnowledgeSourceDependenciesResponse> {
+    let path = "/api/knowledge/{name}/dependencies";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSourceDependenciesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async knowledgeSourceDependenciesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSourceDependenciesResponse>> {
+    let path = "/api/knowledge/{name}/dependencies";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSourceDependenciesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List bounded visible verified resource links and suggestions */
+  async listSourceLinkSuggestions(knowledge?: string, client?: string, state?: "suggested" | "linked" | "ignored", limit?: number, options?: RequestOptions): Promise<ListSourceLinkSuggestionsResponse> {
+    let path = "/api/source-link-suggestions";
+    const _q = new URLSearchParams();
+    if (knowledge !== undefined && knowledge !== null) _q.set("knowledge", String(knowledge));
+    if (client !== undefined && client !== null) _q.set("client", String(client));
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListSourceLinkSuggestionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSourceLinkSuggestionsRaw(knowledge?: string, client?: string, state?: "suggested" | "linked" | "ignored", limit?: number, options?: RequestOptions): Promise<ApiResponse<ListSourceLinkSuggestionsResponse>> {
+    let path = "/api/source-link-suggestions";
+    const _q = new URLSearchParams();
+    if (knowledge !== undefined && knowledge !== null) _q.set("knowledge", String(knowledge));
+    if (client !== undefined && client !== null) _q.set("client", String(client));
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListSourceLinkSuggestionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Link or ignore a verified suggested resource */
+  async decideSourceLinkSuggestion(id: string, body: DecideSourceLinkSuggestionBody, options?: RequestOptions): Promise<SourceLinkSuggestion> {
+    let path = "/api/source-link-suggestions/{id}/decision";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SourceLinkSuggestion>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async decideSourceLinkSuggestionRaw(id: string, body: DecideSourceLinkSuggestionBody, options?: RequestOptions): Promise<ApiResponse<SourceLinkSuggestion>> {
+    let path = "/api/source-link-suggestions/{id}/decision";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SourceLinkSuggestion>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** listSourceLinkRules */
+  async listSourceLinkRules(options?: RequestOptions): Promise<SourceLinkRule[]> {
+    const path = "/api/source-link-rules";
+    return this.request<SourceLinkRule[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSourceLinkRulesRaw(options?: RequestOptions): Promise<ApiResponse<SourceLinkRule[]>> {
+    const path = "/api/source-link-rules";
+    return this.rawRequest<SourceLinkRule[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** createSourceLinkRule */
+  async createSourceLinkRule(body: SourceLinkRuleInput, options?: RequestOptions): Promise<SourceLinkRule> {
+    const path = "/api/source-link-rules";
+    return this.request<SourceLinkRule>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createSourceLinkRuleRaw(body: SourceLinkRuleInput, options?: RequestOptions): Promise<ApiResponse<SourceLinkRule>> {
+    const path = "/api/source-link-rules";
+    return this.rawRequest<SourceLinkRule>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** updateSourceLinkRule */
+  async updateSourceLinkRule(id: string, body: SourceLinkRuleInput, options?: RequestOptions): Promise<SourceLinkRule> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SourceLinkRule>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateSourceLinkRuleRaw(id: string, body: SourceLinkRuleInput, options?: RequestOptions): Promise<ApiResponse<SourceLinkRule>> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SourceLinkRule>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** deleteSourceLinkRule */
+  async deleteSourceLinkRule(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteSourceLinkRuleRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** previewSourceLinkRules */
+  async previewSourceLinkRules(body: SourceLinkResource, options?: RequestOptions): Promise<PreviewSourceLinkRulesResponse> {
+    const path = "/api/source-link-rules/preview";
+    return this.request<PreviewSourceLinkRulesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async previewSourceLinkRulesRaw(body: SourceLinkResource, options?: RequestOptions): Promise<ApiResponse<PreviewSourceLinkRulesResponse>> {
+    const path = "/api/source-link-rules/preview";
+    return this.rawRequest<PreviewSourceLinkRulesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** List visible actual source context attachments */
+  async listKnowledgeAttachments(name: string, options?: RequestOptions): Promise<ListKnowledgeAttachmentsResponse> {
+    let path = "/api/knowledge/{name}/attachments";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ListKnowledgeAttachmentsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listKnowledgeAttachmentsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ListKnowledgeAttachmentsResponse>> {
+    let path = "/api/knowledge/{name}/attachments";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ListKnowledgeAttachmentsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Attach a source to actual project or channel context */
+  async attachKnowledgeSource(name: string, body: AttachKnowledgeSourceBody, options?: RequestOptions): Promise<KnowledgeAttachment> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeAttachment>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async attachKnowledgeSourceRaw(name: string, body: AttachKnowledgeSourceBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeAttachment>> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeAttachment>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Detach an exact source context target without deleting its retained copy */
+  async detachKnowledgeSource(name: string, project: string, channel?: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async detachKnowledgeSourceRaw(name: string, project: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** listKnowledgeResources */
+  async listKnowledgeResources(name: string, options?: RequestOptions): Promise<ListKnowledgeResourcesResponse> {
+    let path = "/api/knowledge/{name}/resources";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ListKnowledgeResourcesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listKnowledgeResourcesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ListKnowledgeResourcesResponse>> {
+    let path = "/api/knowledge/{name}/resources";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ListKnowledgeResourcesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** snapshotKnowledgeSource */
+  async snapshotKnowledgeSource(name: string, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/snapshot";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  async snapshotKnowledgeSourceRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/snapshot";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** replaceKnowledgeSource */
+  async replaceKnowledgeSource(name: string, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/replace";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  async replaceKnowledgeSourceRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/replace";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** setKnowledgeSyncSettings */
+  async setKnowledgeSyncSettings(name: string, body: SetKnowledgeSyncSettingsBody, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/sync-settings";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setKnowledgeSyncSettingsRaw(name: string, body: SetKnowledgeSyncSettingsBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/sync-settings";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Configure source origin, mode and freshness */
+  async configureKnowledgeSource(name: string, body: KnowledgeSourceConfig, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/configuration";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async configureKnowledgeSourceRaw(name: string, body: KnowledgeSourceConfig, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/configuration";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Connect your own source credential reference */
+  async connectKnowledgeSource(name: string, body: ConnectKnowledgeSourceBody, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/credential";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async connectKnowledgeSourceRaw(name: string, body: ConnectKnowledgeSourceBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/credential";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Refresh a complete indexed source copy */
+  async syncKnowledgeSource(name: string, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/sync";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  async syncKnowledgeSourceRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/sync";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("POST", path, {
       ...options,
     });
   }
@@ -4187,7 +4627,7 @@ receipts (`deliveries`), and nobody else any, so a Slack app catches
 up here on the announcements it may have missed. `next` is the cursor
 for the page after this one, or null at the end.
  */
-  async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
+  async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
     let path = "/api/projects/{name}/inbox";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     const _q = new URLSearchParams();
@@ -4203,7 +4643,7 @@ for the page after this one, or null at the end.
     });
   }
 
-  async getProjectInboxRaw(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<GetProjectInboxResponse>> {
+  async getProjectInboxRaw(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<GetProjectInboxResponse>> {
     let path = "/api/projects/{name}/inbox";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     const _q = new URLSearchParams();
@@ -4840,9 +5280,10 @@ owns cannot be changed here and answers 409.
   }
 
   /** List assignments */
-  async listAssignments(limit?: number, options?: RequestOptions): Promise<Assignment[]> {
+  async listAssignments(agent?: string, limit?: number, options?: RequestOptions): Promise<Assignment[]> {
     let path = "/api/assignments";
     const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
@@ -4851,9 +5292,10 @@ owns cannot be changed here and answers 409.
     });
   }
 
-  async listAssignmentsRaw(limit?: number, options?: RequestOptions): Promise<ApiResponse<Assignment[]>> {
+  async listAssignmentsRaw(agent?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<Assignment[]>> {
     let path = "/api/assignments";
     const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
@@ -4970,6 +5412,67 @@ owns cannot be changed here and answers 409.
   async getAgentNetworkRaw(options?: RequestOptions): Promise<ApiResponse<AgentNetwork>> {
     const path = "/api/agent-network";
     return this.rawRequest<AgentNetwork>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Read a visible handoff contract */
+  async getHandoff(id: string, options?: RequestOptions): Promise<HandoffContract> {
+    let path = "/api/handoffs/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<HandoffContract>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getHandoffRaw(id: string, options?: RequestOptions): Promise<ApiResponse<HandoffContract>> {
+    let path = "/api/handoffs/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<HandoffContract>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Assign responsibility or record a handoff decision */
+  async updateHandoff(id: string, body: HandoffUpdate, options?: RequestOptions): Promise<HandoffContract> {
+    let path = "/api/handoffs/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<HandoffContract>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateHandoffRaw(id: string, body: HandoffUpdate, options?: RequestOptions): Promise<ApiResponse<HandoffContract>> {
+    let path = "/api/handoffs/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<HandoffContract>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read controls and visible recent state for named agents */
+  async getAgentRoster(names: string, options?: RequestOptions): Promise<GetAgentRosterResponse> {
+    let path = "/api/agent-roster";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GetAgentRosterResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentRosterRaw(names: string, options?: RequestOptions): Promise<ApiResponse<GetAgentRosterResponse>> {
+    let path = "/api/agent-roster";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GetAgentRosterResponse>("GET", path, {
       ...options,
     });
   }

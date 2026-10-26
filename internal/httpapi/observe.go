@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -17,6 +19,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/journal"
+	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -25,6 +28,9 @@ import (
 const maxWindow = 30 * 24 * time.Hour
 
 func (s *Server) observeRoutes(mux *http.ServeMux) {
+	s.sourceRuleRoutes(mux)
+	s.sourceSuggestionRoutes(mux)
+	s.sourceRecoveryRoutes(mux)
 	mux.HandleFunc("GET /api/analytics", s.authed(auth.RunsRead, s.analytics))
 	mux.HandleFunc("GET /api/journal", s.authed(auth.RunsRead, s.journal))
 	mux.HandleFunc("GET /api/runs/{id}/trace", s.authed(auth.RunsRead, s.seenRun(s.trace)))
@@ -45,16 +51,21 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/evals/{name}/run", s.authed(auth.EvalsWrite, s.seenSuite(s.runSuite)))
 	mux.HandleFunc("GET /api/evals/{name}/runs", s.authed(auth.EvalsRead, s.seenSuite(s.suiteRuns)))
 
+	mux.HandleFunc("GET /api/knowledge/{name}/dependencies", s.authed(auth.KnowledgeRead, s.seenSource(s.sourceDependencies)))
 	mux.HandleFunc("GET /api/knowledge", s.authed(auth.KnowledgeRead, s.listSources))
 	mux.HandleFunc("POST /api/knowledge", s.authed(auth.KnowledgeWrite, s.createSource))
 	mux.HandleFunc("GET /api/knowledge/search", s.authed(auth.KnowledgeRead, s.searchKnowledge))
-	mux.HandleFunc("DELETE /api/knowledge/{name}", s.authed(auth.KnowledgeWrite, s.deleteSource))
-	mux.HandleFunc("GET /api/knowledge/{name}/documents", s.authed(auth.KnowledgeRead, s.listDocuments))
-	mux.HandleFunc("POST /api/knowledge/{name}/documents", s.authed(auth.KnowledgeWrite, s.addDocument))
-	mux.HandleFunc("DELETE /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.removeDocument))
-	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.excludeDocument))
-	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.saveVariant))
-	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.deleteVariant))
+	mux.HandleFunc("DELETE /api/knowledge/{name}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.delete", s.deleteSource))))
+	mux.HandleFunc("GET /api/knowledge/{name}/documents", s.authed(auth.KnowledgeRead, s.seenSource(s.listDocuments)))
+	mux.HandleFunc("POST /api/knowledge/{name}/documents", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.add", s.addDocument))))
+	mux.HandleFunc("DELETE /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.remove", s.removeDocument))))
+	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.exclude", s.excludeDocument))))
+	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.save", s.saveVariant))))
+	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.delete", s.deleteVariant))))
+	mux.HandleFunc("PUT /api/knowledge/{name}/configuration", s.authed(auth.KnowledgeWrite, s.seenSource(s.configureSource)))
+	mux.HandleFunc("PUT /api/knowledge/{name}/credential", s.authed(auth.KnowledgeRead, s.seenSource(s.connectSource)))
+	mux.HandleFunc("POST /api/knowledge/{name}/sync", s.authed(auth.KnowledgeWrite, s.seenSource(s.syncSource)))
+
 }
 
 // window reads ?window= as a duration ending now. It defaults to an hour.
@@ -113,6 +124,16 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
 		ProjectEvent: func(e envelope.Event) envelope.Event { return s.P.ShownEvent(who, e) },
+		Visible: func(e envelope.Event) bool {
+			if !s.P.CitationEventVisible(who, e) {
+				return false
+			}
+			seer := s.P.Seer(who)
+			if e.RunID == "" {
+				return seer.Agent(e.Agent)
+			}
+			return seer.RunID(e.RunID)
+		},
 	})
 	// An event of a run the caller may not read is left out, as is one of
 	// an agent that lives in a project they cannot see.
@@ -143,7 +164,7 @@ func (s *Server) trace(w http.ResponseWriter, r *http.Request, who auth.Principa
 	for i, run := range tree {
 		ids[i] = run.ID
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree), "spans": orEmpty(s.P.ShownSpans(who, s.P.Journal.Trace(who.Tenant, ids)))})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRunsAs(who, tree), "spans": orEmpty(s.P.ShownSpans(who, s.P.Journal.Trace(who.Tenant, ids)))})
 }
 
 // runEvents returns one run's events as they were published, oldest first, for
@@ -155,7 +176,7 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	events := s.P.Journal.Events(who.Tenant, []string{run.ID})
+	events := slices.DeleteFunc(s.P.Journal.Events(who.Tenant, []string{run.ID}), func(e envelope.Event) bool { return !s.P.CitationEventVisible(who, e) })
 	for i, event := range events {
 		events[i] = s.P.ShownEvent(who, event)
 	}
@@ -204,7 +225,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 	out := make([]entry, 0, len(tree))
 	seer := s.P.Seer(who)
 	for _, run := range tree {
-		e := entry{Run: s.P.ShownRun(who.Tenant, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
+		e := entry{Run: s.P.ShownRunAs(who, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
 		if run.Stopping {
 			e.State = "stopping"
 		}
@@ -223,6 +244,9 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		held := s.P.Journal.Events(who.Tenant, []string{run.ID})
 		e.Complete = complete(held)
 		for _, ev := range held {
+			if !s.P.CitationEventVisible(who, ev) {
+				continue
+			}
 			ev = s.P.ShownEvent(who, ev)
 			item := event{Seq: ev.Seq, At: ev.At, Kind: ev.Kind}
 			if json.Valid(ev.Payload) {
@@ -406,27 +430,33 @@ func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 func (s *Server) listSources(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"sources": s.P.Knowledge.List(who.Tenant)})
+	ok(w, http.StatusOK, map[string]any{"sources": s.P.SourcesAs(who)})
 }
 
 func (s *Server) createSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name          string                  `json:"name"`
+		Description   string                  `json:"description"`
+		Configuration *knowledge.SourceConfig `json:"configuration,omitempty"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	src, err := s.P.Knowledge.Create(who.Tenant, body.Name, body.Description, who.Subject, time.Now())
+	source, err := s.P.CreateSource(who, body.Name, body.Description, body.Configuration)
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, src)
+	ok(w, http.StatusCreated, source)
 }
 
 func (s *Server) deleteSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if err := s.P.DeleteSource(who, r.PathValue("name")); err != nil {
+	source, err := s.sourceSnapshot(who, r)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if err := s.P.DeleteSourceForScope(who, r.PathValue("name"), sourceConfigOf(source)); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -434,7 +464,12 @@ func (s *Server) deleteSource(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	docs, err := s.P.Knowledge.Documents(who.Tenant, r.PathValue("name"))
+	src, err := s.sourceSnapshot(who, r)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	docs, err := s.P.Knowledge.DocumentsForScope(who.Tenant, r.PathValue("name"), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -451,7 +486,16 @@ func (s *Server) addDocument(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if !decode(w, r, &body) {
 		return
 	}
-	doc, err := s.P.Knowledge.Add(who.Tenant, r.PathValue("name"), body.Title, body.URI, body.Text, who.Subject, time.Now())
+	src, err := s.sourceSnapshot(who, r)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if src.Lifecycle != nil && (src.Lifecycle.Provider != "manual" || src.Lifecycle.Mode != knowledge.Indexed) {
+		s.problem(w, fmt.Errorf("%w: managed copies are changed by Refresh Copy", knowledge.ErrInvalid))
+		return
+	}
+	doc, err := s.P.Knowledge.AddForScope(who.Tenant, r.PathValue("name"), body.Title, body.URI, body.Text, who.Subject, time.Now(), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -460,7 +504,12 @@ func (s *Server) addDocument(w http.ResponseWriter, r *http.Request, who auth.Pr
 }
 
 func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if err := s.P.Knowledge.Remove(who.Tenant, r.PathValue("name"), r.PathValue("id"), time.Now()); err != nil {
+	src, scopeErr := s.sourceSnapshot(who, r)
+	if scopeErr != nil {
+		s.problem(w, scopeErr)
+		return
+	}
+	if err := s.P.Knowledge.RemoveForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), time.Now(), sourceConfigOf(src)); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -474,7 +523,12 @@ func (s *Server) excludeDocument(w http.ResponseWriter, r *http.Request, who aut
 	if !decode(w, r, &body) {
 		return
 	}
-	doc, err := s.P.Knowledge.SetExcluded(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Excluded, time.Now())
+	src, scopeErr := s.sourceSnapshot(who, r)
+	if scopeErr != nil {
+		s.problem(w, scopeErr)
+		return
+	}
+	doc, err := s.P.Knowledge.SetExcludedForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Excluded, time.Now(), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -489,7 +543,12 @@ func (s *Server) saveVariant(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if !decode(w, r, &body) {
 		return
 	}
-	v, err := s.P.Knowledge.SaveVariant(who.Tenant, r.PathValue("name"), body.Name, time.Now())
+	src, scopeErr := s.sourceSnapshot(who, r)
+	if scopeErr != nil {
+		s.problem(w, scopeErr)
+		return
+	}
+	v, err := s.P.Knowledge.SaveVariantForScope(who.Tenant, r.PathValue("name"), body.Name, time.Now(), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -498,7 +557,12 @@ func (s *Server) saveVariant(w http.ResponseWriter, r *http.Request, who auth.Pr
 }
 
 func (s *Server) deleteVariant(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if err := s.P.Knowledge.DeleteVariant(who.Tenant, r.PathValue("name"), r.PathValue("variant")); err != nil {
+	src, scopeErr := s.sourceSnapshot(who, r)
+	if scopeErr != nil {
+		s.problem(w, scopeErr)
+		return
+	}
+	if err := s.P.Knowledge.DeleteVariantForScope(who.Tenant, r.PathValue("name"), r.PathValue("variant"), sourceConfigOf(src)); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -511,12 +575,12 @@ func (s *Server) searchKnowledge(w http.ResponseWriter, r *http.Request, who aut
 	if raw := q.Get("source"); raw != "" {
 		names = strings.Split(raw, ",")
 	}
-	hits, err := s.P.Knowledge.Search(who.Tenant, names, q.Get("q"), 0, q.Get("variant"))
+	result, err := s.P.SearchSourcesDetailed(r.Context(), who, names, q.Get("q"), q.Get("variant"))
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"hits": hits})
+	ok(w, http.StatusOK, result)
 }
 
 // suiteView is a suite with its most recent runs, newest first. Results are
@@ -577,6 +641,10 @@ func (s *Server) putSuite(replace bool) handler {
 				_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
 			}
 		case evals.Knowledge:
+			if !s.P.SourceVisible(who, suite.Subject) {
+				s.problem(w, knowledge.ErrNotFound)
+				return
+			}
 			_, err = s.P.Knowledge.Documents(who.Tenant, suite.Subject)
 		}
 		if err != nil {
@@ -628,4 +696,72 @@ func (s *Server) suiteRuns(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(runs)})
+}
+
+func (s *Server) seenSource(next func(http.ResponseWriter, *http.Request, auth.Principal)) func(http.ResponseWriter, *http.Request, auth.Principal) {
+	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		source, err := s.P.SourceAs(who, r.PathValue("name"))
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), sourceSnapshotKey{}, sourceReadSnapshot{Tenant: who.Tenant, Source: source}))
+
+		next(w, r, who)
+	}
+}
+func (s *Server) configureSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body knowledge.SourceConfig
+	if !decode(w, r, &body) {
+		return
+	}
+	src, err := s.P.ConfigureSource(who, r.PathValue("name"), body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, src)
+}
+func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Ref string `json:"ref"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if err := s.P.ConnectSource(who, r.PathValue("name"), body.Ref); err != nil {
+		s.problem(w, err)
+		return
+	}
+	src, err := s.P.SourceAs(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, src)
+}
+func (s *Server) syncSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	src, err := s.P.SyncSource(r.Context(), who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, src)
+}
+
+func (s *Server) sourceDependencies(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.SourceDependenciesAs(r.Context(), who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
+}
+
+func sourceConfigOf(src knowledge.Source) *knowledge.SourceConfig {
+	if src.Lifecycle == nil {
+		return nil
+	}
+	cfg := src.Lifecycle.SourceConfig
+	return &cfg
 }

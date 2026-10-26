@@ -48,8 +48,8 @@ import (
 //     in a shared thread answers that message again (retryAnswer);
 //   - everything else acts for nobody: a machine asking as itself, a
 //     schedule firing on its own clock, the platform's own housekeeping, an
-//     eval, a run another agent called, and every GitHub actor, since no
-//     client maps GitHub logins.
+//     eval, a run another agent called, and an unmapped GitHub actor. GitHub logins are mapped only by
+//     their own verified installation.
 //
 // What a person answers a run steers what its tools are asked next, and a
 // called run's answer is its caller's. So a run that uses the credential of
@@ -163,9 +163,16 @@ func PersonActor(subject string) envelope.Actor {
 // map the tag's Slack user to. The map is often on another client than the
 // one that received the message (a people map needs a machine, so an app
 // built on the API holds it). No mapping, or two clients mapping the user to
-// different people, is nobody, and so is a bot and every GitHub actor.
+// different people, is nobody. GitHub uses only its own installation’s exact
+// verified login map. A bot always acts for nobody.
 func (p *Platform) surfacePerson(c clients.Client, tag envelope.Tag) string {
 	id := strings.TrimSpace(tag.Actor.ID)
+	if c.Surface == clients.GitHub {
+		if !c.Enabled || tag.Actor.Bot || c.GitHub == nil {
+			return ""
+		}
+		return c.GitHub.People[tag.Actor.ID]
+	}
 	if c.Surface != clients.Slack || tag.Actor.Bot || id == "" || c.Identity.Team == "" {
 		return ""
 	}
@@ -228,6 +235,10 @@ func (p *Platform) ownStarts(tenant, subject string) []string {
 // are checked here as well as when the credential was given, so one the
 // workspace no longer allows is not used, however it was kept.
 func (p *Platform) personCredential(_ context.Context, tenant string, prov toolprovider.Provider, actor envelope.Actor) (mcptools.PersonCredential, error) {
+	// Native source consent is not consent to an MCP endpoint.
+	if strings.HasPrefix(prov.Name, "hsrc-") {
+		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
+	}
 	person := actor.User
 	if actor.Bot || person == "" {
 		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
@@ -351,7 +362,7 @@ func (p *Platform) toolCredential(ctx context.Context, who auth.Principal, prov 
 // personScoped returns a provider of the caller's workspace that takes each
 // person's own credential.
 func (p *Platform) personScoped(ctx context.Context, tenant, name string) (toolprovider.Provider, error) {
-	if !toolprovider.ValidName(name) {
+	if !toolprovider.ValidName(name) || strings.HasPrefix(name, "hsrc-") {
 		return toolprovider.Provider{}, fmt.Errorf("%w: no tool provider %q", ErrProviderNotFound, name)
 	}
 	prov, err := p.ToolProviders.GetProvider(ctx, tenant, name)

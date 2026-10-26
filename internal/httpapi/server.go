@@ -51,6 +51,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 )
 
 // maxBody bounds every request body. Nothing this API accepts is large.
@@ -83,6 +84,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /auth/callback", s.Authn.handleCallback)
 	mux.HandleFunc("POST /auth/logout", s.Authn.handleLogout)
 
+	mux.HandleFunc("GET /api/agent-roster", s.authed(auth.AgentsRead, s.agentRoster))
 	mux.HandleFunc("GET /api/agent-controls", s.authed(auth.AgentsRead, s.getOperationControl))
 	mux.HandleFunc("PUT /api/agent-controls", s.authed(auth.AgentsWrite, s.putOperationControl))
 	mux.HandleFunc("GET /api/agents/{name}/control", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getOperationControl))))
@@ -100,6 +102,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/assignments/{id}", s.authed(auth.RunsRead, s.getAssignment))
 	mux.HandleFunc("PUT /api/assignments/{id}", s.authed(auth.RunsWrite, s.putAssignment))
 	mux.HandleFunc("POST /api/assignments/{id}/run", s.authed(auth.RunsWrite, s.runAssignment))
+	mux.HandleFunc("GET /api/handoffs/{id}", s.authed(auth.RunsRead, s.getHandoff))
+	mux.HandleFunc("PUT /api/handoffs/{id}", s.authed(auth.RunsWrite, s.putHandoff))
 	mux.HandleFunc("GET /api/handoffs", s.authed(auth.RunsRead, s.listHandoffs))
 	mux.HandleFunc("GET /api/agent-network", s.authed(auth.AgentsRead, s.agentNetwork))
 	mux.HandleFunc("GET /api/me", s.authed("", s.me))
@@ -263,7 +267,7 @@ func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) 
 			s.problem(w, err)
 			return
 		}
-		out["personal_project"] = "~" + personal.Name
+		out["personal_project"] = personal.Name
 		if who.Can(auth.ProjectsRead) {
 			welcome, err := s.P.PostWelcome(who.Tenant)
 			if err != nil {
@@ -572,7 +576,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRuns(who.Tenant, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -668,7 +672,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusAccepted, run)
+	ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 }
 
 // listThreads pages a tenant's conversations, newest activity first.
@@ -785,7 +789,7 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request, who auth.Princip
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.P.ShownRun(who.Tenant, run))
+	ok(w, http.StatusOK, s.P.ShownRunAs(person, run))
 }
 
 func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -794,7 +798,7 @@ func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Princi
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree)})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRunsAs(who, tree)})
 }
 
 func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -824,7 +828,7 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusAccepted, run)
+	ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 }
 
 // stopRun asks a run and everything attached to it to stop. Runs it delegated
@@ -839,10 +843,10 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request, who auth.Princi
 		return
 	}
 	if run.Stopping && !run.Status.Terminal() {
-		ok(w, http.StatusAccepted, run)
+		ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 		return
 	}
-	ok(w, http.StatusOK, run)
+	ok(w, http.StatusOK, s.P.ShownRunAs(who, run))
 }
 
 // events streams the caller's tenant's events as server-sent events.
@@ -965,7 +969,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// behind is ended here rather than fed a gap.
 				return
 			}
-			if !gate.seen(e.RunID) {
+			if !gate.seen(e.RunID) || !s.P.CitationEventVisible(who, e) {
 				continue
 			}
 			e = s.P.ShownEvent(who, e)
@@ -1008,6 +1012,16 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, detail(err, library.ErrInvalid))
 	case errors.Is(err, library.ErrConflict):
 		fail(w, http.StatusConflict, detail(err, library.ErrConflict))
+	case errors.Is(err, auth.ErrForbidden):
+		fail(w, http.StatusForbidden, detail(err, auth.ErrForbidden))
+	case errors.Is(err, sourcelinks.ErrInvalid):
+		fail(w, http.StatusBadRequest, "invalid source link rule")
+	case errors.Is(err, sourcelinks.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, sourcelinks.ErrConflict):
+		fail(w, http.StatusConflict, "source link rule changed; reload")
+	case errors.Is(err, sourcelinks.ErrLimit):
+		fail(w, http.StatusTooManyRequests, "source link rule limit reached")
 	case errors.Is(err, operations.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, operations.ErrNotFound):

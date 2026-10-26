@@ -74,7 +74,12 @@
       "owner": "root",
       "plan_item": "1.5",
       "task": "T005",
-      "status": "pending_native_verification"
+      "status": "verified",
+      "evidence": [
+        "pkg/agentcolors/store_test.go: stable persisted assignment, concurrent uniqueness, kept builtin rename hue",
+        "scripts/screens/run.ts: humagen-builtins phone/desktop",
+        "Full Go race suite with Postgres/S3: 39 passed packages, zero skipped tests"
+      ]
     },
     {
       "id": "REQ-006",

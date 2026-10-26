@@ -8,6 +8,8 @@ import type {
   LibrarySkill,
   LibraryScope,
   LibrarySkillDefinition,
+  KnowledgeLifecycle,
+  KnowledgeSourceConfig,
   ProjectContext,
   AgentHome,
   Person,
@@ -319,7 +321,24 @@ export interface Alert {
   acked_at?: string;
 }
 
+import type {KnowledgeResource, SourceLinkRule as GeneratedSourceLinkRule, SourceLinkResource, SourceLinkMatch,ListKnowledgeResourcesResponse,SourceLinkSuggestion as GeneratedSourceLinkSuggestion,ListSourceLinkSuggestionsResponse,DecideSourceLinkSuggestionBody,KnowledgeAttachment,ListKnowledgeAttachmentsResponse} from "../../../packages/client/src/generated/types.ts";
+export type SourceResource=KnowledgeResource;
+export type SourceConfiguration=KnowledgeSourceConfig;
+export type SourceLinkRule=GeneratedSourceLinkRule;
+export type SourceRuleResource=SourceLinkResource;
+export type SourceRuleMatch=SourceLinkMatch;
+
+export type SourceLinkSuggestion=GeneratedSourceLinkSuggestion;
+
+export type SourceAttachment=KnowledgeAttachment;
+
+import type { InstallationCapabilities,ClientCapabilityPolicy,PutClientCapabilitiesBodyPart2,SlackBinding,ListClientBindingsResponse } from "../../../packages/client/src/generated/types.ts";
+export type BridgeDirection=NonNullable<SlackBinding["direction"]>;
+export type ClientCapabilities=InstallationCapabilities;
+export type ClientCapabilityInput=ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2;
+
 export interface Source {
+  lifecycle?: KnowledgeLifecycle;
   name: string;
   description?: string;
   documents: number;
@@ -342,6 +361,7 @@ export interface Doc {
 }
 
 export interface Hit {
+  mode?: "indexed" | "live";
   source: string;
   document_id: string;
   title: string;
@@ -675,9 +695,13 @@ export const api = {
   saveAgentControl: (agent: string, input: AgentControlInput) => call<AgentControl>("PUT", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls", input),
   actionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name = "") => call<ActionPolicy>("GET", operationPolicyPath(scope, name)),
   saveActionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name: string, input: ActionPolicyInput) => call<ActionPolicy>("PUT", operationPolicyPath(scope, name), input),
-  assignments: () => call<Assignment[]>("GET", "/api/assignments?limit=200"),
+  assignment: (id:string) => call<Assignment>("GET",`/api/assignments/${encodeURIComponent(id)}`),
+  agentRoster:(names:string[]) => call<{controls:Record<string,AgentControl>;window_days:number}>("GET",`/api/agent-roster?${new URLSearchParams({names:names.join(",")})}`).then(r=>r.controls),
+  assignments: (agent?: string) => call<Assignment[]>("GET", `/api/assignments?${new URLSearchParams({limit:"200", ...(agent ? {agent} : {})})}`),
   saveAssignment: (input: AssignmentInput) => call<Assignment>(input.version === 0 ? "POST" : "PUT", input.version === 0 ? "/api/assignments" : `/api/assignments/${encodeURIComponent(input.id)}`, input),
   runAssignment: (id: string) => call<Run>("POST", `/api/assignments/${encodeURIComponent(id)}/run`),
+  handoff: (id:string) => call<HandoffContract>("GET",`/api/handoffs/${encodeURIComponent(id)}`),
+  saveHandoff: (id:string,input:import("../../../packages/client/src/generated/types.ts").HandoffUpdate) => call<HandoffContract>("PUT",`/api/handoffs/${encodeURIComponent(id)}`,input),
   handoffs: () => call<HandoffContract[]>("GET", "/api/handoffs?limit=200"),
   agentNetwork: () => call<AgentNetwork>("GET", "/api/agent-network"),
  readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
@@ -921,7 +945,28 @@ export const api = {
   deleteAlertRule: (name: string) => call<void>("DELETE", `/api/alert-rules/${encodeURIComponent(name)}`),
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
-  createSource: (name: string, description: string) => call<Source>("POST", "/api/knowledge", { name, description }),
+  createSource: (name: string, description: string, configuration?:SourceConfiguration) => call<Source>("POST", "/api/knowledge", { name, description,...(configuration?{configuration}:{}) }),
+  sourceAttachments:(name:string)=>call<ListKnowledgeAttachmentsResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/attachments`).then(result=>result.attachments),
+  detachSource:(name:string,target:SourceAttachment)=>call<void>("DELETE",`/api/knowledge/${encodeURIComponent(name)}/attachment?${new URLSearchParams({project:target.project||"~",...(target.channel?{channel:target.channel}:{})})}`),
+  attachSource:(name:string,target:{project:string;channel?:string})=>call<SourceAttachment>("PUT",`/api/knowledge/${encodeURIComponent(name)}/attachment`,target),
+  sourceResources: (name:string) => call<ListKnowledgeResourcesResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/resources`),
+  snapshotSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/snapshot`),
+  replaceSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/replace`),
+  sourceSyncSettings: (name:string,input:{every_seconds:number;stop_after_seconds:number}) => call<Source>("PUT",`/api/knowledge/${encodeURIComponent(name)}/sync-settings`,input),
+  sourceLinkRules: () => call<SourceLinkRule[]>("GET","/api/source-link-rules"),
+  saveSourceLinkRule: (rule:SourceLinkRule,creating=false) => { const {id,copied_from,...input}=rule; return call<SourceLinkRule>(creating?"POST":"PUT",creating?"/api/source-link-rules":`/api/source-link-rules/${encodeURIComponent(id)}`,input); },
+  deleteSourceLinkRule: (id:string) => call<void>("DELETE",`/api/source-link-rules/${encodeURIComponent(id)}`),
+  previewSourceLinkRules: (resource:SourceRuleResource) => call<{matches:SourceRuleMatch[]}>("POST","/api/source-link-rules/preview",resource),
+  sourceLinkSuggestions:(client?:string,knowledge?:string,state:SourceLinkSuggestion["state"]="suggested")=>call<ListSourceLinkSuggestionsResponse>("GET",`/api/source-link-suggestions?${new URLSearchParams({state,limit:"200",...(client?{client}:{}),...(knowledge?{knowledge}:{})})}`).then(result=>result.suggestions),
+  decideSourceLink:(id:string,action:DecideSourceLinkSuggestionBody["action"],version:number)=>call<SourceLinkSuggestion>("POST",`/api/source-link-suggestions/${encodeURIComponent(id)}/decision`,{action,version}),
+  clientCapabilities:(id:string)=>call<ClientCapabilities>("GET",`/api/clients/${encodeURIComponent(id)}/capabilities`),
+  saveClientCapabilities:(id:string,input:ClientCapabilityInput)=>call<ClientCapabilities>("PUT",`/api/clients/${encodeURIComponent(id)}/capabilities`,input),
+  setSlackDirection:(project:string,channel:Channel,direction:BridgeDirection)=>call<Channel>("PUT",`${projectAt(project)}/channels/${encodeURIComponent(channel.name)}`,{version:channel.version,title:channel.title??"",purpose:channel.purpose??"",default:channel.default??"",slack:{...channel.slack,direction}}),
+  clientBindings:(id:string)=>call<ListClientBindingsResponse>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(result=>result.bindings),
+  sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
+  configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
+  connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
+  syncSource: (name: string) => call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),
   deleteSource: (name: string) => call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}`),
   documents: (name: string) =>
     call<{ documents: Doc[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/documents`).then((r) => r.documents),
@@ -935,6 +980,7 @@ export const api = {
     call<{ name: string }>("POST", `/api/knowledge/${encodeURIComponent(name)}/variants`, { name: variant }),
   deleteVariant: (name: string, variant: string) =>
     call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}/variants/${encodeURIComponent(variant)}`),
+  searchKnowledgeDetailed: (q: string, source: string, variant="") => call<{hits:Hit[];warnings?:{source:string;cause:string}[]}>("GET",`/api/knowledge/search?${new URLSearchParams(variant?{q,source,variant}:{q,source})}`),
   searchKnowledge: (q: string, source: string, variant = "") =>
     call<{ hits: Hit[] }>(
       "GET",
@@ -1205,7 +1251,7 @@ export interface Channel {
   purpose?: string;
   default?: string;
   /** The Slack channel it is bound to: a Slack thread there is a shared thread here. */
-  slack?: { client: string; channel: string };
+  slack?: { client: string; channel: string; direction?:BridgeDirection };
   archived?: boolean;
   managed?: string;
   version: number;

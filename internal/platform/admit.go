@@ -49,7 +49,7 @@ func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project string, withi
 	if home, ok := tree.Home(tag.Agent); ok && tree.PendingFork(home) {
 		return projects.ErrNotFound
 	}
-	if err := p.operationAdmission(tag.Tenant, tag.Agent); err != nil {
+	if err := p.operationAdmissionTag(tag); err != nil {
 		return err
 	}
 	if tag.Origin == runs.OriginSystem {

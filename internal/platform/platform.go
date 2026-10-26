@@ -89,6 +89,9 @@ var ErrForbidden = errors.New("platform: forbidden")
 type Config struct {
 	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
 	ProjectTemplates []projects.Template
+	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
+	AssignmentSources operations.SourceChanges
+
 	// Backends are where everything the platform keeps is kept. The zero
 	// value is in memory, lost with the process. OpenPostgres fills it from
 	// one database.
@@ -198,24 +201,27 @@ type Config struct {
 type Platform struct {
 	files filesblob.Store
 
-	cfg Config
-	log *slog.Logger
-	now func() time.Time
+	cfg       Config
+	log       *slog.Logger
+	now       func() time.Time
+	grounding sourceGrounding
 
-	Agents        registry.Store
-	Runs          *runs.Index
-	Schedules     *Schedules
-	Journal       *journal.Journal
-	Alerts        *alerts.Engine
-	Knowledge     *knowledge.Store
-	SourceLinks   *sourcelinks.Store
-	Evals         *evals.Store
-	Feedback      *feedback.Store
-	Prefs         *prefs.Store
-	Memory        *memory.Store
-	SkillLibrary  *library.Store
-	Notifications *notifications.Store
-	ContextFlags  *contextflags.Store
+	Agents            registry.Store
+	Runs              *runs.Index
+	Schedules         *Schedules
+	Journal           *journal.Journal
+	Alerts            *alerts.Engine
+	Knowledge         *knowledge.Store
+	SourceLinks       *sourcelinks.Store
+	SourceSuggestions *sourcelinks.Suggestions
+	SourceEvidence    *knowledge.EvidenceStore
+	Evals             *evals.Store
+	Feedback          *feedback.Store
+	Prefs             *prefs.Store
+	Memory            *memory.Store
+	SkillLibrary      *library.Store
+	Notifications     *notifications.Store
+	ContextFlags      *contextflags.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -228,15 +234,22 @@ type Platform struct {
 	Threads  *threads.Store
 	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
-	operationContexts sync.Map
-	CallPolicies      *callpolicy.Store
-	Operations        *operations.Store
-	Usage             *usage.Ledger
-	Inbox             *inbox.Store
-	ReadAudit         *readaudit.Store
-	Audit             *audit.Store
-	AuditReferences   *auditrefs.Store
-	Artifacts         *artifacts.Index
+	operationContexts          sync.Map
+	agentTestGates             sync.Map
+	assignmentSources          sync.Map
+	assignmentSourceCursor     sync.Map
+	assignmentSettlementCursor sync.Map
+	operationReminderCursor    sync.Map
+	operationScheduleCursor    sync.Map
+	CallPolicies               *callpolicy.Store
+	Operations                 *operations.Store
+	Usage                      *usage.Ledger
+	Inbox                      *inbox.Store
+	ReadAudit                  *readaudit.Store
+	Audit                      *audit.Store
+	Artifacts                  *artifacts.Index
+
+	AuditReferences *auditrefs.Store
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
 	// Credentials is each person's own credentials for person-scoped tool
@@ -380,6 +393,14 @@ func New(cfg Config) (*Platform, error) {
 		return nil, err
 	}
 
+	provider := cfg.AssignmentSources
+	if provider == nil {
+		provider = p
+	}
+	if err := p.RegisterAssignmentSources(provider); err != nil {
+		return nil, err
+	}
+
 	if p.broker == nil {
 		p.broker = bus.NewMemory()
 	}
@@ -504,7 +525,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
 }
 
 // reroute registers the routes of every run the index holds that has not
@@ -569,7 +590,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	}
 	// Accepting publishes the run's first event before the run is recorded,
 	// and delivering that event needs to know which client raised it.
-	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, actor: tag.Actor, place: p.placeAdmitted(tag, edge, runID, project)})
+	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, actor: tag.Actor, person: p.operationTagPerson(tag, edge), operationMeta: operationMetaOf(tag.Meta), place: p.placeAdmitted(tag, edge, runID, project)})
 	defer p.admitting.Delete(runID)
 	if err := p.deliver.Register(runID, tag.Routes()); err != nil {
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -635,7 +656,7 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	if tag.Origin != runs.OriginAPI || edge.Parent != "" {
 		delete(meta, runs.MetaSkills)
 	}
-	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
+	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual || tag.Origin == runs.OriginAssignment) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
 		tag.Text = p.personalContext(tag.Tenant, project, personOf(tag.Actor), p.contextOf(tag.Tenant, project, tag.Agent, tag.Text), meta)
 	}
@@ -778,7 +799,7 @@ func (p *Platform) callerOf(tenant, runID string) (runs.Run, error) {
 // reserved reports whether an origin is one only the platform may use.
 func reserved(origin string) bool {
 	switch origin {
-	case call.Origin, runs.OriginAPI, runs.OriginSystem, runs.OriginManual, OriginEval:
+	case call.Origin, runs.OriginAPI, runs.OriginSystem, runs.OriginManual, runs.OriginAssignment, OriginEval:
 		return true
 	}
 	return false
@@ -798,7 +819,9 @@ const flushEvery = 250 * time.Millisecond
 // fallback for when there is none: a run that exhausts its retries is failed in
 // the ledger with nothing further published.
 func (p *Platform) reconcile(ctx context.Context) {
-	p.settleOperations()
+	p.reconcileOperationReminders(ctx)
+	p.settleOperations(ctx)
+	p.syncAssignmentSchedules()
 	for _, id := range p.Runs.Active() {
 		p.settleFromLedger(ctx, id)
 	}
@@ -864,6 +887,12 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 		return
 	}
 	p.admission.Lock()
+	if e.Kind == envelope.KindCitation {
+		metadata, _, _ := p.trustedCitation(e)
+		if err := p.Runs.RecordCitation(e, metadata); err != nil {
+			p.log.Error("citation could not be retained", "error", err)
+		}
+	}
 	run, ended := p.Runs.Observe(e)
 	if ended {
 		p.free(run)
@@ -970,6 +999,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("source refresh", func() error { return p.refreshSources(ctx) })
 	loop("inbox retention", func() error {
 		tick := time.NewTicker(retainEvery)
 		defer tick.Stop()

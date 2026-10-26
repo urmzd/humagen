@@ -41,7 +41,7 @@ Branches are integrated through no-ff merges, never rebase/reset/force-push. Eac
 - [x] T002 [Plan:1.2] Badge outlines contain labels at narrow widths and enlarged text. Implement and verify in `apps/web/src/ui.tsx`, `apps/web/src/Agents.tsx`, `scripts/screens/run.ts`. [REQ-002]; owner root. Source: `user supplied badge screenshot`.
 - [x] T003 [Plan:1.3] Copy and Reply share one consistent accessible action row. Implement and verify in `packages/web/src/AgentMessage.tsx`, `apps/web/src/Room.tsx`. [REQ-003]; owner workspace_outcomes. Source: `user supplied message-actions screenshot`.
 - [ ] T004 [Plan:1.4] Prototype controls become real authenticated state transitions. Implement and verify in `api/openapi.yaml`, `internal/httpapi/server.go`. [REQ-004]; owner all. Source: `docs/design/humagen-workspace/README.md#try-the-interaction-loop`.
-- [ ] T005 [Plan:1.5] Preserve agent identity, stable colors and compatibility history. Implement and verify in `internal/platform/builtin.go`, `pkg/agentcolors/store.go`. [REQ-005]; owner root. Source: `AGENTS.md; design.md#built-in-handles-and-slack-conversation-navigation`.
+- [x] T005 [Plan:1.5] Preserve agent identity, stable colors and compatibility history. Implement and verify in `internal/platform/builtin.go`, `pkg/agentcolors/store.go`. [REQ-005]; owner root. Source: `AGENTS.md; design.md#built-in-handles-and-slack-conversation-navigation`.
 - [x] T006 [Plan:1.6] Durable bounded safe audit attempts underpin domain mutations. Implement and verify in `pkg/audit`, `internal/platform/audit.go`. [REQ-006]; owner library_personal. Source: `docs/design/humagen-control-plane/spec.md#control-plane-operations`.
 
 ### Phase 2: Company and authoritative placement
@@ -215,4 +215,6 @@ Requirement mapping coverage is not implementation completeness. Root updates ea
 
 ## Verified foundation checkpoint
 
-PR #75 contains the message action row, badge containment, recorded agent timestamps, and ledger-confirmed Stop Turn. All 162 phone/desktop layouts, workspace typechecks/tests, console build and real-server Slack tests passed. The stacked audit foundation passed golangci-lint v2, the full Go race suite with real Postgres/S3 fixtures, spec lint, generated-client no-diff and client checks. Remaining requirements stay pending until their native behavior and evidence land.
+PR #75 contains the message action row, badge containment, recorded agent timestamps, and ledger-confirmed Stop Turn. All 164 phone/desktop layouts, workspace typechecks/tests, console build and real-server Slack tests passed. The stacked audit foundation passed golangci-lint v2, the full Go race suite with real Postgres/S3 fixtures, spec lint, generated-client no-diff and client checks. Remaining requirements stay pending until their native behavior and evidence land.
+
+Structured full-suite evidence on the shared foundation: 39 packages passed with Postgres and S3, zero failed packages and zero skipped tests. Concurrent main changes retain DES-006 for sidebar scrolling and DES-007 for badge containment.

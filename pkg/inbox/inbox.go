@@ -65,8 +65,10 @@ var (
 type Kind string
 
 const (
+	KindSource        Kind = "source"
 	KindAlert         Kind = "alert"
 	KindFailure       Kind = "failure"
+	KindOperation     Kind = "operation"
 	KindMemory        Kind = "memory"
 	KindBudget        Kind = "budget"
 	KindApproval      Kind = "approval"
@@ -108,11 +110,13 @@ const (
 type PartType string
 
 const (
-	PartText    PartType = "text"
-	PartAlert   PartType = "alert"
-	PartFailure PartType = "failure"
-	PartMemory  PartType = "memory"
-	PartBudget  PartType = "budget"
+	PartSource    PartType = "source"
+	PartText      PartType = "text"
+	PartOperation PartType = "operation"
+	PartAlert     PartType = "alert"
+	PartFailure   PartType = "failure"
+	PartMemory    PartType = "memory"
+	PartBudget    PartType = "budget"
 	// PartApproval, PartChoice and PartReply are a question a run is parked
 	// on: approve or deny a tool call, choose one of some options, or reply
 	// in words. Each carries the question in Question.
@@ -158,12 +162,13 @@ type From struct {
 
 // Source links a message to what it is about.
 type Source struct {
-	Alert   string `json:"alert,omitempty"`
-	Rule    string `json:"rule,omitempty"`
-	Run     string `json:"run,omitempty"`
-	Thread  string `json:"thread,omitempty"`
-	Agent   string `json:"agent,omitempty"`
-	Project string `json:"project,omitempty"`
+	Knowledge string `json:"knowledge,omitempty"`
+	Alert     string `json:"alert,omitempty"`
+	Rule      string `json:"rule,omitempty"`
+	Run       string `json:"run,omitempty"`
+	Thread    string `json:"thread,omitempty"`
+	Agent     string `json:"agent,omitempty"`
+	Project   string `json:"project,omitempty"`
 	// Target is the agent a question's tool call would call, when the
 	// question is about calling one: the callee whose queue it is in.
 	Target string `json:"target,omitempty"`
@@ -350,21 +355,36 @@ type Outcome struct {
 	Note   string `json:"note,omitempty"`
 }
 
+// SourcePart is a source failure requiring an authorized refresh.
+type SourcePart struct {
+	Name  string `json:"name"`
+	Cause string `json:"cause"`
+}
+
 // Part is one piece of a message.
+// OperationPart identifies durable work needing a person without asserting a run failure.
+type OperationPart struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
 type Part struct {
-	ID    string    `json:"id"`
-	Type  PartType  `json:"type"`
-	State PartState `json:"state"`
+	Source *SourcePart `json:"source,omitempty"`
+	ID     string      `json:"id"`
+	Type   PartType    `json:"type"`
+	State  PartState   `json:"state"`
 	// Actions is what the reader may do with the part. The store leaves it
 	// empty: it depends on who is reading.
 	Actions []string `json:"actions"`
 	Outcome *Outcome `json:"outcome,omitempty"`
 
-	Text    string       `json:"text,omitempty"`
-	Alert   *AlertPart   `json:"alert,omitempty"`
-	Failure *FailurePart `json:"failure,omitempty"`
-	Memory  *MemoryPart  `json:"memory,omitempty"`
-	Budget  *BudgetPart  `json:"budget,omitempty"`
+	Operation *OperationPart `json:"operation,omitempty"`
+	Text      string         `json:"text,omitempty"`
+	Alert     *AlertPart     `json:"alert,omitempty"`
+	Failure   *FailurePart   `json:"failure,omitempty"`
+	Memory    *MemoryPart    `json:"memory,omitempty"`
+	Budget    *BudgetPart    `json:"budget,omitempty"`
 	// Artifact is set on an artifact part.
 	Artifact *ArtifactPart `json:"artifact,omitempty"`
 	// Question is set on approval, choice and reply parts.
@@ -377,7 +397,8 @@ type Part struct {
 
 // Message is one thing in the inbox.
 type Message struct {
-	ID string `json:"id"`
+	reminded bool
+	ID       string `json:"id"`
 	// Key names what the message is about, so the same thing is not raised
 	// twice. It is not shown.
 	Key    string `json:"-"`
@@ -423,6 +444,10 @@ func (m Message) clone() Message {
 	m.Parts = slices.Clone(m.Parts)
 	for i := range m.Parts {
 		p := &m.Parts[i]
+		if p.Source != nil {
+			source := *p.Source
+			p.Source = &source
+		}
 		if p.Outcome != nil {
 			o := *p.Outcome
 			p.Outcome = &o
@@ -440,6 +465,10 @@ func (m Message) clone() Message {
 			mem := *p.Memory
 			mem.Notes = slices.Clone(mem.Notes)
 			p.Memory = &mem
+		}
+		if p.Operation != nil {
+			operation := *p.Operation
+			p.Operation = &operation
 		}
 		if p.Mention != nil {
 			mention := *p.Mention
@@ -539,6 +568,7 @@ type What string
 
 const (
 	Raised      What = "raised"
+	Reminded    What = "reminded"
 	MarkRead    What = "read"
 	MarkUnread  What = "unread"
 	DidResolve  What = "resolved"
@@ -841,6 +871,14 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		return m, t.hideFor(m, c)
 	}
 	switch c.What {
+	case Reminded:
+		if m.reminded || m.Broadcast || m.State == Resolved || m.State == Dismissed || c.At.Before(m.UpdatedAt) || (m.State == Snoozed && c.At.Before(m.SnoozedUntil)) {
+			return m, false
+		}
+		t.leave(m)
+		delete(t.read, m.ID)
+		m.State, m.SnoozedUntil, m.reminded = Open, time.Time{}, true
+		t.join(m)
 	case MarkRead, MarkUnread:
 		was := t.read[m.ID][c.By]
 		if was == (c.What == MarkRead) {

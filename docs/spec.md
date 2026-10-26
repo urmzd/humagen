@@ -668,3 +668,15 @@ when a run uses it, so there is nothing to read or pass when deploying:
 block as JSON and decodes it strictly itself, so its fields get the same
 unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.
+
+
+## Managed source records
+
+Managed source configuration is durable API state, documented in [sources](sources.md)
+and `KnowledgeSourceConfig` in the OpenAPI contract. `mode` selects indexed, live
+or hybrid behavior. `provider` selects a registered `knowledge.Provider`, with
+Drive and Notion built in. `origin` is the selected resource ID. `project` is
+explicit for external sources, with `~` selecting the workspace. The connecting
+owner is the authenticated person. `stop_after_seconds` defaults to 86400 and
+accepts 60 through 2592000. No source record contains a credential. Personal
+references follow the existing deployment `credentials.refs` allowlist.

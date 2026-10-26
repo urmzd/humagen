@@ -136,3 +136,54 @@ func TestDeadlinesSurviveRestartWithoutInventingCompletion(t *testing.T) {
 		}
 	})
 }
+
+func TestReplayRejectsMalformedPolicyRatherThanDroppingItsRestriction(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		for _, policy := range []operations.Policy{
+			{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.CallAgents: "unexpected"}},
+			{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{"unknown": operations.Never}},
+			{Scope: operations.Scope{Kind: "agent", Name: "different"}, Rules: map[operations.Category]operations.Level{operations.CallAgents: operations.Never}},
+		} {
+			st := open(t)
+			table := state.NewTable[map[string]any](st, "operations")
+			if err := table.Put("acme", "policy:workspace:", map[string]any{"policy": policy}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := operations.Open(st); !errors.Is(err, operations.ErrInvalid) {
+				t.Fatalf("malformed policy was accepted on replay: %+v, %v", policy, err)
+			}
+		}
+	})
+}
+
+func TestCompletedRunSettlesAfterItsDeadlineAcrossRestart(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := operations.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := time.Now().UTC()
+		a, err := s.SetAssignment("t", operations.Assignment{ID: "late", Agent: "worker", Owner: "owner", Goal: "Review", DoneWhen: "Report", DueAt: at.Add(time.Minute), State: operations.Requested}, 0, "owner", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Reserve("t", a.ID, "native-run", a.Version, at); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Due("t", at.Add(2*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		s, err = operations.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Settle("t", "native-run", true, at.Add(3*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		a, _ = s.Assignment("t", a.ID)
+		if a.State != operations.Result {
+			t.Fatalf("deadline hid a real recorded result: %+v", a)
+		}
+	})
+}

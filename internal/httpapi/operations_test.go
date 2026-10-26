@@ -1,14 +1,20 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/operations"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 func TestOperationsAreConfinedAndControlsPersist(t *testing.T) {
@@ -72,4 +78,176 @@ func TestAssignmentRunsThroughAdmissionAndLedger(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	want(t, f, token, "PUT", "/api/assignments/inspect", fmt.Sprintf(`{"id":"inspect","agent":"helper","project":"","owner":"owner","goal":"Inspect queue","done_when":"Report items","state":"accepted","version":%v}`, 3), http.StatusOK)
+}
+
+func TestStandingAssignmentsCannotPublishPrivateConversationGoals(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
+	opened := want(t, f, ana, "POST", "/api/threads", `{"visibility":"private","text":"@helper secret plan"}`, http.StatusCreated)
+	thread := opened["thread"].(map[string]any)["id"].(string)
+	body := fmt.Sprintf(`{"id":"private","agent":"helper","project":"","thread":%q,"owner":"ana","goal":"PRIVATE-GOAL-CANARY","done_when":"Ready","cron":"0 3 * * *","state":"requested","version":0}`, thread)
+	want(t, f, ana, "POST", "/api/assignments", body, http.StatusBadRequest)
+	if len(f.p.Schedules.List("acme")) != 0 {
+		t.Fatal("private assignment left an active or paused schedule")
+	}
+	if _, ok := f.p.Operations.Assignment("acme", "private"); ok {
+		t.Fatal("unsafe private contract was saved")
+	}
+}
+
+func TestStandingAssignmentPausesWhenOwnerLosesProjectAccess(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Duty","members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusCreated)
+	body := `{"id":"duty","agent":"helper","project":"Duty","owner":"svc-acme","goal":"Review queue","done_when":"Report saved","cron":"0 3 * * *","state":"requested","version":0}`
+	saved := want(t, f, owner, "POST", "/api/assignments", body, http.StatusOK)
+	body = strings.Replace(strings.Replace(body, `"requested"`, `"watching"`, 1), `"version":0`, `"version":1`, 1)
+	want(t, f, owner, "PUT", "/api/assignments/duty", body, http.StatusOK)
+	schedule := saved["schedule"].(string)
+	sc, paused, err := f.p.Schedules.Get("acme", schedule)
+	if err != nil || paused {
+		t.Fatalf("standing assignment never activated: %v, %v", paused, err)
+	}
+	want(t, f, owner, "POST", "/api/schedules/"+schedule+"/run", "", http.StatusForbidden)
+	want(t, f, owner, "PUT", "/api/projects/Duty/members", `{"version":1,"members":[{"who":"another-owner","role":"owner"}]}`, http.StatusOK)
+	_, err = f.p.Invoke(t.Context(), envelope.Tag{ID: "cron-occurrence", Tenant: "acme", Agent: sc.Agent, Origin: "cron", Text: sc.Text, Meta: maps.Clone(sc.Meta)})
+	if !errors.Is(err, operations.ErrDenied) {
+		t.Fatalf("revoked owner's standing work admitted: %v", err)
+	}
+	_, paused, err = f.p.Schedules.Get("acme", schedule)
+	if err != nil || !paused {
+		t.Fatal("revoked work was not paused")
+	}
+	a, ok := f.p.Operations.Assignment("acme", "duty")
+	if !ok || a.State != operations.Blocked {
+		t.Fatalf("refusal was not recorded: %+v", a)
+	}
+}
+
+func TestOperationAttentionIsNotARunFailureAndUsesRunsPermission(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	run := want(t, f, owner, "POST", "/api/runs", `{"agent":"helper","text":"Successful work"}`, http.StatusAccepted)
+	id := run["id"].(string)
+	ended(t, f, owner, id)
+	if _, err := f.p.Operations.SetAssignment("acme", operations.Assignment{ID: "late", Agent: "helper", Owner: "reader", Goal: "Review completed work", DoneWhen: "Reviewed", State: operations.Requested}, 0, "reader", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	message, _, err := f.p.Inbox.RaiseOnce("acme", "operation:assignment:late", inbox.Message{Kind: inbox.KindOperation, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: "Humagen"}, Audience: []string{"reader"}, Source: inbox.Source{Run: id}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartOperation, Operation: &inbox.OperationPart{Kind: "assignment", ID: "late", Reason: "The deadline passed."}}}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := f.machineAs(t, "reader", "acme", "humagen:runs:read", "humagen:runs:write")
+	shown := want(t, f, reader, "GET", "/api/inbox/"+message.ID, "", http.StatusOK)
+	parts := shown["message"].(map[string]any)["parts"].([]any)
+	actions := parts[0].(map[string]any)["actions"].([]any)
+	if len(actions) != 1 || actions[0] != "acknowledge" {
+		t.Fatalf("operation attention offered run failure actions: %v", actions)
+	}
+	want(t, f, reader, "POST", "/api/inbox/"+message.ID+"/parts/"+parts[0].(map[string]any)["id"].(string)+"/resolve", `{"action":"acknowledge"}`, http.StatusOK)
+	recorded, err := f.p.Runs.Get("acme", id)
+	if err != nil || recorded.Status != runs.Completed {
+		t.Fatal("attention invented a failed run")
+	}
+}
+
+func TestActionPolicyExplainsInheritedEffectiveRule(t *testing.T) {
+	f := newFixture(t)
+	token := f.machineAs(t, "owner", "acme", everything...)
+	want(t, f, token, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, token, "PUT", "/api/action-policy", `{"rules":{"external_messages":"never"},"version":0}`, http.StatusOK)
+	want(t, f, token, "PUT", "/api/agents/helper/action-policy", `{"rules":{"external_messages":"allow"},"version":0}`, http.StatusOK)
+	policy := want(t, f, token, "GET", "/api/agents/helper/action-policy", "", http.StatusOK)
+	effective, ok := policy["effective"].(map[string]any)
+	if !ok {
+		t.Fatal("policy editor cannot inspect effective inherited constraints")
+	}
+	rule := effective["external_messages"].(map[string]any)
+	if rule["level"] != "never" || rule["inherited"] != "never" || rule["locked"] != true {
+		t.Fatalf("weaker local choice appeared effective: %+v", rule)
+	}
+}
+
+func TestAssignmentResultRequiresRecordedCompletedRun(t *testing.T) {
+	f := newFixture(t)
+	token := f.machineAs(t, "owner", "acme", everything...)
+	want(t, f, token, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	body := `{"id":"proof","agent":"helper","project":"","owner":"owner","goal":"Inspect queue","done_when":"Report saved","state":"requested","version":0}`
+	want(t, f, token, "POST", "/api/assignments", body, http.StatusOK)
+	body = strings.Replace(strings.Replace(body, `"requested"`, `"accepted"`, 1), `"version":0`, `"version":1`, 1)
+	want(t, f, token, "PUT", "/api/assignments/proof", body, http.StatusOK)
+	body = strings.Replace(strings.Replace(body, `"accepted"`, `"result"`, 1), `"version":1`, `"version":2`, 1)
+	want(t, f, token, "PUT", "/api/assignments/proof", body, http.StatusConflict)
+}
+
+func TestReminderSettingsPersistWhenPausingAndRejectUnboundedIntervals(t *testing.T) {
+	f := newFixture(t)
+	token := f.machineAs(t, "owner", "acme", everything...)
+	saved := want(t, f, token, "PUT", "/api/agent-controls", `{"paused":false,"reminder_after_seconds":300,"blocked_reminder_after_seconds":600,"version":0}`, http.StatusOK)
+	if saved["effective_reminder_after_seconds"] != float64(300) || saved["effective_blocked_reminder_after_seconds"] != float64(600) {
+		t.Fatalf("timer configuration was not effective: %+v", saved)
+	}
+	paused := want(t, f, token, "PUT", "/api/agent-controls", `{"paused":true,"version":1}`, http.StatusOK)
+	if paused["effective_reminder_after_seconds"] != float64(300) || paused["effective_blocked_reminder_after_seconds"] != float64(600) {
+		t.Fatal("ordinary pause cleared configured reminders")
+	}
+	want(t, f, token, "PUT", "/api/agent-controls", `{"paused":true,"reminder_after_seconds":604801,"version":2}`, http.StatusBadRequest)
+	want(t, f, token, "PUT", "/api/agent-controls", `{"paused":true,"blocked_reminder_after_seconds":-1,"version":2}`, http.StatusBadRequest)
+}
+
+func TestAssignmentAgentFilterIsConfinedAndRunsBeforeTheBound(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machineAs(t, "owner", "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", strings.Replace(helperSpec, `"helper"`, `"lead"`, 1), http.StatusCreated)
+	secretAgent(t, f, owner)
+	at := time.Now()
+	for i := 0; i <= operations.MaxResults; i++ {
+		agent := "helper"
+		if i == operations.MaxResults {
+			agent = "lead"
+		}
+		if _, err := f.p.Operations.SetAssignment("acme", operations.Assignment{ID: fmt.Sprintf("a-%03d", i), Agent: agent, Owner: "owner", Goal: "Review", DoneWhen: "Report", State: operations.Requested}, 0, "owner", at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reader := f.machineAs(t, "reader", "acme", "humagen:runs:read", "humagen:agents:read")
+	for _, test := range []struct {
+		agent string
+		count int
+	}{{"lead", 1}, {"spy", 0}, {"missing", 0}} {
+		req, err := http.NewRequest("GET", f.srv.URL+"/api/assignments?agent="+test.agent+"&limit=1", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+reader)
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var items []operations.Assignment
+		err = json.NewDecoder(response.Body).Decode(&items)
+		_ = response.Body.Close()
+		if err != nil || response.StatusCode != 200 || len(items) != test.count {
+			t.Fatalf("filter %q=%+v,%v,status%d", test.agent, items, err, response.StatusCode)
+		}
+	}
+}
+
+func TestAssignmentReviewCannotRemovePrivateConversationBoundary(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
+	opened := want(t, f, ana, "POST", "/api/threads", `{"visibility":"private","text":"Private contract"}`, http.StatusCreated)
+	thread := opened["thread"].(map[string]any)
+	project, _ := thread["project"].(string)
+	body := fmt.Sprintf(`{"id":"private-review","agent":"helper","project":%q,"thread":%q,"owner":"ana","goal":"PRIVATE-CONTRACT","done_when":"Reviewed","state":"requested","version":0}`, project, thread["id"])
+	want(t, f, ana, "POST", "/api/assignments", body, http.StatusOK)
+	body = strings.Replace(body, fmt.Sprintf(`"thread":%q,`, thread["id"]), "", 1)
+	body = strings.Replace(body, `"version":0`, `"version":1`, 1)
+	want(t, f, ana, "PUT", "/api/assignments/private-review", body, http.StatusBadRequest)
 }

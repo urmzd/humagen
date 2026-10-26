@@ -142,3 +142,227 @@ test("the network uses recorded visible edges and links to the exact handoff run
   assert.equal(opened, "child-run");
   assert.ok(screen.getByText("Handoffs: 2"));
 });
+
+test("local resume never reports accepting work beneath a workspace pause", async () => {
+  net = stubFetch({
+    "GET /api/agents/helper/control": () => ({
+      ...control,
+      agent: "helper",
+      effective_paused: true,
+      pause_reason: "workspace",
+    }),
+  });
+  render(<AgentControls agent="helper" canWrite />);
+  await screen.findByText(
+    "Workspace pause is in effect. Resuming this agent does not resume the workspace.",
+  );
+  assert.ok(!screen.queryByText("Accepting new work"));
+});
+
+test("policy editor shows the inherited effective Never and locks weaker choices", async () => {
+  net = stubFetch({
+    "GET /api/agents/helper/action-policy": () => ({
+      scope: { kind: "agent", name: "helper" },
+      rules: { external_messages: "allow" },
+      version: 1,
+      effective: {
+        external_messages: {
+          level: "never",
+          inherited: "never",
+          locked: true,
+          sources: [{ kind: "workspace", label: "", level: "never" }],
+        },
+      },
+    }),
+  });
+  render(<ActionPolicies scope="agent" name="helper" canWrite />);
+  await screen.findByText("Restricted by", { exact: false });
+  const select = screen.getByLabelText("Send external messages") as HTMLSelectElement;
+  assert.equal(select.value, "never");
+  assert.equal(select.disabled, true);
+});
+
+test("reminder controls save bounded native timer values in seconds", async () => {
+  net = stubFetch({
+    "GET /api/agent-controls": () => control,
+    "PUT /api/agent-controls": (body) => ({ ...control, ...(body as object), version: 3 }),
+  });
+  render(<AgentControls canWrite />);
+  const unanswered = await screen.findByLabelText(
+    "Remind about unanswered questions after (minutes)",
+  );
+  fireEvent.change(unanswered, { target: { value: "5" } });
+  fireEvent.change(screen.getByLabelText("Remind about blocked work after (minutes)"), {
+    target: { value: "10" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+  await waitFor(() =>
+    assert.equal(
+      (
+        net?.seen.find((request) => request.method === "PUT")?.body as {
+          reminder_after_seconds?: number;
+        }
+      )?.reminder_after_seconds,
+      300,
+    ),
+  );
+  assert.equal(
+    (
+      net?.seen.find((request) => request.method === "PUT")?.body as {
+        blocked_reminder_after_seconds: number;
+      }
+    ).blocked_reminder_after_seconds,
+    600,
+  );
+});
+
+test("an expired deadline is corrected with its recorded version before retry", async () => {
+  const assignment = {
+    id: "late",
+    agent: "helper",
+    owner: "ada",
+    project: "",
+    goal: "Review",
+    done_when: "Report",
+    state: "needs_person",
+    deadline_missed: true,
+    due_at: "2020-01-01T00:00:00Z",
+    version: 3,
+  };
+  net = stubFetch({
+    "GET /api/assignments": () => [assignment],
+    "PUT /api/assignments/late": (body) => ({ ...assignment, ...(body as object), version: 4 }),
+  });
+  render(<Assignments agents={["helper"]} projects={[]} subject="ada" canWrite onRun={() => {}} />);
+  await screen.findByText("This deadline has passed. Review it before starting or resuming work.");
+  assert.equal(
+    (screen.getByRole("button", { name: "Run Assignment" }) as HTMLButtonElement).disabled,
+    true,
+  );
+  fireEvent.click(screen.getByText("Review Deadline"));
+  fireEvent.input(screen.getByLabelText("Due date"), { target: { value: "2099-01-02T12:00" } });
+  assert.equal((screen.getByLabelText("Due date") as HTMLInputElement).value, "2099-01-02T12:00");
+  fireEvent.click(screen.getByRole("button", { name: "Save Deadline" }));
+  await waitFor(() => assert.ok(net?.seen.find((request) => request.method === "PUT")));
+  const body = net?.seen.find((request) => request.method === "PUT")?.body as {
+    version: number;
+    due_at: string;
+  };
+  assert.equal(body.version, 3);
+  assert.equal(body.due_at, new Date("2099-01-02T12:00").toISOString());
+});
+
+test("handoff review exposes its owner and immutable input references", async () => {
+  net = stubFetch({
+    "GET /api/agent-network": () => ({
+      edges: [{ from: "lead", to: "helper", handoffs: 1, waiting: 1, blocked: 0 }],
+      truncated: false,
+    }),
+    "GET /api/handoffs": () => [
+      {
+        id: "h",
+        from: "lead",
+        to: "helper",
+        goal: "Review",
+        done_when: "Saved",
+        state: "accepted",
+        owner: "private-subject",
+        owner_name: "Mira",
+        due_at: "2099-01-01T12:00:00Z",
+        inputs: [
+          { type: "text", reference: "Review the immutable draft" },
+          { type: "run", reference: "original-run" },
+          { type: "thread", reference: "room" },
+          { type: "artifact", reference: "revision-id@3" },
+        ],
+      },
+    ],
+  });
+  let opened = "";
+  render(
+    <AgentNetwork
+      onAgent={() => {}}
+      onRun={(id) => {
+        opened = id;
+      }}
+    />,
+  );
+  await screen.findByText("Owner: Mira");
+  assert.ok(screen.getByText("Review the immutable draft"));
+  assert.equal(
+    screen.getByRole("link", { name: "Open Input Artifact (Version 3)" }).getAttribute("href"),
+    "/artifacts/revision-id",
+  );
+  assert.equal(
+    screen.getByRole("link", { name: "Open Input Conversation" }).getAttribute("href"),
+    "/conversations/room",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Open Input Run" }));
+  assert.equal(opened, "original-run");
+  assert.ok(!screen.queryByText("private-subject"));
+});
+
+test("Agent Detail assignments filter on the server and preselect the same agent", async () => {
+  net = stubFetch({
+    "GET /api/assignments": (_body, query) => {
+      assert.equal(query.get("agent"), "helper");
+      return [];
+    },
+  });
+  render(
+    <Assignments
+      agent="helper"
+      agents={["lead", "helper"]}
+      projects={[]}
+      subject="ada"
+      canWrite
+      onRun={() => {}}
+    />,
+  );
+  await screen.findByText("No assignments are visible here yet.");
+  assert.ok(screen.getByRole("button", { name: "Cancel New Assignment" }));
+  assert.equal((screen.getByLabelText("Agent") as HTMLSelectElement).value, "helper");
+});
+
+test("controls refresh effective pause without overwriting a reviewed draft", async () => {
+  let current = {
+    ...control,
+    agent: "helper",
+    effective_paused: false,
+    pause_reason: undefined as string | undefined,
+  };
+  net = stubFetch({ "GET /api/agents/helper/control": () => current });
+  const original = window.setInterval;
+  let refresh: (() => void) | undefined;
+  window.setInterval = ((callback: () => void, delay: number) => {
+    if (delay === 5000) {
+      refresh = callback;
+      return 1;
+    }
+    return original.call(window, callback, delay);
+  }) as typeof window.setInterval;
+  try {
+    render(<AgentControls agent="helper" canWrite />);
+    const stopRules = await screen.findByLabelText("Stop rules and reminders");
+    fireEvent.change(stopRules, { target: { value: "Keep my reviewed draft" } });
+    current = { ...current, version: 3, effective_paused: true, pause_reason: "workspace" };
+    refresh?.();
+    await screen.findByText(
+      "Workspace pause is in effect. Resuming this agent does not resume the workspace.",
+    );
+    assert.equal((stopRules as HTMLTextAreaElement).value, "Keep my reviewed draft");
+    assert.equal(
+      (screen.getByRole("button", { name: "Save Changes" }) as HTMLButtonElement).disabled,
+      true,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Review Latest Record" }));
+    assert.equal((stopRules as HTMLTextAreaElement).value, "");
+    assert.equal(
+      (screen.getByRole("button", { name: "Save Changes" }) as HTMLButtonElement).disabled,
+      false,
+    );
+  } finally {
+    cleanup();
+    window.setInterval = original;
+  }
+});

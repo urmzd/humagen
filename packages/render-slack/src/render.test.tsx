@@ -1,7 +1,7 @@
-import { TurnView } from "@humagen/components";
+import { defaultCopy, TurnView } from "@humagen/components";
 import { ActionId, decodeAction, type Turn } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
-import { Callout, Markdown, Only, Text, useSurface } from "@humagen/primitives";
+import { Callout, Markdown, Only, Sources, Text, useSurface } from "@humagen/primitives";
 import { describe, expect, it } from "vitest";
 import {
   actionIdBase,
@@ -255,4 +255,26 @@ describe("toMrkdwn", () => {
       "*bold* _it_ ~gone~ <https://x.dev/a?b=1&c=2|docs> &lt;tag&gt;",
     );
   });
+});
+
+it("does not decorate Slack references with private retrieval facts without delivery eligibility", () => {
+  const reference = {
+    id: "private",
+    title: "Existing private reference",
+    url: "https://private.example.com/reference",
+  };
+  const before = renderToSlack(<Sources items={[reference]} labels={defaultCopy.citation} />);
+  const enriched = renderToSlack(
+    <Sources
+      items={[
+        { ...reference, mode: "indexed", copyAt: "2026-10-20T12:00:00Z", refreshFailed: true },
+      ]}
+      labels={defaultCopy.citation}
+    />,
+  );
+  expect(enriched).toEqual(before);
+  const text = JSON.stringify(enriched);
+  expect(text).not.toContain("2026-10-20");
+  expect(text).not.toContain(defaultCopy.citation.lastGoodCopy);
+  expect(text).not.toContain(defaultCopy.citation.indexed);
 });

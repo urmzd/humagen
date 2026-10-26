@@ -22,7 +22,7 @@ govern implementation, including shared presentation and agent identity.
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
-| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions. Global navigation, screenshots and source-health integration belong to the following stack layers. |
+| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions, inherited policy provenance, effective pause, typed contract inputs and reviewed deadlines. Native reminders survive restart on the same confined inbox item. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
@@ -45,8 +45,22 @@ govern implementation, including shared presentation and agent identity.
   working capabilities.
 - Source lifecycle foundation: bounded durable refresh attempts, last-good
   copies, typed failures, stale stop rules and publication access predicates
-  are implemented. Native provider, lifecycle API and presentation work is
-  still under verification.
+  are implemented. Native Drive/Notion boundaries, personal reference resolution,
+  scoped lifecycle APIs, source dependency views and connection controls are
+  implemented. Automated transport tests, memory/Postgres replay, HTTP contract
+  tests, source integration DOM states and phone/desktop source-state captures
+  pass. Atomic scoped creation, real resource selection, frozen-copy replacement,
+  sync settings, current-policy scheduled refresh and confined unsaved rule
+  previews are implemented. Live provider accounts, verified connector rule
+  application and durable link suggestions remain pending. See [sources](docs/sources.md) for supported formats and limits.
+- Per-installation event subscriptions and actual registered native actions now
+  have versioned saved controls. They tighten current adapter and action-policy
+  grants and are rechecked at execution. Slack bridge directions are durable:
+  inbound mirrors mapped human messages without waking an agent; outcomes sends
+  permitted final outcomes and decisions; two-way supports both. Activity and
+  retained source metadata are withheld, and private-context delivery is refused
+  by the server. Native-host, contract, confinement and memory/Postgres replay
+  tests exercise these paths. Live external delivery remains unverified.
 - Acceptance: exercise each newly wired control through its real host/API
   boundary, including a saved success, a visible failure, and denied access.
   Distinguish automated or simulated API checks from a live external-service

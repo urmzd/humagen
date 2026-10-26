@@ -132,8 +132,12 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("alerts", err)
 	p.SourceLinks, err = sourcelinks.Open(st)
 	keep("source link rules", err)
+	p.SourceSuggestions, err = sourcelinks.OpenSuggestions(st)
+	keep("source link suggestions", err)
 	p.Knowledge, err = knowledge.Open(st)
 	keep("knowledge", err)
+	p.SourceEvidence, err = knowledge.OpenEvidenceStore(st)
+	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(st)
 	keep("evals", err)
 	p.Feedback, err = feedback.Open(st)
@@ -162,6 +166,9 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("policies", err)
 	p.Operations, err = operations.Open(st)
 	keep("operations", err)
+	if err == nil {
+		keep("operation publication guard", p.RegisterPublicationGuard(p))
+	}
 	p.CallPolicies, err = callpolicy.Open(st)
 	keep("call policies", err)
 	p.Usage, err = usage.Open(st)

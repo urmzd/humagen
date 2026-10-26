@@ -94,3 +94,28 @@ test("the conversation link survives streaming and settling for a run in an exis
   assert.equal(f.turn.sessionUrl, "https://humagen.test/conversations/thread%2Fone");
   assert.equal(f.settle({ ...record, status: "completed", answer: "Done" }).sessionUrl, f.turn.sessionUrl);
 });
+
+test("persisted citations recover without events and an explicit projected empty list revokes streamed references", () => {
+  const record = {
+    ...run(),
+    status: "completed" as const,
+    answer: "Recorded",
+    citations: [
+      {
+        id: "c1",
+        title: "Recorded source",
+        url: "https://example.com/source",
+        mode: "indexed" as const,
+        copy_at: "2026-10-20T12:00:00Z",
+        refresh_failed: true,
+      },
+    ],
+  };
+  const f = follow(record);
+  f.settle(record);
+  assert.equal(f.turn.citations[0]?.mode, "indexed");
+  assert.equal(f.turn.citations[0]?.copyAt, "2026-10-20T12:00:00Z");
+  assert.equal(f.turn.citations[0]?.refreshFailed, true);
+  f.settle({ ...record, citations: [] });
+  assert.deepEqual(f.turn.citations, []);
+});

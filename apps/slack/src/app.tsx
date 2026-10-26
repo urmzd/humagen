@@ -55,6 +55,7 @@ import {
 } from "@humagen/render-slack";
 import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
+import { bridgePolicy, subscribed } from "./bridge.ts";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { homeModel } from "./home.ts";
 import { askForm, buildForm, ENTRY, formKind, type words } from "./host.ts";
@@ -752,6 +753,48 @@ export class App {
       await this.stop({ team: this.opts.team, channel, threadTs: event.thread_ts });
       return;
     }
+    if (
+      (event.type === "message" || event.type === "app_mention") &&
+      event.channel &&
+      event.user &&
+      !event.bot_id &&
+      (!event.subtype || event.subtype === "file_share")
+    ) {
+      const controls = await this.bridgeControls(event.channel);
+      if (!controls.policy.inbound || !subscribed(controls.client, event.type)) return;
+      const passive =
+        controls.policy.passive ||
+        (controls.policy.bound && event.type === "message" && event.channel_type !== "im");
+      const duplicateMention =
+        !controls.policy.passive &&
+        (event.text ?? "").includes(`<@${this.opts.botUser}>`) &&
+        subscribed(controls.client, "app_mention");
+      if (passive && !duplicateMention) {
+        const as = await this.actAs(event.user);
+        if (!as || !event.ts) return;
+        const session = {
+          team: this.opts.team,
+          channel: event.channel,
+          threadTs: event.thread_ts ?? event.ts,
+        };
+        const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
+        if (!text && !event.files?.length) return;
+        await this.humagen.postThread({
+          text: text || defaultCopy.attachedFilesPrompt,
+          act_as: as,
+          surface: {
+            client: this.opts.clientId ?? "",
+            channel: session.channel,
+            ts: session.threadTs,
+            message: event.ts,
+            app_user: this.opts.botUser,
+            ...(event.files?.length ? { files: true } : {}),
+          },
+          post_only: true,
+        });
+        return;
+      }
+    }
     const asked =
       event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
@@ -769,7 +812,7 @@ export class App {
     this.enqueue({
       files: Boolean(event.files?.length),
       session,
-      text: text || "Please review the attached files.",
+      text: text || defaultCopy.attachedFilesPrompt,
       triggerTs: event.ts,
       user: event.user,
       key: eventKey(session, event.ts),
@@ -841,6 +884,8 @@ export class App {
   }
 
   private async react(job: Job, prev: Turn["status"] | null, next: Turn["status"]) {
+    const controls = await this.bridgeControls(job.session.channel);
+    if (controls.policy.bound || !controls.policy.outbound) return;
     const { add, remove } = reactionChanges(prev, next);
     const at = { channel: job.session.channel, timestamp: job.triggerTs };
     for (const name of remove)
@@ -935,11 +980,27 @@ export class App {
   }
 
   private async answer(thread: Thread, job: Job, queued: boolean) {
+    const controls = await this.bridgeControls(job.session.channel);
+    if (!controls.policy.inbound) return "done" as const;
+    if (controls.policy.passive) {
+      const as = await this.actAs(job.user);
+      if (as)
+        await this.humagen.postThread({
+          text: job.text,
+          act_as: as,
+          surface: this.surfaceOf(job, job.triggerTs),
+          post_only: true,
+        });
+      return "done" as const;
+    }
+    let outputRun = "";
     const items = new Mailbox<Item>();
     const live: Live = { stopped: false, wake: (item) => items.push(item) };
     thread.live = live;
     const presenter = new Presenter(this.slack, this.target(job), {
       native: this.native,
+      outcomesOnly: controls.policy.bound,
+      canDeliver: async () => this.bridgeOutputAllowed(job.session.channel, outputRun),
       copy: this.copy,
       log: (line) => this.log(line),
       ...(queued ? { shown: "queued" as const } : {}),
@@ -1049,6 +1110,7 @@ export class App {
       const told = await this.humagen.stopRun(run.id).catch(() => undefined);
       items.push({ type: "stopped", run: told });
     }
+    outputRun = run.id;
     const owner = job.requester === undefined ? job.user : job.requester;
     if (owner) this.requesters.set(run.id, owner);
     this.log(`run ${run.id} for ${job.user} in ${job.session.channel}, answered by ${run.agent}`);
@@ -1483,6 +1545,11 @@ export class App {
   }
 
   private async onAction(p: ActionPayload): Promise<void> {
+    const at = p.channel?.id ?? p.container?.channel_id;
+    if (at) {
+      const controls = await this.bridgeControls(at);
+      if (controls.policy.bound && !controls.policy.outbound) return;
+    }
     const action = p.actions?.[0];
     const ui = action ? decodeSlackAction(action, p.state) : null;
     // Ticking a checkbox is not a decision. The buttons read the ticks.
@@ -1840,6 +1907,8 @@ export class App {
     message: PlatformMessage,
     at: { channel: string; ts: string; threadTs?: string },
   ) {
+    const about = message.about.find((item) => item.kind === "run");
+    if (!(await this.bridgeOutputAllowed(at.channel, about?.id ?? ""))) return;
     const view = renderToSlack(<MessageView message={forSlack(message)} />);
     const [first = [], ...rest] = view.pages;
     await this.slack.call("chat.update", {
@@ -1870,6 +1939,39 @@ export class App {
   }
 
   /** Whether a Slack channel is bound to a channel in humagen, through this client. */
+
+  private async bridgeControls(channel: string) {
+    if (!this.opts.clientId) return { client: undefined, policy: bridgePolicy(undefined) };
+    try {
+      const client = await this.humagen.getClient(this.opts.clientId);
+      if (!client || client.surface !== "slack" || client.identity?.team !== this.opts.team)
+        return {
+          client,
+          policy: { bound: false, inbound: false, passive: false, outbound: false },
+        };
+      const bindings = await this.humagen.bindings(this.opts.clientId);
+      return {
+        client,
+        policy: bridgePolicy(
+          client,
+          bindings.find((binding) => binding.slack_channel === channel),
+        ),
+      };
+    } catch (error) {
+      this.log(`Bridge policy could not be read: ${(error as Error).message}`);
+      return {
+        client: null,
+        policy: { bound: false, inbound: false, passive: false, outbound: false },
+      };
+    }
+  }
+  private async bridgeOutputAllowed(channel: string, run = ""): Promise<boolean> {
+    const controls = await this.bridgeControls(channel);
+    if (!controls.policy.outbound) return false;
+    if (run && this.opts.clientId)
+      return this.humagen.deliveryAllowed(this.opts.clientId, channel, run);
+    return true;
+  }
   private async isBound(channel: string): Promise<boolean> {
     return (await this.bound()).some((b) => b.slack_channel === channel);
   }
@@ -1966,7 +2068,7 @@ export class App {
     if (!raw || raw.kind !== "announcement" || isDraft(raw)) return shown;
     const project = raw.source?.project ?? "";
     const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
-    if (!at) return shown;
+    if (!at || !(await this.bridgeOutputAllowed(at.slack_channel))) return shown;
     const receipt = raw.deliveries?.[client];
     // A receipt humagen took though its answer was lost needs no remembering.
     if (receipt) this.unrecorded.delete(id);
@@ -2353,6 +2455,13 @@ export class App {
   }
 
   private async onCommand(c: CommandPayload): Promise<void> {
+    const controls = await this.bridgeControls(c.channel_id);
+    if (
+      !controls.policy.inbound ||
+      controls.policy.passive ||
+      !subscribed(controls.client, "slash_command")
+    )
+      return;
     if (c.trigger_id) {
       if (this.seen.has(`command-${c.trigger_id}`)) return;
       this.seen.set(`command-${c.trigger_id}`, true);

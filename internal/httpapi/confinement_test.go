@@ -25,6 +25,7 @@ import (
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 )
 
 // The confinement sweep reads every GET in the contract, and the event
@@ -55,6 +56,9 @@ const marker = "zqx"
 type hidden struct {
 	notificationID                                                string
 	librarySkill                                                  string
+	handoff                                                       string
+	sourceRule                                                    string
+	sourceSuggestion                                              string
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	personalNote                                                  string
@@ -150,6 +154,12 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	// creator, who holds projects:govern, is its one member.
 	must("PUT", "/api/agents/"+h.agent+"/home", `{"project":"`+h.project+`"}`, http.StatusOK)
 	must("PUT", "/api/projects/"+h.project+"/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
+	h.sourceRule = str(must("POST", "/api/source-link-rules", `{"provider":"github","attribute":"repository","pattern":"`+marker+`/private","project":"`+h.project+`","mode":"suggest"}`, http.StatusOK), "id")
+	suggestions, err := f.p.SourceSuggestions.Observe("acme", "", "", sourcelinks.Resource{Provider: "github", ID: marker + "/private", Attributes: map[string][]string{"repository": {marker + "/private"}}}, []sourcelinks.Match{{Project: h.project, Mode: sourcelinks.Suggest, Rules: []string{h.sourceRule}}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.sourceSuggestion = suggestions[0].ID
 	h.projectNote = str(must("POST", "/api/projects/"+h.project+"/memory", `{"text":"Project note `+marker+`."}`, http.StatusCreated), "id")
 	h.agentNote = str(must("POST", "/api/agents/"+h.agent+"/memory", `{"text":"Agent note `+marker+`."}`, http.StatusCreated), "id")
 	personal, err := f.p.Memory.Add("acme", memory.PersonalOwner("canary-memory-owner"), "Personal note "+marker+".", memory.Person, memory.Approved, "canary-memory-owner", time.Now())
@@ -168,6 +178,10 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	run := must("POST", "/api/runs", `{"agent":"`+h.agent+`","text":"Run `+marker+`.","project":"`+h.project+`"}`, http.StatusAccepted)
 	h.run, h.thread = str(run, "id"), str(run, "thread")
 	ended(t, f, owner, h.run)
+	h.handoff = "handoff-" + marker
+	if _, err := f.p.Operations.SetHandoff("acme", operations.Handoff{ID: h.handoff, From: h.agent, To: h.agent, Project: h.project, Thread: h.thread, Owner: "svc-acme", Goal: "Contract " + marker, DoneWhen: "Review " + marker, State: operations.Result, RunID: h.run, Chain: []string{"root", h.agent}, Inputs: []operations.Input{}}, 0, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	h.assignment = "assignment-" + marker
 	if _, err := f.p.Operations.SetAssignment("acme", operations.Assignment{ID: h.assignment, Agent: h.agent, Project: h.project, Thread: h.thread, Owner: "svc-acme", Goal: "Assignment " + marker, DoneWhen: "Report " + marker, State: operations.Requested}, 0, "svc-acme", time.Now()); err != nil {
 		t.Fatal(err)
@@ -359,6 +373,10 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	h.thread = started["thread"].(map[string]any)["id"].(string)
 	h.run = started["runs"].([]any)[0].(map[string]any)["id"].(string)
 	ended(t, f, ana, h.run)
+	h.handoff = "private-handoff-" + marker
+	if _, err := f.p.Operations.SetHandoff("acme", operations.Handoff{ID: h.handoff, From: h.agent, To: h.agent, Project: h.project, Thread: h.thread, Owner: "00u-ana", Goal: "Contract " + marker, DoneWhen: "Review " + marker, State: operations.Result, RunID: h.run, Chain: []string{"root", h.agent}, Inputs: []operations.Input{}}, 0, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	h.assignment = "private-assignment-" + marker
 	if _, err := f.p.Operations.SetAssignment("acme", operations.Assignment{ID: h.assignment, Agent: h.agent, Project: h.project, Thread: h.thread, Owner: "00u-ana", Goal: "Private assignment " + marker, DoneWhen: "Report " + marker, State: operations.Requested}, 0, "00u-ana", time.Now()); err != nil {
 		t.Fatal(err)
@@ -474,7 +492,7 @@ func (h hidden) unplaced(path, param string) bool {
 		case strings.HasPrefix(path, "/api/inbox/"):
 			return h.message == ""
 		}
-		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/artifacts/", "/api/alerts/", "/api/assignments/"}, func(p string) bool { return strings.HasPrefix(path, p) })
+		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/artifacts/", "/api/alerts/", "/api/assignments/", "/api/handoffs/"}, func(p string) bool { return strings.HasPrefix(path, p) })
 	}
 	if !h.inside {
 		return false
@@ -526,6 +544,12 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.projectNote, true
 		case prefix("/api/knowledge/{name}/documents/"):
 			return h.doc, true
+		case prefix("/api/source-link-suggestions/"):
+			return h.sourceSuggestion, true
+		case prefix("/api/source-link-rules/"):
+			return h.sourceRule, true
+		case prefix("/api/handoffs/"):
+			return h.handoff, true
 		case prefix("/api/assignments/"):
 			return h.assignment, true
 		case prefix("/api/runs/"):
@@ -686,7 +710,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing"}
+	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing"}
 
 	var keys []string
 	for key := range s.ops {

@@ -207,6 +207,7 @@ func (c Client) ActsFor(machine, user string) (string, bool) {
 
 // GitHubOptions are the options of a GitHub client.
 type GitHubOptions struct {
+	People map[string]string `json:"people,omitempty"`
 	// AutoLabels maps "owner/repo" to label to agent.
 	AutoLabels map[string]map[string]string `json:"auto_labels,omitempty"`
 	Checks     bool                         `json:"checks,omitempty"`
@@ -225,6 +226,7 @@ type GitHubOptions struct {
 
 // Client is one installation of the platform on a surface.
 type Client struct {
+	Capabilities *Capabilities `json:"capabilities,omitempty"`
 	// ID names the client within its workspace and is what a run records.
 	ID      string  `json:"id"`
 	Tenant  string  `json:"-"`
@@ -399,6 +401,11 @@ func (c Client) Validate() error {
 			return err
 		}
 	}
+	if c.Capabilities != nil {
+		if err := c.Capabilities.validate(c.Surface); err != nil {
+			return err
+		}
+	}
 	if c.Surface == Slack {
 		return c.validateSlack()
 	}
@@ -491,6 +498,14 @@ func (c Client) validateGitHub() error {
 			return bad("%q is not an owner/repo name", repo)
 		}
 	}
+	if len(g.People) > maxPeople {
+		return bad("a client maps at most %d GitHub people", maxPeople)
+	}
+	for login, subject := range g.People {
+		if !githubLogin.MatchString(login) || strings.TrimSpace(subject) == "" || len(subject) > maxSubject || strings.ContainsFunc(subject, unicode.IsControl) {
+			return bad("GitHub people map exact logins to bounded workspace subjects")
+		}
+	}
 	if g.Login != "" && !githubLogin.MatchString(g.Login) {
 		return bad("%q is not a GitHub login", g.Login)
 	}
@@ -521,6 +536,12 @@ func (c Client) validateGitHub() error {
 
 // clone returns a copy that shares nothing with the record it was made from.
 func (c Client) clone() Client {
+	if c.Capabilities != nil {
+		next := *c.Capabilities
+		next.Events = slices.Clone(next.Events)
+		next.Actions = slices.Clone(next.Actions)
+		c.Capabilities = &next
+	}
 	c.Identity.Owners = slices.Clone(c.Identity.Owners)
 	c.Agents = slices.Clone(c.Agents)
 	if c.Bots != nil {
@@ -544,6 +565,12 @@ func (c Client) clone() Client {
 	}
 	if c.GitHub != nil {
 		g := *c.GitHub
+		if g.People != nil {
+			g.People = map[string]string{}
+			for k, v := range c.GitHub.People {
+				g.People[k] = v
+			}
+		}
 		g.ReadRepositories = slices.Clone(g.ReadRepositories)
 		if g.AutoLabels != nil {
 			labels := make(map[string]map[string]string, len(g.AutoLabels))
