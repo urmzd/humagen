@@ -82,25 +82,25 @@ button{font-family:inherit}
 
     <!-- How it wraps in -->
     <ol aria-label="How an integration wraps in" style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px">
-      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">1 · Connect</span><span style="font-size: 13px; color: #3A3C41">Workspace-level sign-in by an admin or app</span></li>
-      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">2 · Resources</span><span style="font-size: 13px; color: #3A3C41">Pick repos, channels, folders, databases</span></li>
-      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">3 · Link</span><span style="font-size: 13px; color: #3A3C41">To an initiative, project or channel - manual, suggested or by rule</span></li>
-      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">4 · Access mode</span><span style="font-size: 13px; color: #3A3C41">Indexed, live search, or hybrid</span></li>
-      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">5 · Events &amp; actions</span><span style="font-size: 13px; color: #3A3C41">What wakes agents, and what they may do back - under policy</span></li>
+      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">1 Connect</span><span style="font-size: 13px; color: #3A3C41">Workspace-level sign-in by an admin or app</span></li>
+      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">2 Resources</span><span style="font-size: 13px; color: #3A3C41">Pick repos, channels, folders, databases</span></li>
+      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">3 Link</span><span style="font-size: 13px; color: #3A3C41">To an initiative, project or channel - manual, suggested or by rule</span></li>
+      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">4 Access mode</span><span style="font-size: 13px; color: #3A3C41">Indexed, live search, or hybrid</span></li>
+      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">5 Events &amp; actions</span><span style="font-size: 13px; color: #3A3C41">What wakes agents, and what they may do back - under policy</span></li>
     </ol>
 
     <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start">
 
       <!-- Connected systems -->
       <section aria-label="Connected systems" style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
-        <h2 style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5F6168">Connected · 4</h2>
+        <h2 style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5F6168">Connected 4</h2>
         <sc-for list="{{ systems }}" as="s" hint-placeholder-count="4">
           <button type="button" onClick="{{ s.pick }}" aria-pressed="{{ s.pressed }}" style="{{ s.cardStyle }}">
             <span style="display: flex; align-items: center; gap: 10px; width: 100%">
               <span style="flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; background: #EEEEEB; color: #3A3C41; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">{{ s.mono }}</span>
               <span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; text-align: left">
                 <span style="font-weight: 600; font-size: 14px; color: #1B1C1E">{{ s.name }}</span>
-                <span style="font-size: 12px; color: #5F6168">{{ s.resources }} · by {{ s.by }}</span>
+                <span style="font-size: 12px; color: #5F6168">{{ s.resources }} by {{ s.by }}</span>
               </span>
               <span style="{{ s.healthStyle }}">{{ s.health }}</span>
             </span>
@@ -119,7 +119,7 @@ button{font-family:inherit}
           <span style="flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px; background: #EEEEEB; color: #3A3C41; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">{{ sel.mono }}</span>
           <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column">
             <h2 style="margin: 0; font-size: 17px; font-weight: 600">{{ sel.name }}</h2>
-            <span style="font-size: 12px; color: #5F6168">Connected by {{ sel.by }} · {{ sel.access }}</span>
+            <span style="font-size: 12px; color: #5F6168">Connected by {{ sel.by }} {{ sel.access }}</span>
           </div>
           <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; border: 1px solid #E2E2DE; color: #3A3C41; background: #FFFFFF">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>Workspace</span>
@@ -160,7 +160,7 @@ button{font-family:inherit}
                 <li style="display: flex; gap: 8px; align-items: center"><span style="flex: 1 1 auto">{{ a.name }}</span><span style="{{ a.style }}">{{ a.policy }}</span></li>
               </sc-for>
             </ul>
-            <a href="Policies.html" style="font-size: 12px; text-decoration: none">Set by Policies · Message people outside the project</a>
+            <a href="Policies.html" style="font-size: 12px; text-decoration: none">Set by Policies Message people outside the project</a>
           </div>
         </div>
 
@@ -219,7 +219,7 @@ class Component extends DCLogic {
     const chipBase = 'display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; border: 1px solid #E2E2DE; white-space: nowrap; ';
     const policyTone = { Allow: 'ok', Ask: 'warn', Never: 'err' };
     const systems = [
-      { id: 'gh', name: 'GitHub', mono: 'GH', by: 'Jon T.', resources: '2 repos', linked: 'Spring Launch', mode: 'Auto-link by rule', access: 'Hybrid · READMEs indexed, issues live', health: 'Healthy', t: 'ok',
+      { id: 'gh', name: 'GitHub', mono: 'GH', by: 'Jon T.', resources: '2 repos', linked: 'Spring Launch', mode: 'Auto-link by rule', access: 'Hybrid READMEs indexed, issues live', health: 'Healthy', t: 'ok',
         res: [
           { name: 'acme/launch-site', target: 'Spring Launch › # launch-ops', how: 'via rule', access: 'Hybrid' },
           { name: 'acme/packaging-api', target: 'Spring Launch › # launch-ops', how: 'manual', access: 'Hybrid' }
@@ -227,36 +227,36 @@ class Component extends DCLogic {
         events: [{ name: 'Pull request opened', who: 'Monitor Agent' }, { name: 'Issue labeled launch-blocker', who: 'Launch Planner' }, { name: 'Release published', who: 'Ops Agent' }],
         actions: [{ name: 'Comment on a pull request', policy: 'Ask' }, { name: 'Open an issue', policy: 'Allow' }, { name: 'Merge a pull request', policy: 'Never' }],
         sugs: [
-          { id: 'g1', name: 'acme/press-kit', target: 'Spring Launch', why: 'topic spring-launch · 3 contributors are project members' },
-          { id: 'g2', name: 'acme/pricing-calculator', target: 'Q4 Research', why: 'README mentions pricing · cited twice by Research Analyst' }
+          { id: 'g1', name: 'acme/press-kit', target: 'Spring Launch', why: 'topic spring-launch 3 contributors are project members' },
+          { id: 'g2', name: 'acme/pricing-calculator', target: 'Q4 Research', why: 'README mentions pricing cited twice by Research Analyst' }
         ] },
-      { id: 'sl', name: 'Slack', mono: 'SL', by: 'Mira K.', resources: '3 channels', linked: 'Spring Launch, Onboarding Revamp', mode: 'Suggest', access: 'Bridged · two-way', health: 'Healthy', t: 'ok',
+      { id: 'sl', name: 'Slack', mono: 'SL', by: 'Mira K.', resources: '3 channels', linked: 'Spring Launch, Onboarding Revamp', mode: 'Suggest', access: 'Bridged two-way', health: 'Healthy', t: 'ok',
         res: [
-          { name: '#launch-ops', target: 'Spring Launch › # launch-ops', how: 'manual · two-way', access: 'Bridged' },
-          { name: '#launch-press', target: 'Spring Launch › # planning', how: 'via rule', access: 'Bridged · read-only' },
+          { name: '#launch-ops', target: 'Spring Launch › # launch-ops', how: 'manual two-way', access: 'Bridged' },
+          { name: '#launch-press', target: 'Spring Launch › # planning', how: 'via rule', access: 'Bridged read-only' },
           { name: '#onboarding', target: 'Onboarding Revamp', how: 'manual', access: 'Live search' }
         ],
         events: [{ name: 'Message in a bridged channel', who: 'Launch Planner' }, { name: '@Humagen mention', who: 'Any project agent' }, { name: 'Message marked as decision', who: 'Launch Planner' }],
         actions: [{ name: 'Post outcome card to bridged channel', policy: 'Allow' }, { name: 'Reply in a thread', policy: 'Allow' }, { name: 'Post outside bridged channels', policy: 'Ask' }, { name: 'Message external guests', policy: 'Never' }],
         sugs: [
-          { id: 's1', name: '#launch-retail', target: 'Spring Launch', why: 'name matches #launch- rule · 5 project members are in it' }
+          { id: 's1', name: '#launch-retail', target: 'Spring Launch', why: 'name matches #launch- rule 5 project members are in it' }
         ] },
-      { id: 'gd', name: 'Google Drive', mono: 'GD', by: 'Mira K.', resources: '1 folder · 340 files', linked: 'Spring Launch', mode: 'Off (manual only)', access: 'Indexed · daily', health: 'Indexing', t: 'busy',
+      { id: 'gd', name: 'Google Drive', mono: 'GD', by: 'Mira K.', resources: '1 folder 340 files', linked: 'Spring Launch', mode: 'Off (manual only)', access: 'Indexed daily', health: 'Indexing', t: 'busy',
         res: [
-          { name: 'Brand guidelines', target: 'Spring Launch', how: 'manual', access: 'Indexed · 120/340' }
+          { name: 'Brand guidelines', target: 'Spring Launch', how: 'manual', access: 'Indexed 120/340' }
         ],
         events: [{ name: 'File added to folder', who: 'Monitor Agent' }, { name: 'File changed', who: 'Monitor Agent' }],
         actions: [{ name: 'Create a doc in the folder', policy: 'Ask' }, { name: 'Change file sharing', policy: 'Never' }],
         sugs: [] },
-      { id: 'no', name: 'Notion', mono: 'NO', by: 'Avery Park', resources: '1 teamspace · 1 database', linked: 'Spring 2027 GTM (initiative)', mode: 'Suggest', access: 'Live search · queried 9:51', health: 'Healthy', t: 'ok',
+      { id: 'no', name: 'Notion', mono: 'NO', by: 'Avery Park', resources: '1 teamspace 1 database', linked: 'Spring 2027 GTM (initiative)', mode: 'Suggest', access: 'Live search queried 9:51', health: 'Healthy', t: 'ok',
         res: [
-          { name: 'Launch HQ (teamspace)', target: 'Spring 2027 GTM · inherited by child projects', how: 'manual', access: 'Live search' },
-          { name: 'Retail calendar (database)', target: 'Spring Launch', how: 'via rule', access: 'Indexed · 15 min' }
+          { name: 'Launch HQ (teamspace)', target: 'Spring 2027 GTM inherited by child projects', how: 'manual', access: 'Live search' },
+          { name: 'Retail calendar (database)', target: 'Spring Launch', how: 'via rule', access: 'Indexed 15 min' }
         ],
         events: [{ name: 'Page edited in Launch HQ', who: 'Monitor Agent' }, { name: 'Database row changed', who: 'Launch Planner' }],
         actions: [{ name: 'Create a page', policy: 'Allow' }, { name: 'Update a page', policy: 'Ask' }, { name: 'Delete a page', policy: 'Never' }],
         sugs: [
-          { id: 'n1', name: 'Q4 pricing research (page)', target: 'Q4 Research', why: 'title match · linked from 2 Q4 Research conversations' }
+          { id: 'n1', name: 'Q4 pricing research (page)', target: 'Q4 Research', why: 'title match linked from 2 Q4 Research conversations' }
         ] }
     ];
     const selId = this.state.selected;
@@ -276,7 +276,7 @@ class Component extends DCLogic {
       const set = (v) => () => this.setState({ decided: { ...decided, [g.id]: v } });
       return { ...g,
         open: !d, done: !!d,
-        doneLabel: d === 'linked' ? 'Linked · logged' : 'Ignored',
+        doneLabel: d === 'linked' ? 'Linked logged' : 'Ignored',
         doneStyle: pillBase + (d === 'linked' ? pill.ok : pill.quiet),
         link: set('linked'), ignore: set('ignored') };
     });

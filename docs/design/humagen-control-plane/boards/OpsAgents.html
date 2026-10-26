@@ -64,7 +64,7 @@ button{font-family:inherit}
         <span style="font-size: 12px; color: #5F6168">Watching sources</span><span style="font-size: 22px; font-weight: 600">6</span>
       </div>
       <div style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px">
-        <span style="font-size: 12px; color: #5F6168">Failed runs · 24h</span><span style="font-size: 22px; font-weight: 600; color: #A33A2B">1</span>
+        <span style="font-size: 12px; color: #5F6168">Failed runs 24h</span><span style="font-size: 22px; font-weight: 600; color: #A33A2B">1</span>
       </div>
     </div>
 
@@ -74,12 +74,12 @@ button{font-family:inherit}
       <div style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; display: flex; flex-direction: column">
         <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #E2E2DE; flex-wrap: wrap">
           <span style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #E3E8EE; color: #2E5B88">Decision</span>
-          <span style="flex: 1 1 280px">Approve launch date Nov 19 <span style="color: #5F6168">· Launch Planner · Spring Launch</span></span>
+          <span style="flex: 1 1 280px">Approve launch date Nov 19 <span style="color: #5F6168">Launch Planner Spring Launch</span></span>
           <a href="Main.html" style="font-weight: 600; text-decoration: none">Open</a>
         </div>
         <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #E2E2DE; flex-wrap: wrap">
           <span style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #F4E6CC; color: #6B4100">Permission</span>
-          <span style="flex: 1 1 280px">Ops Agent wants to email 4 vendors <span style="color: #5F6168">· policy: ask before external messages</span></span>
+          <span style="flex: 1 1 280px">Ops Agent wants to email 4 vendors <span style="color: #5F6168">policy: ask before external messages</span></span>
           <a href="#" style="font-weight: 600; text-decoration: none">Review drafts</a>
         </div>
         <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; flex-wrap: wrap">
@@ -147,12 +147,12 @@ class Component extends DCLogic {
       error: { bg: '#F7E3DF', fg: '#8C2F22', dot: '#A33A2B' }
     };
     const all = [
-      { initials: 'LP', name: 'Launch Planner', role: 'Plan owner', projects: 'Spring Launch', now: 'Waiting for approval of Nov 19', status: 'Waiting on you', tone: 'wait', group: 'needs', autonomy: 'Drafts freely · asks to change dates', last: '9:51 · done' },
-      { initials: 'OA', name: 'Ops Agent', role: 'Vendor & logistics', projects: 'Spring Launch', now: 'Holding 4 vendor notices', status: 'Needs permission', tone: 'wait', group: 'needs', autonomy: 'Asks before external messages', last: '9:51 · paused' },
-      { initials: 'MA', name: 'Monitor Agent', role: 'Watches sources', projects: 'All projects', now: 'Watching 6 sources', status: 'Working', tone: 'work', group: 'running', autonomy: 'Read-only · hands off changes', last: '9:42 · done' },
-      { initials: 'RA', name: 'Research Analyst', role: 'Pricing research', projects: 'Q4 Research · Private', now: 'Summarising 12 competitor pages', status: 'Working', tone: 'work', group: 'running', autonomy: 'Drafts freely', last: 'Running · 3 min' },
-      { initials: 'MD', name: 'Media Analyst', role: 'Paid media pacing', projects: 'Spring Launch', now: 'Stopped: source access expired', status: 'Failed', tone: 'error', group: 'needs', autonomy: 'Read-only', last: '8:10 · failed' },
-      { initials: 'OB', name: 'Onboarding Guide', role: 'Docs upkeep', projects: 'Onboarding Revamp', now: 'Paused by Jon T. until Oct 28', status: 'Paused', tone: 'idle', group: 'paused', autonomy: 'Drafts freely', last: 'Oct 21 · done' }
+      { initials: 'LP', name: 'Launch Planner', role: 'Plan owner', projects: 'Spring Launch', now: 'Waiting for approval of Nov 19', status: 'Waiting on you', tone: 'wait', group: 'needs', autonomy: 'Drafts freely asks to change dates', last: '9:51 done' },
+      { initials: 'OA', name: 'Ops Agent', role: 'Vendor & logistics', projects: 'Spring Launch', now: 'Holding 4 vendor notices', status: 'Needs permission', tone: 'wait', group: 'needs', autonomy: 'Asks before external messages', last: '9:51 paused' },
+      { initials: 'MA', name: 'Monitor Agent', role: 'Watches sources', projects: 'All projects', now: 'Watching 6 sources', status: 'Working', tone: 'work', group: 'running', autonomy: 'Read-only hands off changes', last: '9:42 done' },
+      { initials: 'RA', name: 'Research Analyst', role: 'Pricing research', projects: 'Q4 Research Private', now: 'Summarising 12 competitor pages', status: 'Working', tone: 'work', group: 'running', autonomy: 'Drafts freely', last: 'Running 3 min' },
+      { initials: 'MD', name: 'Media Analyst', role: 'Paid media pacing', projects: 'Spring Launch', now: 'Stopped: source access expired', status: 'Failed', tone: 'error', group: 'needs', autonomy: 'Read-only', last: '8:10 failed' },
+      { initials: 'OB', name: 'Onboarding Guide', role: 'Docs upkeep', projects: 'Onboarding Revamp', now: 'Paused by Jon T. until Oct 28', status: 'Paused', tone: 'idle', group: 'paused', autonomy: 'Drafts freely', last: 'Oct 21 done' }
     ];
     const f = this.state.filter;
     const rows = all.filter((a) => f === 'all' || a.group === f).map((a) => {

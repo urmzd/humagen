@@ -37,7 +37,7 @@ button{font-family:inherit}
   <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #E2E2DE">
     <div style="display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; background: #F3F6FA; border: 1px solid #D6E0EB">
       <span style="width: 8px; height: 8px; border-radius: 50%; background: #2E5B88; flex: 0 0 auto"></span>
-      <span style="flex: 1 1 auto; font-size: 13px"><strong>Waiting on you</strong> · approve Nov 19 so Ops Agent can send notices</span>
+      <span style="flex: 1 1 auto; font-size: 13px"><strong>Waiting on you</strong> approve Nov 19 so Ops Agent can send notices</span>
     </div>
     <div style="display: flex; gap: 6px; flex-wrap: wrap" role="group" aria-label="Filter">
       <button type="button" aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #1B1C1E; background: #1B1C1E; color: #FFFFFF; font-size: 12px; cursor: pointer">All</button>
@@ -57,7 +57,7 @@ button{font-family:inherit}
       </div>
       <div style="padding-bottom: 18px; display: flex; flex-direction: column; gap: 2px; min-width: 0">
         <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Monitor Agent</strong><span style="font-size: 12px; color: #5F6168">9:42</span></div>
-        <div style="color: #3A3C41">Detected change in Supplier ETA · packaging Nov 4 → Nov 8</div>
+        <div style="color: #3A3C41">Detected change in Supplier ETA packaging Nov 4 → Nov 8</div>
       </div>
     </li>
 
@@ -82,16 +82,16 @@ button{font-family:inherit}
       </div>
       <div style="padding-bottom: 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 auto">
         <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Launch Planner</strong><span style="font-size: 12px; color: #5F6168">9:43–9:50</span></div>
-        <div style="color: #3A3C41">Checked 5 dependencies · compared 2 options</div>
+        <div style="color: #3A3C41">Checked 5 dependencies compared 2 options</div>
         <button type="button" onClick="{{ toggleTools }}" aria-expanded="{{ toolsOpenStr }}" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px; margin-left: -8px; border: 0; background: transparent; color: #2E5B88; font-size: 12px; font-weight: 600; cursor: pointer">
           {{ toolsLabel }}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
         </button>
         <sc-if value="{{ toolsOpen }}" hint-placeholder-val="{{ true }}">
           <div style="display: flex; flex-direction: column; border: 1px solid #E2E2DE; border-radius: 8px; font-size: 12px">
-            <div style="display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #E2E2DE"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">read_plan</code><span style="color: #5F6168; flex: 1 1 auto">Launch plan v3 · snapshot</span><span style="color: #1F6B45">ok</span></div>
+            <div style="display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #E2E2DE"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">read_plan</code><span style="color: #5F6168; flex: 1 1 auto">Launch plan v3 snapshot</span><span style="color: #1F6B45">ok</span></div>
             <div style="display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #E2E2DE"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">query_tasks</code><span style="color: #5F6168; flex: 1 1 auto">5 tasks depend on packaging</span><span style="color: #1F6B45">ok</span></div>
-            <div style="display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #E2E2DE"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">read_calendar</code><span style="color: #5F6168; flex: 1 1 auto">Retail calendar · live 9:30</span><span style="color: #1F6B45">ok</span></div>
+            <div style="display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #E2E2DE"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">read_calendar</code><span style="color: #5F6168; flex: 1 1 auto">Retail calendar live 9:30</span><span style="color: #1F6B45">ok</span></div>
             <div style="display: flex; gap: 8px; padding: 8px 10px"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">write_doc</code><span style="color: #5F6168; flex: 1 1 auto">Launch plan v4 (draft)</span><span style="color: #1F6B45">ok</span></div>
           </div>
         </sc-if>
@@ -120,7 +120,7 @@ button{font-family:inherit}
       <div style="padding-bottom: 18px; display: flex; flex-direction: column; gap: 4px; min-width: 0">
         <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Ops Agent</strong><span style="font-size: 12px; color: #5F6168">9:51</span></div>
         <div style="color: #3A3C41">Drafted 4 vendor notices</div>
-        <span style="align-self: flex-start; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #EEEEEB; color: #3A3C41">Paused · needs approval</span>
+        <span style="align-self: flex-start; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #EEEEEB; color: #3A3C41">Paused needs approval</span>
       </div>
     </li>
 
@@ -129,7 +129,7 @@ button{font-family:inherit}
         <span style="width: 26px; height: 26px; border-radius: 50%; border: 2px dashed #2E5B88; box-sizing: border-box"></span>
       </div>
       <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
-        <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Decision · you</strong><span style="font-size: 12px; color: #5F6168">pending</span></div>
+        <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Decision you</strong><span style="font-size: 12px; color: #5F6168">pending</span></div>
         <div style="color: #3A3C41">Approve Nov 19, or redirect Launch Planner</div>
       </div>
     </li>

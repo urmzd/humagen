@@ -4,7 +4,10 @@
 
 A Go module that composes fiber, saige, playscape and anchor into one agent
 platform and its web and Slack presentation in one repository. The design is in
-[docs/architecture.md](docs/architecture.md).
+[docs/architecture.md](docs/architecture.md). Current console design requirements
+and their acceptance criteria are tracked in [design.md](design.md). Read it
+before changing presentation or integrations, and update its requirement status
+and evidence when implementing a requirement.
 
 ## Rules
 

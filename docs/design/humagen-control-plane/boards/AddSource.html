@@ -32,7 +32,7 @@ button{font-family:inherit}
 
     <!-- Step 1 -->
     <section style="display: flex; flex-direction: column; gap: 10px">
-      <h3 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">1 · System</h3>
+      <h3 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">1 System</h3>
       <div role="radiogroup" aria-label="System" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
         <sc-for list="{{ systems }}" as="s" hint-placeholder-count="5">
           <button type="button" role="radio" aria-checked="{{ s.checked }}" onClick="{{ s.pick }}" style="{{ s.style }}">
@@ -45,7 +45,7 @@ button{font-family:inherit}
 
     <!-- Step 2 -->
     <section style="display: flex; flex-direction: column; gap: 10px">
-      <h3 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">2 · What to bring in</h3>
+      <h3 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">2 What to bring in</h3>
       <div style="border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column">
         <sc-for list="{{ resources }}" as="r" hint-placeholder-count="3">
           <button type="button" role="checkbox" aria-checked="{{ r.checked }}" onClick="{{ r.toggle }}" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 0; border-bottom: 1px solid #F0F0ED; background: transparent; text-align: left; cursor: pointer; color: #1B1C1E; font-size: 13px">
@@ -63,7 +63,7 @@ button{font-family:inherit}
     <!-- Step 3 -->
     <section style="display: flex; flex-direction: column; gap: 10px">
       <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
-        <h3 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168; flex: 1 1 auto">3 · How agents read it</h3>
+        <h3 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168; flex: 1 1 auto">3 How agents read it</h3>
         <span style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #E3E8EE; color: #2E5B88">Recommended for {{ sysName }}: {{ recName }}</span>
       </div>
       <div role="radiogroup" aria-label="Access mode" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
@@ -86,7 +86,7 @@ button{font-family:inherit}
       <sc-if value="{{ isHybrid }}" hint-placeholder-val="{{ false }}">
         <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #FAFAF8; border: 1px solid #E2E2DE; font-size: 13px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3A3C41" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"></path></svg>
-          <span style="flex: 1 1 auto"><strong>24 pages pinned</strong> to the index · everything else searched live</span>
+          <span style="flex: 1 1 auto"><strong>24 pages pinned</strong> to the index everything else searched live</span>
           <a href="#" style="font-weight: 600; text-decoration: none">Choose pages</a>
         </div>
       </sc-if>
@@ -94,7 +94,7 @@ button{font-family:inherit}
 
     <!-- Step 4 -->
     <section style="display: flex; flex-direction: column; gap: 10px">
-      <h3 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">4 · Where it applies</h3>
+      <h3 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">4 Where it applies</h3>
       <div role="radiogroup" aria-label="Scope" style="display: flex; flex-direction: column; gap: 8px">
         <sc-for list="{{ scopes }}" as="sc" hint-placeholder-count="3">
           <button type="button" role="radio" aria-checked="{{ sc.checked }}" onClick="{{ sc.pick }}" style="{{ sc.style }}">
@@ -112,7 +112,7 @@ button{font-family:inherit}
     <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">How it will appear</div>
     <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #E2E2DE; border-radius: 12px; background: #FFFFFF; flex-wrap: wrap">
       <span style="flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; background: #EEEEEB; color: #3A3C41; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">{{ sysMono }}</span>
-      <span style="flex: 1 1 200px; display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 600">{{ previewName }}</span><span style="font-size: 12px; color: #5F6168">{{ sysName }} · added by Avery Park · {{ scopeName }}</span></span>
+      <span style="flex: 1 1 200px; display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 600">{{ previewName }}</span><span style="font-size: 12px; color: #5F6168">{{ sysName }} added by Avery Park {{ scopeName }}</span></span>
       <span style="{{ chipStyle }}">{{ previewChip }}</span>
     </div>
     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
@@ -133,21 +133,21 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state;
     const SYS = {
-      drive:  { name: 'Google Drive', mono: 'GD', rec: 'indexed', res: [['Brand guidelines', 'Folder · 340 files'], ['Launch assets', 'Folder · 86 files'], ['Packaging specs.pdf', 'File · 2.1 MB']] },
-      notion: { name: 'Notion', mono: 'NO', rec: 'live', res: [['Launch HQ', 'Page tree · 1,280 pages'], ['Retail calendar', 'Database · 412 rows'], ['Company wiki', 'Workspace · 9,400 pages']] },
-      github: { name: 'GitHub', mono: 'GH', rec: 'hybrid', res: [['acme/launch-site', 'Repo · README, issues, PRs'], ['acme/checkout', 'Repo · issues labeled spring-launch'], ['Launch milestone', 'Milestone · 38 issues']] },
-      slack:  { name: 'Slack', mono: 'SL', rec: 'live', res: [['#launch-ops', 'Channel · bridged'], ['#vendors-ext', 'Shared channel · 3 guests'], ['#marketing', 'Channel · 41 members']] },
-      upload: { name: 'Upload', mono: 'UP', rec: 'indexed', res: [['Launch plan v3.pdf', 'File · 24 pages'], ['Media plan.xlsx', 'File · 3 sheets'], ['Kickoff notes.docx', 'File · 6 pages']] }
+      drive:  { name: 'Google Drive', mono: 'GD', rec: 'indexed', res: [['Brand guidelines', 'Folder 340 files'], ['Launch assets', 'Folder 86 files'], ['Packaging specs.pdf', 'File 2.1 MB']] },
+      notion: { name: 'Notion', mono: 'NO', rec: 'live', res: [['Launch HQ', 'Page tree 1,280 pages'], ['Retail calendar', 'Database 412 rows'], ['Company wiki', 'Workspace 9,400 pages']] },
+      github: { name: 'GitHub', mono: 'GH', rec: 'hybrid', res: [['acme/launch-site', 'Repo README, issues, PRs'], ['acme/checkout', 'Repo issues labeled spring-launch'], ['Launch milestone', 'Milestone 38 issues']] },
+      slack:  { name: 'Slack', mono: 'SL', rec: 'live', res: [['#launch-ops', 'Channel bridged'], ['#vendors-ext', 'Shared channel 3 guests'], ['#marketing', 'Channel 41 members']] },
+      upload: { name: 'Upload', mono: 'UP', rec: 'indexed', res: [['Launch plan v3.pdf', 'File 24 pages'], ['Media plan.xlsx', 'File 3 sheets'], ['Kickoff notes.docx', 'File 6 pages']] }
     };
     const MODES = {
-      indexed: { name: 'Indexed', what: 'A copy is imported and indexed.', pro1: 'Fast answers', pro2: 'Works when the source is down', con1: 'Can go stale between syncs', con2: 'Uses storage', best: 'folders of documents', chip: 'Indexed · syncs hourly', tone: 'background: #E6F2EC; color: #1F6B45' },
-      live: { name: 'Live search', what: 'Nothing is copied. Queried when an agent asks, with the asker’s permissions.', pro1: 'Always current', pro2: 'Respects source permissions', con1: 'Slower answers', con2: 'Unavailable if the source is down', best: 'large wikis like Notion', chip: 'Live search · queried when needed', tone: 'background: #E3E8EE; color: #2E5B88' },
-      hybrid: { name: 'Hybrid', what: 'Key pages pinned to the index; everything else searched live.', pro1: 'Fast on what matters most', pro2: 'Current on the long tail', con1: 'Pinned set needs upkeep', con2: 'Two freshness signals', best: 'repos and big trees with a core set', chip: 'Hybrid · 24 pinned, rest live', tone: 'background: #ECE6F4; color: #563A80' }
+      indexed: { name: 'Indexed', what: 'A copy is imported and indexed.', pro1: 'Fast answers', pro2: 'Works when the source is down', con1: 'Can go stale between syncs', con2: 'Uses storage', best: 'folders of documents', chip: 'Indexed syncs hourly', tone: 'background: #E6F2EC; color: #1F6B45' },
+      live: { name: 'Live search', what: 'Nothing is copied. Queried when an agent asks, with the asker’s permissions.', pro1: 'Always current', pro2: 'Respects source permissions', con1: 'Slower answers', con2: 'Unavailable if the source is down', best: 'large wikis like Notion', chip: 'Live search queried when needed', tone: 'background: #E3E8EE; color: #2E5B88' },
+      hybrid: { name: 'Hybrid', what: 'Key pages pinned to the index; everything else searched live.', pro1: 'Fast on what matters most', pro2: 'Current on the long tail', con1: 'Pinned set needs upkeep', con2: 'Two freshness signals', best: 'repos and big trees with a core set', chip: 'Hybrid 24 pinned, rest live', tone: 'background: #ECE6F4; color: #563A80' }
     };
     const SCOPES = {
-      channel: { name: 'This channel · # launch-ops', who: '6 people, 3 agents' },
-      project: { name: 'Whole project · Spring Launch', who: '8 people, 4 agents, all channels' },
-      initiative: { name: 'Initiative · Spring 2027 GTM', who: 'Flows down to Spring Launch and Q4 Research' }
+      channel: { name: 'This channel # launch-ops', who: '6 people, 3 agents' },
+      project: { name: 'Whole project Spring Launch', who: '8 people, 4 agents, all channels' },
+      initiative: { name: 'Initiative Spring 2027 GTM', who: 'Flows down to Spring Launch and Q4 Research' }
     };
     const sys = SYS[s.sys];
     const radio = (on) => 'flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; box-sizing: border-box; border: ' + (on ? '5px solid #2E5B88' : '1.5px solid #8A8C92') + '; background: #FFFFFF';

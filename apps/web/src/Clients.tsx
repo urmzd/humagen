@@ -1,5 +1,7 @@
+import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Client, type ClientCaps } from "./api.ts";
+import { ClientConnect } from "./ClientConnect.tsx";
 import { button, card, Problem, Switch, pageLede, pageTitle } from "./ui.tsx";
 
 const surfaces: Record<Client["surface"], string> = { slack: "Slack", github: "GitHub" };
@@ -11,7 +13,7 @@ function identity(c: Client): string {
     c.surface === "slack"
       ? [id.team && `team ${id.team}`, id.app_id && `app ${id.app_id}`]
       : [id.owners?.length && id.owners.join(", "), id.installation && `installation ${id.installation}`, id.app_id && `app ${id.app_id}`];
-  return parts.filter(Boolean).join(" · ");
+  return parts.filter(Boolean).join(", ");
 }
 
 /** The agents a client may raise runs for. */
@@ -34,6 +36,7 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
   const [clients, setClients] = useState<Client[] | null>(null);
   const [caps, setCaps] = useState<ClientCaps | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
   const fail = (fallback: string) => (e: unknown) => setProblem(e instanceof ApiError ? e.message : fallback);
   const reload = useCallback(() => {
@@ -65,12 +68,15 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
         </p>
       </header>
       <Problem message={problem} />
+      {canWrite && clients && !connecting && (
+        <div><button type="button" className={button} disabled={!!caps && clients.length >= caps.max} onClick={() => setConnecting(true)}>{defaultCopy.clientConnect.open}</button></div>
+      )}
+      {canWrite && connecting && <ClientConnect onCreated={() => { setConnecting(false); reload(); }} onCancel={() => setConnecting(false)} />}
       {clients?.length === 0 && (
         <section className={`${card} flex flex-col gap-2`}>
           <p className="text-aui-sm text-aui-fg">No clients yet.</p>
           <p className="text-aui-sm text-aui-muted">
-            An admin creates one with <code className="font-aui-mono text-aui-xs">POST /api/clients</code>. Its secrets are written once and never
-            shown again.
+            {canWrite ? defaultCopy.clientConnect.emptyAdmin : defaultCopy.clientConnect.emptyReader}
           </p>
         </section>
       )}

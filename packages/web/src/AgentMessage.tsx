@@ -139,13 +139,17 @@ function WorkSummary({ turn, copy }: { turn: Turn; copy: Copy }) {
       className="min-w-0 rounded-aui border border-aui-border px-3 py-2"
     >
       <summary className="min-h-6 cursor-pointer text-aui-xs text-aui-muted">
-        {[
-          copy.conversation.tools(turn.tasks.length),
-          completed ? copy.conversation.complete(completed) : "",
-          blocked ? copy.conversation.blocked(blocked) : "",
-        ]
-          .filter(Boolean)
-          .join(" · ")}
+        <span className="inline-flex flex-wrap gap-x-3 gap-y-1">
+          {[
+            copy.conversation.tools(turn.tasks.length),
+            completed ? copy.conversation.complete(completed) : "",
+            blocked ? copy.conversation.blocked(blocked) : "",
+          ]
+            .filter(Boolean)
+            .map((label) => (
+              <span key={label}>{label} </span>
+            ))}
+        </span>
       </summary>
       <div className="mt-3 flex min-w-0 flex-col gap-1">
         <TaskList turn={turn} copy={copy} />
