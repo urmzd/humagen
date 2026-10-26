@@ -132,8 +132,9 @@ confinement decide whether it is shown. Centralize text in
 
 Remove SME from the product vocabulary and retire new `@sme` and
 `@sme:<topic>` routing, expert configuration controls and expert prompt
-injection. Replace them with **Find Help**, a bounded search that takes the
-person's description and suggests a project and an agent available there,
+injection. The new-conversation composer offers **Find an Agent or Project**
+inside its agent/project picker. This bounded search takes the person's
+description and suggests a project and an agent available there,
 with a short reason. It identifies where work belongs and who can help.
 
 Build on existing project availability, agent descriptions and the picker;
@@ -141,8 +142,9 @@ do not create a parallel permission system. Filter candidates with `p.Sees`
 and the relevant read permission before ranking, counting or explaining
 results. Hidden projects, agents, private chats and source names contribute
 neither results nor suggestive counts. A suggestion grants no access and
-starts no run. The person opens a result or confirms the destination and
-agent beside the composer. Selecting a public destination does not move or
+starts no run. The person confirms the destination and agent inside the
+picker, keeping their draft and attached files. An empty draft is seeded with
+the search description. Selecting a public destination does not move or
 publish an existing private conversation implicitly.
 
 Explicit human mentions, approvals and `ask_person` remain separate actions.
