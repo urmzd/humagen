@@ -366,3 +366,20 @@ test("controls refresh effective pause without overwriting a reviewed draft", as
     window.setInterval = original;
   }
 });
+
+test("stale default bindings expose a review link without granting a resume or deleting bindings", async () => {
+  net = stubFetch({
+    "GET /api/agents/reviewer/control": () => ({
+      ...control,
+      state: "needs_review",
+      needs_skill_review: true,
+    }),
+  });
+  render(<AgentControls agent="reviewer" canWrite />);
+  const link = await screen.findByRole("link", { name: "Review Default Skills" });
+  assert.equal(link.getAttribute("href"), "/agents/reviewer/context");
+  assert.equal(
+    net.seen.some((request) => request.method !== "GET"),
+    false,
+  );
+});

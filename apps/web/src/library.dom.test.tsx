@@ -362,3 +362,145 @@ test("missing pinned skill version does not fall back to another revision", asyn
     window.history.replaceState(null, "", initial);
   }
 });
+
+test("skill Used By lists actual exact agent bindings separately from test runs", async () => {
+  const skill = {
+    id: "sk-usage",
+    scope: { kind: "workspace" },
+    name: "review",
+    description: "Review",
+    instructions: "Review carefully",
+    tools: [],
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    published_at: "2026-10-26T12:00:00Z",
+    tests: [],
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [skill] }),
+    "GET /api/library/skills/sk-usage": () => ({ revisions: [skill] }),
+    "GET /api/library/skills/sk-usage/versions/1/agents": () => ({
+      agents: [{ agent: "production-reviewer", agent_revision: 3, needs_review: true }],
+      more: false,
+    }),
+  });
+  render(<SkillsLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: /review.*Version 1/s }));
+  const link = await screen.findByRole("link", { name: "production-reviewer" });
+  assert.equal(link.getAttribute("href"), "/agents/production-reviewer/context");
+  assert.equal(link.getAttribute("target"), "_blank");
+  await screen.findByText(defaultCopy.skillsLibrary.bindingNeedsReview);
+  assert.equal(screen.queryByText(defaultCopy.skillsLibrary.testUses), null);
+});
+
+test("publishing waits for a completed readable test of the selected exact revision", async () => {
+  const first = {
+    id: "sk-tested",
+    scope: { kind: "personal", subject: "ada" },
+    name: "tested",
+    description: "Tested skill",
+    instructions: "Review carefully",
+    tools: [],
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    tests: [] as string[],
+  };
+  const second = {
+    ...first,
+    version: 2,
+    instructions: "Different revision",
+    tests: [] as string[],
+  };
+  let status = "accepted";
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({
+      agents: [
+        {
+          rev: 1,
+          spec: {
+            name: "reviewer",
+            provider: "configured-provider",
+            model: "real-model",
+            system_prompt: "Review",
+          },
+        },
+      ],
+    }),
+    "GET /api/library/skills": () => ({ skills: [second] }),
+    "GET /api/library/skills/sk-tested": () => ({
+      revisions: [first, second],
+    }),
+    "GET /api/library/skills/sk-tested/versions/1/agents": () => ({ agents: [], more: false }),
+    "GET /api/library/skills/sk-tested/versions/2/agents": () => ({ agents: [], more: false }),
+    "POST /api/library/skills/sk-tested/versions/2/test": () => {
+      second.tests = ["native-test"];
+      return { id: "native-test", agent: "reviewer", thread: "native-test-conversation", status };
+    },
+    "GET /api/runs/native-test": () => ({
+      id: "native-test",
+      agent: "reviewer",
+      thread: "native-test-conversation",
+      status,
+    }),
+  });
+  render(<SkillsLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: /tested.*Version 2/s }));
+  const publish = (await screen.findByRole("button", {
+    name: "Publish Version",
+  })) as HTMLButtonElement;
+  assert.equal(publish.disabled, true);
+  await screen.findByText(defaultCopy.skillsLibrary.publishNeedsTest);
+  fireEvent.change(screen.getByLabelText("Test Request"), {
+    target: { value: "Validate the proposed output" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Test Skill" }));
+  await screen.findByText(defaultCopy.skillsLibrary.testPending);
+  assert.equal(publish.disabled, true);
+  status = "completed";
+  await waitFor(() => assert.equal(publish.disabled, false), { timeout: 2500 });
+  fireEvent.change(screen.getByLabelText("Version"), { target: { value: "1" } });
+  await waitFor(() => assert.equal(publish.disabled, true));
+  assert.equal(
+    net.seen.some((request) => request.path.endsWith("/publish")),
+    false,
+  );
+});
+
+test("an unreadable recorded test cannot enable skill publication", async () => {
+  const skill = {
+    id: "sk-unread-test",
+    scope: { kind: "personal", subject: "ada" },
+    name: "unread-test",
+    description: "Tested skill",
+    instructions: "Review carefully",
+    tools: [],
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    tests: ["hidden-test"],
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [skill] }),
+    "GET /api/library/skills/sk-unread-test": () => ({ revisions: [skill] }),
+    "GET /api/library/skills/sk-unread-test/versions/1/agents": () => ({ agents: [], more: false }),
+    "GET /api/runs/hidden-test": () =>
+      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+  });
+  render(<SkillsLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: /unread-test.*Version 1/s }));
+  await screen.findByText(defaultCopy.skillsLibrary.publishNeedsTest);
+  assert.equal(
+    (screen.getByRole("button", { name: "Publish Version" }) as HTMLButtonElement).disabled,
+    true,
+  );
+});
