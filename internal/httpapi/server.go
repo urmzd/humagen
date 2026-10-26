@@ -48,8 +48,10 @@ import (
 	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 )
 
 // maxBody bounds every request body. Nothing this API accepts is large.
@@ -115,12 +117,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.putToolCredential))
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
+	mux.HandleFunc("GET /api/discovery", s.authed("", s.discover))
+	mux.HandleFunc("GET /api/project-templates", s.authed(auth.ProjectsRead, s.listProjectTemplates))
+	mux.HandleFunc("POST /api/projects/{name}/fork", s.authed(auth.ProjectsWrite, s.seenProject(s.forkProject)))
+	mux.HandleFunc("GET /api/project-forks/{name}", s.authed(auth.ProjectsRead, s.projectFork))
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
+	mux.HandleFunc("GET /api/agents/{name}/skills", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSkillDefaults))))
+	mux.HandleFunc("PUT /api/agents/{name}/skills", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentSkillDefaults))))
 	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getCallPolicy))))
 	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putCallPolicy))))
 	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.reachable))))
@@ -265,7 +273,7 @@ func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) 
 			s.problem(w, err)
 			return
 		}
-		out["personal_project"] = "~" + personal.Name
+		out["personal_project"] = personal.Name
 		if who.Can(auth.ProjectsRead) {
 			welcome, err := s.P.PostWelcome(who.Tenant)
 			if err != nil {
@@ -567,7 +575,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRuns(who.Tenant, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -663,7 +671,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusAccepted, run)
+	ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 }
 
 // listThreads pages a tenant's conversations, newest activity first.
@@ -780,7 +788,7 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request, who auth.Princip
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.P.ShownRun(who.Tenant, run))
+	ok(w, http.StatusOK, s.P.ShownRunAs(person, run))
 }
 
 func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -789,7 +797,7 @@ func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Princi
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree)})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRunsAs(who, tree)})
 }
 
 func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -819,7 +827,7 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusAccepted, run)
+	ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 }
 
 // stopRun asks a run and everything attached to it to stop. Runs it delegated
@@ -834,10 +842,10 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request, who auth.Princi
 		return
 	}
 	if run.Stopping && !run.Status.Terminal() {
-		ok(w, http.StatusAccepted, run)
+		ok(w, http.StatusAccepted, s.P.ShownRunAs(who, run))
 		return
 	}
-	ok(w, http.StatusOK, run)
+	ok(w, http.StatusOK, s.P.ShownRunAs(who, run))
 }
 
 // events streams the caller's tenant's events as server-sent events.
@@ -960,7 +968,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// behind is ended here rather than fed a gap.
 				return
 			}
-			if !gate.seen(e.RunID) {
+			if !gate.seen(e.RunID) || !s.P.CitationEventVisible(who, e) {
 				continue
 			}
 			e = s.P.ShownEvent(who, e)
@@ -1007,6 +1015,16 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, detail(err, library.ErrInvalid))
 	case errors.Is(err, library.ErrConflict):
 		fail(w, http.StatusConflict, detail(err, library.ErrConflict))
+	case errors.Is(err, auth.ErrForbidden):
+		fail(w, http.StatusForbidden, detail(err, auth.ErrForbidden))
+	case errors.Is(err, sourcelinks.ErrInvalid):
+		fail(w, http.StatusBadRequest, "invalid source link rule")
+	case errors.Is(err, sourcelinks.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, sourcelinks.ErrConflict):
+		fail(w, http.StatusConflict, "source link rule changed; reload")
+	case errors.Is(err, sourcelinks.ErrLimit):
+		fail(w, http.StatusTooManyRequests, "source link rule limit reached")
 	case errors.Is(err, operations.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, operations.ErrNotFound):
@@ -1015,7 +1033,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, operations.ErrDenied):
 		fail(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, runs.ErrNotFound), errors.Is(err, registry.ErrNotFound), errors.Is(err, platform.ErrScheduleNotFound),
+	case errors.Is(err, projectforks.ErrNotFound), errors.Is(err, runs.ErrNotFound), errors.Is(err, registry.ErrNotFound), errors.Is(err, platform.ErrScheduleNotFound),
 		errors.Is(err, platform.ErrProjectNotFound), errors.Is(err, errNotSeen),
 		errors.Is(err, alerts.ErrNotFound), errors.Is(err, knowledge.ErrNotFound), errors.Is(err, evals.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound), errors.Is(err, policy.ErrNotFound), errors.Is(err, inbox.ErrNotFound),
@@ -1042,9 +1060,9 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, platform.ErrScheduleManaged))
 	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, projects.ErrInvalid):
+	case errors.Is(err, projectforks.ErrInvalid), errors.Is(err, projects.ErrInvalid):
 		fail(w, http.StatusBadRequest, detail(err, projects.ErrInvalid))
-	case errors.Is(err, projects.ErrLimit):
+	case errors.Is(err, projectforks.ErrLimit), errors.Is(err, projects.ErrLimit):
 		fail(w, http.StatusTooManyRequests, detail(err, projects.ErrLimit))
 	case errors.Is(err, projects.ErrManaged):
 		fail(w, http.StatusConflict, detail(err, projects.ErrManaged))

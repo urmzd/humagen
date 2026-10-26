@@ -13,7 +13,13 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Amount } from "./amount";
 import { ActionContext, Actions, Button, buttonClass, Menu } from "./buttons";
-import { CitationChip, Favicon, hostOf, useRegisterCitations } from "./citations";
+import {
+  CitationChip,
+  CitationProvenance,
+  Favicon,
+  hostOf,
+  useRegisterCitations,
+} from "./citations";
 import { CodeBlock, Terminal } from "./code";
 import { Feedback } from "./feedback";
 import { FileTile } from "./file";
@@ -311,8 +317,8 @@ function Callout({ tone, title, text }: PrimitiveProps["Callout"]) {
  * chips under the answer. Hover shows the snippet; the number matches the
  * inline citation.
  */
-function Sources({ items }: PrimitiveProps["Sources"]) {
-  useRegisterCitations(items);
+function Sources({ items, labels, scope }: PrimitiveProps["Sources"]) {
+  useRegisterCitations(items, labels, scope);
   return (
     <section data-aui="sources" aria-label="Sources" className="flex flex-col gap-1">
       <h4 className="font-medium text-aui-2xs text-aui-muted">
@@ -333,7 +339,7 @@ function Sources({ items }: PrimitiveProps["Sources"]) {
             "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-aui-border px-2 text-aui-xs";
           const tip = [c.title, origin, c.snippet].filter(Boolean).join("\n");
           return (
-            <li key={c.id} className="min-w-0 max-w-full">
+            <li key={c.id} className="flex min-w-0 max-w-full flex-col gap-1">
               {c.url ? (
                 <a
                   href={c.url}
@@ -349,6 +355,7 @@ function Sources({ items }: PrimitiveProps["Sources"]) {
                   {inner}
                 </span>
               )}
+              <CitationProvenance citation={c} labels={labels} />
             </li>
           );
         })}

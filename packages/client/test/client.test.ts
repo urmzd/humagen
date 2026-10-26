@@ -68,6 +68,7 @@ function last(): Seen {
 }
 
 const run: Run = {
+  citations: [],
   id: "r31d24839ddee5733b221391dfb156ce0",
   tag_id: "api-8-svc-acme-slack-evt-1",
   tenant: "acme",

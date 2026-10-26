@@ -51,9 +51,11 @@ func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operation
 		}
 	}
 	if c.Manager != "" {
-		if _, err := p.People.Get(who.Tenant, c.Manager); err != nil {
+		manager, err := p.operationPersonSubject(who.Tenant, c.Manager)
+		if err != nil {
 			return operations.Control{}, fmt.Errorf("%w: manager does not exist", operations.ErrInvalid)
 		}
+		c.Manager = manager
 	}
 	scope := "workspace"
 	id := "workspace"
@@ -62,7 +64,13 @@ func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operation
 		id = agent
 	}
 	before := p.AgentControl(who.Tenant, agent)
-	attempt, err := p.BeginAudit(who, audit.Change{Action: "agent.control", Resource: "agent_control", ID: id, Scope: scope, Agent: agent, Before: map[string]string{"paused": strconv.FormatBool(before.Paused)}, After: map[string]string{"paused": strconv.FormatBool(c.Paused)}})
+	if c.ReminderAfterSeconds == nil {
+		c.ReminderAfterSeconds = before.ReminderAfterSeconds
+	}
+	if c.BlockedReminderAfterSeconds == nil {
+		c.BlockedReminderAfterSeconds = before.BlockedReminderAfterSeconds
+	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "agent.control", Resource: "agent_control", ID: id, Scope: scope, Agent: agent, Before: map[string]string{"paused": strconv.FormatBool(before.Paused), "reminder_after_seconds": reminderSetting(before.ReminderAfterSeconds), "blocked_reminder_after_seconds": reminderSetting(before.BlockedReminderAfterSeconds)}, After: map[string]string{"paused": strconv.FormatBool(c.Paused), "reminder_after_seconds": reminderSetting(c.ReminderAfterSeconds), "blocked_reminder_after_seconds": reminderSetting(c.BlockedReminderAfterSeconds), "manager_changed": strconv.FormatBool(c.Manager != before.Manager), "stop_rules_changed": strconv.FormatBool(c.StopRules != before.StopRules)}})
 	if err != nil {
 		return operations.Control{}, err
 	}
@@ -132,12 +140,14 @@ func categoryOf(name string) operations.Category {
 	switch name {
 	case ToolCallAgent, ToolDelegate:
 		return operations.CallAgents
-	case ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search":
+	case "github_read_context", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search":
 		return operations.ReadContext
 	case ToolFileWrite, ToolSaveAgent:
 		return operations.WriteFiles
 	case ToolPublish:
 		return operations.PublishArtifacts
+	case "github_comment", "github_request_review", "github_add_labels", "github_apply_changes", "slack_add_reaction":
+		return operations.ExternalMessages
 	}
 	if strings.HasPrefix(name, "tag_") {
 		return operations.CallAgents
@@ -217,7 +227,11 @@ type operationTool struct {
 }
 
 func (p *Platform) operationTool(req runtime.Request, t saigetypes.Tool, c operations.Category) saigetypes.Tool {
-	return &operationTool{Tool: t, p: p, req: req, category: c}
+	wrapped := &operationTool{Tool: t, p: p, req: req, category: c}
+	if t.Definition().Name == "github_apply_changes" {
+		wrapped.extra = operations.WriteFiles
+	}
+	return wrapped
 }
 func (t *operationTool) ActsForPerson() bool {
 	v, ok := t.Tool.(agentrt.PersonScoped)
@@ -233,11 +247,14 @@ func (t *operationTool) Approval(c saigetypes.ToolCallPart) (agentrt.ApprovalReq
 		return agentrt.ApprovalRequest{}, false
 	}
 	control := t.p.AgentControl(t.req.Tenant, t.req.Agent())
-	approvers := slices.Clone(fallbackApprovers)
-	if control.Manager != "" {
-		approvers = append(approvers, control.Manager)
+	approvers := slices.Clone(t.req.Revision.Spec.Approvers)
+	if len(approvers) == 0 {
+		approvers = slices.Clone(fallbackApprovers)
+		if control.Manager != "" {
+			approvers = append(approvers, control.Manager)
+		}
 	}
-	return agentrt.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: approvers, ExpiresIn: 24 * time.Hour}, true
+	return agentrt.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: approvers, SelfApproval: t.req.Revision.Spec.SelfApproval, ExpiresIn: 24 * time.Hour}, true
 }
 func (t *operationTool) check(ctx context.Context) error {
 	if allowed, restricted, err := t.p.operationTools(t.req); err != nil {
@@ -347,9 +364,15 @@ func (p *Platform) shownHandoff(who auth.Principal, h operations.Handoff) operat
 				allowed = seer.Place(Place{Project: th.Project, Thread: th.ID})
 			}
 		case "artifact":
-			id, _, _ := strings.Cut(in.Reference, "@")
-			if a, err := p.Artifacts.Get(who.Tenant, id); err == nil {
-				allowed = seer.Artifact(a)
+			id, version, _ := strings.Cut(in.Reference, "@")
+			if versions, err := p.Artifacts.Versions(who.Tenant, id); err == nil {
+				for _, artifact := range versions {
+					if strconv.Itoa(artifact.Version) == version && seer.Artifact(artifact) {
+						allowed = true
+						in.Reference = artifact.ID + "@" + version
+						break
+					}
+				}
 			}
 		}
 		if allowed {
@@ -394,9 +417,11 @@ func (p *Platform) UpdateHandoff(who auth.Principal, id string, in HandoffUpdate
 		}
 	}
 	if in.Owner != "" && in.Owner != who.Subject {
-		if _, err := p.People.Get(who.Tenant, in.Owner); err != nil {
+		owner, err := p.operationPersonSubject(who.Tenant, in.Owner)
+		if err != nil {
 			return operations.Handoff{}, operations.ErrInvalid
 		}
+		in.Owner = owner
 	}
 	if !slices.Contains([]operations.WorkState{operations.Accepted, operations.Blocked, operations.NeedsPerson, operations.Result}, in.State) || in.DueAt.IsZero() {
 		return operations.Handoff{}, operations.ErrInvalid
@@ -567,20 +592,33 @@ func (p *Platform) ConversationOperationsSettled(tenant, thread string) bool {
 
 type AgentControlView struct {
 	operations.Control
-	State           string      `json:"state"`
-	EffectivePaused bool        `json:"effective_paused"`
-	ManagerName     string      `json:"manager_name,omitempty"`
-	LastRun         string      `json:"last_run,omitempty"`
-	LastRunAt       time.Time   `json:"last_run_at,omitzero"`
-	LastRunStatus   runs.Status `json:"last_run_status,omitempty"`
+	State                                string      `json:"state"`
+	EffectivePaused                      bool        `json:"effective_paused"`
+	PauseReason                          string      `json:"pause_reason,omitempty"`
+	EffectiveReminderAfterSeconds        int         `json:"effective_reminder_after_seconds"`
+	EffectiveBlockedReminderAfterSeconds int         `json:"effective_blocked_reminder_after_seconds"`
+	ManagerName                          string      `json:"manager_name,omitempty"`
+	LastRun                              string      `json:"last_run,omitempty"`
+	LastRunAt                            time.Time   `json:"last_run_at,omitzero"`
+	LastRunStatus                        runs.Status `json:"last_run_status,omitempty"`
 }
 
 // AgentState describes only work this reader can see, never hidden activity.
 func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView {
 	c := p.AgentControl(who.Tenant, agent)
 	view := AgentControlView{Control: c, State: "ready", EffectivePaused: p.Operations.Paused(who.Tenant, legacy.BuiltinAgent(agent)) || !p.agentReady(who.Tenant, agent), ManagerName: p.NameOf(who.Tenant, c.Manager)}
+	view.EffectiveReminderAfterSeconds = int(p.operationReminderDelay(who.Tenant, agent, false).Seconds())
+	view.EffectiveBlockedReminderAfterSeconds = int(p.operationReminderDelay(who.Tenant, agent, true).Seconds())
 	if view.EffectivePaused {
 		view.State = "paused"
+		switch {
+		case p.Operations.Control(who.Tenant, "").Paused:
+			view.PauseReason = "workspace"
+		case !p.agentReady(who.Tenant, agent):
+			view.PauseReason = "setup"
+		default:
+			view.PauseReason = "agent"
+		}
 	}
 	if agent == "" || !who.Can(auth.RunsRead) {
 		return view

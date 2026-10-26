@@ -364,3 +364,28 @@ or remove one. Creating a client and setting its limits are API calls.
 - Minting or refreshing GitHub installation tokens.
 - Slack OAuth installation. A client is given a bot token.
 - Jira and email clients. The two surfaces are Slack and GitHub.
+
+## Installation controls and bridge direction
+
+`GET /api/clients/{id}/capabilities` lists supported verified event families and
+native actions actually registered by the current adapter. A versioned `PUT`
+saves explicit event/action lists and `deliver_outcomes`. Empty lists disable
+those capabilities. Existing installations without a saved policy keep their
+configured behavior. These controls only narrow the installation's agent,
+project and action-policy grants. Managed installations are read-only.
+
+A Slack channel binding optionally sets `direction`: `two_way` (the legacy
+default), `inbound`, or `outcomes`. Inbound mirrors mapped human messages
+passively, without waking agents or posting automated Slack output. Outcomes
+ignores incoming human messages and sends permitted final outcomes and decisions.
+Two-way permits both. Bound bridges do not stream Activity or retained source
+metadata. The native host asks the current server delivery guard before writing
+a run outside Humagen; private threads or private source/library context are
+withheld. Explicit action-policy Ask still requires the native approval path;
+automatic delivery cannot grant it. Direction edits preserve binding identity and
+require the channel's current version and existing project/client permissions.
+
+GitHub installations may set `github.people`, a bounded exact GitHub-login to
+workspace-subject map. Only that verified installation's map applies. Bot,
+unmapped and disabled-installation actors act for nobody. A mapping does not
+grant membership or permissions; current project and policy checks still apply.

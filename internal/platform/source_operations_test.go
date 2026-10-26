@@ -49,9 +49,10 @@ func TestSourceGroundingHonorsReadPolicyBeforeAnyRetriever(t *testing.T) {
 			if len(req.Revision.Spec.Sources) != 1 || len(got.Revision.Spec.Tools) != 0 {
 				t.Fatal("policy mutated stored grants or added source_search")
 			}
-			if len(p.grounding.grants) != 0 {
-				t.Fatal("withheld/global source minted a capability")
+			if len(p.grounding.grants) != tt.want {
+				t.Fatal("withheld source minted a capability")
 			}
+			p.releaseSourceGrounding(got)
 		})
 	}
 }
@@ -83,5 +84,39 @@ func TestSourceGroundingUsesAuthoritativeAdmissionBeforeRunRecord(t *testing.T) 
 	req.Tenant = "other"
 	if project, person := p.operationPlace(req); project != "" || person != "" {
 		t.Fatal("admission identity crossed tenants")
+	}
+}
+
+func TestRetrieverRechecksTightenedReadContextBeforeActualRead(t *testing.T) {
+	for _, level := range []operations.Level{operations.Ask, operations.Never} {
+		t.Run(string(level), func(t *testing.T) {
+			p, err := New(Config{Workspace: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = p.Close() })
+			_, _ = p.Knowledge.Create("tenant", "shared", "", "owner", time.Now())
+			_, _ = p.Knowledge.Add("tenant", "shared", "Runbook", "", "private retrieval canary", "owner", time.Now())
+			req := runtime.Request{Tenant: "tenant", RunID: "run-late-policy", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "worker", Provider: "offline", Sources: []agentrt.Source{{Name: "shared", URI: "knowledge://shared"}}}}}
+			resolved, err := p.withSourceGrounding(req, "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			retriever := p.knowledgeFor("tenant", []string{resolved.Revision.Spec.Sources[0].Name})
+			if retriever == nil {
+				t.Fatal("allowed initial retriever missing")
+			}
+			_, err = p.Operations.SetPolicy("tenant", operations.Policy{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.ReadContext: level}}, 0, "owner", time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := retriever.Retrieve(t.Context(), "canary")
+			if err != nil || got != nil {
+				t.Fatal("tightened policy still read source content", got, err)
+			}
+			if _, ok := p.SourceCitationEvidence("tenant", req.RunID, "[1]", ""); ok {
+				t.Fatal("denied retrieval recorded evidence")
+			}
+		})
 	}
 }

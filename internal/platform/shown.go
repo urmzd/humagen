@@ -171,6 +171,17 @@ func (s *shower) thread(th threads.Thread) threads.Thread {
 		ps[i] = who
 	}
 	th.Participants = ps
+	if th.Fork != nil {
+		f := *th.Fork
+		f.By = s.key(f.By)
+		f.Context = slices.Clone(f.Context)
+		for i := range f.Context {
+			if f.Context[i].Kind == threads.Person {
+				f.Context[i].By = s.key(f.Context[i].By)
+			}
+		}
+		th.Fork = &f
+	}
 	th.CreatedBy = s.key(th.CreatedBy)
 	return th
 }

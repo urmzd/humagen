@@ -48,8 +48,8 @@ import (
 //     in a shared thread answers that message again (retryAnswer);
 //   - everything else acts for nobody: a machine asking as itself, a
 //     schedule firing on its own clock, the platform's own housekeeping, an
-//     eval, a run another agent called, and every GitHub actor, since no
-//     client maps GitHub logins.
+//     eval, a run another agent called, and an unmapped GitHub actor. GitHub logins are mapped only by
+//     their own verified installation.
 //
 // What a person answers a run steers what its tools are asked next, and a
 // called run's answer is its caller's. So a run that uses the credential of
@@ -163,9 +163,16 @@ func PersonActor(subject string) envelope.Actor {
 // map the tag's Slack user to. The map is often on another client than the
 // one that received the message (a people map needs a machine, so an app
 // built on the API holds it). No mapping, or two clients mapping the user to
-// different people, is nobody, and so is a bot and every GitHub actor.
+// different people, is nobody. GitHub uses only its own installation’s exact
+// verified login map. A bot always acts for nobody.
 func (p *Platform) surfacePerson(c clients.Client, tag envelope.Tag) string {
 	id := strings.TrimSpace(tag.Actor.ID)
+	if c.Surface == clients.GitHub {
+		if !c.Enabled || tag.Actor.Bot || c.GitHub == nil {
+			return ""
+		}
+		return c.GitHub.People[tag.Actor.ID]
+	}
 	if c.Surface != clients.Slack || tag.Actor.Bot || id == "" || c.Identity.Team == "" {
 		return ""
 	}

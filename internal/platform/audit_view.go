@@ -30,6 +30,9 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 				return false
 			}
 		}
+		if record.Resource == "client" && !who.Can(auth.ClientsRead) {
+			return false
+		}
 		if record.Resource == "source_link_rule" {
 			if !who.Can(auth.ClientsRead) || !seer.Knowledge() {
 				return false

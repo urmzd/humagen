@@ -23,6 +23,14 @@ test("what may answer: with every platform agent, those with no home and the pro
   assert.deepEqual(availableOf(all, null, homes), all);
 });
 
+test("explicit Company homes remain platform-wide while scoped homes require the server's named offer", () => {
+  const names = ["helper", "humagen-analyst", "older-root", "scoped"];
+  const homes = { helper: "~", "humagen-analyst": "~", "older-root": "", scoped: "Vault" };
+  assert.deepEqual(availableOf(names, view(true, []), homes), ["helper", "humagen-analyst", "older-root"]);
+  assert.deepEqual(availableOf(names, view(false, ["helper"]), homes), ["helper"]);
+  assert.deepEqual(availableOf(names, view(true, ["scoped"]), homes), names);
+});
+
 test("where an agent comes from reads in words, and where a default is set is a project", () => {
   const title = (n: string) => (n === "" ? "Acme" : n);
   assert.equal(offerWords({ agent: "globex-helper", from: "Globex", home: true }, "Globex", title), "Lives here");

@@ -20,9 +20,9 @@ govern implementation, including shared presentation and agent identity.
 | --- | --- | --- |
 | DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
-| DES-003 | Reveal the message Fork action on hover and keyboard focus | Board interaction checked in Chromium; native conversation-fork API pending |
+| DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
-| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions. Global navigation, screenshots and source-health integration belong to the following stack layers. |
+| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions, inherited policy provenance, effective pause, typed contract inputs and reviewed deadlines. Native reminders survive restart on the same confined inbox item. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
@@ -48,9 +48,19 @@ govern implementation, including shared presentation and agent identity.
   are implemented. Native Drive/Notion boundaries, personal reference resolution,
   scoped lifecycle APIs, source dependency views and connection controls are
   implemented. Automated transport tests, memory/Postgres replay, HTTP contract
-  tests, three DOM states and eight phone/desktop source-state captures pass.
-  Live provider accounts and resource-rule configuration/application remain
-  pending. See [sources](docs/sources.md) for supported formats and limits.
+  tests, source integration DOM states and phone/desktop source-state captures
+  pass. Atomic scoped creation, real resource selection, frozen-copy replacement,
+  sync settings, current-policy scheduled refresh and confined unsaved rule
+  previews are implemented. Live provider accounts, verified connector rule
+  application and durable link suggestions remain pending. See [sources](docs/sources.md) for supported formats and limits.
+- Per-installation event subscriptions and actual registered native actions now
+  have versioned saved controls. They tighten current adapter and action-policy
+  grants and are rechecked at execution. Slack bridge directions are durable:
+  inbound mirrors mapped human messages without waking an agent; outcomes sends
+  permitted final outcomes and decisions; two-way supports both. Activity and
+  retained source metadata are withheld, and private-context delivery is refused
+  by the server. Native-host, contract, confinement and memory/Postgres replay
+  tests exercise these paths. Live external delivery remains unverified.
 - Acceptance: exercise each newly wired control through its real host/API
   boundary, including a saved success, a visible failure, and denied access.
   Distinguish automated or simulated API checks from a live external-service
@@ -121,8 +131,10 @@ govern implementation, including shared presentation and agent identity.
 The approved implementation pass covers supported Slack and GitHub workspace
 connection controls through the existing clients API, removal of separator dots
 in the boards and touched console metadata, accessible native human-message
-timestamps, and Fork hover/focus behavior in the board. Native conversation
-forking remains pending because its backend operation is not implemented.
+timestamps, and Fork hover/focus behavior in the board. Native conversation forking now has a persisted operation, bounded passive history,
+source-chain confinement, selected sources applied to real turns, and an explicit
+bring-back action that posts without executing tags or tools. Shared message action
+wiring remains tracked separately.
 Creating a configured client is not evidence that external credentials work or
 that a live Slack or GitHub delivery has succeeded.
 For GitHub default-agent routing, configure the app's own bot login so native

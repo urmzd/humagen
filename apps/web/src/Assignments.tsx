@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type Assignment, type AssignmentInput, api } from "./api.ts";
 import { AgentMark, field, Label, Page, Problem, primary } from "./ui.tsx";
 
@@ -24,8 +24,25 @@ function inputOf(a: Assignment): AssignmentInput {
   };
 }
 
+function localDeadline(value?: string): string {
+  if (!value || value.startsWith("0001")) return "";
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+const activeRun = (assignment: Assignment) =>
+  assignment.run_status === "accepted" ||
+  assignment.run_status === "running" ||
+  assignment.run_status === "parked";
+const expired = (assignment: Assignment) =>
+  Boolean(
+    assignment.due_at &&
+      !assignment.due_at.startsWith("0001") &&
+      new Date(assignment.due_at).getTime() <= Date.now(),
+  );
+
 export function Assignments({
   selectedId,
+  agent: defaultAgent,
   sources = [],
   agents,
   projects,
@@ -35,6 +52,7 @@ export function Assignments({
   onConversation,
 }: {
   selectedId?: string;
+  agent?: string;
   sources?: { name: string; label: string }[];
   agents: string[];
   projects: { name: string; title: string }[];
@@ -46,23 +64,36 @@ export function Assignments({
   const [items, setItems] = useState<Assignment[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(Boolean(defaultAgent && canWrite));
   const [goal, setGoal] = useState("");
   const [done, setDone] = useState("");
-  const [agent, setAgent] = useState("");
+  const [agent, setAgent] = useState(defaultAgent ?? "");
   const [project, setProject] = useState("");
   const [cron, setCron] = useState("");
   const [trigger, setTrigger] = useState<"manual" | "cron" | "source_change">("manual");
   const [source, setSource] = useState("");
   const [due, setDue] = useState("");
+  const resource = `${selectedId ?? ""}\0${defaultAgent ?? ""}`;
+  const current = useRef(resource);
+  current.current = resource;
+  useEffect(() => {
+    setAgent(defaultAgent ?? "");
+    setCreating(Boolean(defaultAgent && canWrite));
+  }, [defaultAgent, canWrite]);
   const refresh = useCallback(async () => {
     try {
-      setItems(selectedId ? [await api.assignment(selectedId)] : await api.assignments());
+      const read = selectedId
+        ? [await api.assignment(selectedId)]
+        : await api.assignments(defaultAgent);
+      if (current.current === resource) setItems(read);
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : words.loadFailed);
+      if (current.current === resource)
+        setProblem(e instanceof Error ? e.message : words.loadFailed);
     }
-  }, [selectedId]);
+  }, [selectedId, defaultAgent, resource]);
   useEffect(() => {
+    setItems([]);
+    setProblem(null);
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
     return () => clearInterval(timer);
@@ -109,13 +140,13 @@ export function Assignments({
       actions={
         canWrite ? (
           <button className={primary} type="button" onClick={() => setCreating(!creating)}>
-            {words.newAssignment}
+            {creating ? words.cancelCreate : words.newAssignment}
           </button>
         ) : undefined
       }
     >
       <Problem message={problem} />
-      {creating && (
+      {creating && canWrite && (
         <form
           className="mb-6 flex max-w-2xl flex-col gap-3"
           onSubmit={(e) => {
@@ -269,6 +300,25 @@ export function Assignments({
                   </div>
                 )}
               </dl>
+              {a.run_status && (
+                <p className="text-aui-xs text-aui-muted">
+                  {words.recordedRunState}: {a.run_status}
+                </p>
+              )}
+              {a.deadline_missed && a.state === "result" && (
+                <p className="text-aui-sm text-aui-muted">{words.lateResult}</p>
+              )}
+              {a.due_at &&
+                !a.due_at.startsWith("0001") &&
+                new Date(a.due_at).getTime() <= Date.now() &&
+                a.state !== "result" &&
+                a.state !== "cancelled" && <p className="text-aui-sm">{words.expiredDeadline}</p>}
+              {canWrite &&
+                a.owner === subject &&
+                a.state !== "in_progress" &&
+                a.state !== "cancelled" && (
+                  <AssignmentDeadline assignment={a} onSaved={() => void refresh()} />
+                )}
               {a.blocker && (
                 <output className="text-aui-sm">
                   {words.blocker}: {a.blocker}
@@ -283,7 +333,7 @@ export function Assignments({
                       {a.state !== "result" && (
                         <button
                           type="button"
-                          disabled={busy}
+                          disabled={busy || expired(a) || activeRun(a)}
                           onClick={() =>
                             void act(async () => {
                               const r = await api.runAssignment(a.id);
@@ -297,7 +347,7 @@ export function Assignments({
                       {(a.cron || a.trigger === "source_change") && a.state !== "watching" && (
                         <button
                           type="button"
-                          disabled={busy}
+                          disabled={busy || expired(a) || activeRun(a)}
                           onClick={() => void state(a, "watching")}
                         >
                           {words.watch}
@@ -330,5 +380,99 @@ export function Assignments({
         </ul>
       )}
     </Page>
+  );
+}
+
+function AssignmentDeadline({
+  assignment,
+  onSaved,
+}: {
+  assignment: Assignment;
+  onSaved: () => void;
+}) {
+  const [baseline, setBaseline] = useState(assignment);
+  const [due, setDue] = useState(() => localDeadline(assignment.due_at));
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string>();
+  useEffect(() => {
+    if (!dirty && assignment.version > baseline.version) {
+      setBaseline(assignment);
+      setDue(localDeadline(assignment.due_at));
+    }
+  }, [assignment, dirty, baseline.version]);
+  const reload = () => {
+    setBaseline(assignment);
+    setDue(localDeadline(assignment.due_at));
+    setDirty(false);
+    setProblem(undefined);
+  };
+  return (
+    <details className="max-w-xl">
+      <summary className="cursor-pointer text-aui-sm">{words.reviewDeadline}</summary>
+      <form
+        className="mt-3 flex flex-col gap-3"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (busy) return;
+          setBusy(true);
+          setProblem(undefined);
+          try {
+            await api.saveAssignment({
+              ...inputOf(baseline),
+              due_at: due ? new Date(due).toISOString() : undefined,
+            });
+            setDirty(false);
+            onSaved();
+          } catch (error) {
+            setProblem(error instanceof Error ? error.message : words.failed);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Problem message={problem ?? null} />
+        <Label text={words.due}>
+          <input
+            className={field}
+            type="datetime-local"
+            value={due}
+            disabled={busy}
+            onInput={(event) => {
+              setDue(event.currentTarget.value);
+              setDirty(true);
+            }}
+            onChange={(event) => {
+              setDue(event.target.value);
+              setDirty(true);
+            }}
+          />
+        </Label>
+        {baseline.version !== assignment.version && (
+          <button type="button" onClick={reload}>
+            {words.reviewLatest}
+          </button>
+        )}
+        <div className="flex flex-wrap gap-4">
+          <button
+            type="submit"
+            className={primary}
+            disabled={busy || baseline.version !== assignment.version}
+          >
+            {words.saveDeadline}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setDue("");
+              setDirty(true);
+            }}
+          >
+            {words.clearDeadline}
+          </button>
+        </div>
+      </form>
+    </details>
   );
 }

@@ -42,7 +42,7 @@ func (p *Platform) assignmentSourceGrant(ctx context.Context, tenant, project, a
 			return true
 		}
 	}
-	for _, s := range p.Projects.Tree(tenant).Knowledge(project) {
+	for _, s := range p.knowledgeAtPlace(tenant, project, "general") {
 		if s.Name == source {
 			return true
 		}
@@ -118,6 +118,13 @@ func (p *Platform) pollSourceAssignments(ctx context.Context, tenant string) {
 	}
 }
 func (p *Platform) shownAssignment(who auth.Principal, a operations.Assignment) operations.Assignment {
+	a.RunStatus = ""
+	if a.RunID != "" {
+		if run, err := p.Runs.Get(who.Tenant, a.RunID); err == nil && p.Seer(who).Run(run) {
+			a.RunStatus = string(run.Status)
+		}
+	}
+
 	if !who.Can(auth.KnowledgeRead) {
 		a.Source = ""
 		a.SourceVersion = 0

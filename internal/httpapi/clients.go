@@ -15,6 +15,9 @@ import (
 // create or change one, because that hands the workspace's agents a
 // credential. A secret is written and never read back: no response carries one.
 func (s *Server) clientRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/clients/{id}/delivery", s.authed(auth.ClientsRead, s.clientBridgeDelivery))
+	mux.HandleFunc("GET /api/clients/{id}/capabilities", s.authed(auth.ClientsRead, s.getClientCapabilities))
+	mux.HandleFunc("PUT /api/clients/{id}/capabilities", s.authed(auth.ClientsWrite, s.putClientCapabilities))
 	mux.HandleFunc("GET /api/clients", s.authed(auth.ClientsRead, s.listClients))
 	mux.HandleFunc("POST /api/clients", s.authed(auth.ClientsWrite, s.createClient))
 	mux.HandleFunc("GET /api/clients/{id}", s.authed(auth.ClientsRead, s.getClient))

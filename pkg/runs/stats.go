@@ -19,17 +19,27 @@ type Bucket struct {
 	// were attached to. They are neither completed nor failed.
 	Stopped int `json:"stopped"`
 	// Active is runs that have not ended: queued, running or parked.
-	Active int `json:"active"`
+	Active           int `json:"active"`
+	CompletedAlone   int `json:"completed_alone"`
+	NeededPerson     int `json:"needed_person"`
+	HumanHelpUnknown int `json:"human_help_unknown"`
 }
 
 // Group is one slice of the runs: an agent, an origin or a schedule.
 type Group struct {
-	Name      string `json:"name"`
-	Runs      int    `json:"runs"`
-	Completed int    `json:"completed"`
-	Failed    int    `json:"failed"`
-	Stopped   int    `json:"stopped"`
-	Active    int    `json:"active"`
+	Name             string    `json:"name"`
+	Runs             int       `json:"runs"`
+	Completed        int       `json:"completed"`
+	Failed           int       `json:"failed"`
+	Stopped          int       `json:"stopped"`
+	Active           int       `json:"active"`
+	CompletedAlone   int       `json:"completed_alone"`
+	NeededPerson     int       `json:"needed_person"`
+	HumanHelpUnknown int       `json:"human_help_unknown"`
+	Average          int64     `json:"avg_ms"`
+	HandoffsOut      int       `json:"handoffs_out"`
+	LastFailureRun   string    `json:"last_failure_run,omitempty"`
+	LastFailureAt    time.Time `json:"last_failure_at,omitzero"`
 	// P50 and P95 are durations of ended runs, in milliseconds.
 	P50 int64 `json:"p50_ms"`
 	P95 int64 `json:"p95_ms"`
@@ -95,19 +105,20 @@ func (x *Index) summarize(tenant string, since, until time.Time, bucket time.Dur
 	if bucket <= 0 {
 		bucket = time.Minute
 	}
-	if span := until.Sub(since); span > 0 && span/bucket > MaxBuckets {
-		bucket = (span / MaxBuckets).Truncate(time.Second) + time.Second
+	if span := until.Sub(since); span > 0 && bucket <= span/(MaxBuckets-1) {
+		bucket = span/(MaxBuckets-1) + time.Nanosecond
 	}
-	since = since.Truncate(bucket)
+	start := since.Truncate(bucket)
 
 	s := Summary{Since: since, Until: until, Bucket: bucket, Total: Group{Name: "all"}}
-	for t := since; t.Before(until); t = t.Add(bucket) {
+	for t := start; t.Before(until); t = t.Add(bucket) {
 		s.Buckets = append(s.Buckets, Bucket{Start: t})
 	}
 
 	type acc struct {
-		g         Group
-		durations []int64
+		g             Group
+		durations     []int64
+		durationTotal int64
 	}
 	total := &acc{g: s.Total}
 	agents, origins := map[string]*acc{}, map[string]*acc{}
@@ -127,20 +138,39 @@ func (x *Index) summarize(tenant string, since, until time.Time, bucket time.Dur
 			continue
 		}
 		var b *Bucket
-		if i := int(r.CreatedAt.Sub(since) / bucket); i >= 0 && i < len(s.Buckets) {
+		if i := int(r.CreatedAt.Sub(start) / bucket); i >= 0 && i < len(s.Buckets) {
 			b = &s.Buckets[i]
 		}
 		if r.Parent != "" {
 			s.Delegated++
+			if parent := x.runs[r.Parent]; parent != nil && parent.Tenant == tenant &&
+				(r.Mode == "handoff" || r.Mode == "delegate") && (keep == nil || keep(parent)) {
+				total.g.HandoffsOut++
+				at(agents, parent.Agent).g.HandoffsOut++
+				at(origins, parent.Origin).g.HandoffsOut++
+			}
 		}
 		for _, a := range []*acc{total, at(agents, r.Agent), at(origins, r.Origin)} {
 			a.g.Runs++
 			a.g.Usage.add(r.Usage)
+			switch r.Assistance {
+			case "needed":
+				a.g.NeededPerson++
+			case "none":
+				if r.Status == Completed {
+					a.g.CompletedAlone++
+				}
+			default:
+				a.g.HumanHelpUnknown++
+			}
 			switch r.Status {
 			case Completed:
 				a.g.Completed++
 			case Failed:
 				a.g.Failed++
+				if a.g.LastFailureRun == "" || r.UpdatedAt.After(a.g.LastFailureAt) {
+					a.g.LastFailureRun, a.g.LastFailureAt = r.ID, r.UpdatedAt
+				}
 			case Stopped:
 				a.g.Stopped++
 			default:
@@ -148,9 +178,20 @@ func (x *Index) summarize(tenant string, since, until time.Time, bucket time.Dur
 			}
 			if r.Status.Terminal() {
 				a.durations = append(a.durations, r.UpdatedAt.Sub(r.CreatedAt).Milliseconds())
+				a.durationTotal += max(r.UpdatedAt.Sub(r.CreatedAt).Milliseconds(), 0)
 			}
 		}
 		if b != nil {
+			switch r.Assistance {
+			case "needed":
+				b.NeededPerson++
+			case "none":
+				if r.Status == Completed {
+					b.CompletedAlone++
+				}
+			default:
+				b.HumanHelpUnknown++
+			}
 			switch r.Status {
 			case Completed:
 				b.Completed++
@@ -171,6 +212,9 @@ func (x *Index) summarize(tenant string, since, until time.Time, bucket time.Dur
 	finish := func(a *acc) Group {
 		slices.Sort(a.durations)
 		a.g.P50, a.g.P95 = percentile(a.durations, 50), percentile(a.durations, 95)
+		if len(a.durations) > 0 {
+			a.g.Average = a.durationTotal / int64(len(a.durations))
+		}
 		return a.g
 	}
 	groups := func(m map[string]*acc) []Group {

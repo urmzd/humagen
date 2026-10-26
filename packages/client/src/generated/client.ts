@@ -8,6 +8,8 @@ import type {
   AgentControlInput,
   AgentHome,
   AgentNetwork,
+  AgentSkillDefaults,
+  AgentSkillDefaultsUpdate,
   AgentSpec,
   Alert,
   AlertRule,
@@ -16,22 +18,30 @@ import type {
   Artifact,
   Assignment,
   AssignmentInput,
+  AttachKnowledgeSourceBody,
+  BringBackThreadResultBody,
   CallPolicy,
   CallPolicyInput,
   ChannelInput,
   ChannelUpdate,
   ChannelView,
   Choice,
+  ClientBridgeDeliveryResponse,
+  ClientCapabilityPolicy,
   ClientInput,
   ClientView,
   ConnectKnowledgeSourceBody,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
+  DecideSourceLinkSuggestionBody,
+  DiscoverWorkspaceResponse,
   DraftLibrarySkillBody,
   EvalRun,
   EvalSuite,
   FindHelpResponse,
+  ForkProjectBody,
+  ForkThreadBody,
   GetAgentHuesResponse,
   GetAgentRosterResponse,
   GetInboxMessageResponse,
@@ -45,6 +55,8 @@ import type {
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
+  InstallationCapabilities,
+  KnowledgeAttachment,
   KnowledgeDocument,
   KnowledgeSource,
   KnowledgeSourceConfig,
@@ -64,7 +76,9 @@ import type {
   ListEvalRunsResponse,
   ListEvalSuitesResponse,
   ListInboxResponse,
+  ListKnowledgeAttachmentsResponse,
   ListKnowledgeDocumentsResponse,
+  ListKnowledgeResourcesResponse,
   ListKnowledgeSourcesResponse,
   ListLibrarySkillsResponse,
   ListMentionsResponse,
@@ -74,6 +88,7 @@ import type {
   ListPoliciesResponse,
   ListPolicyHistoryResponse,
   ListProjectHistoryResponse,
+  ListProjectTemplatesResponse,
   ListProjectsResponse,
   ListReachableAgentsResponse,
   ListReadAuditResponse,
@@ -81,6 +96,7 @@ import type {
   ListRunFeedbackResponse,
   ListSchedulesResponse,
   ListSkillsResponse,
+  ListSourceLinkSuggestionsResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -94,11 +110,13 @@ import type {
   Policy,
   PolicyInput,
   Preferences,
+  PreviewSourceLinkRulesResponse,
   ProjectAgentsInput,
   ProjectAgentsView,
   ProjectContext,
   ProjectDetail,
   ProjectExperts,
+  ProjectForkOperation,
   ProjectInput,
   ProjectKnowledge,
   ProjectKnowledgeInput,
@@ -106,6 +124,7 @@ import type {
   ProjectMembers,
   ProjectMembersInput,
   ProjectMove,
+  ProjectRollup,
   ProjectSkills,
   ProjectSkillsInput,
   ProjectUpdate,
@@ -113,6 +132,7 @@ import type {
   PromoteLibrarySkillBody,
   PromoteMemoryBody,
   PublishThreadSummaryBody,
+  PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -128,14 +148,20 @@ import type {
   SearchKnowledgeResponse,
   SetAgentHomeBody,
   SetKnowledgeDocumentExcludedBody,
+  SetKnowledgeSyncSettingsBody,
   Settings,
   SnoozeInboxMessageBody,
+  SourceLinkResource,
+  SourceLinkRule,
+  SourceLinkRuleInput,
+  SourceLinkSuggestion,
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
   TestLibrarySkillBody,
   Thread,
   ThreadInput,
+  ThreadMessage,
   ThreadMessageInput,
   ThreadPage,
   ThreadParticipantsUpdate,
@@ -474,6 +500,71 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** Read this installation's actual event and action inventory */
+  async getClientCapabilities(id: string, options?: RequestOptions): Promise<InstallationCapabilities> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InstallationCapabilities>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getClientCapabilitiesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InstallationCapabilities>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Explicit empty lists deny every event or action. These controls add no provider scopes, agent tool grants or approval rights. Existing managed installations keep their file-defined settings. */
+  async putClientCapabilities(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<InstallationCapabilities> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InstallationCapabilities>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putClientCapabilitiesRaw(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InstallationCapabilities>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Recheck a native host's current permission to deliver this visible run */
+  async clientBridgeDelivery(id: string, run: string, channel: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
+    let path = "/api/clients/{id}/delivery";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ClientBridgeDeliveryResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
+    let path = "/api/clients/{id}/delivery";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ClientBridgeDeliveryResponse>("GET", path, {
+      ...options,
+    });
   }
 
   /** Copies only the selected approved unexpired text, kind and expiry. The new note is pending and attributed to the copier. Private original provenance is never copied. */
@@ -1079,6 +1170,44 @@ nowhere (400).
     let path = "/api/agents/{name}/history";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<ListAgentRevisionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Read exact published default skill revisions */
+  async getAgentSkillDefaults(name: string, options?: RequestOptions): Promise<AgentSkillDefaults> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSkillDefaults>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentSkillDefaultsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSkillDefaults>> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSkillDefaults>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Bind exact published skills to the current agent revision */
+  async setAgentSkillDefaults(name: string, body: AgentSkillDefaultsUpdate, options?: RequestOptions): Promise<AgentSkillDefaults> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSkillDefaults>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setAgentSkillDefaultsRaw(name: string, body: AgentSkillDefaultsUpdate, options?: RequestOptions): Promise<ApiResponse<AgentSkillDefaults>> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSkillDefaults>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
@@ -1979,6 +2108,147 @@ here too (429).
     });
   }
 
+  /** Only readable current project placements contribute. Confirmed unexpired typed decisions and risks are projected without private provenance. Rows are capped at 100 projects, 100 notes and 50 needs. Runs are counted over the preceding 30 days and require runs:read. No child work is executed by an initiative. */
+  async getProjectRollup(name: string, options?: RequestOptions): Promise<ProjectRollup> {
+    let path = "/api/projects/{name}/rollup";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectRollup>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectRollupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectRollup>> {
+    let path = "/api/projects/{name}/rollup";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectRollup>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly. */
+  async discoverWorkspace(q?: string, limit?: number, kinds?: string, project?: string, options?: RequestOptions): Promise<DiscoverWorkspaceResponse> {
+    let path = "/api/discovery";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (kinds !== undefined && kinds !== null) _q.set("kinds", String(kinds));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<DiscoverWorkspaceResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async discoverWorkspaceRaw(q?: string, limit?: number, kinds?: string, project?: string, options?: RequestOptions): Promise<ApiResponse<DiscoverWorkspaceResponse>> {
+    let path = "/api/discovery";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (kinds !== undefined && kinds !== null) _q.set("kinds", String(kinds));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<DiscoverWorkspaceResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List bounded project templates supplied by the server */
+  async listProjectTemplates(options?: RequestOptions): Promise<ListProjectTemplatesResponse> {
+    const path = "/api/project-templates";
+    return this.request<ListProjectTemplatesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listProjectTemplatesRaw(options?: RequestOptions): Promise<ApiResponse<ListProjectTemplatesResponse>> {
+    const path = "/api/project-templates";
+    return this.rawRequest<ListProjectTemplatesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Copies at most 20 visible projects and 20 agents. New projects stay invisible and cannot run until all selected configuration is copied and one durable publication gate opens. Copies no conversations, schedules or approvals. Select confirmed memory explicitly. Live bindings are detached and copied integration rules stay disabled. Repeating the same source, destination and parent resumes the creator's saved operation. */
+  async forkProject(name: string, body: ForkProjectBody, options?: RequestOptions): Promise<ProjectForkOperation> {
+    let path = "/api/projects/{name}/fork";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectForkOperation>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async forkProjectRaw(name: string, body: ForkProjectBody, options?: RequestOptions): Promise<ApiResponse<ProjectForkOperation>> {
+    let path = "/api/projects/{name}/fork";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectForkOperation>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Only the exact human creator can read a workflow, including before its staged resources become visible. Source access remains required to resume a copy. Another creator's operation answers like a missing one. */
+  async getProjectFork(name: string, options?: RequestOptions): Promise<ProjectForkOperation> {
+    let path = "/api/project-forks/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectForkOperation>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectForkRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectForkOperation>> {
+    let path = "/api/project-forks/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectForkOperation>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Copies bounded passive context through a message or completed run. No action, approval or run is copied. The fork stays in the source project. Every read still requires access to its source chain. */
+  async forkThread(id: string, body: ForkThreadBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/fork";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async forkThreadRaw(id: string, body: ForkThreadBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/fork";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The caller explicitly posts a completed result as their own passive message. Requires posting access to the parent and read access to both conversations. Tags are plain text, not routing or notification instructions. */
+  async bringBackThreadResult(id: string, body: BringBackThreadResultBody, options?: RequestOptions): Promise<ThreadMessage> {
+    let path = "/api/threads/{id}/bring-back";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async bringBackThreadResultRaw(id: string, body: BringBackThreadResultBody, options?: RequestOptions): Promise<ApiResponse<ThreadMessage>> {
+    let path = "/api/threads/{id}/bring-back";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** At most 50 added and removed together, and a change that adds leaves
 at most 50 participants, counting the ones the caller is shown: an
 agent they were not shown is kept, and counts toward neither. People
@@ -2759,11 +3029,13 @@ the file's SHA-256.
     });
   }
 
-  /** Summarize runs over a window ending now */
-  async getAnalytics(window?: string, bucket?: string, options?: RequestOptions): Promise<Summary> {
+  /** Summarize readable runs over a bounded time interval */
+  async getAnalytics(window?: string, since?: string, until?: string, bucket?: string, options?: RequestOptions): Promise<Summary> {
     let path = "/api/analytics";
     const _q = new URLSearchParams();
     if (window !== undefined && window !== null) _q.set("window", String(window));
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (until !== undefined && until !== null) _q.set("until", String(until));
     if (bucket !== undefined && bucket !== null) _q.set("bucket", String(bucket));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
@@ -2772,10 +3044,12 @@ the file's SHA-256.
     });
   }
 
-  async getAnalyticsRaw(window?: string, bucket?: string, options?: RequestOptions): Promise<ApiResponse<Summary>> {
+  async getAnalyticsRaw(window?: string, since?: string, until?: string, bucket?: string, options?: RequestOptions): Promise<ApiResponse<Summary>> {
     let path = "/api/analytics";
     const _q = new URLSearchParams();
     if (window !== undefined && window !== null) _q.set("window", String(window));
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (until !== undefined && until !== null) _q.set("until", String(until));
     if (bucket !== undefined && bucket !== null) _q.set("bucket", String(bucket));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
@@ -3096,6 +3370,284 @@ in a project takes a member of that project (403).
     let path = "/api/knowledge/{name}/dependencies";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<KnowledgeSourceDependenciesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List bounded visible verified resource links and suggestions */
+  async listSourceLinkSuggestions(knowledge?: string, client?: string, state?: "suggested" | "linked" | "ignored", limit?: number, options?: RequestOptions): Promise<ListSourceLinkSuggestionsResponse> {
+    let path = "/api/source-link-suggestions";
+    const _q = new URLSearchParams();
+    if (knowledge !== undefined && knowledge !== null) _q.set("knowledge", String(knowledge));
+    if (client !== undefined && client !== null) _q.set("client", String(client));
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListSourceLinkSuggestionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSourceLinkSuggestionsRaw(knowledge?: string, client?: string, state?: "suggested" | "linked" | "ignored", limit?: number, options?: RequestOptions): Promise<ApiResponse<ListSourceLinkSuggestionsResponse>> {
+    let path = "/api/source-link-suggestions";
+    const _q = new URLSearchParams();
+    if (knowledge !== undefined && knowledge !== null) _q.set("knowledge", String(knowledge));
+    if (client !== undefined && client !== null) _q.set("client", String(client));
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListSourceLinkSuggestionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Link or ignore a verified suggested resource */
+  async decideSourceLinkSuggestion(id: string, body: DecideSourceLinkSuggestionBody, options?: RequestOptions): Promise<SourceLinkSuggestion> {
+    let path = "/api/source-link-suggestions/{id}/decision";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SourceLinkSuggestion>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async decideSourceLinkSuggestionRaw(id: string, body: DecideSourceLinkSuggestionBody, options?: RequestOptions): Promise<ApiResponse<SourceLinkSuggestion>> {
+    let path = "/api/source-link-suggestions/{id}/decision";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SourceLinkSuggestion>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** listSourceLinkRules */
+  async listSourceLinkRules(options?: RequestOptions): Promise<SourceLinkRule[]> {
+    const path = "/api/source-link-rules";
+    return this.request<SourceLinkRule[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSourceLinkRulesRaw(options?: RequestOptions): Promise<ApiResponse<SourceLinkRule[]>> {
+    const path = "/api/source-link-rules";
+    return this.rawRequest<SourceLinkRule[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** createSourceLinkRule */
+  async createSourceLinkRule(body: SourceLinkRuleInput, options?: RequestOptions): Promise<SourceLinkRule> {
+    const path = "/api/source-link-rules";
+    return this.request<SourceLinkRule>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createSourceLinkRuleRaw(body: SourceLinkRuleInput, options?: RequestOptions): Promise<ApiResponse<SourceLinkRule>> {
+    const path = "/api/source-link-rules";
+    return this.rawRequest<SourceLinkRule>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** updateSourceLinkRule */
+  async updateSourceLinkRule(id: string, body: SourceLinkRuleInput, options?: RequestOptions): Promise<SourceLinkRule> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SourceLinkRule>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateSourceLinkRuleRaw(id: string, body: SourceLinkRuleInput, options?: RequestOptions): Promise<ApiResponse<SourceLinkRule>> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SourceLinkRule>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** deleteSourceLinkRule */
+  async deleteSourceLinkRule(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteSourceLinkRuleRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** previewSourceLinkRules */
+  async previewSourceLinkRules(body: SourceLinkResource, options?: RequestOptions): Promise<PreviewSourceLinkRulesResponse> {
+    const path = "/api/source-link-rules/preview";
+    return this.request<PreviewSourceLinkRulesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async previewSourceLinkRulesRaw(body: SourceLinkResource, options?: RequestOptions): Promise<ApiResponse<PreviewSourceLinkRulesResponse>> {
+    const path = "/api/source-link-rules/preview";
+    return this.rawRequest<PreviewSourceLinkRulesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** List visible actual source context attachments */
+  async listKnowledgeAttachments(name: string, options?: RequestOptions): Promise<ListKnowledgeAttachmentsResponse> {
+    let path = "/api/knowledge/{name}/attachments";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ListKnowledgeAttachmentsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listKnowledgeAttachmentsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ListKnowledgeAttachmentsResponse>> {
+    let path = "/api/knowledge/{name}/attachments";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ListKnowledgeAttachmentsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Attach a source to actual project or channel context */
+  async attachKnowledgeSource(name: string, body: AttachKnowledgeSourceBody, options?: RequestOptions): Promise<KnowledgeAttachment> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeAttachment>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async attachKnowledgeSourceRaw(name: string, body: AttachKnowledgeSourceBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeAttachment>> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeAttachment>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Detach an exact source context target without deleting its retained copy */
+  async detachKnowledgeSource(name: string, project: string, channel?: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async detachKnowledgeSourceRaw(name: string, project: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/knowledge/{name}/attachment";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** listKnowledgeResources */
+  async listKnowledgeResources(name: string, options?: RequestOptions): Promise<ListKnowledgeResourcesResponse> {
+    let path = "/api/knowledge/{name}/resources";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ListKnowledgeResourcesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listKnowledgeResourcesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ListKnowledgeResourcesResponse>> {
+    let path = "/api/knowledge/{name}/resources";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ListKnowledgeResourcesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** snapshotKnowledgeSource */
+  async snapshotKnowledgeSource(name: string, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/snapshot";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  async snapshotKnowledgeSourceRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/snapshot";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** replaceKnowledgeSource */
+  async replaceKnowledgeSource(name: string, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/replace";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  async replaceKnowledgeSourceRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/replace";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** setKnowledgeSyncSettings */
+  async setKnowledgeSyncSettings(name: string, body: SetKnowledgeSyncSettingsBody, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/sync-settings";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setKnowledgeSyncSettingsRaw(name: string, body: SetKnowledgeSyncSettingsBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/sync-settings";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
@@ -4863,9 +5415,10 @@ owns cannot be changed here and answers 409.
   }
 
   /** List assignments */
-  async listAssignments(limit?: number, options?: RequestOptions): Promise<Assignment[]> {
+  async listAssignments(agent?: string, limit?: number, options?: RequestOptions): Promise<Assignment[]> {
     let path = "/api/assignments";
     const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
@@ -4874,9 +5427,10 @@ owns cannot be changed here and answers 409.
     });
   }
 
-  async listAssignmentsRaw(limit?: number, options?: RequestOptions): Promise<ApiResponse<Assignment[]>> {
+  async listAssignmentsRaw(agent?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<Assignment[]>> {
     let path = "/api/assignments";
     const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;

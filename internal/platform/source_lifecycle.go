@@ -29,7 +29,7 @@ func (p *Platform) SourcesAs(who auth.Principal) []knowledge.Source {
 	out := []knowledge.Source{}
 	for _, src := range p.Knowledge.List(who.Tenant) {
 		if p.sourceRecordVisible(who, src) {
-			out = append(out, src)
+			out = append(out, src.HealthAt(p.now()))
 			if len(out) == 200 {
 				break
 			}
@@ -44,24 +44,10 @@ func (p *Platform) ConfigureSource(who auth.Principal, name string, cfg knowledg
 	if readErr != nil {
 		return knowledge.Source{}, knowledge.ErrNotFound
 	}
-	if !who.Can(auth.KnowledgeWrite) {
-		return knowledge.Source{}, auth.ErrForbidden
-	}
-	if cfg.Provider != "manual" && cfg.Project == "" {
-		return knowledge.Source{}, fmt.Errorf("%w: choose a project, or ~ for the workspace", knowledge.ErrInvalid)
-	}
-	cfg.Project = projects.NameOf(cfg.Project)
-	if cfg.Project != "" && !p.Sees(who, Place{Project: cfg.Project}) {
-		return knowledge.Source{}, knowledge.ErrNotFound
-	}
-	if cfg.Provider != "manual" && p.sourceProvider(cfg.Provider) == nil {
-		return knowledge.Source{}, fmt.Errorf("%w: provider is not registered", knowledge.ErrInvalid)
-	}
-	if cfg.Owner == "" {
-		cfg.Owner = who.Subject
-	}
-	if cfg.Owner != who.Subject {
-		return knowledge.Source{}, fmt.Errorf("%w: connect a source as yourself", knowledge.ErrInvalid)
+	var configErr error
+	cfg, configErr = p.authorizeSourceConfig(who, cfg)
+	if configErr != nil {
+		return knowledge.Source{}, configErr
 	}
 	var expected *knowledge.SourceConfig
 	if current.Lifecycle != nil {
@@ -139,7 +125,13 @@ func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src kno
 }
 
 // SyncSource publishes a full snapshot only after every provider read succeeds.
-func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name string) (result knowledge.Source, err error) {
+func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name string) (knowledge.Source, error) {
+	return p.syncSource(ctx, who, name, false)
+}
+func (p *Platform) syncSource(ctx context.Context, who auth.Principal, name string, replace bool) (knowledge.Source, error) {
+	return p.syncSourceExpected(ctx, who, name, replace, nil)
+}
+func (p *Platform) syncSourceExpected(ctx context.Context, who auth.Principal, name string, replace bool, expected *knowledge.SourceConfig) (result knowledge.Source, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	src, readErr := p.SourceAs(who, name)
@@ -151,6 +143,15 @@ func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name stri
 	}
 	if src.Lifecycle == nil || src.Lifecycle.Mode == knowledge.Live {
 		return knowledge.Source{}, fmt.Errorf("%w: indexed or hybrid source required", knowledge.ErrInvalid)
+	}
+	if expected != nil && !src.Lifecycle.Equal(*expected) {
+		return knowledge.Source{}, knowledge.ErrExists
+	}
+	if src.Lifecycle.Snapshot && !replace {
+		return knowledge.Source{}, fmt.Errorf("%w: snapshot is frozen; choose Replace With New Version", knowledge.ErrInvalid)
+	}
+	if replace && !src.Lifecycle.Snapshot {
+		return knowledge.Source{}, fmt.Errorf("%w: replacement requires a frozen snapshot", knowledge.ErrInvalid)
 	}
 	provider := p.sourceProvider(src.Lifecycle.Provider)
 	if provider == nil {
@@ -175,7 +176,15 @@ func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name stri
 	secret, fetchErr := p.sourceSecret(ctx, who, src)
 	var docs []knowledge.ImportDocument
 	if fetchErr == nil {
-		docs, fetchErr = provider.Fetch(ctx, src.Lifecycle.Origin, secret)
+		if len(src.Lifecycle.Resources) > 0 {
+			if selected, ok := provider.(knowledge.ResourceProvider); ok {
+				docs, fetchErr = selected.FetchSelected(ctx, src.Lifecycle.Origin, src.Lifecycle.Resources, secret)
+			} else {
+				fetchErr = knowledge.ProviderError{Cause: knowledge.Unsupported}
+			}
+		} else {
+			docs, fetchErr = provider.Fetch(ctx, src.Lifecycle.Origin, secret)
+		}
 	}
 	if fetchErr != nil {
 		failed, err := p.Knowledge.FailSync(who.Tenant, name, id, knowledge.FailureCause(fetchErr), p.now())
@@ -196,6 +205,11 @@ func (p *Platform) SyncSource(ctx context.Context, who auth.Principal, name stri
 		p.sourceAttention(who.Tenant, failed)
 		if errors.Is(err, knowledge.ErrInvalid) {
 			return failed, nil
+		}
+	}
+	if err == nil {
+		if linkErr := p.observeKnowledgeSource(who.Tenant, result); linkErr != nil {
+			p.log.Warn("source refreshed but resource relation could not be kept", "error", linkErr)
 		}
 	}
 	if err == nil {
@@ -257,7 +271,7 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 		}
 		found, err := p.searchSourceLive(ctx, who, src, query)
 		if err != nil {
-			if errors.Is(err, knowledge.ErrInvalid) {
+			if errors.Is(err, knowledge.ErrInvalid) || errors.Is(err, knowledge.ErrNotFound) {
 				return out, err
 			}
 			out.Warnings = append(out.Warnings, SourceSearchWarning{Source: name, Cause: knowledge.FailureCause(err)})
@@ -276,6 +290,12 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 			hits = append(hits, hit)
 		}
 	}
+	for _, name := range names {
+		if _, err := p.SourceAs(who, name); err != nil {
+			return SourceSearch{Hits: []knowledge.Hit{}, Warnings: []SourceSearchWarning{}}, err
+		}
+	}
+
 	slices.SortStableFunc(hits, func(a, b knowledge.Hit) int {
 		if a.Score > b.Score {
 			return -1
@@ -304,11 +324,11 @@ func (p *Platform) sourceAttention(tenant string, src knowledge.Source) {
 	}, p.now())
 }
 func (p *Platform) settleSourceAttention(tenant string, src knowledge.Source) {
-	for _, cause := range []knowledge.Cause{knowledge.AuthExpired, knowledge.Quota, knowledge.Unsupported, knowledge.Unavailable, knowledge.Interrupted} {
+	for _, cause := range []knowledge.Cause{knowledge.AuthExpired, knowledge.Quota, knowledge.Unsupported, knowledge.Unavailable, knowledge.Interrupted, knowledge.Stale} {
 		if m, ok := p.Inbox.ByKey(tenant, sourceAttentionKey(src.Name, cause)); ok && m.State != inbox.Resolved && m.State != inbox.Dismissed {
 			for _, part := range m.Parts {
 				if part.Type == inbox.PartSource {
-					_, _, _ = p.Inbox.Resolve(tenant, m.ID, part.ID, inbox.Outcome{Action: "retry", By: "system", At: p.now(), Note: "Source refreshed"})
+					_, _, _ = p.Inbox.Resolve(tenant, m.ID, part.ID, inbox.Outcome{Action: "retry", By: "system", At: p.now(), Note: sourceSettlementNote(src)})
 				}
 			}
 		}
@@ -338,6 +358,16 @@ func (p *Platform) SourceDependenciesAs(ctx context.Context, who auth.Principal,
 				out.Projects = append(out.Projects, project.Name)
 				if len(out.Projects) == 200 {
 					break
+				}
+			}
+		}
+	}
+	if who.Can(auth.ProjectsRead) {
+		if attachments, err := p.SourceAttachmentsAs(who, name); err == nil {
+			for _, attachment := range attachments {
+				project := projects.NameOf(attachment.Project)
+				if len(out.Projects) < 200 && !slices.Contains(out.Projects, project) {
+					out.Projects = append(out.Projects, project)
 				}
 			}
 		}
@@ -403,6 +433,10 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 	if _, err := ephemeral.CompleteSync(who.Tenant, src.Name, id, docs, who.Subject, p.now()); err != nil {
 		return nil, err
 	}
+	current, currentErr := p.Knowledge.Get(who.Tenant, src.Name)
+	if currentErr != nil || current.Lifecycle == nil || !current.Lifecycle.Equal(src.Lifecycle.SourceConfig) {
+		return nil, knowledge.ErrNotFound
+	}
 	hits, err := ephemeral.Search(who.Tenant, []string{src.Name}, query, 6, "")
 	for i := range hits {
 		hits[i].Mode = knowledge.Live
@@ -410,4 +444,37 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 		hits[i].RefreshFailed = false
 	}
 	return hits, err
+}
+
+func (p *Platform) authorizeSourceConfig(who auth.Principal, cfg knowledge.SourceConfig) (knowledge.SourceConfig, error) {
+	if !who.Can(auth.KnowledgeWrite) {
+		return knowledge.SourceConfig{}, auth.ErrForbidden
+	}
+	if cfg.Provider != "manual" && cfg.Project == "" {
+		return knowledge.SourceConfig{}, fmt.Errorf("%w: choose a project, or ~ for the workspace", knowledge.ErrInvalid)
+	}
+	cfg.Project = projects.NameOf(cfg.Project)
+	if cfg.Project != "" && (!p.Projects.Tree(who.Tenant).Has(cfg.Project) || !p.Sees(who, Place{Project: cfg.Project})) {
+		return knowledge.SourceConfig{}, knowledge.ErrNotFound
+	}
+	if cfg.Provider != "manual" && p.sourceProvider(cfg.Provider) == nil {
+		return knowledge.SourceConfig{}, fmt.Errorf("%w: provider is not registered", knowledge.ErrInvalid)
+	}
+	if cfg.Owner == "" {
+		cfg.Owner = who.Subject
+	}
+	if cfg.SyncEverySeconds != 0 && !p.mayScheduleSource(who.Tenant, cfg.Owner, cfg.Project) {
+		return knowledge.SourceConfig{}, fmt.Errorf("%w: automatic refresh requires current subject-based policy grants and project membership", auth.ErrForbidden)
+	}
+	if cfg.Owner != who.Subject {
+		return knowledge.SourceConfig{}, fmt.Errorf("%w: connect a source as yourself", knowledge.ErrInvalid)
+	}
+	return cfg, nil
+}
+
+func sourceSettlementNote(src knowledge.Source) string {
+	if src.Lifecycle != nil && src.Lifecycle.Snapshot && src.Lifecycle.Status == knowledge.Available {
+		return "Kept the last good copy as a frozen snapshot"
+	}
+	return "Source refreshed"
 }

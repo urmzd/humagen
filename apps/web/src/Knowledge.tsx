@@ -11,7 +11,12 @@ import {
 } from "./api.ts";
 import { Evals } from "./Evals.tsx";
 import type { SourceTab } from "./route.ts";
-import { SourceLifecycle } from "./SourceLifecycle.tsx";
+import {
+  SourceLifecycle,
+  SourceResources,
+  SourceSyncSettings,
+  SourceAttachments,
+} from "./SourceLifecycle.tsx";
 import {
   ago,
   button,
@@ -357,22 +362,42 @@ function SourceDetail({
           </button>
         ) : undefined
       }
-      tabs={
-        <Tabs
-          label="Source sections"
-          value={tab}
-          onChange={onTab}
-          tabs={[
-            { id: "documents", label: "Documents", count: docs.length },
-            { id: "search", label: "Try a Question" },
-            { id: "variants", label: "Variants", count: source.variants.length },
-            { id: "evals", label: "Evals", count: mine.length },
-          ]}
-        />
-      }
     >
+      <Tabs
+        label="Source sections"
+        value={tab}
+        onChange={onTab}
+        tabs={[
+          { id: "documents", label: "Documents", count: docs.length },
+          { id: "search", label: "Try a Question" },
+          { id: "variants", label: "Variants", count: source.variants.length },
+          { id: "evals", label: "Evals", count: mine.length },
+        ]}
+      />
       <Problem message={problem} />
       <SourceLifecycle source={source} canWrite={canWrite} onChanged={onChanged} />
+      <SourceAttachments
+        key={`${source.name}:${source.updated_at}:attachments`}
+        source={source}
+        canWrite={canWrite}
+        onChanged={onChanged}
+      />
+      {source.lifecycle && source.lifecycle.provider !== "manual" && (
+        <>
+          <SourceResources
+            key={`${source.name}:${source.updated_at}:resources`}
+            source={source}
+            canWrite={canWrite}
+            onChanged={onChanged}
+          />
+          <SourceSyncSettings
+            key={`${source.name}:${source.updated_at}:sync`}
+            source={source}
+            canWrite={canWrite}
+            onChanged={onChanged}
+          />
+        </>
+      )}
 
       {tab === "search" && (
         <section className={`${card} flex flex-col gap-2`}>

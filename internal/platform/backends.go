@@ -32,6 +32,7 @@ import (
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -131,8 +132,12 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("alerts", err)
 	p.SourceLinks, err = sourcelinks.Open(st)
 	keep("source link rules", err)
+	p.SourceSuggestions, err = sourcelinks.OpenSuggestions(st)
+	keep("source link suggestions", err)
 	p.Knowledge, err = knowledge.Open(st)
 	keep("knowledge", err)
+	p.SourceEvidence, err = knowledge.OpenEvidenceStore(st)
+	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(st)
 	keep("evals", err)
 	p.Feedback, err = feedback.Open(st)
@@ -145,11 +150,15 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("native notifications", err)
 	p.EmailNotifications, err = notifications.OpenEmail(st)
 	keep("email notifications", err)
+	p.AgentSkillDefaults, err = library.OpenDefaults(st)
+	keep("agent skill defaults", err)
 	p.SkillLibrary, err = library.Open(st)
 	keep("skill library", err)
 	p.Memory, err = memory.Open(st)
 	keep("memory", err)
 	// A deleted name is forgotten only once nothing is filed under it.
+	p.ProjectForks, err = projectforks.Open(st)
+	keep("project forks", err)
 	p.Projects, err = projects.Open(st, projects.WithFiled(p.filedUnder))
 	keep("projects", err)
 	// An agent's name is a handle no person is given.

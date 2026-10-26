@@ -131,3 +131,39 @@ Tool tests cover Never, unapproved Ask, pause and ForceAsk without adding grants
 the existing person-credential and approval regressions cover MCP identity.
 Console DOM tests exercise successful and refused pauses, policy changes,
 assignment run references and network contract navigation.
+
+## Reviewing effective controls and deadlines
+
+Controls report the effective pause and its workspace, agent or incomplete-setup
+cause. Local resume never clears a workspace pause or marks an incomplete setup
+ready. The console refreshes this state while preserving unsaved changes and
+requires review when another writer changes the control version. Policy views
+show the strongest applicable rule and its controlling scopes. A hidden ancestor
+has a generic inherited label, without its name or the number of hidden scopes.
+The editor cannot weaken an inherited restriction. This explanation grants no
+tool or access permission.
+
+A missed deadline retains the recorded run and asks for human review. Extending
+or clearing the deadline observes that same run, including a still-running or
+completed result; it cannot reserve a duplicate run. Result state requires a
+completed ledger record. A late successful run records a result instead of
+silently restarting standing work with an expired deadline. The native cron
+schedule is paused during deadline attention and resumes only from a reviewed,
+future-dated eligible assignment.
+
+Unanswered-question reminders default to four hours and blocked-work reminders
+to two hours. Workspace controls set the default, and agent controls can override
+the timer or disable it with zero. The maximum interval is seven days. These are
+real persisted inbox timers, reconciled through the existing platform ticker.
+A reminder checks the native pending question or the exact current blocked-work
+cause, updates the same inbox item once, and makes it unread for its authorized
+readers. It never approves a question, fabricates a run, or restarts work. Failed
+writes leave read counters unchanged; restart does not duplicate a reminder.
+The original requester and accountable manager receive operation attention,
+subject to the same project and thread confinement as every other inbox read.
+
+Assignment links from an agent preselect that agent, open the creation form for
+writers and apply the same server-side filter before the row cap. Handoff review
+shows its actual typed inputs, accountable person's name and immutable artifact
+revision links after each referenced object passes its own read rule. Reviewing a contract
+cannot remove or replace its original conversation boundary.

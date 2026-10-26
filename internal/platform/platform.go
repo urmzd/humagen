@@ -72,6 +72,7 @@ import (
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -89,6 +90,8 @@ type Config struct {
 	// Email is a configured relay and explicit tenant/subject recipient mapping. Nil disables email.
 	Email *EmailConfig
 
+	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
+	ProjectTemplates []projects.Template
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
 
@@ -213,21 +216,26 @@ type Platform struct {
 	Alerts               *alerts.Engine
 	Knowledge            *knowledge.Store
 	SourceLinks          *sourcelinks.Store
+	SourceSuggestions    *sourcelinks.Suggestions
+	SourceEvidence       *knowledge.EvidenceStore
 	Evals                *evals.Store
 	Feedback             *feedback.Store
 	Prefs                *prefs.Store
 	Memory               *memory.Store
 	SkillLibrary         *library.Store
 	Notifications        *notifications.Store
+	ContextFlags         *contextflags.Store
+	AgentSkillDefaults   *library.DefaultsStore
+	skillDefaultsMu      sync.Mutex
 	EmailNotifications   *notifications.Store
 	emailCursor          int
 	emailMu              sync.Mutex
 	emailPreferenceLocks [64]sync.Mutex
-	ContextFlags         *contextflags.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
-	Projects *projects.Store
+	Projects     *projects.Store
+	ProjectForks *projectforks.Store
 	// People is each tenant's directory of people.
 	People *people.Store
 	// Threads is each tenant's shared threads: their records and the
@@ -240,6 +248,8 @@ type Platform struct {
 	assignmentSources          sync.Map
 	assignmentSourceCursor     sync.Map
 	assignmentSettlementCursor sync.Map
+	operationReminderCursor    sync.Map
+	operationScheduleCursor    sync.Map
 	CallPolicies               *callpolicy.Store
 	Operations                 *operations.Store
 	Usage                      *usage.Ledger
@@ -349,6 +359,12 @@ func New(cfg Config) (*Platform, error) {
 		}
 		cfg.Email = &email
 	}
+	if cfg.ProjectTemplates == nil {
+		cfg.ProjectTemplates = projects.DefaultTemplates()
+	}
+	if err := projects.ValidateTemplates(cfg.ProjectTemplates); err != nil {
+		return nil, err
+	}
 	log := cfg.Log
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -390,6 +406,10 @@ func New(cfg Config) (*Platform, error) {
 	p.closers = append(p.closers, files.Close)
 	// Every store is in memory, reading back what Backends.State holds.
 	if err := p.openStores(cfg); err != nil {
+		return nil, err
+	}
+
+	if err := p.RegisterPublicationGuard(forkPublicationGuard{p}); err != nil {
 		return nil, err
 	}
 
@@ -579,6 +599,10 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 		return runs.Run{}, err
 	}
 	tag = p.pin(tag, edge, project, within, p.sourcesFor(tag, edge, project))
+	tag, err = p.pinAgentSkillDefaults(ctx, tag, edge, project)
+	if err != nil {
+		return runs.Run{}, err
+	}
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
@@ -645,6 +669,16 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	delete(meta, runs.MetaSourcesV0)
 	if len(sources) > 0 {
 		meta[runs.MetaSources] = strings.Join(sources, ",")
+	}
+	delete(meta, metaForkSources)
+	if edge.Parent != "" {
+		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
+			if names, ok := root.Tag().Meta[metaForkSources]; ok {
+				meta[metaForkSources] = names
+			}
+		}
+	} else if names := p.forkSourceSelection(tag.Tenant, tag.Meta[runs.MetaThread]); names != nil {
+		meta[metaForkSources] = strings.Join(*names, ",")
 	}
 	// Only the platform pins skills, on a person's message (answerMessage):
 	// any other tag that carries the key is not believed.
@@ -814,7 +848,9 @@ const flushEvery = 250 * time.Millisecond
 // fallback for when there is none: a run that exhausts its retries is failed in
 // the ledger with nothing further published.
 func (p *Platform) reconcile(ctx context.Context) {
+	p.reconcileOperationReminders(ctx)
 	p.settleOperations(ctx)
+	p.syncAssignmentSchedules()
 	for _, id := range p.Runs.Active() {
 		p.settleFromLedger(ctx, id)
 	}
@@ -880,6 +916,12 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 		return
 	}
 	p.admission.Lock()
+	if e.Kind == envelope.KindCitation {
+		metadata, _, _ := p.trustedCitation(e)
+		if err := p.Runs.RecordCitation(e, metadata); err != nil {
+			p.log.Error("citation could not be retained", "error", err)
+		}
+	}
 	run, ended := p.Runs.Observe(e)
 	if ended {
 		p.free(run)
@@ -987,6 +1029,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	})
 	loop("email notifications", func() error { return p.runEmailNotifications(ctx) })
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("source refresh", func() error { return p.refreshSources(ctx) })
 	loop("inbox retention", func() error {
 		tick := time.NewTicker(retainEvery)
 		defer tick.Stop()

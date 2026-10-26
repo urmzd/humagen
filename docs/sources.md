@@ -1,8 +1,8 @@
 # Sources
 
 Context holds manual documents and managed Google Drive or Notion sources.
-Create a source, open Configure Source, select a provider and mode, enter the
-folder or page ID, and explicitly choose its project. `~` selects the workspace.
+Connect Source creates the source and its selected project scope atomically.
+Select a provider and mode, enter the folder or page ID, and choose its project. `~` selects the workspace.
 An indexed copy is shared with readers of that project. The connecting person
 must be allowed to share the selected resource with that audience.
 
@@ -23,6 +23,10 @@ namespace is reserved for native sources and cannot be used by MCP providers.
   are not already pinned in that copy. A live failure does not remove indexed
   grounding. Search responses identify the unavailable live portion.
 
+The resource picker reads actual provider inventory with your own reference.
+Select the direct children to pin, then Add Selected. Unselected unsupported
+files are not fetched. Live sources do not import selections.
+
 Drive imports the selected folder's direct children: Google documents exported
 as plain text, plain text, Markdown and CSV files. Notion imports a selected
 page's text blocks and supported nested text blocks. Partial pages, unsupported
@@ -42,7 +46,19 @@ settles the item only after success. It never resumes an assignment by itself.
 Managed sources default to a 24 hour freshness stop rule. Assignment checks use
 the sources pinned at admission, not a newly edited project selection. Missing, never-imported
 or stale required sources require repair and an explicit assignment resume.
-Manual sources do not expire. Scoped runtime grounding currently requires the
+Manual sources and frozen snapshots do not expire. Keep As Snapshot freezes
+a successful retained copy without claiming a fresh provider read. Replace With
+New Version performs a real import while preserving the frozen-copy setting;
+a failed replacement keeps the prior version.
+
+Sync Settings permits manual refresh or an explicit interval from one minute to
+seven days. A bounded service worker reads one due source at a time. It rechecks
+current subject-based server policy grants and ordinary project membership; a
+prior sign-in group grant cannot authorize unattended reads. Withdrawing the
+interval or changing the source configuration invalidates an already selected
+background candidate. Provider failure stops automatic retries until an
+operator repairs and explicitly refreshes. Manual and live sources and frozen
+snapshots cannot schedule imports. Scoped runtime grounding currently requires the
 exact connecting owner with a current subject-based project role. Durable
 actors do not carry sign-in group snapshots, so other readers fail closed.
 
@@ -61,10 +77,31 @@ API boundaries. Automated transport fixtures verify those requests, denial,
 quota, unsupported responses and credential redaction. No live Google Drive or
 Notion account has been validated in this change.
 
-Resource-link rule storage and disabled project-fork snapshots are implemented.
-Rule management, resource discovery, connector application and the integration
-configuration flow remain under implementation. No successful external action
-is simulated, and no new external write action is offered.
+Resource-link rule storage, CRUD, unsaved previews and disabled project-fork
+snapshots are implemented. Preview always reports suggestions and filters
+hidden destinations before serialization. Ambiguous verified matches cannot
+auto-link. Verified connector observations and successful provider inventory/imports persist
+bounded suggestions. Link and Ignore require the current version and survive
+restart. Automatic relationships recheck current rules and verified metadata;
+changed or ambiguous matches stop applying. Ignored resources stay ignored.
+Existing surface conversations keep their placement. New accepted links select
+a destination without granting the mapped actor any new project permission.
+
+Manual attachments connect a source to a project or one channel for real turn
+composition. They do not narrow read permissions or remove explicit agent
+grants. Add Selected attaches only after the actual import succeeds. Detach
+removes the context relationship while retaining the source and its copy.
+
+Each citation retains the actual query mode, copy timestamp when known and
+failed-refresh flag. Evidence is written before model input and bound to the
+run, source, document and exact passage. The model cannot supply these facts.
+Historical citations without evidence show unknown mode and freshness. Reader
+projection rechecks source access and emits an explicit empty citation list
+when access is revoked. Live query evidence remains confined to the exact
+person; it is not a shared indexed copy.
+
+No successful external action is simulated, and no new external write action
+is offered.
 
 
 Source-change watchers read the resident `content_version` cursor. Successful

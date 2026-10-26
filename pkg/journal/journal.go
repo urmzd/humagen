@@ -210,6 +210,8 @@ func (j *Journal) Events(tenant string, runIDs []string) []envelope.Event {
 // Query selects events. Tenant is required. Every other field narrows, and an
 // empty field matches everything.
 type Query struct {
+	// Visible confines events before text matching and the result bound.
+	Visible func(envelope.Event) bool
 	// ProjectEvent supplies an operational event view before text matching.
 	ProjectEvent func(envelope.Event) envelope.Event
 	Tenant       string
@@ -272,6 +274,9 @@ func (j *Journal) Query(q Query) []Entry {
 		case !q.Since.IsZero() && e.At.Before(q.Since):
 			return
 		case !q.Until.IsZero() && e.At.After(q.Until):
+			return
+		}
+		if q.Visible != nil && !q.Visible(e) {
 			return
 		}
 		if q.ProjectEvent != nil {

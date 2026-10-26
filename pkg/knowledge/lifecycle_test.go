@@ -191,7 +191,7 @@ func TestAuthorizedSourceSnapshotCannotRaceConfiguration(t *testing.T) {
 		t.Fatalf("old scope overwritten: %v", err)
 	}
 	src, _ := s.Get("acme", "docs")
-	if src.Lifecycle.SourceConfig != second || len(src.Lifecycle.Attempts) != 0 {
+	if !src.Lifecycle.Equal(second) || len(src.Lifecycle.Attempts) != 0 {
 		t.Fatal("denied operation changed source", src.Lifecycle)
 	}
 }
@@ -319,6 +319,57 @@ func TestContentCursorSurvivesDeleteRecreateAndRestart(t *testing.T) {
 		after, _ := replay.Get("acme", "docs")
 		if after.ContentVersion <= tomb {
 			t.Fatal("new content reused historical revision")
+		}
+	})
+}
+
+func TestSnapshotDecisionDoesNotInventASuccessfulRefresh(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s, err := Open(open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = s.Create("tenant", "docs", "", "owner", now)
+		cfg := SourceConfig{Mode: Indexed, Provider: "drive", Origin: "folder", Owner: "owner"}
+		_, err = s.Configure("tenant", "docs", cfg, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, _ := s.BeginSync("tenant", "docs", now)
+		_, err = s.CompleteSync("tenant", "docs", id, []ImportDocument{{ID: "doc", Title: "Copy", Text: "retained contents"}}, "owner", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.Snapshot = true
+		_, err = s.Configure("tenant", "docs", cfg, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err = s.BeginSync("tenant", "docs", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = s.FailSync("tenant", "docs", id, AuthExpired, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		shown, err := s.Configure("tenant", "docs", cfg, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if shown.Lifecycle.Status != NeedsAttention {
+			t.Fatal("configuration save erased failed replacement")
+		}
+		shown, err = s.KeepSnapshot("tenant", "docs", cfg, now, &shown.Lifecycle.SourceConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if shown.Lifecycle.Status != Available || shown.Lifecycle.Attempts[len(shown.Lifecycle.Attempts)-1].Status != "failed" {
+			t.Fatal("snapshot decision fabricated successful refresh", shown.Lifecycle)
+		}
+		hits, err := s.Search("tenant", []string{"docs"}, "retained", 1, "")
+		if err != nil || len(hits) != 1 || !hits[0].RefreshFailed {
+			t.Fatal("last good copy lost failed-refresh provenance", hits, err)
 		}
 	})
 }

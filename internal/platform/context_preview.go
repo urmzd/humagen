@@ -121,7 +121,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		out.Layers = append(out.Layers, nameLayer("agent_knowledge", agent, agentNames, 0))
 		names := []string{}
 		// Tree.Knowledge is the same bounded selection sourcesFor pins.
-		for _, src := range tree.Knowledge(project) {
+		for _, src := range p.knowledgeAtPlace(who.Tenant, project, channel) {
 			if seer.Project(src.From) && p.SourceVisible(who, src.Name) && !slices.Contains(agentNames, src.Name) {
 				names = append(names, src.Name)
 			}
@@ -141,6 +141,9 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 			}
 		}
 		out.Layers = append(out.Layers, layer)
+	}
+	if defaults := p.defaultSkillPreview(ctx, who, project, agent); defaults != nil {
+		out.Layers = append(out.Layers, *defaults)
 	}
 	names := []string{}
 	for _, s := range p.AvailableSkills(who.Tenant, project, humanSubject(who)) {

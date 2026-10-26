@@ -393,6 +393,9 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 // Start writes a new thread and its first message in one write. The person
 // who posts the message starts the thread.
 func (s *Store) Start(tenantName string, t Thread, m Message, at time.Time) (Thread, Message, error) {
+	if t.ReadOnly {
+		return Thread{}, Message{}, fmt.Errorf("%w: an archive accepts no messages", ErrInvalid)
+	}
 	if t.CreatedBy == "" {
 		t.CreatedBy = m.By
 	}
@@ -457,6 +460,9 @@ func (s *Store) Post(tenantName, id string, m Message, at time.Time) (Message, b
 	th, err := s.writable(tenantName, id)
 	if err != nil {
 		return Message{}, false, err
+	}
+	if th.rec.ReadOnly {
+		return Message{}, false, fmt.Errorf("%w: an archive accepts no messages", ErrInvalid)
 	}
 	if i, ok := th.surfaces[m.SurfaceID]; ok && m.SurfaceID != "" {
 		return th.msgs[i].clone(), false, nil
@@ -615,9 +621,11 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 	moves := next.Project != cur.Project || next.Channel != cur.Channel
 	tn := s.of(tenantName)
 	switch {
+	case next.ReadOnly != cur.ReadOnly:
+		return Thread{}, fmt.Errorf("%w: archive status is immutable", ErrInvalid)
 	case next.Moves != cur.Moves:
 		return Thread{}, fmt.Errorf("%w: placement history is server managed", ErrInvalid)
-	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement:
+	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 	case moves && (!moving || cur.Visibility != Private || next.Visibility != Private || cur.Surface != nil || cur.Announcement != ""):
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started; a private conversation moves, and Share moves one as it shares it", ErrInvalid)

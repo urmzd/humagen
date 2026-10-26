@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { api, type HandoffContract, type AgentNetwork as Network } from "./api.ts";
+import { OperationPersonField } from "./OperationPersonField.tsx";
 import { AgentMark, field, Label, Page, Problem, primary } from "./ui.tsx";
 
 const words = defaultCopy.operations;
@@ -21,6 +22,9 @@ export function AgentNetwork({
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
+    setNetwork(null);
+    setContracts([]);
+    setProblem(null);
     const read = () =>
       Promise.all([
         api.agentNetwork(),
@@ -29,6 +33,7 @@ export function AgentNetwork({
         .then(([n, h]) => {
           if (live) {
             setNetwork(n);
+            setProblem(null);
             setContracts(h);
           }
         })
@@ -107,6 +112,16 @@ export function AgentNetwork({
                   <p className="text-aui-sm">
                     {words.doneWhen}: {h.done_when}
                   </p>
+                  <p className="text-aui-xs text-aui-muted">
+                    {words.owner}: {h.owner_name || words.unassigned}
+                  </p>
+                  {h.due_at && (
+                    <p className="text-aui-xs text-aui-muted">
+                      {words.due}:{" "}
+                      <time dateTime={h.due_at}>{new Date(h.due_at).toLocaleString()}</time>
+                    </p>
+                  )}
+                  <HandoffInputs contract={h} onRun={onRun} />
                   {h.blocker && (
                     <output className="text-aui-sm">
                       {words.blocker}: {h.blocker}
@@ -149,6 +164,8 @@ function HandoffDecision({
   onChanged: (h: HandoffContract) => void;
 }) {
   const [owner, setOwner] = useState(contract.owner ?? "");
+  const [ownerName, setOwnerName] = useState(contract.owner_name);
+  const [version, setVersion] = useState(contract.version);
   const [blocker, setBlocker] = useState(contract.blocker ?? "");
   const [state, setState] = useState<"accepted" | "blocked" | "needs_person" | "result">(
     "accepted",
@@ -170,7 +187,7 @@ function HandoffDecision({
         try {
           onChanged(
             await api.saveHandoff(contract.id, {
-              version: contract.version,
+              version,
               owner,
               blocker,
               state,
@@ -185,14 +202,32 @@ function HandoffDecision({
       }}
     >
       <Problem message={problem} />
-      <Label text={words.owner}>
-        <input
-          className={field}
-          value={owner}
-          maxLength={256}
-          onChange={(e) => setOwner(e.target.value)}
-        />
-      </Label>
+      <OperationPersonField
+        label={words.owner}
+        value={owner}
+        displayName={ownerName}
+        disabled={busy}
+        onChange={setOwner}
+      />
+      {version !== contract.version && (
+        <button
+          type="button"
+          onClick={() => {
+            setOwner(contract.owner ?? "");
+            setOwnerName(contract.owner_name);
+            setBlocker(contract.blocker ?? "");
+            setVersion(contract.version);
+            const current = new Date(contract.due_at ?? Date.now());
+            setDue(
+              new Date(current.getTime() - current.getTimezoneOffset() * 60000)
+                .toISOString()
+                .slice(0, 16),
+            );
+          }}
+        >
+          {words.reviewLatest}
+        </button>
+      )}
       <Label text={words.rule}>
         <select
           className={field}
@@ -223,9 +258,55 @@ function HandoffDecision({
           onChange={(e) => setDue(e.target.value)}
         />
       </Label>
-      <button type="submit" className={primary} disabled={busy}>
+      <button type="submit" className={primary} disabled={busy || version !== contract.version}>
         {busy ? words.saving : words.save}
       </button>
     </form>
+  );
+}
+
+function HandoffInputs({
+  contract,
+  onRun,
+}: {
+  contract: HandoffContract;
+  onRun: (id: string) => void;
+}) {
+  return (
+    <section className="min-w-0 space-y-2">
+      <h3 className="text-aui-sm font-medium">{words.inputs}</h3>
+      {(contract.inputs ?? []).length === 0 ? (
+        <p className="text-aui-xs text-aui-muted">{words.noInputs}</p>
+      ) : (
+        <ul className="space-y-2">
+          {contract.inputs.map((input, index) => (
+            <li key={`${input.type}:${index}`} className="min-w-0 text-aui-sm">
+              {input.type === "text" ? (
+                <pre className="whitespace-pre-wrap break-words font-sans">{input.reference}</pre>
+              ) : input.type === "run" ? (
+                <button type="button" onClick={() => onRun(input.reference)}>
+                  {words.openInputRun}
+                </button>
+              ) : input.type === "thread" ? (
+                <a
+                  className="text-aui-accent"
+                  href={`/conversations/${encodeURIComponent(input.reference)}`}
+                >
+                  {words.openInputConversation}
+                </a>
+              ) : (
+                <a
+                  className="text-aui-accent"
+                  href={`/artifacts/${encodeURIComponent(input.reference.split("@")[0] ?? "")}`}
+                >
+                  {words.openInputArtifact} (
+                  {words.artifactVersion(input.reference.split("@")[1] ?? "")})
+                </a>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

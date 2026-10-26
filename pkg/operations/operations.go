@@ -74,13 +74,15 @@ func (s Scope) valid() bool {
 }
 
 type Control struct {
-	Agent     string    `json:"agent,omitempty"`
-	Paused    bool      `json:"paused"`
-	Manager   string    `json:"manager,omitempty"`
-	StopRules string    `json:"stop_rules,omitempty"`
-	Version   int       `json:"version"`
-	UpdatedBy string    `json:"updated_by"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Agent                       string    `json:"agent,omitempty"`
+	Paused                      bool      `json:"paused"`
+	Manager                     string    `json:"manager,omitempty"`
+	StopRules                   string    `json:"stop_rules,omitempty"`
+	ReminderAfterSeconds        *int      `json:"reminder_after_seconds,omitempty"`
+	BlockedReminderAfterSeconds *int      `json:"blocked_reminder_after_seconds,omitempty"`
+	Version                     int       `json:"version"`
+	UpdatedBy                   string    `json:"updated_by"`
+	UpdatedAt                   time.Time `json:"updated_at"`
 }
 type Policy struct {
 	Scope     Scope              `json:"scope"`
@@ -103,57 +105,62 @@ const (
 )
 
 type Assignment struct {
-	ID            string    `json:"id"`
-	Agent         string    `json:"agent"`
-	Project       string    `json:"project"`
-	Thread        string    `json:"thread,omitempty"`
-	Owner         string    `json:"owner"`
-	Goal          string    `json:"goal"`
-	DoneWhen      string    `json:"done_when"`
-	DueAt         time.Time `json:"due_at,omitempty"`
-	Schedule      string    `json:"schedule,omitempty"`
-	Cron          string    `json:"cron,omitempty"`
-	Trigger       string    `json:"trigger,omitempty"`
-	Source        string    `json:"source,omitempty"`
-	SourceVersion uint64    `json:"source_version,omitempty"`
-	TagID         string    `json:"tag_id,omitempty"`
-	State         WorkState `json:"state"`
-	Blocker       string    `json:"blocker,omitempty"`
-	RunID         string    `json:"run_id,omitempty"`
-	Version       int       `json:"version"`
-	UpdatedBy     string    `json:"updated_by"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             string    `json:"id"`
+	Agent          string    `json:"agent"`
+	Project        string    `json:"project"`
+	Thread         string    `json:"thread,omitempty"`
+	Owner          string    `json:"owner"`
+	Goal           string    `json:"goal"`
+	DoneWhen       string    `json:"done_when"`
+	DueAt          time.Time `json:"due_at,omitempty"`
+	DeadlineMissed bool      `json:"deadline_missed,omitempty"`
+	Schedule       string    `json:"schedule,omitempty"`
+	Cron           string    `json:"cron,omitempty"`
+	Trigger        string    `json:"trigger,omitempty"`
+	Source         string    `json:"source,omitempty"`
+	SourceVersion  uint64    `json:"source_version,omitempty"`
+	TagID          string    `json:"tag_id,omitempty"`
+	State          WorkState `json:"state"`
+	Blocker        string    `json:"blocker,omitempty"`
+	RunID          string    `json:"run_id,omitempty"`
+	RunStatus      string    `json:"run_status,omitempty"`
+	Version        int       `json:"version"`
+	UpdatedBy      string    `json:"updated_by"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 type Input struct {
 	Type      string `json:"type"`
 	Reference string `json:"reference"`
 }
 type Handoff struct {
-	ID        string    `json:"id"`
-	From      string    `json:"from"`
-	To        string    `json:"to"`
-	Project   string    `json:"project"`
-	Thread    string    `json:"thread,omitempty"`
-	Owner     string    `json:"owner,omitempty"`
-	Goal      string    `json:"goal"`
-	DoneWhen  string    `json:"done_when"`
-	Inputs    []Input   `json:"inputs"`
-	Chain     []string  `json:"chain"`
-	DueAt     time.Time `json:"due_at,omitempty"`
-	State     WorkState `json:"state"`
-	Blocker   string    `json:"blocker,omitempty"`
-	RunID     string    `json:"run_id,omitempty"`
-	Version   int       `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Requester      string    `json:"-"`
+	ID             string    `json:"id"`
+	From           string    `json:"from"`
+	To             string    `json:"to"`
+	Project        string    `json:"project"`
+	Thread         string    `json:"thread,omitempty"`
+	Owner          string    `json:"owner,omitempty"`
+	Goal           string    `json:"goal"`
+	DoneWhen       string    `json:"done_when"`
+	Inputs         []Input   `json:"inputs"`
+	Chain          []string  `json:"chain"`
+	DueAt          time.Time `json:"due_at,omitempty"`
+	DeadlineMissed bool      `json:"deadline_missed,omitempty"`
+	State          WorkState `json:"state"`
+	Blocker        string    `json:"blocker,omitempty"`
+	RunID          string    `json:"run_id,omitempty"`
+	Version        int       `json:"version"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 type record struct {
-	Invocation *envelope.Tag `json:"invocation,omitempty"`
-	Control    *Control      `json:"control,omitempty"`
-	Policy     *Policy       `json:"policy,omitempty"`
-	Assignment *Assignment   `json:"assignment,omitempty"`
-	Handoff    *Handoff      `json:"handoff,omitempty"`
+	HandoffRequester string        `json:"handoff_requester,omitempty"`
+	Invocation       *envelope.Tag `json:"invocation,omitempty"`
+	Control          *Control      `json:"control,omitempty"`
+	Policy           *Policy       `json:"policy,omitempty"`
+	Assignment       *Assignment   `json:"assignment,omitempty"`
+	Handoff          *Handoff      `json:"handoff,omitempty"`
 }
 type key struct{ tenant, id string }
 type Store struct {
@@ -182,11 +189,20 @@ func Open(st state.Store) (*Store, error) {
 		if n != 1 {
 			return fmt.Errorf("%w: malformed record", ErrInvalid)
 		}
+		if r.Control != nil && (!validReminder(r.Control.ReminderAfterSeconds) || !validReminder(r.Control.BlockedReminderAfterSeconds)) {
+			return fmt.Errorf("%w: malformed reminder control", ErrInvalid)
+		}
 		if r.Policy != nil && (!validPolicy(*r.Policy) || k != "policy:"+r.Policy.Scope.key()) {
 			return fmt.Errorf("%w: malformed policy", ErrInvalid)
 		}
 		if r.Invocation != nil && (r.Assignment == nil || !validInvocation(t, *r.Assignment, *r.Invocation) || r.Assignment.TagID != r.Invocation.ID || runtime.RunID(t, r.Invocation.ID) != r.Assignment.RunID) {
 			return fmt.Errorf("%w: malformed invocation", ErrInvalid)
+		}
+		if r.Handoff != nil {
+			r.Handoff.Requester = r.HandoffRequester
+		}
+		if r.HandoffRequester != "" && (r.Handoff == nil || !identifier(r.HandoffRequester)) {
+			return fmt.Errorf("%w: malformed handoff requester", ErrInvalid)
 		}
 		s.records[key{t, k}] = clone(r)
 		return nil
@@ -200,6 +216,14 @@ func clone(r record) record {
 	}
 	if r.Control != nil {
 		v := *r.Control
+		if v.ReminderAfterSeconds != nil {
+			n := *v.ReminderAfterSeconds
+			v.ReminderAfterSeconds = &n
+		}
+		if v.BlockedReminderAfterSeconds != nil {
+			n := *v.BlockedReminderAfterSeconds
+			v.BlockedReminderAfterSeconds = &n
+		}
 		r.Control = &v
 	}
 	if r.Policy != nil {
@@ -229,6 +253,10 @@ func text(v string, max int) bool {
 	return strings.TrimSpace(v) != "" && len(v) <= max && !strings.ContainsRune(v, 0)
 }
 func (s *Store) put(t, id string, r record) error {
+	if r.Handoff != nil {
+		r.HandoffRequester = r.Handoff.Requester
+	}
+
 	if _, ok := s.records[key{t, id}]; !ok {
 		n := 0
 		for k := range s.records {
@@ -249,13 +277,14 @@ func (s *Store) put(t, id string, r record) error {
 func (s *Store) Control(t, agent string) Control {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if r := s.records[key{t, "control:" + agent}]; r.Control != nil {
+	if r := clone(s.records[key{t, "control:" + agent}]); r.Control != nil {
 		return *r.Control
 	}
 	return Control{Agent: agent}
 }
+func validReminder(seconds *int) bool { return seconds == nil || (*seconds >= 0 && *seconds <= 604800) }
 func (s *Store) SetControl(t, agent string, c Control, version int, by string, at time.Time) (Control, error) {
-	if agent != "" && !identifier(agent) || len(c.Manager) > 256 || len(c.StopRules) > 4000 {
+	if agent != "" && !identifier(agent) || len(c.Manager) > 256 || len(c.StopRules) > 4000 || !validReminder(c.ReminderAfterSeconds) || !validReminder(c.BlockedReminderAfterSeconds) {
 		return Control{}, ErrInvalid
 	}
 	s.mu.Lock()
@@ -412,6 +441,13 @@ func (s *Store) SetAssignment(t string, a Assignment, version int, by string, at
 		a.RunID = old.RunID
 		a.SourceVersion = old.SourceVersion
 		a.TagID = old.TagID
+		a.DeadlineMissed = old.DeadlineMissed
+		if !a.DueAt.Equal(old.DueAt) && (a.DueAt.IsZero() || a.DueAt.After(at)) {
+			a.DeadlineMissed = false
+			if old.DeadlineMissed && a.State != Blocked {
+				a.Blocker = ""
+			}
+		}
 	} else {
 		if a.State != Requested {
 			return Assignment{}, ErrInvalid
@@ -476,9 +512,10 @@ func (s *Store) Settle(t, run string, success bool, at time.Time) error {
 		}
 		r = clone(r)
 		changed := false
-		if a := r.Assignment; a != nil && a.RunID == run && a.State == InProgress {
+		if a := r.Assignment; a != nil && a.RunID == run && (a.State == InProgress || (a.State == NeedsPerson && a.DeadlineMissed)) {
 			a.State = Result
-			if a.Cron != "" || a.Trigger == SourceTrigger {
+			a.Blocker = ""
+			if (a.Cron != "" || a.Trigger == SourceTrigger) && !a.DeadlineMissed {
 				a.State = Watching
 			}
 			if !success {
@@ -489,7 +526,7 @@ func (s *Store) Settle(t, run string, success bool, at time.Time) error {
 			a.UpdatedAt = at
 			changed = true
 		}
-		if h := r.Handoff; h != nil && h.RunID == run && (h.State == InProgress || h.State == Accepted) {
+		if h := r.Handoff; h != nil && h.RunID == run && (h.State == InProgress || h.State == Accepted || (h.State == NeedsPerson && h.DeadlineMissed)) {
 			h.State = Result
 			if !success {
 				h.State = Blocked
@@ -524,6 +561,9 @@ func (s *Store) SetHandoff(t string, h Handoff, version int, at time.Time) (Hand
 	if !identifier(h.ID) || !identifier(h.From) || !identifier(h.To) || !text(h.Goal, 8000) || !text(h.DoneWhen, 4000) || len(h.Inputs) > 32 || (len(h.Chain) < 2 && h.State != NeedsPerson) || !validState(h.State) || len(h.Blocker) > 4000 {
 		return Handoff{}, ErrInvalid
 	}
+	if h.Requester != "" && !identifier(h.Requester) {
+		return Handoff{}, ErrInvalid
+	}
 	for _, i := range h.Inputs {
 		if !slices.Contains([]string{"run", "artifact", "thread", "text"}, i.Type) || !text(i.Reference, 4000) {
 			return Handoff{}, ErrInvalid
@@ -535,11 +575,16 @@ func (s *Store) SetHandoff(t string, h Handoff, version int, at time.Time) (Hand
 	v := 0
 	if r.Handoff != nil {
 		old := r.Handoff
+		h.Requester = old.Requester
 		v = old.Version
 		if !transition(old.State, h.State) {
 			return Handoff{}, ErrConflict
 		}
 		h.CreatedAt = old.CreatedAt
+		h.DeadlineMissed = old.DeadlineMissed
+		if !h.DueAt.Equal(old.DueAt) && (h.DueAt.IsZero() || h.DueAt.After(at)) {
+			h.DeadlineMissed = false
+		}
 	} else {
 		h.CreatedAt = at
 	}
@@ -607,6 +652,7 @@ func (s *Store) Due(t string, at time.Time) ([]Notice, error) {
 		if a := r.Assignment; a != nil {
 			if !a.DueAt.IsZero() && at.After(a.DueAt) && a.State != Result && a.State != Cancelled && a.State != NeedsPerson {
 				a.State = NeedsPerson
+				a.DeadlineMissed = true
 				a.Blocker = "The assignment deadline passed. A person must decide what happens next."
 				a.Version++
 				a.UpdatedAt = at
@@ -619,6 +665,7 @@ func (s *Store) Due(t string, at time.Time) ([]Notice, error) {
 		if h := r.Handoff; h != nil {
 			if !h.DueAt.IsZero() && at.After(h.DueAt) && h.State != Result && h.State != Cancelled && h.State != NeedsPerson {
 				h.State = NeedsPerson
+				h.DeadlineMissed = true
 				h.Blocker = "The handoff deadline passed. A person must choose the next owner."
 				h.Version++
 				h.UpdatedAt = at

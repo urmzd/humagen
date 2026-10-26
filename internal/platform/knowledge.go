@@ -46,6 +46,8 @@ func sourceURI(name string) string { return "knowledge://" + name }
 // called run is given its root's, as it counts toward its root's ancestors,
 // so a whole conversation is grounded alike. A housekeeping run is given
 // none: it is filed at the workspace whatever turn it serves.
+const metaForkSources = "_humagen.fork_sources"
+
 func (p *Platform) sourcesFor(tag envelope.Tag, edge call.Edge, project string) []string {
 	if tag.Origin == runs.OriginSystem {
 		return nil
@@ -55,8 +57,17 @@ func (p *Platform) sourcesFor(tag envelope.Tag, edge call.Edge, project string) 
 			return runs.SourcesOf(root.Tag().Meta)
 		}
 	}
+	if names := p.forkSourceSelection(tag.Tenant, tag.Meta[runs.MetaThread]); names != nil {
+		return *names
+	}
 	var out []string
-	for _, s := range p.Projects.Tree(tag.Tenant).Knowledge(project) {
+	channel := tag.Meta[runs.MetaChannel]
+	if thread := tag.Meta[runs.MetaThread]; thread != "" && tag.Origin == runs.OriginAPI {
+		if current, err := p.Threads.Get(tag.Tenant, thread); err == nil {
+			channel = current.Channel
+		}
+	}
+	for _, s := range p.knowledgeAtPlace(tag.Tenant, project, channel) {
 		out = append(out, s.Name)
 	}
 	return out
@@ -69,6 +80,9 @@ func (p *Platform) sourcesFor(tag envelope.Tag, edge call.Edge, project string) 
 // was told to use, ahead of its text (withSkills). The pinned definition
 // itself is never changed.
 func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error) {
+	if err := p.checkAgentSkillDefaults(req); err != nil {
+		return req, err
+	}
 	req, err := p.resolveModel(req)
 	if err != nil {
 		return req, err
@@ -107,17 +121,23 @@ func withSources(req runtime.Request) runtime.Request {
 	pinned := runs.SourcesOf(req.Meta)
 	_, now := req.Meta[runs.MetaSources]
 	_, before := req.Meta[runs.MetaSourcesV0]
-	if now || before {
+	selection, selected := req.Meta[metaForkSources]
+	if now || before || selected {
 		meta := maps.Clone(req.Meta)
 		delete(meta, runs.MetaSources)
 		delete(meta, runs.MetaSourcesV0)
+		delete(meta, metaForkSources)
 		req.Meta = meta
 	}
-	if len(pinned) == 0 {
+	if len(pinned) == 0 && !selected {
 		return req
 	}
 	spec := req.Revision.Spec
 	sources := slices.Clone(spec.Sources)
+	if selected {
+		names := strings.Split(selection, ",")
+		sources = slices.DeleteFunc(sources, func(source agentrt.Source) bool { return !slices.Contains(names, source.Name) })
+	}
 	for _, name := range pinned {
 		if !slices.ContainsFunc(sources, func(s agentrt.Source) bool { return s.Name == name }) {
 			sources = append(sources, agentrt.Source{Name: name, URI: sourceURI(name)})
@@ -159,7 +179,7 @@ func (p *Platform) deleteSource(who auth.Principal, name string, wanted *knowled
 		if wanted == nil && snapshot.Lifecycle != nil {
 			return knowledge.ErrNotFound
 		}
-		if wanted != nil && (snapshot.Lifecycle == nil || snapshot.Lifecycle.SourceConfig != *wanted) {
+		if wanted != nil && (snapshot.Lifecycle == nil || !snapshot.Lifecycle.Equal(*wanted)) {
 			return knowledge.ErrNotFound
 		}
 	}
@@ -176,6 +196,14 @@ func (p *Platform) deleteSource(who auth.Principal, name string, wanted *knowled
 	for _, pr := range append([]projects.Project{tree.Root()}, tree.Projects()...) {
 		if slices.Contains(pr.Knowledge, name) && seer.Project(pr.Name) {
 			by = append(by, titleOf(pr, p.Settings(who.Tenant).WorkspaceName))
+		}
+	}
+	if attachments, err := p.SourceAttachmentsAs(who, name); err == nil {
+		for _, attachment := range attachments {
+			title := titleOf(projects.Project{Name: projects.NameOf(attachment.Project)}, p.Settings(who.Tenant).WorkspaceName)
+			if !slices.Contains(by, title) {
+				by = append(by, title)
+			}
 		}
 	}
 	switch {
@@ -244,7 +272,6 @@ func (p *Platform) SetProjectKnowledge(who auth.Principal, project string, w pro
 	if !p.Seer(who).Knowledge() {
 		return ProjectKnowledge{}, fmt.Errorf("%w: naming a project's knowledge sources takes %s", ErrForbidden, auth.KnowledgeRead)
 	}
-	have := p.Knowledge.List(who.Tenant)
 	var named []string
 	if pr, err := p.Projects.Get(who.Tenant, projects.NameOf(project)); err == nil {
 		named = pr.Knowledge
@@ -253,15 +280,29 @@ func (p *Platform) SetProjectKnowledge(who auth.Principal, project string, w pro
 		if !projects.ValidSource(n) || slices.Contains(named, n) {
 			continue // the store says what is wrong with it; one named already may stay
 		}
-		if !slices.ContainsFunc(have, func(s knowledge.Source) bool { return s.Name == n }) {
+		if !p.SourceVisible(who, n) {
 			return ProjectKnowledge{}, fmt.Errorf("%w: there is no knowledge source called %q", projects.ErrInvalid, n)
+		}
+	}
+	// A projection omits unread source names. Saving that projection cannot
+	// silently remove associations the reader was never shown.
+	in.Knowledge = slices.Clone(in.Knowledge)
+	for _, name := range named {
+		if !p.SourceVisible(who, name) && !slices.Contains(in.Knowledge, name) {
+			in.Knowledge = append(in.Knowledge, name)
 		}
 	}
 	pr, err := p.Projects.SetKnowledge(who.Tenant, projects.NameOf(project), in.Version, in.Knowledge, w, p.now())
 	if err != nil {
 		return ProjectKnowledge{}, err
 	}
-	return knowledgeOf(pr, p.Projects.Tree(who.Tenant)), nil
+	out := knowledgeOf(pr, p.Projects.Tree(who.Tenant))
+	out.Knowledge = p.Seer(who).Sources(out.Knowledge)
+	if out.Knowledge == nil {
+		out.Knowledge = []string{}
+	}
+	out.Given = slices.DeleteFunc(out.Given, func(g projects.KnowledgeSource) bool { return !p.SourceVisible(who, g.Name) })
+	return out, nil
 }
 
 // knowledgeOf is the answer to a write: the version written and the sources
