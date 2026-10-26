@@ -25,7 +25,7 @@ button{font-family:inherit}
       <div style="flex: 0 0 auto; width: 44px; height: 44px; border-radius: 11px; background: #E3E8EE; color: #2E5B88; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center">LP</div>
       <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column">
         <h1 style="margin: 0; font-size: 19px; font-weight: 600">Launch Planner</h1>
-        <span style="font-size: 13px; color: #5F6168">Plan owner · Spring Launch · managed by Mira K.</span>
+        <span style="font-size: 13px; color: #5F6168">Plan owner Spring Launch managed by Mira K.</span>
       </div>
       <button type="button" onClick="{{ togglePause }}" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid #D5D5D0; background: #FFFFFF; color: #1B1C1E; font-weight: 500; cursor: pointer">{{ pauseLabel }}</button>
     </div>
@@ -89,9 +89,9 @@ button{font-family:inherit}
       <div style="display: flex; flex-direction: column; gap: 8px">
         <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Can hand off to</h2>
         <ul style="margin: 0; padding: 12px 14px; list-style: none; border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px">
-          <li>Ops Agent <span style="color: #5F6168">· vendor work</span></li>
-          <li>Media Analyst <span style="color: #5F6168">· paid media</span></li>
-          <li>Research Analyst <span style="color: #5F6168">· ask first</span></li>
+          <li>Ops Agent <span style="color: #5F6168">vendor work</span></li>
+          <li>Media Analyst <span style="color: #5F6168">paid media</span></li>
+          <li>Research Analyst <span style="color: #5F6168">ask first</span></li>
         </ul>
       </div>
     </section>
@@ -101,9 +101,9 @@ button{font-family:inherit}
       <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Escalation and limits</h2>
       <div style="display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px 12px; padding: 12px 14px; border: 1px solid #E2E2DE; border-radius: 10px; font-size: 13px">
         <span style="color: #5F6168">Ask</span><span>Mira K., then # launch-ops</span>
-        <span style="color: #5F6168">If no answer</span><span>Remind after 4 h · never act on its own</span>
+        <span style="color: #5F6168">If no answer</span><span>Remind after 4 h never act on its own</span>
         <span style="color: #5F6168">Stop if</span><span>A source it relies on is stale for more than 24 h</span>
-        <span style="color: #5F6168">Run budget</span><span>Up to 40 runs a day · 31 left</span>
+        <span style="color: #5F6168">Run budget</span><span>Up to 40 runs a day 31 left</span>
       </div>
     </section>
 
@@ -153,7 +153,7 @@ class Component extends DCLogic {
       perms,
       pauseLabel: p ? 'Resume' : 'Pause',
       togglePause: () => this.setState({ paused: !p }),
-      statusText: p ? 'Paused by you · assignments queue until resumed' : 'Waiting on you · approve Nov 19 in # launch-ops',
+      statusText: p ? 'Paused by you assignments queue until resumed' : 'Waiting on you approve Nov 19 in # launch-ops',
       statusStyle: 'display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: ' + (p ? '#EEEEEB' : '#FBF3E4') + '; color: ' + (p ? '#3A3C41' : '#4A3A20'),
       dotStyle: 'width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: ' + (p ? '#8A8C92' : '#B86E00')
     };

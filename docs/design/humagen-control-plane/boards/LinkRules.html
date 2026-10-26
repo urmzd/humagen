@@ -22,7 +22,7 @@ button{font-family:inherit}
   <div style="padding: 18px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #E2E2DE">
     <span style="flex: 0 0 auto; width: 36px; height: 36px; border-radius: 9px; background: #EEEEEB; color: #3A3C41; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">GH</span>
     <div style="flex: 1 1 auto; display: flex; flex-direction: column">
-      <h1 style="margin: 0; font-size: 18px; font-weight: 600">Auto-link rules · GitHub</h1>
+      <h1 style="margin: 0; font-size: 18px; font-weight: 600">Auto-link rules GitHub</h1>
       <span style="font-size: 13px; color: #5F6168">Decide where new repos, issues and pull requests land - without anyone filing them by hand.</span>
     </div>
     <a href="Integrations.html" aria-label="Close" style="width: 36px; height: 36px; border-radius: 8px; color: #5F6168; display: inline-flex; align-items: center; justify-content: center">
@@ -117,7 +117,7 @@ button{font-family:inherit}
         <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Preview</h2>
         <div style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
           <div style="font-weight: 600">3 repos, 41 issues would link</div>
-          <div style="font-size: 13px; color: #3A3C41">to <strong>{{ targetLabel }}</strong> · {{ modeLabel }}</div>
+          <div style="font-size: 13px; color: #3A3C41">to <strong>{{ targetLabel }}</strong> {{ modeLabel }}</div>
           <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px">
             <li style="display: flex; gap: 8px"><span style="flex: 1 1 auto">acme/launch-site</span><span style="color: #5F6168">already linked</span></li>
             <li style="display: flex; gap: 8px"><span style="flex: 1 1 auto">acme/packaging-api</span><span style="color: #5F6168">already linked</span></li>
@@ -131,7 +131,7 @@ button{font-family:inherit}
       </section>
 
       <section aria-label="Existing rules" style="display: flex; flex-direction: column; gap: 8px">
-        <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Rules · applied top to bottom</h2>
+        <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Rules applied top to bottom</h2>
         <sc-for list="{{ rules }}" as="r" hint-placeholder-count="4">
           <div style="{{ r.cardStyle }}">
             <div style="display: flex; align-items: flex-start; gap: 10px">
@@ -215,10 +215,10 @@ class Component extends DCLogic {
     }));
 
     const rdefs = [
-      { id: 'r1', when: 'Repo topic is spring-launch', target: 'Spring Launch › # launch-ops', mode: 'Auto-link', matches: '2 repos · 37 issues' },
+      { id: 'r1', when: 'Repo topic is spring-launch', target: 'Spring Launch › # launch-ops', mode: 'Auto-link', matches: '2 repos 37 issues' },
       { id: 'r2', when: 'Label is launch-blocker', target: 'Spring Launch › # launch-ops', mode: 'Suggest first', matches: '4 issues' },
-      { id: 'r3', when: 'Path contains /pricing', target: 'Q4 Research', mode: 'Suggest first', matches: '1 repo · paused' },
-      { id: 'r4', when: 'Contributor is a Spring Launch member', target: 'Spring Launch', mode: 'Suggest first', matches: '6 repos · 1 conflict' }
+      { id: 'r3', when: 'Path contains /pricing', target: 'Q4 Research', mode: 'Suggest first', matches: '1 repo paused' },
+      { id: 'r4', when: 'Contributor is a Spring Launch member', target: 'Spring Launch', mode: 'Suggest first', matches: '6 repos 1 conflict' }
     ];
     const rules = rdefs.map((r) => {
       const on = !!s.rules[r.id];

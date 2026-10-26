@@ -60,6 +60,8 @@ interface Screen {
   path: string;
   /** What a person does on the page before it is captured, such as opening a menu. */
   act?: (page: Page) => Promise<void>;
+  /** Release a fixture held open for capture before moving to the next screen. */
+  after?: () => Promise<void>;
 }
 
 interface Ids {
@@ -80,6 +82,23 @@ const more = (page: Page) =>
 const bar = (page: Page) => page.locator("form[aria-label='Message'] textarea");
 const plus = (page: Page) => page.getByRole("button", { name: "Add files, agents or a project" });
 
+/** Open an installed-app form without sending credentials to an external service. */
+async function connectSystem(page: Page, surface: "slack" | "github" = "slack"): Promise<void> {
+  await page.getByRole("button", { name: "Connect a System", exact: true }).click();
+  await page.getByRole("combobox", { name: "System", exact: true }).selectOption(surface);
+  await page.getByLabel(/^Connection ID/).fill("screens-client");
+  await page.getByLabel("Name", { exact: true }).fill("Screen capture connection");
+  if (surface === "slack") await page.getByLabel("Slack team ID", { exact: true }).fill("T0123ABC");
+  else await page.getByLabel(/^GitHub accounts/).fill("acme");
+}
+
+/** These fixture values never reach a real connector. */
+async function submitConnection(page: Page): Promise<void> {
+  await page.getByLabel("Token", { exact: true }).fill("screen-test-token");
+  await page.getByLabel("Signing secret", { exact: true }).fill("screen-test-signing");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+}
+
 /** Opens the + menu and checks two agents in it. */
 async function twoAgents(page: Page): Promise<void> {
   await plus(page).click();
@@ -97,6 +116,21 @@ async function twoAgents(page: Page): Promise<void> {
  */
 function chats(ids: Ids): Screen[] {
   return [
+    {
+      name: "conversation-message-time",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const trigger = page.getByRole("button", { name: /^Posted / }).first();
+        await trigger.click();
+        const tooltip = page.getByRole("tooltip");
+        await tooltip.waitFor();
+        const box = await tooltip.boundingBox();
+        assert.ok(
+          box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0),
+          "Message timestamp must fit the viewport",
+        );
+      },
+    },
     {
       name: "conversation-context",
       path: `/conversations/${ids.privateChat}/context`,
@@ -277,6 +311,7 @@ function chats(ids: Ids): Screen[] {
 
 /** Every main screen: each page, and each tab of the pages that have them, and the chat's states. */
 function screens(ids: Ids): Screen[] {
+  let releasePending: (() => Promise<void>) | undefined;
   const list: Screen[] = [
     { name: "home", path: "/" },
     { name: "task", path: `/conversations/${ids.task}` },
@@ -359,6 +394,54 @@ function screens(ids: Ids): Screen[] {
     { name: "artifacts", path: "/artifacts" },
     { name: "artifact", path: `/artifacts/${ids.artifact}` },
     { name: "connections", path: "/connections" },
+    {
+      name: "settings-connect-slack",
+      path: "/settings/connections",
+      act: async (page) => connectSystem(page),
+    },
+    {
+      name: "settings-connect-github",
+      path: "/settings/connections",
+      act: async (page) => {
+        await connectSystem(page, "github");
+        await page.getByLabel(/^Token source/).selectOption("reference");
+        await page.getByLabel(/^Signing secret source/).selectOption("reference");
+      },
+    },
+    {
+      name: "settings-connect-refused",
+      path: "/settings/connections",
+      act: async (page) => {
+        await connectSystem(page);
+        await page.route("**/api/clients", (route) =>
+          route.fulfill({ status: 409, json: { error: "Connection limit reached." } }),
+        );
+        await submitConnection(page);
+        await page.getByText("Connection limit reached.", { exact: true }).waitFor();
+        assert.equal(await page.getByLabel("Token", { exact: true }).inputValue(), "");
+      },
+    },
+    {
+      name: "settings-connect-pending",
+      path: "/settings/connections",
+      act: async (page) => {
+        await connectSystem(page);
+        await page.route("**/api/clients", (route) => {
+          releasePending = () => route.abort();
+        });
+        await submitConnection(page);
+        await page.getByRole("button", { name: "Connecting…", exact: true }).waitFor();
+        assert.equal(
+          await page.getByRole("button", { name: "Connecting…", exact: true }).isDisabled(),
+          true,
+        );
+        assert.equal(await page.getByLabel("Token", { exact: true }).inputValue(), "");
+      },
+      after: async () => {
+        await releasePending?.();
+        releasePending = undefined;
+      },
+    },
     ...["people", "agents", "projects"].map((tab) => ({
       name: `directory-${tab}`,
       path: tab === "people" ? "/directory" : `/directory/${tab}`,
@@ -782,6 +865,7 @@ async function shoot(
     await page.screenshot({ path: join(out, vp.name, `${s.name}.full.png`) });
     await page.setViewportSize({ width: vp.width, height: vp.height });
   }
+  await s.after?.();
   page.off("pageerror", onError);
   return { problems, full: extra > 8 };
 }

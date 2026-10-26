@@ -83,3 +83,31 @@ body.board-fixed .board-root {
   opacity: 0.85;
 }
 .board-back:hover { color: #FFFFFF; opacity: 1; }
+
+/* Source metadata uses space and typography instead of punctuation. */
+.board-evidence {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 3px 8px;
+  border-radius: var(--hg-radius-pill);
+}
+.board-evidence-detail { font-size: 0.9em; }
+
+/* Reserve the action position so revealing it never moves message content. */
+.board-message-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+.board-message:hover .board-message-actions,
+.board-message:focus-within .board-message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .board-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}

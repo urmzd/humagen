@@ -113,7 +113,7 @@ button{font-family:inherit}
           </span>
           <div style="flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
             <h2 style="margin: 0; font-size: 19px; font-weight: 600">{{ sel.name }}</h2>
-            <span style="font-size: 13px; color: #5F6168">{{ sel.version }} · {{ sel.scopeLabel }} · owned by {{ sel.owner }}</span>
+            <span style="font-size: 13px; color: #5F6168">{{ sel.version }} {{ sel.scopeLabel }} owned by {{ sel.owner }}</span>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap">
             <sc-if value="{{ sel.canPromote }}" hint-placeholder-val="{{ true }}">
@@ -173,7 +173,7 @@ button{font-family:inherit}
         <!-- Health + provenance -->
         <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
           <div style="border: 1px solid #E2E2DE; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px">
-            <span style="font-size: 12px; color: #5F6168">Recent runs · 30 days</span>
+            <span style="font-size: 12px; color: #5F6168">Recent runs 30 days</span>
             <span style="font-size: 22px; font-weight: 600">{{ sel.runs }}</span>
             <span style="font-size: 12px; color: #3A3C41">{{ sel.runsNote }}</span>
           </div>
@@ -212,7 +212,7 @@ class Component extends DCLogic {
     const A = { LP: 'Launch Planner', OA: 'Ops Agent', OB: 'Onboarding Guide', RA: 'Research Analyst', MA: 'Monitor Agent' };
     const ag = (list) => list.map((i) => ({ initials: i, name: A[i] }));
     const skills = [
-      { id: 'assess', name: 'Assess launch impact', scope: 'project', scopeLabel: 'Project · Spring Launch', version: 'v3', owner: 'Mira K.', agents: ag(['LP']),
+      { id: 'assess', name: 'Assess launch impact', scope: 'project', scopeLabel: 'Project Spring Launch', version: 'v3', owner: 'Mira K.', agents: ag(['LP']),
         what: 'Given a change to a launch dependency, work out what moves, compare options, and return one recommendation with evidence.',
         inputs: ['A source change (diff)', 'Current launch plan', 'Retail calendar'], outputs: ['Recommendation + decision request', 'Updated plan draft'],
         steps: ['Read the change and list affected tasks', 'Run Dependency check on each affected task', 'Compare at most two options with dates and cost', 'Write the recommendation first, steps last', 'Ask the plan owner for a decision'],
@@ -240,7 +240,7 @@ class Component extends DCLogic {
         tools: ['read_activity', 'post_message'], runs: '22 of 22', runsNote: 'Posted every Monday',
         provenance: 'Promoted from Onboarding Revamp by Sam R.',
         versions: [{ v: 'v4', note: '120-word limit', when: 'Oct 6' }, { v: 'v3', note: 'Decisions listed last', when: 'Sep 15' }] },
-      { id: 'price', name: 'Competitor price scan', scope: 'personal', scopeLabel: 'Personal · Only you', version: 'v1', owner: 'you', agents: ag(['RA']),
+      { id: 'price', name: 'Competitor price scan', scope: 'personal', scopeLabel: 'Personal Only you', version: 'v1', owner: 'you', agents: ag(['RA']),
         what: 'Check a list of competitor pages and summarise price changes since the last scan.',
         inputs: ['Competitor pricing source', 'Last scan'], outputs: ['Change summary'],
         steps: ['Fetch each page from the source', 'Diff against the last scan', 'Summarise changes in a table'],

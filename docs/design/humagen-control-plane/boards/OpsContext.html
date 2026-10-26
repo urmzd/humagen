@@ -55,7 +55,7 @@ button{font-family:inherit}
     <ol aria-label="Sources by lifecycle stage" style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px">
       <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5F6168">Importing</span><span style="font-size: 22px; font-weight: 600">0</span></li>
       <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5F6168">Indexing</span><span style="font-size: 22px; font-weight: 600">1</span></li>
-      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5F6168">Live · in sync</span><span style="font-size: 22px; font-weight: 600">4</span></li>
+      <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5F6168">Live in sync</span><span style="font-size: 22px; font-weight: 600">4</span></li>
       <li style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5F6168">Snapshots</span><span style="font-size: 22px; font-weight: 600">2</span></li>
       <li style="background: #FFFBF3; border: 1px solid #EED9B3; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #6B4100">Needs attention</span><span style="font-size: 22px; font-weight: 600; color: #6B4100">1</span></li>
     </ol>
@@ -93,7 +93,7 @@ button{font-family:inherit}
       <aside aria-label="Source detail" style="flex: 1 1 320px; min-width: 0; background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
         <div style="display: flex; flex-direction: column; gap: 2px">
           <h2 style="margin: 0; font-size: 16px; font-weight: 600">{{ sel.name }}</h2>
-          <span style="font-size: 12px; color: #5F6168">{{ sel.origin }} · {{ sel.owner }}</span>
+          <span style="font-size: 12px; color: #5F6168">{{ sel.origin }} {{ sel.owner }}</span>
         </div>
         <div style="{{ sel.bannerStyle }}">{{ sel.banner }}</div>
 
@@ -141,33 +141,33 @@ class Component extends DCLogic {
     const dot = (c) => 'flex: 0 0 auto; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: ' + c;
     const G = '#1F7A4D', A = '#B86E00', B = '#2E5B88', N = '#8A8C92';
     const sources = [
-      { id: 'media', name: 'Media buy tracker', origin: 'Google Sheets', owner: 'added by Jon T.', mode: 'Live · hourly', synced: 'Oct 22, 6:04 pm', usedBy: 'Media Analyst, Launch Planner', status: 'Access expired', t: 'warn',
+      { id: 'media', name: 'Media buy tracker', origin: 'Google Sheets', owner: 'added by Jon T.', mode: 'Live hourly', synced: 'Oct 22, 6:04 pm', usedBy: 'Media Analyst, Launch Planner', status: 'Access expired', t: 'warn',
         banner: 'Sync failing since 8:10. Agents are reading the last good copy (Oct 22, 6:04 pm). Media Analyst has stopped by policy.',
-        events: [['Sync failed: access expired (3rd attempt)', '9:10', A], ['Sync failed: access expired', '8:10', A], ['Synced · 2 rows changed', 'Oct 22, 6:04 pm', G], ['Connected and indexed', 'Oct 3', G]],
-        deps: '2 agents · 3 conversations in Spring Launch · Launch plan v4 cites it', primary: 'Reconnect' },
-      { id: 'brand', name: 'Brand guidelines folder', origin: 'Google Drive · 340 files', owner: 'added by Mira K.', mode: 'Live · daily', synced: 'Indexing 120/340', usedBy: 'Not yet available', status: 'Indexing', t: 'busy',
+        events: [['Sync failed: access expired (3rd attempt)', '9:10', A], ['Sync failed: access expired', '8:10', A], ['Synced 2 rows changed', 'Oct 22, 6:04 pm', G], ['Connected and indexed', 'Oct 3', G]],
+        deps: '2 agents 3 conversations in Spring Launch Launch plan v4 cites it', primary: 'Reconnect' },
+      { id: 'brand', name: 'Brand guidelines folder', origin: 'Google Drive 340 files', owner: 'added by Mira K.', mode: 'Live daily', synced: 'Indexing 120/340', usedBy: 'Not yet available', status: 'Indexing', t: 'busy',
         banner: 'Agents can use it once indexing finishes, in about 6 minutes.',
-        events: [['Indexing 120 of 340 files', 'now', B], ['Imported 340 files · 2 skipped (unsupported)', '9:24', G], ['Connected', '9:20', G]],
+        events: [['Indexing 120 of 340 files', 'now', B], ['Imported 340 files 2 skipped (unsupported)', '9:24', G], ['Connected', '9:20', G]],
         deps: 'Will be available to Spring Launch', primary: 'View skipped files' },
-      { id: 'eta', name: 'Supplier ETA', origin: 'Google Sheets', owner: 'added by Jon T.', mode: 'Live · on change', synced: '9:42 today', usedBy: 'Monitor Agent, Launch Planner', status: 'In sync', t: 'ok',
+      { id: 'eta', name: 'Supplier ETA', origin: 'Google Sheets', owner: 'added by Jon T.', mode: 'Live on change', synced: '9:42 today', usedBy: 'Monitor Agent, Launch Planner', status: 'In sync', t: 'ok',
         banner: 'In sync. Last change at 9:41 triggered a handoff to Launch Planner.',
-        events: [['Synced · packaging ETA changed', '9:42', G], ['Synced · no changes', '8:42', G], ['Connected and indexed', 'Sep 29', G]],
-        deps: '2 agents · 2 conversations · 1 standing assignment', primary: 'Sync now' },
-      { id: 'cal', name: 'Retail calendar', origin: 'Notion', owner: 'project source', mode: 'Live · 15 min', synced: '9:30 today', usedBy: 'Launch Planner', status: 'In sync', t: 'ok',
+        events: [['Synced packaging ETA changed', '9:42', G], ['Synced no changes', '8:42', G], ['Connected and indexed', 'Sep 29', G]],
+        deps: '2 agents 2 conversations 1 standing assignment', primary: 'Sync now' },
+      { id: 'cal', name: 'Retail calendar', origin: 'Notion', owner: 'project source', mode: 'Live 15 min', synced: '9:30 today', usedBy: 'Launch Planner', status: 'In sync', t: 'ok',
         banner: 'In sync on schedule.',
-        events: [['Synced · no changes', '9:30', G], ['Synced · 1 page changed', '9:15', G], ['Connected and indexed', 'Sep 29', G]],
-        deps: '1 agent · 1 conversation', primary: 'Sync now' },
-      { id: 'comp', name: 'Competitor pricing', origin: 'Web · 12 pages', owner: 'added by Research Analyst', mode: 'Live · daily', synced: '7:00 today', usedBy: 'Research Analyst', status: 'In sync', t: 'ok',
+        events: [['Synced no changes', '9:30', G], ['Synced 1 page changed', '9:15', G], ['Connected and indexed', 'Sep 29', G]],
+        deps: '1 agent 1 conversation', primary: 'Sync now' },
+      { id: 'comp', name: 'Competitor pricing', origin: 'Web 12 pages', owner: 'added by Research Analyst', mode: 'Live daily', synced: '7:00 today', usedBy: 'Research Analyst', status: 'In sync', t: 'ok',
         banner: 'In sync. 1 page returned the same content as yesterday.',
-        events: [['Synced · 3 pages changed', '7:00', G], ['Connected and indexed', 'Oct 21', G]],
-        deps: '1 agent · Pricing memo draft (private)', primary: 'Sync now' },
+        events: [['Synced 3 pages changed', '7:00', G], ['Connected and indexed', 'Oct 21', G]],
+        deps: '1 agent Pricing memo draft (private)', primary: 'Sync now' },
       { id: 'plan', name: 'Launch plan v3.pdf', origin: 'Upload', owner: 'uploaded by Mira K.', mode: 'Snapshot', synced: 'Imported Oct 18', usedBy: 'Launch Planner', status: 'Snapshot', t: 'quiet',
         banner: 'Snapshot - will not update. A newer version (v4 draft) exists in this project.',
-        events: [['Imported and indexed · 24 pages', 'Oct 18', N]],
-        deps: '1 agent · 2 conversations', primary: 'Replace with v4' },
-      { id: 'mail', name: 'Customer emails - pricing', origin: 'Gmail · 9 threads', owner: 'private to you', mode: 'Snapshot', synced: 'Imported Oct 21', usedBy: 'Research Analyst', status: 'Snapshot', t: 'quiet',
+        events: [['Imported and indexed 24 pages', 'Oct 18', N]],
+        deps: '1 agent 2 conversations', primary: 'Replace with v4' },
+      { id: 'mail', name: 'Customer emails - pricing', origin: 'Gmail 9 threads', owner: 'private to you', mode: 'Snapshot', synced: 'Imported Oct 21', usedBy: 'Research Analyst', status: 'Snapshot', t: 'quiet',
         banner: 'Snapshot of 9 threads. Private - only shared as a summary if its conversation moves to a project.',
-        events: [['Imported and indexed · 9 threads', 'Oct 21', N]],
+        events: [['Imported and indexed 9 threads', 'Oct 21', N]],
         deps: 'Pricing memo draft (private)', primary: 'Re-import' }
     ];
     const selId = this.state.selected;

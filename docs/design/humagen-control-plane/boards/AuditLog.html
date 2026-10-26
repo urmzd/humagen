@@ -81,7 +81,7 @@ button{font-family:inherit}
       </div>
     </div>
 
-    <div style="font-size: 13px; color: #3A3C41">Today, Oct 23 · <strong style="font-weight: 600">{{ count }}</strong> of 10 events</div>
+    <div style="font-size: 13px; color: #3A3C41">Today, Oct 23 <strong style="font-weight: 600">{{ count }}</strong> of 10 events</div>
 
     <!-- Log -->
     <div role="table" aria-label="Audit events" style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; overflow-x: auto; font-size: 13px">
@@ -130,7 +130,7 @@ button{font-family:inherit}
                 <span>{{ r.after }}</span>
               </div>
               <div style="padding: 10px 4px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #3A3C41">
-                <span><strong style="font-weight: 600; color: #1B1C1E">Why · </strong>{{ r.why }}</span>
+                <span><strong style="font-weight: 600; color: #1B1C1E">Why </strong>{{ r.why }}</span>
                 <a href="{{ r.href }}" style="font-weight: 600; text-decoration: none; font-size: 12px">{{ r.linkLabel }}</a>
               </div>
             </div>
@@ -178,52 +178,52 @@ class Component extends DCLogic {
       { id: 'skill', time: '10:31', who: 'person', initials: 'MK', actor: 'Mira K.', type: 'skills',
         action: 'Promoted a skill to the whole workspace', detail: 'Now offered to agents in every project',
         object: 'Assess launch impact', objKind: 'Skill', icon: 'skill', tint: 'skill', scope: 'Workspace', scopeKind: 'workspace',
-        before: 'Project skill · Spring Launch · used by Launch Planner', after: 'Workspace skill · available to all projects · version 3 locked',
+        before: 'Project skill Spring Launch used by Launch Planner', after: 'Workspace skill available to all projects version 3 locked',
         why: 'Used in 9 runs with no corrections.', href: 'Skills.dc.html', linkLabel: 'Open skill' },
       { id: 'move', time: '10:20', who: 'person', initials: 'AP', actor: 'Avery Park', type: 'moves',
-        action: 'Moved a private conversation to # pricing', detail: 'Audience 1 → 10 · private email shared as summary',
+        action: 'Moved a private conversation to # pricing', detail: 'Audience 1 → 10 private email shared as summary',
         object: 'Pricing memo draft', objKind: 'Conversation', icon: 'message', tint: 'neutral', scope: 'Spring Launch', scopeKind: 'project',
-        before: 'Private · Only you + Research Analyst · 2 sources', after: 'Spring Launch / # pricing · 8 people + 2 agents · “Customer emails - pricing” kept private, summary shared',
+        before: 'Private Only you + Research Analyst 2 sources', after: 'Spring Launch / # pricing 8 people + 2 agents “Customer emails - pricing” kept private, summary shared',
         why: 'Memo ready for team review.', href: 'MoveConversation.dc.html', linkLabel: 'Open conversation' },
       { id: 'send', time: '10:16', who: 'agent', initials: 'OA', actor: 'Ops Agent', type: 'permissions',
         action: 'Sent 4 vendor notices', detail: 'Approved by Avery Park at 10:14',
-        object: 'Vendor notices · Nov 19', objKind: 'Messages', icon: 'message', tint: 'neutral', scope: 'Spring Launch', scopeKind: 'project',
-        before: 'Held · 4 drafts waiting for permission', after: 'Sent to 4 vendors · replies routed to # launch-ops',
+        object: 'Vendor notices Nov 19', objKind: 'Messages', icon: 'message', tint: 'neutral', scope: 'Spring Launch', scopeKind: 'project',
+        before: 'Held 4 drafts waiting for permission', after: 'Sent to 4 vendors replies routed to # launch-ops',
         why: 'Policy “Message people outside the project” is set to Ask.', href: 'Policies.dc.html', linkLabel: 'View policy' },
       { id: 'mem', time: '10:13', who: 'agent', initials: 'LP', actor: 'Launch Planner', type: 'skills',
         action: 'Saved a project memory', detail: 'Confirmed by Avery Park',
         object: 'Launch moved to Nov 19', objKind: 'Memory', icon: 'memory', tint: 'memory', scope: 'Spring Launch', scopeKind: 'project',
-        before: 'No memory', after: 'Project memory · confirmed · source: Supplier delay - launch impact',
+        before: 'No memory', after: 'Project memory confirmed source: Supplier delay - launch impact',
         why: 'Decision approved in conversation.', href: 'Memory.dc.html', linkLabel: 'Open memory' },
       { id: 'date', time: '10:12', who: 'person', initials: 'AP', actor: 'Avery Park', type: 'decisions',
         action: 'Approved new launch date', detail: 'Recommended by Launch Planner',
         object: 'Launch date', objKind: 'Decision', icon: 'decision', tint: 'neutral', scope: 'Spring Launch', scopeKind: 'project',
-        before: 'Nov 12', after: 'Nov 19 · Launch plan v4 published',
+        before: 'Nov 12', after: 'Nov 19 Launch plan v4 published',
         why: 'Packaging arrives Nov 8, four days late.', href: 'Main.dc.html', linkLabel: 'Open conversation' },
       { id: 'handoff', time: '9:50', who: 'agent', initials: 'LP', actor: 'Launch Planner', type: 'agent',
         action: 'Handed off to Ops Agent', detail: '“Draft vendor notices for Nov 19. Hold until approved.”',
         object: 'Vendor notices', objKind: 'Handoff', icon: 'handoff', tint: 'neutral', scope: 'Spring Launch', scopeKind: 'project',
-        before: 'Owned by Launch Planner', after: 'Assigned to Ops Agent · held for approval',
+        before: 'Owned by Launch Planner', after: 'Assigned to Ops Agent held for approval',
         why: 'Allowed handoff: Launch Planner → Ops Agent.', href: 'AgentComms.dc.html', linkLabel: 'View in agent network' },
       { id: 'detect', time: '9:42', who: 'agent', initials: 'MA', actor: 'Monitor Agent', type: 'context',
         action: 'Detected a change in a watched source', detail: 'Handed off to Launch Planner at 9:43',
-        object: 'Supplier ETA', objKind: 'Source · live', icon: 'source', tint: 'source', scope: 'Spring Launch', scopeKind: 'project',
+        object: 'Supplier ETA', objKind: 'Source live', icon: 'source', tint: 'source', scope: 'Spring Launch', scopeKind: 'project',
         before: 'Packaging ETA Nov 4', after: 'Packaging ETA Nov 8',
         why: 'Standing watch on launch dependencies.', href: 'OpsContext.dc.html', linkLabel: 'Open source' },
       { id: 'reconnect', time: '9:35', who: 'person', initials: 'JT', actor: 'Jon T.', type: 'context',
         action: 'Reconnected a source', detail: 'Media Analyst resumed automatically',
-        object: 'Media buy tracker', objKind: 'Source · live', icon: 'source', tint: 'source', scope: 'Spring Launch', scopeKind: 'project',
-        before: 'Sync failing since 8:10 · access expired', after: 'Synced 9:36 · 2 rows changed',
+        object: 'Media buy tracker', objKind: 'Source live', icon: 'source', tint: 'source', scope: 'Spring Launch', scopeKind: 'project',
+        before: 'Sync failing since 8:10 access expired', after: 'Synced 9:36 2 rows changed',
         why: 'Fix for the failed run at 8:10.', href: 'OpsContext.dc.html', linkLabel: 'Open source' },
       { id: 'policy', time: '9:05', who: 'person', initials: 'JT', actor: 'Jon T.', type: 'policy',
         action: 'Changed a policy for Spring Launch', detail: 'Message people outside the project → Ask',
         object: 'External messages', objKind: 'Policy', icon: 'policy', tint: 'neutral', scope: 'Spring Launch', scopeKind: 'project',
-        before: 'Allow (workspace default)', after: 'Ask · applies to all 4 project agents',
+        before: 'Allow (workspace default)', after: 'Ask applies to all 4 project agents',
         why: 'Vendor communication during launch week.', href: 'Policies.dc.html', linkLabel: 'View policy' },
       { id: 'fail', time: '8:10', who: 'agent', initials: 'MD', actor: 'Media Analyst', type: 'agent',
-        action: 'Run failed', detail: 'Source access expired · stopped by policy',
+        action: 'Run failed', detail: 'Source access expired stopped by policy',
         object: 'Paid media pacing check', objKind: 'Run', icon: 'run', tint: 'neutral', scope: 'Spring Launch', scopeKind: 'project',
-        before: 'Running', after: 'Stopped · retried 2 times · flagged in Needs you',
+        before: 'Running', after: 'Stopped retried 2 times flagged in Needs you',
         why: 'A source it relies on could not sync.', href: 'OpsAgents.dc.html', linkLabel: 'Open agent' }
     ];
     const s = this.state;
