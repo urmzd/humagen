@@ -1724,6 +1724,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	// The busy workspace, read end to end, then taken apart.
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=24h&bucket=1h", "", http.StatusOK)
+	c.call(acme, "GET", "/api/analytics", "/api/analytics?since=2026-10-01T00:00:00Z&until=2026-10-02T00:00:00Z&bucket=24h", "", http.StatusOK)
+	c.call(acme, "GET", "/api/analytics", "/api/analytics?since=2026-10-01T00:00:00Z", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=9999h", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/journal", "/api/journal?run="+id+"&kind=lifecycle&limit=5", "", http.StatusOK)
 	c.sweep(acme)

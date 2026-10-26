@@ -71,10 +71,29 @@ func window(r *http.Request) (since, until time.Time, ok bool) {
 	return until.Add(-d), until, true
 }
 
+// analyticsInterval also accepts a bounded exact interval for a selected day.
+func analyticsInterval(r *http.Request) (since, until time.Time, valid bool) {
+	q := r.URL.Query()
+	if q.Get("since") == "" && q.Get("until") == "" {
+		return window(r)
+	}
+	if q.Get("since") == "" || q.Get("until") == "" || q.Get("window") != "" {
+		return since, until, false
+	}
+	var err error
+	if since, err = time.Parse(time.RFC3339Nano, q.Get("since")); err != nil {
+		return since, until, false
+	}
+	if until, err = time.Parse(time.RFC3339Nano, q.Get("until")); err != nil {
+		return since, until, false
+	}
+	return since, until, until.After(since) && until.Sub(since) <= maxWindow
+}
+
 func (s *Server) analytics(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	since, until, valid := window(r)
+	since, until, valid := analyticsInterval(r)
 	if !valid {
-		fail(w, http.StatusBadRequest, "window is a duration up to 720h, such as 1h or 24h")
+		fail(w, http.StatusBadRequest, "use a window up to 720h, or both since and until within 30 days")
 		return
 	}
 	bucket := until.Sub(since) / 60
@@ -90,7 +109,7 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request, who auth.Prin
 	// ran it, so by_agent and slowest name it, even one moved since into a
 	// project the caller may not read.
 	summary, err := s.P.Runs.SummarizeWhere(who.Tenant, runs.SummaryQuery{
-		Since: since, Until: until.Add(time.Nanosecond), Bucket: bucket, AllProjects: true, Keep: s.P.Seer(who).Run,
+		Since: since, Until: until, Bucket: bucket, AllProjects: true, Keep: s.P.Seer(who).Run,
 	})
 	if err != nil {
 		s.problem(w, err)

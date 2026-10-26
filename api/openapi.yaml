@@ -2400,10 +2400,12 @@ paths:
     get:
       operationId: getAnalytics
       tags: [observe]
-      summary: Summarize runs over a window ending now
+      summary: Summarize readable runs over a bounded time interval
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/Window"}
+        - {name: since, in: query, description: "Inclusive RFC3339 bound. Supply with until, instead of window. The interval is at most 30 days.", schema: {type: string, format: date-time}}
+        - {name: until, in: query, description: "Exclusive RFC3339 bound. Supply with since.", schema: {type: string, format: date-time}}
         - name: bucket
           in: query
           description: A Go duration, such as `1m`. Defaults to a sixtieth of the window. At most 240 buckets are returned.
@@ -5219,6 +5221,10 @@ components:
             first model call. A delegated run is not in its caller's usage.
           $ref: "#/components/schemas/RunUsage"
         calls: {type: integer}
+        assistance:
+          description: "Recorded human involvement, including called work. Absent for older or recovered runs whose full assistance history is unknown."
+          type: string
+          enum: [none, needed]
         status: {$ref: "#/components/schemas/RunStatus"}
         answer:
           description: |
@@ -7640,7 +7646,7 @@ components:
 
     AnalyticsGroup:
       type: object
-      required: [name, runs, completed, failed, stopped, active, p50_ms, p95_ms, usage]
+      required: [name, runs, completed, failed, stopped, active, completed_alone, needed_person, human_help_unknown, avg_ms, handoffs_out, p50_ms, p95_ms, usage]
       properties:
         name: {type: string}
         runs: {type: integer}
@@ -7650,6 +7656,13 @@ components:
           description: Runs that were stopped. They are neither completed, failed nor active.
           type: integer
         active: {type: integer}
+        completed_alone: {type: integer, description: "Completed with a fully observed history and no recorded human question in this run or its called work."}
+        needed_person: {type: integer, description: "Runs with a recorded human question, regardless of final status."}
+        human_help_unknown: {type: integer, description: "Runs whose complete assistance history is unavailable."}
+        avg_ms: {type: integer, format: int64, description: "Mean duration of ended runs, including time spent waiting."}
+        handoffs_out: {type: integer, description: "Direct handoff/delegate children of readable runs in this group, started inside this interval."}
+        last_failure_run: {type: string}
+        last_failure_at: {type: string, format: date-time}
         p50_ms: {type: integer, format: int64}
         p95_ms: {type: integer, format: int64}
         usage: {$ref: "#/components/schemas/AnalyticsUsage"}
@@ -7677,13 +7690,16 @@ components:
           type: integer
     AnalyticsBucket:
       type: object
-      required: [start, completed, failed, stopped, active]
+      required: [start, completed, failed, stopped, active, completed_alone, needed_person, human_help_unknown]
       properties:
         start: {type: string, format: date-time}
         completed: {type: integer}
         failed: {type: integer}
         stopped: {type: integer}
         active: {type: integer}
+        completed_alone: {type: integer}
+        needed_person: {type: integer}
+        human_help_unknown: {type: integer}
     Summary:
       description: Run statistics over a window.
       type: object

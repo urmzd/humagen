@@ -307,6 +307,10 @@ type Run struct {
 	Calls int `json:"calls"`
 
 	Status Status `json:"status"`
+	// Assistance is needed once a human question was observed, including in
+	// called work. none is recorded only after a completely observed run ends.
+	// Older or recovered incomplete histories remain absent, never guessed.
+	Assistance string `json:"assistance,omitempty"`
 	// Answer is the final text of a completed run. On a stopped run it is the
 	// partial answer: what the agent had said when it stopped, which people
 	// may already have read. It is never the whole answer, and Status says so.
@@ -394,13 +398,16 @@ type Index struct {
 	titles map[string]string
 	// counts are what each project holds, kept as runs change.
 	counts counters
+	// observed tracks runs accepted in this process. Recovered active runs
+	// cannot prove their earlier questions were fully observed.
+	observed map[string]bool
 	// kept is where runs are written. Nil keeps them only in memory.
 	kept *persisted
 }
 
 // NewIndex returns an empty index.
 func NewIndex() *Index {
-	return &Index{runs: map[string]*Run{}, titles: map[string]string{}, counts: newCounters()}
+	return &Index{runs: map[string]*Run{}, titles: map[string]string{}, counts: newCounters(), observed: map[string]bool{}}
 }
 
 // SetTitle names a conversation. A conversation with no name is shown by the
@@ -482,6 +489,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 		return err
 	}
 	x.runs[runID] = r
+	x.observed[runID] = true
 	x.order = append(x.order, runID)
 	x.count(r)
 	return nil
@@ -524,6 +532,9 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 		r.Status, r.Reason, r.Question = Running, "", nil
 	case envelope.KindParked:
 		r.Status, r.Reason, r.Question = Parked, body.Reason, body.Question
+		if body.Question != nil {
+			x.neededPerson(r)
+		}
 	case envelope.KindCompleted:
 		r.Answer = body.Text
 		if body.Usage != nil {
@@ -554,6 +565,7 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 		r.Cause = causeOf(stopped.Reason, stopped.By)
 	}
 	if r.Status.Terminal() {
+		x.finishAssistance(r)
 		r.Stopping, r.Question = false, nil
 	}
 	return *r, r.Status.Terminal()
@@ -743,6 +755,7 @@ func (x *Index) End(runID string, status Status, answer, failure string, at time
 		return Run{}, false
 	}
 	r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = status, at, false, "", false, nil
+	x.finishAssistance(r)
 	return *r, true
 }
 
@@ -782,6 +795,7 @@ func (x *Index) Settle(runID string, at time.Time) (Run, bool) {
 	defer x.recount(r)
 	x.touch(runID)
 	r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping = Completed, at, false, "", false
+	x.finishAssistance(r)
 	return *r, true
 }
 
@@ -822,6 +836,7 @@ func (x *Index) Stop(runID, answer, cause string, at time.Time) (Run, bool) {
 		r.Answer = answer
 	}
 	r.Status, r.Cause, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = Stopped, causeOf(cause, ""), at, false, "", false, nil
+	x.finishAssistance(r)
 	return *r, true
 }
 
@@ -1181,4 +1196,25 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 		return cmp.Or(b.UpdatedAt.Compare(a.UpdatedAt), strings.Compare(a.ID, b.ID))
 	})
 	return out
+}
+
+// neededPerson propagates only within the authoritative execution tree.
+// The caller holds the index lock. The flag survives question resolution.
+func (x *Index) neededPerson(r *Run) {
+	seen := map[string]bool{}
+	for r != nil && !seen[r.ID] {
+		seen[r.ID] = true
+		r.Assistance = "needed"
+		x.touch(r.ID)
+		parent := x.runs[r.Parent]
+		if parent == nil || parent.Tenant != r.Tenant {
+			break
+		}
+		r = parent
+	}
+}
+func (x *Index) finishAssistance(r *Run) {
+	if r.Assistance == "" && x.observed[r.ID] {
+		r.Assistance = "none"
+	}
 }

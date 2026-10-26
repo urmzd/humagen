@@ -114,7 +114,7 @@ test("spend that cannot be counted in dollars is said to be a lower bound, and t
 });
 
 test("Analytics: spend leaves out calls with no price and other currencies, and says so", () => {
-  const group = { name: "all", runs: 3, completed: 3, failed: 0, stopped: 0, active: 0, p50_ms: 0, p95_ms: 0 };
+  const group = { name: "all", runs: 3, completed: 3, failed: 0, stopped: 0, active: 0, completed_alone: 0, needed_person: 0, human_help_unknown: 3, avg_ms: 0, handoffs_out: 0, p50_ms: 0, p95_ms: 0 };
   assert.equal(spendNote({ ...group, usage: { model_calls: 3, tokens: 10, spend: 5, unpriced_calls: 0, other_currency_runs: 0 } }), "Priced in US dollars");
   assert.equal(
     spendNote({ ...group, usage: { model_calls: 3, tokens: 10, spend: 5, unpriced_calls: 2, other_currency_runs: 1 } }),

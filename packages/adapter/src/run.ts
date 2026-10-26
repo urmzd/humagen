@@ -82,6 +82,8 @@ export interface Run {
   origin: string;
   text: string;
   input?: PreparedCallInput;
+  /** Recorded human involvement; absent when its complete history is unknown. */
+  assistance?: "none" | "needed";
   /**
    * Who raised the run. `user` is the person it acts for, by subject: the
    * one whose own credentials its tools use. Absent, or on a bot, it acts for
