@@ -310,7 +310,10 @@ function chats(ids: Ids): Screen[] {
 }
 
 /** Every main screen: each page, and each tab of the pages that have them, and the chat's states. */
-function screens(ids: Ids): Screen[] {
+function screens(ids: Ids, call: Call): Screen[] {
+  type AgentSelection = { version: number; enable?: string[]; allow?: string[]; default?: string };
+  let badgeDefault: AgentSelection | undefined;
+  let badgePage: Page | undefined;
   let releasePending: (() => Promise<void>) | undefined;
   const list: Screen[] = [
     { name: "home", path: "/" },
@@ -361,6 +364,62 @@ function screens(ids: Ids): Screen[] {
     { name: "monitor-rules", path: "/monitor/rules" },
     { name: "context", path: "/context" },
     { name: "agents", path: "/agents" },
+    {
+      name: "agent-status-badges",
+      path: "/agents",
+      act: async (page) => {
+        badgePage = page;
+        badgeDefault = await call<AgentSelection>("GET", "/api/projects/~/agents");
+        const { version, enable, allow } = badgeDefault;
+        await call("PUT", "/api/projects/~/agents", {
+          version,
+          enable,
+          allow,
+          default: "humagen-analyst",
+        });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.emulateMedia({ colorScheme: "dark" });
+        const agent = page.getByRole("button", { name: /^humagen-analyst Workspace Default/ });
+        await agent.waitFor();
+        const badges = agent.locator("span.rounded-full");
+        assert.equal(await badges.count(), 2, "The default built-in has both status badges");
+        // Enlarged text must remain inside the badge outline, too.
+        await badges.evaluateAll((items) => {
+          for (const item of items) {
+            (item as HTMLElement).style.fontSize = "20px";
+            (item as HTMLElement).style.lineHeight = "28px";
+          }
+        });
+        const escaped = await badges.evaluateAll((items) =>
+          items.flatMap((item) => {
+            const box = item.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(item);
+            const text = range.getBoundingClientRect();
+            return text.top < box.top - 1 ||
+              text.bottom > box.bottom + 1 ||
+              text.left < box.left - 1 ||
+              text.right > box.right + 1
+              ? [item.textContent]
+              : [];
+          }),
+        );
+        assert.deepEqual(escaped, [], "Status text must fit within each badge outline");
+      },
+      after: async () => {
+        if (badgeDefault) {
+          const { version } = await call<AgentSelection>("GET", "/api/projects/~/agents");
+          const { enable, allow, default: fallback } = badgeDefault;
+          await call("PUT", "/api/projects/~/agents", {
+            version,
+            enable,
+            allow,
+            default: fallback,
+          });
+        }
+        await badgePage?.emulateMedia({ colorScheme: "light" });
+      },
+    },
     {
       name: "humagen-builtins",
       path: "/agents",
@@ -1180,7 +1239,7 @@ async function main(): Promise<void> {
       schedule: "weekly-summary",
       ...(await seedChats(call)),
     };
-    results.push(...(await capture(browser, base, screens(ids))));
+    results.push(...(await capture(browser, base, screens(ids, call))));
 
     report(results);
     if (showcase && results.every((r) => r.problems.length === 0)) {

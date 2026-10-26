@@ -110,7 +110,7 @@ export function Agents({
                       <AgentMark name={name} size={24} state={busy ? "thinking" : "idle"} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="humagen-display truncate text-aui-lg font-semibold text-aui-fg">{name}</span>
                         {name === workspaceDefault && <Chip>{defaultCopy.workspaceDefault}</Chip>}
                         {homes[name] && <Chip>{defaultCopy.agentPlace.livesIn(homes[name])}</Chip>}
