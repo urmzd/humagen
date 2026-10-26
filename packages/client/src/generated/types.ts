@@ -167,6 +167,8 @@ export interface Me {
   principal: Principal;
   /** Everything the caller may do. Null, not an empty list, for a caller with no permission at all. */
   permissions: Permission[] | null;
+  /** The signed-in human's private project address, absent for machines. */
+  personal_project?: string;
   /** The caller is an admin in a workspace nobody has set up yet. */
   first_admin: boolean;
   /** How the platform names the caller elsewhere, as a thread's
@@ -594,6 +596,8 @@ visibility and an optional default agent. Its turns are its people's
 messages and its agents' runs.
  */
 export interface Thread {
+  /** Number of committed placement changes, without former audience identities. */
+  moves?: number;
   /** `th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it. */
   id: string;
   /** The project it is filed in. Empty is the workspace itself. */
@@ -790,8 +794,20 @@ export interface ThreadInput {
   surface?: SurfaceRef;
 }
 
+export interface PlacementPreview {
+  thread: string;
+  project: string;
+  channel: string;
+  audience: string;
+  runs: number;
+  token: string;
+  exclusions: string[];
+}
+
 /** Where a conversation is shared, and the people to add to it. */
 export interface ThreadShare {
+  /** Required to move a conversation with completed runs, from its current placement preview. */
+  placement_token?: string;
   /** The project it is shared in. Empty keeps the thread's own; `~` is the workspace. */
   project?: string;
   /** The project's channel. Empty keeps the thread's own in its own project, and is `general` in another. */
@@ -1186,6 +1202,8 @@ a path), which has no title, parent or account: show the workspace's
 name for it. It reads as version 0 until it is first changed.
  */
 export interface Project {
+  /** Immutable human subject for a server-provisioned personal project. */
+  personal_owner?: string;
   name: string;
   /** What people see. Shown instead of the name when set. */
   title?: string;

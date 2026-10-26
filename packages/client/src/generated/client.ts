@@ -78,6 +78,7 @@ import type {
   NoteInput,
   NoteList,
   NoteSelection,
+  PlacementPreview,
   Policy,
   PolicyInput,
   Preferences,
@@ -1668,6 +1669,33 @@ whoever started the thread or an owner of its project (403).
     return this.rawRequest<Thread>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Review the audience and contents before moving completed work */
+  async previewThreadPlacement(id: string, project: string, channel?: string, options?: RequestOptions): Promise<PlacementPreview> {
+    let path = "/api/threads/{id}/placement";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<PlacementPreview>("GET", path, {
+      ...options,
+    });
+  }
+
+  async previewThreadPlacementRaw(id: string, project: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<PlacementPreview>> {
+    let path = "/api/threads/{id}/placement";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<PlacementPreview>("GET", path, {
       ...options,
     });
   }

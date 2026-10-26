@@ -173,3 +173,25 @@ regressions that fail first, updates the architecture status in its PR, and
 passes the requested CI checks with the Postgres variant and screen captures.
 This document prepares the work; it does not change the current runtime or
 claim that completed conversations can already move between projects.
+
+## Implementation evidence
+
+Company homes are explicit stored root records. Missing legacy homes migrate
+idempotently in registry pages without changing enable or allow rules.
+`GET /api/me` provisions a human's personal project and returns its address;
+provisioning errors are returned, never replaced with Company. The project
+store retains a random identity and immutable `personal_owner`, serializes
+concurrent provisioning, and restores the association on memory and Postgres
+replay. Machines receive no personal project.
+
+Personal ownership narrows inherited Company ownership before role resolution.
+Membership widening, reparenting, deletion, subprojects, file adoption and Slack
+bindings are refused. Invitations and notification routing cannot add another
+human to that private audience. Completed ordinary work can be published after an explicit versioned audience
+preview. Private connected-source history requires a reviewed summary path; raw
+publication is refused. The run index retains its original accounting, while
+operational lists, counts, files, inbox addressing, manifests and live event
+streams resolve the conversation's current placement. Publication attempts are
+recorded under the source's private scope and placement/history commit in the
+same thread-store write. Historical runs cannot replay old private inputs
+after publication; the person posts a fresh turn in the destination instead.

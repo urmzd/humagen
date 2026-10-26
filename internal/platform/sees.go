@@ -140,12 +140,18 @@ func (p *Platform) Sees(who auth.Principal, at Place) bool { return p.Seer(who).
 // Place reports whether the reader sees what lives in a place. Besides the
 // rule, the machine a client names to host its surface reads the threads on
 // that surface, wherever they are filed: the Slack thread is already its own.
-func (s *Seer) Place(at Place) bool {
+func (s *Seer) Place(at Place) bool { return s.placeDirect(at) }
+
+func (s *Seer) placeDirect(at Place) bool {
+	at = s.p.CurrentPlace(s.who.Tenant, at)
+	if pr, ok := s.tree.Get(at.Project); ok && pr.PersonalOwner != "" && s.who.Kind == auth.Machine {
+		return false
+	}
 	if s.govern {
 		ordinary := *s
 		ordinary.govern = false
 		ordinary.roles = s.own
-		if ordinary.Place(at) {
+		if ordinary.placeDirect(at) {
 			return true
 		}
 		if s.who.AuditRead != nil {
@@ -355,7 +361,9 @@ func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCoun
 	if len(hidden) > 0 {
 		keep = func(thread string) bool { return !hidden[thread] }
 	}
-	return p.Runs.ProjectCountsWhere(who.Tenant, mark, keep)
+	return p.Runs.ProjectCountsPlaced(who.Tenant, mark, keep, func(thread, original string) string {
+		return p.CurrentPlace(who.Tenant, Place{Project: original, Thread: thread}).Project
+	})
 }
 
 // SeesThread reports whether a reader may read a thread: its project, and in

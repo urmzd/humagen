@@ -109,7 +109,7 @@ func TestSharingAConversationMakesItSharedInAChannel(t *testing.T) {
 		t.Fatalf("the tag started %+v", asked.Runs)
 	}
 	await(t, p, asked.Runs[0].ID, runs.Completed)
-	if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Project: "Initech"}); !errors.Is(err, platform.ErrStaysInProject) {
+	if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Project: "Initech"}); !errors.Is(err, threads.ErrVersion) {
 		t.Fatalf("a conversation with runs moved: %v", err)
 	}
 	// Sharing again where it is adds people and changes nothing else.
@@ -191,7 +191,7 @@ func TestOnlyItsStarterPublishesAPrivateConversation(t *testing.T) {
 	// Once a run is filed it stays in its channel too.
 	asked := post(t, p, operator, id, platform.MessageInput{Text: "@helper thoughts?"})
 	await(t, p, asked.Runs[0].ID, runs.Completed)
-	if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Channel: projects.General}); !errors.Is(err, platform.ErrStaysInChannel) {
+	if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Channel: projects.General}); !errors.Is(err, threads.ErrVersion) {
 		t.Fatalf("a conversation with runs changed channel: %v", err)
 	}
 }

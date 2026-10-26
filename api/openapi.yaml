@@ -1553,6 +1553,27 @@ paths:
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/placement:
+    get:
+      operationId: previewThreadPlacement
+      tags: [threads]
+      summary: Review the audience and contents before moving completed work
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: project, in: query, required: true, schema: {type: string, maxLength: 63}}
+        - {name: channel, in: query, schema: {type: string, maxLength: 40}}
+      responses:
+        "200":
+          description: A versioned preview to confirm before publication.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PlacementPreview"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/threads/{id}/share:
     post:
       operationId: shareThread
@@ -5785,6 +5806,9 @@ components:
           description: Everything the caller may do. Null, not an empty list, for a caller with no permission at all.
           type: [array, "null"]
           items: {$ref: "#/components/schemas/Permission"}
+        personal_project:
+          description: The signed-in human's private project address, absent for machines.
+          type: string
         first_admin:
           description: The caller is an admin in a workspace nobody has set up yet.
           type: boolean
@@ -6436,6 +6460,11 @@ components:
       type: object
       required: [id, project, channel, visibility, participants, version, created_by, created_at, updated_at]
       properties:
+        moves:
+          description: Number of committed placement changes, without former audience identities.
+          type: integer
+          minimum: 0
+          maximum: 100
         id:
           description: "`th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it."
           type: string
@@ -6695,11 +6724,28 @@ components:
           type: boolean
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+    PlacementPreview:
+      type: object
+      required: [thread, project, channel, audience, runs, token, exclusions]
+      properties:
+        thread: {type: string}
+        project: {type: string}
+        channel: {type: string}
+        audience: {type: string}
+        runs: {type: integer, minimum: 0}
+        token: {type: string}
+        exclusions:
+          type: array
+          items: {type: string}
     ThreadShare:
       description: Where a conversation is shared, and the people to add to it.
       type: object
       additionalProperties: false
       properties:
+        placement_token:
+          description: Required to move a conversation with completed runs, from its current placement preview.
+          type: string
+          maxLength: 64
         project:
           description: The project it is shared in. Empty keeps the thread's own; `~` is the workspace.
           type: string
@@ -7278,6 +7324,9 @@ components:
       type: object
       required: [name, kind, experts, members, agents, version, created_at, updated_at]
       properties:
+        personal_owner:
+          description: Immutable human subject for a server-provisioned personal project.
+          type: string
         name: {type: string, maxLength: 63}
         title:
           description: What people see. Shown instead of the name when set.

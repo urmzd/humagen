@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -28,7 +29,7 @@ func (s *Server) listArtifacts(w http.ResponseWriter, r *http.Request, who auth.
 	seer := s.P.Seer(who)
 	query := artifacts.Query{
 		Project: q.Get("project"), Agent: q.Get("agent"), Run: q.Get("run"), Thread: q.Get("thread"),
-		Kind: artifacts.Kind(q.Get("kind")), Before: q.Get("before"), Title: q.Get("q"), Keep: seer.Artifact,
+		Kind: artifacts.Kind(q.Get("kind")), Before: q.Get("before"), Title: q.Get("q"), Keep: seer.Artifact, ProjectOf: func(a artifacts.Artifact) string { return s.P.ShownArtifact(who.Tenant, a).Project },
 	}
 	if query.Kind != "" && !slices.Contains(artifacts.Kinds(), query.Kind) {
 		fail(w, http.StatusBadRequest, "kind is not one this server knows")
@@ -51,7 +52,7 @@ func (s *Server) listArtifacts(w http.ResponseWriter, r *http.Request, who auth.
 	if next != "" {
 		cursor = &next
 	}
-	ok(w, http.StatusOK, map[string]any{"artifacts": page, "next": cursor})
+	ok(w, http.StatusOK, map[string]any{"artifacts": shownArtifacts(s.P, who.Tenant, page), "next": cursor})
 }
 
 func (s *Server) getArtifact(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -60,7 +61,7 @@ func (s *Server) getArtifact(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, a)
+	ok(w, http.StatusOK, s.P.ShownArtifact(who.Tenant, a))
 }
 
 func (s *Server) artifactVersions(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -69,7 +70,7 @@ func (s *Server) artifactVersions(w http.ResponseWriter, r *http.Request, who au
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"versions": versions})
+	ok(w, http.StatusOK, map[string]any{"versions": shownArtifacts(s.P, who.Tenant, versions)})
 }
 
 // inlineTypes are the only types ever shown in the browser from this origin.
@@ -134,4 +135,12 @@ func (s *Server) storage(w http.ResponseWriter, _ *http.Request, who auth.Princi
 		"by_project": orEmpty(slices.DeleteFunc(u.ByProject, func(sh artifacts.Share) bool { return !seer.Project(sh.Name) })),
 		"by_agent":   orEmpty(slices.DeleteFunc(u.ByAgent, func(sh artifacts.Share) bool { return !seer.Agent(sh.Name) })),
 	})
+}
+
+func shownArtifacts(p *platform.Platform, tenant string, list []artifacts.Artifact) []artifacts.Artifact {
+	out := make([]artifacts.Artifact, len(list))
+	for i, a := range list {
+		out[i] = p.ShownArtifact(tenant, a)
+	}
+	return out
 }

@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"fmt"
+	"github.com/urmzd/humagen/pkg/projects"
 	"slices"
 	"strings"
 	"time"
@@ -217,7 +218,7 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 	// whatever spelling the settings hold.
 	agent = rev.Spec.Name
 	tree := p.Projects.Tree(turn.Tenant)
-	if home, homed := tree.Home(agent); homed && !onChain(tree, turn.Project, home) {
+	if home, homed := tree.Home(agent); homed && home != projects.Root && !onChain(tree, turn.Project, home) {
 		return
 	}
 	_, err = p.Invoke(ctx, envelope.Tag{

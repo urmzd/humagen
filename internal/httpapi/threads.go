@@ -28,6 +28,7 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.seenThread(s.postMessage)))
 	mux.HandleFunc("PUT /api/threads/{id}/participants", s.authed(auth.RunsWrite, s.seenThread(s.putParticipants)))
+	mux.HandleFunc("GET /api/threads/{id}/placement", s.authed(auth.ProjectsRead, s.seenThread(s.previewPlacement)))
 	mux.HandleFunc("POST /api/threads/{id}/share", s.authed(auth.RunsWrite, s.seenThread(s.shareThread)))
 }
 
@@ -317,4 +318,22 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	return true
+}
+
+func (s *Server) previewPlacement(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if _, err := s.P.ThreadRecord(who.Tenant, r.PathValue("id")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	project := r.URL.Query().Get("project")
+	if project == "" {
+		fail(w, http.StatusBadRequest, "project is required; ~ names Company")
+		return
+	}
+	preview, err := s.P.PreviewPlacement(r.Context(), who, r.PathValue("id"), project, r.URL.Query().Get("channel"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, preview)
 }
