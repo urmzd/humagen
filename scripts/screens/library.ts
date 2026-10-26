@@ -169,18 +169,26 @@ export function libraryScreens(call: Call): Screen[] {
         await page.getByRole("button", { name: "Move Agent to Project", exact: true }).waitFor();
       },
     },
-    ...[false, true].map((failed): Screen => ({
-      name: failed ? "notifications-error" : "notifications-empty",
-      path: "/notifications",
-      act: async (page) => {
-        await page.route("**/api/me/notifications", route => route.fulfill(failed ? {status: 503, json: {error: "Delivery temporarily unavailable"}} : {json: {notifications: []}}));
-        await page.reload();
-        await heading(page, "Notifications");
-        await page.getByRole("link", {name: "Notification Preferences", exact: true}).waitFor();
-        if (failed) await page.getByRole("button", {name: "Try Again", exact: true}).waitFor();
-        else await page.getByText("No notifications ready.", {exact: true}).waitFor();
-      },
-    })),
+    ...[false, true].map(
+      (failed): Screen => ({
+        name: failed ? "notifications-error" : "notifications-empty",
+        path: "/notifications",
+        act: async (page) => {
+          await page.route("**/api/me/notifications", (route) =>
+            route.fulfill(
+              failed
+                ? { status: 503, json: { error: "Delivery temporarily unavailable" } }
+                : { json: { notifications: [] } },
+            ),
+          );
+          await page.reload();
+          await heading(page, "Notifications");
+          await page.getByRole("link", { name: "Notification Preferences", exact: true }).waitFor();
+          if (failed) await page.getByRole("button", { name: "Try Again", exact: true }).waitFor();
+          else await page.getByText("No notifications ready.", { exact: true }).waitFor();
+        },
+      }),
+    ),
     {
       name: "notifications-digest",
       path: "/notifications",

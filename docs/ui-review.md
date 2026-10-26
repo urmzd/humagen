@@ -317,3 +317,18 @@ actionable failure, and related objects. Companion runtime diagnostics start
 collapsed. The failure callout, actions and reference form one shared stack;
 metadata and related-object names wrap instead of truncating into ambiguous
 chips. No notification or pending-person indicator animates.
+
+
+## Notifications in navigation
+
+The bell is a normal top-level navigation link with an active state and a live
+count, available in the expanded sidebar and collapsed rail. `/notifications`
+uses the normal page shell, a reading-width list and separated update groups.
+Preferences have a direct link in its header and remain a separate personal
+settings route. The delivery feed no longer appears as a bordered disclosure
+inside navigation or preferences.
+
+Navigation uses one semantic shared icon per destination: a database for
+sources, wrench for skills, brain for memory, plug for integrations, network for
+coordination, shield for policies, sliders for controls and a record for audit.
+Search uses a magnifying glass. Icons supplement the existing text labels.

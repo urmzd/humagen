@@ -52,20 +52,20 @@ test("notifications are a normal active navigation destination in both the sideb
   assert.equal(link.getAttribute("href"), "/notifications");
   assert.equal(link.getAttribute("aria-current"), "page");
   assert.doesNotMatch(link.getAttribute("aria-label") ?? "", /need you/i);
-  assert.equal(link.closest("details"), null);
+  assert.equal(!!link.closest("details"), false);
   rerender(<Navigation open={false} />);
   link = screen.getByRole("link", { name: /Notifications.*2/ });
   assert.equal(link.getAttribute("href"), "/notifications");
   assert.equal(link.getAttribute("aria-current"), "page");
-  assert.equal(link.closest("details"), null);
+  assert.equal(!!link.closest("details"), false);
 });
 
 test("notification navigation is hidden without the permission or human identity required by delivery", () => {
   net = stubFetch({ "GET /api/threads": () => ({ threads: [], next: null }) });
   const { rerender } = render(<Navigation allowed={false} />);
-  assert.equal(screen.queryByRole("link", { name: /Notifications/ }), null);
+  assert.equal(!!screen.queryByRole("link", { name: /Notifications/ }), false);
   rerender(<Navigation human={false} />);
-  assert.equal(screen.queryByRole("link", { name: /Notifications/ }), null);
+  assert.equal(!!screen.queryByRole("link", { name: /Notifications/ }), false);
 });
 
 test("a disabled notification reader makes no requests and removes a previously visible delivery", async () => {
@@ -134,7 +134,7 @@ test("notification page opens the original inbox message and keeps preferences a
   fireEvent.click(preferences);
   assert.deepEqual(visited, [{ page: "inbox", message: "in-one" }, { page: "you", section: "notifications" }]);
   assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1);
-  assert.equal(message.closest("details"), null);
+  assert.equal(!!message.closest("details"), false);
 });
 
 test("dismissing a delivered notification acknowledges only its projection", async () => {
@@ -145,7 +145,7 @@ test("dismissing a delivered notification acknowledges only its projection", asy
   render(<Notifications />);
   await screen.findByRole("link", { name: "Review the release" });
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.notifications.dismiss }));
-  await waitFor(() => assert.equal(screen.queryByText("Review the release"), null));
+  await waitFor(() => assert.equal(!!screen.queryByText("Review the release"), false));
   assert.deepEqual(net.seen.filter(request => request.method === "POST").map(request => request.path), ["/api/me/notifications/ntf-one/ack"]);
 });
 
@@ -158,11 +158,12 @@ test("a refused dismissal keeps the notification available to try again", async 
   render(<Notifications />);
   await screen.findByRole("link", { name: "Review the release" });
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.notifications.dismiss }));
-  await screen.findByText(/could not/i);
+  await screen.findByText(defaultCopy.notifications.dismissFailed);
+  assert.equal(!!screen.queryByRole("button", { name: /try again|retry/i }), false, "a refused acknowledgement retries through Dismiss Notification, not a feed reload");
   assert.ok(screen.getByRole("link", { name: "Review the release" }));
   refuse = false;
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.notifications.dismiss }));
-  await waitFor(() => assert.equal(screen.queryByText("Review the release"), null));
+  await waitFor(() => assert.equal(!!screen.queryByText("Review the release"), false));
   assert.equal(net.seen.filter(request => request.method === "POST").length, 2);
 });
 
@@ -174,7 +175,7 @@ test("a failed notification read offers a working retry and then displays the em
   refuse = false;
   fireEvent.click(screen.getByRole("button", { name: /try again|retry/i }));
   await screen.findByText(defaultCopy.notifications.empty);
-  assert.equal(screen.queryByText(defaultCopy.notifications.failed), null);
+  assert.equal(!!screen.queryByText(defaultCopy.notifications.failed), false);
   assert.equal(net.seen.filter(request => request.path === "/api/me/notifications").length, 2);
 });
 
@@ -187,5 +188,5 @@ test("notification preferences do not mount a second delivery feed", async () =>
   render(<PersonalPreferences section="notifications" />);
   await screen.findByText(defaultCopy.notifications.description);
   assert.equal(net.seen.some(request => request.path === "/api/me/notifications"), false);
-  assert.equal(screen.queryByText("Review the release"), null);
+  assert.equal(!!screen.queryByText("Review the release"), false);
 });

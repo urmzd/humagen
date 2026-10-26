@@ -1003,7 +1003,7 @@ export const defaultCopy = {
     dismiss: "Dismiss Notification",
     settings: "Notification Preferences",
     failed: "Notifications could not be loaded.",
-    dismissFailed: "This notification could not be dismissed. Try again.",
+    dismissFailed: "This notification could not be dismissed. Choose Dismiss Notification to try again.",
     items: (count: number) => `${count} updates`,
     description:
       "Console updates arrive immediately or in hourly digests. Quiet hours delay delivery.",

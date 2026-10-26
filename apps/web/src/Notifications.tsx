@@ -99,7 +99,7 @@ export function NotificationsPage({ notifications, onGo }: { notifications: Retu
     }>
       <section aria-label={c.deliveries} className="w-full max-w-3xl">
         {failed && <div role="alert" className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-aui-sm">
-          <p>{dismissFailed ? c.dismissFailed : c.failed}</p><button type="button" onClick={retry} className={`${textAction} min-h-11`}>{c.retry}</button>
+          <p>{dismissFailed ? c.dismissFailed : c.failed}</p>{!dismissFailed && <button type="button" onClick={retry} className={`${textAction} min-h-11`}>{c.retry}</button>}
         </div>}
         {loading ? <SkeletonRows count={3} height="5rem" /> : rows.length === 0 ? (
           !failed && <Empty title={c.empty}>{c.emptyHint}</Empty>
