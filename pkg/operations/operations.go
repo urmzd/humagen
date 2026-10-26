@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -147,10 +149,11 @@ type Handoff struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 type record struct {
-	Control    *Control    `json:"control,omitempty"`
-	Policy     *Policy     `json:"policy,omitempty"`
-	Assignment *Assignment `json:"assignment,omitempty"`
-	Handoff    *Handoff    `json:"handoff,omitempty"`
+	Invocation *envelope.Tag `json:"invocation,omitempty"`
+	Control    *Control      `json:"control,omitempty"`
+	Policy     *Policy       `json:"policy,omitempty"`
+	Assignment *Assignment   `json:"assignment,omitempty"`
+	Handoff    *Handoff      `json:"handoff,omitempty"`
 }
 type key struct{ tenant, id string }
 type Store struct {
@@ -182,12 +185,19 @@ func Open(st state.Store) (*Store, error) {
 		if r.Policy != nil && (!validPolicy(*r.Policy) || k != "policy:"+r.Policy.Scope.key()) {
 			return fmt.Errorf("%w: malformed policy", ErrInvalid)
 		}
+		if r.Invocation != nil && (r.Assignment == nil || !validInvocation(t, *r.Assignment, *r.Invocation) || r.Assignment.TagID != r.Invocation.ID || runtime.RunID(t, r.Invocation.ID) != r.Assignment.RunID) {
+			return fmt.Errorf("%w: malformed invocation", ErrInvalid)
+		}
 		s.records[key{t, k}] = clone(r)
 		return nil
 	})
 	return s, err
 }
 func clone(r record) record {
+	if r.Invocation != nil {
+		tag := cloneInvocation(*r.Invocation)
+		r.Invocation = &tag
+	}
 	if r.Control != nil {
 		v := *r.Control
 		r.Control = &v

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 
 	"fmt"
 	"strconv"
@@ -19,7 +20,7 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
-const metaAssignment = "humagen.assignment"
+const metaAssignment = operations.MetaAssignment
 
 func assignmentSchedule(tenant, id string) string {
 	sum := sha256.Sum256([]byte(tenant + "\x00" + id))
@@ -160,6 +161,17 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 			// Retry that invocation, never reinterpret it as a new console turn.
 			return p.Invoke(ctx, envelope.Tag{ID: a.TagID, Tenant: who.Tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Text: a.Goal + "\nDone when: " + a.DoneWhen, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}})
 		}
+		manualTagID := "assignment-" + assignmentSchedule(who.Tenant, id) + "-" + strconv.Itoa(a.Version-1)
+		if a.Cron != "" && a.RunID != runtime.RunID(who.Tenant, manualTagID) {
+			invocation, ok := p.Operations.Invocation(who.Tenant, a.ID)
+			if !ok {
+				if err := p.Operations.BlockAssignment(who.Tenant, a.ID, "This older clock reservation has no exact invocation record. Its owner must review it before starting new work.", p.now()); err != nil {
+					return runs.Run{}, err
+				}
+				return runs.Run{}, operations.ErrConflict
+			}
+			return p.Invoke(ctx, invocation)
+		}
 		// The stored reservation is authoritative after a crash between reserve
 		// and admission. Recover the tag identity from its deterministic run ID.
 		tagID = "assignment-" + assignmentSchedule(who.Tenant, id) + "-" + strconv.Itoa(a.Version-1)
@@ -228,10 +240,14 @@ func (p *Platform) admitAssignment(tag envelope.Tag) error {
 		return err
 	}
 	if tag.Origin == "cron" {
-		if a.State != operations.Watching && a.State != operations.Accepted {
+		if a.State != operations.Watching && a.State != operations.Accepted && (a.State != operations.InProgress || a.RunID != runtime.RunID(tag.Tenant, tag.ID)) {
 			return operations.ErrConflict
 		}
-		_, err := p.Operations.Reserve(tag.Tenant, id, runtime.RunID(tag.Tenant, tag.ID), a.Version, p.now())
+		// Admission receives the composed request. Keep the original ask so a
+		// retry passes through the same composer exactly once.
+		invocation := tag
+		invocation.Text = tag.Meta[runs.MetaAsk]
+		_, err := p.Operations.ReserveInvocation(tag.Tenant, id, invocation, a.Version, p.now())
 		return err
 	}
 	if a.State != operations.InProgress || a.RunID != runtime.RunID(tag.Tenant, tag.ID) {
@@ -260,6 +276,10 @@ func (p *Platform) settleOperations(ctx context.Context) {
 		p.assignmentSettlementCursor.Store(tenant, next)
 		for _, a := range pending {
 			run, err := p.Runs.Get(tenant, a.RunID)
+			if errors.Is(err, runs.ErrNotFound) {
+				p.recoverAssignmentInvocation(ctx, tenant, a)
+				continue
+			}
 			if err == nil && run.Status.Terminal() {
 				if err := p.Operations.Settle(tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {
 					p.log.Error("platform: assignment recovery failed", "error", err)

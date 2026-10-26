@@ -137,7 +137,8 @@ func TestSourceChangeReservationRecoversExactTriggerAfterRestart(t *testing.T) {
 		if err := p2.RegisterAssignmentSources(versions); err != nil {
 			t.Fatal(err)
 		}
-		run, err := p2.RunAssignment(t.Context(), who, a.ID)
+		sourceAwait(t, func() bool { _, err := p2.Runs.Get(tenant, runID); return err == nil })
+		run, err := p2.Runs.Get(tenant, runID)
 		if err != nil {
 			t.Fatal(err)
 		}
