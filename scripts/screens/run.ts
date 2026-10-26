@@ -385,8 +385,14 @@ function screens(ids: Ids, call: Call): Screen[] {
         await agent.waitFor();
         const badges = agent.locator("span.rounded-full");
         const labels = await badges.allTextContents();
-        assert.ok(labels.includes("Workspace Default"), "The default agent identifies its workspace role");
-        assert.ok(labels.includes("Built in, read only"), "The built-in identifies its edit restriction");
+        assert.ok(
+          labels.includes("Workspace Default"),
+          "The default agent identifies its workspace role",
+        );
+        assert.ok(
+          labels.includes("Built in, read only"),
+          "The built-in identifies its edit restriction",
+        );
         // Enlarged text must remain inside the badge outline, too.
         await badges.evaluateAll((items) => {
           for (const item of items) {
@@ -834,8 +840,14 @@ async function seedChats(
     visibility: "private",
   });
   await answered(shared);
-  const placement = await call<{ token: string }>("GET", `/api/threads/${shared.thread.id}/placement?project=Launch&channel=general`);
-  await call("POST", `/api/threads/${shared.thread.id}/share`, { channel: "general", placement_token: placement.token });
+  const placement = await call<{ token: string }>(
+    "GET",
+    `/api/threads/${shared.thread.id}/placement?project=Launch&channel=general`,
+  );
+  await call("POST", `/api/threads/${shared.thread.id}/share`, {
+    channel: "general",
+    placement_token: placement.token,
+  });
   const routed = await call<Posted>("POST", "/api/threads", {
     project: "Launch",
     text: "What should we check before the launch?",
