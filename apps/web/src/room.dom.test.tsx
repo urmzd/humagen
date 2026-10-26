@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import type { Turn } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
+import { useRunStop } from "./RunStop.tsx";
 import { AgentMessage } from "@humagen/web";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
@@ -759,7 +760,7 @@ test("a question's buttons are one card with the question: the row carries no ut
   }
 });
 
-test("a settled question sits between its step and the answer, and a typed answer reads as an answer, not a choice", async () => {
+test("a settled question precedes its answer, work follows the outcome, and typed answers remain distinct from choices", async () => {
   const turn: Turn = {
     id: "r1",
     agent: { name: "ledger" },
@@ -788,7 +789,7 @@ test("a settled question sits between its step and the answer, and a typed answe
   const step = text.indexOf("Ask person");
   const question = text.indexOf("Should the credit note cover only the duplicated line?");
   const answer = text.indexOf("I drafted credit note CN-0187.");
-  assert.ok(step >= 0 && step < question && question < answer, `step ${step}, question ${question}, answer ${answer}`);
+  assert.ok(question >= 0 && question < answer && answer < step, `step ${step}, question ${question}, answer ${answer}`);
   assert.ok(/priya answered "Only the duplicated line\."/.test(text), text);
   assert.ok(!/priya chose/.test(text), text);
 });
@@ -1523,4 +1524,48 @@ test("Share says who the platform did not add, and why, beside who was told", as
   const note = await screen.findByText(`${words.sharedTold(["dana"])} ${words.notAdded(["eve"], [])}`);
   assert.equal(note.textContent, "Shared. @dana was told in their inbox. @eve can't see this project, so wasn't added.");
   assert.ok(!screen.queryByText(/they were not added/), "the server's words are not shown");
+});
+
+test("human and agent replies keep Copy and Reply in the same footer", async () => {
+  room();
+  for (const label of ["Message from Ana", "helper message"]) {
+    const message = await screen.findByRole("article", { name: label });
+    const toolbar = within(message).getByRole("toolbar", { name: "Message actions" });
+    assert.ok(within(toolbar).getByRole("button", { name: /Copy (message|answer)/ }));
+    assert.ok(within(toolbar).getByRole("button", { name: "Reply" }));
+    assert.equal(message.querySelectorAll('[role="toolbar"]').length, 1);
+  }
+});
+
+test("agent replies expose their recorded instant with the same accessible timestamp", async () => {
+  room();
+  const message = await screen.findByRole("article", { name: "helper message" });
+  const exact = new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+  const time = within(message).getByRole("button", { name: words.posted(exact) });
+  assert.equal(time.querySelector("time")?.dateTime, at);
+  fireEvent.focus(time);
+  assert.equal(within(message).getByRole("tooltip").textContent, exact);
+  fireEvent.keyDown(time, { key: "Escape" });
+  assert.equal(within(message).queryByRole("tooltip"), null);
+});
+
+function StopFixture() {
+  const run = { ...page.turns[1]?.run, status: "running" } as NonNullable<ThreadTurn["run"]>;
+  const stopped = useRunStop(run, true);
+  return <div><output aria-label="Recorded status">{stopped.run.status}</output>{stopped.control}</div>;
+}
+
+test("Stop Turn reports a request and waits for the ledger, rather than inventing a stopped turn", async () => {
+  let terminal = false;
+  net = stubFetch({
+    "POST /api/runs/r1/stop": () => ({ ...page.turns[1]?.run, status: "running" }),
+    "GET /api/runs/r1": () => ({ ...page.turns[1]?.run, status: terminal ? "stopped" : "running" }),
+  });
+  render(<StopFixture />);
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.conversation.stopTurn }));
+  await screen.findByText(defaultCopy.conversation.stopPending);
+  assert.equal(screen.getByLabelText("Recorded status").textContent, "running");
+  terminal = true;
+  await waitFor(() => assert.equal(screen.getByLabelText("Recorded status").textContent, "stopped"), { timeout: 2000 });
+  assert.equal(screen.queryByText(defaultCopy.conversation.stopPending), null);
 });
