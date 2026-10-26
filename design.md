@@ -26,6 +26,7 @@ govern implementation, including shared presentation and agent identity.
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
+| DES-008 | Agent/project discovery belongs in the new-conversation picker | Implemented; search and selection preserve drafts/files and cannot submit work |
 
 ### DES-001: Working integrations
 
@@ -200,3 +201,18 @@ The containment assertion reproduces the reported failure before the fix.
   hours and privacy choices. Native delivery is implemented in `pkg/notifications` and the authenticated console worker, with restart/dedupe, current-reader confinement, hourly digests, quiet hours and projection-only acknowledgements. Email remains unavailable.
 - `apps/web/src/Audit.tsx`, `MemoryLibrary.tsx`, `PersonalPreferences.tsx`: standalone views for
   shared navigation integration. Versioned skill draft/test/publish/promotion workflows use real configured agents and the existing pinned runtime, with explicit tool intersections and forced Ask on tests.
+
+### DES-008: Contextual agent and project discovery
+
+Offer Find an Agent or Project inside the new-conversation composer's picker.
+Home keeps its message composer and actual updates. Searching matches readable
+projects and available agents through the existing bounded API. Choosing a
+match updates the current selection, preserving the draft and attached files;
+an empty draft receives the search description. Search Enter does not send a
+message. Escape returns to the picker before closing it. Existing conversations
+keep their fixed project and have no global discovery action.
+
+The composer DOM regressions cover search, selection, attachment preservation,
+explicit submission, empty-draft seeding and keyboard focus. The native
+`workspace-find-help` and `workspace-find-help-selection` screen states exercise
+matching and selection without creating a conversation.

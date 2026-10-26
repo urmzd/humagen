@@ -295,3 +295,11 @@ checked at phone and desktop widths by `make screens`.
 The built-in handle rename retains each agent's original color reservation.
 Both spellings resolve to that reservation, so history and new conversations
 keep the same mark; unrelated agents retain distinct assignments.
+
+## Contextual agent and project discovery
+
+Project/agent matching belongs beside the composer's agent and project choices.
+The picker names the action Find an Agent or Project and shows matches in the
+same panel. Selection keeps the current draft and uploads, and sends nothing.
+The new-conversation picker owns this action; an existing conversation retains
+its project. Home has no separate discovery link below the composer.

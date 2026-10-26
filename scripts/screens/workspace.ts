@@ -151,21 +151,54 @@ export function workspaceScreens(call: Call): Screen[] {
         assert.ok(me.welcome_announcement, "Home must use its real retained announcement identity");
       },
     },
-    {
-      name: "workspace-find-help",
-      path: "/",
-      act: async (page) => {
-        await page.locator("summary").filter({ hasText: defaultCopy.home.findHelp.title }).click();
-        await page.getByLabel(defaultCopy.home.findHelp.label).fill("launch plan");
-        await page
-          .getByRole("button", { name: defaultCopy.home.findHelp.search, exact: true })
-          .click();
-        await page
-          .getByRole("button", { name: defaultCopy.home.findHelp.open, exact: true })
-          .first()
-          .waitFor();
-      },
-    },
+    ...[false, true].map(
+      (choose): Screen => ({
+        name: choose ? "workspace-find-help-selection" : "workspace-find-help",
+        path: "/",
+        act: async (page) => {
+          const c = defaultCopy.home.findHelp;
+          const composer = page.locator('form[aria-label="Message"] textarea');
+          const draft = "Keep this message while I choose the right agent.";
+          await composer.fill(draft);
+          assert.equal(await page.getByRole("region", { name: c.title, exact: true }).count(), 0);
+          await page
+            .getByRole("button", { name: "Add files, agents or a project", exact: true })
+            .click();
+          await page
+            .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
+            .getByRole("button", { name: c.title, exact: true })
+            .click();
+          let posts = 0;
+          const requested = (request: import("playwright-core").Request) => {
+            if (request.method() === "POST" && new URL(request.url()).pathname === "/api/threads")
+              posts++;
+          };
+          page.on("request", requested);
+          try {
+            await page.getByLabel(c.label).fill("launch plan");
+            await page.getByLabel(c.label).press("Enter");
+            const match = page.getByRole("button", { name: c.choose, exact: true }).first();
+            await match.waitFor();
+            if (choose) {
+              await match.click();
+              await page
+                .getByRole("list", { name: "Selected for this conversation", exact: true })
+                .waitFor();
+              assert.equal(
+                await page
+                  .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
+                  .count(),
+                0,
+              );
+            }
+            assert.equal(await composer.inputValue(), draft);
+            assert.equal(posts, 0, "Discovery must not submit the current conversation");
+          } finally {
+            page.off("request", requested);
+          }
+        },
+      }),
+    ),
     { name: "agent-setup-role", path: "/agents/new/setup", act: prepare },
     {
       name: "agent-setup-permissions",
