@@ -99,6 +99,78 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/clients/{id}/capabilities:
+    get:
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+      operationId: getClientCapabilities
+      tags: [clients]
+      summary: Read this installation's actual event and action inventory
+      x-permission: clients:read
+      responses:
+        '200':
+          description: Registered capabilities and current subscriptions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstallationCapabilities'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+      operationId: putClientCapabilities
+      tags: [clients]
+      summary: Narrow an installation's subscribed events and permitted native actions
+      description: Explicit empty lists deny every event or action. These controls add no provider scopes, agent tool grants or approval rights. Existing managed installations keep their file-defined settings.
+      x-permission: clients:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/ClientCapabilityPolicy'}
+                - type: object
+                  required: [version]
+                  properties:
+                    version: {type: integer, minimum: 0}
+      responses:
+        '200':
+          description: Saved installation capabilities
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstallationCapabilities'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
+  /api/clients/{id}/delivery:
+    get:
+      operationId: clientBridgeDelivery
+      tags: [clients]
+      summary: Recheck a native host's current permission to deliver this visible run
+      x-permission: clients:read
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+        - {name: run, in: query, required: true, schema: {type: string, maxLength: 160}}
+        - {name: channel, in: query, required: true, schema: {type: string, maxLength: 64}}
+      responses:
+        '200':
+          description: Current delivery decision with no private source metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed]
+                properties:
+                  allowed: {type: boolean}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/memory/promote:
     post:
       operationId: promoteMemory
@@ -6654,6 +6726,37 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    ClientCapabilityPolicy:
+      type: object
+      required: [events, actions, deliver_outcomes]
+      properties:
+        events: {type: array, maxItems: 16, uniqueItems: true, items: {type: string, maxLength: 80}}
+        actions: {type: array, maxItems: 32, uniqueItems: true, items: {type: string, maxLength: 80}}
+        deliver_outcomes: {type: boolean}
+    InstallationEvent:
+      type: object
+      required: [id, enabled]
+      properties:
+        id: {type: string}
+        enabled: {type: boolean}
+    InstallationAction:
+      type: object
+      required: [id, description, enabled, category]
+      properties:
+        id: {type: string}
+        description: {type: string}
+        enabled: {type: boolean}
+        category: {type: string}
+    InstallationCapabilities:
+      type: object
+      required: [version, managed, legacy, events, actions, deliver_outcomes]
+      properties:
+        version: {type: integer}
+        managed: {type: boolean}
+        legacy: {type: boolean}
+        events: {type: array, maxItems: 16, items: {$ref: '#/components/schemas/InstallationEvent'}}
+        actions: {type: array, maxItems: 32, items: {$ref: '#/components/schemas/InstallationAction'}}
+        deliver_outcomes: {type: boolean}
     InboxOperationPart:
       description: A durable assignment or handoff needing a person, without asserting that its run failed.
       type: object
@@ -8732,6 +8835,10 @@ components:
       additionalProperties: false
       required: [client, channel]
       properties:
+        direction:
+          description: Inbound mirrors human messages passively without waking agents or sending Slack output. Outcomes ignores inbound messages. An omitted legacy value keeps an existing binding two-way.
+          type: string
+          enum: [two_way, inbound, outcomes]
         client:
           description: The Slack client's id.
           type: string
@@ -8743,8 +8850,9 @@ components:
     ClientBinding:
       description: One Slack channel a client is bound to, and the channel it is bound to here.
       type: object
-      required: [slack_channel, project, channel]
+      required: [slack_channel, project, channel, direction]
       properties:
+        direction: {type: string, enum: [two_way, inbound, outcomes]}
         slack_channel: {type: string}
         project:
           description: The project. Empty is the workspace itself.
@@ -11164,6 +11272,11 @@ components:
     GitHubOptions:
       type: object
       properties:
+        people:
+          description: Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback.
+          type: object
+          maxProperties: 500
+          additionalProperties: {type: string}
         auto_labels:
           type: object
           additionalProperties:
@@ -11235,6 +11348,7 @@ components:
       type: object
       required: [id, name, surface, identity, credentials, enabled, version, created_at, updated_at]
       properties:
+        capabilities: {$ref: '#/components/schemas/ClientCapabilityPolicy'}
         id: {type: string}
         name: {type: string}
         surface: {$ref: "#/components/schemas/ClientSurface"}

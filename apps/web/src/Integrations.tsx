@@ -2,6 +2,9 @@ import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
+  coworking,
+  type BridgeDirection,
+  type ClientCapabilities,
   type ActionPolicy,
   type Client,
   type Entry,
@@ -252,7 +255,13 @@ export function Integrations({
                     onChanged={load}
                   />
                 ) : (
-                  client && <ClientResources client={client} onOpenProject={onOpenProject} />
+                  client && (
+                    <ClientResources
+                      client={client}
+                      canWrite={canWrite}
+                      onOpenProject={onOpenProject}
+                    />
+                  )
                 ))}
               {active === "links" && (
                 <SourceRules
@@ -289,15 +298,31 @@ export function Integrations({
                     )}
                   </>
                 ) : (
-                  client && <ClientResources client={client} onOpenProject={onOpenProject} />
+                  client && (
+                    <ClientResources
+                      client={client}
+                      canWrite={canWrite}
+                      onOpenProject={onOpenProject}
+                    />
+                  )
                 ))}
               {active === "events" &&
                 (client ? (
-                  <ClientEvents client={client} />
+                  <>
+                    <ClientCapabilitiesPanel client={client} mode="events" canWrite={canWrite} />
+                    <ClientEvents client={client} />
+                  </>
                 ) : (
                   source && <SourceEvents source={source} />
                 ))}
-              {active === "actions" && <IntegrationActions />}
+              {active === "actions" && (
+                <>
+                  {client && (
+                    <ClientCapabilitiesPanel client={client} mode="actions" canWrite={canWrite} />
+                  )}
+                  <IntegrationActions />
+                </>
+              )}
             </>
           ) : (
             <p className="text-aui-sm text-aui-muted">{words.noSelection}</p>
@@ -421,9 +446,11 @@ function ConnectSource({
 
 function ClientResources({
   client,
+  canWrite,
   onOpenProject,
 }: {
   client: Client;
+  canWrite: boolean;
   onOpenProject?: (name: string) => void;
 }) {
   const [bindings, setBindings] = useState<Awaited<ReturnType<typeof api.clientBindings>> | null>(
@@ -469,6 +496,17 @@ function ClientResources({
                 >
                   {b.project || words.workspace} / #{b.channel}
                 </a>
+                <BridgeDirectionControl
+                  client={client}
+                  binding={b}
+                  canWrite={canWrite}
+                  onChanged={() =>
+                    api
+                      .clientBindings(client.id)
+                      .then(setBindings)
+                      .catch((error) => setProblem(sourceProblem(error)))
+                  }
+                />
               </li>
             ))}
           </ul>
@@ -534,7 +572,6 @@ function ClientEvents({ client }: { client: Client }) {
         ))}
       </ul>
       <p className="text-aui-xs text-aui-muted">{words.eventHint}</p>
-      <p className="text-aui-xs text-aui-muted">{words.noEventEditor}</p>
     </section>
   );
 }
@@ -890,6 +927,243 @@ function SourceRules({
       </ul>
       <h3 className="text-aui-sm font-semibold">{words.suggestions}</h3>
       <p className="text-aui-sm text-aui-muted">{words.suggestionsUnavailable}</p>
+    </section>
+  );
+}
+
+function BridgeDirectionControl({
+  client,
+  binding,
+  canWrite,
+  onChanged,
+}: {
+  client: Client;
+  binding: Awaited<ReturnType<typeof api.clientBindings>>[number];
+  canWrite: boolean;
+  onChanged: () => void;
+}) {
+  const [direction, setDirection] = useState<BridgeDirection>(binding.direction ?? "two_way");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => setDirection(binding.direction ?? "two_way"), [binding.direction]);
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !canWrite) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const channels = await coworking.channels(binding.project);
+      const channel = channels.find((c) => c.name === binding.channel);
+      if (
+        !channel ||
+        channel.slack?.client !== client.id ||
+        channel.slack.channel !== binding.slack_channel ||
+        (channel.slack.direction ?? "two_way") !== (binding.direction ?? "two_way")
+      )
+        throw new Error(words.bindingChanged);
+      await api.setSlackDirection(binding.project, channel, direction);
+      onChanged();
+    } catch (error) {
+      setProblem(sourceProblem(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      aria-label={`${words.direction}: ${binding.slack_channel}`}
+      className="flex w-full min-w-0 flex-col gap-3"
+      onSubmit={save}
+    >
+      <Problem message={problem} />
+      <p className="text-aui-xs text-aui-muted">{words.bridgeSemantics}</p>
+      <Label text={words.direction} hint={words.directionHint}>
+        <select
+          aria-label={`${words.direction}: ${binding.slack_channel}`}
+          className={field}
+          value={direction}
+          disabled={!canWrite || busy}
+          onChange={(event) => setDirection(event.target.value as BridgeDirection)}
+        >
+          {Object.entries(words.directions).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </Label>
+      {canWrite && (
+        <button
+          type="submit"
+          className={`${button} self-start`}
+          disabled={busy || direction === (binding.direction ?? "two_way")}
+        >
+          {words.saveDirection}
+        </button>
+      )}
+    </form>
+  );
+}
+
+function ClientCapabilitiesPanel({
+  client,
+  mode,
+  canWrite,
+}: {
+  client: Client;
+  mode: "events" | "actions";
+  canWrite: boolean;
+}) {
+  const [record, setRecord] = useState<ClientCapabilities | null>(null);
+  const [events, setEvents] = useState<string[]>([]);
+  const [actions, setActions] = useState<string[]>([]);
+  const [outcomes, setOutcomes] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const accept = (result: ClientCapabilities) => {
+    setRecord(result);
+    setEvents(result.events.filter((event) => event.enabled).map((event) => event.id));
+    setActions(result.actions.filter((action) => action.enabled).map((action) => action.id));
+    setOutcomes(result.deliver_outcomes);
+  };
+  useEffect(() => {
+    let active = true;
+    setRecord(null);
+    setProblem(null);
+    api
+      .clientCapabilities(client.id)
+      .then((result) => {
+        if (active) accept(result);
+      })
+      .catch((error) => {
+        if (active) setProblem(sourceProblem(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [client.id, client.version]);
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!record || busy || !canWrite || record.managed) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      accept(
+        await api.saveClientCapabilities(client.id, {
+          version: record.version,
+          events,
+          actions,
+          deliver_outcomes: outcomes,
+        }),
+      );
+    } catch (error) {
+      setProblem(sourceProblem(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="flex min-w-0 flex-col gap-3" aria-label={words.capabilities}>
+      <h3 className="text-aui-sm font-semibold">
+        {mode === "events" ? words.subscriptions : words.registeredActions}
+      </h3>
+      <button
+        type="button"
+        className={`${button} self-start`}
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setProblem(null);
+          api
+            .clientCapabilities(client.id)
+            .then(accept)
+            .catch((error) => setProblem(sourceProblem(error)))
+            .finally(() => setBusy(false));
+        }}
+      >
+        {words.refreshCapabilities}
+      </button>
+      <p className="text-aui-sm text-aui-muted">{words.capabilitiesHint}</p>
+      <Problem message={problem} />
+      {!record && !problem && <output>{words.loading}</output>}
+      {record && (
+        <form onSubmit={save} className="flex flex-col gap-3">
+          {record.managed && (
+            <p className="text-aui-xs text-aui-muted">{words.managedCapabilities}</p>
+          )}
+          {record.legacy && (
+            <p className="text-aui-xs text-aui-muted">{words.legacyCapabilities}</p>
+          )}
+          <fieldset
+            disabled={!canWrite || record.managed || busy}
+            className="flex min-w-0 flex-col gap-2"
+          >
+            {mode === "events" ? (
+              record.events.map((event) => (
+                <label key={event.id} className="flex min-h-11 items-center gap-3 text-aui-sm">
+                  <input
+                    type="checkbox"
+                    checked={events.includes(event.id)}
+                    onChange={(change) =>
+                      setEvents(
+                        change.target.checked
+                          ? [...events, event.id]
+                          : events.filter((id) => id !== event.id),
+                      )
+                    }
+                  />
+                  {words.eventNames[event.id as keyof typeof words.eventNames] ?? event.id}
+                </label>
+              ))
+            ) : (
+              <>
+                {record.actions.length === 0 && (
+                  <p className="text-aui-sm text-aui-muted">{words.noRegisteredActions}</p>
+                )}
+                {record.actions.map((action) => (
+                  <label
+                    key={action.id}
+                    className="flex min-h-11 items-start gap-3 py-2 text-aui-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={actions.includes(action.id)}
+                      onChange={(change) =>
+                        setActions(
+                          change.target.checked
+                            ? [...actions, action.id]
+                            : actions.filter((id) => id !== action.id),
+                        )
+                      }
+                    />
+                    <span className="min-w-0 break-words">
+                      <span className="font-medium">{action.description || action.id}</span>
+                      <span className="block text-aui-xs text-aui-muted">
+                        {defaultCopy.operations.categories[
+                          action.category as keyof typeof defaultCopy.operations.categories
+                        ] ?? action.category}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </>
+            )}
+            <label className="flex min-h-11 items-center gap-3 text-aui-sm">
+              <input
+                type="checkbox"
+                checked={outcomes}
+                onChange={(event) => setOutcomes(event.target.checked)}
+              />
+              {words.deliverOutcomes}
+            </label>
+          </fieldset>
+          {canWrite && !record.managed && (
+            <button className={`${button} self-start`} type="submit" disabled={busy}>
+              {words.saveCapabilities}
+            </button>
+          )}
+        </form>
+      )}
     </section>
   );
 }

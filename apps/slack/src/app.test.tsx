@@ -1134,9 +1134,12 @@ test("a client for another team, or one that is gone, routes to nothing", async 
   await deliver(w, mention("hello", TS));
   await w.app.idle();
   assert.equal(w.humagen.asked.length, 0);
-  const said = w.slack.of("chat.postMessage")[0];
-  assert.match(textIn(blocksOf(said)), /No agent answers here yet/);
-  assert.deepEqual(w.slack.statuses, ["active"]);
+  assert.equal(
+    w.slack.calls.length,
+    0,
+    "a client for another team cannot publish a refusal there either",
+  );
+  assert.deepEqual(w.slack.statuses, []);
   collect("no agent", w.slack);
 
   // A client that does not say which team it serves is not taken for this one.
@@ -1788,15 +1791,7 @@ test("when humagen cannot say whether a channel is bound, nobody is answered aro
   await w.app.idle();
   assert.equal(asked, 0, "a channel that may be bound is not answered as the app");
   assert.equal(w.humagen.runs.size, 0);
-  assert.match(
-    textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
-    new RegExp(defaultCopy.failure.unavailable("Humagen").slice(0, 20)),
-  );
-  // A turn the app posts as itself is the product's, by name.
-  assert.match(
-    textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
-    /Humagen is AI and can make mistakes/,
-  );
+  assert.equal(w.slack.calls.length, 0, "unknown binding policy permits no Slack output");
   // The failure is not remembered: once humagen answers, the channel reads as bound.
   down = false;
   await deliver(w, mention("@helper and now?", "1700000300.000100", { user: "U09NOBODY" }));
@@ -1969,4 +1964,72 @@ test("a question in the inbox is not posted again in the thread: the run already
   await w.app.idle();
   watching.abort();
   await watch;
+});
+
+test("an inbound-only bridge mirrors mapped human messages passively without any Slack output", async () => {
+  const w = mapped();
+  w.humagen.bound.set(CLIENT, [
+    { slack_channel: CHANNEL, project: "Field", channel: "general", direction: "inbound" },
+  ]);
+  await deliver(w, mention("@lead keep this internal", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, 1);
+  assert.equal(w.humagen.posts[0]?.post_only, true);
+  assert.equal(w.humagen.asked.length, 0);
+  assert.equal(w.slack.calls.length, 0);
+});
+test("an outcomes-only bridge ignores incoming human messages", async () => {
+  const w = mapped();
+  w.humagen.bound.set(CLIENT, [
+    { slack_channel: CHANNEL, project: "Field", channel: "general", direction: "outcomes" },
+  ]);
+  await deliver(w, mention("@lead start work", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, 0);
+  assert.equal(w.humagen.asked.length, 0);
+  assert.equal(w.slack.calls.length, 0);
+});
+test("a bridge waits for the final outcome and strips Activity and private source metadata", async () => {
+  const w = mapped();
+  w.humagen.bound.set(CLIENT, [
+    { slack_channel: CHANNEL, project: "Field", channel: "general", direction: "two_way" },
+  ]);
+  await deliver(w, mention("@lead inspect", TS));
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "delta.thinking", { text: "Private reasoning" });
+  await emit(w, "delta.tool.call", {
+    id: "call-bridge",
+    name: "source_search",
+    input: { name: "private-folder" },
+  });
+  assert.equal(w.slack.of("chat.startStream").length, 0);
+  assert.equal(w.slack.of("chat.postMessage").length, 0);
+  await emit(w, "lifecycle.completed", { text: "The reviewed result." });
+  await w.app.idle();
+  const rendered = JSON.stringify(w.slack.calls);
+  assert.match(rendered, /The reviewed result/);
+  assert.doesNotMatch(rendered, /Private reasoning|private-folder|source_search/);
+});
+test("a server refusal to deliver private context prevents every native bridge outcome", async () => {
+  const w = mapped();
+  w.humagen.bound.set(CLIENT, [
+    { slack_channel: CHANNEL, project: "Field", channel: "general", direction: "two_way" },
+  ]);
+  w.humagen.deliveryAllowed = async () => false;
+  await deliver(w, mention("@lead inspect private input", TS));
+  await emit(w, "lifecycle.completed", { text: "Private result must stay in Humagen" });
+  await w.app.idle();
+  assert.equal(w.slack.of("chat.postMessage").length, 0);
+  assert.equal(w.slack.of("chat.startStream").length, 0);
+});
+test("disabled installation event subscriptions do not post or start native work", async () => {
+  const w = mapped();
+  const c = w.humagen.clients.get(CLIENT);
+  assert.ok(c);
+  c.capabilities = { events: [], actions: [], deliver_outcomes: false };
+  await deliver(w, mention("@lead inspect", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, 0);
+  assert.equal(w.humagen.asked.length, 0);
+  assert.equal(w.slack.calls.length, 0);
 });

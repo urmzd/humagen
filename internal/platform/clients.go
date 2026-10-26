@@ -207,6 +207,9 @@ func sameRecord(a, b clients.Client) bool {
 // replace puts c in the place of old, with clientsMu held: the record, its
 // secrets and its connector.
 func (p *Platform) replace(old, c clients.Client, by string, in ClientInput) (clients.Client, error) {
+	if c.Capabilities == nil {
+		c.Capabilities = old.Capabilities
+	}
 	tenant, id := old.Tenant, old.ID
 	if c.Surface == "" {
 		c.Surface = old.Surface

@@ -651,6 +651,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
+		"ClientCapabilityPolicy": {typ: clients.Capabilities{}},
+		"InstallationEvent":      {typ: platform.InstallationEvent{}}, "InstallationAction": {typ: platform.InstallationAction{}}, "InstallationCapabilities": {typ: platform.InstallationCapabilities{}},
 		"ClientIdentity": {typ: clients.Identity{}}, "SecretRef": {typ: clients.SecretRef{}}, "SecretInput": {typ: clients.SecretInput{}},
 		"SlackCommand": {typ: clients.Command{}}, "SlackOptions": {typ: clients.SlackOptions{}}, "GitHubOptions": {typ: clients.GitHubOptions{}},
 		"ClientView": {typ: clientView{}}, "ClientCaps": {typ: clients.Caps{}}, "ClientInput": {typ: clientBody{}, written: true},
@@ -1622,6 +1624,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	app := `{"id":"app","name":"App","surface":"slack","identity":{"app_id":"A01APP","team":"T01ABCDEF"},"default_agent":"helper","slack":{"machine":"svc-acme"},` +
 		`"credentials":{"token":{"value":"` + botToken + `"},"signing_secret":{"value":"` + signingSecret + `"}}}`
 	c.call(acme, "POST", "/api/clients", "/api/clients", app, http.StatusCreated)
+	installationCapsFixture := c.call(acme, "GET", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", fmt.Sprintf(`{"version":%v,"events":["app_mention","message","slash_command"],"actions":["slack_post_message","slack_add_reaction"],"deliver_outcomes":true}`, installationCapsFixture.field("version")), http.StatusOK)
+	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", `{"version":0,"events":[],"actions":[],"deliver_outcomes":false}`, http.StatusConflict)
+	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", `{"version":2,"events":["not_an_event"],"actions":[],"deliver_outcomes":false}`, http.StatusBadRequest)
+	bridgeDeliveryRunFixture := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"Delivery check","project":"Launch"}`, http.StatusAccepted)
+	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run="+bridgeDeliveryRunFixture.str("id")+"&channel=C01DELIVERY", "", http.StatusOK)
+	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run=missing&channel=C01DELIVERY", "", http.StatusNotFound)
+
 	deliveries := "/api/inbox/{id}/deliveries/{client}"
 	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNoContent)
 	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"","ts":"1700000000.000100"}`, http.StatusBadRequest)
@@ -2169,6 +2180,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/runs/{id}/decision-memory":                      {"id": learningID},
 		"/api/agent-setups/{name}":                            {"name": "amended-setup"},
 		"/api/agent-setups/{name}/test":                       {"name": "amended-setup"},
+		"/api/clients/{id}/capabilities":                      {"id": "support"},
 		"/api/projects/{name}/memory/{id}":                    {"name": "Launch", "id": freshProjectNote.str("id")},
 		"/api/me/memory/{id}":                                 {"id": freshPersonalNote.str("id")},
 		"/api/library/skills/{id}":                            {"id": libraryID},

@@ -76,6 +76,17 @@ func (p *Platform) surfaceHost(who auth.Principal, ref SurfaceRef, as *ActAs) (c
 	if as == nil || as.Client != c.ID {
 		return clients.Client{}, fmt.Errorf("%w: a surface's message is posted for a person of its client (act_as)", threads.ErrInvalid)
 	}
+
+	event := "app_mention"
+	if directMessage(ref.Channel) {
+		event = "message"
+	}
+	if !c.AllowsEvent(event) {
+		return clients.Client{}, auth.ErrForbidden
+	}
+	if direction, bound := p.bridgeDirection(c, ref.Channel); bound && !direction.AllowsInbound() {
+		return clients.Client{}, auth.ErrForbidden
+	}
 	return c, nil
 }
 
@@ -139,6 +150,17 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	c, err := p.surfaceHost(who, ref, in.ActAs)
 	if err != nil {
 		return Posted{}, err
+	}
+	if !c.AllowsEvent("app_mention") && !c.AllowsEvent("message") {
+		return Posted{}, auth.ErrForbidden
+	}
+	if direction, bound := p.bridgeDirection(c, ref.Channel); bound {
+		if !direction.AllowsInbound() {
+			return Posted{}, auth.ErrForbidden
+		}
+		if !direction.AllowsOutcomes() {
+			in.PostOnly = true
+		}
 	}
 	if in.Project != "" || in.Channel != "" || in.Visibility != "" || in.Default != "" {
 		return Posted{}, ErrSurfacePlace

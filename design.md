@@ -53,6 +53,14 @@ govern implementation, including shared presentation and agent identity.
   sync settings, current-policy scheduled refresh and confined unsaved rule
   previews are implemented. Live provider accounts, verified connector rule
   application and durable link suggestions remain pending. See [sources](docs/sources.md) for supported formats and limits.
+- Per-installation event subscriptions and actual registered native actions now
+  have versioned saved controls. They tighten current adapter and action-policy
+  grants and are rechecked at execution. Slack bridge directions are durable:
+  inbound mirrors mapped human messages without waking an agent; outcomes sends
+  permitted final outcomes and decisions; two-way supports both. Activity and
+  retained source metadata are withheld, and private-context delivery is refused
+  by the server. Native-host, contract, confinement and memory/Postgres replay
+  tests exercise these paths. Live external delivery remains unverified.
 - Acceptance: exercise each newly wired control through its real host/API
   boundary, including a saved success, a visible failure, and denied access.
   Distinguish automated or simulated API checks from a live external-service

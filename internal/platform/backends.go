@@ -144,6 +144,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("private context flags", err)
 	p.Notifications, err = notifications.Open(st)
 	keep("native notifications", err)
+	p.AgentSkillDefaults, err = library.OpenDefaults(st)
+	keep("agent skill defaults", err)
 	p.SkillLibrary, err = library.Open(st)
 	keep("skill library", err)
 	p.Memory, err = memory.Open(st)
