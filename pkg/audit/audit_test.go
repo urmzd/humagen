@@ -210,10 +210,10 @@ func TestAuditSanitizesSnapshotsAndDoesNotRetainCallerMaps(t *testing.T) {
 func TestActorAndDomainFiltersRunBeforeVisibleLimit(t *testing.T) {
 	s, _ := Open(nil)
 	now := time.Now()
-	if _, err := s.Record("acme", "ada", Change{Action: "memory.edit", Resource: "memory", ID: "one"}, now); err != nil {
+	if err := s.Record("acme", "ada", Change{Action: "memory.edit", Resource: "memory", ID: "one"}, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Record("acme", "ben", Change{Action: "skill.publish", Resource: "skill", ID: "two"}, now.Add(time.Second)); err != nil {
+	if err := s.Record("acme", "ben", Change{Action: "skill.publish", Resource: "skill", ID: "two"}, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := s.List("acme", Query{From: now.Add(-time.Second), To: now.Add(time.Hour), Actor: "ada", Resource: "memory", Limit: 1}, nil)
