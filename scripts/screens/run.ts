@@ -1159,7 +1159,10 @@ async function main(): Promise<void> {
   if (showcase && only.length)
     throw new Error("SCREENS_SHOWCASE requires every screen; unset SCREENS_ONLY.");
   // A mistyped name would otherwise capture nothing and pass.
-  const unknown = only.filter((n) => n !== "home-new" && !screens(ids0, async () => { throw new Error("Screen selection must not call the seed API"); }).some((s) => s.name === n));
+  const names = screens(ids0, async () => {
+    throw new Error("Screen discovery cannot call the API.");
+  }).map((screen) => screen.name);
+  const unknown = only.filter((n) => n !== "home-new" && !names.includes(n));
   if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
   // Only a folder this script wrote, or a new one, is cleared.
   if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, "report.json"))) {
