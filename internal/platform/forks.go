@@ -62,7 +62,7 @@ func (p *Platform) ForkThread(ctx context.Context, who auth.Principal, id string
 			}
 		}
 	}
-	history, err := p.forkHistory(ctx, who, source, in.Through)
+	history, err := p.forkHistory(ctx, who, source, in.Through, source.Project)
 	if err != nil {
 		return threads.Thread{}, err
 	}
@@ -93,15 +93,15 @@ func (p *Platform) BringBackResult(ctx context.Context, who auth.Principal, id s
 	if err != nil || run.Thread != id || run.Status != runs.Completed || !p.Seer(who).Run(run) {
 		return threads.Message{}, threads.ErrNotFound
 	}
-	if p.RunUsesPersonalSources(ctx, run) {
-		return threads.Message{}, fmt.Errorf("%w: personal-source results stay in their original conversation", ErrForbidden)
-	}
 	mu := p.moves.of(who.Tenant, fork.Fork.SourceThread)
 	mu.RLock()
 	defer mu.RUnlock()
 	parent, err := p.ThreadRecord(who.Tenant, fork.Fork.SourceThread)
 	if err != nil || !p.SeesThread(who, parent.ID) {
 		return threads.Message{}, threads.ErrNotFound
+	}
+	if p.RunRequiresReviewedSummary(ctx, run, parent.Project) {
+		return threads.Message{}, fmt.Errorf("%w: private-context results require a reviewed summary", ErrForbidden)
 	}
 	if _, _, _, _, err := p.author(who, nil); err != nil {
 		return threads.Message{}, err
@@ -196,7 +196,7 @@ func (p *Platform) forkSourceSelection(tenant, thread string) *[]string {
 
 // forkHistory is the passive snapshot used by interactive forks and read-only
 // project archives. The caller holds the source placement lock.
-func (p *Platform) forkHistory(ctx context.Context, who auth.Principal, source threads.Thread, through string) ([]threads.ForkTurn, error) {
+func (p *Platform) forkHistory(ctx context.Context, who auth.Principal, source threads.Thread, through, destination string) ([]threads.ForkTurn, error) {
 	if err := p.checkForkDepth(who.Tenant, source); err != nil {
 		return nil, err
 	}
@@ -239,8 +239,8 @@ func (p *Platform) forkHistory(ctx context.Context, who auth.Principal, source t
 			if !seer.Run(*r) {
 				continue
 			}
-			if p.RunUsesPersonalSources(ctx, *r) {
-				return nil, fmt.Errorf("%w: personal-source results stay in their original conversation", threads.ErrInvalid)
+			if p.RunRequiresReviewedSummary(ctx, *r, destination) {
+				return nil, fmt.Errorf("%w: private-context results require a reviewed summary", threads.ErrInvalid)
 			}
 			if !r.Status.Terminal() {
 				continue
@@ -277,4 +277,13 @@ func (p *Platform) checkForkDepth(tenant string, source threads.Thread) error {
 		parent = next
 	}
 	return nil
+}
+
+// Passive inherited context cannot be published as an independent raw history.
+// A reviewed summary deliberately copies only the person's selected text.
+type forkPublicationGuard struct{ p *Platform }
+
+func (g forkPublicationGuard) ConversationOperationsSettled(tenant, thread string) bool {
+	th, err := g.p.Threads.Get(tenant, thread)
+	return err == nil && !th.ReadOnly && (th.Fork == nil || len(th.Fork.Context) == 0)
 }

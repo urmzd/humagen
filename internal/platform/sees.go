@@ -375,7 +375,7 @@ func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCoun
 	seer := p.Seer(who)
 	mark := p.Runs.Opened(who.Tenant)
 	hidden := map[string]bool{}
-	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Visibility == threads.Private }) {
+	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return true }) {
 		if !seer.Place(Place{Project: th.Project, Thread: th.ID}) {
 			hidden[th.ID] = true
 		}
