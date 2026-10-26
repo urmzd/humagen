@@ -8,6 +8,8 @@ import type {
   AgentControlInput,
   AgentHome,
   AgentNetwork,
+  AgentSkillDefaults,
+  AgentSkillDefaultsUpdate,
   AgentSpec,
   Alert,
   AlertRule,
@@ -128,6 +130,7 @@ import type {
   ProjectUpdate,
   ProjectView,
   PromoteLibrarySkillBody,
+  PromoteMemoryBody,
   PublishThreadSummaryBody,
   PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
@@ -499,6 +502,90 @@ export class ApiClient {
     return response.data;
   }
 
+  /** Read this installation's actual event and action inventory */
+  async getClientCapabilities(id: string, options?: RequestOptions): Promise<InstallationCapabilities> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InstallationCapabilities>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getClientCapabilitiesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InstallationCapabilities>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Explicit empty lists deny every event or action. These controls add no provider scopes, agent tool grants or approval rights. Existing managed installations keep their file-defined settings. */
+  async putClientCapabilities(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<InstallationCapabilities> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InstallationCapabilities>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putClientCapabilitiesRaw(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InstallationCapabilities>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Recheck a native host's current permission to deliver this visible run */
+  async clientBridgeDelivery(id: string, run: string, channel: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
+    let path = "/api/clients/{id}/delivery";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ClientBridgeDeliveryResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
+    let path = "/api/clients/{id}/delivery";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ClientBridgeDeliveryResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Copies only the selected approved unexpired text, kind and expiry. The new note is pending and attributed to the copier. Private original provenance is never copied. */
+  async promoteMemory(body: PromoteMemoryBody, options?: RequestOptions): Promise<Note> {
+    const path = "/api/memory/promote";
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteMemoryRaw(body: PromoteMemoryBody, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    const path = "/api/memory/promote";
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** A bounded authenticated delivery worker discovers at most 500 current inbox references, releases immediate or hourly digest deliveries outside quiet hours, and rechecks every item with the current identity. It never changes authoritative inbox history. */
   async listNativeNotifications(options?: RequestOptions): Promise<ListNativeNotificationsResponse> {
     const path = "/api/me/notifications";
@@ -658,9 +745,11 @@ export class ApiClient {
   }
 
   /** Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone. */
-  async listAudit(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListAuditResponse> {
+  async listAudit(actor?: string, resource?: string, from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListAuditResponse> {
     let path = "/api/audit";
     const _q = new URLSearchParams();
+    if (actor !== undefined && actor !== null) _q.set("actor", String(actor));
+    if (resource !== undefined && resource !== null) _q.set("resource", String(resource));
     if (from !== undefined && from !== null) _q.set("from", String(from));
     if (to !== undefined && to !== null) _q.set("to", String(to));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
@@ -671,80 +760,17 @@ export class ApiClient {
     });
   }
 
-  async listAuditRaw(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListAuditResponse>> {
+  async listAuditRaw(actor?: string, resource?: string, from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListAuditResponse>> {
     let path = "/api/audit";
     const _q = new URLSearchParams();
+    if (actor !== undefined && actor !== null) _q.set("actor", String(actor));
+    if (resource !== undefined && resource !== null) _q.set("resource", String(resource));
     if (from !== undefined && from !== null) _q.set("from", String(from));
     if (to !== undefined && to !== null) _q.set("to", String(to));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListAuditResponse>("GET", path, {
-      ...options,
-    });
-  }
-
-  /** Read this installation's actual event and action inventory */
-  async getClientCapabilities(id: string, options?: RequestOptions): Promise<InstallationCapabilities> {
-    let path = "/api/clients/{id}/capabilities";
-    path = path.replace("{id}", encodeURIComponent(String(id)));
-    return this.request<InstallationCapabilities>("GET", path, {
-      ...options,
-    });
-  }
-
-  async getClientCapabilitiesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
-    let path = "/api/clients/{id}/capabilities";
-    path = path.replace("{id}", encodeURIComponent(String(id)));
-    return this.rawRequest<InstallationCapabilities>("GET", path, {
-      ...options,
-    });
-  }
-
-  /** Explicit empty lists deny every event or action. These controls add no provider scopes, agent tool grants or approval rights. Existing managed installations keep their file-defined settings. */
-  async putClientCapabilities(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<InstallationCapabilities> {
-    let path = "/api/clients/{id}/capabilities";
-    path = path.replace("{id}", encodeURIComponent(String(id)));
-    return this.request<InstallationCapabilities>("PUT", path, {
-      body,
-      contentType: "application/json",
-      ...options,
-    });
-  }
-
-  async putClientCapabilitiesRaw(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
-    let path = "/api/clients/{id}/capabilities";
-    path = path.replace("{id}", encodeURIComponent(String(id)));
-    return this.rawRequest<InstallationCapabilities>("PUT", path, {
-      body,
-      contentType: "application/json",
-      ...options,
-    });
-  }
-
-  /** Recheck a native host's current permission to deliver this visible run */
-  async clientBridgeDelivery(id: string, run: string, channel: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
-    let path = "/api/clients/{id}/delivery";
-    path = path.replace("{id}", encodeURIComponent(String(id)));
-    const _q = new URLSearchParams();
-    if (run !== undefined && run !== null) _q.set("run", String(run));
-    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
-    const _qs = _q.toString();
-    if (_qs) path += `?${_qs}`;
-    return this.request<ClientBridgeDeliveryResponse>("GET", path, {
-      ...options,
-    });
-  }
-
-  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
-    let path = "/api/clients/{id}/delivery";
-    path = path.replace("{id}", encodeURIComponent(String(id)));
-    const _q = new URLSearchParams();
-    if (run !== undefined && run !== null) _q.set("run", String(run));
-    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
-    const _qs = _q.toString();
-    if (_qs) path += `?${_qs}`;
-    return this.rawRequest<ClientBridgeDeliveryResponse>("GET", path, {
       ...options,
     });
   }
@@ -1148,6 +1174,44 @@ nowhere (400).
     });
   }
 
+  /** Read exact published default skill revisions */
+  async getAgentSkillDefaults(name: string, options?: RequestOptions): Promise<AgentSkillDefaults> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSkillDefaults>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentSkillDefaultsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSkillDefaults>> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSkillDefaults>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Bind exact published skills to the current agent revision */
+  async setAgentSkillDefaults(name: string, body: AgentSkillDefaultsUpdate, options?: RequestOptions): Promise<AgentSkillDefaults> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSkillDefaults>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setAgentSkillDefaultsRaw(name: string, body: AgentSkillDefaultsUpdate, options?: RequestOptions): Promise<ApiResponse<AgentSkillDefaults>> {
+    let path = "/api/agents/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSkillDefaults>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** The agent's stored call policy, or the default an agent with none has
 (`version` 0): any caller its own spec allows, without approval. 404
 for an agent that does not exist in the caller's workspace. An agent
@@ -1289,6 +1353,29 @@ owner is no agent's, and answers 404.
     });
   }
 
+  /** Correct a visible memory while retaining its provenance */
+  async editAgentMemory(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/agents/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editAgentMemoryRaw(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/agents/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** An agent that does not exist, or a note that is not its own, is 404. */
   async removeAgentMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/agents/{name}/memory/{id}";
@@ -1355,6 +1442,27 @@ owner is no agent's, and answers 404.
   async approvePersonalMemoryRaw(body: NoteSelection, options?: RequestOptions): Promise<ApiResponse<Approved>> {
     const path = "/api/me/memory/approve";
     return this.rawRequest<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Correct a visible memory while retaining its provenance */
+  async editPersonalMemory(id: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/me/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editPersonalMemoryRaw(id: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/me/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Note>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,
@@ -4180,6 +4288,29 @@ inbox to keep or discard it. A viewer is 403.
     let path = "/api/projects/{name}/memory/approve";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Correct a visible memory while retaining its provenance */
+  async editProjectMemory(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/projects/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editProjectMemoryRaw(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/projects/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Note>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,

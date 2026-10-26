@@ -1,12 +1,12 @@
 import { defaultCopy } from "@humagen/components";
+import { useEffect, useState } from "react";
 import type {
   LibraryScope,
   LibrarySkill,
   LibrarySkillDefinition,
 } from "../../../packages/client/src/generated/types.ts";
-import { useEffect, useState } from "react";
 import { api, type ProjectView, type Revision } from "./api.ts";
-import { card, field, pageLede, pageTitle, Problem, SkeletonRows } from "./ui.tsx";
+import { card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 const blank: LibrarySkillDefinition = {
   name: "",
@@ -27,9 +27,34 @@ function definitionOf(row: LibrarySkill): LibrarySkillDefinition {
     argument_hint: row.argument_hint ?? "",
   };
 }
-export function SkillsLibrary() {
+export interface SkillsLibraryLocation {
+  scope: "personal" | "workspace" | "project";
+  project?: string;
+  skill?: string;
+  version?: number;
+}
+export function SkillsLibrary({
+  onLocationChange,
+}: {
+  onLocationChange?: (location: SkillsLibraryLocation) => void;
+} = {}) {
   const copy = defaultCopy.skillsLibrary;
-  const [scope, setScope] = useState<LibraryScope>({ kind: "personal" });
+  const [scope, setScope] = useState<LibraryScope>(() => {
+    const query = new URLSearchParams(window.location.search);
+    const kind = query.get("scope");
+    return kind === "workspace"
+      ? { kind }
+      : kind === "project"
+        ? { kind, project: query.get("project") ?? "" }
+        : { kind: "personal" };
+  });
+  const [requestedSkill] = useState(() => new URLSearchParams(window.location.search).get("skill"));
+  const [requestedVersion] = useState(() => {
+    const raw = new URLSearchParams(window.location.search).get("version");
+    if (raw === null) return undefined;
+    const version = Number(raw);
+    return Number.isSafeInteger(version) && version > 0 && version <= 32 ? version : 0;
+  });
   const [skills, setSkills] = useState<LibrarySkill[] | null>(null);
   const [history, setHistory] = useState<LibrarySkill[]>([]);
   const [selected, setSelected] = useState<LibrarySkill | null>(null);
@@ -43,6 +68,7 @@ export function SkillsLibrary() {
   const [agent, setAgent] = useState("");
   const [request, setRequest] = useState("");
   const [testThread, setTestThread] = useState("");
+  const [testUses, setTestUses] = useState<{ id: string; thread: string; agent: string }[]>([]);
   const [testProject, setTestProject] = useState("");
   const [destination, setDestination] = useState<LibraryScope>({ kind: "project", project: "" });
   const [problem, setProblem] = useState<string | null>(null);
@@ -85,7 +111,11 @@ export function SkillsLibrary() {
     api
       .librarySkills(scope)
       .then((rows) => {
-        if (live) setSkills(rows);
+        if (live) {
+          setSkills(rows);
+          if (requestedSkill && rows.some((row) => row.id === requestedSkill))
+            void inspect(requestedSkill, false, requestedVersion);
+        }
       })
       .catch((error) => {
         if (live) failed(error);
@@ -109,18 +139,55 @@ export function SkillsLibrary() {
       live = false;
     };
   }, [scope.kind, scope.project]);
-  const inspect = async (id: string) => {
+
+  useEffect(() => {
+    let live = true;
+    setTestUses([]);
+    if (selected)
+      void Promise.allSettled(selected.tests.slice(0, 10).map((id) => api.run(id))).then(
+        (results) => {
+          if (live)
+            setTestUses(
+              results.flatMap((result) =>
+                result.status === "fulfilled" && result.value.thread
+                  ? [
+                      {
+                        id: result.value.id,
+                        thread: result.value.thread,
+                        agent: result.value.agent,
+                      },
+                    ]
+                  : [],
+              ),
+            );
+        },
+      );
+    return () => {
+      live = false;
+    };
+  }, [selected]);
+  const inspect = async (id: string, sync = true, version?: number) => {
     setBusy(true);
     setProblem(null);
     try {
       const rows = await api.librarySkill(id);
       setHistory(rows);
-      const row = rows.at(-1);
+      const row = version === undefined ? rows.at(-1) : rows.find((row) => row.version === version);
       if (row) {
         setSelected(row);
         setDefinition(definitionOf(row));
         setTestThread("");
         setTestProject(row.scope.kind === "personal" ? personal : (row.scope.project ?? ""));
+        if (sync)
+          onLocationChange?.({
+            scope: scope.kind,
+            project: scope.project,
+            skill: row.id,
+            version: row.version,
+          });
+      } else {
+        setSelected(null);
+        setProblem(copy.versionUnavailable);
       }
     } catch (error) {
       failed(error);
@@ -136,6 +203,12 @@ export function SkillsLibrary() {
       setSkills(await api.librarySkills(scope));
       setHistory(await api.librarySkill(row.id));
       setSelected(row);
+      onLocationChange?.({
+        scope: scope.kind,
+        project: scope.project,
+        skill: row.id,
+        version: row.version,
+      });
     } catch (error) {
       failed(error);
     } finally {
@@ -186,6 +259,7 @@ export function SkillsLibrary() {
       const version = target.find((row) => row.name === selected.name)?.version ?? 0;
       await api.promoteSkill(selected.id, selected.version, destination, version);
       setScope(destination);
+      onLocationChange?.({ scope: destination.kind, project: destination.project });
     } catch (error) {
       failed(error);
     } finally {
@@ -234,12 +308,11 @@ export function SkillsLibrary() {
     </div>
   );
   return (
-    <section className="min-w-0 space-y-5">
-      <header>
-        <h1 className={pageTitle}>{copy.title}</h1>
-        <p className={pageLede}>{copy.description}</p>
-      </header>
-      {scopeControl(scope, setScope)}
+    <Page title={copy.title} lede={copy.description}>
+      {scopeControl(scope, (next) => {
+        setScope(next);
+        onLocationChange?.({ scope: next.kind, project: next.project });
+      })}
       {problem && <Problem message={problem} />}
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
         <aside className="min-w-0">
@@ -251,6 +324,7 @@ export function SkillsLibrary() {
               setSelected(null);
               setHistory([]);
               setDefinition(blank);
+              onLocationChange?.({ scope: scope.kind, project: scope.project });
             }}
           >
             {copy.new}
@@ -293,19 +367,25 @@ export function SkillsLibrary() {
               <label>
                 {copy.version}
                 <select
-                  className="ml-2 min-h-11 bg-aui-bg"
+                  className={`${field} mt-2 block max-w-full`}
                   value={selected.version}
                   onChange={(e) => {
                     const row = history.find((value) => value.version === Number(e.target.value));
                     if (row) {
                       setSelected(row);
                       setDefinition(definitionOf(row));
+                      onLocationChange?.({
+                        scope: scope.kind,
+                        project: scope.project,
+                        skill: row.id,
+                        version: row.version,
+                      });
                     }
                   }}
                 >
                   {history.map((row) => (
                     <option key={row.version} value={row.version}>
-                      {row.version} · {row.published_at ? copy.published : copy.draft}
+                      {row.version}, {row.published_at ? copy.published : copy.draft}
                     </option>
                   ))}
                 </select>
@@ -383,7 +463,7 @@ export function SkillsLibrary() {
                 <label className="block">
                   {copy.agent}
                   <select
-                    className={`${field} ml-2`}
+                    className={`${field} mt-2 block max-w-full`}
                     value={agent}
                     onChange={(e) => setAgent(e.target.value)}
                   >
@@ -398,7 +478,7 @@ export function SkillsLibrary() {
                   <label className="block">
                     {copy.project}
                     <select
-                      className={`${field} ml-2 max-w-full`}
+                      className={`${field} mt-2 block max-w-full`}
                       value={testProject}
                       onChange={(e) => setTestProject(e.target.value)}
                     >
@@ -447,9 +527,33 @@ export function SkillsLibrary() {
                   )}
                 </div>
               </form>
+
+              {testUses.length > 0 && (
+                <section className={`${card} space-y-3 p-4`}>
+                  <h2 className="font-medium">{copy.testUses}</h2>
+                  <ul className="space-y-2">
+                    {testUses.map((run) => (
+                      <li key={run.id} className="flex flex-wrap gap-4">
+                        <a
+                          className="inline-flex min-h-11 items-center text-aui-accent"
+                          href={`/agents/${encodeURIComponent(run.agent)}`}
+                        >
+                          {run.agent}
+                        </a>
+                        <a
+                          className="inline-flex min-h-11 items-center text-aui-accent"
+                          href={`/conversations/${encodeURIComponent(run.thread)}`}
+                        >
+                          {copy.testRun}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {selected.from && (
                 <p className="break-words text-aui-sm text-aui-muted">
-                  {copy.provenance}: {selected.from.name} · {copy.version} {selected.from.version}
+                  {copy.provenance}: {selected.from.name}, {copy.version} {selected.from.version}
                 </p>
               )}
               <section className={`${card} space-y-4 p-4`}>
@@ -482,6 +586,6 @@ export function SkillsLibrary() {
       >
         {copy.refresh}
       </button>
-    </section>
+    </Page>
   );
 }

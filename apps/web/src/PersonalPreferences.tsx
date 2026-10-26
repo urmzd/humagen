@@ -17,10 +17,10 @@ const initial: Personal = {
 };
 export function PersonalPreferences({
   section = "profile",
- onSaved,
+  onSaved,
 }: {
   section?: "profile" | "notifications" | "privacy" | "agents";
- onSaved?: (p:Preferences)=>void;
+  onSaved?: (p: Preferences) => void;
 }) {
   const copy = defaultCopy.personalPreferences;
   const [profile, setProfile] = useState<Preferences | null>(null);
@@ -59,7 +59,7 @@ export function PersonalPreferences({
         personal: value,
       });
       setProfile(result);
- onSaved?.(result);
+      onSaved?.(result);
       setValue(result.personal ?? initial);
       setSaved(true);
     } catch {
@@ -181,7 +181,7 @@ export function PersonalPreferences({
                           {label}
                           <input
                             type="time"
-                            className={`${field} ml-2`}
+                            className={`${field} mt-2 block max-w-full`}
                             value={value[key]}
                             onChange={(event) => setValue({ ...value, [key]: event.target.value })}
                           />
@@ -190,7 +190,7 @@ export function PersonalPreferences({
                       <label>
                         {copy.timezone}
                         <input
-                          className={`${field} ml-2 max-w-full`}
+                          className={`${field} mt-2 block max-w-full`}
                           value={value.timezone}
                           onChange={(event) => setValue({ ...value, timezone: event.target.value })}
                         />

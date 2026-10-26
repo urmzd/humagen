@@ -236,3 +236,30 @@ func TestRenderedMemoryUseSurvivesReplayWithoutCountingPreview(t *testing.T) {
 		}
 	})
 }
+
+func TestCorrectionRetainsProvenanceReviewAndExpiryAcrossReplay(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := time.Now()
+		note, err := s.AddDetailed("acme", ProjectOwner("Field"), "Ship on Tuesday", Artifact, Pending, "humagen://artifacts/a?version=2", at, Details{Kind: Decision, ExpiresAt: at.Add(time.Hour)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		edited, err := s.Edit("acme", ProjectOwner("Field"), note.ID, "Ship on Wednesday", "ada", at.Add(time.Minute), nil)
+		if err != nil || edited.Source != Artifact || edited.By != note.By || edited.Status != Pending || !edited.ExpiresAt.Equal(note.ExpiresAt) {
+			t.Fatalf("correction lost provenance/review: %+v %v", edited, err)
+		}
+		s, err = Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held := s.List("acme", ProjectOwner("Field"))[0]
+		if held.Text != "Ship on Wednesday" || held.EditedBy != "ada" || held.Status != Pending {
+			t.Fatalf("correction not replayed: %+v", held)
+		}
+	})
+}

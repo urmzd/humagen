@@ -206,22 +206,24 @@ type Platform struct {
 	now       func() time.Time
 	grounding sourceGrounding
 
-	Agents            registry.Store
-	Runs              *runs.Index
-	Schedules         *Schedules
-	Journal           *journal.Journal
-	Alerts            *alerts.Engine
-	Knowledge         *knowledge.Store
-	SourceLinks       *sourcelinks.Store
-	SourceSuggestions *sourcelinks.Suggestions
-	SourceEvidence    *knowledge.EvidenceStore
-	Evals             *evals.Store
-	Feedback          *feedback.Store
-	Prefs             *prefs.Store
-	Memory            *memory.Store
-	SkillLibrary      *library.Store
-	Notifications     *notifications.Store
-	ContextFlags      *contextflags.Store
+	Agents             registry.Store
+	Runs               *runs.Index
+	Schedules          *Schedules
+	Journal            *journal.Journal
+	Alerts             *alerts.Engine
+	Knowledge          *knowledge.Store
+	SourceLinks        *sourcelinks.Store
+	SourceSuggestions  *sourcelinks.Suggestions
+	SourceEvidence     *knowledge.EvidenceStore
+	Evals              *evals.Store
+	Feedback           *feedback.Store
+	Prefs              *prefs.Store
+	Memory             *memory.Store
+	SkillLibrary       *library.Store
+	Notifications      *notifications.Store
+	ContextFlags       *contextflags.Store
+	AgentSkillDefaults *library.DefaultsStore
+	skillDefaultsMu    sync.Mutex
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -579,10 +581,14 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 		return runs.Run{}, err
 	}
 	tag = p.pin(tag, edge, project, within, p.sourcesFor(tag, edge, project))
+	tag, err = p.pinAgentSkillDefaults(ctx, tag, edge, project)
+	if err != nil {
+		return runs.Run{}, err
+	}
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
-	if tag.Meta["_humagen.context.personal_memory"] == "true" {
+	if tag.Meta[MetaPersonalMemoryContext] == "true" || tag.Meta[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
 			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
 			return runs.Run{}, err
@@ -627,8 +633,13 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	meta := make(map[string]string, len(tag.Meta)+3)
 	maps.Copy(meta, tag.Meta)
 	if edge.Parent != "" {
-		if parent, err := p.Runs.Get(tag.Tenant, edge.Parent); err == nil && parent.Tag().Meta["_humagen.context.personal_memory"] == "true" {
-			meta["_humagen.context.personal_memory"] = "true"
+
+		if parent, err := p.Runs.Get(tag.Tenant, edge.Parent); err == nil {
+			for _, key := range []string{MetaPersonalMemoryContext, MetaPrivateLibraryContext} {
+				if parent.Tag().Meta[key] == "true" {
+					meta[key] = "true"
+				}
+			}
 		}
 	}
 	delete(meta, runs.MetaWithin)
@@ -658,7 +669,7 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	}
 	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual || tag.Origin == runs.OriginAssignment) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
-		tag.Text = p.personalContext(tag.Tenant, project, personOf(tag.Actor), p.contextOf(tag.Tenant, project, tag.Agent, tag.Text), meta)
+		tag.Text = p.turnContext(tag.Tenant, project, "", tag.Agent, personOf(tag.Actor), tag.Text, meta)
 	}
 	tag.Meta = meta
 	return tag

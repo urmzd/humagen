@@ -52,6 +52,7 @@ import (
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -649,6 +650,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
+		"AgentSkillRef": {typ: platform.AgentSkillRef{}}, "AgentSkillDefaults": {typ: platform.AgentSkillDefaults{}}, "AgentSkillDefaultsUpdate": {typ: agentSkillDefaultsUpdate{}, written: true},
 		"ClientCapabilityPolicy": {typ: clients.Capabilities{}},
 		"InstallationEvent":      {typ: platform.InstallationEvent{}}, "InstallationAction": {typ: platform.InstallationAction{}}, "InstallationCapabilities": {typ: platform.InstallationCapabilities{}},
 		"ClientIdentity": {typ: clients.Identity{}}, "SecretRef": {typ: clients.SecretRef{}}, "SecretInput": {typ: clients.SecretInput{}},
@@ -965,6 +967,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "GET", "/api/me/memory", "/api/me/memory", "", http.StatusOK)
 	personalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Prefer concise answers","kind":"preference"}`, http.StatusCreated)
 	c.call(auditAdmin, "POST", "/api/me/memory/approve", "/api/me/memory/approve", `{"ids":[]}`, http.StatusOK)
+	c.call(auditAdmin, "PUT", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), `{"text":"Prefer concise paragraphs","kind":"preference"}`, http.StatusOK)
+	c.call(auditAdmin, "PUT", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), `{"text":""}`, http.StatusBadRequest)
+
 	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), "", http.StatusNoContent)
 	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/missing", "", http.StatusNotFound)
 	c.sweep(globex)
@@ -999,6 +1004,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
 
+	// Explicit copies never activate learning without destination review.
+	promotionNote, err := f.p.Memory.Add("acme", memory.PersonalOwner("ana"), "Review product outcomes", memory.Person, memory.Approved, "ana", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	promotionBody := `{"scope":"personal","id":"` + promotionNote.ID + `","destination":"~"}`
+	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", promotionBody, http.StatusCreated)
+	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", promotionBody, http.StatusBadRequest)
+	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", `{"scope":"personal","id":"missing","destination":"~"}`, http.StatusNotFound)
 	// Agents, revisions and what they remember.
 	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusOK)
 	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusOK)
@@ -1189,6 +1203,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(globex, "GET", "/api/threads/{id}", "/api/threads/"+first.str("thread"), "", http.StatusNotFound)
 	c.call(globex, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"hi","after":"`+id+`"}`, http.StatusNotFound)
 
+	defaultSkills := c.call(acme, "GET", "/api/agents/{name}/skills", "/api/agents/helper/skills", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/skills", "/api/agents/helper/skills", fmt.Sprintf(`{"agent_revision":%v,"version":0,"skills":[]}`, defaultSkills.field("agent_revision")), http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/skills", "/api/agents/helper/skills", fmt.Sprintf(`{"agent_revision":%v,"version":0,"skills":[]}`, defaultSkills.field("agent_revision")), http.StatusConflict)
+	c.call(acme, "PUT", "/api/agents/{name}/skills", "/api/agents/helper/skills", fmt.Sprintf(`{"agent_revision":%v,"version":1,"skills":null}`, defaultSkills.field("agent_revision")), http.StatusBadRequest)
 	// Limits: a refusal, the inbox message it raises, and resolving it.
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Launch","description":"The launch."}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Launch"}`, http.StatusConflict)
@@ -2047,7 +2065,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	ids := map[string]string{
 		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully", "channel": "general",
 	}
+	freshAgentNote := c.call(acme, "POST", "/api/agents/{name}/memory", "/api/agents/helper/memory", `{"text":"Agent correction source"}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/agents/{name}/memory/{id}", "/api/agents/helper/memory/"+freshAgentNote.str("id"), `{"text":"Corrected agent note"}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/memory/{id}", "/api/agents/helper/memory/"+freshAgentNote.str("id"), `{"text":""}`, http.StatusBadRequest)
+	freshProjectNote := c.call(acme, "POST", "/api/projects/{name}/memory", "/api/projects/Launch/memory", `{"text":"Project correction source"}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":"Corrected project note"}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
+	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/clients/{id}/capabilities":                      {"id": "support"},
+		"/api/projects/{name}/memory/{id}":                    {"name": "Launch", "id": freshProjectNote.str("id")},
+		"/api/me/memory/{id}":                                 {"id": freshPersonalNote.str("id")},
 		"/api/library/skills/{id}":                            {"id": libraryID},
 		"/api/library/skills/{id}/versions/{version}/test":    {"id": libraryID, "version": "1"},
 		"/api/library/skills/{id}/versions/{version}/publish": {"id": libraryID, "version": "1"},
@@ -2056,8 +2084,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/action-policy": {"name": "Launch"},
 		"/api/assignments/{id}":              {"id": "contract-assignment"},
 		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
-		"/api/agents/{name}/memory/{id}":     {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
-		"/api/clients/{id}/capabilities":             {"id": "support"},
+		"/api/agents/{name}/memory/{id}":     {"id": freshAgentNote.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
 		"/api/source-link-suggestions/{id}/decision": {"id": suggestionID},
 		"/api/knowledge/{name}/attachment":           {"name": "handbook"},
 		"/api/knowledge/{name}/attachments":          {"name": "handbook"},
@@ -2074,8 +2101,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
 		"/api/projects/{name}/rollup":         {"name": "Launch"},
-		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
-		"/api/projects/{name}/members": {"name": "Launch"}, "/api/projects/{name}/move": {"name": "Launch"}, "/api/projects/{name}/limits": {"name": "Launch"},
+		"/api/projects/{name}/memory/approve": {"name": "Launch"},
+		"/api/projects/{name}/members":        {"name": "Launch"}, "/api/projects/{name}/move": {"name": "Launch"}, "/api/projects/{name}/limits": {"name": "Launch"},
 		"/api/projects/{name}/inbox": {"name": "Launch"}, "/api/projects/{name}/announcements": {"name": "Launch"},
 		"/api/projects/{name}/announcements/{id}": {"name": "Launch", "id": mid},
 		"/api/schedules/{name}":                   {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
@@ -2134,7 +2161,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			c.call(globex, op.method, op.path, path, valid[op.path], http.StatusNotFound)
 		}
 		if refusesUnknownFields(op) {
-			c.call(acme, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)
+			caller := acme
+			if strings.HasPrefix(op.path, "/api/me/memory") {
+				caller = auditAdmin
+			}
+			c.call(caller, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)
 		}
 	}
 

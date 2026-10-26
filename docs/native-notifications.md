@@ -38,3 +38,10 @@ flag write aborts before runtime acceptance. Called and housekeeping runs inheri
 the classification. It survives journal expiry and same-ID replay; profile
 formatting alone does not receive this classification. Publication uses the
 structural marker, never a text search of a prompt.
+
+
+Personal skill instructions use a generic private-library marker before model
+admission. Classification is written through independently of the run journal;
+a failed write aborts dispatch. Called and housekeeping runs inherit it, and
+same-ID replay retains the original accepted classification. Publication requires
+a reviewed summary, without exposing any private skill name or owner.

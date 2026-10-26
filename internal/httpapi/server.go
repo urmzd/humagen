@@ -127,6 +127,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
+	mux.HandleFunc("GET /api/agents/{name}/skills", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSkillDefaults))))
+	mux.HandleFunc("PUT /api/agents/{name}/skills", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentSkillDefaults))))
 	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getCallPolicy))))
 	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putCallPolicy))))
 	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.reachable))))
@@ -134,10 +136,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.addMemory))))
 	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.removeMemory))))
 	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.approveMemory))))
+	mux.HandleFunc("PUT /api/me/memory/{id}", s.authed(auth.RunsWrite, s.editPersonalMemory))
+	mux.HandleFunc("PUT /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.editAgentMemory))))
+	mux.HandleFunc("PUT /api/projects/{name}/memory/{id}", s.authed(auth.ProjectsWrite, s.editProjectMemory))
 	mux.HandleFunc("GET /api/me/memory", s.authed(auth.RunsRead, s.listPersonalMemory))
 	mux.HandleFunc("POST /api/me/memory/approve", s.authed(auth.RunsWrite, s.approvePersonalMemory))
 	mux.HandleFunc("POST /api/me/memory", s.authed(auth.RunsWrite, s.addPersonalMemory))
 	mux.HandleFunc("DELETE /api/me/memory/{id}", s.authed(auth.RunsWrite, s.forgetPersonalMemory))
+	mux.HandleFunc("POST /api/memory/promote", s.authed(auth.ProjectsWrite, s.promoteMemory))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
@@ -465,26 +471,20 @@ func (s *Server) listMemory(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": viewNotes(s.P.Names(who.Tenant), s.P.Memory.List(who.Tenant, owner))})
+	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
 }
 
 // noteView is a note and what the person who wrote it is called. The note
 // names them by subject; the console shows the name.
 type noteView struct {
 	memory.Note
-	ByName string `json:"by_name,omitempty"`
+	ByName     string `json:"by_name,omitempty"`
+	SourceURL  string `json:"source_url,omitempty"`
+	SourceName string `json:"source_name,omitempty"`
 }
 
 func viewNote(names platform.Names, n memory.Note) noteView {
 	return noteView{Note: n, ByName: names.Of(n.By)}
-}
-
-func viewNotes(names platform.Names, notes []memory.Note) []noteView {
-	out := make([]noteView, len(notes))
-	for i, n := range notes {
-		out[i] = viewNote(names, n)
-	}
-	return out
 }
 
 func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -513,7 +513,7 @@ func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, viewNote(s.P.Names(who.Tenant), note))
+	ok(w, http.StatusCreated, s.viewNoteAs(who, note))
 }
 
 // approveMemory keeps the proposals a person selected. The rest stay pending
@@ -547,7 +547,6 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 	}
 	out := []proposal{}
 	seer := s.P.Seer(who)
-	names := s.P.Names(who.Tenant)
 	for _, p := range s.P.Memory.Pending(who.Tenant) {
 		if !seer.MemoryOwner(p.Agent) {
 			continue
@@ -558,9 +557,9 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 			if project == projects.Root {
 				project = projects.RootAddress
 			}
-			out = append(out, proposal{Project: project, Note: viewNote(names, p.Note)})
+			out = append(out, proposal{Project: project, Note: s.viewNoteAs(who, p.Note)})
 		} else {
-			out = append(out, proposal{Agent: p.Agent, Note: viewNote(names, p.Note)})
+			out = append(out, proposal{Agent: p.Agent, Note: s.viewNoteAs(who, p.Note)})
 		}
 	}
 	ok(w, http.StatusOK, map[string]any{"proposals": out})

@@ -543,7 +543,7 @@ func (s *Server) projectMemory(w http.ResponseWriter, r *http.Request, who auth.
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": viewNotes(s.P.Names(who.Tenant), s.P.Memory.List(who.Tenant, owner))})
+	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
 }
 
 // addProjectMemory adds a note. An owner's is in use at once; a member's is
@@ -561,7 +561,7 @@ func (s *Server) addProjectMemory(w http.ResponseWriter, r *http.Request, who au
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, viewNote(s.P.Names(who.Tenant), note))
+	ok(w, http.StatusCreated, s.viewNoteAs(who, note))
 }
 
 func (s *Server) approveProjectMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {

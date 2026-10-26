@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/urmzd/humagen/pkg/state"
@@ -64,7 +65,39 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	}
 	f.Fail(nil)
 	n, _ := s.Add("acme", "lead", "Next.", Person, Approved, "ada", now)
-	if n.ID != "m2" {
+	if s.next != 2 || n.ID == a.ID || !strings.HasPrefix(n.ID, "m_") {
 		t.Fatalf("a failed add used an id: next is %q", n.ID)
 	}
+}
+
+func TestPublicMemoryIDsRevealNoPrivateSequence(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err := s.Add("acme", "public", "First shared note", Person, Approved, "ada", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Add("acme", PersonalOwner("secret-person"), "Private unrelated note", Person, Approved, "secret-person", now); err != nil {
+			t.Fatal(err)
+		}
+		b, err := s.Add("acme", "public", "Second shared note", Person, Approved, "ada", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(a.ID, "m_") || !strings.HasPrefix(b.ID, "m_") || a.ID == b.ID {
+			t.Fatalf("public IDs expose a sequence: %q %q", a.ID, b.ID)
+		}
+		replay, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := replay.List("acme", "public")
+		if len(got) != 2 || got[0].ID != a.ID || got[1].ID != b.ID {
+			t.Fatal("opaque IDs changed on replay")
+		}
+	})
 }

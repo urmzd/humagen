@@ -230,9 +230,13 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 		return
 	}
 	contextMeta := map[string]string{}
-	if turn.Tag().Meta["_humagen.context.personal_memory"] == "true" {
-		contextMeta["_humagen.context.personal_memory"] = "true"
+
+	for _, key := range []string{MetaPersonalMemoryContext, MetaPrivateLibraryContext} {
+		if turn.Tag().Meta[key] == "true" {
+			contextMeta[key] = "true"
+		}
 	}
+
 	if _, personal := memory.OwnerPerson(target); personal {
 		contextMeta["_humagen.context.personal_memory"] = "true"
 	}

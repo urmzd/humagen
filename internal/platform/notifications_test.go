@@ -89,7 +89,9 @@ func TestNativeNotificationsJourneyUsesCurrentReaderAndNeverChangesInbox(t *test
 			t.Fatal(err)
 		}
 		policy.Notifications["alert"] = prefs.Off
-		p.Prefs.SetPersonal(tenant, who.Subject, policy)
+		if _, err := p.Prefs.SetPersonal(tenant, who.Subject, policy); err != nil {
+			t.Fatal(err)
+		}
 		raise("off")
 		if rows, err = p.NativeNotifications(who); err != nil || len(rows) != 0 {
 			t.Fatalf("off delivered: %+v %v", rows, err)
@@ -98,7 +100,9 @@ func TestNativeNotificationsJourneyUsesCurrentReaderAndNeverChangesInbox(t *test
 		policy.Timezone = "America/Toronto"
 		policy.QuietStart = "22:00"
 		policy.QuietEnd = "07:00"
-		p.Prefs.SetPersonal(tenant, who.Subject, policy)
+		if _, err := p.Prefs.SetPersonal(tenant, who.Subject, policy); err != nil {
+			t.Fatal(err)
+		}
 		now = time.Date(2026, 10, 27, 2, 30, 0, 0, time.UTC)
 		raise("quiet-private")
 		if rows, err = p.NativeNotifications(who); err != nil || len(rows) != 0 {

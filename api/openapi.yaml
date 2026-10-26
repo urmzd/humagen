@@ -99,6 +99,107 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/clients/{id}/capabilities:
+    get:
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+      operationId: getClientCapabilities
+      tags: [clients]
+      summary: Read this installation's actual event and action inventory
+      x-permission: clients:read
+      responses:
+        '200':
+          description: Registered capabilities and current subscriptions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstallationCapabilities'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+      operationId: putClientCapabilities
+      tags: [clients]
+      summary: Narrow an installation's subscribed events and permitted native actions
+      description: Explicit empty lists deny every event or action. These controls add no provider scopes, agent tool grants or approval rights. Existing managed installations keep their file-defined settings.
+      x-permission: clients:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/ClientCapabilityPolicy'}
+                - type: object
+                  required: [version]
+                  properties:
+                    version: {type: integer, minimum: 0}
+      responses:
+        '200':
+          description: Saved installation capabilities
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstallationCapabilities'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
+  /api/clients/{id}/delivery:
+    get:
+      operationId: clientBridgeDelivery
+      tags: [clients]
+      summary: Recheck a native host's current permission to deliver this visible run
+      x-permission: clients:read
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+        - {name: run, in: query, required: true, schema: {type: string, maxLength: 160}}
+        - {name: channel, in: query, required: true, schema: {type: string, maxLength: 64}}
+      responses:
+        '200':
+          description: Current delivery decision with no private source metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed]
+                properties:
+                  allowed: {type: boolean}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/memory/promote:
+    post:
+      operationId: promoteMemory
+      tags: [agents]
+      summary: Propose a reviewed note to a project for its owners to review
+      description: Copies only the selected approved unexpired text, kind and expiry. The new note is pending and attributed to the copier. Private original provenance is never copied.
+      x-permission: projects:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, id, destination]
+              properties:
+                scope: {type: string, enum: [personal, workspace, project, agent]}
+                owner: {type: string, maxLength: 255}
+                id: {type: string, maxLength: 128}
+                destination: {type: string, maxLength: 255}
+      responses:
+        '201':
+          description: Pending destination memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/me/notifications:
     get:
       operationId: listNativeNotifications
@@ -131,7 +232,7 @@ paths:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
-        '204': {description: "Notification projection acknowledged, inbox unchanged"}
+        '204': {description: 'Notification projection acknowledged, inbox unchanged'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -300,6 +401,8 @@ paths:
       description: Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone.
       x-permission: projects:govern
       parameters:
+        - {name: actor, in: query, schema: {type: string, maxLength: 512}}
+        - {name: resource, in: query, schema: {type: string, maxLength: 64}}
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: to, in: query, schema: {type: string, format: date-time}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
@@ -319,78 +422,6 @@ paths:
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
-  /api/clients/{id}/capabilities:
-    get:
-      parameters:
-        - {$ref: '#/components/parameters/ClientID'}
-      operationId: getClientCapabilities
-      tags: [clients]
-      summary: Read this installation's actual event and action inventory
-      x-permission: clients:read
-      responses:
-        '200':
-          description: Registered capabilities and current subscriptions
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/InstallationCapabilities'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-    put:
-      parameters:
-        - {$ref: '#/components/parameters/ClientID'}
-      operationId: putClientCapabilities
-      tags: [clients]
-      summary: Narrow an installation's subscribed events and permitted native actions
-      description: Explicit empty lists deny every event or action. These controls add no provider scopes, agent tool grants or approval rights. Existing managed installations keep their file-defined settings.
-      x-permission: clients:write
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-                - {$ref: '#/components/schemas/ClientCapabilityPolicy'}
-                - type: object
-                  required: [version]
-                  properties:
-                    version: {type: integer, minimum: 0}
-      responses:
-        '200':
-          description: Saved installation capabilities
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/InstallationCapabilities'}
-        '400': {$ref: '#/components/responses/BadRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/Conflict'}
-        '500': {$ref: '#/components/responses/ServerError'}
-  /api/clients/{id}/delivery:
-    get:
-      operationId: clientBridgeDelivery
-      tags: [clients]
-      summary: Recheck a native host's current permission to deliver this visible run
-      x-permission: clients:read
-      parameters:
-        - {$ref: '#/components/parameters/ClientID'}
-        - {name: run, in: query, required: true, schema: {type: string, maxLength: 160}}
-        - {name: channel, in: query, required: true, schema: {type: string, maxLength: 64}}
-      responses:
-        '200':
-          description: Current delivery decision with no private source metadata
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [allowed]
-                properties:
-                  allowed: {type: boolean}
-        '400': {$ref: '#/components/responses/BadRequest'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
-        '404': {$ref: '#/components/responses/NotFound'}
   /api/read-audit:
     get:
       operationId: listReadAudit
@@ -876,6 +907,49 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/skills:
+    get:
+      operationId: getAgentSkillDefaults
+      tags: [agents]
+      summary: Read exact published default skill revisions
+      x-permission: agents:read
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: The visible default skill bindings.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSkillDefaults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setAgentSkillDefaults
+      tags: [agents]
+      summary: Bind exact published skills to the current agent revision
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentSkillDefaultsUpdate"}
+      responses:
+        "200":
+          description: The saved exact default skill bindings.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSkillDefaults"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/call-policy:
     get:
       operationId: getCallPolicy
@@ -1045,6 +1119,29 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/memory/{id}:
+    put:
+      operationId: editAgentMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: agents:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
     delete:
       operationId: removeAgentMemory
       tags: [agents]
@@ -1115,6 +1212,28 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
   /api/me/memory/{id}:
+    put:
+      operationId: editPersonalMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
     delete:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
@@ -4500,6 +4619,29 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/memory/{id}:
+    put:
+      operationId: editProjectMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: projects:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
     delete:
       operationId: removeProjectMemory
       tags: [projects]
@@ -6403,6 +6545,30 @@ components:
         description: {type: string}
         enabled: {type: boolean}
         category: {type: string}
+    AgentSkillRef:
+      type: object
+      additionalProperties: false
+      required: [id, version]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 160}
+        version: {type: integer, minimum: 1}
+    AgentSkillDefaults:
+      type: object
+      additionalProperties: false
+      required: [agent, agent_revision, version, skills]
+      properties:
+        agent: {type: string}
+        agent_revision: {type: integer, minimum: 1}
+        version: {type: integer, minimum: 0}
+        skills: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/AgentSkillRef"}}
+    AgentSkillDefaultsUpdate:
+      type: object
+      additionalProperties: false
+      required: [agent_revision, version, skills]
+      properties:
+        agent_revision: {type: integer, minimum: 1}
+        version: {type: integer, minimum: 0}
+        skills: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/AgentSkillRef"}}
     InstallationCapabilities:
       type: object
       required: [version, managed, legacy, events, actions, deliver_outcomes]
@@ -7216,6 +7382,12 @@ components:
       type: object
       required: [id, text, source, status, at]
       properties:
+        source_url:
+          description: Current authorized source link, absent when the source is no longer visible.
+          type: string
+        source_name: {type: string}
+        edited_by: {type: string}
+        edited_at: {type: string, format: date-time}
         kind: {type: string, enum: [fact, decision, preference, person, risk]}
         expires_at: {type: string, format: date-time}
         uses: {type: integer, minimum: 0}
@@ -7247,7 +7419,7 @@ components:
       properties:
         text: {type: string}
         kind: {type: string, enum: [fact, decision, preference, person, risk]}
-        expires_at: {type: string, format: date-time}
+        expires_at: {type: [string, "null"], format: date-time}
     NoteSelection:
       type: object
       required: [ids]

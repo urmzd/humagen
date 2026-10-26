@@ -25,7 +25,7 @@ export function PersonalAgents() {
         if (live) {
           setAgents(mine);
           setProjects(
-            places.filter((project) => !project.personal_owner && project.actions.includes("edit")),
+            places.filter((project) => !project.personal_owner && project.access.role === "owner"),
           );
           setCanWrite(me.permissions.includes("agents:write"));
           setControls(
@@ -120,6 +120,7 @@ export function PersonalAgents() {
                   <select
                     className={`${field} mt-2 max-w-full`}
                     disabled={!canWrite || busy || review === row.spec.name}
+                    aria-label={copy.project}
                     value={destination[row.spec.name] ?? ""}
                     onChange={(event) =>
                       setDestination({ ...destination, [row.spec.name]: event.target.value })

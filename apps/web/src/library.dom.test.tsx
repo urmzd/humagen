@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { defaultCopy } from "@humagen/components";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { stubFetch } from "./dom.ts";
-import { SkillsLibrary } from "./SkillsLibrary.tsx";
-import { PersonalPreferences } from "./PersonalPreferences.tsx";
+import { MemoryLibrary } from "./MemoryLibrary.tsx";
 import { NotificationPanel } from "./Notifications.tsx";
+import { PersonalAgents } from "./PersonalAgents.tsx";
+import { PersonalPreferences } from "./PersonalPreferences.tsx";
+import { SkillsLibrary } from "./SkillsLibrary.tsx";
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -95,12 +97,24 @@ test("personal briefing saves only writable profile fields", async () => {
       return { ...profile, ...(body as object) };
     },
   });
-  render(<PersonalPreferences section="profile" />);
+  let savedName = "";
+  render(
+    <PersonalPreferences
+      section="profile"
+      onSaved={(value) => {
+        savedName = value.display_name;
+      }}
+    />,
+  );
+  fireEvent.change(await screen.findByLabelText(defaultCopy.personalPreferences.displayName), {
+    target: { value: "Nadia" },
+  });
   fireEvent.change(await screen.findByLabelText(defaultCopy.personalPreferences.briefing), {
     target: { value: "Start with the conclusion" },
   });
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.personalPreferences.save }));
   await screen.findByRole("status");
+  assert.equal(savedName, "Nadia");
   assert.equal(
     (
       net.seen.find((request) => request.method === "PUT")?.body as {
@@ -143,4 +157,208 @@ test("dismissing a delivered notification acknowledges only its projection", asy
     net.seen.filter((request) => request.method === "POST").map((request) => request.path),
     ["/api/me/notifications/ntf-one/ack"],
   );
+});
+
+test("memory correction retains scope and never resubmits source provenance", async () => {
+  const original = {
+    id: "m-one",
+    text: "Ship on Tuesday",
+    source: "artifact",
+    status: "approved",
+    kind: "decision",
+    at: "2026-10-26T12:00:00Z",
+    source_name: "Release notes",
+    source_url: "/conversations/th-one/deliverables/art-one/provenance",
+  };
+  let current = original;
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/me/memory": () => ({ notes: [current] }),
+    "PUT /api/me/memory/m-one": (body) => {
+      const input = body as { text: string; kind: string; expires_at: null };
+      assert.deepEqual(Object.keys(input).sort(), ["expires_at", "kind", "text"]);
+      assert.equal(input.kind, "decision");
+      current = { ...original, text: input.text };
+      return current;
+    },
+  });
+  render(<MemoryLibrary />);
+  const edit = await screen.findByRole("button", { name: "Edit" });
+  fireEvent.click(edit);
+  assert.equal(
+    (screen.getByRole("link", { name: "Open Source" }) as HTMLAnchorElement).getAttribute("href"),
+    original.source_url,
+  );
+  fireEvent.change(screen.getByLabelText(defaultCopy.memoryLibrary.text), {
+    target: { value: "Ship on Wednesday" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save Correction" }));
+  await screen.findByText("Ship on Wednesday");
+  assert.equal(net.seen.filter((request) => request.method === "PUT").length, 1);
+});
+
+test("memory promotion selects an existing note and never copies private provenance", async () => {
+  const note = {
+    id: "m-private",
+    text: "Review quarterly goals",
+    source: "consolidated",
+    status: "approved",
+    kind: "decision",
+    by: "private-run",
+    at: "2026-10-26T12:00:00Z",
+  };
+  net = stubFetch({
+    "GET /api/me": () => ({ ...me, permissions: [...me.permissions, "projects:write"] }),
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/me/memory": () => ({ notes: [note] }),
+    "POST /api/memory/promote": (body) => {
+      assert.deepEqual(body, { scope: "personal", owner: "", id: "m-private", destination: "~" });
+      return { ...note, id: "m-new", status: "pending", source: "person", by: "ada" };
+    },
+  });
+  render(<MemoryLibrary />);
+  await screen.findByText(note.text);
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.memoryLibrary.promote }));
+  await screen.findByText(defaultCopy.memoryLibrary.promotionSaved);
+  assert.equal(net.seen.filter((r) => r.method === "POST").length, 1);
+});
+
+test("personal agents may move to an owned file-managed project after audience review", async () => {
+  let moved = false;
+  net = stubFetch({
+    "GET /api/me": () => ({ ...me, permissions: [...me.permissions, "agents:write"] }),
+    "GET /api/agents": () => ({
+      agents: [{ rev: 1, spec: { name: "briefing-helper", description: "Briefs the owner" } }],
+      homes: { "briefing-helper": moved ? "Launch" : "personal" },
+    }),
+    "GET /api/agents/briefing-helper/control": () => ({
+      agent: "briefing-helper",
+      version: 0,
+      paused: false,
+    }),
+    "GET /api/projects": () => ({
+      projects: [
+        {
+          name: "Launch",
+          title: "Launch",
+          access: { role: "owner" },
+          actions: ["notes"],
+          managed: true,
+        },
+      ],
+      next: null,
+    }),
+    "PUT /api/agents/briefing-helper/home": (body) => {
+      assert.deepEqual(body, { project: "Launch" });
+      moved = true;
+      return { agent: "briefing-helper", project: "Launch" };
+    },
+  });
+  render(<PersonalAgents />);
+  await screen.findByRole("heading", { name: "briefing-helper" });
+  fireEvent.change(screen.getByLabelText(defaultCopy.personalAgents.project), {
+    target: { value: "Launch" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.personalAgents.review }));
+  assert.equal(
+    net.seen.some((r) => r.method === "PUT"),
+    false,
+  );
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.personalAgents.confirm }));
+  await waitFor(() => assert.equal(moved, true));
+});
+
+test("skill deep link opens the pinned published version and manual selection keeps its address", async () => {
+  const first = {
+    id: "sk-pinned",
+    scope: { kind: "workspace" },
+    name: "pinned",
+    description: "Pinned skill",
+    instructions: "Exact published instructions",
+    tools: [],
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    published_at: "2026-10-26T12:00:00Z",
+    tests: [],
+  };
+  const draft = {
+    ...first,
+    version: 2,
+    published_at: undefined,
+    instructions: "New draft instructions",
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [draft] }),
+    "GET /api/library/skills/sk-pinned": () => ({ revisions: [first, draft] }),
+  });
+  const initial = window.location.href;
+  window.history.replaceState(
+    null,
+    "",
+    "/library/skills?scope=workspace&skill=sk-pinned&version=1",
+  );
+  try {
+    let location: unknown;
+    render(
+      <SkillsLibrary
+        onLocationChange={(next) => {
+          location = next;
+        }}
+      />,
+    );
+    const instructions = (await screen.findByLabelText("Instructions")) as HTMLTextAreaElement;
+    assert.equal(instructions.value, first.instructions);
+    fireEvent.change(screen.getByLabelText("Version"), { target: { value: "2" } });
+    await waitFor(() => assert.equal(instructions.value, draft.instructions));
+    assert.deepEqual(location, {
+      scope: "workspace",
+      project: undefined,
+      skill: first.id,
+      version: 2,
+    });
+  } finally {
+    window.history.replaceState(null, "", initial);
+  }
+});
+
+test("missing pinned skill version does not fall back to another revision", async () => {
+  const draft = {
+    id: "sk-pinned",
+    scope: { kind: "workspace" },
+    name: "pinned",
+    description: "Pinned skill",
+    instructions: "New draft instructions",
+    tools: [],
+    version: 2,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    tests: [],
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [draft] }),
+    "GET /api/library/skills/sk-pinned": () => ({ revisions: [draft] }),
+  });
+  const initial = window.location.href;
+  window.history.replaceState(
+    null,
+    "",
+    "/library/skills?scope=workspace&skill=sk-pinned&version=1",
+  );
+  try {
+    render(<SkillsLibrary />);
+    await screen.findByText(defaultCopy.skillsLibrary.versionUnavailable);
+    assert.equal(screen.queryByLabelText("Version"), null);
+  } finally {
+    window.history.replaceState(null, "", initial);
+  }
 });

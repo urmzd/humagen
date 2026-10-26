@@ -198,7 +198,7 @@ func pinRevision(r library.Revision) pinnedSkill {
 	if tools == nil {
 		tools = []string{}
 	}
-	return pinnedSkill{Name: r.Name, From: r.Scope.Project, Instructions: r.Instructions, Description: r.Description, Version: r.Version, Tools: &tools}
+	return pinnedSkill{Private: r.Scope.Kind == "personal", Name: r.Name, From: r.Scope.Project, Instructions: r.Instructions, Description: r.Description, Version: r.Version, Tools: &tools}
 }
 
 func humanSubject(who auth.Principal) string {

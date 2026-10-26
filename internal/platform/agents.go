@@ -532,6 +532,8 @@ func (p *Platform) AgentPlaces(tenant string, agents []string) map[string]AgentP
 // elsewhere, an alert rule watching it elsewhere, or a client that routes to
 // it, since a client files its runs at the root. The platform's own agents live nowhere.
 func (p *Platform) SetAgentHome(ctx context.Context, tenant, agent, project string, w projects.Writer) error {
+	p.skillDefaultsMu.Lock()
+	defer p.skillDefaultsMu.Unlock()
 	if IsBuiltin(agent) && projects.NameOf(project) != projects.Root {
 		return fmt.Errorf("%w: built-in agents live in Company", projects.ErrInvalid)
 	}
@@ -550,6 +552,9 @@ func (p *Platform) homeUsers(tenant, agent string, before, after *projects.Tree)
 		return before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
 	}
 	var out []string
+	if home, ok := after.Home(agent); ok && !p.defaultSkillsFitHome(tenant, agent, home, after) {
+		out = append(out, "the agent default skills")
+	}
 	for _, sc := range p.Schedules.List(tenant) {
 		if sc.Agent == agent && lost(sc.Meta[runs.MetaProject]) {
 			out = append(out, "the schedule "+sc.Name)
