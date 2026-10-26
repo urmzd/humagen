@@ -24,6 +24,7 @@ govern implementation, including shared presentation and agent identity.
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
 | OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
+| DES-006 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
 
 ### DES-001: Working integrations
 
@@ -145,3 +146,11 @@ A Slack task card exposes Open Conversation when the host has configured
 `HUMAGEN_PUBLIC_URL`. It points to the run's conversation, including a later
 run in an existing conversation, and remains attached throughout streaming
 and settlement. Adapter and Slack rendering regressions cover the link.
+
+### DES-006: Agent badge containment
+
+Agent names and status badges wrap as whole items, and badge height follows
+its text. Long scope labels truncate within the badge without losing their
+accessible text. The `agent-status-badges` browser state makes the analyst the
+workspace default and checks both badges in dark mode with enlarged text.
+The containment assertion reproduces the reported failure before the fix.
