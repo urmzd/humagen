@@ -433,8 +433,9 @@ func (p *Platform) ProjectAgentsOf(tenant, name string) (ProjectAgents, error) {
 	}
 	out := ProjectAgents{
 		Version: pr.Version, Enable: pr.Agents.Enable, Allow: pr.Agents.Allow, Default: pr.Agents.Default,
-		Available: tree.Available(name), Homes: tree.Homes(name), Offers: []Offer{},
+		Available: tree.Available(name), Homes: CurrentAgentNames(tree.Homes(name)), Offers: []Offer{},
 	}
+	out.Available.Names = CurrentAgentNames(out.Available.Names)
 	if out.Enable == nil {
 		out.Enable = []string{}
 	}

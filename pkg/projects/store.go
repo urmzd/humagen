@@ -47,8 +47,9 @@ type tenant struct {
 	// tombs is every deleted name, by its lower case.
 	tombs map[string]Tombstone
 	// history is the tenant's changes, oldest first.
-	history []Change
-	seq     int64
+	history      []Change
+	seq          int64
+	cursorSecret string
 	// homes is where each agent with a home lives, by agent.
 	homes map[string]home
 	// channels is every project's written channels, by project and name.
@@ -60,7 +61,7 @@ func newTenant() *tenant {
 }
 
 func (t *tenant) copy() *tenant {
-	return &tenant{projects: maps.Clone(t.projects), tombs: maps.Clone(t.tombs), history: slices.Clone(t.history), seq: t.seq, homes: maps.Clone(t.homes), channels: maps.Clone(t.channels)}
+	return &tenant{projects: maps.Clone(t.projects), tombs: maps.Clone(t.tombs), history: slices.Clone(t.history), seq: t.seq, cursorSecret: t.cursorSecret, homes: maps.Clone(t.homes), channels: maps.Clone(t.channels)}
 }
 
 // stored reports whether the tenant has written anything.
@@ -160,11 +161,21 @@ func Open(st state.Store, opts ...Option) (*Store, error) {
 		}
 		s.trees.Store(name, t.tree())
 	}
+	if err := s.ensureHistorySecrets(); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
 func (t *tenant) load(key string, raw json.RawMessage) error {
 	switch {
+	case key == keyHistorySecret:
+		if err := json.Unmarshal(raw, &t.cursorSecret); err != nil {
+			return err
+		}
+		if !validHistorySecret(t.cursorSecret) {
+			return fmt.Errorf("%w: invalid history cursor key", ErrInvalid)
+		}
 	case strings.HasPrefix(key, keyProject):
 		var r stored
 		if err := json.Unmarshal(raw, &r); err != nil {
@@ -383,6 +394,15 @@ func (w *write) project(p Project) {
 
 // record appends a change, dropping the oldest past MaxHistory.
 func (w *write) record(c Change) {
+	if w.t.cursorSecret == "" {
+		secret, err := newHistorySecret()
+		if err != nil {
+			w.err = err
+			return
+		}
+		w.t.cursorSecret = secret
+		w.put(keyHistorySecret, secret)
+	}
 	w.t.seq++
 	c.Seq = w.t.seq
 	w.t.history = append(w.t.history, c)

@@ -4117,6 +4117,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
     put:
+      deprecated: true
       operationId: updateProjectExperts
       tags: [projects]
       summary: Replace a project's experts
@@ -7744,7 +7745,7 @@ components:
           maxItems: 8
           items: {type: string, maxLength: 32}
     ProjectExperts:
-      description: The experts a project lists, at the project's version.
+      description: Deprecated expert metadata retained for historical human questions. New routing uses Find Help.
       type: object
       additionalProperties: false
       required: [version, experts]
@@ -8369,8 +8370,8 @@ components:
       required: [seq, at, by, project, what]
       properties:
         seq:
-          type: integer
-          format: int64
+          description: Opaque project-scoped history identifier. It reveals no workspace-global sequence.
+          type: string
         at: {type: string, format: date-time}
         by:
           description: Who made the change. `migration` for projects moved out of settings.

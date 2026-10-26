@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 func TestCompanyWelcomeRetainsOneAnnouncementAcrossReadersAndRestart(t *testing.T) {
@@ -89,4 +91,49 @@ func TestFindHelpNeverRanksHiddenProjectsOrAgents(t *testing.T) {
 	if found, err := p.FindHelp(t.Context(), restricted, "renewal"); err != nil || len(found) != 0 {
 		t.Fatal("discovery exposed agents without agents:read")
 	}
+}
+
+type retainedPrivateContextGuard struct{}
+
+func (retainedPrivateContextGuard) ConversationOperationsSettled(string, string) bool { return false }
+
+func TestZeroRunPrivateContextGuardRequiresReviewedCopy(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		p, err := newOn(t, open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		who := auth.Principal{Tenant: tenant, Subject: "ada", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+		personal, err := p.PersonalProject(who)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Projects.Create(tenant, projects.Project{Name: "Field"}, projects.Writer{By: "ada"}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		source, _, err := p.Threads.Start(tenant, threads.Thread{Project: personal.Name, Channel: "general", Visibility: threads.Private}, threads.Message{By: "ada", Name: "Ada", Text: "PRIVATE-PASSIVE-CONTEXT"}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := p.RegisterPublicationGuard(retainedPrivateContextGuard{}); err != nil {
+			t.Fatal(err)
+		}
+		preview, err := p.PreviewPlacement(t.Context(), who, source.ID, "Field", "general")
+		if err != nil || !preview.SummaryRequired || preview.Runs != 0 {
+			t.Fatalf("zero-run classification: %+v %v", preview, err)
+		}
+		if _, err := p.Share(t.Context(), who, source.ID, platform.ThreadShare{Project: "Field", PlacementToken: preview.Token}); err == nil {
+			t.Fatal("zero-run raw share bypassed registered privacy guard")
+		}
+		if _, err := p.UpdateThread(t.Context(), who, source.ID, platform.ThreadUpdate{Version: source.Version, Visibility: threads.Shared}); err == nil {
+			t.Fatal("zero-run visibility edit bypassed privacy guard")
+		}
+		copy, err := p.PublishSummary(t.Context(), who, source.ID, platform.SummaryPublication{Project: "Field", Summary: "Reviewed public result", PlacementToken: preview.Token})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if copy.ID == source.ID || copy.Project != "Field" {
+			t.Fatal("reviewed copy mutated the private source")
+		}
+	})
 }

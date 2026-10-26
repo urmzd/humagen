@@ -22,5 +22,7 @@ state and downloads are design evidence, not execution records.
   mock/provider tests are never labelled live successful delivery.
 - Domain audit begins with a durable pending attempt after access checks and
   records success/failure afterward. An unknown completion stays pending.
+  Public IDs are random and opaque so gaps cannot reveal hidden personal
+  activity. Legacy stored IDs still replay and can finish pending attempts.
 - Stacked PRs use normal no-ff dependency merges, without rebasing, resetting or
   force-pushing active worker branches. Root owns integration and publication.

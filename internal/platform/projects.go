@@ -453,15 +453,11 @@ func (p *Platform) contextIn(tenant, project, channel, agent, body string) strin
 		}
 	}
 	parts := make([]string, 0, len(layers)+1)
-	for i, l := range layers {
+	for _, l := range layers {
 		if l.Text == "" {
 			continue
 		}
-		if i > 0 && l.Kind == "experts" && layers[i-1].Kind == "channel" {
-			parts[len(parts)-1] += "\n" + l.Text
-		} else {
-			parts = append(parts, l.Text)
-		}
+		parts = append(parts, l.Text)
 	}
 	if len(parts) == 0 {
 		return body

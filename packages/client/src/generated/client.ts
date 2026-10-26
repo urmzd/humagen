@@ -3839,6 +3839,7 @@ answers 409, as does a list the platform file sets. It needs
 ownership of the project, and the workspace and company projects
 need `projects:govern` as well.
  */
+  /** @deprecated */
   async updateProjectExperts(name: string, body: ProjectExperts, options?: RequestOptions): Promise<ProjectExperts> {
     let path = "/api/projects/{name}/experts";
     path = path.replace("{name}", encodeURIComponent(String(name)));

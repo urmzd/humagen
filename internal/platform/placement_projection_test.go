@@ -202,5 +202,15 @@ func TestPrivateSourceHistoryPublishesOnlyReviewedSummaryCopy(t *testing.T) {
 		if p.Seer(ben).Run(raw) || !p.Seer(ben).Place(platform.Place{Project: "Field", Thread: published.ID}) {
 			t.Fatal("copy granted a raw source capability")
 		}
+		if _, err := p.Projects.Create(tenant, projects.Project{Name: "HiddenCopyDestination", Members: []projects.Entry{{Who: "ben", Role: projects.Owner}}}, projects.Writer{By: "ben"}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Threads.Share(tenant, published.ID, published.Version, "HiddenCopyDestination", "general", "", nil, "", nil, nil, "ada", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.PublishSummary(t.Context(), who, th.ID, input); err == nil || strings.Contains(err.Error(), "HiddenCopyDestination") {
+			t.Fatalf("retry exposed a copy moved elsewhere: %v", err)
+		}
+
 	})
 }

@@ -25,13 +25,13 @@ test("options that start with what is typed come first, then the rest that hold 
   );
   assert.deepEqual(matching(options, "ig").map((o) => o.token), ["ignite", "ignacio"]);
   assert.deepEqual(matching(options, "sc").map((o) => o.token), ["dana"]);
-  assert.deepEqual(matching(options, "sme").map((o) => o.token), ["sme", "sme:", "sme:billing"]);
-  assert.equal(matching(options, "").length, 8);
+  assert.deepEqual(matching(options, "sme").map((o) => o.token), []);
+  assert.equal(matching(options, "").length, 5);
   assert.equal(matching(options, "", 2).length, 2);
   assert.equal(options[0]?.kind, "auto");
 });
 
-test("when more match than the list holds, agents, people and expert topics each keep places in it", () => {
+test("when more match than the list holds, agents and people each keep places in it", () => {
   const options = tagOptions(
     ["globex-helper", "helper", "lead", "ledger", "recap-writer"].map((name) => ({ name })),
     ["ada-okafor", "lee-wong", "priya-nair", "sam-ortiz", "zoe-quinn"].map((handle) => ({ handle })),
@@ -43,17 +43,17 @@ test("when more match than the list holds, agents, people and expert topics each
   // @auto and the first agents, the first people, then every expert and the first topic.
   assert.deepEqual(
     shown.map((o) => o.token),
-    ["auto", "globex-helper", "helper", "ada-okafor", "lee-wong", "priya-nair", "sme", "sme:"],
+    ["auto", "globex-helper", "helper", "lead", "ada-okafor", "lee-wong", "priya-nair", "sam-ortiz"],
   );
   // A short list still holds one of each, in the order given.
   assert.deepEqual(
     matching(options, "", 4).map((o) => o.token),
-    ["auto", "globex-helper", "ada-okafor", "sme"],
+    ["auto", "globex-helper", "ada-okafor", "lee-wong"],
   );
   // A kind with fewer matches than its share gives the rest to the others.
   assert.deepEqual(
     matching(options, "r", 7).map((o) => o.token),
-    ["recap-writer", "globex-helper", "helper", "ada-okafor", "priya-nair", "sam-ortiz", "sme:renewals"],
+    ["recap-writer", "globex-helper", "helper", "ledger", "ada-okafor", "priya-nair", "sam-ortiz"],
   );
 });
 
@@ -94,4 +94,9 @@ test("a mention kind completes to @kind: and stays open for its items, which com
   assert.deepEqual(insertTag("ask @sk", { start: 4, query: "sk", sigil: "@" }, kind as TagOption), { text: "ask @skill:", caret: 11 });
   const item = options.find((o) => o.token === "skill:review") as TagOption;
   assert.deepEqual(insertTag("ask @skill:re", { start: 4, query: "skill:re", sigil: "@" }, item), { text: "ask @skill:review ", caret: 18 });
+});
+
+test("retired routing never appears even with cached expert kinds and topics", () => {
+ const options=tagOptions([],[],["billing"],words,{kinds:[{kind:"sme"},{kind:"expert",resolves:"experts"}],items:[{kind:"sme",name:"billing"},{kind:"expert",name:"billing"}]});
+ assert.deepEqual(options.map((o)=>o.token),["auto"]);
 });

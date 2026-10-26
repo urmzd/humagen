@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/urmzd/humagen/internal/legacy"
-	"github.com/urmzd/humagen/pkg/projects"
 	"slices"
 	"sort"
 	"strconv"
@@ -18,6 +16,8 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 

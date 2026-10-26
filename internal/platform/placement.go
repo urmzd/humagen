@@ -77,7 +77,13 @@ func (p *Platform) ShownRuns(tenant string, list []runs.Run) []runs.Run {
 // ShownArtifact projects a file's operational placement while its original
 // storage accounting attribution remains immutable.
 func (p *Platform) ShownArtifact(tenant string, a artifacts.Artifact) artifacts.Artifact {
+	original := a.Project
 	a.Project = p.CurrentPlace(tenant, Place{Project: a.Project, Thread: a.Thread}).Project
+	if original != "" && original != a.Project {
+		a.Title = strings.ReplaceAll(a.Title, original, "published")
+		a.Description = strings.ReplaceAll(a.Description, original, "[Previous project]")
+		a.Preview = strings.ReplaceAll(a.Preview, original, "[Previous project]")
+	}
 	return a
 }
 

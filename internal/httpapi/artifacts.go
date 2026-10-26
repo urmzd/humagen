@@ -94,6 +94,7 @@ func (s *Server) artifactContent(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, err)
 		return
 	}
+	a = s.P.ShownArtifact(who.Tenant, a)
 	h := w.Header()
 	disposition, served := "attachment", "application/octet-stream"
 	if r.URL.Query().Get("inline") == "1" && slices.Contains(inlineTypes, a.Mime) {

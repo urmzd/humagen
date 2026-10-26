@@ -262,6 +262,11 @@ func (s *Seer) Message(m inbox.Message) bool {
 		if part.Draft != nil && !s.Project(part.Draft.Project) {
 			return false
 		}
+		if part.Question != nil && m.Source.Run != "" {
+			if run, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil && s.p.RunPlace(s.who.Tenant, run).Project != run.Project && !s.Project(run.Project) {
+				return false
+			}
+		}
 	}
 
 	if m.Source.Knowledge != "" && !s.p.SourceVisible(s.who, m.Source.Knowledge) {

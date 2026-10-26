@@ -353,6 +353,7 @@ type Run struct {
 	// Spend changes nothing. settledUp is set once its spend has been
 	// settled into its caller, so a call that ends later climbs past it.
 	closed, settledUp bool
+	privateContext    bool
 }
 
 // Requesters returns the names pinned for the person who asked for the run.
