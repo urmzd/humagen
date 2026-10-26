@@ -858,7 +858,7 @@ func (c *contract) sweep(tok string) {
 		if op.path == "/api/events" || needsQuery(op) {
 			continue
 		}
-		if op.path == "/api/read-audit" {
+		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" {
 			c.call(tok, "GET", op.path, op.path, "", http.StatusForbidden)
 			continue
 		}
@@ -903,9 +903,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/audit", "/api/audit", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)
 
 	// A workspace with nothing in it, then every refusal that needs no setup.
+	c.call(auditAdmin, "GET", "/api/me/memory", "/api/me/memory", "", http.StatusOK)
+	personalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Prefer concise answers","kind":"preference"}`, http.StatusCreated)
+	c.call(auditAdmin, "POST", "/api/me/memory/approve", "/api/me/memory/approve", `{"ids":[]}`, http.StatusOK)
+	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), "", http.StatusNoContent)
+	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/missing", "", http.StatusNotFound)
 	c.sweep(globex)
 	c.call("", "GET", "/api/me", "/api/me", "", http.StatusUnauthorized)
 	c.call(f.machine(t, "acme"), "GET", "/api/agents", "/api/agents", "", http.StatusForbidden)
@@ -1583,6 +1590,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"hi"}`, http.StatusCreated)
 	c.call(auditAdmin, "GET", "/api/threads/{id}", "/api/threads/"+obj(draft.field("thread"))["id"].(string), "", http.StatusOK)
 	auditRows := c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/audit", "/api/audit", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	if len(sliceOf(auditRows.field("records"))) == 0 {
 		t.Fatal("governance-only private read was not in the audit")
 	}
@@ -1759,7 +1768,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		if !refusesUnknownFields(op) || len(pathParams(op.path)) > 0 {
 			continue
 		}
-		c.call(acme, op.method, op.path, op.path, `{"unknown_field":1}`, http.StatusBadRequest)
+		caller := acme
+		if strings.HasPrefix(op.path, "/api/me/memory") {
+			caller = auditAdmin
+		}
+		c.call(caller, op.method, op.path, op.path, `{"unknown_field":1}`, http.StatusBadRequest)
 	}
 
 	// The rest, one by one.

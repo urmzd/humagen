@@ -94,6 +94,11 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 	if cfg.TitleAgent != "" && run.Prev == "" {
 		p.startHook(ctx, run, cfg.TitleAgent, hookTitle, run.Thread, fmt.Sprintf(titlePrompt, clip(run.Text, 2000)))
 	}
+	// A person's opt-in to remember how they work creates private proposals,
+	// never shared project memory. Review is still required.
+	if cfg.MemoryAgent != "" && run.Actor.User != "" && !run.Actor.Bot && p.privateThread(run.Tenant, run.Thread) && p.Prefs.Get(run.Tenant, run.Actor.User).Personal.Remember {
+		p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, memory.PersonalOwner(run.Actor.User), fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000)))
+	}
 	// What is said in a private thread is its participants' alone: nothing
 	// in it becomes a note anyone else would be sent.
 	if cfg.MemoryAgent != "" && !p.privateThread(run.Tenant, run.Thread) {
@@ -263,7 +268,9 @@ func (p *Platform) fileHook(run runs.Run) {
 	case hookMemory:
 		kept := 0
 		var proposed []memory.Note
-		unasked := p.Settings(run.Tenant).MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target, meta[metaKeepsNotes])
+		_, personal := memory.OwnerPerson(target)
+		_, projectMemory := memory.OwnerProject(target)
+		unasked := !personal && !projectMemory && p.Settings(run.Tenant).MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target, meta[metaKeepsNotes])
 		for _, line := range strings.Split(run.Answer, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.EqualFold(strings.Trim(line, ".-* "), "none") || kept == 3 {
@@ -290,7 +297,9 @@ func (p *Platform) fileHook(run runs.Run) {
 				p.log.Info("platform: a proposed memory was not kept", "agent", target, "reason", err)
 			}
 		}
-		p.inboxMemory(run, target, proposed)
+		if !personal {
+			p.inboxMemory(run, target, proposed)
+		}
 	}
 }
 

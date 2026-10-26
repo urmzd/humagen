@@ -1055,3 +1055,14 @@ func legacyText(s string, limit int) string {
 	}
 	return s
 }
+
+// RecentHistory returns the tenant's bounded retained history for an audit
+// adapter. The platform must confine each change before exposing it.
+func (s *Store) RecentHistory(tenant string) []Change {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if t := s.tenants[tenant]; t != nil {
+		return slices.Clone(t.history)
+	}
+	return []Change{}
+}

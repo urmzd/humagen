@@ -377,3 +377,29 @@ func (s *Store) Delete(tenant, agent string) error {
 	delete(s.tenants[tenant], agent)
 	return nil
 }
+
+// Snapshots returns at most 500 current policy snapshots in a time window.
+// It is not a revision history: an older overwritten policy is unavailable.
+// Visibility is applied before the bounded newest selection.
+func (s *Store) Snapshots(tenant string, from, to time.Time, limit int, visible func(Policy) bool) []Policy {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limit = min(max(limit, 1), 500)
+	out := []Policy{}
+	for _, p := range s.tenants[tenant] {
+		if p.UpdatedAt.Before(from) || !p.UpdatedAt.Before(to) || visible != nil && !visible(clone(p)) {
+			continue
+		}
+		out = append(out, clone(p))
+		slices.SortFunc(out, func(a, b Policy) int {
+			if n := b.UpdatedAt.Compare(a.UpdatedAt); n != 0 {
+				return n
+			}
+			return strings.Compare(a.Agent, b.Agent)
+		})
+		if len(out) > limit {
+			out = out[:limit]
+		}
+	}
+	return out
+}
