@@ -159,7 +159,7 @@ func (p *Platform) deleteSource(who auth.Principal, name string, wanted *knowled
 		if wanted == nil && snapshot.Lifecycle != nil {
 			return knowledge.ErrNotFound
 		}
-		if wanted != nil && (snapshot.Lifecycle == nil || snapshot.Lifecycle.SourceConfig != *wanted) {
+		if wanted != nil && (snapshot.Lifecycle == nil || !snapshot.Lifecycle.Equal(*wanted)) {
 			return knowledge.ErrNotFound
 		}
 	}

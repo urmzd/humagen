@@ -64,3 +64,36 @@ func TestRulesReplayAndAmbiguousMatchesAlwaysSuggest(t *testing.T) {
 		}
 	})
 }
+
+func TestRuleSnapshotsRejectConcurrentAudienceChanges(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		old, err := s.PutIfCurrent("tenant", Rule{ID: "one", Provider: "github", Attribute: "repository", Pattern: "repo", Project: "Visible", Mode: Suggest}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		changed := old
+		changed.Project = "Hidden"
+		if _, err := s.Put("tenant", changed); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.PutIfCurrent("tenant", old, &old); err != ErrConflict {
+			t.Fatalf("stale update: %v", err)
+		}
+		if err := s.DeleteIfCurrent("tenant", old.ID, old); err != ErrConflict {
+			t.Fatalf("stale delete: %v", err)
+		}
+		replay, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := replay.Get("tenant", old.ID)
+		if got.Project != "Hidden" {
+			t.Fatal("stale mutation changed retained audience")
+		}
+	})
+}
