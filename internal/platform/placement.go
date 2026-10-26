@@ -1,6 +1,10 @@
 package platform
 
-import "github.com/urmzd/humagen/pkg/runs"
+import (
+	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/runs"
+)
 
 // CurrentPlace resolves the authoritative current audience of a conversation.
 // Run and artifact attribution remains immutable in the execution stores.
@@ -17,4 +21,42 @@ func (p *Platform) CurrentPlace(tenant string, at Place) Place {
 // its immutable execution and accounting attribution.
 func (p *Platform) RunPlace(tenant string, run runs.Run) Place {
 	return p.CurrentPlace(tenant, placeOfRun(run))
+}
+
+// ShownRun projects current conversation placement for operational reads. The
+// execution record, accounting ancestry and replay input remain untouched.
+func (p *Platform) ShownRun(tenant string, run runs.Run) runs.Run {
+	if th, err := p.Threads.Get(tenant, run.Thread); err == nil && (th.Project != run.Project || th.Channel != run.Channel) {
+		run.Project, run.Channel = th.Project, th.Channel
+		run.Within = nil
+		run.Input = nil
+	}
+	return run
+}
+
+func (p *Platform) ShownRuns(tenant string, list []runs.Run) []runs.Run {
+	out := make([]runs.Run, len(list))
+	for i, run := range list {
+		out[i] = p.ShownRun(tenant, run)
+	}
+	return out
+}
+
+// ShownArtifact projects a file's operational placement while its original
+// storage accounting attribution remains immutable.
+func (p *Platform) ShownArtifact(tenant string, a artifacts.Artifact) artifacts.Artifact {
+	a.Project = p.CurrentPlace(tenant, Place{Project: a.Project, Thread: a.Thread}).Project
+	return a
+}
+
+func (p *Platform) inboxProject(tenant string) func(inbox.Source) string {
+	return func(source inbox.Source) string {
+		at := Place{Project: source.Project, Thread: source.Thread}
+		if at.Thread == "" && source.Run != "" {
+			if run, err := p.Runs.Get(tenant, source.Run); err == nil {
+				at = p.RunPlace(tenant, run)
+			}
+		}
+		return p.CurrentPlace(tenant, at).Project
+	}
 }
