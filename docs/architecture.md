@@ -528,6 +528,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | OTel export | Not built. Traces are rebuilt from the journal |
 | Evals that run on their own, on a schedule or on each revision | Not built. Evals run when someone starts them |
 | Model-graded evals | Not built, on purpose for now: every check is exact |
+| Email notification delivery | Built. Optional operator-configured SMTP with verified TLS, exact tenant/subject recipient mappings, current standing policy and read confinement. Personal opt-in and per-kind settings default off; digest and quiet hours are rechecked before retry. Independent durable email acknowledgments survive replay and use inbox retention. Consent uses a read version and private audited mutation; no mailbox is exposed by the API. See [email notifications](email-notifications.md). Tested through a real loopback SMTP relay and memory/Postgres delivery, replay, revocation and HTTP cases. |
 | Email connector and Jira wiring | Not built |
 | Remote execution nodes, peer connector | Not built |
 | `pkg/state`: one record store for Humagen's own stores, by namespace, tenant and key, in memory or in Postgres (one table, migrated by `OpenPostgres`), held to the `statetest` suite. Each store keeps its rules and indexes in memory and writes through it, undoing a change that cannot be written | Built, tested against both backends on Postgres 16, with a restart test per store and a failed-write test per store. One writer: a second process on the same schema gets `state.ErrLocked` |

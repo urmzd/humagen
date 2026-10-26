@@ -86,6 +86,7 @@ export interface Principal {
 }
 
 export interface Me {
+  email_notifications_available?: boolean;
  personal_project?: string;
   principal: Principal;
   permissions: string[];

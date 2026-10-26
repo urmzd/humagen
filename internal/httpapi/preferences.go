@@ -80,7 +80,7 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 	if body.Personal != nil {
 		personal = append(personal, *body.Personal)
 	}
-	next, err := s.P.Prefs.Set(who.Tenant, who.Subject, prefs.Preferences{
+	next, err := s.P.SavePreferences(who, prefs.Preferences{
 		DisplayName: body.DisplayName, Theme: body.Theme, Accent: body.Accent,
 	}, personal...)
 	if err != nil {

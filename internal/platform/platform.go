@@ -86,6 +86,9 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// Email is a configured relay and explicit tenant/subject recipient mapping. Nil disables email.
+	Email *EmailConfig
+
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
 
@@ -203,20 +206,24 @@ type Platform struct {
 	now       func() time.Time
 	grounding sourceGrounding
 
-	Agents        registry.Store
-	Runs          *runs.Index
-	Schedules     *Schedules
-	Journal       *journal.Journal
-	Alerts        *alerts.Engine
-	Knowledge     *knowledge.Store
-	SourceLinks   *sourcelinks.Store
-	Evals         *evals.Store
-	Feedback      *feedback.Store
-	Prefs         *prefs.Store
-	Memory        *memory.Store
-	SkillLibrary  *library.Store
-	Notifications *notifications.Store
-	ContextFlags  *contextflags.Store
+	Agents               registry.Store
+	Runs                 *runs.Index
+	Schedules            *Schedules
+	Journal              *journal.Journal
+	Alerts               *alerts.Engine
+	Knowledge            *knowledge.Store
+	SourceLinks          *sourcelinks.Store
+	Evals                *evals.Store
+	Feedback             *feedback.Store
+	Prefs                *prefs.Store
+	Memory               *memory.Store
+	SkillLibrary         *library.Store
+	Notifications        *notifications.Store
+	EmailNotifications   *notifications.Store
+	emailCursor          int
+	emailMu              sync.Mutex
+	emailPreferenceLocks [64]sync.Mutex
+	ContextFlags         *contextflags.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -331,6 +338,17 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if err := validateEmail(cfg.Email); err != nil {
+		return nil, err
+	}
+	if cfg.Email != nil {
+		email := *cfg.Email
+		email.Recipients = make(map[string]map[string]string, len(cfg.Email.Recipients))
+		for tenant, people := range cfg.Email.Recipients {
+			email.Recipients[tenant] = maps.Clone(people)
+		}
+		cfg.Email = &email
+	}
 	log := cfg.Log
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -967,6 +985,7 @@ func (p *Platform) Run(ctx context.Context) error {
 			}
 		}
 	})
+	loop("email notifications", func() error { return p.runEmailNotifications(ctx) })
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
 	loop("inbox retention", func() error {
 		tick := time.NewTicker(retainEvery)

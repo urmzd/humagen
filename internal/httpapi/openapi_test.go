@@ -1821,6 +1821,19 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/settings", "/api/settings", `{"history":"recent","history_limit":10,"projects":[]}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","onboarded":true}`, http.StatusOK)
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"theme":"neon"}`, http.StatusBadRequest)
+	// A restored consent record can outlive an operator's relay configuration.
+	// A stale form cannot undo that person's newer email choice.
+	emailPref := f.p.Prefs.Get("acme", "audit-admin").Personal
+	emailPref.Email = true
+	emailPref.EmailVersion = 1
+	if _, err := f.p.Prefs.SetPersonal("acme", "audit-admin", emailPref); err != nil {
+		t.Fatal(err)
+	}
+	emailPref.Email = false
+	emailPref.EmailVersion = 0
+	emailBody, _ := json.Marshal(map[string]any{"display_name": "Audit admin", "theme": "system", "accent": "purple", "personal": emailPref})
+	c.call(auditAdmin, "PUT", "/api/preferences", "/api/preferences", string(emailBody), http.StatusConflict)
+
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","muted":["Launch"]}`, http.StatusOK)
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","muted":["~"]}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","muted":["Ghost"]}`, http.StatusNotFound)

@@ -197,6 +197,8 @@ export interface Me {
   principal: Principal;
   /** Everything the caller may do. Null, not an empty list, for a caller with no permission at all. */
   permissions: Permission[] | null;
+  /** This human has an operator-configured email recipient and current standing permissions. No mailbox address is exposed. */
+  email_notifications_available?: boolean;
   /** Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements. */
   welcome_announcement?: string;
   /** The signed-in human's private project address, absent for machines. */
@@ -1708,6 +1710,10 @@ cannot be removed (409).
 export type Theme = "system" | "light" | "dark";
 
 export interface PersonalPreferences {
+  /** Read version required when replacing email opt-in. Stale changes return 409. */
+  email_version?: number;
+  /** Opt in to the configured email relay using the same event preferences and quiet hours. */
+  email?: boolean;
   briefing: string;
   notifications: Record<string, "immediate" | "digest" | "off">;
   quiet_start: string;

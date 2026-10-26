@@ -143,6 +143,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("private context flags", err)
 	p.Notifications, err = notifications.Open(st)
 	keep("native notifications", err)
+	p.EmailNotifications, err = notifications.OpenEmail(st)
+	keep("email notifications", err)
 	p.SkillLibrary, err = library.Open(st)
 	keep("skill library", err)
 	p.Memory, err = memory.Open(st)

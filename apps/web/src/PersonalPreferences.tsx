@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import type { PersonalPreferences as Personal } from "../../../packages/client/src/generated/types.ts";
 import { useEffect, useState } from "react";
-import { api, type Preferences } from "./api.ts";
+import { api, ApiError, type Preferences } from "./api.ts";
 import { NotificationPanel } from "./Notifications.tsx";
 import { PersonalAgents } from "./PersonalAgents.tsx";
 import { card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
@@ -24,11 +24,13 @@ export function PersonalPreferences({
 }) {
   const copy = defaultCopy.personalPreferences;
   const [profile, setProfile] = useState<Preferences | null>(null);
+  const [emailAvailable,setEmailAvailable]=useState(false);
   const [roles, setRoles] = useState<string[]>([]);
   const [value, setValue] = useState<Personal>(initial);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [emailConflict,setEmailConflict]=useState(false);
   useEffect(() => {
     let live = true;
     Promise.all([api.preferences(), api.me()])
@@ -37,6 +39,7 @@ export function PersonalPreferences({
           setProfile(preferences);
           setValue(preferences.personal ?? initial);
           setRoles(me.principal.roles ?? []);
+ setEmailAvailable(me.email_notifications_available===true);
         }
       })
       .catch(() => {
@@ -51,6 +54,7 @@ export function PersonalPreferences({
     setBusy(true);
     setFailed(false);
     setSaved(false);
+    setEmailConflict(false);
     try {
       const result = await api.savePreferences({
         display_name: profile.display_name,
@@ -62,8 +66,10 @@ export function PersonalPreferences({
       onSaved?.(result);
       setValue(result.personal ?? initial);
       setSaved(true);
-    } catch {
-      setFailed(true);
+    } catch (error) {
+      if(error instanceof ApiError&&error.status===409){
+        try{const latest=await api.preferences();setValue(current=>({...current,email:latest.personal?.email??false,email_version:latest.personal?.email_version??0}));setEmailConflict(true)}catch{setFailed(true)}
+      }else setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -74,7 +80,7 @@ export function PersonalPreferences({
         <PersonalAgents />
       ) : (
         <>
-          {failed && <Problem message={copy.failed} />} {saved && <p role="status">{copy.saved}</p>}
+          {failed && <Problem message={copy.failed} />} {emailConflict&&<Problem message={copy.emailChanged}/>} {saved && <p role="status">{copy.saved}</p>}
           {!profile ? (
             <SkeletonRows count={3} />
           ) : (
@@ -130,13 +136,13 @@ export function PersonalPreferences({
                 <>
                   <p className="text-aui-muted">{defaultCopy.notifications.description}</p>
                   <NotificationPanel />
-                  <p className="text-aui-muted">{copy.deliveryUnavailable}</p>
+                  <p className="text-aui-muted">{emailAvailable?copy.emailDescription:copy.deliveryUnavailable}</p>
                   <label className="flex min-h-11 items-center gap-3">
-                    <input type="checkbox" disabled aria-describedby="email-unavailable" />
+                    <input type="checkbox" checked={value.email??false} disabled={!emailAvailable&&!value.email} onChange={event=>setValue({...value,email:event.target.checked})} aria-describedby="email-unavailable" />
                     {copy.email}
                   </label>
                   <p id="email-unavailable" className="sr-only">
-                    {copy.deliveryUnavailable}
+                    {emailAvailable?copy.emailDescription:copy.deliveryUnavailable}
                   </p>
                   <fieldset className={`${card} space-y-3 p-4`}>
                     <legend>{copy.notifications}</legend>

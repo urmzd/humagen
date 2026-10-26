@@ -26,6 +26,7 @@ import (
 // Errors.
 var (
 	ErrInvalid = errors.New("prefs: invalid")
+	ErrVersion = errors.New("prefs: email preferences changed; reload and try again")
 	ErrNoPhoto = errors.New("prefs: no photo")
 )
 
