@@ -357,7 +357,7 @@ export function Chat({
   const [localView, setLocalView] = useState<ConversationView>({});
   const shownView = onView ? view ?? {} : localView;
   const openPanel = (panel?: ConversationPanel, selection: Omit<ConversationView, "panel"> = {}) => {
-    const next = { ...selection, panel };
+    const next = { ...(panel==="activity"&&shownView.panel==="activity"?{filter:shownView.filter,showTools:shownView.showTools}:{}),...selection, panel };
     if (onView) onView(next);
     else setLocalView(next);
   };
@@ -719,6 +719,7 @@ export function Chat({
       <Presence when={activity !== null} ms={180}>
         {(leaving) => (
           <Activity
+            filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length}
             leaving={leaving}
             turns={path}
             stamp={turns.map((t) => `${t.id}:${t.calls}:${t.status}`).join("|")}

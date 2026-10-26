@@ -10,6 +10,8 @@ import type {
   LibrarySkill,
   LibraryScope,
   LibrarySkillDefinition,
+  AnalyticsGroup,
+  AnalyticsBucket,
   ProjectContext,
   AgentHome,
   Person,
@@ -198,27 +200,9 @@ export interface ScheduleView extends Schedule {
   recent: Run[];
 }
 
-export interface Group {
-  name: string;
-  runs: number;
-  completed: number;
-  failed: number;
-  /** Runs stopped on request. Neither completed, failed nor in flight. */
-  stopped: number;
-  active: number;
-  p50_ms: number;
-  p95_ms: number;
-  /** What the runs' own model calls used. Each run counts only its own calls. */
-  usage?: { model_calls: number; tokens: number; spend: number; unpriced_calls: number; other_currency_runs: number };
-}
-
-export interface Bucket {
-  start: string;
-  completed: number;
-  failed: number;
-  stopped: number;
-  active: number;
-}
+/** Analytics fields come directly from the generated contract. */
+export type Group = Omit<AnalyticsGroup, "usage"> & { usage?: AnalyticsGroup["usage"] };
+export type Bucket = AnalyticsBucket;
 
 export interface Summary {
   since: string;
@@ -904,7 +888,13 @@ export const api = {
     call<ScheduleView>("POST", `/api/schedules/${encodeURIComponent(name)}/${paused ? "pause" : "resume"}`),
   runSchedule: (name: string) => call<Run>("POST", `/api/schedules/${encodeURIComponent(name)}/run`),
 
-  analytics: (window: string) => call<Summary>("GET", `/api/analytics?window=${window}`),
+  analytics: (window: string, interval?: { since?: string; until?: string; bucket?: string }) => {
+    const params = new URLSearchParams();
+    for (const [name, value] of Object.entries(interval?.since ? interval : { window, ...interval })) {
+      if (value !== undefined) params.set(name, value);
+    }
+    return call<Summary>("GET", `/api/analytics?${params}`);
+  },
   journal: (params: Record<string, string>) =>
     call<{ entries: Entry[] }>("GET", `/api/journal?${new URLSearchParams(params)}`).then((r) => r.entries),
   trace: (id: string) => call<{ runs: Run[]; spans: Span[] }>("GET", `/api/runs/${encodeURIComponent(id)}/trace`),

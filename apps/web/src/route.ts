@@ -50,6 +50,8 @@ export type ArtifactTab = "preview" | "versions" | "provenance";
 const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
 export interface ConversationView {
   panel?: ConversationPanel;
+  filter?:"all"|"handoffs"|"tools"|"decisions";
+  showTools?:boolean;
   run?: string;
   artifact?: string;
   artifactTab?: ArtifactTab;
@@ -152,7 +154,7 @@ export function href(r: Route): string {
     case "action-policy":return r.scope&&r.scope!=="workspace"?`/operations/policies/${r.scope}${r.name?`/${enc(r.name)}`:""}`:"/operations/policies";
     case "audit":return "/operations/audit";
     case "usage":{
-      const q=new URLSearchParams();if(r.days&&r.days!==7)q.set("days",String(r.days));if(r.day)q.set("day",r.day);if(r.display==="table")q.set("display","table");return `/operations/usage${q.size?`?${q}`:""}`;
+      const q=new URLSearchParams();if(r.days&&r.days!==14)q.set("days",String(r.days));if(r.day)q.set("day",r.day);if(r.display==="table")q.set("display","table");return `/operations/usage${q.size?`?${q}`:""}`;
     }
     case "you":return `/you${r.section==="profile"?"":`/${r.section}`}${r.section==="connections"&&r.provider?`/${enc(r.provider)}`:""}`;
     case "new": {
@@ -170,7 +172,10 @@ export function href(r: Route): string {
       if (r.share) return `/conversations/${enc(r.id)}/share`;
       if (r.panel) {
         const base = `/conversations/${enc(r.id)}/${r.panel}`;
-        if (r.panel === "activity" && r.run) return `${base}/${enc(r.run)}`;
+        if(r.panel==="activity"){
+          const q=new URLSearchParams();if(r.filter&&r.filter!=="all")q.set("filter",r.filter);if(r.showTools===false)q.set("tools","0");
+          return `${base}${r.run?`/${enc(r.run)}`:""}${q.size?`?${q}`:""}`;
+        }
         if (r.panel === "deliverables" && r.artifact) return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${r.slide ? `?slide=${r.slide}` : ""}`;
         return base;
       }
@@ -285,7 +290,7 @@ function read(pathname: string, search: string): Route {
       if(a==="audit")return {page:"audit"};
       if(a==="usage"){
         const days=Number(q.get("days"));const day=q.get("day");const validDay=day&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&!Number.isNaN(Date.parse(`${day}T00:00:00Z`))&&new Date(`${day}T00:00:00Z`).toISOString().slice(0,10)===day;
-        return {page:"usage",days:days===14||days===30?days:7,day:validDay?day:undefined,display:q.get("display")==="table"?"table":"chart"};
+        return {page:"usage",days:days===7||days===30?days:14,day:validDay?day:undefined,display:q.get("display")==="table"?"table":"chart"};
       }
       if(a==="policies")return {page:"action-policy",scope:oneOf(b,["workspace","agent","project","personal"] as const),name:parts[3]};
       return {page:"operations",section:a==="integrations"?"integrations":"context"};
@@ -312,7 +317,7 @@ function read(pathname: string, search: string): Route {
       if (b === "share") return { page: "conversation", id: a, share: true };
       if (oneOf(b, CONVERSATION_PANELS)) {
         const slide = Number(q.get("slide"));
-        return { page: "conversation", id: a, panel: b as ConversationPanel, ...(b === "activity" && parts[3] ? { run: parts[3] } : {}), ...(b === "deliverables" && parts[3] ? { artifact: parts[3], artifactTab: oneOf(parts[4], ARTIFACT_TABS), slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined } : {}) };
+        return { page: "conversation", id: a, panel: b as ConversationPanel, ...(b === "activity" ? {run:parts[3],filter:oneOf(q.get("filter"),["all","handoffs","tools","decisions"] as const),showTools:q.get("tools")==="0"?false:undefined} : {}), ...(b === "deliverables" && parts[3] ? { artifact: parts[3], artifactTab: oneOf(parts[4], ARTIFACT_TABS), slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined } : {}) };
       }
       return { page: "conversation", id: a, message: q.get("message") || undefined };
     case "projects": {

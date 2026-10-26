@@ -12,7 +12,7 @@ import { Assignments } from "./Assignments.tsx";
 import { AgentNetwork } from "./AgentNetwork.tsx";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 import { ForkProject } from "./ForkProject.tsx";
-import { Analytics } from "./Analytics.tsx";
+import { Usage,defaultUsageView } from "./Usage.tsx";
 import { AgentDetail } from "./AgentDetail.tsx";
 import { Agents } from "./Agents.tsx";
 import {
@@ -444,7 +444,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         {route.page==="agent-control"&&(can("agents:read")?<AgentControls key={route.agent??"workspace"} agent={route.agent} canWrite={can("agents:write")} onChanged={loadAgents}/>:<Page title={defaultCopy.navigation.controls}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="action-policy"&&(can("agents:read")?<ActionPolicies key={`${route.scope}:${route.name}`} scope={route.scope} name={route.name} canWrite={can("agents:write")}/>:<Page title={defaultCopy.navigation.policies}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="audit"&&(can("projects:govern")?<Audit/>:<Page title={defaultCopy.navigation.audit}><Problem message={defaultCopy.noPermission}/></Page>)}
-        {route.page==="usage"&&(can("runs:read")?<Analytics agents={agents} openAlerts={alerts.length} tick={tick} onOpenRun={openRun}/>:<Page title={defaultCopy.navigation.usage}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="usage"&&(can("runs:read")?<Usage agents={agents.map(agent=>agent.spec.name)} tick={tick} onOpenRun={openRun} onOpenAgent={openAgent} view={{days:route.days??defaultUsageView.days,day:route.day,display:route.display??defaultUsageView.display}} onViewChange={view=>go({page:"usage",...view},{replace:true})}/>:<Page title={defaultCopy.navigation.usage}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="operations"&&route.section==="integrations"&&(can("clients:read")?<Settings me={me} prefs={prefs} prefsRead={prefsRead} workspace={workspace} agents={agents} canAdmin={can("clients:write")} section="connections" onSection={openSettings} explain="clients:read" onExplain={permission=>go({page:"settings",section:"access",permission})} onPrefs={setPrefs} onWorkspace={setWorkspace} projects={projectNames} onOpenProjects={()=>go({page:"projects"})} onOpenWorkspace={()=>openProject("")} onConnections={()=>go({page:"you",section:"connections"})} onOpenWorkspaceAgents={()=>go({page:"project",name:"",tab:"agents"})}/>:<Page title={defaultCopy.navigation.integrations}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="you"&&<><WorkspaceTabs label={defaultCopy.navigation.you} items={(["profile","notifications","agents","connections","privacy"] as const).map(section=>({label:defaultCopy.navigation[section==="agents"?"personalAgents":section],route:{page:"you",section}}))} current={href(route)} onGo={go}/>{route.section==="connections"?<YourConnections open={route.provider} onOpen={provider=>go({page:"you",section:"connections",provider},{replace:true})} canConnect={can(CONNECT_PERMISSION)} onWhy={()=>go({page:"settings",section:"access",permission:CONNECT_PERMISSION})}/>:<PersonalPreferences key={route.section} section={route.section} onSaved={setPrefs}/>}</>}
 

@@ -604,6 +604,8 @@ add nothing here; `usage` counts them.
   spent: number;
   usage?: RunUsage;
   calls: number;
+  /** Recorded human involvement, including called work. Absent for older or recovered runs whose full assistance history is unknown. */
+  assistance?: "none" | "needed";
   status: RunStatus;
   /** The final text of a completed run. On a stopped run it is the
 partial answer, what the agent had said when it stopped, which may
@@ -2312,6 +2314,18 @@ export interface AnalyticsGroup {
   /** Runs that were stopped. They are neither completed, failed nor active. */
   stopped: number;
   active: number;
+  /** Completed with a fully observed history and no recorded human question in this run or its called work. */
+  completed_alone: number;
+  /** Runs with a recorded human question, regardless of final status. */
+  needed_person: number;
+  /** Runs whose complete assistance history is unavailable. */
+  human_help_unknown: number;
+  /** Mean duration of ended runs, including time spent waiting. */
+  avg_ms: number;
+  /** Direct handoff/delegate children of readable runs in this group, started inside this interval. */
+  handoffs_out: number;
+  last_failure_run?: string;
+  last_failure_at?: string;
   p50_ms: number;
   p95_ms: number;
   usage: AnalyticsUsage;
@@ -2338,6 +2352,9 @@ export interface AnalyticsBucket {
   failed: number;
   stopped: number;
   active: number;
+  completed_alone: number;
+  needed_person: number;
+  human_help_unknown: number;
 }
 
 /** Run statistics over a window. */

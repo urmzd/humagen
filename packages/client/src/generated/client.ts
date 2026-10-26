@@ -3002,11 +3002,13 @@ Does not publish a new version or run an agent.
     });
   }
 
-  /** Summarize runs over a window ending now */
-  async getAnalytics(window?: string, bucket?: string, options?: RequestOptions): Promise<Summary> {
+  /** Summarize readable runs over a bounded time interval */
+  async getAnalytics(window?: string, since?: string, until?: string, bucket?: string, options?: RequestOptions): Promise<Summary> {
     let path = "/api/analytics";
     const _q = new URLSearchParams();
     if (window !== undefined && window !== null) _q.set("window", String(window));
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (until !== undefined && until !== null) _q.set("until", String(until));
     if (bucket !== undefined && bucket !== null) _q.set("bucket", String(bucket));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
@@ -3015,10 +3017,12 @@ Does not publish a new version or run an agent.
     });
   }
 
-  async getAnalyticsRaw(window?: string, bucket?: string, options?: RequestOptions): Promise<ApiResponse<Summary>> {
+  async getAnalyticsRaw(window?: string, since?: string, until?: string, bucket?: string, options?: RequestOptions): Promise<ApiResponse<Summary>> {
     let path = "/api/analytics";
     const _q = new URLSearchParams();
     if (window !== undefined && window !== null) _q.set("window", String(window));
+    if (since !== undefined && since !== null) _q.set("since", String(since));
+    if (until !== undefined && until !== null) _q.set("until", String(until));
     if (bucket !== undefined && bucket !== null) _q.set("bucket", String(bucket));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
