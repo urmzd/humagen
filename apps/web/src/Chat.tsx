@@ -346,6 +346,10 @@ export function Chat({
     project: startIn ?? personalProject ?? null,
     channel: startChannel || "general",
   }));
+
+ useEffect(()=>{
+  if(!threadId&&startIn===undefined&&personalProject!==undefined)setSelection(current=>current.project===null?{...current,project:personalProject}:current);
+ },[threadId,startIn,personalProject]);
   const project = selection.project ?? personalProject ?? null;
   const select=(next:Selection)=>setSelection(next.project===null && personalProject!==undefined?{...next,project:personalProject,channel:"general"}:next);
   const [draft, setDraft] = useState("");
@@ -569,11 +573,12 @@ export function Chat({
                     onAttach={attach}
                     onClose={close}
                     projects={projects}
+                    personalProject={personalProject}
                     kinds={root?.kinds}
                     projectFixed={defaultCopy.threads.shareProjectFixed}
                   />
                 ),
-                chips: <SelectionChips selection={runs.selection} projects={projects} workspace={workspaceName} onChange={runs.select} projectFixed />,
+                chips: <SelectionChips personalProject={personalProject} selection={runs.selection} projects={projects} workspace={workspaceName} onChange={runs.select} projectFixed />,
               })
             : (available) => ({
                 menu: (close, attach, leave) => (
@@ -585,12 +590,13 @@ export function Chat({
                     onAttach={attach}
                     onClose={close}
                     projects={projects}
+                    personalProject={personalProject}
                     kinds={root?.kinds}
                     canCreateProject={canCreateProject}
                     onProjectCreated={onProjectCreated}
                   />
                 ),
-                chips: <SelectionChips selection={selection} projects={projects} workspace={workspaceName} onChange={select} />,
+                chips: <SelectionChips personalProject={personalProject} selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectFixed={selection.project===personalProject} />,
               })
         }
       />
@@ -613,6 +619,7 @@ export function Chat({
         root={root ?? null}
         workspaceName={workspaceName ?? ""}
         canRun={canRun}
+        personalProject={personalProject}
         artifactActions={artifactActions}
         forkActions={forkActions}
         focus={focus}
@@ -685,7 +692,7 @@ export function Chat({
     <section className="flex min-h-0 flex-1">
       <ConversationPage
         title={summary?.title ?? path[0]?.text ?? "Conversation"}
-        project={projects?.find((p) => p.name === where)?.title || where || workspaceName || defaultCopy.projects.workspace}
+        project={projects?.find((p) => p.name === where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace}
         private={room?.thread.visibility === "private"}
         agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
         onPanel={(next) => openPanel(next)}
@@ -714,7 +721,7 @@ export function Chat({
       </WebSurface>
       {composer}
       </ConversationPage>
-      {room && <ConversationInfo panel={shownView.panel} thread={room.thread} project={where || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
+      {room && <ConversationInfo panel={shownView.panel} thread={room.thread} project={projects?.find(project=>project.name===where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
       {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:room?.thread.project??where??"",shared:room?.thread.visibility==="shared",...artifactActions}:undefined} thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
       <Presence when={activity !== null} ms={180}>
         {(leaving) => (

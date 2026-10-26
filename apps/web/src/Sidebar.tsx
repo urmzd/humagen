@@ -476,7 +476,7 @@ export function Sidebar({
                 {filters > 0 ? "No conversation matches these filters." : "Your conversations appear here. Start with New."}
               </li>
             )}
-            {[...new Set(unpinned.map((thread) => thread.project ?? ""))].map((project) => <li key={project} className="min-w-0 pt-2"><details open><summary className="flex min-h-7 cursor-pointer items-center gap-1.5 px-2.5 text-aui-xs font-medium text-aui-muted"><FolderIcon size={13} /><span className="min-w-0 flex-1 truncate">{projects.find((item) => item.name === project)?.title || project || workspaceName || defaultCopy.projects.workspace}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter((thread) => (thread.project ?? "") === project).map((t) => (
+            {[...new Set(unpinned.map((thread) => thread.project ?? ""))].map((project) => <li key={project} className="min-w-0 pt-2"><details open><summary className="flex min-h-7 cursor-pointer items-center gap-1.5 px-2.5 text-aui-xs font-medium text-aui-muted"><FolderIcon size={13} /><span className="min-w-0 flex-1 truncate">{projects.find((item) => item.name === project)?.title || (project===me.personal_project?defaultCopy.projects.personalTitle:project) || workspaceName || defaultCopy.projects.workspace}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter((thread) => (thread.project ?? "") === project).map((t) => (
               <TaskRow
                 key={t.id}
                 task={t}

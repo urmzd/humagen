@@ -66,10 +66,10 @@ export function postsIn(projects: ProjectView[], name: string): boolean {
 }
 
 /** The title of a project, as a thread's meta line names it. */
-function projectTitle(projects: ProjectView[], name: string, workspace: string): string {
+function projectTitle(projects: ProjectView[], name: string, workspace: string,personalProject?:string): string {
   if (name === "") return workspace || defaultCopy.projects.workspace;
   const p = projects.find((x) => x.name === name);
-  return p?.title || name;
+  return p?.title || (name===personalProject?defaultCopy.projects.personalTitle:name);
 }
 
 /** A person's initial, in a circle: who posted, without a picture to fetch. */
@@ -370,6 +370,7 @@ export function ThreadRoom({
   canRun,
   artifactActions,
   forkActions,
+  personalProject,
   focus,
   sharing = false,
   onSharing,
@@ -396,6 +397,7 @@ export function ThreadRoom({
   canRun: boolean;
   artifactActions?: {knowledge:boolean;memory:boolean};
   forkActions?:ConversationForkActions;
+  personalProject?:string;
   /** A message to open at, as `?message=` names it. */
   focus?: string;
   /** Whether the Share dialog is open, as `/conversations/{id}/share` says. */
@@ -543,14 +545,14 @@ export function ThreadRoom({
     <section className="flex min-h-0 min-w-0 flex-1">
       <ConversationPage
         title={title}
-        project={projectTitle(projects, th.project, workspaceName)}
+        project={projectTitle(projects, th.project, workspaceName,personalProject)}
         private={th.visibility === "private"}
         agents={answering}
         location={
           <>
             <span>{th.visibility === "private" ? words.private : (
               <button type="button" onClick={() => onOpenChannel(th.project, th.channel)} className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
-                {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
+                {words.sharedIn(projectTitle(projects, th.project, workspaceName,personalProject), th.channel)}
               </button>
             )}</span>
             {th.surface && <span className="ml-3">{words.inSlack}</span>}
@@ -649,11 +651,12 @@ export function ThreadRoom({
                   onAttach={attach}
                   onClose={close}
                   projects={projects.filter((p) => postsIn(projects, p.name))}
+                  personalProject={personalProject}
                   kinds={root?.kinds}
                   projectFixed={fixedWhy}
                 />
               ),
-              chips: <SelectionChips selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectFixed />,
+              chips: <SelectionChips personalProject={personalProject} selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectFixed />,
             }}
             autoFocus={sharing ? false : undefined}
             onPost={(text) =>
@@ -669,7 +672,7 @@ export function ThreadRoom({
         )}
       </div>
       </ConversationPage>
-      <ConversationInfo panel={shownView.panel} thread={th} project={projectTitle(projects, th.project, workspaceName)} onClose={() => openPanel()} />
+      <ConversationInfo panel={shownView.panel} thread={th} project={projectTitle(projects, th.project, workspaceName,personalProject)} onClose={() => openPanel()} />
       {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:th.project,shared:th.visibility==="shared",...artifactActions}:undefined} thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
       {shownView.panel === "activity" && <Activity filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length} turns={turns.flatMap((turn) => turn.run ? [turn.run] : [])} stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")} focus={shownView.run ?? null} onFocus={(run) => openPanel("activity", run ? { run } : {})} onClose={() => openPanel()} onJump={(run) => document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })} />}
     </section>

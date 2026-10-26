@@ -1166,7 +1166,7 @@ export const defaultCopy = {
     noAgentMatch: "No agent matches.",
     project: "Project",
     chooseProject: "Choose a project",
-    projectless: "Projectless",
+    projectless: "Company",
     channel: "Channel",
     /** The chips row, as a list. */
     selected: "Selected for this conversation",
@@ -1477,6 +1477,8 @@ export const defaultCopy = {
   /** The project tree: its kinds, where a project sits, and what a person does with one. */
   projects: {
     companyName: "Company",
+    personalTitle: "Personal",
+    companyStart: "Start in the company-wide project",
     unreadUpdates: "Unread updates",
     title: "Projects",
     lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",

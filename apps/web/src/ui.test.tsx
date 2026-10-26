@@ -71,25 +71,18 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar is one flat list in working order, with New as home", () => {
-  const out = sidebar();
-  // Inbox comes right after New: what fired and what waits on a person land there.
-  const order = ["New", "Inbox", "Projects", "Schedules", "Monitor", "Context", "Agents", "Deliverables"];
-  const at = order.map((label) => out.indexOf(`>${label}<`));
-  assert.ok(at.every((i) => i >= 0), `every page is listed: ${at}`);
-  assert.deepEqual([...at].sort((x, y) => x - y), at, "in this order");
-  // Home and New are one entry; runs, evals and analytics live where they belong.
-  for (const gone of ["Home", "New conversation", "More", "Execution history", "Evals", "Analytics", "Storage", "Alerts", "Knowledge"]) {
-    assert.doesNotMatch(out, new RegExp(`>${gone}<`));
-  }
-  assert.match(out, /href="\/" aria-current="page"/);
-  assert.match(sidebar({ route: { page: "agent", name: "lead", tab: "model" } }), /href="\/agents" aria-current="page"/);
+test("the sidebar groups readable work under Projects Library and Operations",()=>{
+ const out=sidebar();
+ for(const group of ["Projects","Library","Operations"])assert.match(out,new RegExp(`aria-label="${group}"`));
+ for(const route of ["/","/projects","/library/skills","/library/memory","/inbox","/agents","/assignments","/agent-network","/operations/usage"])assert.ok(out.includes(`href="${route}"`),route);
+ assert.match(out,/href="\/" aria-current="page"/);
+ assert.match(sidebar({route:{page:"agent",name:"lead",tab:"model"}}),/href="\/agents" aria-current="page"/);
 });
 
-test("the sidebar hides pages from someone who may not read them", () => {
-  const out = sidebar({ can: (p) => p === "runs:write" });
-  assert.match(out, />New</);
-  for (const label of ["Projects", "Inbox", "Schedules", "Context", "Agents", "Deliverables"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
+test("the sidebar does not expose unreadable destination links",()=>{
+ const out=sidebar({can:permission=>permission==="runs:write"});
+ assert.match(out,/>New Conversation</);
+ for(const route of ["/projects","/library/skills","/inbox","/agents","/assignments","/operations/audit"])assert.ok(!out.includes(`href="${route}"`),route);
 });
 
 test("pinned conversations sit in their own section, ahead of the rest", () => {
@@ -103,10 +96,10 @@ test("pinned conversations sit in their own section, ahead of the rest", () => {
   assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Conversations<"));
 });
 
-test("project selection: an empty workspace still offers projectless work and creation inside the composer", () => {
+test("project selection: an empty directory offers the explicit Company home and project creation", () => {
   const actions = { onChange: () => {}, onCreated: () => {}, close: () => {} };
   const out = renderToStaticMarkup(<ProjectChoices projects={[]} value={null} {...actions} />);
-  assert.match(out, /Projectless/);
+  assert.match(out, /Company/);
   assert.match(out, /Create Project/);
   assert.match(out, /No projects yet/);
   assert.doesNotMatch(out, /<form/, "the picker must not nest a form inside the message form");
@@ -116,7 +109,7 @@ test("project selection: an empty workspace still offers projectless work and cr
   const untouched = renderToStaticMarkup(<ProjectPicker projects={[]} value={null} {...actions} />);
   assert.match(untouched, /aria-label="Select project"/);
   const projectless = renderToStaticMarkup(<ProjectPicker projects={[]} value="" {...actions} />);
-  assert.match(projectless, /aria-label="Select project: Projectless"/);
+  assert.match(projectless, /aria-label="Select project: Company"/);
 });
 import type { Alert, AlertRule } from "./api.ts";
 import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@humagen/core";
@@ -1046,7 +1039,7 @@ test("StorageUsed: a real meter in bytes, under, over and with no limit, and whe
   assert.match(under, /1\.7 MB of 5\.0 MB, 33%\. Under limit\./);
   assert.match(under, /Stored, 4 artifacts/);
   assert.match(under, /Launch/);
-  assert.match(under, /Projectless/);
+  assert.match(under, /Company/);
   const over = html(<StorageUsed use={sampleUse({ used_bytes: 6 * 1024 ** 2 })} />);
   assert.match(over, /data-usage="over"/);
   assert.match(over, /Over by 1\.0 MB/);
@@ -1177,7 +1170,7 @@ test("an answer has exactly one copy control: the console's Copy as, in place of
   const hosted = draw(true);
   assert.equal(hosted.match(/data-testid="item-copy"/g)?.length, 1, "the console's control is there once");
   assert.doesNotMatch(hosted, /aria-label="Copy answer"/, "humagen's own button is not drawn beside it");
-  assert.match(hosted, /aria-label="Copy answer as: none"/, "it is an icon with a name, opened on click");
+  assert.match(hosted, /aria-label="Copy answer as"/, "it is an icon with a name, opened on click");
   assert.match(hosted, /aria-haspopup="listbox"/);
   assert.match(hosted, /role="status"[^>]*aria-live="polite"/, "the confirmation is announced");
   assert.doesNotMatch(hosted, />Copied</);

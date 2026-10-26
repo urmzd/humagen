@@ -72,6 +72,7 @@ export function PlusMenu({
   canCreateProject = false,
   onProjectCreated,
   projectFixed,
+  personalProject,
 }: {
   /** The agents that may answer where the conversation lives. Null while they load. */
   agents: { name: string; description?: string }[] | null;
@@ -83,6 +84,7 @@ export function PlusMenu({
   onLeave?: () => void;
   /** The project tree, or null while it loads. Left out, the menu offers no project. */
   projects?: ProjectView[] | null;
+  personalProject?:string;
   kinds?: ProjectKindSpec[];
   canCreateProject?: boolean;
   onProjectCreated?: (p: ProjectView) => void;
@@ -275,7 +277,7 @@ export function PlusMenu({
               >
                 {project === "" ? <MessageIcon size={16} className="text-aui-muted" /> : <FolderIcon size={16} className="text-aui-muted" />}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate">{project === null ? words.chooseProject : project === "" ? words.projectless : chosen ? titleOf(chosen) : project}</span>
+                  <span className="block truncate">{project === null ? words.chooseProject : project === "" ? words.projectless : chosen ? titleOf(chosen) : project===personalProject?defaultCopy.projects.personalTitle:project}</span>
                   {chosen && above(chosen).length > 0 && <span className="block truncate text-aui-xs text-aui-muted">{above(chosen).join(" › ")}</span>}
                 </span>
               </button>
@@ -322,9 +324,11 @@ export function SelectionChips({
   workspace,
   onChange,
   projectFixed,
+  personalProject,
 }: {
   selection: Selection;
   projects?: ProjectView[] | null;
+  personalProject?:string;
   workspace?: string;
   onChange: (next: Selection) => void;
   /** The project can't be removed, as when an agent has run in the conversation. */
@@ -335,7 +339,7 @@ export function SelectionChips({
   // Why All of Them is not offered, said in words once it is pressed.
   const [explained, setExplained] = useState(false);
   const p = project ? projects?.find((x) => x.name === project) : undefined;
-  const where = project === null ? null : project === "" ? (workspace || words.projectless) : p ? titleOf(p) : project;
+  const where = project === null ? null : project === "" ? (workspace || words.projectless) : p ? titleOf(p) : project===personalProject?defaultCopy.projects.personalTitle:project;
   const path = p ? above(p) : [];
   const label = where === null ? null : channel && channel !== "general" ? `${where} / #${channel}` : where;
   if (agents.length === 0 && label === null) return null;
