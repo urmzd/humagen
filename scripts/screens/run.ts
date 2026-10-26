@@ -365,6 +365,15 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "monitor", path: "/monitor" },
     { name: "monitor-rules", path: "/monitor/rules" },
     { name: "context", path: "/context" },
+    {
+      name: "source-citation-indexed",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const facts = page.getByText("Indexed Copy", { exact: true }).last();
+        await facts.waitFor();
+        await facts.scrollIntoViewIfNeeded();
+      },
+    },
     { name: "source-available", path: "/context/launch-context" },
     { name: "source-attention", path: "/context/source-attention" },
     {
@@ -893,6 +902,21 @@ async function seedChats(
       text: "@helper what would you check first?",
     }),
   );
+  // This goes through native retained-document retrieval and the offline model.
+  // The capture is refused unless the API returns durable retrieval evidence.
+  const requestedScreens = process.env.SCREENS_ONLY?.split(",");
+  if (!requestedScreens || requestedScreens.includes("source-citation-indexed")) {
+    const grounded = await call<Posted>("POST", `/api/threads/${mine.thread.id}/messages`, {
+      text: "@helper When does packaging arrive, and what are the November press embargo and retail availability dates?",
+    });
+    await answered(grounded);
+    const run = await call<{ citations?: { mode?: string; copy_at?: string }[] }>(
+      "GET",
+      `/api/runs/${grounded.runs[0]?.id}`,
+    );
+    if (!run.citations?.some((citation) => citation.mode === "indexed"))
+      throw new Error("The native grounded screen run did not record indexed citation evidence");
+  }
   const shared = await call<Posted>("POST", "/api/threads", {
     project: "Launch",
     text: "@lead draft the launch checklist with me",

@@ -412,6 +412,7 @@ export interface RunFeedback {
 
 /** One run and its place in the call tree and in its conversation. */
 export interface Run {
+  citations: RunCitation[];
   /** The run's id, `r` and 32 hex digits, derived from the workspace and the trigger's id. */
   id: string;
   /** The trigger's id the run was accepted with: an event id, or for a
@@ -2372,6 +2373,22 @@ export interface KnowledgeSource {
   updated_at: string;
 }
 
+export interface SourceLinkSuggestion {
+  id: string;
+  client: string;
+  resource: SourceLinkResource;
+  project: string;
+  channel?: string;
+  knowledge?: string;
+  rules: string[];
+  state: "suggested" | "linked" | "ignored";
+  automatic: boolean;
+  active?: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SourceLinkRuleInput {
   provider: "github" | "slack" | "drive" | "notion";
   attribute: string;
@@ -2384,7 +2401,7 @@ export interface SourceLinkRuleInput {
 export type SourceLinkRule = SourceLinkRuleInput & { id: string; mode: "suggest" | "auto_link" | "off"; copied_from?: string };
 
 export interface SourceLinkResource {
-  provider: "github" | "slack" | "drive" | "notion";
+  provider: string;
   id: string;
   candidate?: SourceLinkRuleInput;
   attributes: Record<string, string[]>;
@@ -2395,6 +2412,12 @@ export interface SourceLinkMatch {
   channel?: string;
   mode: "suggest";
   rules: string[];
+}
+
+export interface KnowledgeAttachment {
+  source: string;
+  project: string;
+  channel?: string;
 }
 
 export interface KnowledgeResource {
@@ -2429,7 +2452,7 @@ export interface KnowledgeLifecycle {
   owner?: string;
   project?: string;
   status: "connected" | "importing" | "indexing" | "available" | "syncing" | "in_sync" | "needs_attention";
-  cause?: "auth_expired" | "quota" | "unsupported" | "unavailable" | "interrupted";
+  cause?: "auth_expired" | "quota" | "unsupported" | "unavailable" | "interrupted" | "stale";
   last_good_at?: string;
   stop_after_seconds: number;
   attempts: KnowledgeLifecycleAttemptsItem[];
@@ -2791,8 +2814,22 @@ export interface Provenance {
   section_index?: number;
 }
 
+/** A retained citation. Missing mode is historically unknown; no current configuration is substituted. */
+export interface RunCitation {
+  id: string;
+  title: string;
+  url?: string;
+  snippet?: string;
+  mode?: "indexed" | "live";
+  copy_at?: string;
+  refresh_failed?: boolean;
+}
+
 /** One retrieved passage the turn was grounded in. */
 export interface CitationPayload {
+  mode?: "indexed" | "live";
+  copy_at?: string;
+  refresh_failed?: boolean;
   /** The inline marker, such as `[1]`. */
   label: string;
   /** The exact source text. */
@@ -3346,8 +3383,26 @@ export interface KnowledgeSourceDependenciesResponse {
   projects: string[];
 }
 
+export interface ListSourceLinkSuggestionsResponse {
+  suggestions: SourceLinkSuggestion[];
+}
+
+export interface DecideSourceLinkSuggestionBody {
+  action: "link" | "ignore";
+  version: number;
+}
+
 export interface PreviewSourceLinkRulesResponse {
   matches: SourceLinkMatch[];
+}
+
+export interface ListKnowledgeAttachmentsResponse {
+  attachments: KnowledgeAttachment[];
+}
+
+export interface AttachKnowledgeSourceBody {
+  project: string;
+  channel?: string;
 }
 
 export interface ListKnowledgeResourcesResponse {

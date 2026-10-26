@@ -157,6 +157,7 @@ export interface TaskProps {
   details?: string;
   output?: string;
   sources?: Citation[];
+  sourceLabels?: CitationLabels;
   /**
    * Decision controls held by the task itself (a gated tool call). Surfaces that
    * can't put controls in a task row (Slack plans) render the approval card instead.
@@ -179,8 +180,20 @@ export interface PlanProps {
   children: ReactNode;
 }
 
+export interface CitationLabels {
+  indexed: string;
+  live: string;
+  unknown: string;
+  freshnessUnknown: string;
+  lastGoodCopy: string;
+  copyFrom: string;
+  queriedLive: string;
+}
 export interface SourcesProps {
   items: Citation[];
+  labels: CitationLabels;
+  /** Immutable message/turn identity, never the source URL. */
+  scope?: string;
 }
 
 /** Words for the optional comment prompt that follows a rating. */

@@ -11,7 +11,12 @@ import {
 } from "./api.ts";
 import { Evals } from "./Evals.tsx";
 import type { SourceTab } from "./route.ts";
-import { SourceLifecycle, SourceResources, SourceSyncSettings } from "./SourceLifecycle.tsx";
+import {
+  SourceLifecycle,
+  SourceResources,
+  SourceSyncSettings,
+  SourceAttachments,
+} from "./SourceLifecycle.tsx";
 import {
   ago,
   button,
@@ -371,6 +376,12 @@ function SourceDetail({
       />
       <Problem message={problem} />
       <SourceLifecycle source={source} canWrite={canWrite} onChanged={onChanged} />
+      <SourceAttachments
+        key={`${source.name}:${source.updated_at}:attachments`}
+        source={source}
+        canWrite={canWrite}
+        onChanged={onChanged}
+      />
       {source.lifecycle && source.lifecycle.provider !== "manual" && (
         <>
           <SourceResources

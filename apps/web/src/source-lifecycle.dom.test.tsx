@@ -28,10 +28,12 @@ const source: Source = {
     ],
   },
 };
-let net: ReturnType<typeof stubFetch>;
+let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
+  if (!net) return;
   cleanup();
   net.restore();
+  net = undefined;
 });
 
 test("saving a source reference does not claim verified provider access", async () => {

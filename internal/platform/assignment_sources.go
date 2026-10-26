@@ -42,7 +42,7 @@ func (p *Platform) assignmentSourceGrant(ctx context.Context, tenant, project, a
 			return true
 		}
 	}
-	for _, s := range p.Projects.Tree(tenant).Knowledge(project) {
+	for _, s := range p.knowledgeAtPlace(tenant, project, "general") {
 		if s.Name == source {
 			return true
 		}

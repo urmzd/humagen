@@ -2855,6 +2855,53 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/source-link-suggestions:
+    get:
+      operationId: listSourceLinkSuggestions
+      tags: [clients]
+      summary: List bounded visible verified resource links and suggestions
+      x-permission: clients:read
+      parameters:
+        - {name: knowledge, in: query, schema: {type: string}}
+        - {name: client, in: query, schema: {type: string}}
+        - {name: state, in: query, schema: {type: string, enum: [suggested, linked, ignored], default: suggested}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200":
+          description: Only readable destinations and sources, without a total count.
+          content:
+            application/json:
+              schema: {type: object, required: [suggestions], properties: {suggestions: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/SourceLinkSuggestion"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/source-link-suggestions/{id}/decision:
+    post:
+      operationId: decideSourceLinkSuggestion
+      tags: [clients]
+      summary: Link or ignore a verified suggested resource
+      x-permission: clients:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [action, version], properties: {action: {type: string, enum: [link, ignore]}, version: {type: integer, minimum: 1}}}
+      responses:
+        "200":
+          description: The saved decision. A link never grants external access or publishes conversation history.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SourceLinkSuggestion"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/source-link-rules:
     get:
       operationId: listSourceLinkRules
@@ -2956,6 +3003,66 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/attachments:
+    get:
+      operationId: listKnowledgeAttachments
+      tags: [knowledge]
+      summary: List visible actual source context attachments
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Readable context targets without a hidden count.
+          content:
+            application/json:
+              schema: {type: object, required: [attachments], properties: {attachments: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/KnowledgeAttachment"}}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/attachment:
+    put:
+      operationId: attachKnowledgeSource
+      tags: [knowledge]
+      summary: Attach a source to actual project or channel context
+      x-permission: knowledge:write
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [project], properties: {project: {type: string, minLength: 1, maxLength: 64}, channel: {type: string, maxLength: 40}}}
+      responses:
+        "200":
+          description: The durable attachment, without changing source read scope or channel membership.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeAttachment"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: detachKnowledgeSource
+      tags: [knowledge]
+      summary: Detach an exact source context target without deleting its retained copy
+      x-permission: knowledge:write
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+        - {name: project, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 64}}
+        - {name: channel, in: query, schema: {type: string, maxLength: 40}}
+      responses:
+        "204": {description: The placement is detached.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge/{name}/resources:
     get:
@@ -3122,7 +3229,7 @@ paths:
       summary: Search knowledge (lexical, BM25)
       x-permission: knowledge:read
       parameters:
-        - {name: q, in: query, required: true, description: The query. An empty one answers 400., schema: {type: string}}
+        - {name: q, in: query, required: true, description: The query. An empty one answers 400., schema: {type: string, maxLength: 1000}}
         - name: source
           in: query
           description: Source names, comma-separated. Empty searches every source.
@@ -6523,8 +6630,12 @@ components:
     Run:
       description: One run and its place in the call tree and in its conversation.
       type: object
-      required: [id, tag_id, tenant, agent, rev, origin, text, root, depth, thread, lease, granted, spent, calls, status, created_at, updated_at]
+      required: [citations, id, tag_id, tenant, agent, rev, origin, text, root, depth, thread, lease, granted, spent, calls, status, created_at, updated_at]
       properties:
+        citations:
+          type: array
+          maxItems: 64
+          items: {$ref: "#/components/schemas/RunCitation"}
         id:
           description: The run's id, `r` and 32 hex digits, derived from the workspace and the trigger's id.
           type: string
@@ -9439,6 +9550,23 @@ components:
           items: {$ref: "#/components/schemas/KnowledgeVariant"}
         created_by: {type: string}
         updated_at: {type: string, format: date-time}
+    SourceLinkSuggestion:
+      type: object
+      required: [id, client, resource, project, rules, state, automatic, version, created_at, updated_at]
+      properties:
+        id: {type: string}
+        client: {type: string}
+        resource: {$ref: "#/components/schemas/SourceLinkResource"}
+        project: {type: string}
+        channel: {type: string}
+        knowledge: {type: string}
+        rules: {type: array, maxItems: 200, items: {type: string}}
+        state: {type: string, enum: [suggested, linked, ignored]}
+        automatic: {type: boolean}
+        active: {type: boolean, readOnly: true}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     SourceLinkRuleInput:
       type: object
       required: [provider, attribute, pattern, project]
@@ -9462,7 +9590,7 @@ components:
       type: object
       required: [provider, id, attributes]
       properties:
-        provider: {type: string, enum: [github, slack, drive, notion]}
+        provider: {type: string, maxLength: 64}
         id: {type: string, minLength: 1, maxLength: 256}
         candidate: {$ref: "#/components/schemas/SourceLinkRuleInput"}
         attributes:
@@ -9480,6 +9608,13 @@ components:
         channel: {type: string}
         mode: {type: string, enum: [suggest]}
         rules: {type: array, maxItems: 200, items: {type: string}}
+    KnowledgeAttachment:
+      type: object
+      required: [source, project]
+      properties:
+        source: {type: string}
+        project: {type: string}
+        channel: {type: string}
     KnowledgeResource:
       type: object
       required: [id, name, uri, kind, supported]
@@ -9517,7 +9652,7 @@ components:
         owner: {type: string}
         project: {type: string}
         status: {type: string, enum: [connected, importing, indexing, available, syncing, in_sync, needs_attention]}
-        cause: {type: string, enum: [auth_expired, quota, unsupported, unavailable, interrupted]}
+        cause: {type: string, enum: [auth_expired, quota, unsupported, unavailable, interrupted, stale]}
         last_good_at: {type: string, format: date-time}
         stop_after_seconds: {type: integer, minimum: 60, maximum: 2592000}
         attempts:
@@ -10031,11 +10166,26 @@ components:
         section_uuid: {type: string}
         section_heading: {type: string}
         section_index: {type: integer}
+    RunCitation:
+      description: A retained citation. Missing mode is historically unknown; no current configuration is substituted.
+      type: object
+      required: [id, title]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        url: {type: string}
+        snippet: {type: string}
+        mode: {type: string, enum: [indexed, live]}
+        copy_at: {type: string, format: date-time}
+        refresh_failed: {type: boolean}
     CitationPayload:
       description: One retrieved passage the turn was grounded in.
       type: object
       required: [label, text, source, index]
       properties:
+        mode: {type: string, enum: [indexed, live]}
+        copy_at: {type: string, format: date-time}
+        refresh_failed: {type: boolean}
         label:
           description: The inline marker, such as `[1]`.
           type: string

@@ -5,21 +5,31 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 const maxSourceGrants = 1024
 const sourceGrantTTL = 2 * time.Minute
 
 type sourceGrant struct {
+	Agent                              string
+	Meta                               map[string]string
+	Query                              string
+	Revision                           int
+	Hash                               string
 	Tenant, Run, Name, Project, Person string
 	Config                             knowledge.SourceConfig
 	Expires                            time.Time
+	Legacy                             bool
+	Attempt                            int
 }
 type sourceGrounding struct {
 	mu     sync.Mutex
@@ -49,7 +59,12 @@ func (p *Platform) grantSource(req runtime.Request, src knowledge.Source, projec
 	if len(p.grounding.grants) >= maxSourceGrants {
 		return "", fmt.Errorf("%w: source context capacity reached; retry", knowledge.ErrExists)
 	}
-	p.grounding.grants[token] = sourceGrant{Tenant: req.Tenant, Run: req.RunID, Name: src.Name, Project: project, Person: person, Config: src.Lifecycle.SourceConfig, Expires: at.Add(sourceGrantTTL)}
+	cfg := knowledge.SourceConfig{}
+	legacy := src.Lifecycle == nil
+	if !legacy {
+		cfg = src.Lifecycle.SourceConfig
+	}
+	p.grounding.grants[token] = sourceGrant{Agent: req.Agent(), Meta: operationMetaOf(req.Meta), Query: sourceRetrievalQuery(req), Revision: req.Revision.Rev, Hash: req.Revision.Hash, Tenant: req.Tenant, Run: req.RunID, Name: src.Name, Project: project, Person: person, Config: cfg, Legacy: legacy, Attempt: req.Attempt, Expires: at.Add(sourceGrantTTL)}
 	return token, nil
 }
 func (p *Platform) sourceGrant(tenant, token string, take bool) (sourceGrant, bool) {
@@ -102,7 +117,7 @@ func (p *Platform) withSourceGrounding(req runtime.Request, project, person stri
 		if err != nil || !p.runtimeSourceRecordAllowed(req.Tenant, src, project, person) {
 			continue
 		}
-		if src.Lifecycle != nil && src.Lifecycle.Project != "" && src.Lifecycle.Mode != knowledge.Live {
+		if src.Lifecycle == nil || src.Lifecycle.Mode != knowledge.Live {
 			token, err := p.grantSource(req, src, project, person)
 			if err != nil {
 				cleanup()
@@ -129,4 +144,23 @@ func (p *Platform) releaseSourceGrounding(req runtime.Request) {
 			delete(p.grounding.grants, source.Name)
 		}
 	}
+}
+
+func boundedSourceQuery(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) <= 1000 {
+		return text
+	}
+	end := 1000
+	for end > 0 && !utf8.RuneStart(text[end]) {
+		end--
+	}
+	return text[:end]
+}
+func sourceRetrievalQuery(req runtime.Request) string {
+	query := req.Meta[runs.MetaAsk]
+	if strings.TrimSpace(query) == "" {
+		query = req.Text
+	}
+	return boundedSourceQuery(query)
 }

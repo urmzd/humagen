@@ -199,17 +199,19 @@ type Platform struct {
 	now       func() time.Time
 	grounding sourceGrounding
 
-	Agents      registry.Store
-	Runs        *runs.Index
-	Schedules   *Schedules
-	Journal     *journal.Journal
-	Alerts      *alerts.Engine
-	Knowledge   *knowledge.Store
-	SourceLinks *sourcelinks.Store
-	Evals       *evals.Store
-	Feedback    *feedback.Store
-	Prefs       *prefs.Store
-	Memory      *memory.Store
+	Agents            registry.Store
+	Runs              *runs.Index
+	Schedules         *Schedules
+	Journal           *journal.Journal
+	Alerts            *alerts.Engine
+	Knowledge         *knowledge.Store
+	SourceLinks       *sourcelinks.Store
+	SourceSuggestions *sourcelinks.Suggestions
+	SourceEvidence    *knowledge.EvidenceStore
+	Evals             *evals.Store
+	Feedback          *feedback.Store
+	Prefs             *prefs.Store
+	Memory            *memory.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -837,6 +839,12 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 		return
 	}
 	p.admission.Lock()
+	if e.Kind == envelope.KindCitation {
+		metadata, _, _ := p.trustedCitation(e)
+		if err := p.Runs.RecordCitation(e, metadata); err != nil {
+			p.log.Error("citation could not be retained", "error", err)
+		}
+	}
 	run, ended := p.Runs.Observe(e)
 	if ended {
 		p.free(run)

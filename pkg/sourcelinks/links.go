@@ -200,7 +200,7 @@ func (s *Store) MatchCandidate(tenant string, resource Resource, candidate *Rule
 		}
 		rules = append(rules, copy)
 	}
-	if len(resource.ID) == 0 || len(resource.ID) > 256 || len(resource.Attributes) > 8 {
+	if len(resource.Provider) == 0 || len(resource.Provider) > 64 || resource.Attributes == nil || len(resource.ID) == 0 || len(resource.ID) > 256 || len(resource.Attributes) > 8 {
 		return nil, ErrInvalid
 	}
 	for key, values := range resource.Attributes {

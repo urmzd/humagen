@@ -308,12 +308,16 @@ export interface Alert {
   acked_at?: string;
 }
 
-import type {KnowledgeResource, SourceLinkRule as GeneratedSourceLinkRule, SourceLinkResource, SourceLinkMatch,ListKnowledgeResourcesResponse} from "../../../packages/client/src/generated/types.ts";
+import type {KnowledgeResource, SourceLinkRule as GeneratedSourceLinkRule, SourceLinkResource, SourceLinkMatch,ListKnowledgeResourcesResponse,SourceLinkSuggestion as GeneratedSourceLinkSuggestion,ListSourceLinkSuggestionsResponse,DecideSourceLinkSuggestionBody,KnowledgeAttachment,ListKnowledgeAttachmentsResponse} from "../../../packages/client/src/generated/types.ts";
 export type SourceResource=KnowledgeResource;
 export type SourceConfiguration=KnowledgeSourceConfig;
 export type SourceLinkRule=GeneratedSourceLinkRule;
 export type SourceRuleResource=SourceLinkResource;
 export type SourceRuleMatch=SourceLinkMatch;
+
+export type SourceLinkSuggestion=GeneratedSourceLinkSuggestion;
+
+export type SourceAttachment=KnowledgeAttachment;
 
 export interface Source {
   lifecycle?: KnowledgeLifecycle;
@@ -907,6 +911,9 @@ export const api = {
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
   createSource: (name: string, description: string, configuration?:SourceConfiguration) => call<Source>("POST", "/api/knowledge", { name, description,...(configuration?{configuration}:{}) }),
+  sourceAttachments:(name:string)=>call<ListKnowledgeAttachmentsResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/attachments`).then(result=>result.attachments),
+  detachSource:(name:string,target:SourceAttachment)=>call<void>("DELETE",`/api/knowledge/${encodeURIComponent(name)}/attachment?${new URLSearchParams({project:target.project||"~",...(target.channel?{channel:target.channel}:{})})}`),
+  attachSource:(name:string,target:{project:string;channel?:string})=>call<SourceAttachment>("PUT",`/api/knowledge/${encodeURIComponent(name)}/attachment`,target),
   sourceResources: (name:string) => call<ListKnowledgeResourcesResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/resources`),
   snapshotSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/snapshot`),
   replaceSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/replace`),
@@ -915,6 +922,8 @@ export const api = {
   saveSourceLinkRule: (rule:SourceLinkRule,creating=false) => { const {id,copied_from,...input}=rule; return call<SourceLinkRule>(creating?"POST":"PUT",creating?"/api/source-link-rules":`/api/source-link-rules/${encodeURIComponent(id)}`,input); },
   deleteSourceLinkRule: (id:string) => call<void>("DELETE",`/api/source-link-rules/${encodeURIComponent(id)}`),
   previewSourceLinkRules: (resource:SourceRuleResource) => call<{matches:SourceRuleMatch[]}>("POST","/api/source-link-rules/preview",resource),
+  sourceLinkSuggestions:(client?:string,knowledge?:string,state:SourceLinkSuggestion["state"]="suggested")=>call<ListSourceLinkSuggestionsResponse>("GET",`/api/source-link-suggestions?${new URLSearchParams({state,limit:"200",...(client?{client}:{}),...(knowledge?{knowledge}:{})})}`).then(result=>result.suggestions),
+  decideSourceLink:(id:string,action:DecideSourceLinkSuggestionBody["action"],version:number)=>call<SourceLinkSuggestion>("POST",`/api/source-link-suggestions/${encodeURIComponent(id)}/decision`,{action,version}),
   clientBindings: (id:string) => call<{bindings:{slack_channel:string;project:string;channel:string;bound_at?:string}[]}>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(r=>r.bindings),
   sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
   configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),

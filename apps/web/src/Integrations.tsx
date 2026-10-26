@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   type ActionPolicy,
@@ -7,6 +7,7 @@ import {
   type Entry,
   type Source,
   type SourceLinkRule,
+  type SourceLinkSuggestion,
   type SourceRuleMatch,
   type SourceRuleResource,
 } from "./api.ts";
@@ -16,6 +17,7 @@ import {
   SourceResources,
   SourceSyncSettings,
   SourceAccessMode,
+  SourceAttachments,
   sourceProblem,
 } from "./SourceLifecycle.tsx";
 import { ago, button, Chip, field, Label, Page, primary, Problem } from "./ui.tsx";
@@ -245,18 +247,28 @@ export function Integrations({
                 ))}
               {active === "resources" &&
                 (source ? (
-                  <SourceResources
-                    key={`${source.name}:${source.updated_at}`}
-                    source={source}
-                    canWrite={canKnowledgeWrite}
-                    onChanged={load}
-                  />
+                  <>
+                    <SourceResources
+                      key={`${source.name}:${source.updated_at}`}
+                      source={source}
+                      canWrite={canKnowledgeWrite}
+                      onChanged={load}
+                    />
+                    <SourceAttachments
+                      key={`${source.name}:${source.updated_at}:attachments`}
+                      source={source}
+                      canWrite={canKnowledgeWrite}
+                      onChanged={load}
+                    />
+                  </>
                 ) : (
                   client && <ClientResources client={client} onOpenProject={onOpenProject} />
                 ))}
               {active === "links" && (
                 <SourceRules
-                  key={source?.lifecycle?.provider ?? client?.surface ?? ""}
+                  key={source?.name ?? client?.id ?? ""}
+                  client={client?.id}
+                  source={source?.name}
                   provider={source?.lifecycle?.provider ?? client?.surface ?? ""}
                   canWrite={canWrite}
                   onOpenProject={onOpenProject}
@@ -612,17 +624,21 @@ function IntegrationActions() {
 }
 
 function SourceRules({
+  client,
+  source,
   provider,
   canWrite,
   onOpenProject,
 }: {
+  client?: string;
+  source?: string;
   provider: string;
   canWrite: boolean;
   onOpenProject?: (name: string) => void;
 }) {
   const empty = (): SourceLinkRule => ({
     id: "",
-    provider: provider as SourceRuleResource["provider"],
+    provider: provider as SourceLinkRule["provider"],
     attribute: "name",
     pattern: "",
     project: "",
@@ -638,6 +654,67 @@ function SourceRules({
   const [matches, setMatches] = useState<SourceRuleMatch[] | null>(null);
   const [previewed, setPreviewed] = useState<string | null>(null);
   const signature = editing ? JSON.stringify(ruleInput(editing)) : null;
+  const [suggestions, setSuggestions] = useState<SourceLinkSuggestion[] | null>(null);
+  const [suggestionProblem, setSuggestionProblem] = useState<string | null>(null);
+  const [suggestionsTick, setSuggestionsTick] = useState(0);
+  const [suggestionState, setSuggestionState] =
+    useState<SourceLinkSuggestion["state"]>("suggested");
+  useEffect(() => {
+    let active = true;
+    setSuggestions(null);
+    setSuggestionProblem(null);
+    api
+      .sourceLinkSuggestions(client, source, suggestionState)
+      .then((items) => {
+        if (active)
+          setSuggestions(
+            items.filter(
+              (item) =>
+                item.resource.provider === provider && (!source || item.knowledge === source),
+            ),
+          );
+      })
+      .catch((error) => {
+        if (active) setSuggestionProblem(sourceProblem(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, source, provider, suggestionsTick, suggestionState]);
+  const decide = async (item: SourceLinkSuggestion, action: "link" | "ignore") => {
+    if (!canWrite || busy) return;
+    setBusy(true);
+    setSuggestionProblem(null);
+    try {
+      const changed = await api.decideSourceLink(item.id, action, item.version);
+      setSuggestions(
+        (previous) => previous?.map((row) => (row.id === changed.id ? changed : row)) ?? [changed],
+      );
+    } catch (error) {
+      setSuggestionProblem(sourceProblem(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const turnRule = (item: SourceLinkSuggestion) => {
+    const pair = Object.entries(item.resource.attributes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .find(([, values]) => values.length > 0);
+    setEditing({
+      id: "",
+      provider: item.resource.provider as SourceLinkRule["provider"],
+      attribute: pair?.[0] ?? "name",
+      pattern: pair?.[1][0] ?? item.resource.id,
+      project: item.project,
+      channel: item.channel ?? "",
+      mode: "suggest",
+    });
+    setResource(item.resource.id);
+    setAttributes(JSON.stringify(item.resource.attributes, null, 2));
+    setMatches(null);
+    setPreviewed(null);
+  };
+
   const load = useCallback(() => {
     setProblem(null);
     api
@@ -646,7 +723,10 @@ function SourceRules({
       .catch((error) => setProblem(sourceProblem(error)));
   }, []);
   useEffect(load, [load]);
+  const previousProvider = useRef(provider);
   useEffect(() => {
+    if (previousProvider.current === provider) return;
+    previousProvider.current = provider;
     setEditing(null);
     setMatches(null);
   }, [provider]);
@@ -886,7 +966,91 @@ function SourceRules({
         ))}
       </ul>
       <h3 className="text-aui-sm font-semibold">{words.suggestions}</h3>
-      <p className="text-aui-sm text-aui-muted">{words.suggestionsUnavailable}</p>
+      <button
+        type="button"
+        className={`${button} self-start`}
+        disabled={busy}
+        onClick={() => setSuggestionsTick((value) => value + 1)}
+      >
+        {words.refreshSuggestions}
+      </button>
+      <Label text={words.linkHistory}>
+        <select
+          aria-label={words.linkHistory}
+          className={field}
+          value={suggestionState}
+          onChange={(event) =>
+            setSuggestionState(event.target.value as SourceLinkSuggestion["state"])
+          }
+        >
+          {Object.entries(words.linkStates).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </Label>
+      <Problem message={suggestionProblem} />
+      {!suggestions && !suggestionProblem && <output>{words.loading}</output>}
+      {suggestions?.length === 0 && (
+        <p className="text-aui-sm text-aui-muted">{words.noSuggestions}</p>
+      )}
+      <ul className="divide-y divide-aui-border">
+        {suggestions?.map((item) => (
+          <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4">
+            <p className="break-words text-aui-sm font-medium">{item.resource.id}</p>
+            <a
+              className="inline-flex min-h-11 items-center text-aui-sm underline"
+              href={`/projects/${encodeURIComponent(item.project || "~")}`}
+            >
+              {item.project || words.workspace}
+              {item.channel ? ` / #${item.channel}` : ""}
+            </a>
+            <p className="text-aui-xs text-aui-muted">
+              {words.matchedRules}: {item.rules.join(", ")}
+            </p>
+            {item.state === "suggested" ? (
+              canWrite && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => void decide(item, "link")}
+                  >
+                    {words.link}
+                  </button>
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => void decide(item, "ignore")}
+                  >
+                    {words.ignore}
+                  </button>
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => turnRule(item)}
+                  >
+                    {words.turnRule}
+                  </button>
+                </div>
+              )
+            ) : (
+              <output className="text-aui-sm">
+                {item.state === "linked"
+                  ? item.automatic && "active" in item && item.active === false
+                    ? words.inactive
+                    : words.linked
+                  : words.ignored}
+              </output>
+            )}
+          </li>
+        ))}
+      </ul>
+      {editing && <p className="text-aui-xs text-aui-muted">{words.ruleDraftHint}</p>}
     </section>
   );
 }

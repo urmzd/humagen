@@ -181,7 +181,7 @@ func (s *Server) runAssignment(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.P.ShownRun(who.Tenant, run))
+	ok(w, http.StatusOK, s.P.ShownRunAs(who, run))
 }
 func (s *Server) listHandoffs(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	limit, good := operationLimit(w, r)

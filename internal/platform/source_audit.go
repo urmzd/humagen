@@ -16,6 +16,10 @@ func sourceAuditFields(src knowledge.Source) map[string]string {
 		fields["origin"] = src.Lifecycle.Origin
 		fields["project"] = src.Lifecycle.Project
 		fields["status"] = string(src.Lifecycle.Status)
+		fields["snapshot"] = strconv.FormatBool(src.Lifecycle.Snapshot)
+		fields["sync_every_seconds"] = strconv.Itoa(src.Lifecycle.SyncEverySeconds)
+		fields["stop_after_seconds"] = strconv.Itoa(src.Lifecycle.StopAfterSeconds)
+		fields["resources"] = strconv.Itoa(len(src.Lifecycle.Resources))
 	}
 	return fields
 }

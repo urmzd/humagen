@@ -80,9 +80,28 @@ Notion account has been validated in this change.
 Resource-link rule storage, CRUD, unsaved previews and disabled project-fork
 snapshots are implemented. Preview always reports suggestions and filters
 hidden destinations before serialization. Ambiguous verified matches cannot
-auto-link. Connector application and durable suggested-link decisions remain
-under implementation. No successful external action
-is simulated, and no new external write action is offered.
+auto-link. Verified connector observations and successful provider inventory/imports persist
+bounded suggestions. Link and Ignore require the current version and survive
+restart. Automatic relationships recheck current rules and verified metadata;
+changed or ambiguous matches stop applying. Ignored resources stay ignored.
+Existing surface conversations keep their placement. New accepted links select
+a destination without granting the mapped actor any new project permission.
+
+Manual attachments connect a source to a project or one channel for real turn
+composition. They do not narrow read permissions or remove explicit agent
+grants. Add Selected attaches only after the actual import succeeds. Detach
+removes the context relationship while retaining the source and its copy.
+
+Each citation retains the actual query mode, copy timestamp when known and
+failed-refresh flag. Evidence is written before model input and bound to the
+run, source, document and exact passage. The model cannot supply these facts.
+Historical citations without evidence show unknown mode and freshness. Reader
+projection rechecks source access and emits an explicit empty citation list
+when access is revoked. Live query evidence remains confined to the exact
+person; it is not a shared indexed copy.
+
+No successful external action is simulated, and no new external write action
+is offered.
 
 
 Source-change watchers read the resident `content_version` cursor. Successful

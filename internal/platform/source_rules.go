@@ -25,6 +25,9 @@ func (p *Platform) sourceRuleOwner(who auth.Principal, project, channel string) 
 	if !who.Can(auth.ClientsWrite) {
 		return auth.ErrForbidden
 	}
+	return p.sourceTargetOwner(who, project, channel)
+}
+func (p *Platform) sourceTargetOwner(who auth.Principal, project, channel string) error {
 	name := projects.NameOf(project)
 	tree := p.Projects.Tree(who.Tenant)
 	pr, _, err := p.projectRole(tree, who, name, projects.Owner)

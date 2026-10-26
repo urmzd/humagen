@@ -56,7 +56,13 @@ func (p *Platform) sourcesFor(tag envelope.Tag, edge call.Edge, project string) 
 		}
 	}
 	var out []string
-	for _, s := range p.Projects.Tree(tag.Tenant).Knowledge(project) {
+	channel := tag.Meta[runs.MetaChannel]
+	if thread := tag.Meta[runs.MetaThread]; thread != "" && tag.Origin == runs.OriginAPI {
+		if current, err := p.Threads.Get(tag.Tenant, thread); err == nil {
+			channel = current.Channel
+		}
+	}
+	for _, s := range p.knowledgeAtPlace(tag.Tenant, project, channel) {
 		out = append(out, s.Name)
 	}
 	return out
@@ -178,6 +184,14 @@ func (p *Platform) deleteSource(who auth.Principal, name string, wanted *knowled
 			by = append(by, titleOf(pr, p.Settings(who.Tenant).WorkspaceName))
 		}
 	}
+	if attachments, err := p.SourceAttachmentsAs(who, name); err == nil {
+		for _, attachment := range attachments {
+			title := titleOf(projects.Project{Name: projects.NameOf(attachment.Project)}, p.Settings(who.Tenant).WorkspaceName)
+			if !slices.Contains(by, title) {
+				by = append(by, title)
+			}
+		}
+	}
 	switch {
 	case len(by) == 0:
 		return p.Knowledge.DeleteForScope(who.Tenant, name, expected)
@@ -244,7 +258,6 @@ func (p *Platform) SetProjectKnowledge(who auth.Principal, project string, w pro
 	if !p.Seer(who).Knowledge() {
 		return ProjectKnowledge{}, fmt.Errorf("%w: naming a project's knowledge sources takes %s", ErrForbidden, auth.KnowledgeRead)
 	}
-	have := p.Knowledge.List(who.Tenant)
 	var named []string
 	if pr, err := p.Projects.Get(who.Tenant, projects.NameOf(project)); err == nil {
 		named = pr.Knowledge
@@ -253,15 +266,29 @@ func (p *Platform) SetProjectKnowledge(who auth.Principal, project string, w pro
 		if !projects.ValidSource(n) || slices.Contains(named, n) {
 			continue // the store says what is wrong with it; one named already may stay
 		}
-		if !slices.ContainsFunc(have, func(s knowledge.Source) bool { return s.Name == n }) {
+		if !p.SourceVisible(who, n) {
 			return ProjectKnowledge{}, fmt.Errorf("%w: there is no knowledge source called %q", projects.ErrInvalid, n)
+		}
+	}
+	// A projection omits unread source names. Saving that projection cannot
+	// silently remove associations the reader was never shown.
+	in.Knowledge = slices.Clone(in.Knowledge)
+	for _, name := range named {
+		if !p.SourceVisible(who, name) && !slices.Contains(in.Knowledge, name) {
+			in.Knowledge = append(in.Knowledge, name)
 		}
 	}
 	pr, err := p.Projects.SetKnowledge(who.Tenant, projects.NameOf(project), in.Version, in.Knowledge, w, p.now())
 	if err != nil {
 		return ProjectKnowledge{}, err
 	}
-	return knowledgeOf(pr, p.Projects.Tree(who.Tenant)), nil
+	out := knowledgeOf(pr, p.Projects.Tree(who.Tenant))
+	out.Knowledge = p.Seer(who).Sources(out.Knowledge)
+	if out.Knowledge == nil {
+		out.Knowledge = []string{}
+	}
+	out.Given = slices.DeleteFunc(out.Given, func(g projects.KnowledgeSource) bool { return !p.SourceVisible(who, g.Name) })
+	return out, nil
 }
 
 // knowledgeOf is the answer to a write: the version written and the sources

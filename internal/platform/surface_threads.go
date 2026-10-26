@@ -92,6 +92,11 @@ func (p *Platform) filedAt(tenant string, c clients.Client, channel string) (fil
 	if ch, bound := p.Projects.BoundTo(tenant, c.ID, channel); bound {
 		return filing{project: ch.Project, channel: ch.Name, vis: threads.Shared, bound: true}, nil
 	}
+	if resource, ok := slackResource(channel); ok {
+		if project, target, linked := p.linkedClientResource(c, resource); linked {
+			return filing{project: project, channel: target, vis: threads.Shared, bound: true}, nil
+		}
+	}
 	h := c.HomeOf()
 	vis := threads.Shared
 	if directMessage(channel) {
@@ -150,6 +155,11 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	post := MessageInput{Text: in.Text, PostOnly: in.PostOnly, ActAs: in.ActAs, Surface: &ref}
 	if th, ok := p.Threads.BySurface(who.Tenant, sf); ok {
 		return p.PostMessage(ctx, who, th.ID, post)
+	}
+	if resource, ok := slackResource(ref.Channel); ok {
+		if err := p.observeClientResource(c, resource); err != nil {
+			return Posted{}, err
+		}
 	}
 	at, err := p.filedAt(who.Tenant, c, ref.Channel)
 	if err != nil {

@@ -213,7 +213,20 @@ func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
 // and goes no further when they may not.
 func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelope.Tag, bool) {
 	c := st.client
+	resource, hasResource := clientResource(c, tag)
+	if hasResource {
+		if err := s.p.observeClientResource(c, resource); err != nil {
+			s.p.log.Warn("verified resource relation could not be kept", "client", c.ID, "error", err)
+			return envelope.Tag{}, false
+		}
+	}
 	project, channel, bound := s.p.filedFor(c.Tenant, c, tag.Meta["slack_channel"])
+	if hasResource && !bound {
+		if target, targetChannel, linked := s.p.linkedClientResource(c, resource); linked {
+			project, channel, bound = target, targetChannel, true
+		}
+	}
+
 	person := s.p.surfacePerson(c, tag)
 	if err := s.p.mayRaise(c, person, project, bound); err != nil {
 		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "person", person, "tag", tag.ID, "why", err.Error())
