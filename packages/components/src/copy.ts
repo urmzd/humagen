@@ -1588,6 +1588,7 @@ export const defaultCopy = {
           agent_notes: "Agent notes",
           knowledge: "Project knowledge source names",
           agent_knowledge: "Agent knowledge source names",
+          agent_skills: "Default skill names",
           skills: "Skill names",
         },
       },

@@ -263,3 +263,32 @@ func (p *Platform) checkAgentSkillDefaults(req runtime.Request) error {
 	}
 	return nil
 }
+
+// defaultSkillPreview uses the admission compiler to report whether the exact
+// defaults would be sent, then projects names through the reader's scope rule.
+func (p *Platform) defaultSkillPreview(ctx context.Context, who auth.Principal, project, agent string) *ContextLayer {
+	defaults := p.AgentSkillDefaults.Get(who.Tenant, agentspec.NormalizeName(agent))
+	names := []string{}
+	for _, ref := range defaults.Skills {
+		latest, err := p.LibrarySkill(who, ref.ID)
+		if err != nil {
+			continue
+		}
+		exact, err := p.SkillLibrary.Get(who.Tenant, latest.Scope, latest.Name, ref.Version)
+		if err != nil {
+			continue
+		}
+		names = append(names, fmt.Sprintf("%s@%d", exact.Name, exact.Version))
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	_, err := p.pinAgentSkillDefaults(ctx, envelope.Tag{Tenant: who.Tenant, Agent: agent, Actor: ActorOf(who), Meta: map[string]string{}}, call.Edge{}, project)
+	layer := nameLayer("agent_skills", agent, names, library.MaxDefaultSkills)
+	if err != nil {
+		layer.Sent = false
+		layer.Omitted = layer.Used
+		layer.Used = 0
+	}
+	return &layer
+}

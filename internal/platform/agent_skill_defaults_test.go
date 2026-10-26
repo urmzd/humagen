@@ -46,6 +46,19 @@ func TestAgentDefaultSkillsUseExactPublishedRevisionInEveryTurn(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		preview, err := p.ProjectContextAs(t.Context(), who, projects.Root, "", "lead")
+		if err != nil {
+			t.Fatal(err)
+		}
+		foundDefault := false
+		for _, layer := range preview.Layers {
+			if layer.Kind == "agent_skills" {
+				foundDefault = layer.Sent && layer.Used == 1 && strings.Contains(layer.Text, "default-skill@1")
+			}
+		}
+		if !foundDefault {
+			t.Fatal("actual default missing from composition preview", preview)
+		}
 		if _, err := p.SetAgentSkills(who, "lead", 1, 0, []platform.AgentSkillRef{}); !errors.Is(err, library.ErrConflict) {
 			t.Fatal("stale defaults", err)
 		}
@@ -75,6 +88,15 @@ func TestAgentDefaultSkillsUseExactPublishedRevisionInEveryTurn(t *testing.T) {
 		nextRevision, err := p.ReviseBy(t.Context(), who, rev.Spec, rev.Rev)
 		if err != nil {
 			t.Fatal(err)
+		}
+		preview, err = p.ProjectContextAs(t.Context(), who, projects.Root, "", "lead")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, layer := range preview.Layers {
+			if layer.Kind == "agent_skills" && (layer.Sent || layer.Used != 0 || layer.Omitted != 1) {
+				t.Fatal("preview claimed stale binding would be sent", layer)
+			}
 		}
 		changed := turn
 		changed.ID = "new-agent-revision"
