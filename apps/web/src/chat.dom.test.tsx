@@ -103,6 +103,7 @@ test("@ completes @auto, the agents available here and people, never the person 
   await waitFor(() => assert.ok(list.textContent?.includes("@ben"), list.textContent ?? ""));
   const text = list.textContent ?? "";
   for (const want of ["@auto", "@lead", "@helper", "@ben"]) assert.ok(text.includes(want), `${want} in ${text}`);
+  assert.ok(!text.includes("@sme"), "retired SME routing is not offered, even from cached mention kinds");
   assert.ok(!text.includes("globex-helper"), "an agent that lives in Globex is not offered at the workspace");
   assert.ok(!text.includes("@ada"), "the person typing is not offered");
   fireEvent.change(box(), { target: { value: "ask @he" } });

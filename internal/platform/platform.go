@@ -229,18 +229,19 @@ type Platform struct {
 	Threads  *threads.Store
 	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
-	operationContexts      sync.Map
-	agentTestGates         sync.Map
-	setups                 *agentSetups
-	assignmentSources      sync.Map
-	assignmentSourceCursor sync.Map
-	CallPolicies           *callpolicy.Store
-	Operations             *operations.Store
-	Usage                  *usage.Ledger
-	Inbox                  *inbox.Store
-	ReadAudit              *readaudit.Store
-	Audit                  *audit.Store
-	Artifacts              *artifacts.Index
+	operationContexts          sync.Map
+	agentTestGates             sync.Map
+	assignmentSources          sync.Map
+	assignmentSourceCursor     sync.Map
+	assignmentSettlementCursor sync.Map
+	CallPolicies               *callpolicy.Store
+	Operations                 *operations.Store
+	Usage                      *usage.Ledger
+	Inbox                      *inbox.Store
+	ReadAudit                  *readaudit.Store
+	Audit                      *audit.Store
+	Artifacts                  *artifacts.Index
+	setups                     *agentSetups
 
 	AuditReferences *auditrefs.Store
 	// Clients is the external clients each tenant answers through.

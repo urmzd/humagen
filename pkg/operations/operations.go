@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -147,10 +149,11 @@ type Handoff struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 type record struct {
-	Control    *Control    `json:"control,omitempty"`
-	Policy     *Policy     `json:"policy,omitempty"`
-	Assignment *Assignment `json:"assignment,omitempty"`
-	Handoff    *Handoff    `json:"handoff,omitempty"`
+	Invocation *envelope.Tag `json:"invocation,omitempty"`
+	Control    *Control      `json:"control,omitempty"`
+	Policy     *Policy       `json:"policy,omitempty"`
+	Assignment *Assignment   `json:"assignment,omitempty"`
+	Handoff    *Handoff      `json:"handoff,omitempty"`
 }
 type key struct{ tenant, id string }
 type Store struct {
@@ -179,12 +182,22 @@ func Open(st state.Store) (*Store, error) {
 		if n != 1 {
 			return fmt.Errorf("%w: malformed record", ErrInvalid)
 		}
+		if r.Policy != nil && (!validPolicy(*r.Policy) || k != "policy:"+r.Policy.Scope.key()) {
+			return fmt.Errorf("%w: malformed policy", ErrInvalid)
+		}
+		if r.Invocation != nil && (r.Assignment == nil || !validInvocation(t, *r.Assignment, *r.Invocation) || r.Assignment.TagID != r.Invocation.ID || runtime.RunID(t, r.Invocation.ID) != r.Assignment.RunID) {
+			return fmt.Errorf("%w: malformed invocation", ErrInvalid)
+		}
 		s.records[key{t, k}] = clone(r)
 		return nil
 	})
 	return s, err
 }
 func clone(r record) record {
+	if r.Invocation != nil {
+		tag := cloneInvocation(*r.Invocation)
+		r.Invocation = &tag
+	}
 	if r.Control != nil {
 		v := *r.Control
 		r.Control = &v
@@ -192,6 +205,9 @@ func clone(r record) record {
 	if r.Policy != nil {
 		v := *r.Policy
 		v.Rules = maps.Clone(v.Rules)
+		if v.Rules == nil {
+			v.Rules = map[Category]Level{}
+		}
 		r.Policy = &v
 	}
 	if r.Assignment != nil {
@@ -266,14 +282,20 @@ func (s *Store) Policy(t string, scope Scope) Policy {
 	}
 	return Policy{Scope: scope, Rules: map[Category]Level{}}
 }
-func (s *Store) SetPolicy(t string, p Policy, version int, by string, at time.Time) (Policy, error) {
+func validPolicy(p Policy) bool {
 	if !p.Scope.valid() || len(p.Rules) > len(Categories) {
-		return Policy{}, ErrInvalid
+		return false
 	}
 	for c, l := range p.Rules {
 		if !slices.Contains(Categories, c) || (l != Allow && l != Ask && l != Never) {
-			return Policy{}, ErrInvalid
+			return false
 		}
+	}
+	return true
+}
+func (s *Store) SetPolicy(t string, p Policy, version int, by string, at time.Time) (Policy, error) {
+	if !validPolicy(p) {
+		return Policy{}, ErrInvalid
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -287,6 +309,9 @@ func (s *Store) SetPolicy(t string, p Policy, version int, by string, at time.Ti
 	}
 	p.Version, p.UpdatedBy, p.UpdatedAt = v+1, by, at
 	p.Rules = maps.Clone(p.Rules)
+	if p.Rules == nil {
+		p.Rules = map[Category]Level{}
+	}
 	return p, s.put(t, "policy:"+p.Scope.key(), record{Policy: &p})
 }
 

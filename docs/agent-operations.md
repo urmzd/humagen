@@ -57,6 +57,10 @@ refused, so a private conversation goal cannot be replayed into a wider room.
 Every occurrence rechecks the owner's ordinary project membership without
 borrowing a sign-in or bearer scope. Losing access pauses and blocks the work.
 Ordinary schedule mutation routes cannot bypass the assignment owner.
+The reservation stores the exact clock occurrence before ledger acceptance.
+Restart reconciliation retries that occurrence through current admission checks,
+preserving its ID, time and metadata. Older uncertain clock reservations without
+that record become blocked for explicit review.
 
 Source-change assignments use a durable content-version cursor. Creating one
 requires knowledge read access and an existing source grant on its agent or
@@ -79,7 +83,7 @@ An observed terminal run and periodic reconciliation settle work from the run
 index's ledger-backed status. Success records a result; a standing assignment
 returns to watching. Failure records a blocker. A missing or silent run is not
 considered complete. Missed deadlines become Needs a person while retaining
-the actual run reference. The inbox uses a deterministic key per work item so
+the actual run reference. The inbox uses a deterministic key per work item and state version so
 recovery between the operations write and inbox write does not create duplicate
 Needs-you items. Deadlines and pending work survive restart.
 
