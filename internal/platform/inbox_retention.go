@@ -33,6 +33,14 @@ func (p *Platform) retainInbox(ctx context.Context) {
 			p.log.Error("platform: notification retention failed", "error", err)
 		}
 	}
+	for _, tenant := range p.EmailNotifications.Tenants() {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := p.EmailNotifications.Retain(tenant, now.Add(-p.inboxRetention(tenant))); err != nil {
+			p.log.Error("platform: email notification retention failed", "error", err)
+		}
+	}
 	for _, tenant := range p.Audit.Tenants() {
 		if ctx.Err() != nil {
 			return

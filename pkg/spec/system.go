@@ -43,13 +43,14 @@ type System struct {
 
 // SystemSpec is a System document's spec.
 type SystemSpec struct {
-	Server    Server              `json:"server,omitzero"`
-	Auth      Auth                `json:"auth,omitzero"`
-	Stores    Slot                `json:"stores,omitzero"`
-	Bus       Slot                `json:"bus,omitzero"`
-	Blobs     Slot                `json:"blobs,omitzero"`
-	Execution Execution           `json:"execution,omitzero"`
-	SecretEnv map[string][]string `json:"secret_env,omitempty"`
+	Notifications NotificationSettings `json:"notifications,omitzero"`
+	Server        Server               `json:"server,omitzero"`
+	Auth          Auth                 `json:"auth,omitzero"`
+	Stores        Slot                 `json:"stores,omitzero"`
+	Bus           Slot                 `json:"bus,omitzero"`
+	Blobs         Slot                 `json:"blobs,omitzero"`
+	Execution     Execution            `json:"execution,omitzero"`
+	SecretEnv     map[string][]string  `json:"secret_env,omitempty"`
 	// PersonRefs is where each workspace's people may keep their own tool
 	// credentials, by tenant: how the references they give may start, each
 	// naming the person whose references it holds with {subject}
@@ -257,6 +258,9 @@ func (s System) Tenant() string { return s.Spec.Auth.Tenant.Fixed }
 
 func (s System) check(kinds Kinds) error {
 	sp := s.Spec
+	if err := sp.Notifications.check(); err != nil {
+		return err
+	}
 	if s.Metadata.Name != "" && !identifier.MatchString(s.Metadata.Name) {
 		return fmt.Errorf("system: metadata.name %q: lowercase letters, digits and dashes", s.Metadata.Name)
 	}

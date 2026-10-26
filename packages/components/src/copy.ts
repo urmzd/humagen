@@ -848,6 +848,12 @@ export const defaultCopy = {
     audience: "Members of the destination can use this agent and read its configuration.",
     create: "Create Agent",
   },
+  emailNotifications: {
+    subject: "Humagen updates",
+    single: "You have 1 update to review in Humagen.",
+    multiple: "You have {count} updates to review in Humagen.",
+    footer: "Notification preferences and quiet hours are available in Humagen.",
+  },
   personalPreferences: {
     profile: "Profile",
     privacy: "Privacy and Defaults",
@@ -856,6 +862,9 @@ export const defaultCopy = {
     role: "Role",
     connections: "Connected Accounts",
     memory: "Review My Memory",
+    emailChanged: "Email preferences changed elsewhere. Review the current choice and save again.",
+    emailDescription:
+      "Email uses your event preferences, digest schedule and quiet hours. Open Humagen to read the updates.",
     email: "Email",
     deliveryUnavailable:
       "Email delivery is not configured. Console notifications use the choices below; your inbox history stays available.",
