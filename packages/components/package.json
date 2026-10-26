@@ -1,6 +1,6 @@
 {
   "name": "@humagen/components",
-  "version": "0.26.2",
+  "version": "0.26.4",
   "private": true,
   "type": "module",
   "description": "Shared agent components (turn, approval, clarification, notice) built only from primitives.",

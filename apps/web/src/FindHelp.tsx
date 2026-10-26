@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useRef, useState } from "react";
 import type { HelpSuggestion } from "../../../packages/client/src/generated/types.ts";
-import { AgentMark, textAction } from "./ui.tsx";
+import { AgentMark, field, textAction } from "./ui.tsx";
 
 export type { HelpSuggestion } from "../../../packages/client/src/generated/types.ts";
 
@@ -33,14 +33,14 @@ export function FindHelp({ onSearch, onChoose, onOpen }: {
       }}>
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-aui-sm">
           {c.label}
-          <input className="min-w-0 rounded-aui border border-aui-line bg-aui-bg px-3 py-2 text-aui-fg" value={description} maxLength={200} placeholder={c.placeholder} onChange={(event) => { serial.current++; setPending(false); setError(false); setResults(null); setDescription(event.target.value); }} />
+          <input className={`${field} min-w-0`} value={description} maxLength={200} placeholder={c.placeholder} onChange={(event) => { serial.current++; setPending(false); setError(false); setResults(null); setDescription(event.target.value); }} />
         </label>
         <button type="submit" disabled={pending || !description.trim()} className={`${textAction} min-h-10 px-2`}>{pending ? c.searching : c.search}</button>
       </form>
       {pending && <p role="status" className="mt-3 text-aui-sm text-aui-muted">{c.searching}</p>}
       {error && <p role="alert" className="mt-3 text-aui-sm text-aui-muted">{c.failed}</p>}
       {!pending && !error && results?.length === 0 && <p className="mt-3 text-aui-sm text-aui-muted">{c.empty}</p>}
-      {!pending && !error && results && results.length > 0 && <ul className="mt-3 divide-y divide-aui-line">
+      {!pending && !error && results && results.length > 0 && <ul className="mt-3 divide-y divide-aui-border">
         {results.map((result) => <li key={`${result.project}:${result.agent}`} className="flex flex-wrap items-start gap-3 py-3">
           <AgentMark name={result.agent} />
           <div className="min-w-0 flex-1"><p className="break-words text-aui-sm text-aui-fg">{result.title} <span className="text-aui-muted">{result.agent}</span></p><p className="mt-1 text-aui-sm text-aui-muted">{result.reason}</p></div>

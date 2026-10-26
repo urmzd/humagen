@@ -100,3 +100,32 @@ func TestSyncCompletionCannotReplaceNewerOrInvalidSnapshot(t *testing.T) {
 		t.Fatal(docs)
 	}
 }
+
+func TestRefreshCannotReattributeOrAcceptUnstableDocumentIDs(t *testing.T) {
+	s := NewStore()
+	_, _ = s.Create("acme", "docs", "", "ana", now)
+	cfg := SourceConfig{Mode: Indexed, Provider: "drive", Origin: "folder1", Owner: "ana"}
+	if _, err := s.Configure("acme", "docs", cfg, now); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := s.BeginSync("acme", "docs", now)
+	if _, err := s.CompleteSync("acme", "docs", id, []ImportDocument{{ID: "stable", Title: "Good", Text: "trusted text"}}, "ana", now); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Owner = "bob"
+	if _, err := s.Configure("acme", "docs", cfg, now); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("retained owner changed: %v", err)
+	}
+	src, _ := s.Get("acme", "docs")
+	if src.Lifecycle.Owner != "ana" {
+		t.Fatal("retained copy reattributed")
+	}
+	id, _ = s.BeginSync("acme", "docs", now)
+	if _, err := s.CompleteSync("acme", "docs", id, []ImportDocument{{Title: "No ID", Text: "new text"}}, "ana", now); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unstable ID accepted: %v", err)
+	}
+	docs, _ := s.Documents("acme", "docs")
+	if len(docs) != 1 || docs[0].ID != "stable" {
+		t.Fatal("invalid snapshot changed good copy")
+	}
+}

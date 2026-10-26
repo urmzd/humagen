@@ -13,6 +13,10 @@ import (
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
+// MetaPersonalMemoryContext is an immutable private run marker set only when
+// personal notes actually entered the turn. It is not model-visible metadata.
+const MetaPersonalMemoryContext = "_humagen.context.personal_memory"
+
 // PlacementPreview binds explicit publication consent to current contents and
 // destination audience. It contains no former project or private source IDs.
 type PlacementPreview struct {
@@ -60,6 +64,7 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 	turns, _ := p.Runs.Conversation(who.Tenant, th.ID)
 	ids := make([]string, 0, len(turns))
 	summaryRequired := false
+	personalMemory := false
 	operationalPrivate := false
 	for _, guard := range p.publicationGuards {
 		if !guard.ConversationOperationsSettled(who.Tenant, th.ID) {
@@ -78,13 +83,11 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 			if run.Client != "" || len(run.Tag().Routes()) > 0 {
 				return PlacementPreview{}, fmt.Errorf("%w: externally delivered work stays on its original surface", threads.ErrInvalid)
 			}
-			if p.RunUsesPersonalSources(ctx, run) {
-				summaryRequired = true
+			if run.Tag().Meta[MetaPersonalMemoryContext] == "true" {
+				personalMemory = true
 			}
-			for _, source := range runs.SourcesOf(run.Tag().Meta) {
-				if !p.SourceMayPublishIn(who.Tenant, source, project) {
-					summaryRequired = true
-				}
+			if p.runNeedsSummary(ctx, run, project) {
+				summaryRequired = true
 			}
 
 			ids = append(ids, run.ID+":"+run.UpdatedAt.String())
@@ -92,13 +95,18 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 	}
 	tree := p.ProjectTree(who.Tenant)
 	chain := tree.Chain(project)
+	channelRecord, err := p.Projects.Channel(who.Tenant, project, channel)
+	if err != nil {
+		return PlacementPreview{}, err
+	}
 	// Every ancestor version participates: a membership change invalidates consent.
 	consent := struct {
 		Thread      threads.Thread
 		Destination []projects.Project
-		Channel     string
+		Source      []projects.Project
+		Channel     projects.Channel
 		Runs        []string
-	}{th, chain, channel, ids}
+	}{th, chain, tree.Chain(th.Project), channelRecord, ids}
 	raw, err := json.Marshal(consent)
 	if err != nil {
 		return PlacementPreview{}, err
@@ -109,6 +117,9 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 		audience = "Only the destination personal project's owner"
 	}
 	exclusions := []string{"Original execution inputs and private source provenance", "Former personal project identities"}
+	if personalMemory {
+		exclusions = append(exclusions, "Private personal memory remains in the original conversation")
+	}
 	if operationalPrivate {
 		exclusions = append(exclusions, "Private assignment and handoff contracts remain in the original conversation")
 	}
@@ -123,19 +134,8 @@ func (p *Platform) threadNeedsSummary(ctx context.Context, tenant, thread, desti
 	}
 	turns, _ := p.Runs.Conversation(tenant, thread)
 	for _, turn := range turns {
-		tree, err := p.Runs.Tree(tenant, turn.ID)
-		if err != nil {
+		if p.RunRequiresReviewedSummary(ctx, turn, destination) {
 			return true
-		}
-		for _, run := range tree {
-			if p.RunUsesPersonalSources(ctx, run) {
-				return true
-			}
-			for _, source := range runs.SourcesOf(run.Tag().Meta) {
-				if !p.SourceMayPublishIn(tenant, source, destination) {
-					return true
-				}
-			}
 		}
 	}
 	return false
@@ -161,4 +161,14 @@ func (p *Platform) RegisterPublicationGuard(guard ConversationPublicationGuard) 
 	}
 	p.publicationGuards = append(p.publicationGuards, guard)
 	return nil
+}
+
+func (p *Platform) guardedThreadWrite(tenant string, snapshot *projects.Tree, project, channel string, write func() (threads.Thread, error)) (threads.Thread, error) {
+	destination, err := p.Projects.Channel(tenant, project, channel)
+	if err != nil {
+		return threads.Thread{}, err
+	}
+	var result threads.Thread
+	err = p.Projects.GuardSnapshot(tenant, snapshot, destination, func() error { var err error; result, err = write(); return err })
+	return result, err
 }

@@ -420,11 +420,8 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 		case threads.Agent:
 			m.Refused = p.tagRefusal(tenant, project, m.Name)
 		case threads.SME:
-			if who, _ := tree.ExpertsFor(project, m.Name); len(who) == 0 && m.Name == "" {
-				m.Refused = "nobody here is listed as an expert"
-			} else if len(who) == 0 {
-				m.Refused = fmt.Sprintf("nobody here is listed as an expert on %s", m.Name)
-			}
+			m.Refused = "This routing tag is retired. Use Find Help to choose a project and an agent."
+
 		}
 	}
 	return out
@@ -1539,6 +1536,7 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	defer mu.Unlock()
 	p.admission.Lock()
 	defer p.admission.Unlock()
+	snapshot := p.ProjectTree(who.Tenant)
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
@@ -1594,17 +1592,15 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 		}
 	}
 	if th.Visibility == threads.Private && in.Visibility == threads.Shared {
-		if turns, err := p.Runs.Conversation(who.Tenant, id); err == nil && len(turns) > 0 {
-			preview, err := p.previewPlacement(ctx, who, th, project, channel)
-			if err != nil {
-				return threads.Thread{}, err
-			}
-			if preview.SummaryRequired {
-				return threads.Thread{}, fmt.Errorf("%w: private sources or operational contracts require a reviewed summary copy", threads.ErrInvalid)
-			}
-			if in.PlacementToken == "" || in.PlacementToken != preview.Token {
-				return threads.Thread{}, fmt.Errorf("%w: review the current publication preview", threads.ErrVersion)
-			}
+		preview, err := p.previewPlacement(ctx, who, th, project, channel)
+		if err != nil {
+			return threads.Thread{}, err
+		}
+		if preview.SummaryRequired {
+			return threads.Thread{}, fmt.Errorf("%w: private context requires a reviewed summary copy", threads.ErrInvalid)
+		}
+		if preview.Runs > 0 && (in.PlacementToken == "" || in.PlacementToken != preview.Token) {
+			return threads.Thread{}, fmt.Errorf("%w: review the current publication preview", threads.ErrVersion)
 		}
 	}
 
@@ -1629,19 +1625,21 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
-	return p.Threads.UpdateMovingAs(who.Tenant, id, th.Version, who.Subject, p.now(), func(t *threads.Thread) error {
-		t.Title, t.Visibility = strings.TrimSpace(in.Title), cmp.Or(in.Visibility, t.Visibility)
-		if !keepsDefault {
-			t.Default = in.Default
-		}
-		if t.Project != project && t.Default != "" && t.Default != Auto && p.tagRefusal(who.Tenant, project, t.Default) != "" {
-			// A default kept, hidden from the caller, that cannot answer
-			// where it goes is cleared, naming nothing.
-			t.Default = ""
-		}
-		t.Project, t.Channel = project, channel
-		t.Agents, t.Mode = routed, mode
-		return nil
+	return p.guardedThreadWrite(who.Tenant, snapshot, project, channel, func() (threads.Thread, error) {
+		return p.Threads.UpdateMovingAs(who.Tenant, id, th.Version, who.Subject, p.now(), func(t *threads.Thread) error {
+			t.Title, t.Visibility = strings.TrimSpace(in.Title), cmp.Or(in.Visibility, t.Visibility)
+			if !keepsDefault {
+				t.Default = in.Default
+			}
+			if t.Project != project && t.Default != "" && t.Default != Auto && p.tagRefusal(who.Tenant, project, t.Default) != "" {
+				// A default kept, hidden from the caller, that cannot answer
+				// where it goes is cleared, naming nothing.
+				t.Default = ""
+			}
+			t.Project, t.Channel = project, channel
+			t.Agents, t.Mode = routed, mode
+			return nil
+		})
 	})
 }
 
@@ -1815,6 +1813,7 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 	defer mu.Unlock()
 	p.admission.Lock()
 	defer p.admission.Unlock()
+	snapshot := p.ProjectTree(who.Tenant)
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return Shared{}, err
@@ -1864,19 +1863,18 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 		add = append(add, threads.Participant{Kind: threads.Person, Name: subject})
 	}
 	if moves || th.Visibility == threads.Private {
-		if turns, err := p.Runs.Conversation(who.Tenant, id); err == nil && len(turns) > 0 {
-			preview, err := p.previewPlacement(ctx, who, th, project, channel)
-			if err != nil {
-				return Shared{}, err
-			}
-			if preview.SummaryRequired {
-				return Shared{}, fmt.Errorf("%w: private sources or operational contracts require a reviewed summary copy before publication", threads.ErrInvalid)
-			}
-			if in.PlacementToken == "" || in.PlacementToken != preview.Token {
-				return Shared{}, fmt.Errorf("%w: review and confirm the current publication preview", threads.ErrVersion)
-			}
+		preview, err := p.previewPlacement(ctx, who, th, project, channel)
+		if err != nil {
+			return Shared{}, err
+		}
+		if preview.SummaryRequired {
+			return Shared{}, fmt.Errorf("%w: private context requires a reviewed summary copy before publication", threads.ErrInvalid)
+		}
+		if preview.Runs > 0 && (in.PlacementToken == "" || in.PlacementToken != preview.Token) {
+			return Shared{}, fmt.Errorf("%w: review and confirm the current publication preview", threads.ErrVersion)
 		}
 	}
+
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return Shared{}, err
 	}
@@ -1907,7 +1905,9 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 			return Shared{}, err
 		}
 	}
-	stored, err := p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, agents, mode, add, counted, who.Subject, p.now())
+	stored, err := p.guardedThreadWrite(who.Tenant, snapshot, project, channel, func() (threads.Thread, error) {
+		return p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, agents, mode, add, counted, who.Subject, p.now())
+	})
 	if attempt != nil {
 		if auditErr := attempt.Finish(err); auditErr != nil {
 			p.log.Error("platform: publication audit completion pending", "audit", attempt.ID(), "error", auditErr)

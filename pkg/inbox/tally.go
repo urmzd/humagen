@@ -97,6 +97,10 @@ func signature(m *Message) string {
 			field(part.Budget.ScopeKind)
 			field(part.Budget.ScopeName)
 		}
+		if part.Question != nil {
+			field("question")
+			field(part.Question.Run)
+		}
 		if part.Draft != nil {
 			field("draft")
 			field(part.Draft.Project)
@@ -302,6 +306,8 @@ func scopeParts(m *Message) []Part {
 		switch {
 		case p.Operation != nil:
 			out = append(out, Part{Operation: &OperationPart{Kind: p.Operation.Kind, ID: p.Operation.ID}})
+		case p.Question != nil:
+			out = append(out, Part{Question: &QuestionPart{Run: p.Question.Run}})
 		case p.Memory != nil:
 			out = append(out, Part{Memory: &MemoryPart{Owner: p.Memory.Owner}})
 		case p.Budget != nil:

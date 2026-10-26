@@ -28,6 +28,7 @@ func (p *Platform) PublishSummary(ctx context.Context, who auth.Principal, id st
 	defer mu.Unlock()
 	p.admission.Lock()
 	defer p.admission.Unlock()
+	snapshot := p.ProjectTree(who.Tenant)
 	source, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
@@ -63,6 +64,13 @@ func (p *Platform) PublishSummary(ctx context.Context, who auth.Principal, id st
 	digest := sha256.Sum256([]byte(who.Tenant + "\x00" + id + "\x00" + in.PlacementToken + "\x00" + text))
 	targetID := "th-" + hex.EncodeToString(digest[:8])
 	if existing, err := p.Threads.Get(who.Tenant, targetID); err == nil {
+		if existing.Project != project || existing.Channel != channel.Name || existing.Visibility != threads.Shared || existing.CreatedBy != by || !p.Seer(who).Place(Place{Project: existing.Project, Thread: existing.ID}) {
+			return threads.Thread{}, fmt.Errorf("%w: the published copy changed; review its current placement", threads.ErrVersion)
+		}
+		messages, _, err := p.Threads.Messages(who.Tenant, targetID, "", 1)
+		if err != nil || len(messages) != 1 || messages[0].Text != text {
+			return threads.Thread{}, fmt.Errorf("%w: publication identity is occupied", threads.ErrExists)
+		}
 		return existing, nil
 	}
 	change := audit.Change{Route: "POST /api/threads/{id}/publication", Rule: "runs:write; participating owner; destination membership", Action: "publish_summary", Resource: "conversation", ID: id, Scope: "project", Project: source.Project, Thread: id, After: map[string]string{"project": project, "channel": channel.Name, "copy": targetID}}
@@ -73,7 +81,10 @@ func (p *Platform) PublishSummary(ctx context.Context, who auth.Principal, id st
 	if err != nil {
 		return threads.Thread{}, err
 	}
-	target, _, err := p.Threads.Start(who.Tenant, threads.Thread{ID: targetID, Project: project, Channel: channel.Name, Visibility: threads.Shared}, threads.Message{By: by, Name: name, Text: text, Via: "console"}, p.now())
+	target, err := p.guardedThreadWrite(who.Tenant, snapshot, project, channel.Name, func() (threads.Thread, error) {
+		target, _, err := p.Threads.Start(who.Tenant, threads.Thread{ID: targetID, Project: project, Channel: channel.Name, Visibility: threads.Shared}, threads.Message{By: by, Name: name, Text: text, Via: "console"}, p.now())
+		return target, err
+	})
 	if auditErr := attempt.Finish(err); auditErr != nil {
 		p.log.Error("platform: summary publication audit completion pending", "audit", attempt.ID(), "error", auditErr)
 	}

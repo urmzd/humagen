@@ -434,7 +434,7 @@ func (t *Tree) Roles(r Reader) map[string]Access {
 	}
 	if r.Govern && r.Subject != "" {
 		for name, a := range access {
-			if a.Role != Owner && !(r.Machine && t.nodes[name].p.PersonalOwner != "") {
+			if a.Role != Owner && (!r.Machine || t.nodes[name].p.PersonalOwner == "") {
 				access[name] = Access{Role: Owner, From: Root, Via: ViaGovern}
 			}
 		}

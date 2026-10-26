@@ -205,3 +205,28 @@ func (p *Platform) checkBuiltinOwner(ctx context.Context, tenant string, have ag
 	}
 	return nil
 }
+
+// CurrentAgentNames is a current-choice projection, never a stored migration.
+// Compatibility builtin handles remain available for pinned historical work.
+func CurrentAgentNames(names []string) []string {
+	if names == nil {
+		return nil
+	}
+	out := []string{}
+	seen := map[string]bool{}
+	for _, name := range names {
+		if legacy.IsBuiltinAgent(name) {
+			continue
+		}
+		name = agentspec.NormalizeName(name)
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func (p *Platform) CurrentAgentHomes(tenant, project string) []string {
+	return CurrentAgentNames(p.ProjectTree(tenant).Homes(project))
+}
