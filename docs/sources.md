@@ -109,3 +109,19 @@ changes to retained documents, provenance or curation advance it atomically.
 Unchanged refreshes, provider ordering, connection edits and failed attempts do
 not. Deletion keeps a durable tombstone cursor, and recreating a name starts
 after its history. No provider polling is used for this trigger.
+
+
+The source Used By view includes actual query-time conversation references and
+files published by those retrieving runs, up to 50 each within a bounded
+200-run evidence window. Files are labelled as publication relationships, not
+inferred content dependencies. Every relationship requires source access,
+run access and, for files, artifact access; hidden records consume no result
+slots and produce no count. These relationships survive evidence/index replay.
+The lower source index has no typed skill/memory origin fields. A trusted
+`SourceDependencyReader` can project authoritative extra-store origin records
+from at most 200 already-visible retrieval runs. It must independently enforce
+current skill/memory access and ordinary exact-owner origin access. The lower
+layer verifies each private origin run belongs to the supplied evidence set,
+bounds rows, accepts only internal links and omits origin IDs from responses.
+Without that adapter the UI states both limits explicitly. Matching names in
+instruction or note text never creates a graph edge.

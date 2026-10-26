@@ -593,6 +593,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
 		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: revisionView{}}, "Choice": {typ: pick.Choice{}},
+		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"Note": {typ: noteView{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},

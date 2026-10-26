@@ -52,7 +52,6 @@ import type {
   KnowledgeDocument,
   KnowledgeSource,
   KnowledgeSourceConfig,
-  KnowledgeSourceDependenciesResponse,
   KnowledgeVariant,
   ListAgentRevisionsResponse,
   ListAgentsResponse,
@@ -134,6 +133,7 @@ import type {
   SetKnowledgeSyncSettingsBody,
   Settings,
   SnoozeInboxMessageBody,
+  SourceDependencies,
   SourceLinkResource,
   SourceLinkRule,
   SourceLinkRuleInput,
@@ -2834,18 +2834,18 @@ in a project takes a member of that project (403).
   }
 
   /** Show visible source dependents in a bounded directory window */
-  async knowledgeSourceDependencies(name: string, options?: RequestOptions): Promise<KnowledgeSourceDependenciesResponse> {
+  async knowledgeSourceDependencies(name: string, options?: RequestOptions): Promise<SourceDependencies> {
     let path = "/api/knowledge/{name}/dependencies";
     path = path.replace("{name}", encodeURIComponent(String(name)));
-    return this.request<KnowledgeSourceDependenciesResponse>("GET", path, {
+    return this.request<SourceDependencies>("GET", path, {
       ...options,
     });
   }
 
-  async knowledgeSourceDependenciesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSourceDependenciesResponse>> {
+  async knowledgeSourceDependenciesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<SourceDependencies>> {
     let path = "/api/knowledge/{name}/dependencies";
     path = path.replace("{name}", encodeURIComponent(String(name)));
-    return this.rawRequest<KnowledgeSourceDependenciesResponse>("GET", path, {
+    return this.rawRequest<SourceDependencies>("GET", path, {
       ...options,
     });
   }
