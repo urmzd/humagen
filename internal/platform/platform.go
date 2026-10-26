@@ -203,20 +203,20 @@ type Platform struct {
 	now       func() time.Time
 	grounding sourceGrounding
 
-	Agents      registry.Store
-	Runs        *runs.Index
-	Schedules   *Schedules
-	Journal     *journal.Journal
-	Alerts      *alerts.Engine
-	Knowledge   *knowledge.Store
-	SourceLinks *sourcelinks.Store
-	Evals       *evals.Store
-	Feedback    *feedback.Store
-	Prefs       *prefs.Store
-	Memory      *memory.Store
-	SkillLibrary *library.Store
+	Agents        registry.Store
+	Runs          *runs.Index
+	Schedules     *Schedules
+	Journal       *journal.Journal
+	Alerts        *alerts.Engine
+	Knowledge     *knowledge.Store
+	SourceLinks   *sourcelinks.Store
+	Evals         *evals.Store
+	Feedback      *feedback.Store
+	Prefs         *prefs.Store
+	Memory        *memory.Store
+	SkillLibrary  *library.Store
 	Notifications *notifications.Store
-	ContextFlags *contextflags.Store
+	ContextFlags  *contextflags.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.

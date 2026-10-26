@@ -35,7 +35,6 @@ import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
-import { libraryScreens } from "./library.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -559,7 +558,6 @@ function screens(ids: Ids, call: Call): Screen[] {
       path: `/settings/${s}`,
     })),
   ];
-  list.push(...libraryScreens(call));
   return only.length ? list.filter((s) => only.includes(s.name)) : list;
 }
 

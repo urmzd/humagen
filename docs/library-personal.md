@@ -1,8 +1,9 @@
 # Library and personal settings
 
-The console has dedicated Skills, Memory and Audit pages, plus Profile,
-Notifications, Privacy and Personal Agents under You. Connected Accounts uses
-the existing real provider connections page.
+This layer supplies dedicated Skills, Memory, Audit, Profile, Notifications,
+Privacy and Personal Agents components and APIs. The upper Outcomes layer mounts
+the canonical routes and navigation. Connected Accounts uses the existing real
+provider connections page.
 
 Skills have immutable scoped revisions. A draft leaves the published revision
 in use. Test Skill invokes the configured agent and model through the real
@@ -43,7 +44,8 @@ exact-owner visibility. A filtered limit never reveals hidden record counts.
 ## Reproduce the visual checks
 
 `scripts/screens/library.ts` supplies thirteen states, each checked at phone and
-desktop widths. They use the isolated scripts/screens server and real API seed.
+desktop widths once the upper host mounts its routes and activates this helper.
+They use the isolated scripts/screens server and real API seed.
 The expanded digest uses a retained delivery fixture; real timing, replay and
 confinement are covered by deterministic worker journey tests.
 
