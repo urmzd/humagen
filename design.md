@@ -21,7 +21,7 @@ govern implementation, including shared presentation and agent identity.
 | DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Board interaction checked in Chromium; native conversation-fork API pending |
-| DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented and DOM-tested; agent-message timestamps pending |
+| DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 
 ### DES-001: Working integrations
@@ -106,15 +106,16 @@ is supplied; naming an agent explicitly remains a separate routing path.
 
 | Requirement | Implementation and evidence | Remaining work |
 | --- | --- | --- |
-| DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract. Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. OAuth installation and GitHub token refresh remain separate backend work. |
+| DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract. Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. Reproducible phone/desktop captures cover Slack and GitHub forms, pending requests and server refusal; new copy lives in `packages/components/src/copy.ts`. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. OAuth installation and GitHub token refresh remain separate backend work. |
 | DES-002 | All 26 board HTML files render in Chromium without separator dots. Main evidence fields wrap without horizontal overflow at 390px. `ConversationShell.tsx`, `Room.tsx`, `Clients.tsx`, and web `AgentMessage.tsx` use gaps or readable phrases. | Older untouched console and shared presentation copy needs review as it changes. |
 | DES-003 | `boards/ForkConversation.html` and `assets/boards.css` reveal actions on hover/focus, retain touch availability, and navigate to the existing prototype panel. Chromium checked hover, focus, target focus, and stable message dimensions. | A native fork needs a saved conversation operation, lineage, permissions, routes, and isolation tests. The board action is a prototype. |
-| DES-004 | Human messages and announcements in `Room.tsx` use recorded timestamps with full local date, time, and timezone on hover, focus, and tap. Room DOM tests cover the recorded instant, accessible description, and dismissal. | Carry real recorded timestamps through agent-message presentation; test native tooltip placement in a full browser. |
+| DES-004 | Human messages and announcements in `Room.tsx` use recorded timestamps with full local date, time, and timezone on hover, focus, and tap. Room DOM tests cover the recorded instant, accessible description, and dismissal. A Chromium phone regression reproduced tooltip overflow before the fix; phone and desktop captures verify placement through the existing panel-gutter helper. | Carry real recorded timestamps through agent-message presentation. |
 | DES-005 | Root `AGENTS.md` links this record and requires keeping it current. | Update evidence with each subsequent implementation. |
 
-Validation for this pass: console production build, console test suite, web
-package typecheck, and `git diff --check`. DOM tests use simulated API responses;
-the board checks use local Chromium. Neither establishes live external delivery.
+Validation for this pass: console production build, workspace typechecks and
+JavaScript tests, phone and desktop screen checks, and `git diff --check`. DOM
+tests and connection screen fixtures use simulated API responses; the board and
+console layout checks use local Chromium. Neither establishes live external delivery.
 
 The screenshot supplied in this review is the source for DES-002. The hover
 behavior in DES-003 and DES-004 is an explicit working interpretation of the

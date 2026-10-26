@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Client, type ClientCaps } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
@@ -68,14 +69,14 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
       </header>
       <Problem message={problem} />
       {canWrite && clients && !connecting && (
-        <div><button type="button" className={button} disabled={!!caps && clients.length >= caps.max} onClick={() => setConnecting(true)}>Connect a System</button></div>
+        <div><button type="button" className={button} disabled={!!caps && clients.length >= caps.max} onClick={() => setConnecting(true)}>{defaultCopy.clientConnect.open}</button></div>
       )}
       {canWrite && connecting && <ClientConnect onCreated={() => { setConnecting(false); reload(); }} onCancel={() => setConnecting(false)} />}
       {clients?.length === 0 && (
         <section className={`${card} flex flex-col gap-2`}>
           <p className="text-aui-sm text-aui-fg">No clients yet.</p>
           <p className="text-aui-sm text-aui-muted">
-            {canWrite ? "Connect an installed Slack app or GitHub installation. Its secrets are written once and never shown again." : "An administrator can connect a Slack app or GitHub installation."}
+            {canWrite ? defaultCopy.clientConnect.emptyAdmin : defaultCopy.clientConnect.emptyReader}
           </p>
         </section>
       )}

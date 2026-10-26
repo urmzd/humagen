@@ -744,7 +744,7 @@ export function Tabs<T extends string>({
  * agent menu does on a phone. It is measured from the panel's laid-out box,
  * which its opening scale does not change, and again when the window resizes.
  */
-function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefObject<HTMLElement | null>, open: boolean): number {
+export function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefObject<HTMLElement | null>, open: boolean): number {
   const [shift, setShift] = useState(0);
   useLayoutEffect(() => {
     if (!open) return;

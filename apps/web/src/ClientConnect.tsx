@@ -1,6 +1,9 @@
+import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useState } from "react";
 import { ApiError, api, type ClientCreateInput, type ToolCredentialInput } from "./api.ts";
 import { button, card, field, Label, primary, Problem } from "./ui.tsx";
+
+const words = defaultCopy.clientConnect;
 
 /** Connect an installed Slack app or GitHub installation using the existing client contract. */
 export function ClientConnect({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
@@ -28,19 +31,19 @@ export function ClientConnect({ onCreated, onCancel }: { onCreated: () => void; 
     setProblem(null);
     const agents = list(allowed);
     if (agent.trim() !== "" && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(agent.trim())) {
-      setProblem("The default must name one agent. Use letters, digits, underscores or dashes, starting with a letter or digit.");
+      setProblem(words.invalidDefaultAgent);
       return;
     }
     if (agents.includes("*") || agents.some((a) => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(a))) {
-      setProblem("List individual agent names, separated by commas. This form does not grant access to every agent.");
+      setProblem(words.invalidAgents);
       return;
     }
     if (surface === "github" && ((agent.trim() !== "" && login.trim() === "") || (login.trim() !== "" && !/^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?$/.test(login.trim())))) {
-      setProblem("Give the GitHub App's own login, such as your-app[bot], so mentioning it can reach the default agent.");
+      setProblem(words.invalidGithubLogin);
       return;
     }
     if (token.trim() === "" || signing.trim() === "") {
-      setProblem("Give both a token and a signing secret.");
+      setProblem(words.credentialsRequired);
       return;
     }
     const input: ClientCreateInput = {
@@ -60,56 +63,56 @@ export function ClientConnect({ onCreated, onCancel }: { onCreated: () => void; 
       await api.createClient(input);
       onCreated();
     } catch (error) {
-      setProblem(error instanceof ApiError ? error.message : "The connection could not be created. Try again.");
+      setProblem(error instanceof ApiError ? error.message : words.failed);
     } finally {
       setBusy(false);
     }
   };
   return (
-    <form className={`${card} flex flex-col gap-3`} aria-label="Connect a system" onSubmit={submit}>
-      <h2 className="text-aui-sm font-medium text-aui-fg">Connect a system</h2>
-      <p className="text-aui-sm text-aui-muted">Install your Slack app or GitHub App first, then provide its credentials here. Saving configures the connection; a real reply verifies it works.</p>
+    <form className={`${card} flex flex-col gap-3`} aria-label={words.heading} onSubmit={submit}>
+      <h2 className="text-aui-sm font-medium text-aui-fg">{words.heading}</h2>
+      <p className="text-aui-sm text-aui-muted">{words.intro}</p>
       <Problem message={problem} />
       <fieldset disabled={busy} className="flex min-w-0 flex-col gap-3">
-        <Label text="System">
+        <Label text={words.system}>
           <select className={field} value={surface} onChange={(e) => {
             setSurface(e.target.value as ClientCreateInput["surface"]);
             setApp(""); setLogin(""); setToken(""); setSigning(""); setProblem(null);
-          }}><option value="slack">Slack</option><option value="github">GitHub</option></select>
+          }}><option value="slack">{words.slack}</option><option value="github">{words.github}</option></select>
         </Label>
-        <Label text="Connection ID" hint="A unique name of up to 40 lowercase letters, digits and dashes.">
+        <Label text={words.id} hint={words.idHint}>
           <input className={field} required maxLength={40} pattern={"[a-z0-9][a-z0-9\\-]{0,39}"} value={id} onChange={(e) => setId(e.target.value)} />
         </Label>
-        <Label text="Name"><input className={field} required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} /></Label>
+        <Label text={words.name}><input className={field} required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} /></Label>
         {surface === "slack" ? (
-          <Label text="Slack team ID"><input className={field} required pattern="[A-Z][A-Z0-9]{2,31}" placeholder="T0123ABC" value={team} onChange={(e) => setTeam(e.target.value)} /></Label>
+          <Label text={words.slackTeam}><input className={field} required pattern="[A-Z][A-Z0-9]{2,31}" placeholder={words.slackTeamPlaceholder} value={team} onChange={(e) => setTeam(e.target.value)} /></Label>
         ) : (
           <>
-            <Label text="GitHub accounts" hint="Account or organization names, separated by commas."><input className={field} required value={owners} onChange={(e) => setOwners(e.target.value)} /></Label>
-            <Label text="Installation ID (optional)"><input className={field} inputMode="numeric" pattern="[0-9]+" value={installation} onChange={(e) => setInstallation(e.target.value)} /></Label>
-            <Label text="GitHub bot login" hint="The app's own GitHub login, such as your-app[bot]. Required with a default agent so native @mentions can reach it.">
-              <input className={field} required={agent.trim() !== ""} value={login} onChange={(e) => setLogin(e.target.value)} placeholder="your-app[bot]" />
+            <Label text={words.githubAccounts} hint={words.githubAccountsHint}><input className={field} required value={owners} onChange={(e) => setOwners(e.target.value)} /></Label>
+            <Label text={words.installation}><input className={field} inputMode="numeric" pattern="[0-9]+" value={installation} onChange={(e) => setInstallation(e.target.value)} /></Label>
+            <Label text={words.botLogin} hint={words.botLoginHint}>
+              <input className={field} required={agent.trim() !== ""} value={login} onChange={(e) => setLogin(e.target.value)} placeholder={words.botLoginPlaceholder} />
             </Label>
           </>
         )}
-        <Label text="App ID (optional)"><input className={field} value={app} onChange={(e) => setApp(e.target.value)} /></Label>
-        <Label text="Default agent (optional)" hint="Answers messages that name no agent. With no default and no allowed agents, nothing can run.">
+        <Label text={words.app}><input className={field} value={app} onChange={(e) => setApp(e.target.value)} /></Label>
+        <Label text={words.defaultAgent} hint={words.defaultAgentHint}>
           <input className={field} pattern={"[A-Za-z0-9][A-Za-z0-9_\\-]{0,63}"} value={agent} onChange={(e) => setAgent(e.target.value)} />
         </Label>
-        <Label text="Other allowed agents (optional)" hint="Individual agent names, separated by commas. No access is granted by default.">
+        <Label text={words.allowedAgents} hint={words.allowedAgentsHint}>
           <input className={field} value={allowed} onChange={(e) => setAllowed(e.target.value)} />
         </Label>
-        <p className="text-aui-xs text-aui-muted">Credential values are stored by the server and never shown again. An environment reference must be permitted by your workspace operator. GitHub needs a current installation token; it is not refreshed automatically.</p>
-        <Label text="Token source"><select className={field} value={tokenWay} onChange={(e) => { setTokenWay(e.target.value); setToken(""); }}><option value="value">Value</option><option value="reference">Environment reference</option></select></Label>
-        <Label text={tokenWay === "value" ? "Token" : "Token reference"}>
-          <input className={field} required type={tokenWay === "value" ? "password" : "text"} autoComplete="off" spellCheck={false} pattern={tokenWay === "reference" ? "env:HUMAGEN_[A-Z0-9_]+" : undefined} placeholder={tokenWay === "reference" ? "env:HUMAGEN_SLACK_TOKEN" : undefined} value={token} onChange={(e) => setToken(e.target.value)} />
+        <p className="text-aui-xs text-aui-muted">{words.credentialHint}</p>
+        <Label text={words.tokenSource}><select className={field} value={tokenWay} onChange={(e) => { setTokenWay(e.target.value); setToken(""); }}><option value="value">{words.value}</option><option value="reference">{words.reference}</option></select></Label>
+        <Label text={tokenWay === "value" ? words.token : words.tokenReference}>
+          <input className={field} required type={tokenWay === "value" ? "password" : "text"} autoComplete="off" spellCheck={false} pattern={tokenWay === "reference" ? "env:HUMAGEN_[A-Z0-9_]+" : undefined} placeholder={tokenWay === "reference" ? words.tokenPlaceholder : undefined} value={token} onChange={(e) => setToken(e.target.value)} />
         </Label>
-        <Label text="Signing secret source"><select className={field} value={signingWay} onChange={(e) => { setSigningWay(e.target.value); setSigning(""); }}><option value="value">Value</option><option value="reference">Environment reference</option></select></Label>
-        <Label text={signingWay === "value" ? "Signing secret" : "Signing secret reference"}>
-          <input className={field} required type={signingWay === "value" ? "password" : "text"} autoComplete="off" spellCheck={false} pattern={signingWay === "reference" ? "env:HUMAGEN_[A-Z0-9_]+" : undefined} placeholder={signingWay === "reference" ? "env:HUMAGEN_SLACK_SIGNING_SECRET" : undefined} value={signing} onChange={(e) => setSigning(e.target.value)} />
+        <Label text={words.signingSource}><select className={field} value={signingWay} onChange={(e) => { setSigningWay(e.target.value); setSigning(""); }}><option value="value">{words.value}</option><option value="reference">{words.reference}</option></select></Label>
+        <Label text={signingWay === "value" ? words.signing : words.signingReference}>
+          <input className={field} required type={signingWay === "value" ? "password" : "text"} autoComplete="off" spellCheck={false} pattern={signingWay === "reference" ? "env:HUMAGEN_[A-Z0-9_]+" : undefined} placeholder={signingWay === "reference" ? words.signingPlaceholder : undefined} value={signing} onChange={(e) => setSigning(e.target.value)} />
         </Label>
-        <p className="text-aui-xs text-aui-muted">Your app must send signed events to the server's integration listener at {surface === "slack" ? "/connectors/slack" : "/connectors/github"}. Your workspace operator provides its public address.</p>
-        <div className="flex flex-wrap gap-2"><button type="submit" className={primary}>{busy ? "Connecting…" : "Connect"}</button><button type="button" className={button} onClick={onCancel}>Cancel</button></div>
+        <p className="text-aui-xs text-aui-muted">{words.webhook(surface)}</p>
+        <div className="flex flex-wrap gap-2"><button type="submit" className={primary}>{busy ? words.connecting : words.connect}</button><button type="button" className={button} onClick={onCancel}>{defaultCopy.cancel}</button></div>
       </fieldset>
     </form>
   );

@@ -63,6 +63,61 @@ export const defaultCopy = {
     artifactHint:
       "Review and download this version, or ask its agent for a revision in the conversation.",
   },
+  clientConnect: {
+    heading: "Connect a system",
+    open: "Connect a System",
+    intro:
+      "Install your Slack app or GitHub App first, then provide its credentials here. Saving configures the connection; a real reply verifies it works.",
+    invalidDefaultAgent:
+      "The default must name one agent. Use letters, digits, underscores or dashes, starting with a letter or digit.",
+    invalidAgents:
+      "List individual agent names, separated by commas. This form does not grant access to every agent.",
+    invalidGithubLogin:
+      "Give the GitHub App's own login, such as your-app[bot], so mentioning it can reach the default agent.",
+    credentialsRequired: "Give both a token and a signing secret.",
+    failed: "The connection could not be created. Try again.",
+    system: "System",
+    slack: "Slack",
+    github: "GitHub",
+    id: "Connection ID",
+    idHint: "A unique name of up to 40 lowercase letters, digits and dashes.",
+    name: "Name",
+    slackTeam: "Slack team ID",
+    slackTeamPlaceholder: "T0123ABC",
+    githubAccounts: "GitHub accounts",
+    githubAccountsHint: "Account or organization names, separated by commas.",
+    installation: "Installation ID (optional)",
+    botLogin: "GitHub bot login",
+    botLoginHint:
+      "The app's own GitHub login, such as your-app[bot]. Required with a default agent so native @mentions can reach it.",
+    botLoginPlaceholder: "your-app[bot]",
+    app: "App ID (optional)",
+    defaultAgent: "Default agent (optional)",
+    defaultAgentHint:
+      "Answers messages that name no agent. With no default and no allowed agents, nothing can run.",
+    allowedAgents: "Other allowed agents (optional)",
+    allowedAgentsHint:
+      "Individual agent names, separated by commas. No access is granted by default.",
+    credentialHint:
+      "Credential values are stored by the server and never shown again. An environment reference must be permitted by your workspace operator. GitHub needs a current installation token; it is not refreshed automatically.",
+    tokenSource: "Token source",
+    signingSource: "Signing secret source",
+    value: "Value",
+    reference: "Environment reference",
+    token: "Token",
+    tokenReference: "Token reference",
+    tokenPlaceholder: "env:HUMAGEN_SLACK_TOKEN",
+    signing: "Signing secret",
+    signingReference: "Signing secret reference",
+    signingPlaceholder: "env:HUMAGEN_SLACK_SIGNING_SECRET",
+    connecting: "Connecting…",
+    connect: "Connect",
+    emptyAdmin:
+      "Connect an installed Slack app or GitHub installation. Its secrets are written once and never shown again.",
+    emptyReader: "An administrator can connect a Slack app or GitHub installation.",
+    webhook: (surface: "slack" | "github") =>
+      `Your app must send signed events to the server's integration listener at /connectors/${surface}. Your workspace operator provides its public address.`,
+  },
   readAudit: {
     label: "Read Audit",
     denied: "Only workspace administrators may read this audit.",
@@ -1008,6 +1063,7 @@ export const defaultCopy = {
   },
   /** Channels and shared threads: where people and agents work together in a project. */
   threads: {
+    posted: (at: string) => `Posted ${at}`,
     /** A channel's title on its page: "#renewals". */
     channel: (name: string) => `#${name}`,
     channels: "Channels",
