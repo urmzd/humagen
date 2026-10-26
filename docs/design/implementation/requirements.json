@@ -6,12 +6,21 @@
       "title": "Complete requirement traceability and native verification",
       "source": "docs/design/humagen-control-plane/gap-analysis.md",
       "paths": [
-        "docs/design/implementation/plan.md"
+        "docs/design/implementation/plan.md",
+        "docs/design/implementation/control-audit.md",
+        "docs/design/implementation/control-audit.json"
       ],
       "owner": "root",
       "plan_item": "1.1",
       "task": "T001",
-      "status": "pending_native_verification"
+      "status": "pending_final_acceptance",
+      "evidence": [
+        "docs/design/implementation/control-audit.md",
+        "docs/design/implementation/control-audit.json",
+        "PR #75/#76 and integrated a0d7059"
+      ],
+      "verification": "All 64 requirements and static/dynamic controls mapped. Final responsive, showcase, CI and live authorization acceptance remains open.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-002",
@@ -25,12 +34,17 @@
       "owner": "root",
       "plan_item": "1.2",
       "task": "T002",
-      "status": "verified",
+      "status": "implemented_native_checks_passed",
       "evidence": [
+        "apps/web/src/ui.tsx",
+        "scripts/screens/run.ts",
+        "PR #75/#76 and integrated a0d7059",
         "PR #75",
         "scripts/screens/run.ts: agent-status-badges, phone and desktop at enlarged text; both labels failed before the fix",
         "make screens: 162 captures passed"
-      ]
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-003",
@@ -38,17 +52,24 @@
       "source": "user supplied message-actions screenshot",
       "paths": [
         "packages/web/src/AgentMessage.tsx",
-        "apps/web/src/Room.tsx"
+        "apps/web/src/Room.tsx",
+        "packages/web/src/MessageActionRow.tsx",
+        "apps/web/src/room.dom.test.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "1.3",
       "task": "T003",
-      "status": "verified",
+      "status": "implemented_native_checks_passed",
       "evidence": [
+        "packages/web/src/MessageActionRow.tsx",
+        "apps/web/src/room.dom.test.tsx",
+        "27513cb, 9d5df97 and 1cce847",
         "PR #75",
         "apps/web/src/room.dom.test.tsx: human and agent replies keep Copy and Reply in the same footer",
         "Local existing conversation: Reply prepared linked draft without submitting"
-      ]
+      ],
+      "verification": "Shared footer has one Copy/Reply row for every human and repeated-agent message; selected Reply targets its own run. Actual full-screen failure was an ambiguous two-agent locator, not missing controls.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-004",
@@ -56,12 +77,20 @@
       "source": "docs/design/humagen-workspace/README.md#try-the-interaction-loop",
       "paths": [
         "api/openapi.yaml",
-        "internal/httpapi/server.go"
+        "internal/httpapi/server.go",
+        "internal/httpapi/openapi_test.go"
       ],
       "owner": "all",
       "plan_item": "1.4",
       "task": "T004",
-      "status": "pending_native_verification"
+      "status": "pending_final_acceptance",
+      "evidence": [
+        "api/openapi.yaml",
+        "internal/httpapi/openapi_test.go",
+        "integrated a0d7059"
+      ],
+      "verification": "Authenticated native transitions, failures and version conflicts implemented. Final control-by-control responsive acceptance is not inferred from the 484 static inventory rows.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-005",
@@ -69,17 +98,24 @@
       "source": "AGENTS.md; design.md#built-in-handles-and-slack-conversation-navigation",
       "paths": [
         "internal/platform/builtin.go",
-        "pkg/agentcolors/store.go"
+        "pkg/agentcolors/store.go",
+        "pkg/agentcolors",
+        "design.md"
       ],
       "owner": "root",
       "plan_item": "1.5",
       "task": "T005",
-      "status": "verified",
+      "status": "implemented_native_checks_passed",
       "evidence": [
+        "pkg/agentcolors",
+        "design.md",
+        "PR #75/#76 and integrated a0d7059",
         "pkg/agentcolors/store_test.go: stable persisted assignment, concurrent uniqueness, kept builtin rename hue",
         "scripts/screens/run.ts: humagen-builtins phone/desktop",
         "Full Go race suite with Postgres/S3: 39 passed packages, zero skipped tests"
-      ]
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-006",
@@ -87,17 +123,24 @@
       "source": "docs/design/humagen-control-plane/spec.md#control-plane-operations",
       "paths": [
         "pkg/audit",
-        "internal/platform/audit.go"
+        "internal/platform/audit.go",
+        "pkg/audit/audit_test.go",
+        "internal/platform/audit_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "1.6",
       "task": "T006",
-      "status": "verified",
+      "status": "implemented_native_checks_passed",
       "evidence": [
+        "pkg/audit/audit_test.go",
+        "internal/platform/audit_test.go",
+        "PR #81, 9995748a8 and caf1d4c",
         "pkg/audit/audit_test.go: restart, failed writes, visibility filtering, retention, snapshot sanitization",
         "internal/platform/audit_test.go: principal attribution and inbox retention",
         "go test -race ./... with Postgres and S3 fixtures passed"
-      ]
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-007",
@@ -105,12 +148,20 @@
       "source": "docs/company-workspace.md#one-company-project",
       "paths": [
         "pkg/projects/homes.go",
-        "internal/platform/agents.go"
+        "internal/platform/agents.go",
+        "internal/httpapi/personal_address_test.go"
       ],
       "owner": "company_placement",
       "plan_item": "2.1",
       "task": "T007",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "pkg/projects/homes.go",
+        "internal/httpapi/personal_address_test.go",
+        "PR #78, 5835f11"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-008",
@@ -118,12 +169,20 @@
       "source": "docs/company-workspace.md#a-personal-project-for-each-person",
       "paths": [
         "pkg/projects",
-        "internal/platform/personal_projects.go"
+        "pkg/projects/personal_test.go",
+        "internal/httpapi/personal_address_test.go"
       ],
       "owner": "company_placement",
       "plan_item": "2.2",
       "task": "T008",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "pkg/projects/personal_test.go",
+        "internal/httpapi/personal_address_test.go",
+        "PR #78, 5835f11"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-009",
@@ -131,12 +190,21 @@
       "source": "docs/company-workspace.md#a-personal-project-for-each-person",
       "paths": [
         "internal/platform/sees.go",
-        "pkg/projects/roles.go"
+        "pkg/projects/roles.go",
+        "internal/platform/personal_context_test.go",
+        "internal/httpapi/confinement_test.go"
       ],
       "owner": "company_placement",
       "plan_item": "2.3",
       "task": "T009",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/personal_context_test.go",
+        "internal/httpapi/confinement_test.go",
+        "PR #78, 5835f11"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-010",
@@ -145,12 +213,21 @@
       "paths": [
         "pkg/threads",
         "pkg/runs",
-        "internal/platform/threads.go"
+        "internal/platform/threads.go",
+        "internal/platform/placement_projection_test.go",
+        "internal/platform/placement.go"
       ],
       "owner": "company_placement",
       "plan_item": "2.4",
       "task": "T010",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/placement_projection_test.go",
+        "internal/platform/placement.go",
+        "PR #78, 5835f11"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-011",
@@ -158,12 +235,23 @@
       "source": "docs/company-workspace.md#moving-work-into-a-public-project",
       "paths": [
         "apps/web/src/ConversationShell.tsx",
-        "internal/platform/threads.go"
+        "internal/platform/threads.go",
+        "internal/platform/publication_race_test.go",
+        "internal/platform/summary_publication.go",
+        "apps/web/src/Share.tsx"
       ],
       "owner": "company_placement",
       "plan_item": "2.5",
       "task": "T011",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/publication_race_test.go",
+        "internal/platform/summary_publication.go",
+        "apps/web/src/Share.tsx",
+        "PR #78, 5835f11"
+      ],
+      "verification": "Current-placement preview tokens and reviewed summary publication protect completed/private-source work; source and destination races are covered.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-012",
@@ -171,12 +259,20 @@
       "source": "docs/company-workspace.md#an-announcement-above-the-greeting",
       "paths": [
         "internal/platform/announce.go",
-        "apps/web/src/Home.tsx"
+        "internal/platform/welcome.go",
+        "apps/web/src/HomePage.tsx"
       ],
       "owner": "company_placement",
       "plan_item": "2.6",
       "task": "T012",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/welcome.go",
+        "apps/web/src/HomePage.tsx",
+        "PR #78, 5835f11"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-013",
@@ -185,12 +281,23 @@
       "paths": [
         "pkg/pick",
         "internal/platform/threads.go",
-        "apps/web/src/Chat.tsx"
+        "apps/web/src/Chat.tsx",
+        "internal/platform/find_help.go",
+        "apps/web/src/FindHelp.tsx",
+        "apps/web/src/chat.dom.test.tsx"
       ],
       "owner": "company_placement",
       "plan_item": "2.7",
       "task": "T013",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/find_help.go",
+        "apps/web/src/FindHelp.tsx",
+        "apps/web/src/chat.dom.test.tsx",
+        "PR #78, 5835f11"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-014",
@@ -199,26 +306,44 @@
       "paths": [
         "pkg/operations",
         "internal/platform/assignments.go",
-        "apps/web/src/Assignments.tsx"
+        "apps/web/src/Assignments.tsx",
+        "pkg/operations/operations_test.go",
+        "internal/platform/assignment_deadline_runtime_test.go"
       ],
       "owner": "agent_operations",
       "plan_item": "3.1",
       "task": "T014",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "pkg/operations/operations_test.go",
+        "internal/platform/assignment_deadline_runtime_test.go",
+        "apps/web/src/Assignments.tsx",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-015",
       "title": "Standing work and triggers reuse scheduler, Invoke and pkg/call",
       "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
       "paths": [
-        "pkg/schedules",
         "pkg/call",
-        "internal/platform/assignments.go"
+        "internal/platform/assignments.go",
+        "internal/platform/assignment_cron_recovery_test.go",
+        "internal/platform/assignment_sources_test.go"
       ],
       "owner": "agent_operations",
       "plan_item": "3.2",
       "task": "T015",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/assignment_cron_recovery_test.go",
+        "internal/platform/assignment_sources_test.go",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Cron/manual/source-change assignments reuse native admission and execution; crash-gap recovery and persisted source changes tested.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-016",
@@ -226,12 +351,20 @@
       "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
       "paths": [
         "pkg/operations",
-        "internal/platform/action_policy.go"
+        "internal/platform/action_policy_view_test.go",
+        "apps/web/src/ActionPolicies.tsx"
       ],
       "owner": "agent_operations",
       "plan_item": "3.3",
       "task": "T016",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/action_policy_view_test.go",
+        "apps/web/src/ActionPolicies.tsx",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-017",
@@ -239,12 +372,21 @@
       "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
       "paths": [
         "pkg/operations",
-        "internal/platform/hooks.go"
+        "internal/platform/hooks.go",
+        "internal/platform/operation_reminders_runtime_test.go",
+        "internal/platform/operation_reminders_test.go"
       ],
       "owner": "agent_operations",
       "plan_item": "3.4",
       "task": "T017",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/operation_reminders_runtime_test.go",
+        "internal/platform/operation_reminders_test.go",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Durable unanswered/blocked reminders update the same inbox cause, reset native notification stamps and never approve work.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-018",
@@ -253,12 +395,22 @@
       "paths": [
         "pkg/operations",
         "pkg/call",
-        "internal/platform/handoffs.go"
+        "internal/platform/handoffs.go",
+        "pkg/operations/invocation_test.go",
+        "apps/web/src/AgentNetwork.tsx"
       ],
       "owner": "agent_operations",
       "plan_item": "3.5",
       "task": "T018",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/handoffs.go",
+        "pkg/operations/invocation_test.go",
+        "apps/web/src/AgentNetwork.tsx",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-019",
@@ -267,12 +419,20 @@
       "paths": [
         "pkg/operations",
         "internal/platform/agents.go",
-        "apps/web/src/AgentControls.tsx"
+        "apps/web/src/AgentControls.tsx",
+        "internal/platform/operations_internal_test.go"
       ],
       "owner": "agent_operations",
       "plan_item": "3.6",
       "task": "T019",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/operations_internal_test.go",
+        "apps/web/src/AgentControls.tsx",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-020",
@@ -280,30 +440,44 @@
       "source": "docs/design/humagen-control-plane/gap-analysis.md#not-built",
       "paths": [
         "apps/web/src/Room.tsx",
-        "packages/web/src/AgentMessage.tsx"
+        "packages/web/src/AgentMessage.tsx",
+        "apps/web/src/RunStop.tsx",
+        "apps/web/src/room.dom.test.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "3.7",
       "task": "T020",
-      "status": "verified",
+      "status": "implemented_native_checks_passed",
       "evidence": [
+        "apps/web/src/RunStop.tsx",
+        "apps/web/src/room.dom.test.tsx",
+        "27513cb, 9d5df97 and 1cce847",
         "PR #75",
         "apps/web/src/room.dom.test.tsx: Stop Turn reports a request and waits for the ledger",
         "pnpm test:server: in-flight stop acknowledged then ledger confirmed"
-      ]
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-021",
       "title": "Bounded Agent Network volumes, waiting time and blocked work",
       "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
       "paths": [
-        "internal/platform/agent_network.go",
-        "apps/web/src/AgentNetwork.tsx"
+        "apps/web/src/AgentNetwork.tsx",
+        "internal/httpapi/operations_test.go"
       ],
       "owner": "agent_operations",
       "plan_item": "3.8",
       "task": "T021",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "apps/web/src/AgentNetwork.tsx",
+        "internal/httpapi/operations_test.go",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-022",
@@ -311,12 +485,21 @@
       "source": "docs/design/humagen-control-plane/spec.md#control-plane-operations",
       "paths": [
         "pkg/inbox",
-        "internal/platform/inbox.go"
+        "internal/platform/inbox.go",
+        "pkg/inbox/reminders_test.go",
+        "internal/platform/operations_internal_test.go"
       ],
       "owner": "agent_operations",
       "plan_item": "3.9",
       "task": "T022",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "pkg/inbox/reminders_test.go",
+        "internal/platform/operations_internal_test.go",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-023",
@@ -324,12 +507,22 @@
       "source": "docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other",
       "paths": [
         "apps/web/src/Agents.tsx",
-        "apps/web/src/AgentControls.tsx"
+        "apps/web/src/AgentControls.tsx",
+        "internal/platform/operations.go",
+        "apps/web/src/AgentOperations.tsx"
       ],
       "owner": "agent_operations",
       "plan_item": "3.10",
       "task": "T023",
-      "status": "pending_native_verification"
+      "status": "implemented_followup_in_progress",
+      "evidence": [
+        "apps/web/src/Agents.tsx",
+        "internal/platform/operations.go",
+        "apps/web/src/AgentOperations.tsx",
+        "PR #79, 0bb37bee and dccda80"
+      ],
+      "verification": "Native working/waiting/watching/paused/failed state and last-run data implemented. P2 stale default-skill Needs Review state is in progress.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-024",
@@ -337,12 +530,20 @@
       "source": "docs/design/humagen-control-plane/spec.md#context-provenance-and-the-sync-lifecycle",
       "paths": [
         "pkg/knowledge",
-        "apps/web/src/Context.tsx"
+        "apps/web/src/conversation-sources.dom.test.tsx",
+        "apps/web/src/SourceLifecycle.tsx"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.1",
       "task": "T024",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "apps/web/src/conversation-sources.dom.test.tsx",
+        "apps/web/src/SourceLifecycle.tsx",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-025",
@@ -350,12 +551,21 @@
       "source": "docs/design/humagen-control-plane/spec.md#context-provenance-and-the-sync-lifecycle",
       "paths": [
         "pkg/knowledge",
-        "internal/platform/source_lifecycle.go"
+        "internal/platform/source_lifecycle.go",
+        "pkg/knowledge/lifecycle_test.go",
+        "internal/platform/source_lifecycle_test.go"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.2",
       "task": "T025",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "pkg/knowledge/lifecycle_test.go",
+        "internal/platform/source_lifecycle_test.go",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-026",
@@ -364,12 +574,21 @@
       "paths": [
         "internal/platform/source_lifecycle.go",
         "pkg/inbox",
-        "pkg/operations"
+        "pkg/operations",
+        "internal/platform/source_assignment.go",
+        "internal/platform/source_operations_test.go"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.3",
       "task": "T026",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/source_assignment.go",
+        "internal/platform/source_operations_test.go",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-027",
@@ -378,12 +597,21 @@
       "paths": [
         "pkg/knowledge",
         "internal/platform/knowledge.go",
-        "pkg/credentials"
+        "pkg/credentials",
+        "internal/platform/source_grounding_test.go",
+        "internal/platform/source_privacy_test.go"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.4",
       "task": "T027",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/source_grounding_test.go",
+        "internal/platform/source_privacy_test.go",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-028",
@@ -391,12 +619,20 @@
       "source": "docs/design/humagen-control-plane/spec.md#system-foundations-and-phasing",
       "paths": [
         "pkg/knowledge",
-        "internal/platform/dependencies.go"
+        "internal/platform/source_attachments.go",
+        "internal/platform/source_rules.go"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.5",
       "task": "T028",
-      "status": "pending_native_verification"
+      "status": "in_progress",
+      "evidence": [
+        "internal/platform/source_attachments.go",
+        "internal/platform/source_rules.go",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Project/agent dependencies and source attachment relationships are implemented. P2 retained-run, derived-skill and reviewed-memory graph reader/typed upper adapter is in progress.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-029",
@@ -405,12 +641,21 @@
       "paths": [
         "pkg/clients",
         "internal/platform/surfaces.go",
-        "apps/web/src/Clients.tsx"
+        "apps/web/src/Clients.tsx",
+        "internal/platform/source_suggestions.go",
+        "pkg/integrations/github/runtime_test.go"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.6",
       "task": "T029",
-      "status": "pending_native_verification"
+      "status": "implemented_live_authorization_pending",
+      "evidence": [
+        "internal/platform/source_suggestions.go",
+        "pkg/integrations/github/runtime_test.go",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Persisted verified resource suggestions, explicit actor mappings and confined Link/Ignore transitions tested. Final external GitHub authorization smoke remains separately recorded by root.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-030",
@@ -419,12 +664,23 @@
       "paths": [
         "pkg/clients",
         "pkg/projects/channels.go",
-        "apps/web/src/Clients.tsx"
+        "apps/web/src/Clients.tsx",
+        "internal/platform/bridge_delivery_test.go",
+        "pkg/projects/bridge_direction_test.go",
+        "apps/web/src/integrations.dom.test.tsx"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.7",
       "task": "T030",
-      "status": "pending_native_verification"
+      "status": "implemented_live_authorization_pending",
+      "evidence": [
+        "internal/platform/bridge_delivery_test.go",
+        "pkg/projects/bridge_direction_test.go",
+        "apps/web/src/integrations.dom.test.tsx",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Versioned event/action allow-lists and two-way/inbound/outcomes bridge rules are implemented. Final external Slack authorization/delivery smoke remains separately recorded by root.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-031",
@@ -432,12 +688,20 @@
       "source": "docs/design/humagen-control-plane/spec.md#integrations",
       "paths": [
         "pkg/knowledge",
-        "internal/platform/source_providers.go"
+        "pkg/knowledge/provider_test.go",
+        "internal/platform/source_refresh_test.go"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.8",
       "task": "T031",
-      "status": "pending_native_verification"
+      "status": "implemented_live_authorization_pending",
+      "evidence": [
+        "pkg/knowledge/provider_test.go",
+        "internal/platform/source_refresh_test.go",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Real Drive/Notion HTTP boundaries tested, including failed refresh and last-good copy behavior. Live account authorization and resource access have not been validated.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-032",
@@ -445,12 +709,21 @@
       "source": "docs/design/humagen-control-plane/spec.md#integrations",
       "paths": [
         "apps/web/src/Clients.tsx",
-        "apps/web/src/ClientConnect.tsx"
+        "apps/web/src/ClientConnect.tsx",
+        "apps/web/src/Integrations.tsx",
+        "apps/web/src/integrations.dom.test.tsx"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.9",
       "task": "T032",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "apps/web/src/Integrations.tsx",
+        "apps/web/src/integrations.dom.test.tsx",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-033",
@@ -458,39 +731,65 @@
       "source": "docs/design/humagen-control-plane/spec.md#integrations",
       "paths": [
         "pkg/clients",
-        "internal/platform/link_rules.go"
+        "pkg/sourcelinks/suggestions_test.go",
+        "internal/platform/source_rules_test.go",
+        "apps/web/src/integrations.dom.test.tsx"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.10",
       "task": "T033",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "pkg/sourcelinks/suggestions_test.go",
+        "internal/platform/source_rules_test.go",
+        "apps/web/src/integrations.dom.test.tsx",
+        "PR #80, 09910bc"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-034",
       "title": "Versioned scoped skill drafts, tests, publish and promotion",
       "source": "docs/design/humagen-control-plane/spec.md#skills-and-memory",
       "paths": [
-        "pkg/skills",
         "internal/platform/skills.go",
-        "apps/web/src/Skills.tsx"
+        "pkg/library/skills_test.go",
+        "internal/platform/skill_library_test.go",
+        "apps/web/src/SkillsLibrary.tsx"
       ],
       "owner": "library_personal",
       "plan_item": "5.1",
       "task": "T034",
-      "status": "pending_native_verification"
+      "status": "implemented_followup_in_progress",
+      "evidence": [
+        "pkg/library/skills_test.go",
+        "internal/platform/skill_library_test.go",
+        "apps/web/src/SkillsLibrary.tsx",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Exact versioned scoped skill drafts, real tests, publishing, promotion and agent defaults implemented. P2 bounded Used By metadata and safe links are in progress.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-035",
       "title": "Skill and new-agent dry runs force actions to Ask",
       "source": "docs/design/humagen-control-plane/spec.md#core-flows",
       "paths": [
-        "pkg/skills",
-        "internal/platform/action_policy.go"
+        "internal/platform/agent_setup_test.go",
+        "internal/platform/skill_library_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "5.2",
       "task": "T035",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/agent_setup_test.go",
+        "internal/platform/skill_library_test.go",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Real configured adapter, forced Ask, explicit native human approval and exact tested revision before activation; no offline fallback counts as success.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-036",
@@ -498,12 +797,21 @@
       "source": "docs/design/humagen-control-plane/spec.md#skills-and-memory",
       "paths": [
         "pkg/memory",
-        "apps/web/src/Memory.tsx"
+        "apps/web/src/MemoryLibrary.tsx",
+        "internal/platform/personal_context_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "5.3",
       "task": "T036",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "pkg/memory",
+        "apps/web/src/MemoryLibrary.tsx",
+        "internal/platform/personal_context_test.go",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-037",
@@ -511,12 +819,21 @@
       "source": "docs/design/humagen-control-plane/spec.md#skills-and-memory",
       "paths": [
         "pkg/memory",
-        "internal/platform/knowledge.go"
+        "internal/platform/knowledge.go",
+        "internal/platform/personal_context_test.go",
+        "internal/platform/agent_skill_defaults_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "5.4",
       "task": "T037",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/personal_context_test.go",
+        "internal/platform/agent_skill_defaults_test.go",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-038",
@@ -524,12 +841,21 @@
       "source": "docs/design/humagen-control-plane/spec.md#user-level-configuration-you",
       "paths": [
         "pkg/prefs",
-        "apps/web/src/Settings.tsx"
+        "apps/web/src/Settings.tsx",
+        "internal/httpapi/personal_profile_test.go",
+        "pkg/prefs/personal_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "5.5",
       "task": "T038",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/httpapi/personal_profile_test.go",
+        "pkg/prefs/personal_test.go",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-039",
@@ -537,12 +863,23 @@
       "source": "docs/design/humagen-control-plane/spec.md#user-level-configuration-you",
       "paths": [
         "pkg/prefs",
-        "internal/platform/notifications.go"
+        "internal/platform/notifications.go",
+        "internal/platform/notifications_test.go",
+        "internal/platform/email_notifications_test.go",
+        "pkg/notifications/email_tls_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "5.6",
       "task": "T039",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/notifications_test.go",
+        "internal/platform/email_notifications_test.go",
+        "pkg/notifications/email_tls_test.go",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Native console delivery and real loopback SMTP/TLS transport honor current identity, consent CAS, digest and quiet hours; no external email is claimed.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-040",
@@ -551,12 +888,20 @@
       "paths": [
         "pkg/prefs",
         "internal/platform/agents.go",
-        "apps/web/src/Skills.tsx"
+        "apps/web/src/PersonalAgents.tsx",
+        "pkg/projects/personal_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "5.7",
       "task": "T040",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "apps/web/src/PersonalAgents.tsx",
+        "pkg/projects/personal_test.go",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-041",
@@ -564,12 +909,22 @@
       "source": "docs/design/humagen-control-plane/spec.md#user-level-configuration-you",
       "paths": [
         "pkg/credentials",
-        "apps/web/src/Connections.tsx"
+        "apps/web/src/Connections.tsx",
+        "internal/platform/credentials_test.go",
+        "internal/httpapi/credentials_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "5.8",
       "task": "T041",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/credentials_test.go",
+        "internal/httpapi/credentials_test.go",
+        "apps/web/src/Connections.tsx",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-042",
@@ -578,12 +933,22 @@
       "paths": [
         "pkg/audit",
         "internal/httpapi/audit.go",
-        "apps/web/src/Audit.tsx"
+        "apps/web/src/Audit.tsx",
+        "internal/httpapi/audit_test.go",
+        "internal/platform/audit_client_visibility_test.go"
       ],
       "owner": "library_personal",
       "plan_item": "5.9",
       "task": "T042",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/httpapi/audit_test.go",
+        "internal/platform/audit_client_visibility_test.go",
+        "apps/web/src/Audit.tsx",
+        "PR #81, 9995748a8 and caf1d4c"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-043",
@@ -592,17 +957,21 @@
       "paths": [
         "pkg/threads",
         "internal/platform/forks.go",
-        "apps/web/src/ForkConversation.tsx"
+        "apps/web/src/ForkConversation.tsx",
+        "internal/platform/forks_test.go",
+        "pkg/threads/forks_test.go"
       ],
       "owner": "conversation_actions",
       "plan_item": "6.1",
       "task": "T043",
-      "status": "pending_native_verification",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "internal/platform/forks_test.go: chosen-branch snapshot, real future context, source revocation, dynamic-private-context refusal; memory/Postgres fork persistence tests pass",
-        "apps/web/src/forks.dom.test.tsx: native fork request, explicit empty source scope and read-only context; phone/desktop conversation-fork-context captures passed",
-        "Upper UI stack owns shared message footer and host dialog wiring"
-      ]
+        "internal/platform/forks_test.go",
+        "pkg/threads/forks_test.go",
+        "PR #82, 0151938"
+      ],
+      "verification": "Real message/completed-run fork points keep bounded passive history and immutable lineage; read-only project archives reject posts and runs.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-044",
@@ -610,17 +979,20 @@
       "source": "docs/design/humagen-control-plane/spec.md#forking",
       "paths": [
         "internal/platform/forks.go",
-        "apps/web/src/ForkConversation.tsx"
+        "apps/web/src/ForkConversation.tsx",
+        "internal/platform/forks_test.go"
       ],
       "owner": "conversation_actions",
       "plan_item": "6.2",
       "task": "T044",
-      "status": "pending_native_verification",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "internal/platform/forks_test.go: explicit bring-back posts human text without mentions/actions or agent invocation; private result and full call-tree summary checks",
-        "apps/web/src/forks.dom.test.tsx: bring-back requires explicit reviewed Post action",
-        "Upper UI stack owns completed-run action host wiring"
-      ]
+        "internal/platform/forks_test.go",
+        "apps/web/src/ForkConversation.tsx",
+        "PR #82, 0151938"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-045",
@@ -628,17 +1000,21 @@
       "source": "docs/design/humagen-control-plane/spec.md#forking",
       "paths": [
         "pkg/projects",
-        "internal/platform/project_forks.go"
+        "internal/platform/project_forks.go",
+        "internal/platform/project_forks_test.go",
+        "pkg/projectforks/projectforks_test.go"
       ],
       "owner": "conversation_actions",
       "plan_item": "6.3",
       "task": "T045",
-      "status": "pending_native_verification",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "internal/platform/project_forks_test.go: staged hidden/unrunnable configuration copy, immutable selected notes/rules, failure/restart/retry/concurrent-reader checks, disabled rules, optional passive archives; memory/Postgres pass",
-        "pkg/projects/forks_test.go and pkg/projectforks/projectforks_test.go: atomic all-resource publication, private bounded durable plan, failure and replay checks",
-        "apps/web/src/forks.dom.test.tsx: publication wait/retry and read-only archive opt-in; phone/desktop project-fork-ready captures passed"
-      ]
+        "internal/platform/project_forks_test.go",
+        "pkg/projectforks/projectforks_test.go",
+        "PR #82, 0151938"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-046",
@@ -646,16 +1022,21 @@
       "source": "docs/design/humagen-control-plane/gap-analysis.md#partial",
       "paths": [
         "apps/web/src/ConversationShell.tsx",
-        "internal/platform/threads.go"
+        "internal/platform/threads.go",
+        "apps/web/src/ConversationAccess.tsx",
+        "apps/web/src/conversation-sources.dom.test.tsx"
       ],
       "owner": "conversation_actions",
       "plan_item": "6.4",
       "task": "T046",
-      "status": "pending_native_verification",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "apps/web/src/ConversationAccess.tsx and ConversationShell.tsx: actual participants, role-aware versioned mutation, shared/private access explanation and removal",
-        "apps/web/src/forks.dom.test.tsx: actual versioned participant request and shared-visibility explanation; phone/desktop conversation-people and conversation-fork-people captures passed"
-      ]
+        "apps/web/src/ConversationAccess.tsx",
+        "apps/web/src/conversation-sources.dom.test.tsx",
+        "PR #82, 0151938"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-047",
@@ -663,17 +1044,20 @@
       "source": "docs/design/humagen-control-plane/spec.md#hierarchy-initiatives-projects-and-sub-projects",
       "paths": [
         "internal/httpapi/discovery.go",
-        "apps/web/src/QuickSwitcher.tsx"
+        "apps/web/src/QuickSwitcher.tsx",
+        "internal/platform/discovery_test.go"
       ],
       "owner": "conversation_actions",
       "plan_item": "6.5",
       "task": "T047",
-      "status": "pending_native_verification",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "GET /api/discovery: server limit50, bounded agent scan1000, native readable project/agent/conversation discovery, actual per-kind permissions and source-chain confinement",
-        "internal/platform/discovery_test.go and focused DOM/route tests pass",
-        "Upper UI stack owns single global Search trigger and keyboard host wiring"
-      ]
+        "internal/platform/discovery_test.go",
+        "apps/web/src/QuickSwitcher.tsx",
+        "PR #82, 0151938"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-048",
@@ -682,19 +1066,21 @@
       "paths": [
         "pkg/projects",
         "internal/platform/projects.go",
-        "apps/web/src/Projects.tsx"
+        "apps/web/src/Projects.tsx",
+        "internal/platform/project_rollup_test.go",
+        "apps/web/src/ProjectRollup.tsx"
       ],
       "owner": "conversation_actions",
       "plan_item": "6.6",
       "task": "T048",
-      "status": "pending_native_verification",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "GET /api/projects/{name}/rollup: capped100 readable descendants/typed approved unexpired notes and50 reader needs, current placement, exact rolling30-day runs, no hidden provenance",
-        "internal/platform/project_rollup_test.go: memory/Postgres replay, typed approval/expiry filtering, hidden-project exclusion and immutable accounting placement",
-        "apps/web/src/ProjectRollup.tsx: native initiative Overview and original-project review links; focused DOM test passes",
-        "Cross-project agent execution remains denied while explicit spec open question is unresolved",
-        "SCREENS_ONLY=project-initiative make screens: phone and desktop layout/target checks pass; captures visually inspected"
-      ]
+        "internal/platform/project_rollup_test.go",
+        "apps/web/src/ProjectRollup.tsx",
+        "PR #82, 0151938"
+      ],
+      "verification": "Rollups use actual confined decisions, risks, needs and usage. Prototype sample milestone fractions are reference data, not inferred model state.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-049",
@@ -702,17 +1088,22 @@
       "source": "docs/design/humagen-control-plane/spec.md#hierarchy-initiatives-projects-and-sub-projects",
       "paths": [
         "apps/web/src/Projects.tsx",
-        "internal/platform/project_forks.go"
+        "internal/platform/project_forks.go",
+        "pkg/projects/templates_test.go",
+        "apps/web/src/ForkProject.tsx"
       ],
       "owner": "conversation_actions",
       "plan_item": "6.7",
       "task": "T049",
-      "status": "pending_native_verification",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "pkg/projects/templates.json: blank plus delivery/initiative/account file templates, atomic channels/skills creation, template-kind checks and initiative execution scope",
-        "apps/web/src/Projects.tsx: template selection and initiative parent selection; dedicated ForkProject workflow; phone/desktop project-template and project-initiative captures",
-        "Upper UI stack owns exact four-way creation menu and final host navigation verification"
-      ]
+        "pkg/projects/templates_test.go",
+        "apps/web/src/Projects.tsx",
+        "apps/web/src/ForkProject.tsx",
+        "PR #82, 0151938"
+      ],
+      "verification": "File-defined templates and real fork/initiative destinations are implemented.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-050",
@@ -721,25 +1112,45 @@
       "paths": [
         "packages/core/src/types.ts",
         "packages/components/src/components.tsx",
-        "packages/web/src/AgentMessage.tsx"
+        "packages/web/src/AgentMessage.tsx",
+        "internal/platform/outcome_test.go",
+        "apps/web/src/workspace.dom.test.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.1",
       "task": "T050",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/outcome_test.go",
+        "packages/web/src/AgentMessage.tsx",
+        "apps/web/src/workspace.dom.test.tsx",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Typed authored recommendations/decisions lead the turn; ledger tool and call records remain execution truth.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-051",
       "title": "Redirect records revised intent separately from approval",
       "source": "docs/design/humagen-workspace/index.html",
       "paths": [
-        "internal/platform/outcomes.go",
-        "packages/components/src/components.tsx"
+        "packages/components/src/components.tsx",
+        "apps/web/src/Chat.tsx",
+        "apps/web/src/Room.tsx",
+        "apps/web/src/workspace.dom.test.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.2",
       "task": "T051",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "apps/web/src/Chat.tsx",
+        "apps/web/src/Room.tsx",
+        "apps/web/src/workspace.dom.test.tsx",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Redirect seeds an editable linked draft; only normal user submission records new intent. It grants no action approval.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-052",
@@ -747,12 +1158,22 @@
       "source": "docs/conversation-workspace.md#five-interactions",
       "paths": [
         "packages/web/src/AgentMessage.tsx",
-        "packages/components/src/components.tsx"
+        "packages/components/src/components.tsx",
+        "apps/web/src/Activity.tsx",
+        "apps/web/src/activity.dom.test.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.3",
       "task": "T052",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "packages/web/src/AgentMessage.tsx",
+        "apps/web/src/Activity.tsx",
+        "apps/web/src/activity.dom.test.tsx",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-053",
@@ -760,12 +1181,23 @@
       "source": "docs/conversation-workspace.md#versioned-deliverables",
       "paths": [
         "apps/web/src/Deliverables.tsx",
-        "apps/web/src/artifactPreview.ts"
+        "apps/web/src/artifactPreview.ts",
+        "pkg/nativefiles/tables_test.go",
+        "apps/web/src/artifactPreview.test.ts",
+        "apps/web/src/workspace.dom.test.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.4",
       "task": "T053",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "pkg/nativefiles/tables_test.go",
+        "apps/web/src/artifactPreview.test.ts",
+        "apps/web/src/workspace.dom.test.tsx",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-054",
@@ -774,12 +1206,23 @@
       "paths": [
         "pkg/artifacts",
         "internal/platform/sandbox.go",
-        "apps/web/src/Deliverables.tsx"
+        "apps/web/src/Deliverables.tsx",
+        "internal/platform/sandbox_test.go",
+        "pkg/nativefiles/nativefiles_test.go",
+        "scripts/screens/native.ts"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.5",
       "task": "T054",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/sandbox_test.go",
+        "pkg/nativefiles/nativefiles_test.go",
+        "scripts/screens/native.ts",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Actual deterministic native model adapter writes/publishes editable DOCX/PPTX/XLSX and PDF; original bytes, notes and sources validated independently.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-055",
@@ -787,26 +1230,47 @@
       "source": "docs/conversation-workspace.md#versioned-deliverables",
       "paths": [
         "apps/web/src/Deliverables.tsx",
-        "apps/web/src/Room.tsx"
+        "apps/web/src/Room.tsx",
+        "scripts/screens/workspace.ts",
+        "apps/web/src/workspace.dom.test.tsx",
+        "internal/platform/sandbox_test.go"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.6",
       "task": "T055",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "scripts/screens/workspace.ts",
+        "apps/web/src/workspace.dom.test.tsx",
+        "internal/platform/sandbox_test.go",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Actual phone/desktop DOCX and XLSX creation, exact artifact:v1 revision, native v2 and unchanged v1 hash passed in 9d5df97. PPTX slide and unsent-draft context covered separately.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-056",
       "title": "Accepted outputs promote to knowledge/reviewed memory with audience checks",
       "source": "docs/conversation-workspace.md#follow-through",
       "paths": [
-        "internal/platform/artifacts.go",
         "pkg/knowledge",
-        "pkg/memory"
+        "pkg/memory",
+        "internal/platform/outcome_learning_race_test.go",
+        "internal/platform/outcome_learning_test.go",
+        "internal/httpapi/artifacts_test.go"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.7",
       "task": "T056",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/outcome_learning_race_test.go",
+        "internal/platform/outcome_learning_test.go",
+        "internal/httpapi/artifacts_test.go",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Accepted exact-version native file promotion enforces audience and review; artifact memory stays pending. Explicit human-approved authored decisions and tool-free skill drafts use separate exact snapshot workflows.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-057",
@@ -815,17 +1279,24 @@
       "paths": [
         "packages/web/src/AgentMessage.tsx",
         "packages/adapter/src/fold.ts",
-        "apps/web/src/Room.tsx"
+        "apps/web/src/Room.tsx",
+        "apps/web/src/MessageTime.tsx",
+        "apps/web/src/room.dom.test.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.8",
       "task": "T057",
-      "status": "verified",
+      "status": "implemented_native_checks_passed",
       "evidence": [
+        "apps/web/src/MessageTime.tsx",
+        "apps/web/src/room.dom.test.tsx",
+        "27513cb, 9d5df97 and 1cce847",
         "PR #75",
         "apps/web/src/room.dom.test.tsx: recorded instant and accessible timestamp",
         "make screens: conversation-message-time phone and desktop passed"
-      ]
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-058",
@@ -833,12 +1304,23 @@
       "source": "docs/design/humagen-control-plane/gap-analysis.md#partial",
       "paths": [
         "apps/web/src/Chat.tsx",
-        "apps/web/src/Room.tsx"
+        "apps/web/src/Room.tsx",
+        "packages/core/src/queue.test.ts",
+        "apps/web/src/chat.dom.test.tsx",
+        "apps/web/src/Composer.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.9",
       "task": "T058",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "packages/core/src/queue.test.ts",
+        "apps/web/src/chat.dom.test.tsx",
+        "apps/web/src/Composer.tsx",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-059",
@@ -847,12 +1329,21 @@
       "paths": [
         "apps/web/src/Sidebar.tsx",
         "apps/web/src/App.tsx",
-        "apps/web/src/route.ts"
+        "apps/web/src/route.ts",
+        "apps/web/src/route.test.ts"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.10",
       "task": "T059",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/Sidebar.tsx",
+        "apps/web/src/route.test.ts",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Canonical routes mount real domain pages, addressable Library versions and conversation Instructions. Route access follows actual scope permissions.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-060",
@@ -860,12 +1351,22 @@
       "source": "docs/design/humagen-workspace/README.md",
       "paths": [
         "scripts/screens/run.ts",
-        "apps/web/src/styles.css"
+        "apps/web/src/styles.css",
+        "scripts/screens/workspace.ts",
+        "scripts/screens/library.ts"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.11",
       "task": "T060",
-      "status": "pending_native_verification"
+      "status": "pending_final_responsive_validation",
+      "evidence": [
+        "scripts/screens/run.ts",
+        "scripts/screens/workspace.ts",
+        "scripts/screens/library.ts",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Focused responsive/native states pass, but the final full canonical capture run, dark/keyboard/touch acceptance and eight refreshed showcase images are pending root completion.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-061",
@@ -874,12 +1375,23 @@
       "paths": [
         "pkg/runs",
         "packages/adapter/src/run.ts",
-        "packages/web/src/AgentMessage.tsx"
+        "packages/web/src/AgentMessage.tsx",
+        "internal/platform/source_provenance_test.go",
+        "pkg/runs/citations_test.go",
+        "apps/web/src/citation-provenance.dom.test.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.12",
       "task": "T061",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "internal/platform/source_provenance_test.go",
+        "pkg/runs/citations_test.go",
+        "apps/web/src/citation-provenance.dom.test.tsx",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Trusted per-run retrieval recorder preserves mode/copy_at/refresh_failed; reader projection including explicit empty arrays revokes streamed and saved citations.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-062",
@@ -887,12 +1399,22 @@
       "source": "docs/design/humagen-workspace/README.md#try-the-interaction-loop",
       "paths": [
         "apps/web/src/Deliverables.tsx",
-        "packages/web/src/ArtifactPreview.tsx"
+        "packages/web/src/ArtifactPreview.tsx",
+        "apps/web/src/workspace.dom.test.tsx",
+        "scripts/screens/native.ts"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.13",
       "task": "T062",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "apps/web/src/Deliverables.tsx",
+        "apps/web/src/workspace.dom.test.tsx",
+        "scripts/screens/native.ts",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-063",
@@ -901,12 +1423,21 @@
       "paths": [
         "packages/components/src/copy.ts",
         "packages/core/src/types.ts",
-        "apps/web/src/ui.tsx"
+        "apps/web/src/ui.tsx",
+        "apps/web/src/Plus.tsx"
       ],
       "owner": "workspace_outcomes",
       "plan_item": "7.14",
       "task": "T063",
-      "status": "pending_native_verification"
+      "status": "implemented_native_checks_passed",
+      "evidence": [
+        "packages/components/src/copy.ts",
+        "apps/web/src/Plus.tsx",
+        "apps/web/src/ui.tsx",
+        "27513cb, 9d5df97 and 1cce847"
+      ],
+      "verification": "Native implementation and relevant regression checks passed. Final integrated responsive and stacked CI acceptance remains separate.",
+      "automated_suite": "integrated-native-2026-10-26"
     },
     {
       "id": "REQ-064",
@@ -915,12 +1446,51 @@
       "paths": [
         "docs/design/implementation/plan.md",
         "docs/architecture.md",
-        "scripts/screens/run.ts"
+        "scripts/screens/run.ts",
+        "docs/design/implementation/control-audit.md",
+        "docs/design/implementation/checkpoints/local-browser-validation.md"
       ],
       "owner": "root",
       "plan_item": "7.15",
       "task": "T064",
-      "status": "pending_native_verification"
+      "status": "pending_final_live_ci_validation",
+      "evidence": [
+        "docs/design/implementation/control-audit.md",
+        "docs/design/implementation/checkpoints/local-browser-validation.md",
+        "PR #75/#76 and integrated a0d7059"
+      ],
+      "verification": "Real Claude console, agent setup and native DOCX checks recorded. Final responsive/showcase/stacked CI and external account authorization remain pending.",
+      "automated_suite": "integrated-native-2026-10-26"
     }
-  ]
+  ],
+  "status_definitions": {
+    "implemented_native_checks_passed": "Native behavior and its relevant automated checks passed; does not claim every final responsive or external-account journey is accepted.",
+    "implemented_followup_in_progress": "Core behavior is implemented and tested; the explicitly named P2 follow-up is still being built.",
+    "in_progress": "The named remaining native implementation has not landed in an approved checkpoint.",
+    "implemented_live_authorization_pending": "Native provider/bridge behavior tested; actual external-account authorization and delivery evidence remains separate.",
+    "pending_final_acceptance": "Implementation/mapping exists but broad final acceptance is not yet complete.",
+    "pending_final_responsive_validation": "Complete final canonical responsive capture and showcase acceptance remains open.",
+    "pending_final_live_ci_validation": "Final CI and honest external/live coverage remain open."
+  },
+  "validation_summary": {
+    "checkpoint": "a0d7059 runtime; 458d203 documentation; 9d5df97 native helper; 1cce847 repeated-message action regression",
+    "suite": "integrated-native-2026-10-26",
+    "go_race": "47 tested packages, 2380 passing test/subtest records, zero failures and zero test skips with isolated Postgres and S3",
+    "go_evidence": "/private/tmp/humagen-upper-final-go.jsonl",
+    "lint": "golangci-lint: zero issues",
+    "console": "556 tests passed before the additional repeated-agent footer regression; that focused DOM suite passed 241 tests and console types passed",
+    "adapter": "58 tests passed",
+    "client": "18 tests passed; regeneration has no diff",
+    "build_contract": "Console build, OpenAPI lint, Biome and generated client checks passed at the documented integration checkpoints",
+    "native_browser": "Phone and desktop DOCX/XLSX production, export and exact-version revision: 4 captures passed; /private/tmp/humagen-native-owner-captures/report.json",
+    "remaining": [
+      "P2 retained source dependency graph including typed upper derived-memory/skill adapter",
+      "P2 skill Used By metadata",
+      "P2 stale-default skill Needs Review state",
+      "Final full canonical responsive and keyboard/touch capture acceptance",
+      "Eight final reproducible showcase images",
+      "Final stacked remote CI",
+      "External-account authorization/delivery validation remains explicitly separate"
+    ]
+  }
 }
