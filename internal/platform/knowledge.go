@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -81,7 +82,13 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	}
 	req = withSources(req)
 	project, person := p.operationPlace(req)
-	req, err = p.withSourceGrounding(req, project, person)
+	if level := p.operationDecision(req, operations.ReadContext); level == operations.Ask || level == operations.Never {
+		// Grounding cannot ask for consent. Only an already granted, wrapped
+		// source_search tool may perform an approved read.
+		req.Revision.Spec.Sources = nil
+	} else {
+		req, err = p.withSourceGrounding(req, project, person)
+	}
 	if err != nil {
 		return req, err
 	}

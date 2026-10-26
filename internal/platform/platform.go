@@ -82,6 +82,9 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
+	AssignmentSources operations.SourceChanges
+
 	// Backends are where everything the platform keeps is kept. The zero
 	// value is in memory, lost with the process. OpenPostgres fills it from
 	// one database.
@@ -361,6 +364,14 @@ func New(cfg Config) (*Platform, error) {
 	p.closers = append(p.closers, files.Close)
 	// Every store is in memory, reading back what Backends.State holds.
 	if err := p.openStores(cfg); err != nil {
+		return nil, err
+	}
+
+	provider := cfg.AssignmentSources
+	if provider == nil {
+		provider = p
+	}
+	if err := p.RegisterAssignmentSources(provider); err != nil {
 		return nil, err
 	}
 

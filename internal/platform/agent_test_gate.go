@@ -40,6 +40,9 @@ func (p *Platform) operationAdmissionTag(tag envelope.Tag) error {
 	return operations.ErrPaused
 }
 func (p *Platform) operationAdmissionRequest(req runtime.Request) error {
+	if err := p.CheckAssignmentSourceHealth(req); err != nil {
+		return err
+	}
 	if p.Operations.Control(req.Tenant, "").Paused {
 		return operations.ErrPaused
 	}
