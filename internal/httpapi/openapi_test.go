@@ -1801,6 +1801,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":2,"source":"accepted-native","accepted":true}`, http.StatusBadRequest)
 	c.call(globex, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":1,"source":"accepted-native","accepted":true}`, http.StatusNotFound)
 
+	c.call(acme, "GET", "/api/model-providers", "/api/model-providers", "", http.StatusOK)
 	// The busy workspace, read end to end, then taken apart.
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=24h&bucket=1h", "", http.StatusOK)
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=9999h", "", http.StatusBadRequest)

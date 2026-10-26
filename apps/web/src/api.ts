@@ -20,6 +20,7 @@ import type {
   MentionKind,
   MentionItem,
   ThreadShare,
+  PlacementPreview,
 } from "../../../packages/client/src/generated/types.ts";
 import type { BusEvent, Run } from "./adapter.ts";
 
@@ -78,6 +79,8 @@ export interface Principal {
 }
 
 export interface Me {
+  personal_project?: string;
+  welcome_announcement?: string;
   principal: Principal;
   permissions: string[];
   /** The caller is an admin in a workspace nobody has set up yet. */
@@ -663,6 +666,7 @@ export const api = {
    * project lives, and which projects enable each ("~" is the workspace).
    */
   agentHues: (names: string[], path = "/api/agent-hues") => call<{ hues: Record<string, number> }>("GET", `${path}?names=${encodeURIComponent(names.join(","))}`),
+  modelProviders:()=>call<{providers:{name:string;declared:boolean}[]}>("GET","/api/model-providers").then(response=>response.providers),
   agentList: () =>
     call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]>; hues?: Record<string, number> }>("GET", "/api/agents"),
   /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
@@ -729,6 +733,7 @@ export const api = {
   /** Everything recorded about a run and the runs under it, as one document. */
   manifest: (id: string) => call<unknown>("GET", `/api/runs/${encodeURIComponent(id)}/manifest`),
   /** Open and unread count what may need the reader; updates are announcements they have not read, which never grow the badge. */
+  findHelp: (q:string) => call<{suggestions:import("../../../packages/client/src/generated/types.ts").HelpSuggestion[]}>("GET",`/api/find-help?${new URLSearchParams({q})}`).then(response=>response.suggestions),
   inboxCount: () => call<{ open: number; unread: number; updates: number }>("GET", "/api/inbox/count"),
   /** The id of the message an alert raised, or null when it raised none. */
   inboxFor: (alert: string) =>
@@ -1257,6 +1262,8 @@ export const coworking = {
    * and adds people by handle. The project may change only while the thread
    * has no runs: the server answers 409 otherwise.
    */
+  placement: (id: string, project: string, channel: string) => call<PlacementPreview>("GET", `${threadPath(id)}/placement?${new URLSearchParams({project: project || "~", channel})}`),
+  publishSummary: (id: string, body: {project:string;channel:string;summary:string;placement_token:string}) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>

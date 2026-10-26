@@ -3041,6 +3041,15 @@ export interface GetProjectAgentHuesResponse {
   hues: Record<string, number>;
 }
 
+export interface ListModelProvidersResponseProvidersItem {
+  name: string;
+  declared: boolean;
+}
+
+export interface ListModelProvidersResponse {
+  providers: ListModelProvidersResponseProvidersItem[];
+}
+
 export interface ListAgentsResponse {
   agents: Revision[];
   builtin: string[];

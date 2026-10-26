@@ -402,6 +402,34 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/model-providers:
+    get:
+      operationId: listModelProviders
+      tags: [agents]
+      summary: List bounded supported and declared model provider names
+      description: Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential.
+      x-permission: agents:read
+      responses:
+        "200":
+          description: At most 100 supported provider choices, sorted by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    maxItems: 100
+                    items:
+                      type: object
+                      required: [name, declared]
+                      properties:
+                        name: {type: string}
+                        declared: {type: boolean}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents:
     get:
       operationId: listAgents

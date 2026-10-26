@@ -14,7 +14,8 @@ export function HomePage({ greeting, canRun, hasAgents, banner, below, children 
   children: ReactNode;
 }) {
   return (
-    <section aria-label="New conversation" className="aui-scroll humagen-fade flex min-h-0 flex-1 flex-col justify-center overflow-y-auto py-8">
+    <section aria-label="New conversation" className="aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto py-8">
+      <div className="my-auto w-full min-w-0">
       {banner && <AnnouncementBanner announcement={banner} />}
       <h1 className="humagen-display px-6 pb-6 text-center text-[2rem] font-semibold leading-tight text-aui-fg">{greeting}</h1>
       {!canRun ? (
@@ -23,6 +24,7 @@ export function HomePage({ greeting, canRun, hasAgents, banner, below, children 
         <p className="px-6 text-center text-aui-sm text-aui-muted">An agent needs to be configured before you can start a conversation.</p>
       ) : children}
       {below}
+      </div>
     </section>
   );
 }

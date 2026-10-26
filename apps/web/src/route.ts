@@ -132,7 +132,7 @@ export function href(r: Route): string {
   switch (r.page) {
     case "new": {
       const q = new URLSearchParams();
-      if (r.project) q.set("project", r.project);
+      if (r.project!==undefined) q.set("project",r.project===""?"~":r.project);
       if (r.channel) q.set("channel", r.channel);
       if (r.agent) q.set("agent", r.agent);
       if (r.ask) q.set("ask", r.ask);
@@ -256,7 +256,7 @@ function read(pathname: string, search: string): Route {
       return (
         legacy(q) ?? {
           page: "new",
-          project: q.get("project") ?? undefined,
+          project: q.get("project")==="~"?"":q.get("project") ?? undefined,
           channel: q.get("channel") ?? undefined,
           agent: q.get("agent") ?? undefined,
           ask: q.get("ask") ?? undefined,

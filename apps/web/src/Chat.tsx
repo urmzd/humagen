@@ -16,7 +16,7 @@ import { ApiError, api, coworking, type ProjectView, type Revision, type Thread 
 import { askedOf, copyFor } from "./asks.ts";
 import { useCompletion } from "./completion.ts";
 import { useThreadSelection } from "./selection.ts";
-import { HomePage } from "./HomePage.tsx";
+import { HomePage, type HomeAnnouncement } from "./HomePage.tsx";
 import { emptySelection, MAX_SELECTED, PlusMenu, withAgent, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
 import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
 import { rememberSaid } from "./conflicts.ts";
@@ -270,9 +270,15 @@ export function Chat({
   onChanged,
   onProjectCreated,
   home,
+  banner,
+  findHelp,
+  personalProject,
 }: {
   /** Quiet lines under the prompt on Home: what needs the person, and what is new. */
   home?: ReactNode;
+  banner?:HomeAnnouncement;
+  findHelp?:ReactNode;
+  personalProject?:string;
   threadId: string | null;
   /** The reader's subject: Retry asks a turn again as them, so only on a turn that acted for them. */
   me: string;
@@ -332,10 +338,11 @@ export function Chat({
   const [selection, setSelection] = useState<Selection>(() => ({
     ...emptySelection,
     agents: startAgent ? [startAgent] : [],
-    project: startIn ?? null,
+    project: startIn ?? personalProject ?? null,
     channel: startChannel || "general",
   }));
-  const project = selection.project;
+  const project = selection.project ?? personalProject ?? null;
+  const select=(next:Selection)=>setSelection(next.project===null && personalProject!==undefined?{...next,project:personalProject,channel:"general"}:next);
   const [draft, setDraft] = useState("");
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
@@ -414,7 +421,7 @@ export function Chat({
   const post = useCallback(
     async (text: string, to: string, after: string | undefined, filed: string | null = project) => {
       setProblem(null);
-      const run = await api.createRun(to, text, after ? { after } : filed ? { project: filed } : {});
+      const run = await api.createRun(to, text, after ? { after } : filed!==null ? { project: filed } : {});
       setTurns((t) => (t.some((x) => x.id === run.id) ? t : [...t, run]));
       setChosen((c) => ({ ...c, [run.prev ?? ""]: run.id }));
       onChanged();
@@ -569,7 +576,7 @@ export function Chat({
                     onLeave={leave}
                     agents={available}
                     selection={selection}
-                    onChange={setSelection}
+                    onChange={select}
                     onAttach={attach}
                     onClose={close}
                     projects={projects}
@@ -578,7 +585,7 @@ export function Chat({
                     onProjectCreated={onProjectCreated}
                   />
                 ),
-                chips: <SelectionChips selection={selection} projects={projects} workspace={workspaceName} onChange={setSelection} />,
+                chips: <SelectionChips selection={selection} projects={projects} workspace={workspaceName} onChange={select} />,
               })
         }
       />
@@ -607,6 +614,7 @@ export function Chat({
         onSharing={onSharing}
         view={view}
         onView={onView}
+        onOpenThread={onThread}
         onOpenChannel={(p, c) => onOpenChannel?.(p, c)}
         onChanged={onChanged}
       />
@@ -630,7 +638,7 @@ export function Chat({
 
   if (!threadId || path.length === 0) {
     return (
-      <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
+      <HomePage banner={banner} greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={<>{findHelp}{home}</>}>
         {composer}
         {/*
           Suggestions sit with the chat bar, as quiet text under it, until

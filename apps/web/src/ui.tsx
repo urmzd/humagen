@@ -1352,7 +1352,7 @@ export function Menu<T extends string>({
     <div ref={root} className={`relative ${quiet ? "inline-flex" : "flex"} ${className}`}>
       <button
         type="button"
-        aria-label={`${label}: ${chosen?.label ?? "none"}`}
+        aria-label={chosen ? `${label}: ${chosen.label}` : value ? `${label}: ${value}` : label}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? id : undefined}

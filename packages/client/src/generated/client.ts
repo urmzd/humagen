@@ -53,6 +53,7 @@ import type {
   ListKnowledgeDocumentsResponse,
   ListKnowledgeSourcesResponse,
   ListMentionsResponse,
+  ListModelProvidersResponse,
   ListPendingMemoryResponse,
   ListPeopleResponse,
   ListPoliciesResponse,
@@ -736,6 +737,21 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<GetProjectAgentHuesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential. */
+  async listModelProviders(options?: RequestOptions): Promise<ListModelProvidersResponse> {
+    const path = "/api/model-providers";
+    return this.request<ListModelProvidersResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listModelProvidersRaw(options?: RequestOptions): Promise<ApiResponse<ListModelProvidersResponse>> {
+    const path = "/api/model-providers";
+    return this.rawRequest<ListModelProvidersResponse>("GET", path, {
       ...options,
     });
   }

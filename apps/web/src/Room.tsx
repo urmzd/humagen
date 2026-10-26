@@ -371,6 +371,7 @@ export function ThreadRoom({
   view,
   onView,
   onOpenChannel,
+  onOpenThread,
   onChanged,
 }: {
   id: string;
@@ -397,6 +398,7 @@ export function ThreadRoom({
   onSharing?: (open: boolean) => void;
   view?: ConversationView;
   onView?: (view: ConversationView) => void;
+  onOpenThread?: (id:string) => void;
   onOpenChannel: (project: string, channel: string) => void;
   onChanged: () => void;
 }) {
@@ -558,6 +560,7 @@ export function ThreadRoom({
           <ShareDialog
             thread={th}
             hasRuns={hasRuns}
+            onPublished={onOpenThread ? (next) => {onSharing?.(false);onChanged();onOpenThread(next.id);} : undefined}
             projects={projects.filter((p) => postsIn(projects, p.name))}
             workspaceName={workspaceName}
             me={me}

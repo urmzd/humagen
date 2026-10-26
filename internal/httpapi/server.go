@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
+	mux.HandleFunc("GET /api/model-providers", s.authed(auth.AgentsRead, s.modelProviders))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
@@ -1129,4 +1130,8 @@ func spa(dir string) http.Handler {
 // derived from this and the tenant.
 func APITagID(subject, key string) string {
 	return "api-" + strconv.Itoa(len(subject)) + "-" + subject + "-" + key
+}
+
+func (s *Server) modelProviders(w http.ResponseWriter, _ *http.Request, _ auth.Principal) {
+	ok(w, http.StatusOK, map[string]any{"providers": s.P.ModelProviderChoices()})
 }

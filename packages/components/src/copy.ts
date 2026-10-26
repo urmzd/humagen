@@ -18,13 +18,26 @@ const OUTCOMES: Record<string, string> = {
 export const defaultCopy = {
   sourceLifecycle: {
     heading: "Source connection",
-    attention: (name: string, cause: string) => `Source ${name} needs attention: ${cause}. Reconnect your own reference in Context, then retry.`,
-    attemptStatus: {importing:"Importing",indexing:"Indexing",syncing:"Syncing",succeeded:"Succeeded",failed:"Failed"},
-    dependents: "What relies on this source", agents: "Agents", projects: "Projects", noDependents: "No visible declarations in this directory window", dependencyFailed: "Source dependencies could not be loaded.",
+    attention: (name: string, cause: string) =>
+      `Source ${name} needs attention: ${cause}. Reconnect your own reference in Context, then retry.`,
+    attemptStatus: {
+      importing: "Importing",
+      indexing: "Indexing",
+      syncing: "Syncing",
+      succeeded: "Succeeded",
+      failed: "Failed",
+    },
+    dependents: "What relies on this source",
+    agents: "Agents",
+    projects: "Projects",
+    noDependents: "No visible declarations in this directory window",
+    dependencyFailed: "Source dependencies could not be loaded.",
     providers: { manual: "Manual", drive: "Google Drive", notion: "Notion" },
     grounding:
       "Indexed sources ground runs in their retained documents. Live searches use the current reader’s own access. A failed refresh keeps the last good copy.",
-    configuration: "Configure Source", scopeHint: "An indexed copy is shared with readers of the selected project. Choose a resource you can share with that audience.",
+    configuration: "Configure Source",
+    scopeHint:
+      "An indexed copy is shared with readers of the selected project. Choose a resource you can share with that audience.",
     provider: "Provider",
     origin: "Folder or page ID",
     mode: "Mode",
@@ -40,7 +53,8 @@ export const defaultCopy = {
     sync: "Refresh Copy",
     working: "Request in progress",
     failed: "The source request failed.",
-    liveUnavailable: "Live search is unavailable. Any indexed results below come from the retained copy.",
+    liveUnavailable:
+      "Live search is unavailable. Any indexed results below come from the retained copy.",
     lastGood: "Last good copy",
     noCopy: "No successful copy yet",
     attempts: "Recent refresh attempts",
@@ -902,8 +916,25 @@ export const defaultCopy = {
     needsFailed: "What needs you could not be loaded. It is all in the inbox.",
     newsFailed: "What's new could not be loaded. It is all in the inbox.",
     /** Home for a person with nothing waiting and nothing new: what Home is for. */
-    banner: { label: "Company announcement", markRead: "Mark as Read", hide: "Hide for Me", open: "Open Announcement" },
-    findHelp: { title: "Find Help", description: "Find a project and an agent for your work", label: "Describe the work", placeholder: "What are you working on?", search: "Find Help", searching: "Finding help", empty: "No matching projects and agents you can read were found.", failed: "Help could not be loaded. Try again.", choose: "Choose", open: "Open Project" },
+    banner: {
+      failed: "The announcement could not be updated. Try again.",
+      label: "Company announcement",
+      markRead: "Mark as Read",
+      hide: "Hide for Me",
+      open: "Open Announcement",
+    },
+    findHelp: {
+      title: "Find Help",
+      description: "Find a project and an agent for your work",
+      label: "Describe the work",
+      placeholder: "What are you working on?",
+      search: "Find Help",
+      searching: "Finding help",
+      empty: "No matching projects and agents you can read were found.",
+      failed: "Help could not be loaded. Try again.",
+      choose: "Choose",
+      open: "Open Project",
+    },
     welcome: {
       title: "Welcome to Humagen",
       text: "Your conversations start in your personal project. Publish a reviewed result to a shared project when it is ready.",
@@ -952,6 +983,7 @@ export const defaultCopy = {
   },
   /** The project tree: its kinds, where a project sits, and what a person does with one. */
   projects: {
+    companyName: "Company",
     unreadUpdates: "Unread updates",
     title: "Projects",
     lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
@@ -1255,6 +1287,18 @@ export const defaultCopy = {
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",
+    placementLoading: "Reviewing the destination audience…",
+    placementFailed: "The destination could not be reviewed. Try again.",
+    placementRetry: "Review Destination",
+    placementReview: "I reviewed the destination audience and everything being published.",
+    placementContents: (audience: string, runs: number) =>
+      `${audience}. ${runs} recorded ${runs === 1 ? "turn" : "turns"}.`,
+    publicationSummary: "Reviewed Summary",
+    publicationSummaryHint:
+      "Write only the information this audience may read. The original conversation stays private; files, private source history and pending actions are not copied.",
+    publishSummary: "Publish Summary",
+    placementChanged:
+      "The conversation or destination changed. Review the updated audience before publishing.",
     shareLede:
       "Everyone who can see the project reads it in the channel. Each person you add is told in their inbox; someone who can't see the project isn't added. Selected agents that can't answer there are taken off.",
     shareProject: "Project",

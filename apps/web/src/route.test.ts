@@ -216,3 +216,9 @@ test("the tab title names the place, then the product, with unread in front", ()
   assert.equal(documentTitle({ page: "project", name: "", tab: "inbox" }), "Workspace · Humagen");
   assert.equal(documentTitle({ page: "channel", project: "ops", channel: "launch" }), "#launch · Humagen");
 });
+
+test("an explicit Company composer destination is distinct from the personal Home default",()=>{
+  assert.equal(href({page:"new",project:""}),"/?project=%7E");
+  assert.deepEqual(at("/?project=%7E"),{page:"new",project:""});
+  assert.deepEqual(at("/"),{page:"new"});
+});

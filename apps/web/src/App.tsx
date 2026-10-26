@@ -26,6 +26,7 @@ import { YourConnections } from "./Connections.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { InboxPage } from "./InboxPage.tsx";
+import { FindHelp } from "./FindHelp.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { Monitor } from "./Monitor.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
@@ -36,12 +37,13 @@ import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { notificationsOf, updatesOf } from "@humagen/adapter";
 import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@humagen/core";
-import { HomeBoxes, type Loaded } from "./HomePage.tsx";
+import { HomeBoxes, type Loaded, type HomeAnnouncement } from "./HomePage.tsx";
 import { usePreferences } from "./preferences.ts";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
 import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { type AgentTab, documentTitle, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
-import { Page, primary } from "./ui.tsx";
+import { defaultCopy } from "@humagen/components";
+import { Page, primary, Problem } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
 
@@ -162,6 +164,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const { prefs, prefsRead, setPrefs, pin, mute } = usePreferences();
   // The reader's own open announcements, for What's new on Home, and the
   // newest of what needs them with how many do, for Needs you.
+  const [welcome,setWelcome]=useState<PlatformMessage>();
+  const [welcomeBusy,setWelcomeBusy]=useState(false);
+  const [welcomeProblem,setWelcomeProblem]=useState("");
   const [announced, setAnnounced] = useState<Loaded<PlatformMessage[]>>({ state: "loading" });
   const [needing, setNeeding] = useState<Loaded<{ messages: PlatformMessage[]; open: number }>>({ state: "loading" });
   const [day, setDay] = useState<Summary | null>(null);
@@ -209,6 +214,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   }, [can]);
   const loadInbox = useCallback(() => {
     if (!can("runs:read")) return;
+    if(me.welcome_announcement)mail.get(me.welcome_announcement).then(setWelcome).catch(()=>{});
     api.inboxCount().then(setInboxCounts).catch(() => {});
     // A read that fails after one that worked keeps what was shown.
     mail
@@ -223,7 +229,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     setInboxTick((t) => t + 1);
     // Settling a message settles its alert, which the Alerts badge counts.
     if (can("alerts:read")) api.alerts().then(setAlerts).catch(() => {});
-  }, [can]);
+  }, [can,me.welcome_announcement]);
   const loadProjects = useCallback(() => {
     if (!can("projects:read")) return;
     api.projects().then(setProjects).catch(() => setProjects((was) => was ?? []));
@@ -336,7 +342,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // A project opens on its inbox.
   const openProject = (name: string, tab: ProjectTab = "inbox") => go({ page: "project", name: name === "~" ? "" : name, tab });
   const projectNames = useMemo(() => (projects ?? []).map((p) => p.name), [projects]);
-  const workspaceName = workspace?.workspace_name || me.principal.tenant;
+  const workspaceName = workspace?.workspace_name || defaultCopy.projects.companyName;
   const openAgent = (name: string | null, tab: AgentTab = "prompt") => go({ page: "agent", name, tab });
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
   // What a message is about, opened where it lives.
@@ -364,12 +370,23 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     return {
       state: "ready",
       value: updatesOf(
-        announced.value,
+        announced.value.filter(message=>message.id!==me.welcome_announcement),
         (name) => (name === "" ? workspaceName : (titles.get(name) ?? name)),
         (name, id) => href({ page: "project", name, tab: "inbox", message: id }),
       ),
     };
-  }, [can, announced, projects, workspaceName]);
+  }, [can, announced, projects, workspaceName,me.welcome_announcement]);
+  const welcomeAction=async(call:"read"|"dismiss")=>{
+    if(!welcome)return;
+    setWelcomeBusy(true);setWelcomeProblem("");
+    try{setWelcome(await mail.send(welcome,{call}));loadInbox()}
+    catch(error){setWelcomeProblem(error instanceof Error?error.message:defaultCopy.home.banner.failed)}
+    finally{setWelcomeBusy(false)}
+  };
+  const banner:HomeAnnouncement|undefined=welcome && !welcome.hidden && !welcome.dismissedAt && !welcome.snoozedUntil ? {
+    id:welcome.id,source:welcome.from.name,title:welcome.subject,text:welcome.parts.filter(part=>part.type==="text").map(part=>part.type==="text"?part.text:"").join("\n\n"),unread:!!welcome.unread,busy:welcomeBusy,
+    onRead:()=>{void welcomeAction("read")},onHide:()=>{void welcomeAction("dismiss")},onOpen:()=>go({page:"inbox",message:welcome.id}),
+  }:undefined;
   const notifications = useMemo((): Loaded<HomeNotifications> | undefined => {
     if (!can("runs:read")) return undefined;
     if (needing.state !== "ready") return needing;
@@ -401,7 +418,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       <main className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
         {(page === "new" || page === "conversation") && (
           <Chat
-            key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.channel ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
+            key={thread ?? `new:${route.page === "new" ? JSON.stringify([route.project,route.channel,route.agent,route.ask]) : ""}`}
             threadId={thread}
             me={me.principal.subject}
             handle={me.handle ?? ""}
@@ -440,7 +457,12 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             artifactActions={{knowledge:can("artifacts:read") && can("knowledge:read") && can("knowledge:write"), memory:false}}
             canCreateProject={can("projects:write")}
             greeting={greeting(shownName)}
+            personalProject={me.personal_project}
+            banner={banner}
+            findHelp={can("projects:read") ? <FindHelp canChoose={can("runs:write")} onSearch={api.findHelp} onChoose={(suggestion,description)=>go({page:"new",project:suggestion.project,agent:suggestion.agent,ask:description})} onOpen={openProject}/> : undefined}
             home={
+              <>
+              <Problem message={welcomeProblem}/>
               <HomeBoxes
                 notifications={notifications}
                 updates={updates}
@@ -450,6 +472,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
                 onUpdate={(u) => go({ page: "project", name: u.project, tab: "inbox", message: u.id })}
                 onUpdates={() => go({ page: "inbox", kind: "announcement" })}
               />
+              </>
             }
             onProjectCreated={(project) => {
               setProjects((current) => [...(current ?? []).filter((p) => p.name !== project.name), project]);
@@ -501,7 +524,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             tick={tick}
             onOpen={openProject}
             onOpenAll={() => go({ page: "projects" })}
-            onNewChat={() => newChat(route.name || undefined)}
+            onNewChat={() => newChat(route.name)}
             onOpenThread={openThread}
             onChanged={() => {
               loadProjects();
