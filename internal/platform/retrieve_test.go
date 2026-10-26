@@ -14,6 +14,8 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
@@ -69,5 +71,48 @@ func TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant(t *testing.T) {
 	second, _ := json.Marshal(model.Calls[1].Messages)
 	if strings.Contains(string(second), "five working days") {
 		t.Errorf("another tenant's turn saw this tenant's knowledge: %s", second)
+	}
+}
+
+func TestScopedSourcesGroundRealTurnsWithoutPersistingInternalHandles(t *testing.T) {
+	model := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Use the release runbook [1].")}}
+	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{"scripted": func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil }}}})
+	ctx := t.Context()
+	at := time.Now()
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "owner", Govern: true}, platform.ProjectInput{Name: "Secret", Members: []projects.Entry{{Who: "owner", Role: projects.Owner}}}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = p.Knowledge.Create(tenant, "private", "", "owner", at)
+	if _, err := p.Knowledge.Configure(tenant, "private", knowledge.SourceConfig{Mode: knowledge.Indexed, Provider: "manual", Owner: "owner", Project: "Secret"}, at); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = p.Knowledge.Add(tenant, "private", "Runbook", "", "release canary instructions", "owner", at)
+	spec := agentspec.AgentSpec{Name: "worker", Provider: "scripted", Model: "m", SystemPrompt: "Answer.", Sources: []agentspec.Source{{Name: "private", URI: "knowledge://private"}}}
+	if _, err := p.Agents.Create(ctx, tenant, spec, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	started, err := p.Invoke(ctx, envelope.Tag{ID: "private-grounding", Tenant: tenant, Agent: "worker", Origin: "api", Actor: envelope.Actor{ID: "owner", User: "owner"}, Text: "What are the release instructions?", Meta: map[string]string{runs.MetaProject: "Secret"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := await(t, p, started.ID, runs.Completed)
+	if len(model.Calls) != 1 {
+		t.Fatal("model call missing")
+	}
+	request, _ := json.Marshal(model.Calls[0])
+	if !strings.Contains(string(request), "release canary instructions") || strings.Contains(string(request), "sourcectx-") {
+		t.Fatalf("model request did not receive only authorized source text: %s", request)
+	}
+	saved, err := p.Agents.Get(ctx, tenant, "worker", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision, _ := json.Marshal(saved)
+	tag, _ := json.Marshal(completed.Tag())
+	record, _ := json.Marshal(completed)
+	for _, raw := range [][]byte{revision, tag, record} {
+		if strings.Contains(string(raw), "sourcectx-") {
+			t.Fatal("internal grounding handle persisted")
+		}
 	}
 }

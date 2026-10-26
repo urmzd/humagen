@@ -70,24 +70,21 @@ func (p *Platform) runtimeSourceAllowed(tenant, name, project string) bool {
 }
 
 func (p *Platform) runtimeReaderSourceAllowed(tenant, name, project, person string) bool {
-	if !p.runtimeSourceAllowed(tenant, name, project) {
-		return false
-	}
 	src, err := p.Knowledge.Get(tenant, name)
-	if err != nil {
-		return false
-	}
+	return err == nil && p.runtimeSourceRecordAllowed(tenant, src, project, person)
+}
+
+// runtimeSourceRecordAllowed checks one exact source snapshot. The durable actor
+// proves only its subject, so managed scoped copies require that exact owner
+// and a current subject-based project role, without invented sign-in groups.
+func (p *Platform) runtimeSourceRecordAllowed(tenant string, src knowledge.Source, project, person string) bool {
 	if src.Lifecycle == nil || src.Lifecycle.Project == "" {
 		return true
 	}
-	if person == "" || src.Lifecycle.Owner != person {
+	if !slices.ContainsFunc(p.Projects.Tree(tenant).Chain(project), func(pr projects.Project) bool { return pr.Name == src.Lifecycle.Project }) {
 		return false
 	}
-	// A durable actor records a subject, not their sign-in groups. Do not
-	// fabricate a Principal or infer its roles. Until an authoritative reader
-	// snapshot is available, only the exact connecting owner with a current
-	// subject-based project role may ground a turn in a managed private copy.
-	return p.Projects.Tree(tenant).Resolve(src.Lifecycle.Project, projects.Reader{Subject: person}).Role.AtLeast(projects.Viewer)
+	return person != "" && src.Lifecycle.Owner == person && p.Projects.Tree(tenant).Resolve(src.Lifecycle.Project, projects.Reader{Subject: person}).Role.AtLeast(projects.Viewer)
 }
 
 func (p *Platform) RunUsesPersonalSources(ctx context.Context, run runs.Run) bool {

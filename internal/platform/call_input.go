@@ -128,9 +128,15 @@ type callExecutor struct {
 	// pinned with, and the skills the run was told to use (resolveRevision).
 	// Nil leaves the revision as it is.
 	resolve func(runtime.Request) (runtime.Request, error)
+	release func(runtime.Request)
 }
 
 func (e callExecutor) Execute(ctx context.Context, req runtime.Request, emit func(context.Context, agentrt.Chunk) error) (runtime.Outcome, error) {
+	defer func() {
+		if e.release != nil {
+			e.release(req)
+		}
+	}()
 	if e.resolve != nil {
 		var err error
 		if req, err = e.resolve(req); err != nil {

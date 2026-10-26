@@ -28,7 +28,11 @@ func (e ProviderError) Error() string { return "knowledge: provider " + string(e
 func FailureCause(err error) Cause {
 	var p ProviderError
 	if errors.As(err, &p) {
-		return p.Cause
+		switch p.Cause {
+		case AuthExpired, Quota, Unsupported, Unavailable, Interrupted:
+			return p.Cause
+		}
+		return Unavailable
 	}
 	return Unavailable
 }
@@ -106,14 +110,29 @@ func (p HTTPProvider) Fetch(ctx context.Context, origin string, secret mcptools.
 	if !resourceID.MatchString(origin) {
 		return nil, ProviderError{Unsupported}
 	}
+	var docs []ImportDocument
+	var err error
 	switch p.Kind {
 	case "drive":
-		return p.drive(ctx, origin, secret)
+		docs, err = p.drive(ctx, origin, secret)
 	case "notion":
-		return p.notion(ctx, origin, secret)
+		docs, err = p.notion(ctx, origin, secret)
 	default:
 		return nil, ProviderError{Unsupported}
 	}
+	if err != nil {
+		return nil, err
+	}
+	// Decode first as well: JSON escapes must not bypass credential redaction.
+	if !secret.Empty() {
+		for i := range docs {
+			docs[i].ID = strings.ReplaceAll(docs[i].ID, secret.Reveal(), mcptools.Redacted)
+			docs[i].Title = strings.ReplaceAll(docs[i].Title, secret.Reveal(), mcptools.Redacted)
+			docs[i].URI = strings.ReplaceAll(docs[i].URI, secret.Reveal(), mcptools.Redacted)
+			docs[i].Text = strings.ReplaceAll(docs[i].Text, secret.Reveal(), mcptools.Redacted)
+		}
+	}
+	return docs, nil
 }
 func (p HTTPProvider) drive(ctx context.Context, origin string, secret mcptools.Secret) ([]ImportDocument, error) {
 	var listing struct {

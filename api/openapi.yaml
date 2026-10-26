@@ -10229,6 +10229,7 @@ components:
       required: [name, documents, passages, excluded, variants, updated_at]
       properties:
         lifecycle: {$ref: "#/components/schemas/KnowledgeLifecycle"}
+        content_version: {type: integer, format: int64, minimum: 0}
         name: {type: string}
         description: {type: string}
         documents: {type: integer}
@@ -10293,6 +10294,8 @@ components:
       type: object
       required: [source, document_id, title, index, text, score]
       properties:
+        copy_at: {type: string, format: date-time}
+        refresh_failed: {type: boolean}
         mode: {type: string, enum: [indexed, live]}
         source: {type: string}
         document_id: {type: string}
