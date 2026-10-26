@@ -509,19 +509,22 @@
         "apps/web/src/Agents.tsx",
         "apps/web/src/AgentControls.tsx",
         "internal/platform/operations.go",
-        "apps/web/src/AgentOperations.tsx"
+        "apps/web/src/AgentOperations.tsx",
+        "internal/platform/agent_skill_defaults_test.go",
+        "apps/web/src/agents.dom.test.tsx"
       ],
       "owner": "agent_operations",
       "plan_item": "3.10",
       "task": "T023",
-      "status": "implemented_followup_in_progress",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "apps/web/src/Agents.tsx",
         "internal/platform/operations.go",
+        "internal/platform/agent_skill_defaults_test.go",
         "apps/web/src/AgentOperations.tsx",
-        "PR #79, 0bb37bee and dccda80"
+        "apps/web/src/agents.dom.test.tsx",
+        "3272306 and 902641d"
       ],
-      "verification": "Native working/waiting/watching/paused/failed state and last-run data implemented. P2 stale default-skill Needs Review state is in progress.",
+      "verification": "Native Needs Review state and needs_skill_review flag now reach roster labels/filter and the agent Context review link. A matching registry revision does not hide an audience review requirement. No binding is silently cleared.",
       "automated_suite": "integrated-native-2026-10-26"
     },
     {
@@ -620,18 +623,24 @@
       "paths": [
         "pkg/knowledge",
         "internal/platform/source_attachments.go",
-        "internal/platform/source_rules.go"
+        "internal/platform/source_rules.go",
+        "internal/platform/source_dependency_reader.go",
+        "internal/platform/source_dependencies_test.go",
+        "internal/platform/outcome_source_dependencies.go",
+        "internal/platform/outcome_source_dependencies_test.go"
       ],
       "owner": "source_lifecycle",
       "plan_item": "4.5",
       "task": "T028",
-      "status": "in_progress",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "internal/platform/source_attachments.go",
-        "internal/platform/source_rules.go",
-        "PR #80, 09910bc"
+        "internal/platform/source_dependency_reader.go",
+        "internal/platform/source_dependencies_test.go",
+        "internal/platform/outcome_source_dependencies.go",
+        "internal/platform/outcome_source_dependencies_test.go",
+        "59baeef, 8f43384 and 902641d"
       ],
-      "verification": "Project/agent dependencies and source attachment relationships are implemented. P2 retained-run, derived-skill and reviewed-memory graph reader/typed upper adapter is in progress.",
+      "verification": "Bounded source graph includes actual retained runs, conversations, deliverables, derived skills and explicitly reviewed memory through the trusted typed reader. Private memory origin is atomically persisted; current ordinary source/run/target visibility and cap200/50 apply. No text matching invents relationships.",
       "automated_suite": "integrated-native-2026-10-26"
     },
     {
@@ -756,19 +765,23 @@
         "internal/platform/skills.go",
         "pkg/library/skills_test.go",
         "internal/platform/skill_library_test.go",
-        "apps/web/src/SkillsLibrary.tsx"
+        "apps/web/src/SkillsLibrary.tsx",
+        "internal/platform/skill_usage.go",
+        "internal/httpapi/skill_usage_test.go",
+        "apps/web/src/library.dom.test.tsx"
       ],
       "owner": "library_personal",
       "plan_item": "5.1",
       "task": "T034",
-      "status": "implemented_followup_in_progress",
+      "status": "implemented_native_checks_passed",
       "evidence": [
-        "pkg/library/skills_test.go",
-        "internal/platform/skill_library_test.go",
+        "internal/platform/skill_usage.go",
+        "internal/httpapi/skill_usage_test.go",
         "apps/web/src/SkillsLibrary.tsx",
-        "PR #81, 9995748a8 and caf1d4c"
+        "apps/web/src/library.dom.test.tsx",
+        "3272306 and 902641d"
       ],
-      "verification": "Exact versioned scoped skill drafts, real tests, publishing, promotion and agent defaults implemented. P2 bounded Used By metadata and safe links are in progress.",
+      "verification": "Exact-version Used By lists real readable agent bindings separately from test runs. Skill publication requires a readable Completed test for the selected exact revision; bounded polling updates that actual state. Scoped draft/test/publish/promotion and exact published defaults remain native.",
       "automated_suite": "integrated-native-2026-10-26"
     },
     {
@@ -1473,20 +1486,17 @@
     "pending_final_live_ci_validation": "Final CI and honest external/live coverage remain open."
   },
   "validation_summary": {
-    "checkpoint": "a0d7059 runtime; 458d203 documentation; 9d5df97 native helper; 1cce847 repeated-message action regression",
+    "checkpoint": "902641d; source-learning adapter 8f43384; native helper 9d5df97; action regression 1cce847",
     "suite": "integrated-native-2026-10-26",
-    "go_race": "47 tested packages, 2380 passing test/subtest records, zero failures and zero test skips with isolated Postgres and S3",
+    "go_race": "Full suite at a0d7059:47 tested packages,2380 passing test/subtest records,zero failures/skips with isolated Postgres/S3. After902641d:focused skill/source dependency/outcome-learning/platform+HTTP+library race and contract/private-confinement checks pass on memory/Postgres; final full rerun remains separate.",
     "go_evidence": "/private/tmp/humagen-upper-final-go.jsonl",
     "lint": "golangci-lint: zero issues",
-    "console": "556 tests passed before the additional repeated-agent footer regression; that focused DOM suite passed 241 tests and console types passed",
+    "console": "566 tests passed with zero skips; console types passed after final Library and upper readiness integration.",
     "adapter": "58 tests passed",
     "client": "18 tests passed; regeneration has no diff",
     "build_contract": "Console build, OpenAPI lint, Biome and generated client checks passed at the documented integration checkpoints",
     "native_browser": "Phone and desktop DOCX/XLSX production, export and exact-version revision: 4 captures passed; /private/tmp/humagen-native-owner-captures/report.json",
     "remaining": [
-      "P2 retained source dependency graph including typed upper derived-memory/skill adapter",
-      "P2 skill Used By metadata",
-      "P2 stale-default skill Needs Review state",
       "Final full canonical responsive and keyboard/touch capture acceptance",
       "Eight final reproducible showcase images",
       "Final stacked remote CI",
