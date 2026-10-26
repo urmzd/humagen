@@ -60,7 +60,6 @@ import type {
   KnowledgeDocument,
   KnowledgeSource,
   KnowledgeSourceConfig,
-  KnowledgeSourceDependenciesResponse,
   KnowledgeVariant,
   LibrarySkill,
   ListAgentRevisionsResponse,
@@ -150,7 +149,9 @@ import type {
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
   Settings,
+  SkillUsage,
   SnoozeInboxMessageBody,
+  SourceDependencies,
   SourceLinkResource,
   SourceLinkRule,
   SourceLinkRuleInput,
@@ -675,6 +676,33 @@ export class ApiClient {
     let path = "/api/library/skills/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<GetLibrarySkillResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List readable agents bound to this exact published skill revision */
+  async listSkillAgents(id: string, version: number, limit?: number, options?: RequestOptions): Promise<SkillUsage> {
+    let path = "/api/library/skills/{id}/versions/{version}/agents";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<SkillUsage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSkillAgentsRaw(id: string, version: number, limit?: number, options?: RequestOptions): Promise<ApiResponse<SkillUsage>> {
+    let path = "/api/library/skills/{id}/versions/{version}/agents";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<SkillUsage>("GET", path, {
       ...options,
     });
   }
@@ -3354,18 +3382,18 @@ in a project takes a member of that project (403).
   }
 
   /** Show visible source dependents in a bounded directory window */
-  async knowledgeSourceDependencies(name: string, options?: RequestOptions): Promise<KnowledgeSourceDependenciesResponse> {
+  async knowledgeSourceDependencies(name: string, options?: RequestOptions): Promise<SourceDependencies> {
     let path = "/api/knowledge/{name}/dependencies";
     path = path.replace("{name}", encodeURIComponent(String(name)));
-    return this.request<KnowledgeSourceDependenciesResponse>("GET", path, {
+    return this.request<SourceDependencies>("GET", path, {
       ...options,
     });
   }
 
-  async knowledgeSourceDependenciesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSourceDependenciesResponse>> {
+  async knowledgeSourceDependenciesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<SourceDependencies>> {
     let path = "/api/knowledge/{name}/dependencies";
     path = path.replace("{name}", encodeURIComponent(String(name)));
-    return this.rawRequest<KnowledgeSourceDependenciesResponse>("GET", path, {
+    return this.rawRequest<SourceDependencies>("GET", path, {
       ...options,
     });
   }

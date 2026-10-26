@@ -33,6 +33,14 @@ func TestAgentDefaultSkillsReplayCASAndCloning(t *testing.T) {
 		if saved.Version != 1 || saved.AgentRevision != 3 || saved.Skills[0].Version != 2 {
 			t.Fatal("lost immutable references", saved)
 		}
+		users := again.Using("t", SkillRef{ID: "skill", Version: 2})
+		if len(users) != 1 || users[0].Agent != "agent" {
+			t.Fatal("exact inverse binding lost after replay", users)
+		}
+		users[0].Skills[0].Version = 6
+		if len(again.Using("t", SkillRef{ID: "skill", Version: 3})) != 0 || len(again.Using("other", SkillRef{ID: "skill", Version: 2})) != 0 {
+			t.Fatal("inverse binding widened version or tenant")
+		}
 		saved.Skills[0].Version = 7
 		if again.Get("t", "agent").Skills[0].Version != 2 {
 			t.Fatal("getter aliases saved bindings")

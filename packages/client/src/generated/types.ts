@@ -17,6 +17,17 @@ export interface InstallationAction {
   category: string;
 }
 
+export interface SkillAgentUse {
+  agent: string;
+  agent_revision: number;
+  needs_review: boolean;
+}
+
+export interface SkillUsage {
+  agents: SkillAgentUse[];
+  more: boolean;
+}
+
 export interface AgentSkillRef {
   id: string;
   version: number;
@@ -66,7 +77,8 @@ export interface HandoffTerms {
 }
 
 export interface AgentControl {
-  state?: "ready" | "working" | "waiting_on_people" | "watching" | "paused" | "failed";
+  state?: "ready" | "working" | "waiting_on_people" | "watching" | "paused" | "failed" | "needs_review";
+  needs_skill_review?: boolean;
   effective_paused?: boolean;
   pause_reason?: "workspace" | "agent" | "setup";
   effective_reminder_after_seconds?: number;
@@ -546,6 +558,24 @@ export interface RunFeedback {
   reason?: string;
   comment?: string;
   updated_at: string;
+}
+
+export interface SourceDependency {
+  id: string;
+  title: string;
+  relation: "retrieved_in" | "published_by_retrieving_run" | "recorded_origin_run";
+  path?: string;
+}
+
+export interface SourceDependencies {
+  agents: string[];
+  projects: string[];
+  conversations: SourceDependency[];
+  deliverables: SourceDependency[];
+  skills: SourceDependency[];
+  memory: SourceDependency[];
+  /** This layer has no authoritative source relationships for these object types. No text matching is used to invent them. */
+  unsupported: ("skills" | "memory")[];
 }
 
 /** One run and its place in the call tree and in its conversation. */
@@ -3723,11 +3753,6 @@ export interface CreateKnowledgeSourceBody {
   name: string;
   description?: string;
   configuration?: KnowledgeSourceConfig;
-}
-
-export interface KnowledgeSourceDependenciesResponse {
-  agents: string[];
-  projects: string[];
 }
 
 export interface ListSourceLinkSuggestionsResponse {

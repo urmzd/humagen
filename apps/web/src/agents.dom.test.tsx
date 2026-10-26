@@ -41,7 +41,7 @@ const notes: Note[] = [{ id: "n1", text: "Releases go out on Tuesdays.", source:
 let net: ReturnType<typeof stubFetch>;
 afterEach(() => {
   cleanup();
-  net.restore();
+  net?.restore();
 });
 
 function open(builtin: boolean, onHomed: () => void = () => {}) {

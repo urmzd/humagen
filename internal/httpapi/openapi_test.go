@@ -597,6 +597,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
 		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: revisionView{}}, "Choice": {typ: pick.Choice{}},
+		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
@@ -650,6 +651,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
+		"SkillAgentUse": {typ: platform.SkillAgentUse{}}, "SkillUsage": {typ: platform.SkillUsage{}},
 		"AgentSkillRef": {typ: platform.AgentSkillRef{}}, "AgentSkillDefaults": {typ: platform.AgentSkillDefaults{}}, "AgentSkillDefaultsUpdate": {typ: agentSkillDefaultsUpdate{}, written: true},
 		"ClientCapabilityPolicy": {typ: clients.Capabilities{}},
 		"InstallationEvent":      {typ: platform.InstallationEvent{}}, "InstallationAction": {typ: platform.InstallationAction{}}, "InstallationCapabilities": {typ: platform.InstallationCapabilities{}},
@@ -1025,6 +1027,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	libraryTest := c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/test", "/api/library/skills/"+libraryID+"/versions/1/test", `{"agent":"helper","project":"~","text":"Try the skill"}`, http.StatusAccepted)
 	c.settled(auditAdmin, libraryTest.str("id"))
 	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/publish", "/api/library/skills/"+libraryID+"/versions/1/publish", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/library/skills/{id}/versions/{version}/agents", "/api/library/skills/"+libraryID+"/versions/1/agents", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/library/skills/{id}/versions/{version}/agents", "/api/library/skills/"+libraryID+"/versions/1/agents?limit=0", "", http.StatusBadRequest)
 	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/promote", "/api/library/skills/"+libraryID+"/versions/1/promote", `{"scope":{"kind":"personal"},"version":0}`, http.StatusCreated)
 	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/promote", "/api/library/skills/"+libraryID+"/versions/1/promote", `{"scope":{"kind":"personal"},"version":0}`, http.StatusConflict)
 
