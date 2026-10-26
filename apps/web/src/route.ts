@@ -49,6 +49,7 @@ const CONVERSATION_PANELS: ConversationPanel[] = ["activity", "context", "people
 export type ArtifactTab = "preview" | "versions" | "provenance";
 const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
 export interface ConversationView {
+  contextTab?: "sources" | "instructions";
   panel?: ConversationPanel;
   filter?:"all"|"handoffs"|"tools"|"decisions";
   showTools?:boolean;
@@ -178,6 +179,7 @@ export function href(r: Route): string {
           const q=new URLSearchParams();if(r.filter&&r.filter!=="all")q.set("filter",r.filter);if(r.showTools===false)q.set("tools","0");
           return `${base}${r.run?`/${enc(r.run)}`:""}${q.size?`?${q}`:""}`;
         }
+        if(r.panel === "context" && r.contextTab === "instructions") return `${base}/instructions`;
         if (r.panel === "deliverables" && r.artifact) return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${r.slide ? `?slide=${r.slide}` : ""}`;
         return base;
       }
@@ -323,7 +325,7 @@ function read(pathname: string, search: string): Route {
       if (b === "share") return { page: "conversation", id: a, share: true };
       if (oneOf(b, CONVERSATION_PANELS)) {
         const slide = Number(q.get("slide"));
-        return { page: "conversation", id: a, panel: b as ConversationPanel, ...(b === "activity" ? {run:parts[3],filter:oneOf(q.get("filter"),["all","handoffs","tools","decisions"] as const),showTools:q.get("tools")==="0"?false:undefined} : {}), ...(b === "deliverables" && parts[3] ? { artifact: parts[3], artifactTab: oneOf(parts[4], ARTIFACT_TABS), slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined } : {}) };
+        return { page: "conversation", id: a, panel: b as ConversationPanel, ...(b === "context" && parts[3] === "instructions" ? {contextTab:"instructions" as const} : {}), ...(b === "activity" ? {run:parts[3],filter:oneOf(q.get("filter"),["all","handoffs","tools","decisions"] as const),showTools:q.get("tools")==="0"?false:undefined} : {}), ...(b === "deliverables" && parts[3] ? { artifact: parts[3], artifactTab: oneOf(parts[4], ARTIFACT_TABS), slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined } : {}) };
       }
       return { page: "conversation", id: a, message: q.get("message") || undefined };
     case "projects": {

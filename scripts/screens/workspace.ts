@@ -58,7 +58,10 @@ export function workspaceScreens(call: Call): Screen[] {
       const run = posted.runs[0];
       assert.ok(run);
       for (let attempt = 0; attempt < 100; attempt++) {
-        const record = await call<{ status: string }>("GET", `/api/runs/${run.id}`);
+        const record: { status: string } = await call<{ status: string }>(
+          "GET",
+          `/api/runs/${run.id}`,
+        );
         if (record.status === "completed") break;
         assert.ok(
           record.status !== "failed" && record.status !== "stopped",
@@ -213,6 +216,35 @@ export function workspaceScreens(call: Call): Screen[] {
           });
           priorControl = undefined;
         }
+      },
+    },
+    {
+      name: "workspace-conversation-instructions",
+      path: "/",
+      act: async (page) => {
+        const result = await call<{ threads: { id: string }[] }>(
+          "GET",
+          "/api/threads?project=Launch&limit=20",
+        );
+        const thread = result.threads[0];
+        assert.ok(thread, "The real seed must retain a readable Launch conversation");
+        await page.goto(
+          new URL(
+            `/conversations/${encodeURIComponent(thread.id)}/context/instructions`,
+            page.url(),
+          ).href,
+        );
+        const preview = defaultCopy.projects.context.preview;
+        await page
+          .getByRole("tab", { name: defaultCopy.conversation.instructionsTab, exact: true })
+          .waitFor();
+        await page.getByLabel(preview.agent, { exact: true }).fill("lead");
+        await page.getByRole("button", { name: preview.submit, exact: true }).click();
+        await page
+          .getByRole("region", { name: preview.title, exact: true })
+          .locator("ol > li")
+          .first()
+          .waitFor();
       },
     },
     {

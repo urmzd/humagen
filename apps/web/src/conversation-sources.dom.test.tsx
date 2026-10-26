@@ -37,3 +37,23 @@ test("conversation source cards show actual mode, health, scope, owner and retai
   await waitFor(() => assert.ok(net?.seen.some((request) => request.path === "/api/knowledge/hybrid/documents")));
   assert.equal(net.seen.some((request) => request.path.includes("hidden-source")), false);
 });
+
+test("conversation Instructions uses the real read-confined composer without requesting source lists", async () => {
+  let query: URLSearchParams | undefined;
+  net = stubFetch({
+    "GET /api/projects/Launch/context": (_body, params) => {
+      query = params;
+      return { layers: [
+        { kind: "instructions", from: "Launch", text: "Use the saved launch instructions.", budget: 8000, used: 35, omitted: 0, sent: true, unit: "characters" },
+        { kind: "ancestor_notes", from: "Company", text: "One note omitted.", budget: 6000, used: 0, omitted: 1, sent: false, unit: "characters" },
+      ] };
+    },
+  });
+  render(<ConversationInfo panel="context" contextTab="instructions" thread={{...thread,channel:"planning",participants:[{kind:"agent",name:"lead",at}]}} project="Launch" onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", {name:defaultCopy.projects.context.preview.submit}));
+  assert.ok(await screen.findByText("Use the saved launch instructions."));
+  assert.equal(query?.get("agent"),"lead");
+  assert.equal(query?.get("channel"),"planning");
+  assert.ok(screen.getByText("One note omitted."));
+  assert.equal(net.seen.some(request=>request.path==="/api/knowledge"),false);
+});

@@ -17,9 +17,10 @@ import {
   type Thread,
 } from "./api.ts";
 import { ConversationAccess } from "./ConversationAccess.tsx";
+import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
 import type { ConversationPanel } from "./route.ts";
-import { AgentMark, Page, Popover, Problem, SkeletonRows } from "./ui.tsx";
+import { AgentMark, Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
 const control =
@@ -249,6 +250,8 @@ function SourceCard({ source }: { source: Source }) {
 }
 
 export function ConversationInfo({
+  contextTab,
+  onContextTab,
   onShare,
   panel,
   thread,
@@ -256,16 +259,21 @@ export function ConversationInfo({
   onClose,
 }: {
   panel?: ConversationPanel;
+  contextTab?: "sources" | "instructions";
+  onContextTab?: (tab: "sources" | "instructions") => void;
   onShare?:()=>void;
   thread: Thread;
   project: string;
   onClose: () => void;
 }) {
+  const [ownTab,setOwnTab]=useState<"sources"|"instructions">("sources");
+  const selected=contextTab??ownTab;
+  const select=(next:"sources"|"instructions")=>onContextTab?onContextTab(next):setOwnTab(next);
   if (panel !== "context" && panel !== "people") return null;
   return (
     <Inspector open title={words[panel]} onClose={onClose}>
       {panel === "context" ? (
-        <div className="flex flex-col gap-6"><ForkContext thread={thread} /><Sources project={thread.project} /></div>
+        <div className="flex flex-col gap-6"><ForkContext thread={thread} /><Tabs label={words.contextSections} value={selected} tabs={[{id:"sources",label:words.sourcesTab},{id:"instructions",label:words.instructionsTab}]} onChange={select}/>{selected==="instructions"?<ProjectContextPreview key={`${thread.id}:${thread.version}`} project={thread.project} version={thread.version} initialAgent={thread.participants.find(participant=>participant.kind==="agent")?.name} initialChannel={thread.channel}/>:<Sources project={thread.project} />}</div>
       ) : <ConversationAccess thread={thread} onShare={onShare} />}
 
     </Inspector>

@@ -828,6 +828,9 @@ export const defaultCopy = {
     open: "Switch Project",
   },
   conversation: {
+    contextSections: "Context Sections",
+    sourcesTab: "Sources",
+    instructionsTab: "Instructions",
     settings: "Conversation Settings",
     messageActions: "Message actions",
     copyMessage: "Copy message",

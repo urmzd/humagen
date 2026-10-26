@@ -678,7 +678,7 @@ export function ThreadRoom({
         )}
       </div>
       </ConversationPage>
-      <ConversationInfo onShare={shareable?()=>{openPanel();onSharing?.(true)}:undefined} panel={shownView.panel} thread={th} project={projectTitle(projects, th.project, workspaceName,personalProject)} onClose={() => openPanel()} />
+      <ConversationInfo onShare={shareable?()=>{openPanel();onSharing?.(true)}:undefined} panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={th} project={projectTitle(projects, th.project, workspaceName,personalProject)} onClose={() => openPanel()} />
       {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:th.project,shared:th.visibility==="shared",...artifactActions}:undefined} thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
       {shownView.panel === "activity" && <Activity filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length} turns={turns.flatMap((turn) => turn.run ? [turn.run] : [])} stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")} focus={shownView.run ?? null} onFocus={(run) => openPanel("activity", run ? { run } : {})} onClose={() => openPanel()} onJump={(run) => document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })} />}
     </section>

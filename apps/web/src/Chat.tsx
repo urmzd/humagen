@@ -728,7 +728,7 @@ export function Chat({
       </WebSurface>
       {composer}
       </ConversationPage>
-      {room && <ConversationInfo panel={shownView.panel} thread={room.thread} project={projects?.find(project=>project.name===where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
+      {room && <ConversationInfo panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={room.thread} project={projects?.find(project=>project.name===where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
       {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:room?.thread.project??where??"",shared:room?.thread.visibility==="shared",...artifactActions}:undefined} thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
       <Presence when={activity !== null} ms={180}>
         {(leaving) => (

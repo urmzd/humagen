@@ -260,3 +260,9 @@ test("exact published skill links preserve the selected immutable version",()=>{
  assert.deepEqual(at(href(route)),route);
  assert.equal(at("/library/skills?skill=x&version=-1").page,"library");
 });
+
+test("conversation Instructions context is addressable and reloadable", () => {
+  const route = {page:"conversation",id:"saved thread",panel:"context",contextTab:"instructions"} as const;
+  assert.equal(href(route),"/conversations/saved%20thread/context/instructions");
+  assert.deepEqual(parse(href(route)),route);
+});
