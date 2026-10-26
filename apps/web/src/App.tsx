@@ -378,7 +378,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   }, [can, needing]);
 
   return (
-    <div className="flex h-full text-aui-fg">
+    <div className="flex h-full min-h-0 overflow-hidden text-aui-fg">
       <Sidebar
         open={open}
         onToggle={toggle}
@@ -398,7 +398,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       />
       <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
       {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
         {(page === "new" || page === "conversation") && (
           <Chat
             key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.channel ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
