@@ -1632,3 +1632,29 @@ test("private source history publishes only a reviewed summary and stale consent
   await waitFor(()=>assert.equal(published,"published-summary"));
   assert.equal(net.seen.filter((request)=>request.method === "POST").length,2);
 });
+
+
+test("human and completed-agent fork actions share the Copy and Reply footer", async()=>{
+ const points:string[]=[];
+ net=stubFetch({["GET /api/threads/"+page.thread.id]:()=>page,"GET /api/runs/r1/events":()=>({events:[]}),"GET /api/projects/Globex/agents":()=>({version:1,available:{all:true,names:[]},homes:[],default_resolved:null})});
+ render(<ThreadRoom id={page.thread.id} me="ana" initial={page} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun forkActions={{onFork:point=>points.push(point)}} onOpenChannel={()=>{}} onChanged={()=>{}}/>);
+ const human=screen.getByRole("article",{name:"Message from Ana"});
+ const actions=within(human).getByRole("toolbar",{name:defaultCopy.conversation.messageActions});
+ assert.ok(within(actions).getByRole("button",{name:defaultCopy.conversation.copyMessage}));
+ fireEvent.click(within(actions).getByRole("button",{name:defaultCopy.forking.fromHere}));
+ const agent=screen.getByRole("article",{name:"Answered by helper"});
+ fireEvent.click(within(agent).getByRole("button",{name:defaultCopy.forking.fromHere}));
+ assert.deepEqual(points,["m-1","r1"]);
+});
+
+test("a read-only conversation archive presents saved context and exposes no composer or run action",async()=>{
+ const archive:ThreadPage={...page,thread:{...page.thread,read_only:true,fork:{source_thread:"source-thread",through:"source-last",by:"ana",at,context:[{kind:"person",by:"ana",name:"Ana",text:"Retained source decision",at}]}},turns:[]};
+ net=stubFetch({["GET /api/threads/"+archive.thread.id]:()=>archive,"GET /api/projects/Globex/agents":()=>({version:1,available:{all:true,names:[]},homes:[],default_resolved:null})});
+ render(<ThreadRoom id={archive.thread.id} me="ana" initial={archive} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun forkActions={{onFork:()=>assert.fail("archive cannot fork")}} onOpenChannel={()=>{}} onChanged={()=>{}}/>);
+ assert.ok(await screen.findByText(defaultCopy.forking.archive));
+ assert.ok(screen.getByText("Retained source decision"));
+ assert.ok(!screen.queryByRole("textbox"));
+ assert.ok(!screen.queryByRole("button",{name:defaultCopy.forking.fromHere}));
+ assert.ok(!screen.queryByRole("button",{name:words.share}));
+ assert.equal(net.seen.some(request=>request.method!=="GET"),false);
+});

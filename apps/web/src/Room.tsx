@@ -2,8 +2,8 @@ import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
-import { AgentMessage, MessageActionRow, Thread as ThreadList, useQueue } from "@humagen/web";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AgentMessage, MessageActionRow, messageTextActionButton, Thread as ThreadList, useQueue } from "@humagen/web";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { actedFor, turnOf, type Run } from "./adapter.ts";
 import {
   ApiError,
@@ -34,6 +34,8 @@ import { itemActions } from "./itemActions.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
 import { useThreadSelection } from "./selection.ts";
+import { ConversationForkPanels,type ConversationForkActions } from "./ConversationForkPanels.tsx";
+import { ForkContext } from "./ForkConversation.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { mergeTurns } from "./turns.ts";
 import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
@@ -196,7 +198,7 @@ function RoomComposer({
 }
 
 /** A person's message: who posted it, when, and what it says. */
-function MessageView({ m, focused, onReply }: { m: ThreadMessage; focused: boolean; onReply?: () => void }) {
+function MessageView({ m, focused, onReply, actions }: { m: ThreadMessage; focused: boolean; onReply?: () => void; actions?:ReactNode }) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "center" });
@@ -218,7 +220,7 @@ function MessageView({ m, focused, onReply }: { m: ThreadMessage; focused: boole
 
         </p>
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{m.text}</p>
-        <MessageActionRow text={m.text} copyLabel={defaultCopy.conversation.copyMessage} onReply={onReply} />
+        <MessageActionRow text={m.text} copyLabel={defaultCopy.conversation.copyMessage} onReply={onReply}>{actions}</MessageActionRow>
       </div>
     </article>
   );
@@ -300,6 +302,7 @@ function AnswerView({
   onAsk,
   onReply,
   onRedirect,
+  actions,
   canStop = false,
 }: {
   run: Run;
@@ -313,6 +316,7 @@ function AnswerView({
   onAsk?: () => void;
   onReply?: () => void;
   onRedirect?: () => void;
+  actions?:ReactNode;
 }) {
   const { run, control } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(run);
@@ -334,7 +338,7 @@ function AnswerView({
       {/* The answer names its agent; why @auto chose it is said above it. */}
       {(routed || run.picked) && <p className="pl-11 text-aui-xs text-aui-muted">{[routed, run.picked].filter(Boolean).join(". ")}</p>}
       <AgentTint name={run.agent}>
-        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
+        <AgentMessage actions={<>{control}{actions}</>} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
       </AgentTint>
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
@@ -365,6 +369,7 @@ export function ThreadRoom({
   workspaceName,
   canRun,
   artifactActions,
+  forkActions,
   focus,
   sharing = false,
   onSharing,
@@ -390,6 +395,7 @@ export function ThreadRoom({
   workspaceName: string;
   canRun: boolean;
   artifactActions?: {knowledge:boolean;memory:boolean};
+  forkActions?:ConversationForkActions;
   /** A message to open at, as `?message=` names it. */
   focus?: string;
   /** Whether the Share dialog is open, as `/conversations/{id}/share` says. */
@@ -452,7 +458,7 @@ export function ThreadRoom({
   const tags = useCompletion(th.project, agents, homes, topicsOf(projects, root, th.project), me, handle);
   // A thread names its starter as the platform names people elsewhere: by handle, which a subject holding an address is not.
   const started = th.created_by === me || (!!handle && th.created_by === handle);
-  const posts = canRun && postsIn(projects, th.project);
+  const posts = canRun && !th.read_only && postsIn(projects, th.project);
   // A private conversation is published from its header by its starter, or
   // an owner of its project, as the server holds them to it.
   const owner = (th.project === "" ? root : projects.find((p) => p.name === th.project))?.access?.role === "owner";
@@ -591,6 +597,8 @@ export function ThreadRoom({
           {shareNote}
         </p>
       )}
+      {th.fork&&<div className="mx-auto w-full max-w-4xl px-4 py-4"><ForkContext thread={th}/></div>}
+      {posts&&<ConversationForkPanels thread={th} runs={turns.flatMap(turn=>turn.run?[turn.run]:[])} actions={forkActions}/>}
       <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
         <ThreadList className="mx-auto w-full max-w-4xl flex-1 px-4" busy={busy} label="Thread">
           {before && (
@@ -602,12 +610,13 @@ export function ThreadRoom({
             t.announcement ? (
               <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
             ) : t.message ? (
-              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} onReply={posts ? () => setSeed({ text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `, mode: "prepend" }) : undefined} />
+              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} actions={posts&&forkActions?.onFork?<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.message!.id)}>{defaultCopy.forking.fromHere}</button>:undefined} onReply={posts ? () => setSeed({ text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `, mode: "prepend" }) : undefined} />
             ) : t.run ? (
               <AnswerView
                 key={t.run.id}
                 run={t.run}
-                canStop={canRun}
+                canStop={posts}
+                actions={posts&&t.run.status==="completed"?<>{forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.run!.id)}>{defaultCopy.forking.fromHere}</button>}{th.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(t.run!.id)}>{defaultCopy.forking.bringBack}</button>}</>:undefined}
                 routed={routedOf(t.run)}
                 onAsk={posts ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" }) : undefined}
                 onReply={posts ? () => setSeed({ text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `, mode: "prepend" }) : undefined}

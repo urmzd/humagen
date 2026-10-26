@@ -225,3 +225,10 @@ test("an explicit Company composer destination is distinct from the personal Hom
   assert.deepEqual(at("/?project=%7E"),{page:"new",project:""});
   assert.deepEqual(at("/"),{page:"new"});
 });
+
+
+test("Library Operations and You selections have reloadable canonical addresses",()=>{
+ const routes:Route[]=[{page:"library",section:"skills"},{page:"library",section:"memory"},{page:"library",section:"sources"},{page:"operations",section:"integrations"},{page:"operations",section:"context"},{page:"assignments",id:"as/shared 1"},{page:"agent-network",handoff:"h/shared 1"},{page:"agent-control",agent:"helper"},{page:"agent-control"},{page:"action-policy",scope:"agent",name:"helper"},{page:"audit"},{page:"you",section:"profile"},{page:"you",section:"connections",provider:"drive"},{page:"agent-setup",name:"draft"},{page:"agent-setup"},{page:"usage",days:14,day:"2026-10-20",display:"table"}];
+ for(const route of routes){const url=new URL(href(route),"http://localhost");assert.deepEqual(parse(url.pathname,url.search),route,href(route));}
+ assert.deepEqual(parse("/operations/usage","?day=2026-02-30&days=999&display=unknown"),{page:"usage",days:7,display:"chart"});
+});

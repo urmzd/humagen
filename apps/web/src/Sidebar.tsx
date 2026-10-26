@@ -255,6 +255,8 @@ export function Sidebar({
   inboxCount,
   live,
   onSignOut,
+  onSearch,
+  notifications,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -274,6 +276,8 @@ export function Sidebar({
   /** Updates are arriving. When false, the sidebar says so. */
   live: boolean;
   onSignOut: () => void;
+  onSearch?:()=>void;
+  notifications?:ReactNode;
 }) {
   const who = me.principal;
   const dev = who.subject === "dev";
@@ -305,30 +309,26 @@ export function Sidebar({
   // test, and trends live with alerts, so none of those needs a page here.
   const selected = route.page === "conversation" ? route.id : null;
   const here = (...pages: RoutePage[]) => pages.includes(route.page);
-  const entries: { to: Route; label: string; icon: ReactNode; show: boolean; active: boolean; badge?: number }[] = [
-    { to: { page: "new" }, label: "New", icon: <ComposeIcon />, show: can("runs:write"), active: here("new") },
-    // What fired, what waits for a person and what agents published all arrive here, so it comes first.
-    { to: { page: "inbox" }, label: "Inbox", icon: <InboxIcon />, show: can("runs:read"), active: here("inbox"), badge: inboxCount },
-    { to: { page: "projects" }, label: "Projects", icon: <FolderIcon />, show: can("projects:read"), active: here("projects", "project") },
-    { to: { page: "schedules" }, label: "Schedules", icon: <ClockIcon />, show: can("schedules:read"), active: here("schedules") },
-    {
-      to: { page: "monitor", tab: "overview" },
-      label: "Monitor",
-      icon: <PulseIcon />,
-      show: can("alerts:read") || can("runs:read"),
-      active: here("monitor"),
-    },
-    { to: { page: "context" }, label: "Context", icon: <LayersIcon />, show: can("knowledge:read"), active: here("context") },
-    { to: { page: "agents" }, label: "Agents", icon: <BotIcon />, show: can("agents:read"), active: here("agents", "agent") },
-    // Who and what is in the workspace, for everyone in it.
-    {
-      to: { page: "directory", tab: "people" },
-      label: "Directory",
-      icon: <PeopleIcon />,
-      show: can("people:read") || can("agents:read") || can("projects:read"),
-      active: here("directory"),
-    },
-    { to: { page: "artifacts" }, label: defaultCopy.conversation.deliverables, icon: <BoxIcon />, show: can("artifacts:read"), active: here("artifacts") },
+  const nav=defaultCopy.navigation;
+  const entries: {to:Route;label:string;icon:ReactNode;show:boolean;active:boolean;badge?:number;group:"projects"|"library"|"operations"}[]=[
+    {to:{page:"new"},label:nav.newConversation,icon:<ComposeIcon/>,show:can("runs:write"),active:here("new"),group:"projects"},
+    {to:{page:"projects"},label:nav.projects,icon:<FolderIcon/>,show:can("projects:read"),active:here("projects","project","channel"),group:"projects"},
+    {to:{page:"directory",tab:"people"},label:nav.people,icon:<PeopleIcon/>,show:can("people:read"),active:here("directory"),group:"projects"},
+    {to:{page:"library",section:"sources"},label:nav.sources,icon:<LayersIcon/>,show:can("knowledge:read"),active:here("context")||(route.page==="library"&&route.section==="sources"),group:"library"},
+    {to:{page:"library",section:"skills"},label:nav.skills,icon:<LayersIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="skills",group:"library"},
+    {to:{page:"library",section:"memory"},label:nav.memory,icon:<LayersIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="memory",group:"library"},
+    {to:{page:"artifacts"},label:defaultCopy.conversation.deliverables,icon:<BoxIcon/>,show:can("artifacts:read"),active:here("artifacts"),group:"library"},
+    {to:{page:"inbox"},label:nav.needsYou,icon:<InboxIcon/>,show:can("runs:read"),active:here("inbox"),badge:inboxCount,group:"operations"},
+    {to:{page:"agents"},label:nav.agents,icon:<BotIcon/>,show:can("agents:read"),active:here("agents","agent","agent-setup"),group:"operations"},
+    {to:{page:"agent-network"},label:nav.network,icon:<PeopleIcon/>,show:can("runs:read"),active:here("agent-network"),group:"operations"},
+    {to:{page:"assignments"},label:nav.assignments,icon:<CheckIcon/>,show:can("runs:read"),active:here("assignments"),group:"operations"},
+    {to:{page:"operations",section:"context"},label:nav.context,icon:<LayersIcon/>,show:can("knowledge:read"),active:route.page==="operations"&&route.section==="context",group:"operations"},
+    {to:{page:"operations",section:"integrations"},label:nav.integrations,icon:<BoxIcon/>,show:can("clients:read"),active:route.page==="operations"&&route.section==="integrations",group:"operations"},
+    {to:{page:"action-policy"},label:nav.policies,icon:<CheckIcon/>,show:can("agents:read"),active:here("action-policy"),group:"operations"},
+    {to:{page:"agent-control"},label:nav.controls,icon:<BotIcon/>,show:can("agents:read"),active:here("agent-control"),group:"operations"},
+    {to:{page:"schedules"},label:nav.schedules,icon:<ClockIcon/>,show:can("schedules:read"),active:here("schedules"),group:"operations"},
+    {to:{page:"usage"},label:nav.usage,icon:<PulseIcon/>,show:can("runs:read"),active:here("usage","monitor"),group:"operations"},
+    {to:{page:"audit"},label:nav.audit,icon:<CheckIcon/>,show:can("projects:govern"),active:here("audit"),group:"operations"},
   ];
 
   // Pinned conversations come from whatever is loaded. One that cannot be found
@@ -370,15 +370,12 @@ export function Sidebar({
       {/* Everything between the top row and the account scrolls as one, so a short window never squeezes the lists into a sliver. */}
       <div className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
       <nav aria-label="Sections" className={`flex shrink-0 flex-col ${open ? "px-2" : "items-center"}`}>
-        <ul className={`flex flex-col gap-0.5 ${open ? "" : "items-center"}`}>
-          {entries
-            .filter((e) => e.show)
-            .map((e) => (
-              <li key={e.label}>
-                <Item icon={e.icon} label={e.label} href={href(e.to)} open={open} active={e.active} badge={e.badge} onClick={() => go(e.to)} />
-              </li>
-            ))}
-        </ul>
+        {onSearch&&<button type="button" onClick={onSearch} aria-label={nav.search} className={`flex min-h-10 items-center gap-2 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open?"px-2.5":"w-9 justify-center"}`}><FilterIcon size={18}/>{open&&<><span className="flex-1 text-left">{nav.search}</span><kbd className="text-aui-2xs">⌘ K</kbd></>}</button>}
+        {(["projects","library","operations"] as const).map(group=>{
+          const shown=entries.filter(entry=>entry.group===group&&entry.show);
+          return shown.length>0&&<section key={group} aria-label={nav[group]} className="pt-2">{open&&<Label>{nav[group]}</Label>}<ul className={`flex flex-col gap-0.5 ${open?"":"items-center"}`}>{shown.map(entry=><li key={entry.label}><Item icon={entry.icon} label={entry.label} href={href(entry.to)} open={open} active={entry.active} badge={entry.badge} onClick={()=>go(entry.to)}/></li>)}</ul></section>;
+        })}
+        {open&&notifications&&<div className="min-w-0 pt-3">{notifications}</div>}
       </nav>
 
       {open && pinnedRows.length > 0 && (
@@ -512,10 +509,10 @@ export function Sidebar({
       <div className={`flex shrink-0 items-center gap-1 border-aui-border border-t p-1.5 ${open ? "" : "flex-col"}`}>
         <button
           type="button"
-          onClick={() => go({ page: "settings", section: "profile" })}
-          aria-current={route.page === "settings" ? "page" : undefined}
-          aria-label={`Settings for ${name}`}
-          title={open ? undefined : "Settings"}
+          onClick={() => go({ page: "you", section: "profile" })}
+          aria-current={route.page === "you" ? "page" : undefined}
+          aria-label={nav.account(name)}
+          title={open ? undefined : nav.you}
           className={`flex min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover ${
             open ? "flex-1" : "size-9 justify-center"
           }`}

@@ -1,6 +1,18 @@
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import { setAgentHues } from "./ui.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SkillsLibrary } from "./SkillsLibrary.tsx";
+import { MemoryLibrary } from "./MemoryLibrary.tsx";
+import { PersonalPreferences } from "./PersonalPreferences.tsx";
+import { NotificationPanel } from "./Notifications.tsx";
+import { Audit } from "./Audit.tsx";
+import { AgentControls } from "./AgentControls.tsx";
+import { ActionPolicies } from "./ActionPolicies.tsx";
+import { Assignments } from "./Assignments.tsx";
+import { AgentNetwork } from "./AgentNetwork.tsx";
+import { QuickSwitcher } from "./QuickSwitcher.tsx";
+import { ForkProject } from "./ForkProject.tsx";
+import { Analytics } from "./Analytics.tsx";
 import { AgentDetail } from "./AgentDetail.tsx";
 import { Agents } from "./Agents.tsx";
 import {
@@ -130,6 +142,11 @@ function useAppearance(prefs: Preferences | null) {
 function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const can = useCallback((p: string) => me.permissions.includes(p), [me]);
   const [route, go] = useRoute();
+  const [searchOpen,setSearchOpen]=useState(false);
+  useEffect(()=>{
+    const search=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"&&!event.altKey&&!event.isComposing){event.preventDefault();setSearchOpen(current=>!current)}};
+    window.addEventListener("keydown",search);return()=>window.removeEventListener("keydown",search);
+  },[]);
   const page = route.page;
   const thread = route.page === "conversation" ? route.id : null;
   // The inbox is the server's. This holds only its totals for the badge, a
@@ -411,11 +428,26 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         onPin={pin}
         inboxCount={inboxCounts.open}
         live={live}
+        onSearch={()=>{setSearchOpen(true);if(window.innerWidth<768)setOpen(false)}}
+        notifications={can("runs:read")&&me.principal.kind==="user"?<NotificationPanel/>:undefined}
         onSignOut={() => api.logout().then(onSignedOut).catch(onSignedOut)}
       />
+      {searchOpen&&<QuickSwitcher onClose={()=>setSearchOpen(false)} onGo={(next)=>{setSearchOpen(false);navigate(next)}}/>}
       <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
       {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
+        {route.page==="library"&&<WorkspaceTabs label={defaultCopy.navigation.library} items={(["sources","skills","memory"] as const).filter(section=>can(section==="sources"?"knowledge:read":"projects:read")).map(section=>({label:defaultCopy.navigation[section],route:{page:"library",section}}))} current={href(route)} onGo={go}/>}
+        {route.page==="library"&&route.section==="skills"&&(can("projects:read")?<SkillsLibrary/>:<Page title={defaultCopy.navigation.skills}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="library"&&route.section==="memory"&&(can("projects:read")?<MemoryLibrary/>:<Page title={defaultCopy.navigation.memory}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="assignments"&&(can("runs:read")?<Assignments selectedId={route.id} agents={agents.map(agent=>agent.spec.name)} sources={sources.map(source=>({name:source.name,label:source.name}))} projects={[{name:"",title:workspaceName},...(projects??[]).filter(project=>project.name!=="").map(project=>({name:project.name,title:project.title||project.name}))]} subject={me.principal.subject} canWrite={can("runs:write")} onRun={openRun} onConversation={openThread}/>:<Page title={defaultCopy.navigation.assignments}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="agent-network"&&(can("runs:read")?<AgentNetwork selectedId={route.handoff} canWrite={can("runs:write")} onAgent={openAgent} onRun={openRun}/>:<Page title={defaultCopy.navigation.network}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="agent-control"&&(can("agents:read")?<AgentControls key={route.agent??"workspace"} agent={route.agent} canWrite={can("agents:write")} onChanged={loadAgents}/>:<Page title={defaultCopy.navigation.controls}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="action-policy"&&(can("agents:read")?<ActionPolicies key={`${route.scope}:${route.name}`} scope={route.scope} name={route.name} canWrite={can("agents:write")}/>:<Page title={defaultCopy.navigation.policies}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="audit"&&(can("projects:govern")?<Audit/>:<Page title={defaultCopy.navigation.audit}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="usage"&&(can("runs:read")?<Analytics agents={agents} openAlerts={alerts.length} tick={tick} onOpenRun={openRun}/>:<Page title={defaultCopy.navigation.usage}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="operations"&&route.section==="integrations"&&(can("clients:read")?<Settings me={me} prefs={prefs} prefsRead={prefsRead} workspace={workspace} agents={agents} canAdmin={can("clients:write")} section="connections" onSection={openSettings} explain="clients:read" onExplain={permission=>go({page:"settings",section:"access",permission})} onPrefs={setPrefs} onWorkspace={setWorkspace} projects={projectNames} onOpenProjects={()=>go({page:"projects"})} onOpenWorkspace={()=>openProject("")} onConnections={()=>go({page:"you",section:"connections"})} onOpenWorkspaceAgents={()=>go({page:"project",name:"",tab:"agents"})}/>:<Page title={defaultCopy.navigation.integrations}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="you"&&<><WorkspaceTabs label={defaultCopy.navigation.you} items={(["profile","notifications","agents","connections","privacy"] as const).map(section=>({label:defaultCopy.navigation[section==="agents"?"personalAgents":section],route:{page:"you",section}}))} current={href(route)} onGo={go}/>{route.section==="connections"?<YourConnections open={route.provider} onOpen={provider=>go({page:"you",section:"connections",provider},{replace:true})} canConnect={can(CONNECT_PERMISSION)} onWhy={()=>go({page:"settings",section:"access",permission:CONNECT_PERMISSION})}/>:<PersonalPreferences key={route.section} section={route.section} onSaved={setPrefs}/>}</>}
+
         {(page === "new" || page === "conversation") && (
           <Chat
             key={thread ?? `new:${route.page === "new" ? JSON.stringify([route.project,route.channel,route.agent,route.ask]) : ""}`}
@@ -428,6 +460,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             startChannel={route.page === "new" ? route.channel : undefined}
             focus={route.page === "conversation" ? route.message : undefined}
             sharing={route.page === "conversation" && !!route.share}
+            forkActions={route.page==="conversation"?{point:route.fork,bringBack:route.bringBack,onFork:point=>go({page:"conversation",id:route.id,fork:point}),onBringBack:run=>go({page:"conversation",id:route.id,bringBack:run}),onClose:()=>go({page:"conversation",id:route.id}),onOpenThread:openThread}:undefined}
             view={route.page === "conversation" ? route : undefined}
             onView={(view) => {
               if (thread) go({ page: "conversation", id: thread, ...view }, {
@@ -523,6 +556,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             can={can}
             tick={tick}
             onOpen={openProject}
+            onFork={()=>go({...route,fork:true})}
             onOpenAll={() => go({ page: "projects" })}
             onNewChat={() => newChat(route.name)}
             onOpenThread={openThread}
@@ -539,6 +573,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpenChannel={(channel) => go({ page: "channel", project: route.name, channel })}
           />
         )}
+        {route.page==="project"&&route.fork&&<ForkProject source={route.name} projects={projects??[]} onClose={()=>go({...route,fork:undefined})} onReady={name=>{loadProjects();openProject(name)}}/>}
         {route.page === "channel" && (
           <ChannelPage
             key={`${route.project}/${route.channel}`}
@@ -600,13 +635,13 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpen={openSource}
           />
         )}
-        {route.page === "context" && (
+        {(route.page === "context" || (route.page==="library"&&route.section==="sources") || (route.page==="operations"&&route.section==="context")) && (
           <Knowledge
             sources={sources}
             agents={agents}
             suites={suites}
-            selected={route.source ?? null}
-            tab={route.tab ?? "documents"}
+            selected={route.page==="context"?route.source??null:null}
+            tab={route.page==="context"?route.tab??"documents":"documents"}
             onSelect={(source, tab) => go({ page: "context", source: source ?? undefined, tab })}
             canWrite={can("knowledge:write")}
             canEval={can("evals:write")}
@@ -743,4 +778,9 @@ function Missing({ what, name, onBack }: { what: string; name: string; onBack: (
       {null}
     </Page>
   );
+}
+
+
+function WorkspaceTabs({label,items,current,onGo}:{label:string;items:{label:string;route:Route}[];current:string;onGo:(route:Route)=>void}) {
+ return <nav aria-label={label} className="flex shrink-0 flex-wrap gap-1 border-aui-border border-b px-4 py-2">{items.map(item=><a key={item.label} href={href(item.route)} aria-current={current===href(item.route)?"page":undefined} onClick={event=>{if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();onGo(item.route)}}} className="inline-flex min-h-10 items-center rounded-aui px-3 text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg">{item.label}</a>)}</nav>;
 }

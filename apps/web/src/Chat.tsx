@@ -2,7 +2,7 @@ import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
-import { AgentMessage, Thread, useQueue } from "@humagen/web";
+import { AgentMessage, messageTextActionButton, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { useRunStop } from "./RunStop.tsx";
@@ -10,6 +10,7 @@ import { MessageTime } from "./MessageTime.tsx";
 import { actedFor, turnOf, type Run } from "./adapter.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
+import { ConversationForkPanels,type ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { href, type ConversationPanel, type ConversationView } from "./route.ts";
 import { ApiError, api, coworking, type ProjectView, type Revision, type Thread as ThreadRecord, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
@@ -103,6 +104,7 @@ function TurnView({
   onAsk,
   onReply,
   onRedirect,
+  actions,
   canStop = false,
 }: {
   run: Run;
@@ -118,6 +120,7 @@ function TurnView({
   onAsk?: () => void;
   onReply?: () => void;
   onRedirect?: () => void;
+  actions?:ReactNode;
 }) {
   const { run, control } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(run);
@@ -150,7 +153,7 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
+        <AgentMessage actions={<>{control}{actions}</>} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -264,6 +267,7 @@ export function Chat({
   projects,
   canRun,
   artifactActions,
+  forkActions,
   canCreateProject,
   greeting,
   onThread,
@@ -313,6 +317,7 @@ export function Chat({
   projects: ProjectView[] | null;
   canRun: boolean;
   artifactActions?: {knowledge:boolean;memory:boolean};
+  forkActions?:ConversationForkActions;
   /** May make a project from the picker. */
   canCreateProject: boolean;
   greeting: string;
@@ -593,7 +598,7 @@ export function Chat({
   );
 
   // A thread people have posted in is a room: their messages and the agents' answers, side by side.
-  if (threadId && room && room.thread.id === threadId && room.turns.some((t) => t.message)) {
+  if (threadId && room && room.thread.id === threadId && (room.thread.read_only || room.turns.some((t) => t.message))) {
     return (
       <ThreadRoom
         key={threadId}
@@ -609,6 +614,7 @@ export function Chat({
         workspaceName={workspaceName ?? ""}
         canRun={canRun}
         artifactActions={artifactActions}
+        forkActions={forkActions}
         focus={focus}
         sharing={sharing}
         onSharing={onSharing}
@@ -685,13 +691,15 @@ export function Chat({
         onPanel={(next) => openPanel(next)}
         onArtifact={(id) => openPanel("deliverables", { artifact: id })}
       >
+      {room&&canRun&&!room.thread.read_only&&<ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions}/>}
       <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
         <Thread className="mx-auto w-full max-w-4xl flex-1 px-4" busy={tailWorking} label="Conversation">
           {path.map((run, i) => (
             <TurnView
               key={run.id}
               run={run}
-              canStop={canRun}
+              canStop={canRun&&!room?.thread.read_only}
+              actions={canRun&&!room?.thread.read_only&&run.status==="completed"?<>{forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(run.id)}>{defaultCopy.forking.fromHere}</button>}{room?.thread.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(run.id)}>{defaultCopy.forking.bringBack}</button>}</>:undefined}
               me={me}
               ask={asks[run.id]}
               siblings={siblingsOf(turns, run)}

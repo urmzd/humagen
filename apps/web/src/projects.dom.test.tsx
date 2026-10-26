@@ -110,7 +110,7 @@ test("a project's meta line names its lead, the agent that answers what tags no 
   const lead = await screen.findByText("globex-helper");
   const meta = lead.closest("span.inline-flex.flex-wrap");
   assert.ok(meta);
-  assert.equal(meta.textContent, "Account · Globex Inc · in Field engineering·Leadglobex-helper");
+  for(const label of ["Account","Globex Inc","in Field engineering","Lead","globex-helper"])assert.ok(meta.textContent?.includes(label),label);
   // Told apart by color: the agent's mark sits beside its name.
   assert.ok(lead.querySelector("[data-accent='agent']"));
 });

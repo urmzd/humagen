@@ -57,7 +57,19 @@ export interface ConversationView {
   slide?: number;
 }
 
+export type LibrarySection = "sources" | "skills" | "memory";
+export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
+  | {page:"library";section:LibrarySection}
+  | {page:"operations";section:"context"|"integrations"}
+  | {page:"assignments";id?:string;agent?:string}
+  | {page:"agent-network";handoff?:string}
+  | {page:"agent-control";agent?:string}
+  | {page:"action-policy";scope?:"workspace"|"agent"|"project"|"personal";name?:string}
+  | {page:"audit"}
+  | {page:"usage";days?:7|14|30;day?:string;display?:"chart"|"table"}
+  | {page:"you";section:YouSection;provider?:string}
+  | {page:"agent-setup";name?:string}
   /** A new conversation, optionally with an agent picked and a first message written for it. */
   | { page: "new"; project?: string; channel?: string; agent?: string; ask?: string }
   /**
@@ -101,6 +113,7 @@ const oneOf = <T extends string>(value: string | null | undefined, allowed: read
 const pick = <T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T => oneOf(value, allowed) ?? fallback;
 
 const PAGE_TITLES: Record<Page, string> = {
+  library:"Library",operations:"Operations",assignments:"Assignments","agent-network":"Agent Network","agent-control":"Agent Controls","action-policy":"Action Policies",audit:"Audit",usage:"Usage",you:"You","agent-setup":"New Agent",
   new: "New conversation",
   conversation: "Conversation",
   projects: "Projects",
@@ -130,6 +143,18 @@ export function documentTitle(r: Route, unread = 0): string {
 /** The address of a route, path and query. */
 export function href(r: Route): string {
   switch (r.page) {
+    case "library": return `/library/${r.section}`;
+    case "operations":return `/operations/${r.section}`;
+    case "assignments":return `${r.id?`/assignments/${enc(r.id)}`:"/assignments"}${r.agent?`?agent=${enc(r.agent)}`:""}`;
+    case "agent-network":return r.handoff?`/agent-network/handoffs/${enc(r.handoff)}`:"/agent-network";
+    case "agent-control":return r.agent?`/agents/${enc(r.agent)}/control`:"/agent-controls";
+    case "agent-setup":return r.name?`/agents/${enc(r.name)}/setup`:"/agents/new/setup";
+    case "action-policy":return r.scope&&r.scope!=="workspace"?`/operations/policies/${r.scope}${r.name?`/${enc(r.name)}`:""}`:"/operations/policies";
+    case "audit":return "/operations/audit";
+    case "usage":{
+      const q=new URLSearchParams();if(r.days&&r.days!==7)q.set("days",String(r.days));if(r.day)q.set("day",r.day);if(r.display==="table")q.set("display","table");return `/operations/usage${q.size?`?${q}`:""}`;
+    }
+    case "you":return `/you${r.section==="profile"?"":`/${r.section}`}${r.section==="connections"&&r.provider?`/${enc(r.provider)}`:""}`;
     case "new": {
       const q = new URLSearchParams();
       if (r.project!==undefined) q.set("project",r.project===""?"~":r.project);
@@ -255,6 +280,19 @@ function read(pathname: string, search: string): Route {
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
   switch (head) {
+    case "library":return {page:"library",section:pick(a,["sources","skills","memory"] as const,"sources")};
+    case "operations":
+      if(a==="audit")return {page:"audit"};
+      if(a==="usage"){
+        const days=Number(q.get("days"));const day=q.get("day");const validDay=day&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&!Number.isNaN(Date.parse(`${day}T00:00:00Z`))&&new Date(`${day}T00:00:00Z`).toISOString().slice(0,10)===day;
+        return {page:"usage",days:days===14||days===30?days:7,day:validDay?day:undefined,display:q.get("display")==="table"?"table":"chart"};
+      }
+      if(a==="policies")return {page:"action-policy",scope:oneOf(b,["workspace","agent","project","personal"] as const),name:parts[3]};
+      return {page:"operations",section:a==="integrations"?"integrations":"context"};
+    case "assignments":return {page:"assignments",id:a,agent:q.get("agent")||undefined};
+    case "agent-network":return {page:"agent-network",handoff:a==="handoffs"?b:undefined};
+    case "agent-controls":return {page:"agent-control"};
+    case "you":return {page:"you",section:pick(a,["profile","notifications","privacy","agents","connections"] as const,"profile"),provider:a==="connections"?b:undefined};
     case undefined:
       return (
         legacy(q) ?? {
@@ -301,6 +339,8 @@ function read(pathname: string, search: string): Route {
     case "knowledge":
       return a ? { page: "context", source: a, tab: pick(b, SOURCE_TABS, "documents") } : { page: "context" };
     case "agents":
+      if(b==="setup")return {page:"agent-setup",name:a==="new"?undefined:a};
+      if(b==="control")return {page:"agent-control",agent:a};
       if (!a) return { page: "agents" };
       return {
         page: "agent",
