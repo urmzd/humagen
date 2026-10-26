@@ -70,14 +70,18 @@ function response(request: ModelRequest) {
         "Owner confirmed for this revision. The launch date and original evidence remain unchanged.";
     }
   }
+  const documentRequested=/native docx evidence table/i.test(asks);
+  const spreadsheetRequested=/native xlsx owner sheet/i.test(asks);
+  const filename=documentRequested?"native-evidence.docx":spreadsheetRequested?"native-owners.xlsx":"native-launch.pptx";
+  const authored=documentRequested?{title:"Native evidence brief",paragraphs:["Review the evidence before publication."],rows:[["Decision","Owner"],["Keep the launch date","Developer"]],sources:["https://example.test/launch-decision"]}:spreadsheetRequested?{rows:[["Action","Owner"],["Review evidence","Developer"]]}:model;
   const offset = revising ? 1 : 0;
   if (step === offset) {
     tool = "file_write";
-    args = { path: "native-launch.pptx", format: "native", content: JSON.stringify(model) };
+    args = { path: filename, format: "native", content: JSON.stringify(authored) };
   } else if (step === offset + 1) {
     tool = "publish_artifact";
     args = {
-      path: "native-launch.pptx",
+      path: filename,
       description: revising
         ? "Native briefing with the revised owner"
         : "Native briefing generated through the actual sandbox tools",
