@@ -78,6 +78,7 @@ func signature(m *Message) string {
 			field(s)
 		}
 	}
+	field(m.Source.Knowledge)
 	field(m.Source.Run)
 	field(m.Source.Project)
 	field(m.Source.Thread)
@@ -113,7 +114,7 @@ func signature(m *Message) string {
 func representative(m *Message) Message {
 	return Message{
 		Kind: m.Kind, Broadcast: m.Broadcast, To: m.To, Audience: slices.Clone(m.Audience), Excluded: slices.Clone(m.Excluded),
-		Source: Source{Run: m.Source.Run, Project: m.Source.Project, Thread: m.Source.Thread, Agent: m.Source.Agent},
+		Source: Source{Knowledge: m.Source.Knowledge, Run: m.Source.Run, Project: m.Source.Project, Thread: m.Source.Thread, Agent: m.Source.Agent},
 		Parts:  scopeParts(m),
 	}
 }

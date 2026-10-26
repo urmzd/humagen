@@ -76,6 +76,9 @@ func Open(st state.Store) (*Index, error) {
 	slices.SortFunc(loaded, func(a, b storedRun) int { return cmp.Compare(a.Seq, b.Seq) })
 	for _, s := range loaded {
 		r := s.Run
+		if r.Citations == nil {
+			r.Citations = []Citation{}
+		}
 		r.privateContext = s.PrivateContext
 		r.tag, r.requesters, r.final, r.closed, r.settledUp = s.Tag, s.Requesters, s.Final, s.Closed, s.SettledUp
 		x.runs[r.ID] = &r

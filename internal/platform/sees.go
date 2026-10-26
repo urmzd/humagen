@@ -249,6 +249,9 @@ func (s *Seer) RunID(id string) bool {
 // into another project is read where the conversation went. Who it is
 // addressed to is the inbox's to decide besides.
 func (s *Seer) Message(m inbox.Message) bool {
+	if m.Source.Knowledge != "" && !s.p.SourceVisible(s.who, m.Source.Knowledge) {
+		return false
+	}
 	if m.Kind == inbox.KindOperation {
 		found := false
 		for _, part := range m.Parts {
@@ -330,6 +333,9 @@ func (s *Seer) Notice(e usage.Entry) bool {
 // Suite reports whether the reader sees an eval suite: one that tests an
 // agent where they see the agent.
 func (s *Seer) Suite(suite evals.Suite) bool {
+	if suite.Target == evals.Knowledge {
+		return s.p.SourceVisible(s.who, suite.Subject)
+	}
 	return suite.Target != evals.Agent || s.Agent(suite.Subject)
 }
 

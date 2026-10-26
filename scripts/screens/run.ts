@@ -365,6 +365,75 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "monitor", path: "/monitor" },
     { name: "monitor-rules", path: "/monitor/rules" },
     { name: "context", path: "/context" },
+    {
+      name: "source-citation-indexed",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const facts = page.getByText("Indexed Copy", { exact: true }).last();
+        await facts.waitFor();
+        await facts.scrollIntoViewIfNeeded();
+      },
+    },
+    { name: "source-available", path: "/context/launch-context" },
+    {
+      name: "source-used-by",
+      path: "/context/launch-context",
+      act: async (page) => {
+        await page
+          .getByRole("heading", { name: "What relies on this source", exact: true })
+          .scrollIntoViewIfNeeded();
+        await page
+          .getByRole("link", { name: /^Conversations:/ })
+          .first()
+          .waitFor();
+      },
+    },
+    {
+      name: "source-attachments",
+      path: "/context/launch-context",
+      act: async (page) => {
+        await page
+          .getByRole("heading", { name: "Context Placement", exact: true })
+          .scrollIntoViewIfNeeded();
+        await page.getByRole("link", { name: "Launch / #deals", exact: true }).waitFor();
+      },
+    },
+    { name: "source-attention", path: "/context/source-attention" },
+    {
+      name: "source-configuration",
+      path: "/context/source-attention",
+      act: async (page) => {
+        await page.getByText("Configure Source", { exact: true }).click();
+      },
+    },
+    {
+      name: "source-resources-denied",
+      path: "/context/source-attention",
+      act: async (page) => {
+        await page.getByRole("button", { name: "Load Remote Resources", exact: true }).click();
+        await page.getByRole("alert").last().waitFor();
+      },
+    },
+    {
+      name: "source-sync-settings",
+      path: "/context/source-attention",
+      act: async (page) => {
+        await page
+          .getByRole("heading", { name: "Sync Settings", exact: true })
+          .scrollIntoViewIfNeeded();
+      },
+    },
+    {
+      name: "source-reference-denied",
+      path: "/context/source-attention",
+      act: async (page) => {
+        await page
+          .getByRole("textbox", { name: "Your credential reference", exact: true })
+          .fill("op://Screens/not-allowed/token");
+        await page.getByRole("button", { name: "Save Reference", exact: true }).click();
+        await page.getByText(/that reference cannot be used/).waitFor();
+      },
+    },
     { name: "agents", path: "/agents" },
     {
       name: "agent-status-badges",
@@ -784,6 +853,36 @@ interface Posted {
 async function seedChats(
   call: Call,
 ): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat">> {
+  // No token is supplied: this exercises a real denied credential lookup,
+  // without calling Drive or simulating a successful external connection.
+  await call("POST", "/api/knowledge", {
+    name: "source-attention",
+    description: "A configured Drive source awaiting the reader’s own access",
+  });
+  await call("PUT", "/api/knowledge/source-attention/configuration", {
+    mode: "indexed",
+    provider: "drive",
+    origin: "folder1",
+    project: "~",
+  });
+  try {
+    await call("POST", "/api/knowledge/source-attention/sync");
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !/^POST \/api\/knowledge\/source-attention\/sync: (401|403|503) /.test(error.message)
+    )
+      throw error;
+  }
+  const failedSources = await call<{ sources: { name: string; lifecycle?: { status: string } }[] }>(
+    "GET",
+    "/api/knowledge",
+  );
+  if (
+    failedSources.sources.find((source) => source.name === "source-attention")?.lifecycle
+      ?.status !== "needs_attention"
+  )
+    throw new Error("Expected the real missing-credential refresh to require attention");
   await call("POST", "/api/knowledge", {
     name: "launch-context",
     description: "Imported supplier updates for the launch",
@@ -818,6 +917,10 @@ async function seedChats(
   });
   // A second channel, so the + menu's channel row has a choice.
   await call("POST", "/api/projects/Launch/channels", { name: "deals", purpose: "Partner deals" });
+  await call("PUT", "/api/knowledge/launch-context/attachment", {
+    project: "Launch",
+    channel: "deals",
+  });
   const answered = async (p: Posted) => {
     for (const r of p.runs) await settled(call, r.id);
   };
@@ -834,19 +937,38 @@ async function seedChats(
       text: "@helper what would you check first?",
     }),
   );
+  // This goes through native retained-document retrieval and the offline model.
+  // The capture is refused unless the API returns durable retrieval evidence.
+  const requestedScreens = process.env.SCREENS_ONLY?.split(",");
+  if (
+    !requestedScreens ||
+    requestedScreens.includes("source-citation-indexed") ||
+    requestedScreens.includes("source-used-by")
+  ) {
+    const grounded = await call<Posted>("POST", `/api/threads/${mine.thread.id}/messages`, {
+      text: "@helper When does packaging arrive, and what are the November press embargo and retail availability dates?",
+    });
+    await answered(grounded);
+    const run = await call<{ citations?: { mode?: string; copy_at?: string }[] }>(
+      "GET",
+      `/api/runs/${grounded.runs[0]?.id}`,
+    );
+    if (!run.citations?.some((citation) => citation.mode === "indexed"))
+      throw new Error("The native grounded screen run did not record indexed citation evidence");
+  }
   const shared = await call<Posted>("POST", "/api/threads", {
     project: "Launch",
     text: "@lead draft the launch checklist with me",
     visibility: "private",
   });
   await answered(shared);
-  const placement = await call<{ token: string }>(
+  const sharedPreview = await call<{ token: string }>(
     "GET",
     `/api/threads/${shared.thread.id}/placement?project=Launch&channel=general`,
   );
   await call("POST", `/api/threads/${shared.thread.id}/share`, {
     channel: "general",
-    placement_token: placement.token,
+    placement_token: sharedPreview.token,
   });
   const routed = await call<Posted>("POST", "/api/threads", {
     project: "Launch",

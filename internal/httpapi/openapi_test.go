@@ -33,6 +33,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/mcptools"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 	"github.com/urmzd/saige/agent/agenttest"
@@ -54,6 +55,7 @@ import (
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -591,6 +593,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
 		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: revisionView{}}, "Choice": {typ: pick.Choice{}},
+		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"Note": {typ: noteView{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
@@ -644,11 +647,13 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
+		"ClientCapabilityPolicy": {typ: clients.Capabilities{}},
+		"InstallationEvent":      {typ: platform.InstallationEvent{}}, "InstallationAction": {typ: platform.InstallationAction{}}, "InstallationCapabilities": {typ: platform.InstallationCapabilities{}},
 		"ClientIdentity": {typ: clients.Identity{}}, "SecretRef": {typ: clients.SecretRef{}}, "SecretInput": {typ: clients.SecretInput{}},
 		"SlackCommand": {typ: clients.Command{}}, "SlackOptions": {typ: clients.SlackOptions{}}, "GitHubOptions": {typ: clients.GitHubOptions{}},
 		"ClientView": {typ: clientView{}}, "ClientCaps": {typ: clients.Caps{}}, "ClientInput": {typ: clientBody{}, written: true},
 		"TextPayload": {typ: payload.Text{}}, "ThinkingPayload": {typ: payload.Thinking{}}, "ToolCallPayload": {typ: payload.ToolCall{}},
-		"ToolDonePayload": {typ: payload.ToolDone{}}, "Provenance": {typ: payload.Provenance{}}, "CitationPayload": {typ: payload.Citation{}},
+		"ToolDonePayload": {typ: payload.ToolDone{}}, "Provenance": {typ: payload.Provenance{}}, "CitationPayload": {typ: runs.CitationPayload{}},
 		"LifecyclePayload": {typ: payload.Lifecycle{}}, "Question": {typ: payload.Question{}}, "Answer": {typ: struct {
 			payload.Answer
 			// What a route hands out beside the subject (shownEvent).
@@ -892,7 +897,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	},
 		// A tool that acts as each person, and one the workspace reaches as
 		// itself. Neither is reached here.
-		Ext: platform.Extensions{ToolProviders: []platform.ToolProviderSeed{
+		Ext: platform.Extensions{SourceProviders: map[string]knowledge.Provider{"contract-source": contractSourceBoundary{}}, Resolver: mcptools.ResolverFunc(func(context.Context, string) (mcptools.Secret, error) {
+			return mcptools.NewSecret("contract-only-source-token"), nil
+		}), ToolProviders: []platform.ToolProviderSeed{
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: "https://issues.example.com/mcp", CredentialScope: toolprovider.ScopePerson}},
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "wiki", Transport: toolprovider.TransportHTTP, Endpoint: "https://wiki.example.com/mcp", CredentialRef: "env:WIKI_TOKEN"}},
 		}},
@@ -1421,8 +1428,100 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(acme, "POST", "/api/alerts/{id}/ack", "/api/alerts/nope/ack", "", http.StatusNotFound)
 
+	link := c.call(acme, "POST", "/api/source-link-rules", "/api/source-link-rules", `{"provider":"github","attribute":"repository","pattern":"urmzd/humagen","project":"~","mode":"auto_link"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/source-link-rules", "/api/source-link-rules", "", http.StatusOK)
+	c.call(acme, "POST", "/api/source-link-rules/preview", "/api/source-link-rules/preview", `{"provider":"github","id":"resource","attributes":{"repository":["urmzd/humagen"]}}`, http.StatusOK)
+	c.call(acme, "POST", "/api/source-link-rules/preview", "/api/source-link-rules/preview", `{"provider":"github","id":"","attributes":{}}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/source-link-rules", "/api/source-link-rules", `{"provider":"github","attribute":"repository","pattern":"x","project":"missing"}`, http.StatusNotFound)
+	c.call(acme, "POST", "/api/source-link-rules", "/api/source-link-rules", `{"provider":"github","attribute":"unsupported","pattern":"x","project":"~"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/source-link-rules/{id}", "/api/source-link-rules/"+link.str("id"), `{"provider":"github","attribute":"repository","pattern":"urmzd/humagen","project":"~","mode":"off"}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/source-link-rules/{id}", "/api/source-link-rules/"+link.str("id"), `{"provider":"github","attribute":"unsupported","pattern":"x","project":"~"}`, http.StatusBadRequest)
+	for i := 0; i < sourcelinks.MaxRules-1; i++ {
+		if _, err := f.p.SourceLinks.Put("acme", sourcelinks.Rule{ID: fmt.Sprintf("contract-rule-%d", i), Provider: "github", Attribute: "repository", Pattern: "other", Project: "~", Mode: sourcelinks.Off}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.call(acme, "POST", "/api/source-link-rules", "/api/source-link-rules", `{"provider":"github","attribute":"repository","pattern":"x","project":"~"}`, http.StatusTooManyRequests)
+	c.call(acme, "DELETE", "/api/source-link-rules/{id}", "/api/source-link-rules/contract-rule-0", "", http.StatusNoContent)
+	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"remote"}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/ana/drive"}`, http.StatusOK)
+	capReader := f.person(t, "acme", "source-cap", "Source capacity reader", "humagen-admins")
+	for i := 0; i < credentials.MaxPerPerson; i++ {
+		if _, err := f.p.Credentials.Put("acme", "source-cap", fmt.Sprintf("cap-%d", i), credentials.Input{Ref: fmt.Sprintf("op://People/source-cap/cap-%d", i)}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.call(capReader, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/source-cap/drive"}`, http.StatusTooManyRequests)
+
+	pending, err := f.p.Knowledge.BeginSync("acme", "remote", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusConflict)
+	if _, err := f.p.Knowledge.FailSync("acme", "remote", pending, knowledge.Interrupted, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// A machine has no person's credential: this records a real failed attempt,
+	// without calling Drive or representing a fake boundary as a live connection.
+	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusOK)
+
+	c.call(acme, "GET", "/api/knowledge/{name}/resources", "/api/knowledge/remote/resources", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/knowledge/{name}/snapshot", "/api/knowledge/remote/snapshot", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/knowledge/{name}/replace", "/api/knowledge/remote/replace", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/knowledge/{name}/sync-settings", "/api/knowledge/remote/sync-settings", `{"every_seconds":0,"stop_after_seconds":600}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/knowledge/{name}/sync-settings", "/api/knowledge/remote/sync-settings", `{"every_seconds":1,"stop_after_seconds":600}`, http.StatusForbidden)
+	c.call(acme, "PUT", "/api/knowledge/{name}/sync-settings", "/api/knowledge/remote/sync-settings", `{"every_seconds":0,"stop_after_seconds":1}`, http.StatusBadRequest)
+	pendingSettings, err := f.p.Knowledge.BeginSync("acme", "remote", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(acme, "PUT", "/api/knowledge/{name}/sync-settings", "/api/knowledge/remote/sync-settings", `{"every_seconds":0,"stop_after_seconds":600}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/knowledge/{name}/snapshot", "/api/knowledge/remote/snapshot", "", http.StatusConflict)
+	if _, err := f.p.Knowledge.FailSync("acme", "remote", pendingSettings, knowledge.Interrupted, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	c.call(ana, "POST", "/api/knowledge", "/api/knowledge", `{"name":"contract-copy"}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/knowledge", "/api/knowledge", `{"name":"not-created","configuration":{"mode":"indexed","provider":"contract-source","origin":"folder1","project":"missing"}}`, http.StatusNotFound)
+	c.call(ana, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/contract-copy/configuration", `{"mode":"indexed","provider":"contract-source","origin":"folder1","project":"~","resources":["doc"]}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/contract-copy/credential", `{"ref":"op://People/ana/contract-source"}`, http.StatusOK)
+	c.call(ana, "GET", "/api/knowledge/{name}/resources", "/api/knowledge/contract-copy/resources", "", http.StatusOK)
+	c.call(ana, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/contract-copy/sync", "", http.StatusOK)
+	c.call(ana, "POST", "/api/knowledge/{name}/snapshot", "/api/knowledge/contract-copy/snapshot", "", http.StatusOK)
+	c.call(ana, "POST", "/api/knowledge/{name}/replace", "/api/knowledge/contract-copy/replace", "", http.StatusOK)
+	frozenAttempt, err := f.p.Knowledge.BeginSync("acme", "contract-copy", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(ana, "POST", "/api/knowledge/{name}/replace", "/api/knowledge/contract-copy/replace", "", http.StatusConflict)
+	if _, err := f.p.Knowledge.FailSync("acme", "contract-copy", frozenAttempt, knowledge.Interrupted, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/remote", "", http.StatusNoContent)
+
 	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"handbook","description":"How we work."}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/knowledge/{name}/attachment", "/api/knowledge/handbook/attachment", `{"project":"Launch","channel":"general"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/knowledge/{name}/attachments", "/api/knowledge/handbook/attachments", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/knowledge/{name}/attachment", "/api/knowledge/handbook/attachment", `{"project":""}`, http.StatusBadRequest)
+	c.call(acme, "DELETE", "/api/knowledge/{name}/attachment", "/api/knowledge/handbook/attachment", "", http.StatusBadRequest)
+	c.call(acme, "DELETE", "/api/knowledge/{name}/attachment", "/api/knowledge/handbook/attachment?project=Launch&channel=general", "", http.StatusNoContent)
+	seededSuggestions, err := f.p.SourceSuggestions.Observe("acme", "", "handbook", sourcelinks.Resource{Provider: "manual", ID: "handbook", Attributes: map[string][]string{"source": {"handbook"}}}, []sourcelinks.Match{{Project: "~", Mode: sourcelinks.Suggest, Rules: []string{}}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	suggestionID := seededSuggestions[0].ID
+	c.call(acme, "GET", "/api/source-link-suggestions", "/api/source-link-suggestions", "", http.StatusOK)
+	c.call(acme, "GET", "/api/source-link-suggestions", "/api/source-link-suggestions?limit=201", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/source-link-suggestions/{id}/decision", "/api/source-link-suggestions/"+suggestionID+"/decision", `{"action":"unsupported","version":1}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/source-link-suggestions/{id}/decision", "/api/source-link-suggestions/"+suggestionID+"/decision", `{"action":"link","version":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/source-link-suggestions/{id}/decision", "/api/source-link-suggestions/"+suggestionID+"/decision", `{"action":"ignore","version":1}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/source-link-suggestions/{id}/decision", "/api/source-link-suggestions/"+suggestionID+"/decision", `{"action":"ignore","version":2}`, http.StatusOK)
+
 	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"handbook"}`, http.StatusConflict)
+	c.call(acme, "GET", "/api/knowledge/{name}/dependencies", "/api/knowledge/handbook/dependencies", "", http.StatusOK)
 	c.call(acme, "GET", "/api/knowledge/{name}/documents", "/api/knowledge/handbook/documents", "", http.StatusOK)
 	c.call(acme, "GET", "/api/knowledge/search", "/api/knowledge/search?q=zebra", "", http.StatusOK)
 	c.call(acme, "GET", "/api/knowledge/search", "/api/knowledge/search?q=", "", http.StatusBadRequest)
@@ -1465,6 +1564,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	app := `{"id":"app","name":"App","surface":"slack","identity":{"app_id":"A01APP","team":"T01ABCDEF"},"default_agent":"helper","slack":{"machine":"svc-acme"},` +
 		`"credentials":{"token":{"value":"` + botToken + `"},"signing_secret":{"value":"` + signingSecret + `"}}}`
 	c.call(acme, "POST", "/api/clients", "/api/clients", app, http.StatusCreated)
+	installationCapsFixture := c.call(acme, "GET", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", fmt.Sprintf(`{"version":%v,"events":["app_mention","message","slash_command"],"actions":["slack_post_message","slack_add_reaction"],"deliver_outcomes":true}`, installationCapsFixture.field("version")), http.StatusOK)
+	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", `{"version":0,"events":[],"actions":[],"deliver_outcomes":false}`, http.StatusConflict)
+	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", `{"version":2,"events":["not_an_event"],"actions":[],"deliver_outcomes":false}`, http.StatusBadRequest)
+	bridgeDeliveryRunFixture := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"Delivery check","project":"Launch"}`, http.StatusAccepted)
+	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run="+bridgeDeliveryRunFixture.str("id")+"&channel=C01DELIVERY", "", http.StatusOK)
+	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run=missing&channel=C01DELIVERY", "", http.StatusNotFound)
+
 	deliveries := "/api/inbox/{id}/deliveries/{client}"
 	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNoContent)
 	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"","ts":"1700000000.000100"}`, http.StatusBadRequest)
@@ -1840,13 +1948,21 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully", "channel": "general",
 	}
 	real := map[string]map[string]string{
-		"/api/projects/{name}/action-policy": {"name": "Launch"},
-		"/api/handoffs/{id}":                 {"id": called.str("id")},
-		"/api/assignments/{id}":              {"id": "contract-assignment"},
-		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
-		"/api/agents/{name}/memory/{id}":     {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
+		"/api/clients/{id}/capabilities":             {"id": "support"},
+		"/api/projects/{name}/action-policy":         {"name": "Launch"},
+		"/api/source-link-suggestions/{id}/decision": {"id": suggestionID},
+		"/api/knowledge/{name}/attachment":           {"name": "handbook"},
+		"/api/knowledge/{name}/attachments":          {"name": "handbook"},
+		"/api/source-link-rules/{id}":                {"id": link.str("id")},
+		"/api/handoffs/{id}":                         {"id": called.str("id")},
+		"/api/assignments/{id}":                      {"id": "contract-assignment"},
+		"/api/assignments/{id}/run":                  {"id": "contract-assignment"},
+		"/api/agents/{name}/memory/{id}":             {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
 		"/api/clients/{id}": {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
+		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
+		"/api/knowledge/{name}/dependencies":  {"name": "handbook"},
+		"/api/knowledge/{name}/configuration": {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
@@ -1989,6 +2105,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"PUT /api/knowledge/{name}/attachment 429": "bounded relation store refuses new attachments at10000 records; cap exercised in source-link suggestion store tests",
+	"POST /api/source-link-rules 409":          "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
+	"PUT /api/source-link-rules/{id} 409":      "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
+	"DELETE /api/source-link-rules/{id} 409":   "concurrent rule change is rejected by store snapshot test",
+
+	"POST /api/knowledge/{name}/documents 409": "source scope can change between authorization and insertion; atomic rejection is exercised by pkg/knowledge promotion and scope tests",
 	// A workspace holds at most 1,000 call policies, one per agent. Making
 	// that many agents here would only test a counter, which
 	// pkg/callpolicy's tests do.

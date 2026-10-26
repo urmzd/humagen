@@ -550,6 +550,7 @@ export function TaskList({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy
     <Task
       key={t.id}
       {...t}
+      sourceLabels={copy.citation}
       title={subagent && inWords ? copy.delegated(subagent.name, t.title) : t.title}
       decision={taskDecision(turn, interruptId, copy)}
       details={
@@ -735,7 +736,9 @@ export function TurnView({
         line with the one link to the run, then the disclaimer. Nothing sits between them
         and nothing comes after, so cards, notices and feedback all go above.
       */}
-      {turn.citations.length > 0 && <Sources items={turn.citations} />}
+      {turn.citations.length > 0 && (
+        <Sources items={turn.citations} labels={copy.citation} scope={turn.id} />
+      )}
       {session}
       {disclaimer && turn.status !== "queued" && <Context items={[disclaimer]} />}
     </>

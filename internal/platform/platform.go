@@ -71,6 +71,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -81,6 +82,11 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
+	AssignmentSources operations.SourceChanges
+	// SourceDependencies optionally projects authoritative extra-store origin references.
+	SourceDependencies SourceDependencyReader
+
 	// Backends are where everything the platform keeps is kept. The zero
 	// value is in memory, lost with the process. OpenPostgres fills it from
 	// one database.
@@ -190,20 +196,26 @@ type Config struct {
 type Platform struct {
 	files filesblob.Store
 
-	cfg Config
-	log *slog.Logger
-	now func() time.Time
+	cfg                    Config
+	log                    *slog.Logger
+	now                    func() time.Time
+	grounding              sourceGrounding
+	sourceDependencyMu     sync.RWMutex
+	sourceDependencyReader SourceDependencyReader
 
-	Agents    registry.Store
-	Runs      *runs.Index
-	Schedules *Schedules
-	Journal   *journal.Journal
-	Alerts    *alerts.Engine
-	Knowledge *knowledge.Store
-	Evals     *evals.Store
-	Feedback  *feedback.Store
-	Prefs     *prefs.Store
-	Memory    *memory.Store
+	Agents            registry.Store
+	Runs              *runs.Index
+	Schedules         *Schedules
+	Journal           *journal.Journal
+	Alerts            *alerts.Engine
+	Knowledge         *knowledge.Store
+	SourceLinks       *sourcelinks.Store
+	SourceSuggestions *sourcelinks.Suggestions
+	SourceEvidence    *knowledge.EvidenceStore
+	Evals             *evals.Store
+	Feedback          *feedback.Store
+	Prefs             *prefs.Store
+	Memory            *memory.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -363,6 +375,14 @@ func New(cfg Config) (*Platform, error) {
 		return nil, err
 	}
 
+	provider := cfg.AssignmentSources
+	if provider == nil {
+		provider = p
+	}
+	if err := p.RegisterAssignmentSources(provider); err != nil {
+		return nil, err
+	}
+
 	if p.broker == nil {
 		p.broker = bus.NewMemory()
 	}
@@ -487,7 +507,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
 }
 
 // reroute registers the routes of every run the index holds that has not
@@ -827,6 +847,12 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 		return
 	}
 	p.admission.Lock()
+	if e.Kind == envelope.KindCitation {
+		metadata, _, _ := p.trustedCitation(e)
+		if err := p.Runs.RecordCitation(e, metadata); err != nil {
+			p.log.Error("citation could not be retained", "error", err)
+		}
+	}
 	run, ended := p.Runs.Observe(e)
 	if ended {
 		p.free(run)
@@ -933,6 +959,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("source refresh", func() error { return p.refreshSources(ctx) })
 	loop("inbox retention", func() error {
 		tick := time.NewTicker(retainEvery)
 		defer tick.Stop()

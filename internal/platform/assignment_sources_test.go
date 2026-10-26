@@ -40,12 +40,12 @@ func sourceAwait(t *testing.T, read func() bool) {
 }
 func TestSourceChangeAssignmentsUseExistingRuntimeAndKeepCursorAfterRestart(t *testing.T) {
 	eachBackend(t, func(t *testing.T, b platform.Backends, again func() platform.Backends) {
-		p, stop := running(t, b)
 		versions := &sourceVersions{version: 1, fresh: true}
-		if err := p.RegisterAssignmentSources(versions); err != nil {
+		p, stop := runningWith(t, platform.Config{Backends: b, AssignmentSources: versions})
+		if _, err := p.Knowledge.Create(tenant, "feed", "Feed", "owner", time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Knowledge.Create(tenant, "feed", "Feed", "owner", time.Now()); err != nil {
+		if _, err := p.Knowledge.Add(tenant, "feed", "Initial", "", "retained initial source", "owner", time.Now()); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "watcher", Model: "offline", Provider: "offline", SystemPrompt: "Review retained changes.", Sources: []agentspec.Source{{Name: "feed", URI: "knowledge://feed"}}}, "owner"); err != nil {
@@ -76,11 +76,8 @@ func TestSourceChangeAssignmentsUseExistingRuntimeAndKeepCursorAfterRestart(t *t
 		}
 		stop()
 		versions.set(3, true)
-		p2, stop2 := running(t, again())
+		p2, stop2 := runningWith(t, platform.Config{Backends: again(), AssignmentSources: versions})
 		defer stop2()
-		if err := p2.RegisterAssignmentSources(versions); err != nil {
-			t.Fatal(err)
-		}
 		sourceAwait(t, func() bool {
 			got, _ := p2.Operations.Assignment(tenant, a.ID)
 			return got.SourceVersion == 3 && got.State == operations.Watching && got.RunID != first.RunID
@@ -102,12 +99,12 @@ func TestSourceChangeAssignmentsUseExistingRuntimeAndKeepCursorAfterRestart(t *t
 
 func TestSourceChangeReservationRecoversExactTriggerAfterRestart(t *testing.T) {
 	eachBackend(t, func(t *testing.T, b platform.Backends, again func() platform.Backends) {
-		p, stop := running(t, b)
 		versions := &sourceVersions{version: 1, fresh: true}
-		if err := p.RegisterAssignmentSources(versions); err != nil {
+		p, stop := runningWith(t, platform.Config{Backends: b, AssignmentSources: versions})
+		if _, err := p.Knowledge.Create(tenant, "feed", "Feed", "owner", time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Knowledge.Create(tenant, "feed", "Feed", "owner", time.Now()); err != nil {
+		if _, err := p.Knowledge.Add(tenant, "feed", "Initial", "", "retained initial source", "owner", time.Now()); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "watcher", Model: "offline", Provider: "offline", SystemPrompt: "Review retained changes.", Sources: []agentspec.Source{{Name: "feed", URI: "knowledge://feed"}}}, "owner"); err != nil {
@@ -132,11 +129,8 @@ func TestSourceChangeReservationRecoversExactTriggerAfterRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		versions.set(2, true)
-		p2, stop2 := running(t, again())
+		p2, stop2 := runningWith(t, platform.Config{Backends: again(), AssignmentSources: versions})
 		defer stop2()
-		if err := p2.RegisterAssignmentSources(versions); err != nil {
-			t.Fatal(err)
-		}
 		sourceAwait(t, func() bool { _, err := p2.Runs.Get(tenant, runID); return err == nil })
 		run, err := p2.Runs.Get(tenant, runID)
 		if err != nil {

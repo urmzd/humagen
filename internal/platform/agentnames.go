@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -381,7 +383,14 @@ const tagTool = "tag_"
 // out, its hash is the hash of what is shown, so it confirms no guess at what
 // is not.
 func (s *Seer) Revision(rev agentspec.Revision) agentspec.Revision {
-	return revisionShown(rev, s.Agent)
+	rev = revisionShown(rev, s.Agent)
+	sources := slices.DeleteFunc(slices.Clone(rev.Spec.Sources), func(src agentspec.Source) bool { return !s.p.SourceVisible(s.who, src.Name) })
+	if len(sources) != len(rev.Spec.Sources) {
+		rev = rev.Clone()
+		rev.Spec.Sources = sources
+		rev.Hash = rev.Spec.Hash()
+	}
+	return rev
 }
 
 // revisionShown is a revision with every agent that shown does not keep left
@@ -436,6 +445,24 @@ func (s *Seer) Revisions(revs []agentspec.Revision) []agentspec.Revision {
 // wrote none, unless the spec written names approvers or self_approval of
 // its own. The spec as kept is validated again.
 func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *agentspec.Revision, spec agentspec.AgentSpec) (agentspec.AgentSpec, error) {
+	// An editor can retain unread references already present, but cannot probe
+	// or newly grant a source they cannot read.
+	sources := slices.Clone(spec.Sources)
+	for _, src := range sources {
+		previously := old != nil && slices.ContainsFunc(old.Spec.Sources, func(prior agentspec.Source) bool { return reflect.DeepEqual(prior, src) })
+		if !previously && !p.SourceVisible(who, src.Name) {
+			return agentspec.AgentSpec{}, knowledge.ErrNotFound
+		}
+	}
+	if old != nil {
+		for _, src := range old.Spec.Sources {
+			if !p.SourceVisible(who, src.Name) && !slices.ContainsFunc(sources, func(candidate agentspec.Source) bool { return reflect.DeepEqual(candidate, src) }) {
+				sources = append(sources, src)
+			}
+		}
+	}
+	spec.Sources = sources
+
 	seer := p.Seer(who)
 	shown := map[string]bool{}
 	var hidden []string
@@ -660,7 +687,7 @@ func (s *Seer) Turns(th threads.Thread, turns []ThreadTurn) []ThreadTurn {
 	out := make([]ThreadTurn, len(turns))
 	for i, t := range turns {
 		if t.Run != nil {
-			run := s.p.ShownRun(s.who.Tenant, *t.Run)
+			run := s.p.ShownRunAs(s.who, *t.Run)
 			t.Run = &run
 		}
 		if t.Message != nil {

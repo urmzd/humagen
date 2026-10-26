@@ -1,5 +1,5 @@
 import { emptyTurn, reduce, type Turn, type TurnEvent } from "@humagen/core";
-import { adapter, type BusEvent, type Run, turnOf } from "./run.ts";
+import { adapter, citationOf, type BusEvent, type Run, turnOf } from "./run.ts";
 
 /**
  * A run as one shared UI turn, kept current. This is the state every surface
@@ -24,7 +24,10 @@ export interface Follower {
 type Options = Parameters<typeof adapter>[0];
 
 /** Follow one run from its first event. */
-export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread">>, opts: Options = {}): Follower {
+export function follow(
+  run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread">>,
+  opts: Options = {},
+): Follower {
   const to = adapter(opts);
   const sessionUrl = opts.href?.(`/conversations/${encodeURIComponent(run.thread || run.id)}`);
   let turn = emptyTurn(run.id, { name: run.agent });
@@ -41,6 +44,10 @@ export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "threa
     apply: (e) => push(...to(e)),
     push,
     settle: (record) => {
+      // Present lists are the reader's authoritative projection, including
+      // an empty list after source access is revoked. Older APIs omit it.
+      if (record.citations !== undefined)
+        turn = { ...turn, citations: record.citations.map(citationOf) };
       // The record's answer is the whole answer. When the streamed text is not
       // where it begins, the stream missed or changed something: the record wins.
       if (record.status === "completed" && record.answer && !ended(turn)) {
@@ -52,7 +59,11 @@ export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "threa
 }
 
 /** A turn rebuilt from the events the journal still holds. Undefined when it holds none. */
-export function replay(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread">>, events: BusEvent[], opts: Options = {}): Turn | undefined {
+export function replay(
+  run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread">>,
+  events: BusEvent[],
+  opts: Options = {},
+): Turn | undefined {
   if (events.length === 0) return undefined;
   const f = follow(run, opts);
   for (const e of events) f.apply(e);

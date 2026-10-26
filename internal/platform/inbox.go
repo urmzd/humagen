@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -85,6 +86,8 @@ func severityOf(s alerts.Severity) inbox.Severity {
 // reads is the right needed to see a kind of message.
 func reads(k inbox.Kind) auth.Permission {
 	switch k {
+	case inbox.KindSource:
+		return auth.KnowledgeRead
 	case inbox.KindAnnouncement:
 		return auth.ProjectsRead
 	case inbox.KindMemory:
@@ -102,6 +105,8 @@ func reads(k inbox.Kind) auth.Permission {
 // so reading it is enough.
 func writes(k inbox.Kind) auth.Permission {
 	switch k {
+	case inbox.KindSource:
+		return auth.KnowledgeWrite
 	case inbox.KindAnnouncement:
 		return auth.ProjectsRead
 	case inbox.KindMemory:
@@ -117,6 +122,8 @@ func writes(k inbox.Kind) auth.Permission {
 // needs is the right an action on a part takes.
 func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 	switch {
+	case t == inbox.PartSource && action == ActRetry:
+		return auth.KnowledgeWrite, true
 	case t == inbox.PartOperation && action == ActAcknowledge:
 		return auth.RunsWrite, true
 	case t == inbox.PartAlert && action == ActAcknowledge:
@@ -148,6 +155,7 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 
 var offered = map[inbox.PartType][]string{
 	inbox.PartAlert:     {ActAcknowledge},
+	inbox.PartSource:    {ActRetry},
 	inbox.PartOperation: {ActAcknowledge},
 	inbox.PartFailure:   {ActRetry, ActAcknowledge},
 	inbox.PartMemory:    {ActKeep, ActDiscard},
@@ -566,6 +574,27 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 	switch {
 	case r.Action == ActAcknowledge:
 		// Settled below, with everything else the message holds.
+	case part.Type == inbox.PartSource:
+		if part.Source == nil {
+			return inbox.Message{}, knowledge.ErrInvalid
+		}
+		before, err := p.SourceAs(who, part.Source.Name)
+		if err != nil {
+			return inbox.Message{}, err
+		}
+		var src knowledge.Source
+		if before.Lifecycle != nil && before.Lifecycle.Snapshot {
+			src, err = p.ReplaceSource(ctx, who, part.Source.Name)
+		} else {
+			src, err = p.SyncSource(ctx, who, part.Source.Name)
+		}
+		if err != nil {
+			return inbox.Message{}, err
+		}
+		if src.Lifecycle == nil || src.Lifecycle.Status == knowledge.NeedsAttention {
+			return p.inboxGetAs(who, reader, id)
+		}
+		note = "Source refreshed"
 	case part.Type == inbox.PartFailure:
 		run, err := p.retry(ctx, who, part.Failure.Run)
 		if err != nil {
