@@ -16,7 +16,7 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
-agentOperations:{title:"Agent Operations",loading:"Reading operational state",failed:"Operational state could not be read. Retry to refresh it.",manager:(name:string)=>`Manager: ${name}`,lastRun:"Open Last Run",states:{ready:"Ready",working:"Working",waiting_on_people:"Waiting on People",watching:"Watching",paused:"Paused",failed:"Needs Attention"}},
+agentOperations:{pauseAll:"Pause All",resumeAll:"Resume All",filter:"Operational State",all:"All States",title:"Agent Operations",loading:"Reading operational state",failed:"Operational state could not be read. Retry to refresh it.",manager:(name:string)=>`Manager: ${name}`,lastRun:"Open Last Run",states:{ready:"Ready",working:"Working",waiting_on_people:"Waiting on People",watching:"Watching",paused:"Paused",failed:"Needs Attention"}},
   agentSetup: {
     title: "New Agent",
     lede: "Review its role, context and actions, then test the inactive draft before activation.",

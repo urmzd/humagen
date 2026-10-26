@@ -656,7 +656,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           />
         )}
         {route.page === "agents" && (
-          <Agents
+          <Agents operational
             builtin={builtin}
             agents={agents}
             runs={runs}

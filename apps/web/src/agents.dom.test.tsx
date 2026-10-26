@@ -134,3 +134,18 @@ test("an agent of the workspace's own comes to live in a project from its Access
   await waitFor(() => assert.ok(net!.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/humagen-writer/home")));
   await waitFor(() => assert.equal(homed, 1));
 });
+
+test("the agent directory filters authoritative operational states and saves a versioned workspace pause",async()=>{
+ const {Agents}=await import("./Agents.tsx");
+ const {defaultCopy}=await import("@humagen/components");
+ const state={paused:false,version:3,updated_at:"2026-10-01T00:00:00Z",updated_by:"ada"};
+ let saved:unknown;
+ net=stubFetch({"GET /api/agent-roster":()=>({controls:{"humagen-writer":{...state,state:"watching",effective_paused:false}},window_days:31}),"GET /api/agent-controls":()=>state,"PUT /api/agent-controls":body=>{saved=body;return {...state,paused:true,version:4}}});
+ render(<Agents operational agents={[writer]} stats={new Map()} canWrite onOpen={()=>{}} onNew={()=>{}}/>);
+ await waitFor(()=>assert.ok(!(screen.getByRole("button",{name:defaultCopy.agentOperations.pauseAll}) as HTMLButtonElement).disabled));
+ fireEvent.change(screen.getByLabelText(defaultCopy.agentOperations.filter),{target:{value:"watching"}});
+ assert.ok(screen.getByRole("button",{name:/humagen-writer/}));
+ fireEvent.click(screen.getByRole("button",{name:defaultCopy.agentOperations.pauseAll}));
+ await screen.findByRole("button",{name:defaultCopy.agentOperations.resumeAll});
+ assert.deepEqual(saved,{version:3,paused:true});
+});

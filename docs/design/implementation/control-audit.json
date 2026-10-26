@@ -1,0 +1,5425 @@
+[
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 1,
+    "label": "Close navigation",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 2,
+    "label": "Search conversations",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 3,
+    "label": "New conversation",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 4,
+    "label": "Conversations",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 5,
+    "label": "Deliverables",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 6,
+    "label": "Needs you 2",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 7,
+    "label": "Switch color theme",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 8,
+    "label": "About this UI concept",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 9,
+    "label": "Open navigation",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 10,
+    "label": "Product launch",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 11,
+    "label": "Project context, 4 sources",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 12,
+    "label": "People and access",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 13,
+    "label": "Conversation settings",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 14,
+    "label": "Activity 3 runs",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 15,
+    "label": "Move to Project",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 16,
+    "label": "People & access",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 17,
+    "label": "Conversation details",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 18,
+    "label": "Message, or @ an agent\u2026",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 19,
+    "label": "Add agents or files",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 20,
+    "label": "Product launch",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 21,
+    "label": "Analyst + Writer",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 22,
+    "label": "Send message",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 23,
+    "label": "input input/selection 23",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-workspace/index.html",
+    "control": 24,
+    "label": "Close panel",
+    "status": "integration_validation_pending",
+    "implementation": "Navigation, conversation panels, composer and saved deliverable selection",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 1,
+    "label": "Close",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 2,
+    "label": "General",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 3,
+    "label": "Activity",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 4,
+    "label": "Members",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 5,
+    "label": "Notifications",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 6,
+    "label": "All",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 7,
+    "label": "Handoffs",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 8,
+    "label": "Tool calls",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 9,
+    "label": "Decisions",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 10,
+    "label": "{{ toolsLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Conversation Activity route: filter and tools state",
+    "files": [
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Activity.html",
+    "control": 11,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 1,
+    "label": "Close",
+    "status": "integration_validation_pending",
+    "implementation": "Connected resource discovery, explicit resource selection, scope and indexed/live/hybrid configuration",
+    "files": [
+      "apps/web/src/SourceLifecycle.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 2,
+    "label": "{{ s.mono }} {{ s.name }}",
+    "status": "integration_validation_pending",
+    "implementation": "Connected resource discovery, explicit resource selection, scope and indexed/live/hybrid configuration",
+    "files": [
+      "apps/web/src/SourceLifecycle.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 3,
+    "label": "{{ r.name }} {{ r.meta }}",
+    "status": "integration_validation_pending",
+    "implementation": "Connected resource discovery, explicit resource selection, scope and indexed/live/hybrid configuration",
+    "files": [
+      "apps/web/src/SourceLifecycle.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 4,
+    "label": "{{ m.name }} {{ m.what }} + {{ m.pro1 }} + {{ m.pro2 }} \u2212 {{ m.con1 }} \u2212 {{ m.con2 }} Best for {{ m.best }}",
+    "status": "integration_validation_pending",
+    "implementation": "Connected resource discovery, explicit resource selection, scope and indexed/live/hybrid configuration",
+    "files": [
+      "apps/web/src/SourceLifecycle.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 5,
+    "label": "Choose pages",
+    "status": "integration_validation_pending",
+    "implementation": "Connected resource discovery, explicit resource selection, scope and indexed/live/hybrid configuration",
+    "files": [
+      "apps/web/src/SourceLifecycle.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 6,
+    "label": "{{ sc.name }} {{ sc.who }}",
+    "status": "integration_validation_pending",
+    "implementation": "Connected resource discovery, explicit resource selection, scope and indexed/live/hybrid configuration",
+    "files": [
+      "apps/web/src/SourceLifecycle.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 7,
+    "label": "Cancel",
+    "status": "integration_validation_pending",
+    "implementation": "Connected resource discovery, explicit resource selection, scope and indexed/live/hybrid configuration",
+    "files": [
+      "apps/web/src/SourceLifecycle.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 8,
+    "label": "Add {{ count }} to Spring Launch",
+    "status": "integration_validation_pending",
+    "implementation": "Connected resource discovery, explicit resource selection, scope and indexed/live/hybrid configuration",
+    "files": [
+      "apps/web/src/SourceLifecycle.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AddSource.html",
+    "control": 9,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 4,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 5,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 6,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 7,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 8,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 9,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 10,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 11,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 12,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 13,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 14,
+    "label": "Today",
+    "status": "integration_validation_pending",
+    "implementation": "Read-confined recorded handoff list and selected contract; actual Activity and policy links",
+    "files": [
+      "apps/web/src/AgentNetwork.tsx",
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 15,
+    "label": "This week",
+    "status": "integration_validation_pending",
+    "implementation": "Read-confined recorded handoff list and selected contract; actual Activity and policy links",
+    "files": [
+      "apps/web/src/AgentNetwork.tsx",
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 16,
+    "label": "30 days",
+    "status": "integration_validation_pending",
+    "implementation": "Read-confined recorded handoff list and selected contract; actual Activity and policy links",
+    "files": [
+      "apps/web/src/AgentNetwork.tsx",
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 17,
+    "label": "{{ t.fromI }} {{ t.toI }} {{ t.time }} {{ t.title }} {{ t.status }}",
+    "status": "integration_validation_pending",
+    "implementation": "Read-confined recorded handoff list and selected contract; actual Activity and policy links",
+    "files": [
+      "apps/web/src/AgentNetwork.tsx",
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 18,
+    "label": "{{ m.action }}",
+    "status": "integration_validation_pending",
+    "implementation": "Read-confined recorded handoff list and selected contract; actual Activity and policy links",
+    "files": [
+      "apps/web/src/AgentNetwork.tsx",
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 19,
+    "label": "Conversation The outcome, plus one quiet line: 3 agents coordinated 2 handoffs",
+    "status": "integration_validation_pending",
+    "implementation": "Read-confined recorded handoff list and selected contract; actual Activity and policy links",
+    "files": [
+      "apps/web/src/AgentNetwork.tsx",
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 20,
+    "label": "Activity Every step for one conversation: handoffs, contracts, tool calls, decisions.",
+    "status": "integration_validation_pending",
+    "implementation": "Read-confined recorded handoff list and selected contract; actual Activity and policy links",
+    "files": [
+      "apps/web/src/AgentNetwork.tsx",
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 21,
+    "label": "Edit in Policies",
+    "status": "integration_validation_pending",
+    "implementation": "Read-confined recorded handoff list and selected contract; actual Activity and policy links",
+    "files": [
+      "apps/web/src/AgentNetwork.tsx",
+      "apps/web/src/Activity.tsx",
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentComms.html",
+    "control": 22,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentDetail.html",
+    "control": 1,
+    "label": "\u2190 Agents",
+    "status": "integration_validation_pending",
+    "implementation": "Recorded roster status, controls, assignments, recorded run navigation",
+    "files": [
+      "apps/web/src/AgentDetail.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx",
+      "apps/web/src/Assignments.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentDetail.html",
+    "control": 2,
+    "label": "{{ pauseLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Recorded roster status, controls, assignments, recorded run navigation",
+    "files": [
+      "apps/web/src/AgentDetail.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx",
+      "apps/web/src/Assignments.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentDetail.html",
+    "control": 3,
+    "label": "Add",
+    "status": "integration_validation_pending",
+    "implementation": "Recorded roster status, controls, assignments, recorded run navigation",
+    "files": [
+      "apps/web/src/AgentDetail.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx",
+      "apps/web/src/Assignments.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentDetail.html",
+    "control": 4,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Recorded roster status, controls, assignments, recorded run navigation",
+    "files": [
+      "apps/web/src/AgentDetail.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx",
+      "apps/web/src/Assignments.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentDetail.html",
+    "control": 5,
+    "label": "Today 9:43 Supplier delay \u2192 recommended Nov 19 awaiting decision",
+    "status": "integration_validation_pending",
+    "implementation": "Actual bounded recorded last-run link and Activity, not prototype sample history.",
+    "files": [
+      "apps/web/src/AgentDetail.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx",
+      "apps/web/src/Assignments.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentDetail.html",
+    "control": 6,
+    "label": "Oct 20 Weekly launch status done",
+    "status": "integration_validation_pending",
+    "implementation": "Recorded roster status, controls, assignments, recorded run navigation",
+    "files": [
+      "apps/web/src/AgentDetail.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx",
+      "apps/web/src/Assignments.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentDetail.html",
+    "control": 7,
+    "label": "Oct 18 Plan v3 written from kickoff notes done",
+    "status": "integration_validation_pending",
+    "implementation": "Recorded roster status, controls, assignments, recorded run navigation",
+    "files": [
+      "apps/web/src/AgentDetail.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx",
+      "apps/web/src/Assignments.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AgentDetail.html",
+    "control": 8,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 4,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 5,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 6,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 7,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 8,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 9,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 10,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 11,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 12,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 13,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 14,
+    "label": "Export CSV",
+    "status": "integration_validation_pending",
+    "implementation": "Bounded server filters, expanded records, confined links and formula-safe CSV",
+    "files": [
+      "apps/web/src/Audit.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 15,
+    "label": "{{ f.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Bounded server filters, expanded records, confined links and formula-safe CSV",
+    "files": [
+      "apps/web/src/Audit.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 16,
+    "label": "{{ f.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Bounded server filters, expanded records, confined links and formula-safe CSV",
+    "files": [
+      "apps/web/src/Audit.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 17,
+    "label": "{{ r.toggleLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Bounded server filters, expanded records, confined links and formula-safe CSV",
+    "files": [
+      "apps/web/src/Audit.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 18,
+    "label": "{{ r.linkLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Bounded server filters, expanded records, confined links and formula-safe CSV",
+    "files": [
+      "apps/web/src/Audit.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/AuditLog.html",
+    "control": 19,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Context.html",
+    "control": 1,
+    "label": "Add source",
+    "status": "integration_validation_pending",
+    "implementation": "Actual retained source configuration, status, copy time and snapshot/refresh actions",
+    "files": [
+      "apps/web/src/ConversationShell.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Context.html",
+    "control": 2,
+    "label": "Close",
+    "status": "integration_validation_pending",
+    "implementation": "Actual retained source configuration, status, copy time and snapshot/refresh actions",
+    "files": [
+      "apps/web/src/ConversationShell.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Context.html",
+    "control": 3,
+    "label": "Reconnect",
+    "status": "integration_validation_pending",
+    "implementation": "Actual retained source configuration, status, copy time and snapshot/refresh actions",
+    "files": [
+      "apps/web/src/ConversationShell.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Context.html",
+    "control": 4,
+    "label": "Keep as snapshot",
+    "status": "integration_validation_pending",
+    "implementation": "Actual retained source configuration, status, copy time and snapshot/refresh actions",
+    "files": [
+      "apps/web/src/ConversationShell.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Context.html",
+    "control": 5,
+    "label": "Replace with v4",
+    "status": "integration_validation_pending",
+    "implementation": "Actual retained source configuration, status, copy time and snapshot/refresh actions",
+    "files": [
+      "apps/web/src/ConversationShell.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Context.html",
+    "control": 6,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 1,
+    "label": "Close",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 2,
+    "label": "{{ s.num }} {{ s.label }} {{ s.hint }}",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 3,
+    "label": "{{ t.name }} {{ t.desc }}",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 4,
+    "label": "input input/selection 4",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 5,
+    "label": "Spring Launch Q4 Research Onboarding Revamp Personal only you",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 6,
+    "label": "{{ tpl.purpose }}",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 7,
+    "label": "input input/selection 7",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 8,
+    "label": "What to do when a source changes",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 9,
+    "label": "input input/selection 9",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 10,
+    "label": "What to do on schedule",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 11,
+    "label": "input input/selection 11",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 12,
+    "label": "Add assignment",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation; the setup adds one inactive starter assignment. Additional standing assignments are managed after activation; multiple atomic starter assignments are not implemented.",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 13,
+    "label": "input input/selection 13",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 14,
+    "label": "input input/selection 14",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 15,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 16,
+    "label": "Mira K., then # launch-ops Avery Park # launch-ops",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 17,
+    "label": "Up to 40 runs a day Up to 10 runs a day Up to 100 runs a day",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 18,
+    "label": "Back",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 19,
+    "label": "Next",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 20,
+    "label": "Create agent",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 21,
+    "label": "Start with a dry run",
+    "status": "integration_validation_pending",
+    "implementation": "Role/context/grants/policy/budget, one inactive starter assignment, durable correction, native dry run and activation",
+    "files": [
+      "apps/web/src/AgentSetup.tsx",
+      "apps/web/src/agentTemplates.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/CreateAgent.html",
+    "control": 22,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 1,
+    "label": "Projects People, agents, context",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 2,
+    "label": "Channels and subchannels",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 3,
+    "label": "Conversations Where work is coordinated",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 4,
+    "label": "Library Skills and Memory, shared across projects and labelled by scope",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 5,
+    "label": "Operations Needs you Agents Agent network Context health Policies Usage Audit log",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 6,
+    "label": "You Settings, personal agents, personal skills and memory",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 7,
+    "label": "Start private You and Research Analyst draft a pricing memo",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 8,
+    "label": "Add to a project Pick the project and subchannel",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 9,
+    "label": "Confirm the audience Only you \u2192 8 people + 2 agents; private sources stay private",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 10,
+    "label": "Agents and Activity move along Runs, handoffs and deliverables keep their history",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 11,
+    "label": "Source changes Supplier ETA, live",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 12,
+    "label": "Monitor Agent detects Packaging Nov 4 \u2192 Nov 8",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 13,
+    "label": "Handoff to Launch Planner Diff and 3 SKUs attached",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 14,
+    "label": "Asks Ops Agent, held Notices wait for approval",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 15,
+    "label": "Decision in the conversation Avery approves Nov 19",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 16,
+    "label": "Saved to project Memory The date and why",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 17,
+    "label": "Create agent From Agents or a project",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 18,
+    "label": "Role and assignments What it owns, when it acts",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 19,
+    "label": "Skills, context, autonomy Allow Ask Never",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 20,
+    "label": "Dry run Replays recent work, no side effects",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 21,
+    "label": "Runs show in Activity Handoffs and tool calls",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 22,
+    "label": "Exceptions reach Needs you Decisions, permissions, failures",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/FlowMap.html",
+    "control": 23,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 1,
+    "label": "Context 5",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 2,
+    "label": "People and agents",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 3,
+    "label": "Conversation settings and Activity",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 4,
+    "label": "Fork from here",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 5,
+    "label": "Reply",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 6,
+    "label": "More actions",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 7,
+    "label": "{{ forkName }}",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 8,
+    "label": "Bring back result",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 9,
+    "label": "input input/selection 9",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 10,
+    "label": "input input/selection 10",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 11,
+    "label": "History up to 9:58",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 12,
+    "label": "input input/selection 12",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 13,
+    "label": "input input/selection 13",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 14,
+    "label": "input input/selection 14",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 15,
+    "label": "input input/selection 15",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 16,
+    "label": "input input/selection 16",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 17,
+    "label": "Cancel",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 18,
+    "label": "{{ createLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Saved message or completed-run fork point, source selection and reviewed Bring Back",
+    "files": [
+      "apps/web/src/ForkConversation.tsx",
+      "apps/web/src/ConversationForkPanels.tsx",
+      "apps/web/src/Room.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkConversation.html",
+    "control": 19,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 1,
+    "label": "Close",
+    "status": "integration_validation_pending",
+    "implementation": "File-defined templates, parent/context choices, optional read-only archive and durable fork completion",
+    "files": [
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 2,
+    "label": "input input/selection 2",
+    "status": "integration_validation_pending",
+    "implementation": "File-defined templates, parent/context choices, optional read-only archive and durable fork completion",
+    "files": [
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 3,
+    "label": "Spring 2027 GTM (initiative) Fall 2027 GTM (initiative) No parent top level",
+    "status": "integration_validation_pending",
+    "implementation": "File-defined templates, parent/context choices, optional read-only archive and durable fork completion",
+    "files": [
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 4,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "File-defined templates, parent/context choices, optional read-only archive and durable fork completion",
+    "files": [
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 5,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "File-defined templates, parent/context choices, optional read-only archive and durable fork completion",
+    "files": [
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 6,
+    "label": "Copy conversations as read-only archive",
+    "status": "integration_validation_pending",
+    "implementation": "File-defined templates, parent/context choices, optional read-only archive and durable fork completion",
+    "files": [
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 7,
+    "label": "Cancel",
+    "status": "integration_validation_pending",
+    "implementation": "File-defined templates, parent/context choices, optional read-only archive and durable fork completion",
+    "files": [
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 8,
+    "label": "Fork project",
+    "status": "integration_validation_pending",
+    "implementation": "File-defined templates, parent/context choices, optional read-only archive and durable fork completion",
+    "files": [
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/ForkProject.html",
+    "control": 9,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Icons.html",
+    "control": 1,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 1,
+    "label": "All projects",
+    "status": "implemented",
+    "implementation": "/projects",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 2,
+    "label": "Spring 2027 GTM",
+    "status": "implemented",
+    "implementation": "initiative overview",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 3,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 4,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 5,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 6,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 7,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 8,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 9,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 10,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 11,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 12,
+    "label": "Integrations",
+    "status": "implemented",
+    "implementation": "/operations/integrations",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 13,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 14,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 15,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 16,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 17,
+    "label": "All projects",
+    "status": "implemented",
+    "implementation": "/projects",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 18,
+    "label": "Fork",
+    "status": "integration_validation_pending",
+    "implementation": "Real child project/read-confined needs and decision/risk notes, fork and settings links",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 19,
+    "label": "Initiative settings",
+    "status": "integration_validation_pending",
+    "implementation": "Real child project/read-confined needs and decision/risk notes, fork and settings links",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 20,
+    "label": "Child project",
+    "status": "integration_validation_pending",
+    "implementation": "Real child project/read-confined needs and decision/risk notes, fork and settings links",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 21,
+    "label": "Spring Launch Decision waiting Approve launch date Nov 19 risk: packaging delay 18 of 29 milestones done 4 agents 1 sub-project",
+    "status": "integration_validation_pending",
+    "implementation": "Real project counts/needs and approved decision/risk notes. Milestone percentages are not inferred from sample data.",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 22,
+    "label": "Retail Readiness On track Sub-project of Spring Launch store kits and staff training 9 of 14 milestones done 1 agent",
+    "status": "integration_validation_pending",
+    "implementation": "Real project counts/needs and approved decision/risk notes. Milestone percentages are not inferred from sample data.",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 23,
+    "label": "Q4 Research Working Pricing research feeding the launch price decision 4 of 10 milestones done 1 agent",
+    "status": "integration_validation_pending",
+    "implementation": "Real project counts/needs and approved decision/risk notes. Milestone percentages are not inferred from sample data.",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 24,
+    "label": "Open",
+    "status": "integration_validation_pending",
+    "implementation": "Real child project/read-confined needs and decision/risk notes, fork and settings links",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 25,
+    "label": "Review",
+    "status": "integration_validation_pending",
+    "implementation": "Real child project/read-confined needs and decision/risk notes, fork and settings links",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 26,
+    "label": "Fix source",
+    "status": "integration_validation_pending",
+    "implementation": "Real child project/read-confined needs and decision/risk notes, fork and settings links",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 27,
+    "label": "Manage",
+    "status": "integration_validation_pending",
+    "implementation": "Real child project/read-confined needs and decision/risk notes, fork and settings links",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/ProjectRollup.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Initiative.html",
+    "control": 28,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 1,
+    "label": "All projects",
+    "status": "implemented",
+    "implementation": "/projects",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 2,
+    "label": "Spring 2027 GTM",
+    "status": "implemented",
+    "implementation": "initiative overview",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 3,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 4,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 5,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 6,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 7,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 8,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 9,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 10,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 11,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 12,
+    "label": "Integrations",
+    "status": "implemented",
+    "implementation": "/operations/integrations",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 13,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 14,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 15,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 16,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 17,
+    "label": "Auto-link rules",
+    "status": "integration_validation_pending",
+    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 18,
+    "label": "Connect a system",
+    "status": "integration_validation_pending",
+    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 19,
+    "label": "{{ s.mono }} {{ s.name }} {{ s.resources }} by {{ s.by }} {{ s.health }} Linked to {{ s.linked }} Link mode {{ s.mode }} Access {{ s.access }}",
+    "status": "integration_validation_pending",
+    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 20,
+    "label": "Set by Policies Message people outside the project",
+    "status": "integration_validation_pending",
+    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 21,
+    "label": "Turn into a rule",
+    "status": "source_followup_pending",
+    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 22,
+    "label": "Ignore",
+    "status": "source_followup_pending",
+    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 23,
+    "label": "Link",
+    "status": "source_followup_pending",
+    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Integrations.html",
+    "control": 24,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 1,
+    "label": "Close",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 2,
+    "label": "{{ f.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 3,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 4,
+    "label": "input input/selection 4",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 5,
+    "label": "{{ t.label }} {{ t.kind }}",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 6,
+    "label": "{{ m.label }} {{ m.desc }}",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 7,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 8,
+    "label": "Cancel",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 9,
+    "label": "Save rule",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 10,
+    "label": "{{ r.switchLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted bounded link rules and explicit matcher previews",
+    "files": [
+      "apps/web/src/Integrations.tsx",
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/LinkRules.html",
+    "control": 11,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 1,
+    "label": "Search",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 2,
+    "label": "Spring Launch 8 people 4 agents",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 3,
+    "label": "# planning",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 4,
+    "label": "# pricing",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 5,
+    "label": "# launch-ops",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 6,
+    "label": "Supplier delay - launch impact MA LP OA Needs your decision",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 7,
+    "label": "Vendor notice templates OA Drafted yesterday",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 8,
+    "label": "Warehouse capacity check People only Oct 20",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 9,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 10,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 11,
+    "label": "Pricing memo draft RA Only you Add to project",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 12,
+    "label": "New conversation",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 13,
+    "label": "Context 5",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 14,
+    "label": "People and agents: 3 people, 3 agents",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 15,
+    "label": "Conversation settings and Activity",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 16,
+    "label": "Launch plan v4 (draft)",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 17,
+    "label": "Dependency map 5 affected",
+    "status": "needs_semantic_review",
+    "implementation": "No generic dependency-map deliverable is synthesized. Source dependency links and the recorded Agent Network exist; this exact affected-work action still needs acceptance review.",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 18,
+    "label": "Redirect",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 19,
+    "label": "Approve date",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 20,
+    "label": "{{ stepsLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 21,
+    "label": "Full Activity",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 22,
+    "label": "Reply, or @mention an agent to assign work",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 23,
+    "label": "Attach context",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 24,
+    "label": "Mention an agent",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 25,
+    "label": "Send",
+    "status": "integration_validation_pending",
+    "implementation": "Outcome-first conversation, native decisions, quiet work, shared action footer, redirected draft and file preview",
+    "files": [
+      "apps/web/src/Chat.tsx",
+      "apps/web/src/Room.tsx",
+      "packages/web/src/AgentMessage.tsx",
+      "apps/web/src/Deliverables.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Main.html",
+    "control": 26,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 4,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 5,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 6,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 7,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 8,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 9,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 10,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 11,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 12,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 13,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 14,
+    "label": "Add memory",
+    "status": "integration_validation_pending",
+    "implementation": "Scope/search/add/edit/kind/expiry, source links, Keep/Discard/Forget and destination-reviewed promotion",
+    "files": [
+      "apps/web/src/MemoryLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 15,
+    "label": "Discard",
+    "status": "integration_validation_pending",
+    "implementation": "Scope/search/add/edit/kind/expiry, source links, Keep/Discard/Forget and destination-reviewed promotion",
+    "files": [
+      "apps/web/src/MemoryLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 16,
+    "label": "Edit",
+    "status": "integration_validation_pending",
+    "implementation": "Scope/search/add/edit/kind/expiry, source links, Keep/Discard/Forget and destination-reviewed promotion",
+    "files": [
+      "apps/web/src/MemoryLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 17,
+    "label": "Keep",
+    "status": "integration_validation_pending",
+    "implementation": "Scope/search/add/edit/kind/expiry, source links, Keep/Discard/Forget and destination-reviewed promotion",
+    "files": [
+      "apps/web/src/MemoryLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 18,
+    "label": "{{ f.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Scope/search/add/edit/kind/expiry, source links, Keep/Discard/Forget and destination-reviewed promotion",
+    "files": [
+      "apps/web/src/MemoryLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 19,
+    "label": "Search memory",
+    "status": "integration_validation_pending",
+    "implementation": "Scope/search/add/edit/kind/expiry, source links, Keep/Discard/Forget and destination-reviewed promotion",
+    "files": [
+      "apps/web/src/MemoryLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 20,
+    "label": "Open source",
+    "status": "integration_validation_pending",
+    "implementation": "Scope/search/add/edit/kind/expiry, source links, Keep/Discard/Forget and destination-reviewed promotion",
+    "files": [
+      "apps/web/src/MemoryLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 21,
+    "label": "Forget",
+    "status": "integration_validation_pending",
+    "implementation": "Scope/search/add/edit/kind/expiry, source links, Keep/Discard/Forget and destination-reviewed promotion",
+    "files": [
+      "apps/web/src/MemoryLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Memory.html",
+    "control": 22,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 1,
+    "label": "Close",
+    "status": "integration_validation_pending",
+    "implementation": "Placement preview, explicit audience acceptance and reviewed-summary publication when raw history is private",
+    "files": [
+      "apps/web/src/Share.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 2,
+    "label": "input input/selection 2",
+    "status": "integration_validation_pending",
+    "implementation": "Placement preview, explicit audience acceptance and reviewed-summary publication when raw history is private",
+    "files": [
+      "apps/web/src/Share.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 3,
+    "label": "input input/selection 3",
+    "status": "integration_validation_pending",
+    "implementation": "Placement preview, explicit audience acceptance and reviewed-summary publication when raw history is private",
+    "files": [
+      "apps/web/src/Share.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 4,
+    "label": "input input/selection 4",
+    "status": "integration_validation_pending",
+    "implementation": "Placement preview, explicit audience acceptance and reviewed-summary publication when raw history is private",
+    "files": [
+      "apps/web/src/Share.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 5,
+    "label": "input input/selection 5",
+    "status": "integration_validation_pending",
+    "implementation": "Placement preview, explicit audience acceptance and reviewed-summary publication when raw history is private",
+    "files": [
+      "apps/web/src/Share.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 6,
+    "label": "input input/selection 6",
+    "status": "integration_validation_pending",
+    "implementation": "Placement preview, explicit audience acceptance and reviewed-summary publication when raw history is private",
+    "files": [
+      "apps/web/src/Share.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 7,
+    "label": "Cancel",
+    "status": "integration_validation_pending",
+    "implementation": "Placement preview, explicit audience acceptance and reviewed-summary publication when raw history is private",
+    "files": [
+      "apps/web/src/Share.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 8,
+    "label": "Move to # pricing",
+    "status": "integration_validation_pending",
+    "implementation": "Placement preview, explicit audience acceptance and reviewed-summary publication when raw history is private",
+    "files": [
+      "apps/web/src/Share.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/MoveConversation.html",
+    "control": 9,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 4,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 5,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 6,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 7,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 8,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 9,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 10,
+    "label": "Pause all",
+    "status": "integration_validation_pending",
+    "implementation": "Actual roster/filter, workspace pause and durable new-agent setup",
+    "files": [
+      "apps/web/src/Agents.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 11,
+    "label": "New agent",
+    "status": "integration_validation_pending",
+    "implementation": "Actual roster/filter, workspace pause and durable new-agent setup",
+    "files": [
+      "apps/web/src/Agents.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 12,
+    "label": "Open",
+    "status": "integration_validation_pending",
+    "implementation": "Actual roster/filter, workspace pause and durable new-agent setup",
+    "files": [
+      "apps/web/src/Agents.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 13,
+    "label": "Review drafts",
+    "status": "integration_validation_pending",
+    "implementation": "Actual roster/filter, workspace pause and durable new-agent setup",
+    "files": [
+      "apps/web/src/Agents.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 14,
+    "label": "Fix source",
+    "status": "integration_validation_pending",
+    "implementation": "Actual roster/filter, workspace pause and durable new-agent setup",
+    "files": [
+      "apps/web/src/Agents.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 15,
+    "label": "{{ f.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Actual roster/filter, workspace pause and durable new-agent setup",
+    "files": [
+      "apps/web/src/Agents.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 16,
+    "label": "{{ a.initials }} {{ a.name }} {{ a.role }}",
+    "status": "integration_validation_pending",
+    "implementation": "Actual roster/filter, workspace pause and durable new-agent setup",
+    "files": [
+      "apps/web/src/Agents.tsx",
+      "apps/web/src/AgentOperations.tsx",
+      "apps/web/src/AgentControls.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsAgents.html",
+    "control": 17,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 4,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 5,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 6,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 7,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 8,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 9,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 10,
+    "label": "Connect source",
+    "status": "integration_validation_pending",
+    "implementation": "Actual source health/cause, retry, resource/snapshot/sync settings and source detail links",
+    "files": [
+      "apps/web/src/ContextHealth.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 11,
+    "label": "{{ r.name }} {{ r.origin }}",
+    "status": "integration_validation_pending",
+    "implementation": "Actual source health/cause, retry, resource/snapshot/sync settings and source detail links",
+    "files": [
+      "apps/web/src/ContextHealth.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 12,
+    "label": "{{ sel.primary }}",
+    "status": "integration_validation_pending",
+    "implementation": "Actual source health/cause, retry, resource/snapshot/sync settings and source detail links",
+    "files": [
+      "apps/web/src/ContextHealth.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 13,
+    "label": "Sync settings",
+    "status": "integration_validation_pending",
+    "implementation": "Actual source health/cause, retry, resource/snapshot/sync settings and source detail links",
+    "files": [
+      "apps/web/src/ContextHealth.tsx",
+      "apps/web/src/SourceLifecycle.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/OpsContext.html",
+    "control": 14,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 4,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 5,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 6,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 7,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 8,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 9,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 10,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 11,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 12,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 13,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 14,
+    "label": "Edit workspace policy",
+    "status": "operations_followup_pending",
+    "implementation": "Scope-specific persisted rules; effective inherited restrictions and provenance supplied by Operations follow-up",
+    "files": [
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 15,
+    "label": "Full audit log",
+    "status": "integration_validation_pending",
+    "implementation": "Scope-specific persisted rules; effective inherited restrictions and provenance supplied by Operations follow-up",
+    "files": [
+      "apps/web/src/ActionPolicies.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Policies.html",
+    "control": 16,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 1,
+    "label": "All projects",
+    "status": "implemented",
+    "implementation": "/projects",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 2,
+    "label": "Spring 2027 GTM",
+    "status": "implemented",
+    "implementation": "initiative overview",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 3,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 4,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 5,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 6,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 7,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 8,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 9,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 10,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 11,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 12,
+    "label": "Integrations",
+    "status": "implemented",
+    "implementation": "/operations/integrations",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 13,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 14,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 15,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 16,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 17,
+    "label": "New project",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 18,
+    "label": "Blank project Start with one channel",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 19,
+    "label": "From template Channels, agents and skills ready",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 20,
+    "label": "Fork an existing project Copy its setup, not its conversations",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 21,
+    "label": "Under an initiative Inherits its rules and shared context",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 22,
+    "label": "Search projects",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 23,
+    "label": "{{ f.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 24,
+    "label": "{{ r.toggleLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 25,
+    "label": "{{ r.name }} {{ r.kindLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 26,
+    "label": "Open",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 27,
+    "label": "Move under\u2026",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 28,
+    "label": "Fork",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 29,
+    "label": "Archive",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 30,
+    "label": "Jump to a project\u2026",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 31,
+    "label": "Spring Launch Spring 2027 GTM",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 32,
+    "label": "Retail Readiness Spring Launch",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 33,
+    "label": "Q4 Research Spring 2027 GTM",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 34,
+    "label": "Spring 2027 GTM Initiative",
+    "status": "integration_validation_pending",
+    "implementation": "Project hierarchy/filter/search, templates/fork/parent, bounded global discovery and existing move/archive actions",
+    "files": [
+      "apps/web/src/Projects.tsx",
+      "apps/web/src/QuickSwitcher.tsx",
+      "apps/web/src/ForkProject.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Projects.html",
+    "control": 35,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 4,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 5,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 6,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 7,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 8,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 9,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 10,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 11,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 12,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 13,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 14,
+    "label": "New skill",
+    "status": "integration_validation_pending",
+    "implementation": "Immutable draft/version editing, native forced-approval test, tested publication and explicit scope promotion",
+    "files": [
+      "apps/web/src/SkillsLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 15,
+    "label": "{{ f.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Immutable draft/version editing, native forced-approval test, tested publication and explicit scope promotion",
+    "files": [
+      "apps/web/src/SkillsLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 16,
+    "label": "{{ s.name }} {{ s.version }} {{ s.scopeLabel }} Used by {{ ag.initials }}",
+    "status": "integration_validation_pending",
+    "implementation": "Immutable draft/version editing, native forced-approval test, tested publication and explicit scope promotion",
+    "files": [
+      "apps/web/src/SkillsLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 17,
+    "label": "Share to workspace",
+    "status": "integration_validation_pending",
+    "implementation": "Immutable draft/version editing, native forced-approval test, tested publication and explicit scope promotion",
+    "files": [
+      "apps/web/src/SkillsLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 18,
+    "label": "Test run",
+    "status": "integration_validation_pending",
+    "implementation": "Immutable draft/version editing, native forced-approval test, tested publication and explicit scope promotion",
+    "files": [
+      "apps/web/src/SkillsLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 19,
+    "label": "Edit",
+    "status": "integration_validation_pending",
+    "implementation": "Immutable draft/version editing, native forced-approval test, tested publication and explicit scope promotion",
+    "files": [
+      "apps/web/src/SkillsLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 20,
+    "label": "{{ ag.initials }} {{ ag.name }}",
+    "status": "integration_validation_pending",
+    "implementation": "Immutable draft/version editing, native forced-approval test, tested publication and explicit scope promotion",
+    "files": [
+      "apps/web/src/SkillsLibrary.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Skills.html",
+    "control": 21,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
+    "control": 1,
+    "label": "\u2190 Integrations",
+    "status": "implementation_pending",
+    "implementation": "Library capability/bridge follow-up: durable delivery direction and approval/action inventory",
+    "files": [
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
+    "control": 2,
+    "label": "{{ approveLabel }}",
+    "status": "implementation_pending",
+    "implementation": "Library capability/bridge follow-up: durable delivery direction and approval/action inventory",
+    "files": [
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
+    "control": 3,
+    "label": "Open in Humagen",
+    "status": "implementation_pending",
+    "implementation": "Library capability/bridge follow-up: durable delivery direction and approval/action inventory",
+    "files": [
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
+    "control": 4,
+    "label": "{{ d.name }} {{ d.desc }}",
+    "status": "implementation_pending",
+    "implementation": "Library capability/bridge follow-up: durable delivery direction and approval/action inventory",
+    "files": [
+      "apps/web/src/Integrations.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
+    "control": 5,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 4,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 5,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 6,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 7,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 8,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 9,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 10,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 11,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 12,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 13,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 14,
+    "label": "7 days",
+    "status": "integration_validation_pending",
+    "implementation": "Exact 7/14/30-day server intervals, chart/table selection and actual run/agent drilldown",
+    "files": [
+      "apps/web/src/Usage.tsx",
+      "apps/web/src/Analytics.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 15,
+    "label": "14 days",
+    "status": "integration_validation_pending",
+    "implementation": "Exact 7/14/30-day server intervals, chart/table selection and actual run/agent drilldown",
+    "files": [
+      "apps/web/src/Usage.tsx",
+      "apps/web/src/Analytics.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 16,
+    "label": "30 days",
+    "status": "integration_validation_pending",
+    "implementation": "Exact 7/14/30-day server intervals, chart/table selection and actual run/agent drilldown",
+    "files": [
+      "apps/web/src/Usage.tsx",
+      "apps/web/src/Analytics.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 17,
+    "label": "{{ tableLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Exact 7/14/30-day server intervals, chart/table selection and actual run/agent drilldown",
+    "files": [
+      "apps/web/src/Usage.tsx",
+      "apps/web/src/Analytics.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 18,
+    "label": "{{ d.aria }}",
+    "status": "integration_validation_pending",
+    "implementation": "Exact 7/14/30-day server intervals, chart/table selection and actual run/agent drilldown",
+    "files": [
+      "apps/web/src/Usage.tsx",
+      "apps/web/src/Analytics.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 19,
+    "label": "{{ a.initials }} {{ a.name }}",
+    "status": "integration_validation_pending",
+    "implementation": "Exact 7/14/30-day server intervals, chart/table selection and actual run/agent drilldown",
+    "files": [
+      "apps/web/src/Usage.tsx",
+      "apps/web/src/Analytics.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/Usage.html",
+    "control": 20,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 1,
+    "label": "Spring Launch",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 2,
+    "label": "Q4 Research",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 3,
+    "label": "Onboarding Revamp",
+    "status": "implemented",
+    "implementation": "project inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 4,
+    "label": "Skills",
+    "status": "implemented",
+    "implementation": "/library/skills",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 5,
+    "label": "Memory",
+    "status": "implemented",
+    "implementation": "/library/memory",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 6,
+    "label": "Needs you 3",
+    "status": "implemented",
+    "implementation": "/inbox",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 7,
+    "label": "Agents",
+    "status": "implemented",
+    "implementation": "/agents",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 8,
+    "label": "Agent network",
+    "status": "implemented",
+    "implementation": "/agent-network",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 9,
+    "label": "Context health",
+    "status": "implemented",
+    "implementation": "/operations/context",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 10,
+    "label": "Policies",
+    "status": "implemented",
+    "implementation": "/operations/policies",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 11,
+    "label": "Usage",
+    "status": "implemented",
+    "implementation": "/operations/usage",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 12,
+    "label": "Audit log",
+    "status": "implemented",
+    "implementation": "/operations/audit",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 13,
+    "label": "AP Avery Park Your settings",
+    "status": "implemented",
+    "implementation": "/you",
+    "files": [
+      "apps/web/src/App.tsx",
+      "apps/web/src/Sidebar.tsx",
+      "apps/web/src/route.ts"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 14,
+    "label": "{{ t.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 15,
+    "label": "input input/selection 15",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 16,
+    "label": "input input/selection 16",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 17,
+    "label": "Lead with the recommendation and the decision you need from me. Keep steps behind a toggle. Cite sources with their sync time.",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 18,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 19,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 20,
+    "label": "Quiet hours",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 21,
+    "label": "Also send by email",
+    "status": "implementation_pending",
+    "implementation": "Native delivery is implemented. No email transport is configured or validated; do not imply email delivery succeeds.",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 22,
+    "label": "New personal agent",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 23,
+    "label": "{{ a.toggleLabel }}",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 24,
+    "label": "Add to a project",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 25,
+    "label": "Settings",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 26,
+    "label": "Open library",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 27,
+    "label": "Let agents remember how I work",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 28,
+    "label": "Never use personal memory in projects",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 29,
+    "label": "14 personal memories 2 new this week to review Review",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 30,
+    "label": "Connect account",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 31,
+    "label": "{{ c.action }}",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 32,
+    "label": "New conversations start private",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 33,
+    "label": "{{ o.label }} {{ o.hint }}",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 34,
+    "label": "{{ o.label }}",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 35,
+    "label": "See policies",
+    "status": "integration_validation_pending",
+    "implementation": "Profile/briefing, native notification settings, quiet hours, private memory policy, personal agents and credentials",
+    "files": [
+      "apps/web/src/PersonalPreferences.tsx",
+      "apps/web/src/PersonalAgents.tsx",
+      "apps/web/src/Connections.tsx"
+    ]
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
+    "control": 36,
+    "label": "All screens",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 1,
+    "label": "spec.md",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 2,
+    "label": "gap-analysis.md",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 3,
+    "label": "Project conversation: outcome first",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 4,
+    "label": "Add a private conversation to a project",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 5,
+    "label": "Settings \u203a Activity",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 6,
+    "label": "Context with provenance",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 7,
+    "label": "Fork a conversation",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 8,
+    "label": "Operations \u203a Agents (control plane)",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 9,
+    "label": "Agent \u203a Launch Planner",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 10,
+    "label": "Operations \u203a Context health",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 11,
+    "label": "Operations \u203a Agent network",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 12,
+    "label": "Create an agent",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 13,
+    "label": "Operations \u203a Policies",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 14,
+    "label": "Operations \u203a Usage",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 15,
+    "label": "Operations \u203a Audit log",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 16,
+    "label": "Operations \u203a Integrations",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 17,
+    "label": "Auto-link rules GitHub",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 18,
+    "label": "Slack bridge",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 19,
+    "label": "Add context indexed, live, hybrid",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 20,
+    "label": "All projects hierarchy",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 21,
+    "label": "Initiative Spring 2027 GTM",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 22,
+    "label": "Fork a project",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 23,
+    "label": "Library \u203a Skills",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 24,
+    "label": "Library \u203a Memory",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 25,
+    "label": "You settings",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 26,
+    "label": "Identity & icons",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  },
+  {
+    "source": "docs/design/humagen-control-plane/boards/index.html",
+    "control": 27,
+    "label": "How it fits together",
+    "status": "reference",
+    "implementation": "Checked-in reference navigation or explanatory diagram; console uses its own routes and AgentMark identity rules.",
+    "files": []
+  }
+]
