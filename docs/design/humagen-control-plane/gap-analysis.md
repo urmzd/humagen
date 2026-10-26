@@ -40,15 +40,16 @@ repository root.
 | GitHub | Installations, webhooks, reviews, labels | Repo-to-project links; GitHub user mapping |
 | Live context | Person-scoped MCP tool providers | First-party live search, OAuth, hybrid mode |
 | Composer | Wraps safely | Compact height; controls under the composer as text |
+| Workspace message presentation | Shared persistent Copy/Reply footer for people and agents; recorded agent timestamps with focus, hover and tap detail; answer before expandable work | Structured outcomes and Redirect |
 
 ## Not built
 
 | Spec item | Note |
 |---|---|
-| Outcome-first answers | `packages/web/src/AgentMessage.tsx` renders `WorkSummary` above `TurnView`: steps before the answer. No recommendation, decisions, next action or Redirect |
+| Structured outcomes | Answers precede work in `packages/web/src/AgentMessage.tsx`; recommendation, decisions, next action and Redirect are still missing |
 | Moving a conversation after agents ran | Refused by design (`ErrStaysInProject` in `internal/platform/threads.go`); see [company-workspace.md](../../company-workspace.md) |
 | Durable assignments | Listed as next work in [conversation-workspace.md](../../conversation-workspace.md) |
-| Pause an agent, pause all; stop from the console | `stopRun` exists in `apps/web/src/api.ts` but no control calls it |
+| Pause an agent, pause all | Console Stop Turn calls the existing stop API and waits for the run ledger, with bounded polling and retryable errors |
 | Context health and source lifecycle | `pkg/knowledge` sources have no state, attempts or last good copy |
 | Agent network view | No component |
 | Dry run for new agents | Evals run only after saving |
