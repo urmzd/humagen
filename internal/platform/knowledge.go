@@ -72,11 +72,20 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if err != nil {
 		return req, err
 	}
+	req = withSources(req)
+	project, person := "", ""
+	if run, e := p.Runs.Get(req.Tenant, req.RunID); e == nil {
+		project, person = run.Project, personOf(run.Actor)
+	}
+	req, err = p.withSourceGrounding(req, project, person)
+	if err != nil {
+		return req, err
+	}
 	req, err = p.resolveOperations(req)
 	if err != nil {
 		return req, err
 	}
-	return withSkills(withSources(req))
+	return withSkills(req)
 }
 
 // withSources adds the knowledge sources a run's tag was pinned with to its
@@ -127,9 +136,16 @@ var ErrSourceInUse = errors.New("platform: knowledge source in use")
 // that a project names it, not which. A source that does not exist is not
 // found, whoever names it.
 func (p *Platform) DeleteSource(who auth.Principal, name string) error {
-	if !slices.ContainsFunc(p.Knowledge.List(who.Tenant), func(s knowledge.Source) bool { return s.Name == name }) {
-		return fmt.Errorf("%w: %q", knowledge.ErrNotFound, name)
+	snapshot, err := p.Knowledge.Get(who.Tenant, name)
+	if err != nil || (snapshot.Lifecycle != nil && snapshot.Lifecycle.Project != "" && !p.Sees(who, Place{Project: snapshot.Lifecycle.Project})) {
+		return knowledge.ErrNotFound
 	}
+	var expected *knowledge.SourceConfig
+	if snapshot.Lifecycle != nil {
+		cfg := snapshot.Lifecycle.SourceConfig
+		expected = &cfg
+	}
+
 	tree := p.Projects.Tree(who.Tenant)
 	seer := p.Seer(who)
 	var by []string
@@ -140,7 +156,7 @@ func (p *Platform) DeleteSource(who auth.Principal, name string) error {
 	}
 	switch {
 	case len(by) == 0:
-		return p.Knowledge.Delete(who.Tenant, name)
+		return p.Knowledge.DeleteForScope(who.Tenant, name, expected)
 	case !who.Can(auth.ProjectsRead):
 		return fmt.Errorf("%w: a project names %q; stop naming it there, or in the platform file, first", ErrSourceInUse, name)
 	}
@@ -183,7 +199,11 @@ func (p *Platform) ProjectKnowledgeAs(who auth.Principal, project string) (Proje
 		out.Knowledge = []string{}
 	}
 	if seer.Knowledge() {
-		out.Given = append(out.Given, tree.Knowledge(name)...)
+		for _, given := range tree.Knowledge(name) {
+			if p.SourceVisible(who, given.Name) {
+				out.Given = append(out.Given, given)
+			}
+		}
 	}
 	return out, nil
 }
@@ -249,5 +269,11 @@ func (s *Seer) Sources(names []string) []string {
 	if !s.Knowledge() {
 		return nil
 	}
-	return slices.Clone(names)
+	out := []string{}
+	for _, name := range names {
+		if s.p.SourceVisible(s.who, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }

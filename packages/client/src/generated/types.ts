@@ -1744,7 +1744,7 @@ waiting on, and `artifact` a file that was published or revised.
 of that project and of every project below it, or an agent's post
 held as a draft for the project's owners.
  */
-export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement";
+export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source";
 
 export type InboxState = "open" | "resolved" | "dismissed" | "snoozed";
 
@@ -1828,6 +1828,7 @@ export interface Reach {
 
 /** What the message is about, as ids a reader can follow. */
 export interface InboxSource {
+  knowledge?: string;
   alert?: string;
   rule?: string;
   run?: string;
@@ -2004,11 +2005,12 @@ carry `question`. A settled question's `outcome` is `approve`,
  */
 export interface InboxPart {
   id: string;
-  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply" | "draft" | "mention";
+  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply" | "draft" | "mention" | "source";
   state: "open" | "resolved" | "info";
   /** What this caller may do with the part now. Empty once it is resolved, or when the caller has no permission for any action. */
   actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done" | "publish")[];
   outcome?: InboxOutcome;
+  source?: InboxPartSource;
   text?: string;
   alert?: InboxAlertPart;
   failure?: InboxFailurePart;
@@ -2381,6 +2383,8 @@ export interface KnowledgeVariant {
 }
 
 export interface KnowledgeSource {
+  lifecycle?: KnowledgeLifecycle;
+  content_version?: number;
   name: string;
   description?: string;
   documents: number;
@@ -2390,6 +2394,29 @@ export interface KnowledgeSource {
   variants: KnowledgeVariant[];
   created_by?: string;
   updated_at: string;
+}
+
+export interface KnowledgeSourceConfig {
+  mode: "indexed" | "live" | "hybrid";
+  provider: string;
+  origin?: string;
+  owner?: string;
+  project?: string;
+  stop_after_seconds?: number;
+}
+
+export interface KnowledgeLifecycle {
+  connected_at: string;
+  mode: "indexed" | "live" | "hybrid";
+  provider: string;
+  origin?: string;
+  owner?: string;
+  project?: string;
+  status: "connected" | "importing" | "indexing" | "available" | "syncing" | "in_sync" | "needs_attention";
+  cause?: "auth_expired" | "quota" | "unsupported" | "unavailable" | "interrupted";
+  last_good_at?: string;
+  stop_after_seconds: number;
+  attempts: KnowledgeLifecycleAttemptsItem[];
 }
 
 export interface KnowledgeDocument {
@@ -2404,6 +2431,9 @@ export interface KnowledgeDocument {
 }
 
 export interface KnowledgeHit {
+  copy_at?: string;
+  refresh_failed?: boolean;
+  mode?: "indexed" | "live";
   source: string;
   document_id: string;
   title: string;
@@ -3119,6 +3149,19 @@ export interface ProjectChangeChannel {
   after?: Channel;
 }
 
+export interface InboxPartSource {
+  name: string;
+  cause: string;
+}
+
+export interface KnowledgeLifecycleAttemptsItem {
+  id: string;
+  started_at: string;
+  finished_at?: string;
+  status: "importing" | "indexing" | "syncing" | "succeeded" | "failed";
+  cause?: string;
+}
+
 export interface ClientInputCredentials {
   token?: SecretInput;
   signing_secret?: SecretInput;
@@ -3307,7 +3350,22 @@ export interface CreateKnowledgeSourceBody {
   description?: string;
 }
 
+export interface KnowledgeSourceDependenciesResponse {
+  agents: string[];
+  projects: string[];
+}
+
+export interface ConnectKnowledgeSourceBody {
+  ref: string;
+}
+
+export interface SearchKnowledgeResponseWarningsItem {
+  source: string;
+  cause: string;
+}
+
 export interface SearchKnowledgeResponse {
+  warnings?: SearchKnowledgeResponseWarningsItem[];
   hits: KnowledgeHit[];
 }
 

@@ -75,6 +75,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -194,9 +195,10 @@ type Config struct {
 type Platform struct {
 	files filesblob.Store
 
-	cfg Config
-	log *slog.Logger
-	now func() time.Time
+	cfg       Config
+	log       *slog.Logger
+	now       func() time.Time
+	grounding sourceGrounding
 
 	Agents        registry.Store
 	Runs          *runs.Index
@@ -211,6 +213,7 @@ type Platform struct {
 	SkillLibrary  *library.Store
 	Notifications *notifications.Store
 	ContextFlags  *contextflags.Store
+	SourceLinks   *sourcelinks.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -487,7 +490,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
 }
 
 // reroute registers the routes of every run the index holds that has not

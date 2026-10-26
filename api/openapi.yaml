@@ -2195,7 +2195,7 @@ paths:
         - name: kind
           in: query
           description: Only messages of this kind. An unknown kind matches nothing.
-          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement]}
+          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source]}
         - name: unread
           in: query
           description: Only `true` narrows to messages the caller has not read.
@@ -3063,6 +3063,101 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/dependencies:
+    get:
+      operationId: knowledgeSourceDependencies
+      tags: [knowledge]
+      summary: Show visible source dependents in a bounded directory window
+      x-permission: knowledge:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Visible declarations, at most 200 agents and projects. Hidden dependencies are not counted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agents, projects]
+                properties:
+                  agents: {type: array, maxItems: 200, items: {type: string}}
+                  projects: {type: array, maxItems: 200, items: {type: string}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/configuration:
+    put:
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      operationId: configureKnowledgeSource
+      tags: [knowledge]
+      summary: Configure source origin, mode and freshness
+      x-permission: knowledge:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/KnowledgeSourceConfig"}
+      responses:
+        "200":
+          description: The source. Needs attention records a failed refresh without discarding its last good copy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeSource"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/credential:
+    put:
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      operationId: connectKnowledgeSource
+      tags: [knowledge]
+      summary: Connect your own source credential reference
+      x-permission: knowledge:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [ref], properties: {ref: {type: string, maxLength: 512}}}
+      responses:
+        "200":
+          description: The source. Needs attention records a failed refresh without discarding its last good copy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeSource"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/sync:
+    post:
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      operationId: syncKnowledgeSource
+      tags: [knowledge]
+      summary: Refresh a complete indexed source copy
+      x-permission: knowledge:write
+      responses:
+        "200":
+          description: The source. Needs attention records a failed refresh without discarding its last good copy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeSource"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge/search:
     get:
       operationId: searchKnowledge
@@ -3085,6 +3180,15 @@ paths:
                 type: object
                 required: [hits]
                 properties:
+                  warnings:
+                    type: array
+                    maxItems: 50
+                    items:
+                      type: object
+                      required: [source, cause]
+                      properties:
+                        source: {type: string}
+                        cause: {type: string}
                   hits:
                     type: array
                     items: {$ref: "#/components/schemas/KnowledgeHit"}
@@ -4249,7 +4353,7 @@ paths:
           description: Only messages of these kinds. Repeat it for several.
           schema:
             type: array
-            items: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement]}
+            items: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source]}
           style: form
           explode: true
         - name: children
@@ -8466,7 +8570,7 @@ components:
         of that project and of every project below it, or an agent's post
         held as a draft for the project's owners.
       type: string
-      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement]
+      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source]
     InboxState:
       type: string
       enum: [open, resolved, dismissed, snoozed]
@@ -8593,6 +8697,7 @@ components:
       description: What the message is about, as ids a reader can follow.
       type: object
       properties:
+        knowledge: {type: string}
         alert: {type: string}
         rule: {type: string}
         run: {type: string}
@@ -8820,7 +8925,7 @@ components:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft, mention]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft, mention, source]
         state:
           type: string
           enum: [open, resolved, info]
@@ -8831,6 +8936,12 @@ components:
             type: string
             enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done, publish]
         outcome: {$ref: "#/components/schemas/InboxOutcome"}
+        source:
+          type: object
+          required: [name, cause]
+          properties:
+            name: {type: string}
+            cause: {type: string}
         text: {type: string}
         alert: {$ref: "#/components/schemas/InboxAlertPart"}
         failure: {$ref: "#/components/schemas/InboxFailurePart"}
@@ -9345,6 +9456,8 @@ components:
       type: object
       required: [name, documents, passages, excluded, variants, updated_at]
       properties:
+        lifecycle: {$ref: "#/components/schemas/KnowledgeLifecycle"}
+        content_version: {type: integer, format: int64, minimum: 0}
         name: {type: string}
         description: {type: string}
         documents: {type: integer}
@@ -9357,6 +9470,42 @@ components:
           items: {$ref: "#/components/schemas/KnowledgeVariant"}
         created_by: {type: string}
         updated_at: {type: string, format: date-time}
+    KnowledgeSourceConfig:
+      type: object
+      required: [mode, provider]
+      properties:
+        mode: {type: string, enum: [indexed, live, hybrid]}
+        provider: {type: string}
+        origin: {type: string, maxLength: 1024}
+        owner: {type: string, maxLength: 256}
+        project: {type: string, maxLength: 256}
+        stop_after_seconds: {type: integer, minimum: 60, maximum: 2592000, default: 86400}
+    KnowledgeLifecycle:
+      type: object
+      required: [mode, provider, status, stop_after_seconds, attempts, connected_at]
+      properties:
+        connected_at: {type: string, format: date-time}
+        mode: {type: string, enum: [indexed, live, hybrid]}
+        provider: {type: string}
+        origin: {type: string}
+        owner: {type: string}
+        project: {type: string}
+        status: {type: string, enum: [connected, importing, indexing, available, syncing, in_sync, needs_attention]}
+        cause: {type: string, enum: [auth_expired, quota, unsupported, unavailable, interrupted]}
+        last_good_at: {type: string, format: date-time}
+        stop_after_seconds: {type: integer, minimum: 60, maximum: 2592000}
+        attempts:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [id, started_at, status]
+            properties:
+              id: {type: string}
+              started_at: {type: string, format: date-time}
+              finished_at: {type: string, format: date-time}
+              status: {type: string, enum: [importing, indexing, syncing, succeeded, failed]}
+              cause: {type: string}
     KnowledgeDocument:
       type: object
       required: [id, title, bytes, passages, excluded, added_at]
@@ -9373,6 +9522,9 @@ components:
       type: object
       required: [source, document_id, title, index, text, score]
       properties:
+        copy_at: {type: string, format: date-time}
+        refresh_failed: {type: boolean}
+        mode: {type: string, enum: [indexed, live]}
         source: {type: string}
         document_id: {type: string}
         title: {type: string}

@@ -8,6 +8,8 @@ import type {
   LibrarySkill,
   LibraryScope,
   LibrarySkillDefinition,
+  KnowledgeLifecycle,
+  KnowledgeSourceConfig,
   ProjectContext,
   AgentHome,
   Person,
@@ -316,6 +318,7 @@ export interface Alert {
 }
 
 export interface Source {
+  lifecycle?: KnowledgeLifecycle;
   name: string;
   description?: string;
   documents: number;
@@ -338,6 +341,7 @@ export interface Doc {
 }
 
 export interface Hit {
+  mode?: "indexed" | "live";
   source: string;
   document_id: string;
   title: string;
@@ -906,6 +910,10 @@ export const api = {
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
   createSource: (name: string, description: string) => call<Source>("POST", "/api/knowledge", { name, description }),
+  sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
+  configureSource: (name: string, config: KnowledgeSourceConfig) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
+  connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
+  syncSource: (name: string) => call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),
   deleteSource: (name: string) => call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}`),
   documents: (name: string) =>
     call<{ documents: Doc[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/documents`).then((r) => r.documents),
@@ -919,6 +927,7 @@ export const api = {
     call<{ name: string }>("POST", `/api/knowledge/${encodeURIComponent(name)}/variants`, { name: variant }),
   deleteVariant: (name: string, variant: string) =>
     call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}/variants/${encodeURIComponent(variant)}`),
+  searchKnowledgeDetailed: (q: string, source: string, variant="") => call<{hits:Hit[];warnings?:{source:string;cause:string}[]}>("GET",`/api/knowledge/search?${new URLSearchParams(variant?{q,source,variant}:{q,source})}`),
   searchKnowledge: (q: string, source: string, variant = "") =>
     call<{ hits: Hit[] }>(
       "GET",

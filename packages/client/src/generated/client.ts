@@ -24,6 +24,7 @@ import type {
   Choice,
   ClientInput,
   ClientView,
+  ConnectKnowledgeSourceBody,
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
@@ -43,6 +44,8 @@ import type {
   InboxMessage,
   KnowledgeDocument,
   KnowledgeSource,
+  KnowledgeSourceConfig,
+  KnowledgeSourceDependenciesResponse,
   KnowledgeVariant,
   LibrarySkill,
   ListAgentRevisionsResponse,
@@ -2223,7 +2226,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -2245,7 +2248,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -2955,6 +2958,82 @@ in a project takes a member of that project (403).
     return this.rawRequest<KnowledgeSource>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Show visible source dependents in a bounded directory window */
+  async knowledgeSourceDependencies(name: string, options?: RequestOptions): Promise<KnowledgeSourceDependenciesResponse> {
+    let path = "/api/knowledge/{name}/dependencies";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSourceDependenciesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async knowledgeSourceDependenciesRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSourceDependenciesResponse>> {
+    let path = "/api/knowledge/{name}/dependencies";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSourceDependenciesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Configure source origin, mode and freshness */
+  async configureKnowledgeSource(name: string, body: KnowledgeSourceConfig, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/configuration";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async configureKnowledgeSourceRaw(name: string, body: KnowledgeSourceConfig, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/configuration";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Connect your own source credential reference */
+  async connectKnowledgeSource(name: string, body: ConnectKnowledgeSourceBody, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/credential";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async connectKnowledgeSourceRaw(name: string, body: ConnectKnowledgeSourceBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/credential";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Refresh a complete indexed source copy */
+  async syncKnowledgeSource(name: string, options?: RequestOptions): Promise<KnowledgeSource> {
+    let path = "/api/knowledge/{name}/sync";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeSource>("POST", path, {
+      ...options,
+    });
+  }
+
+  async syncKnowledgeSourceRaw(name: string, options?: RequestOptions): Promise<ApiResponse<KnowledgeSource>> {
+    let path = "/api/knowledge/{name}/sync";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeSource>("POST", path, {
       ...options,
     });
   }
@@ -3963,7 +4042,7 @@ receipts (`deliveries`), and nobody else any, so a Slack app catches
 up here on the announcements it may have missed. `next` is the cursor
 for the page after this one, or null at the end.
  */
-  async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
+  async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
     let path = "/api/projects/{name}/inbox";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     const _q = new URLSearchParams();
@@ -3979,7 +4058,7 @@ for the page after this one, or null at the end.
     });
   }
 
-  async getProjectInboxRaw(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<GetProjectInboxResponse>> {
+  async getProjectInboxRaw(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<GetProjectInboxResponse>> {
     let path = "/api/projects/{name}/inbox";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     const _q = new URLSearchParams();
