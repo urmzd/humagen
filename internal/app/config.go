@@ -398,6 +398,9 @@ func checkNewAgentName(ctx context.Context, p *platform.Platform, tenant, name s
 // the file. Nothing the file does not mention is touched. The tree comes
 // first, the root and then projects, so what follows can be filed in it.
 func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, log *slog.Logger) error {
+	for _, warning := range expertDeprecations(cfg) {
+		log.Warn(warning)
+	}
 	for _, doc := range cfg.Platforms {
 		tenant := doc.Metadata.Name
 		if err := applyProjects(p, tenant, doc.Spec.Workspace); err != nil {
@@ -754,7 +757,7 @@ func configCmd(o Options, args []string, out io.Writer) error {
 		if len(unset) > 0 {
 			fmt.Fprintf(out, "note: not set in this shell: %s (start and deploy need them)\n", strings.Join(unset, ", "))
 		}
-		for _, w := range machineWarnings(cfg) {
+		for _, w := range append(machineWarnings(cfg), expertDeprecations(cfg)...) {
 			fmt.Fprintf(out, "warning: %s\n", w)
 		}
 		_, err = fmt.Fprintf(out, "ok: %s\n", strings.Join(paths, ", "))

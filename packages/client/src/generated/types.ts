@@ -952,7 +952,7 @@ export interface ProjectExpert {
   topics: string[];
 }
 
-/** The experts a project lists, at the project's version. */
+/** Deprecated expert metadata retained for historical human questions. New routing uses Find Help. */
 export interface ProjectExperts {
   version: number;
   experts: ProjectExpert[];
@@ -1314,7 +1314,8 @@ export interface ProjectLimitInput {
 
 /** One entry of the record of what changed on a project. */
 export interface ProjectChange {
-  seq: number;
+  /** Opaque project-scoped history identifier. It reveals no workspace-global sequence. */
+  seq: string;
   at: string;
   /** Who made the change. `migration` for projects moved out of settings. */
   by: string;

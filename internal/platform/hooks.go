@@ -3,7 +3,6 @@ package platform
 import (
 	"context"
 	"fmt"
-	"github.com/urmzd/humagen/pkg/projects"
 	"slices"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/usage"
 )

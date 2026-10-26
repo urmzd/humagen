@@ -642,15 +642,15 @@ export const defaultCopy = {
   agentPlace: {
     livesIn: (project: string) => `Lives in ${project}`,
     availableIn: "Available in",
-    platform: "A platform agent: available wherever a project enables it",
+    platform: "Company agent: available wherever a project enables it",
     everywhere: "Available everywhere",
     nowhere: "Not enabled in any project yet.",
     loses: (n: number) => `${n} ${n === 1 ? "place" : "places"} will lose this agent.`,
     /** On an agent's Access tab. */
     title: "Where it answers",
-    hint: "A platform agent answers wherever a project enables it. An agent that lives in a project answers there and below, and nowhere else.",
+    hint: "Company agents answer wherever a project enables them. An agent with another project as its home answers there and below.",
     home: "Lives in",
-    noHome: "No project: a platform agent",
+    noHome: "Company",
     livesHere: "Lives here",
     /** Where a project agent answers: its home and everything below it. */
     homeAndBelow: (title: string) => `${title} and the projects below it`,
@@ -675,7 +675,7 @@ export const defaultCopy = {
     more: "Show More",
     failed: "The directory could not be read.",
     /** An agent's row: where it lives or that it is a platform agent, and where it is enabled. */
-    platformAgent: "Platform agent",
+    platformAgent: "Company agent",
     enabledIn: (places: string) => `Enabled in ${places}`,
     enabledEverywhere: "Enabled everywhere",
     notEnabled: "Not enabled anywhere",
@@ -821,8 +821,24 @@ export const defaultCopy = {
     needsFailed: "What needs you could not be loaded. It is all in the inbox.",
     newsFailed: "What's new could not be loaded. It is all in the inbox.",
     /** Home for a person with nothing waiting and nothing new: what Home is for. */
-    banner: { label: "Company announcement", markRead: "Mark as Read", hide: "Hide for Me", open: "Open Announcement" },
-    findHelp: { title: "Find Help", description: "Find a project and an agent for your work", label: "Describe the work", placeholder: "What are you working on?", search: "Find Help", searching: "Finding help", empty: "No matching projects and agents you can read were found.", failed: "Help could not be loaded. Try again.", choose: "Choose", open: "Open Project" },
+    banner: {
+      label: "Company announcement",
+      markRead: "Mark as Read",
+      hide: "Hide for Me",
+      open: "Open Announcement",
+    },
+    findHelp: {
+      title: "Find Help",
+      description: "Find a project and an agent for your work",
+      label: "Describe the work",
+      placeholder: "What are you working on?",
+      search: "Find Help",
+      searching: "Finding help",
+      empty: "No matching projects and agents you can read were found.",
+      failed: "Help could not be loaded. Try again.",
+      choose: "Choose",
+      open: "Open Project",
+    },
     welcome: {
       title: "Welcome to Humagen",
       text: "Your conversations start in your personal project. Publish a reviewed result to a shared project when it is ready.",
@@ -945,7 +961,7 @@ export const defaultCopy = {
       available: "Available here",
       availableHint:
         "Agents that may answer here and below: what this project and those above it enable, the agents that live here, narrowed by every allow list on the way.",
-      everyPlatform: "Every platform agent",
+      everyPlatform: "Every Company agent",
       noneAvailable: "No agent may answer here. Enable one, or let one live here.",
       default: "Default",
       defaultHint:
@@ -956,8 +972,8 @@ export const defaultCopy = {
       answers: (agent: string) => `@${agent} answers untagged messages here.`,
       enable: "Enable",
       enableHint:
-        "Platform agents this project turns on for itself and everything below. It adds to what the projects above enable.",
-      enableEvery: "Every platform agent",
+        "Company agents this project enables for itself and everything below. It adds to what the projects above enable.",
+      enableEvery: "Every Company agent",
       enableEveryHint:
         "Every agent that lives in no project. An agent that lives in a project is never reached this way.",
       enableNone: "Enables nothing of its own.",

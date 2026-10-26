@@ -147,6 +147,8 @@ func (s *Server) getExperts(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 func (s *Server) putExperts(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	w.Header().Set("Deprecation", "true")
+	w.Header().Set("Warning", `299 Humagen "Expert routing is retired; use Find Help"`)
 	var in platform.Experts
 	if !decode(w, r, &in) {
 		return

@@ -50,11 +50,11 @@ func TestOnlySomeoneWhoCanReadAConversationIsToldOfIt(t *testing.T) {
 	}
 	workIn(t, p, "Field", operator)
 	private := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@sme:security is this safe?"})
-	if len(private.Notified) != 0 || len(private.Refused) != 1 || !strings.Contains(private.Refused[0].Refused, "share it first") {
+	if len(private.Notified) != 0 || len(private.Refused) != 1 || !strings.Contains(private.Refused[0].Refused, "Find Help") {
 		t.Fatalf("tagging a role's experts in a private conversation did %+v", private)
 	}
 	shared := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Shared, Text: "@sme:security is this safe?"})
-	if len(shared.Notified) != 1 || shared.Notified[0] != "role:security" {
+	if len(shared.Notified) != 0 || len(shared.Refused) != 1 || !strings.Contains(shared.Refused[0].Refused, "Find Help") {
 		t.Fatalf("tagging a role's experts in a shared conversation did %+v", shared)
 	}
 }

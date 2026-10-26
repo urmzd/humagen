@@ -212,4 +212,23 @@ and reproducible phone/desktop captures are validated in the upper UI layer.
 Find Help scores only readable projects and readable agents available there,
 returns at most eight suggestions, and neither starts work nor changes an
 existing conversation's placement. The component requires explicit selection
-and shows actual request failures. SME routing retirement remains pending.
+and shows actual request failures. New expert-routing tags and cached completion choices are retired, and the
+expert prompt layer is removed from real turns and context preview together.
+Legacy explicit human questions retain their recorded recipients. Config
+check/startup diagnostics direct operators to Find Help.
+
+Publication consent now holds the project store's snapshot read guard across
+the thread commit, serializing destination membership/channel writes. A
+barrier-controlled race regression covers memory and Postgres. Preview tokens
+bind source/destination chains and the complete destination channel record.
+
+Private context classification covers durable personal-note markers, retained
+source audiences, person-scoped MCP grants and optional registered subsystem
+guards, including conversations with no runs. A person-scoped tool must call
+`MarkPrivateContext` before executing. Its write-through run bit survives
+Flush/replay and never changes the accepted tag or appears in run JSON.
+
+Project history identifiers/cursors are project-scoped opaque HMACs; external
+readers never receive the tenant-global sequence. Company rows and current
+agent choices hide compatibility builtin aliases without rewriting stored
+homes or historical revisions.
