@@ -1816,6 +1816,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":2,"source":"accepted-native","accepted":true}`, http.StatusBadRequest)
 	c.call(globex, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":1,"source":"accepted-native","accepted":true}`, http.StatusNotFound)
 
+	memoryPath := "/api/artifacts/" + acceptedFile.ID + "/promote-memory"
+	c.call(acme, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":1,"accepted":true}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":2,"accepted":true}`, http.StatusBadRequest)
+	c.call(globex, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":1,"accepted":true}`, http.StatusNotFound)
+
 	c.call(acme, "GET", "/api/model-providers", "/api/model-providers", "", http.StatusOK)
 	// The busy workspace, read end to end, then taken apart.
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=24h&bucket=1h", "", http.StatusOK)
@@ -1932,7 +1937,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}": {"id": mid}, "/api/inbox/{id}/read": {"id": mid}, "/api/inbox/{id}/dismiss": {"id": mid},
 		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid}, "/api/inbox/{id}/unhide": {"id": mid},
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
-		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/artifacts/{id}/pdf": {"id": published.ID}, "/api/artifacts/{id}/promote-knowledge": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
+		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/artifacts/{id}/pdf": {"id": published.ID}, "/api/artifacts/{id}/promote-knowledge": {"id": published.ID}, "/api/artifacts/{id}/promote-memory": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
@@ -1942,6 +1947,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/publication": {"id": draftID},
 	}
 	valid := map[string]string{
+		"/api/artifacts/{id}/promote-memory":    `{"version":1,"accepted":true}`,
 		"/api/artifacts/{id}/promote-knowledge": `{"version":1,"source":"accepted-native","accepted":true}`,
 		"/api/runs/{id}/feedback":               `{"rating":"up"}`,
 		"/api/agents/{name}":                    revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,

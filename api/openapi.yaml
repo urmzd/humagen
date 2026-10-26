@@ -2554,6 +2554,38 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/artifacts/{id}/promote-memory:
+    post:
+      operationId: promoteArtifactMemory
+      tags: [artifacts]
+      summary: Suggest an accepted immutable shared result as project memory
+      description: Requires artifacts:read and membership in the current shared project. The exact whole-file text must fit the memory policy. Always pending owner review, with immutable artifact provenance.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ArtifactID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version, accepted]
+              properties:
+                version: {type: integer, minimum: 1}
+                accepted: {type: boolean, const: true}
+      responses:
+        "201":
+          description: A pending memory proposal for project owners to review.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Note"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/artifacts/{id}/promote-knowledge:
     post:
       operationId: promoteArtifactKnowledge

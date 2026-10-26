@@ -20,6 +20,7 @@ func (s *Server) artifactRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/artifacts/{id}", s.authed(auth.ArtifactsRead, s.seenArtifact(s.getArtifact)))
 	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactVersions)))
 	mux.HandleFunc("GET /api/artifacts/{id}/content", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactContent)))
+	mux.HandleFunc("POST /api/artifacts/{id}/promote-memory", s.authed(auth.RunsWrite, s.seenArtifact(s.promoteArtifactMemory)))
 	mux.HandleFunc("POST /api/artifacts/{id}/promote-knowledge", s.authed(auth.KnowledgeWrite, s.seenArtifact(s.promoteArtifactKnowledge)))
 	mux.HandleFunc("GET /api/artifacts/{id}/pdf", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactPDF)))
 	mux.HandleFunc("DELETE /api/artifacts/{id}", s.authed(auth.ArtifactsWrite, s.seenArtifact(s.deleteArtifact)))
@@ -194,4 +195,24 @@ func shownArtifacts(p *platform.Platform, tenant string, list []artifacts.Artifa
 		out[i] = p.ShownArtifact(tenant, a)
 	}
 	return out
+}
+
+func (s *Server) promoteArtifactMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Accepted bool `json:"accepted"`
+		Version  int  `json:"version"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !body.Accepted {
+		fail(w, http.StatusBadRequest, "Review and accept this version before suggesting it as memory.")
+		return
+	}
+	note, err := s.P.PromoteArtifactMemory(r.Context(), who, r.PathValue("id"), body.Version)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, note)
 }

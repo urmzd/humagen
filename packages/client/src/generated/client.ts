@@ -107,6 +107,7 @@ import type {
   ProjectUpdate,
   ProjectView,
   PromoteArtifactKnowledgeBody,
+  PromoteArtifactMemoryBody,
   PublishThreadSummaryBody,
   QueryJournalResponse,
   QuestionAnswer,
@@ -2524,6 +2525,27 @@ the file's SHA-256.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Requires artifacts:read and membership in the current shared project. The exact whole-file text must fit the memory policy. Always pending owner review, with immutable artifact provenance. */
+  async promoteArtifactMemory(id: string, body: PromoteArtifactMemoryBody, options?: RequestOptions): Promise<Note> {
+    let path = "/api/artifacts/{id}/promote-memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteArtifactMemoryRaw(id: string, body: PromoteArtifactMemoryBody, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/artifacts/{id}/promote-memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

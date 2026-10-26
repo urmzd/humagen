@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -47,6 +48,17 @@ func TestAcceptedArtifactPromotionKeepsItsExactVersionAudienceAndProvenance(t *t
 	if !strings.Contains(doc.URI, file.ID+"?version=1") {
 		t.Fatalf("provenance = %q", doc.URI)
 	}
+	note, err := p.PromoteArtifactMemory(t.Context(), admin, file.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if note.Text != "Accepted original decision" || note.Status != memory.Pending || note.Source != memory.Artifact || !strings.Contains(note.By, file.ID+"?version=1") {
+		t.Fatalf("proposal=%+v", note)
+	}
+	if _, err := p.PromoteArtifactMemory(t.Context(), admin, file.ID, 2); !errors.Is(err, artifacts.ErrInvalid) {
+		t.Fatalf("wrong memory version=%v", err)
+	}
+
 	hits, err := p.Knowledge.Search(tenant, []string{"accepted"}, "original", 5, "")
 	if err != nil || len(hits) == 0 || !strings.Contains(hits[0].Text, "Accepted original") {
 		t.Fatalf("promoted content = %+v,%v", hits, err)
@@ -71,6 +83,10 @@ func TestAcceptedArtifactPromotionKeepsItsExactVersionAudienceAndProvenance(t *t
 	if _, err := p.PromoteArtifactKnowledge(t.Context(), admin, hidden.ID, 1, "accepted"); !errors.Is(err, artifacts.ErrInvalid) {
 		t.Fatalf("private promotion = %v", err)
 	}
+	if _, err := p.PromoteArtifactMemory(t.Context(), admin, hidden.ID, 1); !errors.Is(err, artifacts.ErrInvalid) {
+		t.Fatalf("private memory=%v", err)
+	}
+
 	other := auth.Principal{Subject: "foreign", Tenant: "other", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
 	if _, err := p.PromoteArtifactKnowledge(t.Context(), other, file.ID, 1, "accepted"); !errors.Is(err, artifacts.ErrNotFound) {
 		t.Fatalf("foreign artifact = %v", err)

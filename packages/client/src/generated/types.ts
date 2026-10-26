@@ -3337,6 +3337,11 @@ export interface ListArtifactVersionsResponse {
   versions: Artifact[];
 }
 
+export interface PromoteArtifactMemoryBody {
+  version: number;
+  accepted: string;
+}
+
 export interface PromoteArtifactKnowledgeBody {
   accepted: string;
   version: number;

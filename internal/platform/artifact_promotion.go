@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -99,4 +100,24 @@ func (p *Platform) PromoteArtifactKnowledge(ctx context.Context, who auth.Princi
 		p.log.Error("platform: artifact promotion audit remains pending", "attempt", attempt.ID(), "error", finishErr)
 	}
 	return document, err
+}
+
+// PromoteArtifactMemory proposes the exact accepted shared result. It never
+// truncates an oversized file or approves memory on the reader's behalf.
+func (p *Platform) PromoteArtifactMemory(ctx context.Context, who auth.Principal, id string, version int) (memory.Note, error) {
+	if !who.Can(auth.RunsWrite) {
+		return memory.Note{}, auth.ErrForbidden
+	}
+	found, err := p.Artifacts.Get(who.Tenant, id)
+	if err != nil {
+		return memory.Note{}, artifacts.ErrNotFound
+	}
+	lock := p.moves.of(who.Tenant, found.Thread)
+	lock.Lock()
+	defer lock.Unlock()
+	_, project, text, err := p.acceptedArtifact(ctx, who, id, version)
+	if err != nil {
+		return memory.Note{}, err
+	}
+	return p.ProposeProjectMemory(who, project, text, fmt.Sprintf("humagen://artifacts/%s?version=%d", id, version))
 }
