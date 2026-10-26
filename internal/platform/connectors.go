@@ -26,6 +26,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/authz"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -213,6 +214,21 @@ func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
 // and goes no further when they may not.
 func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelope.Tag, bool) {
 	c := st.client
+	current, enabled := s.p.currentInstallation(c)
+	if !enabled {
+		return envelope.Tag{}, false
+	}
+	event := tag.Meta["slack_event"]
+	if c.Surface == clients.GitHub {
+		event = tag.Meta["github_event"]
+	}
+	if !current.AllowsEvent(event) {
+		return envelope.Tag{}, false
+	}
+	if direction, bound := s.p.bridgeDirection(current, tag.Meta["slack_channel"]); bound && direction != projects.BridgeTwoWay {
+		return envelope.Tag{}, false
+	}
+	c = current
 	resource, hasResource := clientResource(c, tag)
 	if hasResource {
 		if err := s.p.observeClientResource(c, resource); err != nil {
@@ -515,6 +531,17 @@ func (s *surface) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // hand passes a request to one client's connector, which verifies it again
 // with the same secret before it parses anything.
 func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []byte) {
+	if st.verifier != nil {
+		current, enabled := s.p.currentInstallation(st.client)
+		if !enabled {
+			http.NotFound(w, r)
+			return
+		}
+		if event := webhookEvent(current.Surface, r, body); event != "" && !current.AllowsEvent(event) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
 	r = r.Clone(r.Context())
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
@@ -527,6 +554,30 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e envelope.Ev
 	if err != nil {
 		return err
 	}
+
+	current, enabled := s.p.currentInstallation(st.client)
+	if !enabled || !current.AllowsOutcomes() {
+		return nil
+	}
+
+	if current.Surface == clients.GitHub {
+		run, err := s.p.Runs.Get(e.Tenant, e.RunID)
+		if err == nil && s.p.RunRequiresReviewedSummary(ctx, run, s.p.RunPlace(e.Tenant, run).Project) {
+			return nil
+		}
+	}
+	if current.Surface == clients.Slack && len(to.Path) > 0 {
+		if _, bound := s.p.bridgeDirection(current, to.Path[0]); bound {
+			if e.Kind != envelope.KindCompleted && e.Kind != envelope.KindFailed && e.Kind != envelope.KindStopped && e.Kind != envelope.KindParked && e.Kind != envelope.KindChildParked {
+				return nil
+			}
+			run, err := s.p.Runs.Get(e.Tenant, e.RunID)
+			if err != nil || !s.p.bridgeMayDeliver(ctx, current, to.Path[0], run) {
+				return nil
+			}
+		}
+	}
+
 	return st.peer.Deliver(ctx, to, e)
 }
 
@@ -628,7 +679,7 @@ func (p *Platform) connectorTools(req runtime.Request, emit func(payload.Action)
 		if st == nil {
 			continue
 		}
-		if err := reg.Register(st.peer); err != nil {
+		if err := reg.Register(capabilityActor{p: p, st: st, req: req}); err != nil {
 			return nil, err
 		}
 	}

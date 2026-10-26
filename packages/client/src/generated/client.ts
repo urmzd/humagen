@@ -23,6 +23,8 @@ import type {
   ChannelUpdate,
   ChannelView,
   Choice,
+  ClientBridgeDeliveryResponse,
+  ClientCapabilityPolicy,
   ClientInput,
   ClientView,
   ConnectKnowledgeSourceBody,
@@ -45,6 +47,7 @@ import type {
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
+  InstallationCapabilities,
   KnowledgeAttachment,
   KnowledgeDocument,
   KnowledgeSource,
@@ -112,6 +115,7 @@ import type {
   ProjectUpdate,
   ProjectView,
   PublishThreadSummaryBody,
+  PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -477,6 +481,71 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** Read this installation's actual event and action inventory */
+  async getClientCapabilities(id: string, options?: RequestOptions): Promise<InstallationCapabilities> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InstallationCapabilities>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getClientCapabilitiesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InstallationCapabilities>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Explicit empty lists deny every event or action. These controls add no provider scopes, agent tool grants or approval rights. Existing managed installations keep their file-defined settings. */
+  async putClientCapabilities(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<InstallationCapabilities> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InstallationCapabilities>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putClientCapabilitiesRaw(id: string, body: ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2, options?: RequestOptions): Promise<ApiResponse<InstallationCapabilities>> {
+    let path = "/api/clients/{id}/capabilities";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InstallationCapabilities>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Recheck a native host's current permission to deliver this visible run */
+  async clientBridgeDelivery(id: string, run: string, channel: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
+    let path = "/api/clients/{id}/delivery";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ClientBridgeDeliveryResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
+    let path = "/api/clients/{id}/delivery";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ClientBridgeDeliveryResponse>("GET", path, {
+      ...options,
+    });
   }
 
   /** Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end. */

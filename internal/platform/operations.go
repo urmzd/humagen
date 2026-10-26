@@ -132,12 +132,14 @@ func categoryOf(name string) operations.Category {
 	switch name {
 	case ToolCallAgent, ToolDelegate:
 		return operations.CallAgents
-	case ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search":
+	case "github_read_context", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search":
 		return operations.ReadContext
 	case ToolFileWrite, ToolSaveAgent:
 		return operations.WriteFiles
 	case ToolPublish:
 		return operations.PublishArtifacts
+	case "github_comment", "github_request_review", "github_add_labels", "github_apply_changes", "slack_add_reaction":
+		return operations.ExternalMessages
 	}
 	if strings.HasPrefix(name, "tag_") {
 		return operations.CallAgents
@@ -217,7 +219,11 @@ type operationTool struct {
 }
 
 func (p *Platform) operationTool(req runtime.Request, t saigetypes.Tool, c operations.Category) saigetypes.Tool {
-	return &operationTool{Tool: t, p: p, req: req, category: c}
+	wrapped := &operationTool{Tool: t, p: p, req: req, category: c}
+	if t.Definition().Name == "github_apply_changes" {
+		wrapped.extra = operations.WriteFiles
+	}
+	return wrapped
 }
 func (t *operationTool) ActsForPerson() bool {
 	v, ok := t.Tool.(agentrt.PersonScoped)

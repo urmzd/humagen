@@ -16,6 +16,7 @@ import {
   streamTrailer,
   streamUpdate,
 } from "@humagen/render-slack";
+import { bridgeOutcome } from "./bridge.ts";
 import { type SlackApi, SlackError } from "./slack.ts";
 
 /**
@@ -84,6 +85,8 @@ export class Presenter {
     private readonly target: Target,
     private readonly opts: {
       native?: boolean;
+      outcomesOnly?: boolean;
+      canDeliver?: () => Promise<boolean>;
       log?: (line: string) => void;
       /** A status the message that asked already shows, such as the reaction for a queued message. */
       shown?: TurnStatus;
@@ -91,7 +94,7 @@ export class Presenter {
       copy?: Copy;
     } = {},
   ) {
-    this.native = opts.native ?? true;
+    this.native = opts.outcomesOnly ? false : (opts.native ?? true);
     this.shown = opts.shown ?? null;
   }
 
@@ -145,6 +148,7 @@ export class Presenter {
 
   /** Show a status change once: the reaction, then the session. */
   private async sync(turn: Turn) {
+    if (this.opts.outcomesOnly) return;
     if (this.shown === turn.status) return;
     await this.react(turn.status);
     await this.status(turn);
@@ -253,6 +257,8 @@ export class Presenter {
    * still ends it.
    */
   async update(turn: Turn): Promise<void> {
+    if (this.opts.outcomesOnly) return;
+    if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
     if (this.closed || this.degraded) return;
     await this.sync(turn);
     // The question's message is closed and nothing new has been said: the
@@ -290,6 +296,8 @@ export class Presenter {
    * already carries the card.
    */
   async pause(turn: Turn): Promise<void> {
+    if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
+    if (this.opts.outcomesOnly) turn = bridgeOutcome(turn);
     if (this.closed || this.degraded || this.paused) return;
     await this.update(turn);
     // A posted message is edited with the whole turn, buttons included.
@@ -316,6 +324,8 @@ export class Presenter {
 
   /** Settle a question's card where it was shown, with how it was answered. */
   async settleQuestion(turn: Turn): Promise<void> {
+    if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
+    if (this.opts.outcomesOnly) turn = bridgeOutcome(turn);
     const paused = this.paused;
     if (!paused) return;
     const now = new Map(turn.interrupts.map((i) => [i.id, i]));
@@ -345,6 +355,11 @@ export class Presenter {
    * whole turn is posted again as a new message.
    */
   async finish(turn: Turn): Promise<Presented> {
+    if (this.opts.canDeliver && !(await this.opts.canDeliver())) return { ts: "", messages: [] };
+    if (this.opts.outcomesOnly) {
+      if (turn.status === "working" || turn.status === "queued") return { ts: "", messages: [] };
+      turn = bridgeOutcome(turn);
+    }
     if (this.closed) return { ts: this.ts, messages: this.messages };
     this.closed = true;
     if (this.paused && !this.ts && this.native) {
@@ -421,6 +436,8 @@ export class Presenter {
    * reaction and the session settle.
    */
   async conclude(turn: Turn): Promise<void> {
+    if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
+    if (this.opts.outcomesOnly) turn = bridgeOutcome(turn);
     const final = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
     try {
       const [first = [], ...rest] = final.pages;

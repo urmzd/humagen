@@ -25,6 +25,7 @@ export const defaultCopy = {
     copyFrom: "Copy from",
     queriedLive: "Retrieved for This Turn",
   },
+  attachedFilesPrompt: "Please review the attached files.",
   sourceOperations: {
     contextPlacement: "Context Placement",
     attachmentHint:
@@ -67,6 +68,36 @@ export const defaultCopy = {
     verifiedResource: "Verified Resource",
     ruleDraftHint:
       "A suggested rule is a draft. Preview it and save explicitly; linking this resource remains a separate decision.",
+    capabilities: "Connection Capabilities",
+    subscriptions: "Event Subscriptions",
+    registeredActions: "Registered Actions",
+    capabilitiesHint:
+      "These limits only tighten this installed connection. Agent grants, project policies and external permissions still apply.",
+    noRegisteredActions: "No outbound actions are registered for this connection.",
+    managedCapabilities: "The server configuration manages this connection.",
+    legacyCapabilities:
+      "Existing default behavior is active. Saving records an explicit allow-list; clearing all choices denies all.",
+    deliverOutcomes: "Deliver Outcomes",
+    saveCapabilities: "Save Connection Limits",
+    direction: "Bridge Direction",
+    directions: { two_way: "Two Way", inbound: "Inbound Only", outcomes: "Outcomes Only" },
+    directionHint:
+      "Changing a bridge requires project ownership and connection permissions. Private sources and activity never cross it.",
+    saveDirection: "Save Direction",
+    bindingChanged: "The channel binding changed. Reload before changing its direction.",
+    eventNames: {
+      app_mention: "App Mentions",
+      message: "Messages",
+      slash_command: "Slash Commands",
+      issue_comment: "Issue Comments",
+      pull_request_review_comment: "Pull Request Review Comments",
+      pull_request_review: "Pull Request Reviews",
+      issues: "Issues",
+      pull_request: "Pull Requests",
+    },
+    refreshCapabilities: "Reload Connection Limits",
+    bridgeSemantics:
+      "Inbound Only mirrors human messages passively without waking agents or sending output. Outcomes Only ignores incoming human messages and delivers permitted outcomes and decisions.",
     saveAccess: "Save Access Mode",
     connectionType: "Connection Type",
     connectSystem: "Connect a System",

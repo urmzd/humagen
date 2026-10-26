@@ -447,6 +447,9 @@ export class FakeHumagen implements Humagen {
     return m as WireMessage;
   }
 
+  async deliveryAllowed(_client: string, _channel: string, _run: string) {
+    return true;
+  }
   async bindings(client: string) {
     if (!this.clients.has(client)) throw new HumagenError(404, "not found");
     return this.bound.get(client) ?? [];
