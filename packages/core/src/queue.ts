@@ -146,7 +146,17 @@ export function queueReduce(state: QueueState, action: QueueAction): [QueueState
 
     case "rejected":
       if (!state.current) return [state, none];
-      return [{ ...state, status: "held", current: null, pending: [state.current, ...state.pending], heldReason: "failed", interruptFor: undefined }, none];
+      return [
+        {
+          ...state,
+          status: "held",
+          current: null,
+          pending: [state.current, ...state.pending],
+          heldReason: "failed",
+          interruptFor: undefined,
+        },
+        none,
+      ];
 
     case "turnEnded": {
       const ended = { ...state, current: null };

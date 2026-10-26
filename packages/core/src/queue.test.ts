@@ -26,10 +26,18 @@ describe("queue", () => {
       { type: "send", message: msg("b") },
       { type: "rejected" },
     ]);
-    expect(state).toMatchObject({ status: "held", current: null, heldReason: "failed", pending: [msg("a"), msg("b")] });
+    expect(state).toMatchObject({
+      status: "held",
+      current: null,
+      heldReason: "failed",
+      pending: [msg("a"), msg("b")],
+    });
     expect(effects[2]).toEqual({ type: "none" });
     const edited = queueReduce(state, { type: "edit", id: "a", text: "corrected" })[0];
-    expect(queueReduce(edited, { type: "resume" })[1]).toEqual({ type: "start", message: { ...msg("a"), text: "corrected" } });
+    expect(queueReduce(edited, { type: "resume" })[1]).toEqual({
+      type: "start",
+      message: { ...msg("a"), text: "corrected" },
+    });
     expect(queueReduce(state, { type: "rejected" })[0]).toEqual(state);
   });
   it("starts immediately when idle and queues while running", () => {

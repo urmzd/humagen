@@ -402,7 +402,8 @@ export function failureTitle(failure: Failure, copy: Copy = defaultCopy): string
 
 /** Keep credential configuration paths in authorized run details, not the answer body. */
 function failureMessage(failure: Failure, copy: Copy): string {
-  return /(?:op:\/\/|1password|credential|api[_ -]?key|secret reference)/i.test(failure.message) && failure.kind === "internal"
+  return /(?:op:\/\/|1password|credential|api[_ -]?key|secret reference)/i.test(failure.message) &&
+    failure.kind === "internal"
     ? copy.credentialUnavailable
     : failure.message;
 }
