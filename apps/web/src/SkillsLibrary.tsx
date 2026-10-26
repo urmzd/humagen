@@ -303,6 +303,7 @@ export function SkillsLibrary({
               setSelected(null);
               setHistory([]);
               setDefinition(blank);
+              onLocationChange?.({scope:scope.kind,project:scope.project});
             }}
           >
             {copy.new}
