@@ -66,12 +66,12 @@ commit `39f7f48`; the HelmRelease switched from `./deploy/helm/warp` to
 the Secret bytes and volume marker survived, the container stayed named
 `warp`, and the new pod became ready with `/healthz` returning `ok`.
 
-The successful final checks used the default Postgres slot. The separate
-memory-store failure below is not fixed by these positive results. An earlier
+The original checks used the default Postgres slot. The memory-store
+regression below was subsequently fixed and both store variants were checked again. An earlier
 attempt was interrupted when the host's Colima VM stopped; the completed
 checks above were rerun after the existing VM and isolated cluster recovered.
 
-## Confirmed finding
+## Memory-store reuse-values regression
 
 [Issue #62](https://github.com/urmzd/humagen/issues/62) records a live Helm
 4.3.0 failure for an existing memory-store release. The old release is healthy
@@ -83,10 +83,28 @@ preserves `postgres: null` in the new spec, and the pod exits with:
 humagen: /etc/warp/humagen.yaml: document 1 (System warp): spec: unknown field "postgres"
 ```
 
-The atomic upgrade rolls back. A regular `helm template` render drops the
-null and therefore does not expose this live upgrade behavior. Resource
-identity was preserved; the failure was configuration decoding and readiness.
-Helm 3 and old-to-old chart upgrades have not been checked for this case.
+The failing atomic upgrade rolled back. A regular `helm template` render drops
+the null and therefore did not expose this live upgrade behavior.
+
+The chart now copies the System values and omits only null store entries.
+Configured inactive blocks, including empty maps and `false`, still reach
+the unchanged strict spec decoder and are refused. Postgres without a database
+reference is still refused. The regression injects retained values after
+Helm's normal coalescing and covers both store kinds and custom null blocks;
+zero execution limits, false settings and empty lists stay intact. CI runs
+these checks through `make chart-check` with Helm 4.3.0.
+
+On October 25, 2026, both the default Postgres and memory variants passed a
+fresh kind upgrade from the actual `v0.20.2` chart and binary to the fixed
+chart with the current `v0.25.1` Go source. Each used the documented
+`--reuse-values`, `nameOverride` and image flags. No extra store override was
+passed at upgrade. The Deployment, PVC and Secret UIDs, Secret bytes, volume
+marker and container name stayed unchanged, and both pods became ready with
+`/healthz` returning `ok`. The memory release's stored Helm values still
+contain `postgres: null`, while its generated spec contains only
+`stores: {kind: memory}`. The runtime was built from this branch and layered
+onto the verified Alpine image; console assets were unchanged. Helm 3 and
+old-to-old upgrades have not been checked.
 
 ## Reproduction
 
@@ -148,5 +166,7 @@ The fixture keeps the chart's default Postgres store, with an isolated
 Postgres 16 Deployment and Service in each test namespace and an old-name
 database reference in the preserved Secret. Its test-only OIDC client uses
 Google's public discovery issuer. No sign-in or real credentials are involved.
-Both rendered specs are checked by their actual runtime images before either
-installation. The separate memory-store finding above remains unresolved.
+Both rendered default specs are checked by their actual runtime images before
+installation. The script also installs a separate memory release and reuses
+its null backend values through an upgrade. Set `VERIFY_FLUX=0` to check both
+local chart upgrades before its branch is available to the Flux source.

@@ -166,6 +166,30 @@ helm upgrade warp "$ROOT/deploy/helm/humagen" -n warp-helm --reuse-values \
   --set "image.tag=${NEW_IMAGE##*:}" --wait --atomic --timeout 180s
 verify_kept warp-helm
 
+
+# Reuse the null tombstone from a healthy memory release without new overrides.
+cat > "$ARTIFACTS/memory-values.yaml" <<YAML
+system:
+  spec:
+    stores:
+      kind: memory
+      postgres: null
+YAML
+prepare_namespace warp-helm-memory
+helm install warp "$OLD_CHECKOUT/deploy/helm/warp" -n warp-helm-memory \
+  -f "$ARTIFACTS/old-values.yaml" -f "$ARTIFACTS/memory-values.yaml" --wait --timeout 180s
+seed_marker warp-helm-memory
+snapshot warp-helm-memory before
+helm upgrade warp "$ROOT/deploy/helm/humagen" -n warp-helm-memory --reuse-values \
+  --set nameOverride=warp --set "image.repository=${NEW_IMAGE%:*}" \
+  --set "image.tag=${NEW_IMAGE##*:}" --wait --atomic --timeout 180s
+verify_kept warp-helm-memory
+# Allow the local chart regression to run before its branch is on the Flux source.
+if [[ ${VERIFY_FLUX:-1} == 0 ]]; then
+  echo "Postgres and memory Helm upgrades passed. Evidence: $ARTIFACTS"
+  exit 0
+fi
+
 flux install --components=source-controller,helm-controller --timeout=5m
 prepare_namespace warp-flux
 kubectl apply -f - <<YAML
