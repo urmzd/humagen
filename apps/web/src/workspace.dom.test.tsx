@@ -7,6 +7,7 @@ import { AgentMessage } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
+import { ArtifactPromotion } from "./ArtifactPromotion.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { stubFetch } from "./dom.ts";
 import type { ConversationView } from "./route.ts";
@@ -367,4 +368,32 @@ test("PDF export uses the selected immutable version and a refusal keeps the ori
   assert.equal(screen.getByRole("link",{name:"Download Original"}).getAttribute("href"),"/api/artifacts/art-2/content");
   assert.ok(net.seen.some(request=>request.path==="/api/artifacts/art-2/pdf"));
   assert.ok(!net.seen.some(request=>request.method==="POST"));
+});
+
+test("accepted results require whole-file review and a same-project manual indexed source", async () => {
+  net=stubFetch({
+    "GET /api/knowledge":()=>({sources:[{name:"accepted",lifecycle:{mode:"indexed",provider:"manual",project:"Launch"}},{name:"broader",lifecycle:{mode:"indexed",provider:"manual",project:""}},{name:"live",lifecycle:{mode:"live",provider:"drive",project:"Launch"}}]}),
+    "POST /api/artifacts/art-2/promote-knowledge":()=>({id:"document-1",uri:"humagen://artifacts/art-2?version=2"}),
+  });
+  render(<ArtifactPromotion file={saved} access={{project:"Launch",shared:true,knowledge:true,memory:false}} />);
+  const source=await screen.findByRole("combobox");
+  assert.ok(!screen.queryByRole("option",{name:"broader"}));
+  assert.ok(!screen.queryByRole("option",{name:"live"}));
+  const submit=screen.getByRole("button",{name:words.artifactAddKnowledge}) as HTMLButtonElement;
+  assert.equal(submit.disabled,true);
+  fireEvent.change(source,{target:{value:"accepted"}});
+  assert.equal(submit.disabled,true);
+  fireEvent.click(screen.getByRole("checkbox",{name:words.artifactAccept}));
+  fireEvent.click(submit);
+  await screen.findByText(words.artifactPromoted);
+  const posted=net.seen.find(request=>request.method==="POST");
+  assert.deepEqual(posted?.body,{version:2,accepted:true,source:"accepted"});
+});
+
+test("private results offer no promotion and query no destination sources",()=>{
+  net=stubFetch({});
+  render(<ArtifactPromotion file={saved} access={{project:"Launch",shared:false,knowledge:true,memory:true}} />);
+  assert.ok(screen.getByText(words.artifactSharedRequired));
+  assert.equal(screen.queryByRole("button"),null);
+  assert.equal(net.seen.length,0);
 });

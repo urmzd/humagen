@@ -2380,6 +2380,45 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/artifacts/{id}/promote-knowledge:
+    post:
+      operationId: promoteArtifactKnowledge
+      tags: [artifacts]
+      summary: Add an accepted immutable result to knowledge in the same project
+      description: |
+        Requires artifacts:read and knowledge:read as well as knowledge:write.
+        The version must be exact, its conversation shared, and the target an
+        indexed manual source in the same current project. Private results,
+        wider audiences, external provider snapshots and oversized text are refused.
+        Provenance points to the immutable artifact version. Writes an audit attempt.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/ArtifactID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, source, accepted]
+              additionalProperties: false
+              properties:
+                accepted: {type: boolean, const: true}
+                version: {type: integer, minimum: 1}
+                source: {type: string, minLength: 1, maxLength: 80}
+      responses:
+        "201":
+          description: The retained accepted result, with immutable artifact provenance.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeDocument"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/artifacts/{id}/pdf:
     get:
       operationId: exportArtifactPDF

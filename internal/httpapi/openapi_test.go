@@ -1736,6 +1736,28 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/artifacts/{id}/pdf", "/api/artifacts/"+nativeArtifact.ID+"/pdf", "", http.StatusOK)
 	c.call(acme, "GET", "/api/artifacts/{id}/pdf", artifactPath+"/pdf", "", http.StatusBadRequest)
 	c.call(globex, "GET", "/api/artifacts/{id}/pdf", artifactPath+"/pdf", "", http.StatusNotFound)
+	promoter := auth.Principal{Subject: "accepted-reviewer", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+	acceptedThread, err := f.p.StartThread(t.Context(), promoter, platform.ThreadInput{Project: "Launch", Visibility: threads.Shared, Text: "Accepted brief"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.p.PutFile("acme", acceptedThread.Thread.ID, "accepted.md", "The reviewed accepted result."); err != nil {
+		t.Fatal(err)
+	}
+	acceptedFile, err := f.p.Publish(t.Context(), platform.Publication{Tenant: "acme", Thread: acceptedThread.Thread.ID, Project: "Launch", Agent: "helper", Path: "accepted.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Knowledge.Create("acme", "accepted-native", "Accepted project results", "accepted-reviewer", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Knowledge.Configure("acme", "accepted-native", knowledge.SourceConfig{Mode: knowledge.Indexed, Provider: "manual", Owner: "accepted-reviewer", Project: "Launch"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	promotionPath := "/api/artifacts/" + acceptedFile.ID + "/promote-knowledge"
+	c.call(acme, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":1,"source":"accepted-native","accepted":true}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":2,"source":"accepted-native","accepted":true}`, http.StatusBadRequest)
+	c.call(globex, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":1,"source":"accepted-native","accepted":true}`, http.StatusNotFound)
 
 	// The busy workspace, read end to end, then taken apart.
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=24h&bucket=1h", "", http.StatusOK)
@@ -1805,7 +1827,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}": {"id": mid}, "/api/inbox/{id}/read": {"id": mid}, "/api/inbox/{id}/dismiss": {"id": mid},
 		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid}, "/api/inbox/{id}/unhide": {"id": mid},
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
-		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/artifacts/{id}/pdf": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
+		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/artifacts/{id}/pdf": {"id": published.ID}, "/api/artifacts/{id}/promote-knowledge": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
@@ -1814,8 +1836,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/share": {"id": tid},
 	}
 	valid := map[string]string{
-		"/api/runs/{id}/feedback": `{"rating":"up"}`,
-		"/api/agents/{name}":      revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
+		"/api/artifacts/{id}/promote-knowledge": `{"version":1,"source":"accepted-native","accepted":true}`,
+		"/api/runs/{id}/feedback":               `{"rating":"up"}`,
+		"/api/agents/{name}":                    revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
 		"/api/clients/{id}": `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
@@ -1933,6 +1956,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
+	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
 	// A workspace holds at most 1,000 call policies, one per agent. Making
 	// that many agents here would only test a counter, which
 	// pkg/callpolicy's tests do.

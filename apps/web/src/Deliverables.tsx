@@ -3,6 +3,7 @@ import { Markdown } from "@humagen/primitives";
 import { ArtifactIcon, WebSurface } from "@humagen/render-web";
 import { HumagenMark, Inspector } from "@humagen/web";
 import { useEffect, useRef, useState } from "react";
+import { ArtifactPromotion, type ArtifactPromotionAccess } from "./ArtifactPromotion.tsx";
 import type { FilePreview } from "./artifactPreview.ts";
 import { appendPage, contentUrl, type Stored } from "./storage.ts";
 import { AgentMark, ago, button, primary, Problem, SkeletonRows } from "./ui.tsx";
@@ -348,12 +349,14 @@ export function Deliverables({
   onView,
   onClose,
   onRevise,
+  promotion,
 }: {
   thread: string;
   view: ConversationView;
   onView: (view: ConversationView) => void;
   onClose: () => void;
   onRevise?: (file: Stored, slide?: number) => void;
+  promotion?: ArtifactPromotionAccess;
 }) {
   const [items, setItems] = useState<Stored[]>();
   const [file, setFile] = useState<Stored>();
@@ -547,6 +550,7 @@ export function Deliverables({
                   <dd className="break-all font-aui-mono">{file.sha256}</dd>
                 </dl>
               )}
+              {promotion && <ArtifactPromotion key={`promote-${file.id}`} file={file} access={promotion} />}
               {onRevise && (
                 <div className="flex flex-wrap items-center justify-between gap-3 border-aui-border border-t pt-4">
                   <p className="min-w-0 flex-1 text-aui-2xs text-aui-muted">

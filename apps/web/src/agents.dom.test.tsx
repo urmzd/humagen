@@ -38,10 +38,11 @@ const field: ProjectView = {
 const older: Revision = { ...writer, rev: 1, hash: "h1", spec: { ...writer.spec, system_prompt: "Write." } };
 const notes: Note[] = [{ id: "n1", text: "Releases go out on Tuesdays.", source: "person", status: "approved", by: "ada", at: new Date().toISOString() }];
 
-let net: ReturnType<typeof stubFetch>;
+let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
   cleanup();
-  net.restore();
+  net?.restore();
+  net = undefined;
 });
 
 function open(builtin: boolean, onHomed: () => void = () => {}) {
@@ -104,10 +105,10 @@ test("a built-in agent: the spec cannot be changed or saved, nor moved into a pr
   await screen.findByText("Releases go out on Tuesdays.");
   fireEvent.change(screen.getByLabelText("Something to remember"), { target: { value: "Ship on Fridays." } });
   fireEvent.click(screen.getByRole("button", { name: "Remember" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST" && r.path === "/api/agents/humagen-writer/memory")));
+  await waitFor(() => assert.ok(net!.seen.some((r) => r.method === "POST" && r.path === "/api/agents/humagen-writer/memory")));
   fireEvent.click(screen.getByRole("button", { name: "Forget" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "DELETE" && r.path === "/api/agents/humagen-writer/memory/n1")));
-  assert.ok(!net.seen.some((r) => r.method === "PUT"), "nothing revised the agent");
+  await waitFor(() => assert.ok(net!.seen.some((r) => r.method === "DELETE" && r.path === "/api/agents/humagen-writer/memory/n1")));
+  assert.ok(!net!.seen.some((r) => r.method === "PUT"), "nothing revised the agent");
 });
 
 test("the same agent, not built in: editing makes a save, and an older revision can be restored", async () => {
@@ -130,6 +131,6 @@ test("an agent of the workspace's own comes to live in a project from its Access
   tab("Access");
   fireEvent.click(screen.getByRole("button", { name: /^Lives in:/ }));
   fireEvent.click(await screen.findByRole("option", { name: /Field/ }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/humagen-writer/home")));
+  await waitFor(() => assert.ok(net!.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/humagen-writer/home")));
   await waitFor(() => assert.equal(homed, 1));
 });

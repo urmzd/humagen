@@ -437,6 +437,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             homes={homes}
             projects={can("projects:read") ? projects : []}
             canRun={can("runs:write")}
+            artifactActions={{knowledge:can("artifacts:read") && can("knowledge:read") && can("knowledge:write"), memory:false}}
             canCreateProject={can("projects:write")}
             greeting={greeting(shownName)}
             home={

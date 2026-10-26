@@ -263,6 +263,7 @@ export function Chat({
   homes = {},
   projects,
   canRun,
+  artifactActions,
   canCreateProject,
   greeting,
   onThread,
@@ -305,6 +306,7 @@ export function Chat({
   /** The project tree a new conversation can be filed in, or null while it loads. */
   projects: ProjectView[] | null;
   canRun: boolean;
+  artifactActions?: {knowledge:boolean;memory:boolean};
   /** May make a project from the picker. */
   canCreateProject: boolean;
   greeting: string;
@@ -599,6 +601,7 @@ export function Chat({
         root={root ?? null}
         workspaceName={workspaceName ?? ""}
         canRun={canRun}
+        artifactActions={artifactActions}
         focus={focus}
         sharing={sharing}
         onSharing={onSharing}
@@ -696,7 +699,7 @@ export function Chat({
       {composer}
       </ConversationPage>
       {room && <ConversationInfo panel={shownView.panel} thread={room.thread} project={where || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
-      {shownView.panel === "deliverables" && <Deliverables thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
+      {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:room?.thread.project??where??"",shared:room?.thread.visibility==="shared",...artifactActions}:undefined} thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
       <Presence when={activity !== null} ms={180}>
         {(leaving) => (
           <Activity

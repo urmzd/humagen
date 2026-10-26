@@ -157,3 +157,11 @@ rather than cut or replaced. The original Office download retains Unicode.
 Independent validation opened, edited and re-saved generated documents with
 python-docx, presentations with python-pptx (including notes), and spreadsheets
 with openpyxl. PDF tests use the independent dslipak reader.
+
+A reviewed shared artifact can be added to a manual indexed knowledge source
+in the same current project. The inspector requires acceptance of the whole
+file, including all notes and source text. It reads the exact immutable version,
+not the newest scratch file. Private outputs, broader destinations, external
+provider snapshots and oversized text are refused. `AddForScope` guards source
+identity and audience under the insertion lock, and an audit attempt records
+the copy. Only an opaque artifact/version reference enters provenance metadata.

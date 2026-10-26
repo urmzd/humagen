@@ -3094,6 +3094,12 @@ export interface ListArtifactVersionsResponse {
   versions: Artifact[];
 }
 
+export interface PromoteArtifactKnowledgeBody {
+  accepted: string;
+  version: number;
+  source: string;
+}
+
 export interface QueryJournalResponse {
   entries: JournalEntry[];
 }

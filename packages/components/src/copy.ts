@@ -53,6 +53,26 @@ export const defaultCopy = {
     sourcePassages: (count: number) => `${count} ${count === 1 ? "passage" : "passages"} indexed`,
     sourceExcluded: "Excluded from search",
     more: "Show More",
+    artifactUse: "Use This Result",
+    artifactAccept:
+      "I reviewed the whole file, including notes and sources, for this project's audience",
+    artifactAddKnowledge: "Add to Knowledge",
+    artifactSuggestMemory: "Suggest Memory",
+    artifactSource: "Knowledge Source",
+    artifactChooseSource: "Choose a Source",
+    artifactNoSource:
+      "Add a manual indexed knowledge source in this project to retain accepted results.",
+    artifactOpenContext: "Open Project Context",
+    artifactPromotionFailed:
+      "The accepted result could not be retained. Your selection is kept so you can try again.",
+    artifactPromoted: "This exact version was added to the selected knowledge source.",
+    artifactMemoryPending: "Memory proposed. A project owner must review it before it is used.",
+    artifactSharedRequired:
+      "Publish a reviewed shared result before adding it to project knowledge or memory.",
+    artifactPromotionSaving: "Saving…",
+    artifactSourcesLoading: "Loading knowledge sources…",
+    artifactSourceRetry: "Try Again",
+    artifactSourceFailed: "Knowledge sources could not be loaded.",
     artifactPresentation: (name: string) => `Presentation: ${name}`,
     artifactPDF: "Download PDF",
     artifactPDFBusy: "Preparing PDF…",

@@ -19,6 +19,7 @@ func (s *Server) artifactRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/artifacts/{id}", s.authed(auth.ArtifactsRead, s.seenArtifact(s.getArtifact)))
 	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactVersions)))
 	mux.HandleFunc("GET /api/artifacts/{id}/content", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactContent)))
+	mux.HandleFunc("POST /api/artifacts/{id}/promote-knowledge", s.authed(auth.KnowledgeWrite, s.seenArtifact(s.promoteArtifactKnowledge)))
 	mux.HandleFunc("GET /api/artifacts/{id}/pdf", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactPDF)))
 	mux.HandleFunc("DELETE /api/artifacts/{id}", s.authed(auth.ArtifactsWrite, s.seenArtifact(s.deleteArtifact)))
 	mux.HandleFunc("GET /api/storage", s.authed(auth.ArtifactsRead, s.storage))
@@ -163,4 +164,25 @@ func (s *Server) artifactPDF(w http.ResponseWriter, r *http.Request, who auth.Pr
 	header.Set("Content-Length", strconv.Itoa(len(pdf)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(pdf)
+}
+
+func (s *Server) promoteArtifactKnowledge(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Accepted bool   `json:"accepted"`
+		Version  int    `json:"version"`
+		Source   string `json:"source"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !body.Accepted {
+		fail(w, http.StatusBadRequest, "Review and accept this version before promoting it.")
+		return
+	}
+	document, err := s.P.PromoteArtifactKnowledge(r.Context(), who, r.PathValue("id"), body.Version, body.Source)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, document)
 }

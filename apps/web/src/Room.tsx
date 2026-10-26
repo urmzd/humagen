@@ -364,6 +364,7 @@ export function ThreadRoom({
   root,
   workspaceName,
   canRun,
+  artifactActions,
   focus,
   sharing = false,
   onSharing,
@@ -387,6 +388,7 @@ export function ThreadRoom({
   root: ProjectView | null;
   workspaceName: string;
   canRun: boolean;
+  artifactActions?: {knowledge:boolean;memory:boolean};
   /** A message to open at, as `?message=` names it. */
   focus?: string;
   /** Whether the Share dialog is open, as `/conversations/{id}/share` says. */
@@ -656,7 +658,7 @@ export function ThreadRoom({
       </div>
       </ConversationPage>
       <ConversationInfo panel={shownView.panel} thread={th} project={projectTitle(projects, th.project, workspaceName)} onClose={() => openPanel()} />
-      {shownView.panel === "deliverables" && <Deliverables thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
+      {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:th.project,shared:th.visibility==="shared",...artifactActions}:undefined} thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
       {shownView.panel === "activity" && <Activity turns={turns.flatMap((turn) => turn.run ? [turn.run] : [])} stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")} focus={shownView.run ?? null} onFocus={(run) => openPanel("activity", run ? { run } : {})} onClose={() => openPanel()} onJump={(run) => document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })} />}
     </section>
   );

@@ -272,3 +272,52 @@ func Decode(data []byte) (string, error) {
 	}
 	return "", errors.New("native file: no Humagen revision model; read the original source or request a new native document")
 }
+
+// Text returns the visible authored content, notes and sources of a native
+// document, for an explicit audience-checked promotion. It never reads links.
+func Text(name string, data []byte) (string, error) {
+	raw, err := Decode(data)
+	if err != nil {
+		return "", err
+	}
+	model, err := parse(raw)
+	if err != nil {
+		return "", err
+	}
+	var lines []string
+	if model.Title != "" {
+		lines = append(lines, model.Title)
+	}
+	switch strings.ToLower(path.Ext(name)) {
+	case ".docx":
+		lines = append(lines, model.Paragraphs...)
+	case ".pptx":
+		for _, slide := range model.Slides {
+			lines = append(lines, slide.Title)
+			lines = append(lines, slide.Body...)
+			if slide.Notes != "" {
+				lines = append(lines, slide.Notes)
+			}
+			lines = append(lines, slide.Sources...)
+		}
+	case ".xlsx":
+		for _, row := range model.Rows {
+			lines = append(lines, strings.Join(row, " | "))
+		}
+	case ".pdf":
+		lines = append(lines, model.Paragraphs...)
+		for _, slide := range model.Slides {
+			lines = append(lines, slide.Title)
+			lines = append(lines, slide.Body...)
+			lines = append(lines, slide.Notes)
+			lines = append(lines, slide.Sources...)
+		}
+		for _, row := range model.Rows {
+			lines = append(lines, strings.Join(row, " | "))
+		}
+	default:
+		return "", errors.New("native file: no text extractor for this format")
+	}
+	lines = append(lines, model.Sources...)
+	return strings.TrimSpace(strings.Join(lines, "\n\n")), nil
+}

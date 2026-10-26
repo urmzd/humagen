@@ -89,6 +89,7 @@ import type {
   ProjectSkillsInput,
   ProjectUpdate,
   ProjectView,
+  PromoteArtifactKnowledgeBody,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -2345,6 +2346,32 @@ the file's SHA-256.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Requires artifacts:read and knowledge:read as well as knowledge:write.
+The version must be exact, its conversation shared, and the target an
+indexed manual source in the same current project. Private results,
+wider audiences, external provider snapshots and oversized text are refused.
+Provenance points to the immutable artifact version. Writes an audit attempt.
+ */
+  async promoteArtifactKnowledge(id: string, body: PromoteArtifactKnowledgeBody, options?: RequestOptions): Promise<KnowledgeDocument> {
+    let path = "/api/artifacts/{id}/promote-knowledge";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<KnowledgeDocument>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteArtifactKnowledgeRaw(id: string, body: PromoteArtifactKnowledgeBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeDocument>> {
+    let path = "/api/artifacts/{id}/promote-knowledge";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<KnowledgeDocument>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
