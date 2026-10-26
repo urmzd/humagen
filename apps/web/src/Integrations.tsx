@@ -509,6 +509,7 @@ function ClientResources({
                   {b.project || words.workspace} / #{b.channel}
                 </a>
                 <BridgeDirectionControl
+                  key={JSON.stringify([client.id, b.project, b.channel, b.slack_channel, b.direction ?? "two_way"])}
                   client={client}
                   binding={b}
                   canWrite={canWrite}
@@ -1106,7 +1107,7 @@ function BridgeDirectionControl({
   const [direction, setDirection] = useState<BridgeDirection>(binding.direction ?? "two_way");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  useEffect(() => setDirection(binding.direction ?? "two_way"), [binding.direction]);
+
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (busy || !canWrite) return;
