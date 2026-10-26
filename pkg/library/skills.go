@@ -3,6 +3,7 @@
 package library
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -83,6 +84,7 @@ type Provenance struct {
 	Version int    `json:"version"`
 }
 type Revision struct {
+	ID string `json:"id"`
 	Definition
 	Scope       Scope       `json:"scope"`
 	Version     int         `json:"version"`
@@ -121,6 +123,11 @@ func Open(st state.Store) (*Store, error) {
 			return ErrInvalid
 		}
 		for i, r := range revisions {
+			if r.ID == "" {
+				revisions[i].ID = ID(r.Scope, r.Name)
+			} else if r.ID != ID(r.Scope, r.Name) {
+				return ErrInvalid
+			}
 			if !r.Definition.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 {
 				return ErrInvalid
 			}
@@ -176,7 +183,7 @@ func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int
 	if d.Tools == nil {
 		d.Tools = []string{}
 	}
-	r := clone(Revision{Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
+	r := clone(Revision{ID: ID(scope, d.Name), Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
 	next := append(slices.Clone(previous), r)
 	if err := s.put(tenant, scope, d.Name, next); err != nil {
 		return Revision{}, err
@@ -278,4 +285,22 @@ func (s *Store) Publish(tenant, by string, scope Scope, name string, version int
 	}
 	s.rows[tenant][scope.Key()][name] = next
 	return clone(r), nil
+}
+
+// ID is stable across revisions without exposing a private scope in the path.
+func ID(scope Scope, name string) string {
+	sum := sha256.Sum256([]byte(scope.Key() + "/" + name))
+	return fmt.Sprintf("sk-%x", sum[:20])
+}
+func (s *Store) Find(tenant, id string) (Revision, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, group := range s.rows[tenant] {
+		for _, rows := range group {
+			if rows[len(rows)-1].ID == id {
+				return clone(rows[len(rows)-1]), nil
+			}
+		}
+	}
+	return Revision{}, ErrNotFound
 }

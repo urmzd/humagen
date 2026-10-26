@@ -120,6 +120,7 @@ func (p *Platform) resolveCallPart(ctx context.Context, tenant string, part call
 // callExecutor adapts explicit helper messages to fiber's existing history
 // and request fields. It composes the sandbox; it never owns an agent loop.
 type callExecutor struct {
+	bind  func(context.Context, runtime.Request) func()
 	inner runtime.Executor
 	// resolve puts in place what the platform decides about the pinned
 	// revision before fiber reads it: a workspace's model policy for the one
@@ -135,6 +136,10 @@ func (e callExecutor) Execute(ctx context.Context, req runtime.Request, emit fun
 		if req, err = e.resolve(req); err != nil {
 			return runtime.Outcome{}, err
 		}
+	}
+	if e.bind != nil {
+		done := e.bind(ctx, req)
+		defer done()
 	}
 	var format call.ResponseFormat
 	if req.Origin == call.Origin {
@@ -189,6 +194,7 @@ func (e callExecutor) Execute(ctx context.Context, req runtime.Request, emit fun
 			return nil
 		}
 	}
+	ctx = context.WithValue(ctx, operationRequestKey{}, req)
 	out, err := e.inner.Execute(ctx, req, send)
 	if err != nil {
 		return out, err

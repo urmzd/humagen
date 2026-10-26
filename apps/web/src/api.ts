@@ -4,6 +4,10 @@ import type {
   NoteInput,
   PersonalPreferences,
   AuditRecord,
+  NativeNotification,
+  LibrarySkill,
+  LibraryScope,
+  LibrarySkillDefinition,
   ProjectContext,
   AgentHome,
   Person,
@@ -82,6 +86,7 @@ export interface Principal {
 }
 
 export interface Me {
+ personal_project?: string;
   principal: Principal;
   permissions: string[];
   /** The caller is an admin in a workspace nobody has set up yet. */
@@ -526,6 +531,7 @@ export interface ToolCredential {
   kind?: "reference" | "value";
   ref?: string;
   updated_at?: string;
+ last_used_at?: string;
 }
 
 /** The tools that act as you, and what this workspace lets people give for them. */
@@ -644,12 +650,32 @@ export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
   return edit;
 }
 
+export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
+import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
+
 export const api = {
+  notifications: () => call<{notifications:NativeNotification[]}>("GET","/api/me/notifications").then(r=>r.notifications??[]),
+  acknowledgeNotification: (id:string) => call<void>("POST",`/api/me/notifications/${encodeURIComponent(id)}/ack`),
+  librarySkills: (scope: LibraryScope) => call<{skills:LibrarySkill[]}>("GET", `/api/library/skills?${new URLSearchParams({scope:scope.kind,...(scope.project?{project:scope.project}:{})})}`).then(r=>r.skills),
+  librarySkill: (id:string) => call<{revisions:LibrarySkill[]}>("GET", `/api/library/skills/${encodeURIComponent(id)}`).then(r=>r.revisions),
+  draftSkill: (scope:LibraryScope, definition:LibrarySkillDefinition, version:number) => call<LibrarySkill>("POST", "/api/library/skills",{scope,definition,version}),
+  testSkill: (id:string, version:number, agent:string, project:string, text:string) => call<Run>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/test`,{agent,project,text}),
+  publishSkill: (id:string,version:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/publish`),
+  promoteSkill: (id:string,version:number,scope:LibraryScope,expected:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/promote`,{scope,version:expected}),
   personalMemory: () => call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then(r => r.notes),
   rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
   approvePersonal: (ids:string[]) => call<{approved:number}>("POST","/api/me/memory/approve",{ids}),
   forgetPersonal: (id: string) => call<void>("DELETE", `/api/me/memory/${encodeURIComponent(id)}`),
   audit: () => call<{ records: AuditRecord[] }>("GET", "/api/audit").then(r => r.records),
+  agentControl: (agent = "") => call<AgentControl>("GET", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls"),
+  saveAgentControl: (agent: string, input: AgentControlInput) => call<AgentControl>("PUT", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls", input),
+  actionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name = "") => call<ActionPolicy>("GET", operationPolicyPath(scope, name)),
+  saveActionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name: string, input: ActionPolicyInput) => call<ActionPolicy>("PUT", operationPolicyPath(scope, name), input),
+  assignments: () => call<Assignment[]>("GET", "/api/assignments?limit=200"),
+  saveAssignment: (input: AssignmentInput) => call<Assignment>(input.version === 0 ? "POST" : "PUT", input.version === 0 ? "/api/assignments" : `/api/assignments/${encodeURIComponent(input.id)}`, input),
+  runAssignment: (id: string) => call<Run>("POST", `/api/assignments/${encodeURIComponent(id)}/run`),
+  handoffs: () => call<HandoffContract[]>("GET", "/api/handoffs?limit=200"),
+  agentNetwork: () => call<AgentNetwork>("GET", "/api/agent-network"),
  readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
@@ -1311,3 +1337,9 @@ export interface ProjectForkOperation {
 }
 
 export interface DiscoveryItem { kind: "project" | "agent" | "conversation"; id: string; title: string; project?: string; channel?: string; hue?: number }
+
+function operationPolicyPath(scope: "workspace" | "agent" | "project" | "personal", name: string) {
+  if (scope === "personal") return "/api/me/action-policy";
+  if (scope === "workspace") return "/api/action-policy";
+  return `/api/${scope === "agent" ? "agents" : "projects"}/${encodeURIComponent(name || "~")}/action-policy`;
+}

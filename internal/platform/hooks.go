@@ -54,6 +54,9 @@ const memoryPrompt = "Below is one exchange between a person and the agent %q. "
 
 // ended is called exactly once for every run that ends.
 func (p *Platform) ended(ctx context.Context, run runs.Run) {
+	if err := p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {
+		p.log.Error("platform: operation outcome could not be kept", "error", err)
+	}
 	p.settleUsage(ctx, run)
 	p.raise(run)
 	// A question nobody answered is not waiting any more.
@@ -223,6 +226,13 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 	if home, homed := tree.Home(agent); homed && home != projects.Root && !onChain(tree, turn.Project, home) {
 		return
 	}
+	contextMeta := map[string]string{}
+	if turn.Tag().Meta["_humagen.context.personal_memory"] == "true" {
+		contextMeta["_humagen.context.personal_memory"] = "true"
+	}
+	if _, personal := memory.OwnerPerson(target); personal {
+		contextMeta["_humagen.context.personal_memory"] = "true"
+	}
 	_, err = p.Invoke(ctx, envelope.Tag{
 		ID:     fmt.Sprintf("sys-%s-%s", hook, turn.ID),
 		Tenant: turn.Tenant,
@@ -232,7 +242,7 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 		Actor:  envelope.Actor{ID: "system:" + hook, Display: "platform " + hook, Bot: true},
 		// The housekeeping run is sent the turn's words, so it is read
 		// where the turn is: in its project and its conversation.
-		Meta: hookMeta(hook, target, append([]map[string]string{{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}}, extra...)...),
+		Meta: hookMeta(hook, target, append([]map[string]string{{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}, contextMeta}, extra...)...),
 	})
 	if err != nil {
 		p.log.Warn("platform: housekeeping run could not start", "hook", hook, "error", err)

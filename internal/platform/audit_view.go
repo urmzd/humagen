@@ -17,6 +17,15 @@ import (
 func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Record, error) {
 	seer := p.Seer(who)
 	visible := func(record audit.Record) bool {
+		if (record.Resource == "source" || record.Resource == "knowledge" || record.Resource == "document") && !seer.Knowledge() {
+			return false
+		}
+		if record.Thread != "" && !who.Can(auth.RunsRead) {
+			return false
+		}
+		if record.Agent != "" && !who.Can(auth.AgentsRead) {
+			return false
+		}
 		if record.Subject != "" && record.Subject != who.Subject {
 			return false
 		}
@@ -43,7 +52,11 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 	}
 	reads := p.ReadAudit.ListVisible(who.Tenant, from, q.To, limit, func(r readaudit.Record) bool { return seer.Place(Place{Project: r.Project, Thread: r.Thread}) })
 	for _, r := range reads {
-		rows = append(rows, audit.Record{ID: fmt.Sprintf("read:%s:%s:%s:%d", r.Subject, r.Project, r.Thread, r.At.UnixNano()), Actor: r.Subject, At: r.At, FinishedAt: r.At, Outcome: audit.Succeeded, Change: audit.Change{Action: "project.break_glass_read", Resource: "project", ID: r.Project, Scope: "project", Project: r.Project, Thread: r.Thread, Route: r.Route, Rule: "projects:govern"}})
+		id, err := p.AuditReferences.ID(who.Tenant, "read", fmt.Sprintf("%s:%s:%s:%d", r.Subject, r.Project, r.Thread, r.At.UnixNano()))
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, audit.Record{ID: id, Actor: r.Subject, At: r.At, FinishedAt: r.At, Outcome: audit.Succeeded, Change: audit.Change{Action: "project.break_glass_read", Resource: "project", ID: r.Project, Scope: "project", Project: r.Project, Thread: r.Thread, Route: r.Route, Rule: "projects:govern"}})
 	}
 	for _, r := range p.Projects.RecentHistory(who.Tenant) {
 		if r.At.Before(from) || !r.At.Before(q.To) || !seer.Project(r.Project) {
@@ -51,10 +64,18 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 		}
 		before := projectAuditSnapshot(seer, r.Before)
 		after := projectAuditSnapshot(seer, r.After)
-		rows = append(rows, audit.Record{ID: fmt.Sprintf("project:%d", r.Seq), Actor: r.By, At: r.At, FinishedAt: r.At, Outcome: audit.Succeeded, Change: audit.Change{Action: "project." + r.What, Resource: "project", ID: r.Project, Project: r.Project, Scope: "project", Before: before, After: after}})
+		id, err := p.AuditReferences.ID(who.Tenant, "project", strconv.FormatInt(r.Seq, 10))
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, audit.Record{ID: id, Actor: r.By, At: r.At, FinishedAt: r.At, Outcome: audit.Succeeded, Change: audit.Change{Action: "project." + r.What, Resource: "project", ID: r.Project, Project: r.Project, Scope: "project", Before: before, After: after}})
 	}
 	for _, r := range p.CallPolicies.Snapshots(who.Tenant, from, q.To, limit, func(pol callpolicy.Policy) bool { return seer.Agent(pol.Agent) }) {
-		rows = append(rows, audit.Record{ID: fmt.Sprintf("call-policy:%s:%d", r.Agent, r.Version), Actor: r.UpdatedBy, At: r.UpdatedAt, FinishedAt: r.UpdatedAt, Outcome: audit.Succeeded, Change: audit.Change{Action: "call_policy.snapshot", Resource: "call_policy", ID: r.Agent, Scope: "agent", Agent: r.Agent, After: map[string]string{"version": strconv.Itoa(r.Version), "callers": string(r.Callers), "approval": string(r.Approval)}}})
+		id, err := p.AuditReferences.ID(who.Tenant, "call-policy", fmt.Sprintf("%s:%d", r.Agent, r.Version))
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, audit.Record{ID: id, Actor: r.UpdatedBy, At: r.UpdatedAt, FinishedAt: r.UpdatedAt, Outcome: audit.Succeeded, Change: audit.Change{Action: "call_policy.snapshot", Resource: "call_policy", ID: r.Agent, Scope: "agent", Agent: r.Agent, After: map[string]string{"version": strconv.Itoa(r.Version), "callers": string(r.Callers), "approval": string(r.Approval)}}})
 	}
 	slices.SortFunc(rows, func(a, b audit.Record) int {
 		if n := b.At.Compare(a.At); n != 0 {

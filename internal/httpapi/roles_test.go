@@ -525,7 +525,7 @@ func TestAHomedAgentIsItsHomesUnderEverySpellingOfItsName(t *testing.T) {
 // one of its owners'. A member may file a turn, but their notes are only
 // proposals, so their turn teaches the project only proposals, which reach
 // its owners.
-func TestWhatATurnTeachesAProjectIsKeptUnaskedOnlyForItsOwners(t *testing.T) {
+func TestWhatATurnTeachesAProjectAlwaysNeedsHumanReview(t *testing.T) {
 	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
 	ana := f.machineAs(t, "ana", "acme", operator...)
@@ -558,8 +558,8 @@ func TestWhatATurnTeachesAProjectIsKeptUnaskedOnlyForItsOwners(t *testing.T) {
 
 	want(t, f, ana, "POST", "/api/runs", `{"agent":"lead","text":"Plan the launch","project":"Field"}`, http.StatusAccepted)
 	for _, s := range taught("Field") {
-		if s != string(memory.Approved) {
-			t.Fatalf("an owner's turn left Field's notes %v", statuses("Field"))
+		if s != string(memory.Pending) {
+			t.Fatalf("project memory bypassed review %v", statuses("Field"))
 		}
 	}
 	want(t, f, bo, "POST", "/api/runs", `{"agent":"lead","text":"Plan the launch","project":"Ops"}`, http.StatusAccepted)

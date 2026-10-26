@@ -63,12 +63,11 @@ func (s *Server) listSkills(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !found {
 		return
 	}
-	got, err := s.P.SkillsIn(who.Tenant, pr.Name)
-	if err != nil {
-		s.problem(w, err)
-		return
+	person := ""
+	if who.Kind == auth.User {
+		person = who.Subject
 	}
-	ok(w, http.StatusOK, map[string]any{"skills": got})
+	ok(w, http.StatusOK, map[string]any{"skills": s.P.AvailableSkills(who.Tenant, pr.Name, person)})
 }
 
 // listMentions lists the mention kinds a message can use, or with kind,

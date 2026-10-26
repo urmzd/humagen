@@ -78,6 +78,7 @@ type Kind string
 
 const (
 	Fact       Kind = "fact"
+	Risk       Kind = "risk"
 	Decision   Kind = "decision"
 	Preference Kind = "preference"
 	PersonKind Kind = "person"
@@ -203,7 +204,7 @@ func (s *Store) AddDetailed(tenant, agent, text string, source Source, status St
 	if details.Kind == "" {
 		details.Kind = Fact
 	}
-	if details.Kind != Fact && details.Kind != Decision && details.Kind != Preference && details.Kind != PersonKind {
+	if details.Kind != Risk && details.Kind != Fact && details.Kind != Decision && details.Kind != Preference && details.Kind != PersonKind {
 		return Note{}, ErrInvalid
 	}
 	if !details.ExpiresAt.IsZero() && !details.ExpiresAt.After(at) {

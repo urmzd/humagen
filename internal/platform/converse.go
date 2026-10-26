@@ -13,7 +13,10 @@ import (
 
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
@@ -268,7 +271,13 @@ func (p *Platform) MarkSetup(tenant, by string) (Settings, error) {
 
 // Turn is one message a person sends.
 type Turn struct {
-	ID string
+	// TestSkill is a server-selected immutable draft. It grants no tools.
+	TestSkill *library.Revision
+	// ForceAsk tightens every action to require a recorded approval. It grants no tools.
+	ForceAsk bool
+	// AssignmentID pins a durable assignment reservation to this ordinary turn.
+	AssignmentID string
+	ID           string
 	// Agent is who should answer: an agent, Auto for @auto, or "" for the
 	// default the conversation's place inherits.
 	Agent string
@@ -319,6 +328,10 @@ func NoProjectCalled(name string) error {
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	cfg := p.Settings(tenant)
 	meta := map[string]string{runs.MetaAsk: t.Text}
+	if t.TestSkill != nil {
+		t.ForceAsk = true
+		pinSkills(meta, []pinnedSkill{pinRevision(*t.TestSkill)})
+	}
 	body := t.Text
 	th := threads.Thread{Channel: projects.General}
 	if t.After != "" {
@@ -386,9 +399,18 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		meta[runs.MetaPicked] = who.Picked
 	}
 
+	if t.AssignmentID != "" {
+		meta[metaAssignment] = t.AssignmentID
+	}
+	if t.ForceAsk {
+		meta[operations.MetaForceAsk] = "true"
+	}
+	if existing, err := p.Runs.Get(tenant, runtime.RunID(tenant, t.ID)); err == nil {
+		return existing, nil
+	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: t.ID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.personalContext(tenant, th.Project, t.Actor.User, p.contextIn(tenant, th.Project, th.Channel, agent, body)), Actor: t.Actor, Meta: meta,
+		Text: p.personalContext(tenant, th.Project, t.Actor.User, p.contextIn(tenant, th.Project, th.Channel, agent, body), meta), Actor: t.Actor, Meta: meta,
 	})
 }
 

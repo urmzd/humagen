@@ -448,20 +448,6 @@ func (p *Platform) contextIn(tenant, project, channel, agent, body string) strin
 		chain = []projects.Project{{Name: project}, tree.Root()}
 	}
 	layers := p.turnLayers(tenant, tree, chain, project, channel, agent)
-	for _, layer := range layers {
-		owner := ""
-		switch layer.Kind {
-		case "agent_notes":
-			owner = agent
-		case "project_notes", "ancestor_notes":
-			owner = memory.ProjectOwner(layer.From)
-		default:
-			continue
-		}
-		if err := p.Memory.UsedRendered(tenant, owner, layer.Text, p.now()); err != nil {
-			p.log.Warn("platform: memory use could not be recorded", "error", err)
-		}
-	}
 	parts := make([]string, 0, len(layers)+1)
 	for _, l := range layers {
 		if l.Text == "" {

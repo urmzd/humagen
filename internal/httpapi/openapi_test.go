@@ -42,6 +42,7 @@ import (
 	"github.com/urmzd/fiber/pkg/attachment"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credentials"
@@ -49,6 +50,8 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
@@ -591,7 +594,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
 		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: revisionView{}}, "Choice": {typ: pick.Choice{}},
-		"Note": {typ: noteView{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
+		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
 		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
@@ -858,7 +861,7 @@ func (c *contract) sweep(tok string) {
 		if op.path == "/api/events" || needsQuery(op) {
 			continue
 		}
-		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" {
+		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" {
 			c.call(tok, "GET", op.path, op.path, "", http.StatusForbidden)
 			continue
 		}
@@ -903,7 +906,52 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
+	libraryDraft := c.call(auditAdmin, "POST", "/api/library/skills", "/api/library/skills", `{"scope":{"kind":"workspace"},"version":0,"definition":{"name":"library-brief","description":"Briefing","instructions":"Be concise","tools":[]}}`, http.StatusCreated)
+	libraryID := libraryDraft.str("id")
+	c.call(auditAdmin, "POST", "/api/library/skills", "/api/library/skills", `{"scope":{"kind":"workspace"},"version":0,"definition":{"name":"library-brief","description":"Briefing","instructions":"Be concise","tools":[]}}`, http.StatusConflict)
+	c.call(auditAdmin, "POST", "/api/library/skills", "/api/library/skills", `{"scope":{"kind":"project","project":"Missing"},"version":0,"definition":{"name":"missing","description":"Missing","instructions":"Be concise","tools":[]}}`, http.StatusNotFound)
+	c.call(auditAdmin, "GET", "/api/library/skills", "/api/library/skills?scope=invalid", "", http.StatusBadRequest)
+	c.call(auditAdmin, "GET", "/api/library/skills", "/api/library/skills?scope=project&project=Missing", "", http.StatusNotFound)
+
+	c.call(auditAdmin, "GET", "/api/library/skills/{id}", "/api/library/skills/"+libraryID, "", http.StatusOK)
+	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/publish", "/api/library/skills/"+libraryID+"/versions/1/publish", "", http.StatusConflict)
+
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/me/notifications", "/api/me/notifications", "", http.StatusOK)
+	notificationPolicy := prefs.DefaultPersonal()
+	notificationPolicy.Notifications["alert"] = prefs.Off
+	notificationAt := time.Now()
+	for start := 0; start < notifications.MaxEntries; start += 500 {
+		candidates := []notifications.Candidate{}
+		for n := start; n < start+500; n++ {
+			candidates = append(candidates, notifications.Candidate{Message: fmt.Sprintf("capacity-%d", n), Kind: "alert", Stamp: notificationAt})
+		}
+		if _, err := f.p.Notifications.Reconcile("acme", "audit-admin", "", candidates, notificationPolicy, notificationAt, notificationAt.Add(-time.Hour), func(string) (notifications.Candidate, bool) { return notifications.Candidate{}, false }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	notificationPolicy.Notifications["alert"] = prefs.Immediate
+	if _, err := f.p.Prefs.SetPersonal("acme", "audit-admin", notificationPolicy); err != nil {
+		t.Fatal(err)
+	}
+	notice, _, err := f.p.Inbox.Raise("acme", "notification-contract", inbox.Message{Kind: inbox.KindAlert, To: "audit-admin", Subject: "Native console notification", Parts: []inbox.Part{{Type: inbox.PartAlert, Alert: &inbox.AlertPart{ID: "notice", Rule: "rule", Kind: "run_failed", Title: "Notice", Severity: "warning"}}}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(auditAdmin, "GET", "/api/me/notifications", "/api/me/notifications", "", http.StatusTooManyRequests)
+	if err := f.p.Notifications.Retain("acme", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	delivered := c.call(auditAdmin, "GET", "/api/me/notifications", "/api/me/notifications", "", http.StatusOK)
+	nativeDeliveries := sliceOf(delivered.field("notifications"))
+	if len(nativeDeliveries) != 1 {
+		t.Fatalf("notification delivery: %s", delivered.raw)
+	}
+	c.call(auditAdmin, "POST", "/api/me/notifications/{id}/ack", "/api/me/notifications/"+obj(nativeDeliveries[0])["id"].(string)+"/ack", "", http.StatusNoContent)
+	if got, err := f.p.Inbox.Get("acme", notice.ID, "audit-admin"); err != nil || !got.Unread {
+		t.Fatalf("delivery changed inbox: %+v %v", got, err)
+	}
+
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)
 
@@ -954,6 +1002,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(f.machine(t, "acme"), "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusForbidden)
 
 	c.call(acme, "POST", "/api/agents", "/api/agents", helperSpec, http.StatusCreated)
+	libraryTest := c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/test", "/api/library/skills/"+libraryID+"/versions/1/test", `{"agent":"helper","project":"~","text":"Try the skill"}`, http.StatusAccepted)
+	c.settled(auditAdmin, libraryTest.str("id"))
+	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/publish", "/api/library/skills/"+libraryID+"/versions/1/publish", "", http.StatusOK)
+	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/promote", "/api/library/skills/"+libraryID+"/versions/1/promote", `{"scope":{"kind":"personal"},"version":0}`, http.StatusCreated)
+	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/promote", "/api/library/skills/"+libraryID+"/versions/1/promote", `{"scope":{"kind":"personal"},"version":0}`, http.StatusConflict)
+
 	c.call(acme, "POST", "/api/agents", "/api/agents", helperSpec, http.StatusConflict)
 	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"helper","metadata":{}}`, http.StatusBadRequest)
 	revised := `{"expected_rev":1,"spec":{"name":"helper","description":"Helps.","model":"offline","provider":"offline","system_prompt":"Help well."}}`
@@ -1562,7 +1616,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d,"skills":[%s,%s]}`, skillsAt+1, review, review), http.StatusBadRequest)
 	c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d}`, skillsAt+1), http.StatusBadRequest)
 	got = c.call(acme, "GET", "/api/skills", "/api/skills?project=Field", "", http.StatusOK)
-	if l := sliceOf(got.field("skills")); len(l) != 1 || obj(l[0])["instructions"] != nil {
+	if l := sliceOf(got.field("skills")); len(l) != 2 || obj(l[0])["instructions"] != nil || obj(l[1])["name"] != "library-brief" {
 		t.Errorf("the skills in Field are %s", got.raw)
 	}
 	c.call(acme, "GET", "/api/skills", "/api/skills", "", http.StatusOK)
@@ -1591,6 +1645,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "GET", "/api/threads/{id}", "/api/threads/"+obj(draft.field("thread"))["id"].(string), "", http.StatusOK)
 	auditRows := c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/me/notifications", "/api/me/notifications", "", http.StatusOK)
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	if len(sliceOf(auditRows.field("records"))) == 0 {
 		t.Fatal("governance-only private read was not in the audit")
@@ -1832,6 +1887,45 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.callFromLiveRun(acme, `{"key":"k429","agent":"helper","text":"hi","mode":"delegate"}`, http.StatusTooManyRequests)
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
 
+	// Durable agent operations use the same contract and admission path.
+	for _, path := range []string{"/api/agent-controls", "/api/agents/helper/control"} {
+		template := path
+		if path != "/api/agent-controls" {
+			template = "/api/agents/{name}/control"
+		}
+		c.call(acme, "GET", template, path, "", http.StatusOK)
+		c.call(acme, "PUT", template, path, `{"paused":false,"version":0}`, http.StatusOK)
+		c.call(acme, "PUT", template, path, `{"paused":false,"version":0}`, http.StatusConflict)
+	}
+	for _, pair := range [][2]string{{"/api/action-policy", "/api/action-policy"}, {"/api/agents/{name}/action-policy", "/api/agents/helper/action-policy"}, {"/api/projects/{name}/action-policy", "/api/projects/Launch/action-policy"}, {"/api/me/action-policy", "/api/me/action-policy"}} {
+		c.call(acme, "GET", pair[0], pair[1], "", http.StatusOK)
+		c.call(acme, "PUT", pair[0], pair[1], `{"rules":{},"version":0}`, http.StatusOK)
+		c.call(acme, "PUT", pair[0], pair[1], `{"rules":{},"version":0}`, http.StatusConflict)
+	}
+	assignmentBody := `{"id":"contract-assignment","agent":"helper","project":"","owner":"svc-acme","goal":"Inspect queue","done_when":"Report items","state":"requested","version":0}`
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", assignmentBody, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", assignmentBody, http.StatusConflict)
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", strings.Replace(assignmentBody, `"helper"`, `"ghost"`, 1), http.StatusNotFound)
+	c.call(acme, "GET", "/api/assignments", "/api/assignments?limit=201", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/handoffs", "/api/handoffs?limit=201", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/assignments/{id}", "/api/assignments/contract-assignment", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/assignments/{id}", "/api/assignments/contract-assignment", strings.Replace(assignmentBody, `"version":0`, `"version":1`, 1), http.StatusOK)
+	c.call(acme, "PUT", "/api/assignments/{id}", "/api/assignments/contract-assignment", assignmentBody, http.StatusConflict)
+	c.call(acme, "PUT", "/api/agents/{name}/control", "/api/agents/helper/control", `{"paused":true,"version":1}`, http.StatusOK)
+	c.call(auditAdmin, "POST", "/api/library/skills/{id}/versions/{version}/test", "/api/library/skills/"+libraryID+"/versions/1/test", `{"agent":"helper","project":"~","text":"Paused test"}`, http.StatusConflict)
+
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusConflict)
+	c.call(acme, "PUT", "/api/agents/{name}/control", "/api/agents/helper/control", `{"paused":false,"version":2}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"agent","name":"helper"},"period":"day","max_runs":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusTooManyRequests)
+	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","spend_limit":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusPaymentRequired)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":1000000}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusOK)
+	c.call(acme, "GET", "/api/handoffs", "/api/handoffs", "", http.StatusOK)
+	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
+
 	// Two rules hold for every route that takes something: another
 	// workspace's object is not found, and a body with a field the route
 	// does not know is refused. Both are asked of every operation the spec
@@ -1840,7 +1934,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully", "channel": "general",
 	}
 	real := map[string]map[string]string{
-		"/api/agents/{name}/memory/{id}": {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
+		"/api/library/skills/{id}":                            {"id": libraryID},
+		"/api/library/skills/{id}/versions/{version}/test":    {"id": libraryID, "version": "1"},
+		"/api/library/skills/{id}/versions/{version}/publish": {"id": libraryID, "version": "1"},
+		"/api/library/skills/{id}/versions/{version}/promote": {"id": libraryID, "version": "1"},
+
+		"/api/projects/{name}/action-policy": {"name": "Launch"},
+		"/api/assignments/{id}":              {"id": "contract-assignment"},
+		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
+		"/api/agents/{name}/memory/{id}":     {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
 		"/api/clients/{id}": {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
