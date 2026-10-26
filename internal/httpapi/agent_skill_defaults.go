@@ -20,7 +20,13 @@ func (s *Server) getAgentSkillDefaults(w http.ResponseWriter, r *http.Request, w
 		s.problem(w, err)
 		return
 	}
-	got.Skills = slices.DeleteFunc(got.Skills, func(ref platform.AgentSkillRef) bool { _, err := s.P.LibrarySkill(who, ref.ID); return err != nil })
+	got.Skills = slices.DeleteFunc(got.Skills, func(ref platform.AgentSkillRef) bool {
+		if !who.Can(auth.ProjectsRead) {
+			return true
+		}
+		_, err := s.P.LibrarySkill(who, ref.ID)
+		return err != nil
+	})
 	ok(w, http.StatusOK, got)
 }
 func (s *Server) putAgentSkillDefaults(w http.ResponseWriter, r *http.Request, who auth.Principal) {
