@@ -5,6 +5,7 @@ import { defaultCopy } from "@humagen/components";
 import { stubFetch } from "./dom.ts";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
+import { PersonalAgents } from "./PersonalAgents.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import { NotificationPanel } from "./Notifications.tsx";
 
@@ -223,4 +224,49 @@ test("memory promotion selects an existing note and never copies private provena
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.memoryLibrary.promote }));
   await screen.findByText(defaultCopy.memoryLibrary.promotionSaved);
   assert.equal(net.seen.filter((r) => r.method === "POST").length, 1);
+});
+
+test("personal agents may move to an owned file-managed project after audience review", async () => {
+  let moved = false;
+  net = stubFetch({
+    "GET /api/me": () => ({ ...me, permissions: [...me.permissions, "agents:write"] }),
+    "GET /api/agents": () => ({
+      agents: [{ rev: 1, spec: { name: "briefing-helper", description: "Briefs the owner" } }],
+      homes: { "briefing-helper": moved ? "Launch" : "personal" },
+    }),
+    "GET /api/agents/briefing-helper/control": () => ({
+      agent: "briefing-helper",
+      version: 0,
+      paused: false,
+    }),
+    "GET /api/projects": () => ({
+      projects: [
+        {
+          name: "Launch",
+          title: "Launch",
+          access: { role: "owner" },
+          actions: ["notes"],
+          managed: true,
+        },
+      ],
+      next: null,
+    }),
+    "PUT /api/agents/briefing-helper/home": (body) => {
+      assert.deepEqual(body, { project: "Launch" });
+      moved = true;
+      return { agent: "briefing-helper", project: "Launch" };
+    },
+  });
+  render(<PersonalAgents />);
+  await screen.findByRole("heading", { name: "briefing-helper" });
+  fireEvent.change(screen.getByLabelText(defaultCopy.personalAgents.project), {
+    target: { value: "Launch" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.personalAgents.review }));
+  assert.equal(
+    net.seen.some((r) => r.method === "PUT"),
+    false,
+  );
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.personalAgents.confirm }));
+  await waitFor(() => assert.equal(moved, true));
 });

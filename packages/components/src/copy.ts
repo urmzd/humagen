@@ -419,7 +419,7 @@ export const defaultCopy = {
     emptyScope: "Choose a project or agent.",
 
     title: "Memory",
-    approve: "Confirm",
+    approve: "Keep",
     description:
       "Private notes stay yours. Project and workspace notes are reviewed where the work happens.",
     personal: "Personal",

@@ -25,7 +25,7 @@ export function PersonalAgents() {
         if (live) {
           setAgents(mine);
           setProjects(
-            places.filter((project) => !project.personal_owner && project.actions.includes("edit")),
+            places.filter((project) => !project.personal_owner && project.access.role === "owner"),
           );
           setCanWrite(me.permissions.includes("agents:write"));
           setControls(
