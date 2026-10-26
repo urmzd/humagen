@@ -397,7 +397,8 @@ type Part struct {
 
 // Message is one thing in the inbox.
 type Message struct {
-	ID string `json:"id"`
+	reminded bool
+	ID       string `json:"id"`
 	// Key names what the message is about, so the same thing is not raised
 	// twice. It is not shown.
 	Key    string `json:"-"`
@@ -567,6 +568,7 @@ type What string
 
 const (
 	Raised      What = "raised"
+	Reminded    What = "reminded"
 	MarkRead    What = "read"
 	MarkUnread  What = "unread"
 	DidResolve  What = "resolved"
@@ -869,6 +871,14 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		return m, t.hideFor(m, c)
 	}
 	switch c.What {
+	case Reminded:
+		if m.reminded || m.Broadcast || m.State == Resolved || m.State == Dismissed || c.At.Before(m.UpdatedAt) || (m.State == Snoozed && c.At.Before(m.SnoozedUntil)) {
+			return m, false
+		}
+		t.leave(m)
+		delete(t.read, m.ID)
+		m.State, m.SnoozedUntil, m.reminded = Open, time.Time{}, true
+		t.join(m)
 	case MarkRead, MarkUnread:
 		was := t.read[m.ID][c.By]
 		if was == (c.What == MarkRead) {

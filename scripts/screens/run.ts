@@ -430,7 +430,15 @@ function screens(ids: Ids, call: Call): Screen[] {
         const agent = page.getByRole("button", { name: /^humagen-analyst Workspace Default/ });
         await agent.waitFor();
         const badges = agent.locator("span.rounded-full");
-        assert.equal(await badges.count(), 2, "The default built-in has both status badges");
+        const labels = await badges.allTextContents();
+        assert.ok(
+          labels.includes("Workspace Default"),
+          "The default agent identifies its workspace role",
+        );
+        assert.ok(
+          labels.includes("Built in, read only"),
+          "The built-in identifies its edit restriction",
+        );
         // Enlarged text must remain inside the badge outline, too.
         await badges.evaluateAll((items) => {
           for (const item of items) {
