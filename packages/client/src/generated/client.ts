@@ -22,6 +22,7 @@ import type {
   CreateRunRequest,
   EvalRun,
   EvalSuite,
+  FindHelpResponse,
   GetAgentHuesResponse,
   GetInboxMessageResponse,
   GetProjectAgentHuesResponse,
@@ -70,6 +71,7 @@ import type {
   NoteInput,
   NoteList,
   NoteSelection,
+  PlacementPreview,
   Policy,
   PolicyInput,
   Preferences,
@@ -89,6 +91,7 @@ import type {
   ProjectSkillsInput,
   ProjectUpdate,
   ProjectView,
+  PublishThreadSummaryBody,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -1664,6 +1667,54 @@ whoever started the thread or an owner of its project (403).
     });
   }
 
+  /** Review the audience and contents before moving completed work */
+  async previewThreadPlacement(id: string, project: string, channel?: string, options?: RequestOptions): Promise<PlacementPreview> {
+    let path = "/api/threads/{id}/placement";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<PlacementPreview>("GET", path, {
+      ...options,
+    });
+  }
+
+  async previewThreadPlacementRaw(id: string, project: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<PlacementPreview>> {
+    let path = "/api/threads/{id}/placement";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<PlacementPreview>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Publish only explicitly reviewed text as a new shared conversation */
+  async publishThreadSummary(id: string, body: PublishThreadSummaryBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/publication";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async publishThreadSummaryRaw(id: string, body: PublishThreadSummaryBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/publication";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** Makes the conversation shared in `channel` of `project`, read by
 everyone who can see that project, and adds the people `add` names,
 by handle, as participants (400 for a handle nobody goes by). `project`
@@ -2940,6 +2991,29 @@ grounds nothing until a source of that name is made again.
     });
   }
 
+  /** Find a readable project and available agent for a description of work */
+  async findHelp(q: string, options?: RequestOptions): Promise<FindHelpResponse> {
+    let path = "/api/find-help";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<FindHelpResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async findHelpRaw(q: string, options?: RequestOptions): Promise<ApiResponse<FindHelpResponse>> {
+    let path = "/api/find-help";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<FindHelpResponse>("GET", path, {
+      ...options,
+    });
+  }
+
   /** Each project comes before its sub-projects, and siblings are ordered by
 name ignoring case. The workspace itself is not in the list:
 `GET /api/projects/~` reads it. Only the projects the caller has a
@@ -3398,6 +3472,7 @@ answers 409, as does a list the platform file sets. It needs
 ownership of the project, and the workspace and company projects
 need `projects:govern` as well.
  */
+  /** @deprecated */
   async updateProjectExperts(name: string, body: ProjectExperts, options?: RequestOptions): Promise<ProjectExperts> {
     let path = "/api/projects/{name}/experts";
     path = path.replace("{name}", encodeURIComponent(String(name)));

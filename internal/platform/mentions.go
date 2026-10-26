@@ -43,14 +43,13 @@ type MentionKind struct {
 
 // builtInKinds are the mention kinds every workspace has, first.
 var builtInKinds = []MentionKind{
-	{Kind: threads.SMEName, Title: "Experts", Resolves: threads.ResolvesExperts},
 	{Kind: threads.SkillName, Title: "Skills", Resolves: threads.ResolvesSkills},
 }
 
 // MentionKinds is the mention kinds a tenant has: the built-in ones, then
 // the ones its Platform document declares, in its order.
 func (p *Platform) MentionKinds(tenant string) []MentionKind {
-	return append(slices.Clone(builtInKinds), p.cfg.MentionKinds[tenant]...)
+	return slices.DeleteFunc(append(slices.Clone(builtInKinds), p.cfg.MentionKinds[tenant]...), func(k MentionKind) bool { return k.Resolves == threads.ResolvesExperts || k.Kind == threads.SMEName })
 }
 
 // mentionKind is what a kind the tenant declares resolves to. The built-in
@@ -123,11 +122,6 @@ func (p *Platform) MentionItems(who auth.Principal, project, kind, prefix string
 		for _, pr := range tree.Chain(name) {
 			for _, m := range pr.Members {
 				if role, ok := strings.CutPrefix(m.Who, projects.RolePrefix); ok {
-					add(MentionItem{Name: role})
-				}
-			}
-			for _, e := range pr.Experts {
-				if role, ok := strings.CutPrefix(e.Who, projects.RolePrefix); ok {
 					add(MentionItem{Name: role})
 				}
 			}

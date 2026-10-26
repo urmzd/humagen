@@ -113,6 +113,7 @@ export function insertTag(text: string, at: Typing, option: TagOption): { text: 
 export interface KindOption {
   kind: string;
   title?: string;
+ resolves?: string;
 }
 
 /**
@@ -124,22 +125,19 @@ export interface KindOption {
 export function tagOptions(
   agents: { name: string; description?: string }[],
   people: { handle: string; name?: string }[],
-  topics: string[],
+  _topics: string[],
   words: { auto: string; experts: (topic: string) => string; kind?: (kind: string, title?: string) => string },
   extra: { kinds?: KindOption[]; items?: { kind: string; name: string; description?: string }[]; skills?: { name: string; description?: string }[] } = {},
 ): TagOption[] {
-  // sme is a kind wherever there are topics, as it was before kinds were listed.
-  const kinds: KindOption[] = extra.kinds ?? (topics.length > 0 ? [{ kind: "sme" }] : []);
-  const hasSme = kinds.some((k) => k.kind === "sme");
-  const items = [
-    ...(hasSme ? topics.map((t) => ({ kind: "sme", name: t, description: words.experts(t) })) : []),
-    ...(extra.items ?? []).filter((i) => !(i.kind === "sme" && topics.includes(i.name))),
-  ];
+  // Old expert metadata can still be returned by a cached or older host, but
+  // discovery replaces routing and those choices are never offered again.
+  const retired = new Set((extra.kinds ?? []).filter((k) => k.kind === "sme" || k.resolves === "experts").map((k) => k.kind));
+  const kinds = (extra.kinds ?? []).filter((k) => !retired.has(k.kind));
+  const items = (extra.items ?? []).filter((i) => i.kind !== "sme" && !retired.has(i.kind));
   return [
     { kind: "auto" as const, token: "auto", label: "auto", hint: words.auto },
     ...agents.map((a) => ({ kind: "agent" as const, token: a.name, label: a.name, ...(a.description ? { hint: a.description } : {}) })),
     ...people.map((p) => ({ kind: "person" as const, token: p.handle, label: p.handle, ...(p.name ? { hint: p.name } : {}) })),
-    ...(hasSme ? [{ kind: "item" as const, token: "sme", label: "sme", hint: words.experts("") }] : []),
     ...kinds.map((k) => ({
       kind: "kind" as const,
       token: `${k.kind}:`,

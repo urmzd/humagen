@@ -266,11 +266,11 @@ func TestAMentionKindResolvesAsItSays(t *testing.T) {
 	}
 	want := []threads.Mention{{Kind: threads.Role, Name: "oncall"}, {Kind: threads.Person, Name: "ada"}, {Kind: threads.SME, Name: "billing"}, {Kind: threads.Skill, Name: "review"}}
 	for i, w := range want {
-		if m := got.Message.Mentions[i]; m.Kind != w.Kind || m.Name != w.Name || m.Refused != "" {
+		if m := got.Message.Mentions[i]; m.Kind != w.Kind || m.Name != w.Name || (m.Kind != threads.SME && m.Refused != "") || (m.Kind == threads.SME && !strings.Contains(m.Refused, "Find Help")) {
 			t.Fatalf("tag %d = %+v, want %+v", i, m, w)
 		}
 	}
-	if strings.Join(got.Notified, " ") != "role:oncall ada vic" {
+	if strings.Join(got.Notified, " ") != "role:oncall ada" {
 		t.Fatalf("notified %v", got.Notified)
 	}
 	oncall, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "role:oncall"))
@@ -297,7 +297,7 @@ func TestMentionKindsComplete(t *testing.T) {
 	declare(t, p, projects.Root, "summarize")
 	joinAs(t, p, "Field", projects.Member, "role:oncall", "role:field-eng")
 	kinds := p.MentionKinds(tenant)
-	if len(kinds) != 4 || kinds[0].Kind != "sme" || kinds[1].Kind != "skill" || kinds[2].Kind != "oncall" {
+	if len(kinds) != 3 || kinds[0].Kind != "skill" || kinds[1].Kind != "oncall" {
 		t.Fatalf("kinds = %+v", kinds)
 	}
 	names := func(items []platform.MentionItem, err error) string {
@@ -318,7 +318,6 @@ func TestMentionKindsComplete(t *testing.T) {
 		{"Globex", "oncall", "", "field-eng oncall"},
 		{"Globex", "dev", "o", "opal"},
 		{"Globex", "dev", "Vi", "vic"},
-		{"Globex", "sme", "", ""},
 	} {
 		if got := names(p.MentionItems(reader, c.project, c.kind, c.q)); got != c.want {
 			t.Errorf("%s %s %q = %q, want %q", c.project, c.kind, c.q, got, c.want)
@@ -416,10 +415,10 @@ func TestExpertsAreToldOfAPrivateThreadOnlyWhenTheyTakePart(t *testing.T) {
 		// ada takes part, tagged by name; vic and the role do not.
 		with := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@ada a question", PostOnly: true})
 		got := post(t, p, operator, with.Thread.ID, platform.MessageInput{Text: "@sme:billing who knows?", PostOnly: true})
-		if strings.Join(got.Notified, " ") != "ada" {
-			t.Fatalf("notified %v, want only the expert taking part", got.Notified)
+		if len(got.Notified) != 0 {
+			t.Fatalf("retired routing notified %v", got.Notified)
 		}
-		if len(got.Refused) != 1 || got.Refused[0].Kind != threads.SME || !strings.Contains(got.Refused[0].Refused, "private") ||
+		if len(got.Refused) != 1 || got.Refused[0].Kind != threads.SME || !strings.Contains(got.Refused[0].Refused, "Find Help") ||
 			strings.Contains(got.Refused[0].Refused, "vic") || strings.Contains(got.Refused[0].Refused, "oncall") {
 			t.Fatalf("refused %+v", got.Refused)
 		}
@@ -439,12 +438,12 @@ func TestExpertsAreToldOfAPrivateThreadOnlyWhenTheyTakePart(t *testing.T) {
 		}
 		// With no expert taking part, nobody is told, and the tag says so.
 		alone := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@sme:billing anyone?", PostOnly: true})
-		if len(alone.Notified) != 0 || len(alone.Refused) != 1 || !strings.Contains(alone.Refused[0].Refused, "private") {
+		if len(alone.Notified) != 0 || len(alone.Refused) != 1 || !strings.Contains(alone.Refused[0].Refused, "Find Help") {
 			t.Fatalf("an expert tag nobody takes part in = notified %v, refused %+v", alone.Notified, alone.Refused)
 		}
 		// In a shared thread every expert who can read it is told, as before.
 		shared := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Shared, Text: "@sme:billing anyone?", PostOnly: true})
-		if len(shared.Notified) < 2 || len(shared.Refused) != 0 {
+		if len(shared.Notified) != 0 || len(shared.Refused) != 1 {
 			t.Fatalf("a shared thread's experts = notified %v, refused %+v", shared.Notified, shared.Refused)
 		}
 	})

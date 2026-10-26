@@ -115,7 +115,7 @@ test("A built-in's spec is locked, and it lives in no project", () => {
 test("Access: an agent enabled in the workspace says it is available everywhere, and the workspace default says so", () => {
   const html = text(render(false, true, "access"));
   assert.match(html, /Where it answers/);
-  assert.match(html, /Lives in No project: a platform agent/);
+  assert.match(html, /Lives in Company/);
   assert.match(html, /Available everywhere/);
   assert.match(text(render(false, true, "prompt")), /Workspace Default/);
   assert.doesNotMatch(text(render(false, true, "prompt")), /Baseline/);

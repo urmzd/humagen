@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -30,6 +29,7 @@ import (
 // not found. The workspace and company projects are changed only with
 // projects:govern as well.
 func (s *Server) projectRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/find-help", s.authed(auth.ProjectsRead, s.findHelp))
 	mux.HandleFunc("GET /api/projects", s.authed(auth.ProjectsRead, s.listProjects))
 	mux.HandleFunc("POST /api/projects", s.authed(auth.ProjectsWrite, s.createProject))
 	mux.HandleFunc("GET /api/projects/{name}", s.authed(auth.ProjectsRead, s.seenProject(s.getProject)))
@@ -218,7 +218,7 @@ func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	}
 	v.Unread = s.P.ProjectUnread(f.who, p.Name)
 	v.RowAgents = []string{}
-	for _, name := range f.tree.Homes(p.Name) {
+	for _, name := range s.P.CurrentAgentHomes(f.who.Tenant, p.Name) {
 		if f.seer.Agent(name) {
 			v.RowAgents = append(v.RowAgents, name)
 			if len(v.RowAgents) == 8 {
@@ -469,22 +469,6 @@ func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request, who auth.
 
 // A history cursor is the sequence number of the last change on a page. It is
 // opaque to callers.
-func historyCursor(seq int64) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(seq, 10)))
-}
-
-func historySeq(cursor string) (int64, bool) {
-	raw, err := base64.RawURLEncoding.DecodeString(cursor)
-	if err != nil {
-		return 0, false
-	}
-	seq, err := strconv.ParseInt(string(raw), 10, 64)
-	return seq, err == nil && seq > 0
-}
-
-// projectHistory pages what changed on a project, newest first. A deleted
-// project's history is not read here: its name is gone from the tree. Each
-// change names only the agents the caller may read (platform.Seer.Change).
 func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
 	limit := projects.DefaultPage
@@ -496,36 +480,27 @@ func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth
 		}
 		limit = n
 	}
-	var before int64
-	if raw := q.Get("before"); raw != "" {
-		seq, valid := historySeq(raw)
-		if !valid {
-			fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
-			return
-		}
-		before = seq
-	}
+	before := q.Get("before")
 	if _, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer); !found {
 		return
 	}
-	changes, next, err := s.P.ProjectHistory(who.Tenant, r.PathValue("name"), limit, before)
+	changes, next, err := s.P.Projects.OpaqueHistory(who.Tenant, projects.NameOf(r.PathValue("name")), limit, before)
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
 	seer := s.P.Seer(who)
 	for i, c := range changes {
-		changes[i] = seer.Change(c)
+		changes[i].Change = seer.Change(c.Change)
 	}
 	var cursor *string
-	if next > 0 {
-		c := historyCursor(next)
-		cursor = &c
+	if next != "" {
+		cursor = &next
 	}
 	names := s.P.Names(who.Tenant)
 	out := make([]projectChangeView, len(changes))
 	for i, c := range changes {
-		out[i] = projectChangeView{Change: c, ByName: names.Of(c.By)}
+		out[i] = projectChangeView{HistoryEntry: c, ByName: names.Of(c.By)}
 	}
 	ok(w, http.StatusOK, map[string]any{"changes": out, "next": cursor})
 }
@@ -533,7 +508,7 @@ func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth
 // projectChangeView is one change to a project and what whoever made it is
 // called. The change names them by subject; the console shows the name.
 type projectChangeView struct {
-	projects.Change
+	projects.HistoryEntry
 	ByName string `json:"by_name,omitempty"`
 }
 

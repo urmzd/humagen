@@ -374,3 +374,24 @@ func TestThreadPageKeepsTheProjectsAsked(t *testing.T) {
 		t.Fatalf("second page %v next %q err %v", rest, next, err)
 	}
 }
+
+func TestCurrentPlacementCountsKeepExecutionAttribution(t *testing.T) {
+	x := NewIndex()
+	id := runtime.RunID("acme", "move")
+	if err := x.Record(id, envelope.Tag{ID: "move", Tenant: "acme", Agent: "helper", Origin: OriginAPI, Text: "hi", Meta: map[string]string{MetaProject: "personal-opaque"}, At: t0}, 1); err != nil {
+		t.Fatal(err)
+	}
+	got := x.ProjectCountsPlaced("acme", x.Opened("acme"), nil, func(thread, original string) string {
+		if thread != id || original != "personal-opaque" {
+			t.Fatal("bad resolver input")
+		}
+		return "Field"
+	})
+	if got["Field"].Threads != 1 || got["personal-opaque"].Threads != 0 {
+		t.Fatalf("placement counts: %v", got)
+	}
+	raw, err := x.Get("acme", id)
+	if err != nil || raw.Project != "personal-opaque" || x.ProjectCounts("acme")["personal-opaque"].Threads != 1 {
+		t.Fatal("operational projection changed accounting attribution")
+	}
+}

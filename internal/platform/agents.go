@@ -75,7 +75,7 @@ func (p *Platform) notAvailable(tenant string, tree *projects.Tree, project, age
 	if agent == Auto {
 		return fmt.Errorf("%w: @auto picks an agent before anything runs, so it never runs itself", ErrNotAvailable)
 	}
-	if home, ok := tree.Home(agent); ok && !onChain(tree, project, home) && everyoneIn(tree, home) {
+	if home, ok := tree.Home(agent); ok && home != projects.Root && !onChain(tree, project, home) && everyoneIn(tree, home) {
 		return fmt.Errorf("%w: %s is not available in %s; it lives in %s and is available only there and below", ErrNotAvailable, agent, where, p.whereOf(tenant, tree, home))
 	}
 	return fmt.Errorf("%w: %s is not available in %s", ErrNotAvailable, agent, where)
@@ -433,8 +433,9 @@ func (p *Platform) ProjectAgentsOf(tenant, name string) (ProjectAgents, error) {
 	}
 	out := ProjectAgents{
 		Version: pr.Version, Enable: pr.Agents.Enable, Allow: pr.Agents.Allow, Default: pr.Agents.Default,
-		Available: tree.Available(name), Homes: tree.Homes(name), Offers: []Offer{},
+		Available: tree.Available(name), Homes: CurrentAgentNames(tree.Homes(name)), Offers: []Offer{},
 	}
+	out.Available.Names = CurrentAgentNames(out.Available.Names)
 	if out.Enable == nil {
 		out.Enable = []string{}
 	}
@@ -443,7 +444,7 @@ func (p *Platform) ProjectAgentsOf(tenant, name string) (ProjectAgents, error) {
 	}
 	chain := tree.Chain(name)
 	offer := func(agent string) Offer {
-		if home, ok := tree.Home(agent); ok {
+		if home, ok := tree.Home(agent); ok && home != projects.Root {
 			return Offer{Agent: agent, From: projectAddress(home), Home: true}
 		}
 		for _, q := range chain {
@@ -514,7 +515,7 @@ func (p *Platform) AgentPlaces(tenant string, agents []string) map[string]AgentP
 			place.Home = projectAddress(home)
 		}
 		for _, q := range all {
-			if slices.Contains(q.Agents.Enable, a) || (!homed && slices.Contains(q.Agents.Enable, projects.Everyone)) {
+			if slices.Contains(q.Agents.Enable, a) || ((!homed || home == projects.Root) && slices.Contains(q.Agents.Enable, projects.Everyone)) {
 				place.EnabledIn = append(place.EnabledIn, projectAddress(q.Name))
 			}
 		}
@@ -531,8 +532,8 @@ func (p *Platform) AgentPlaces(tenant string, agents []string) map[string]AgentP
 // elsewhere, an alert rule watching it elsewhere, or a client that routes to
 // it, since a client files its runs at the root. The platform's own agents live nowhere.
 func (p *Platform) SetAgentHome(ctx context.Context, tenant, agent, project string, w projects.Writer) error {
-	if IsBuiltin(agent) {
-		return fmt.Errorf("%w: %s is one of the platform's own agents, which live nowhere and are available wherever they are enabled", projects.ErrInvalid, agent)
+	if IsBuiltin(agent) && projects.NameOf(project) != projects.Root {
+		return fmt.Errorf("%w: built-in agents live in Company", projects.ErrInvalid)
 	}
 	if _, err := p.Agents.Get(ctx, tenant, agent, 0); err != nil {
 		return err

@@ -41,6 +41,7 @@ type persisted struct {
 // tally is not kept: a run still working when the process stopped tallies
 // afresh from its next call, until the runtime's own figure replaces it.
 type storedRun struct {
+	PrivateContext bool `json:"private_context,omitempty"`
 	Run
 	Seq        int64        `json:"seq"`
 	Tag        envelope.Tag `json:"tag"`
@@ -51,7 +52,7 @@ type storedRun struct {
 }
 
 func (p *persisted) record(r *Run) storedRun {
-	return storedRun{Run: *r, Seq: p.seqs[r.ID], Tag: r.tag, Requesters: r.requesters, Final: r.final, Closed: r.closed, SettledUp: r.settledUp}
+	return storedRun{PrivateContext: r.privateContext, Run: *r, Seq: p.seqs[r.ID], Tag: r.tag, Requesters: r.requesters, Final: r.final, Closed: r.closed, SettledUp: r.settledUp}
 }
 
 // Open returns an index that keeps its runs and conversation titles in st,
@@ -75,6 +76,7 @@ func Open(st state.Store) (*Index, error) {
 	slices.SortFunc(loaded, func(a, b storedRun) int { return cmp.Compare(a.Seq, b.Seq) })
 	for _, s := range loaded {
 		r := s.Run
+		r.privateContext = s.PrivateContext
 		r.tag, r.requesters, r.final, r.closed, r.settledUp = s.Tag, s.Requesters, s.Final, s.Closed, s.SettledUp
 		x.runs[r.ID] = &r
 		x.order = append(x.order, r.ID)

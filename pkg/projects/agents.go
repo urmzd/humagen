@@ -174,8 +174,7 @@ type Availability struct {
 }
 
 // Home returns the project an agent lives in, by any spelling of its name,
-// as the registry finds an agent by any. It reports false for a platform
-// agent.
+// as the registry finds an agent by any. Company is an explicit root home.
 func (t *Tree) Home(agent string) (string, bool) {
 	p, ok := t.homes[agentspec.NormalizeName(agent)]
 	return p, ok
@@ -211,12 +210,14 @@ func (t *Tree) Available(project string) Availability {
 		for _, n := range q.Agents.Enable {
 			if n == Everyone {
 				star = true
-			} else if _, homed := t.homes[n]; !homed {
+			} else if home, homed := t.homes[n]; !homed || home == Root {
 				offered[n] = true
 			}
 		}
-		for _, a := range t.lives[q.Name] {
-			offered[a] = true
+		if q.Name != Root {
+			for _, a := range t.lives[q.Name] {
+				offered[a] = true
+			}
 		}
 		if q.Agents.Allow != nil {
 			next := map[string]bool{}
@@ -236,13 +237,14 @@ func (t *Tree) Available(project string) Availability {
 	if allowed == nil {
 		out.All = star
 		for a := range offered {
-			if _, homed := t.homes[a]; homed || !star {
+			if home, homed := t.homes[a]; (homed && home != Root) || !star {
 				out.Names = append(out.Names, a)
 			}
 		}
 	} else {
 		for a := range allowed {
-			_, homed := t.homes[a]
+			home, homed := t.homes[a]
+			homed = homed && home != Root
 			if offered[a] || (star && !homed) {
 				out.Names = append(out.Names, a)
 			}
@@ -309,6 +311,7 @@ func (t *Tree) IsAvailable(project, agent string) bool {
 		return false
 	}
 	home, homed := t.homes[agent]
+	homed = homed && home != Root
 	offered, allowed := false, true
 	t.chain(project, func(q *Project) bool {
 		switch {
@@ -361,7 +364,7 @@ func (t *Tree) NamedDefault(project string) (agent, from string) {
 // is checked as a whole instead (Platform.check), so Upsert does not call it.
 func checkAgents(t *Tree, p Project) error {
 	for _, n := range p.Agents.Enable {
-		if home, homed := t.homes[n]; homed {
+		if home, homed := t.homes[n]; homed && home != Root {
 			return fmt.Errorf("%w: %s lives in %s, so it is available there and below, and enabling it adds nothing", ErrInvalid, n, home)
 		}
 	}

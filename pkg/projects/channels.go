@@ -172,6 +172,9 @@ func (t *tenant) checkBinding(c Channel) error {
 	if c.Slack == nil {
 		return nil
 	}
+	if t.projects[c.Project].PersonalOwner != "" {
+		return fmt.Errorf("%w: personal projects cannot bind Slack channels", ErrInvalid)
+	}
 	n := 0
 	for key, o := range t.channels {
 		if o.Slack == nil || key == channelKey(c.Project, c.Name) || o.Slack.Client != c.Slack.Client {
