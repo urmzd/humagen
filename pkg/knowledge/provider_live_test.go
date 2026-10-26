@@ -1,3 +1,5 @@
+//go:build live_integration
+
 package knowledge
 
 import (
@@ -17,7 +19,7 @@ import (
 func TestProviderLiveSmoke(t *testing.T) {
 	enabled := os.Getenv("HUMAGEN_SOURCE_LIVE_TEST")
 	if enabled == "" {
-		t.Skip("set HUMAGEN_SOURCE_LIVE_TEST to drive, notion, or both")
+		t.Fatal("set HUMAGEN_SOURCE_LIVE_TEST to drive, notion, or both")
 	}
 	if enabled != "drive" && enabled != "notion" && enabled != "both" {
 		t.Fatal("HUMAGEN_SOURCE_LIVE_TEST must be drive, notion, or both")

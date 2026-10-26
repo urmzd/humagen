@@ -128,8 +128,9 @@ instruction or note text never creates a graph edge.
 
 ## Optional live provider smoke tests
 
-The default Go suite skips `TestProviderLiveSmoke`. To run it, prepare a
-separate, non-sensitive test resource and a read-only provider token. The test
+The default Go suite excludes `TestProviderLiveSmoke` through the
+`live_integration` build tag. To run it, enable that tag and prepare a separate,
+non-sensitive test resource and a read-only provider token. The test
 reads provider content into process memory, but does not print it or write to
 Drive or Notion. It uses an isolated in-memory Humagen store. Avoid shell
 tracing and CI logs that expose environment variables. Do not use real customer
@@ -154,7 +155,7 @@ export HUMAGEN_SMOKE_DRIVE_CREDENTIAL_REF=env:DRIVE_ACCESS_TOKEN
 export HUMAGEN_SMOKE_DRIVE_ORIGIN=your_test_folder_id
 export HUMAGEN_SMOKE_DRIVE_RESOURCE=your_test_file_id
 export HUMAGEN_SMOKE_DRIVE_MARKER=uniquesmokemarker
-HUMAGEN_SOURCE_LIVE_TEST=drive go test -race -count=1 -run '^TestProviderLiveSmoke$' -v ./pkg/knowledge
+HUMAGEN_SOURCE_LIVE_TEST=drive go test -tags=live_integration -race -count=1 -run '^TestProviderLiveSmoke$' -v ./pkg/knowledge
 ```
 
 For Notion, use the corresponding `HUMAGEN_SMOKE_NOTION_CREDENTIAL_REF`,
