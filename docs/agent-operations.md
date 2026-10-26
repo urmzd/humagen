@@ -54,6 +54,16 @@ Every occurrence rechecks the owner's ordinary project membership without
 borrowing a sign-in or bearer scope. Losing access pauses and blocks the work.
 Ordinary schedule mutation routes cannot bypass the assignment owner.
 
+Source-change assignments use a durable content-version cursor. Creating one
+requires knowledge read access and an existing source grant on its agent or
+project. The source-lifecycle layer registers its resident `SourceChanges`
+provider. Missing tracking, a hard-stale source or lost project membership
+blocks work. The existing reconciliation ticker scans at most 200 watchers
+per page, coalesces changes while work is active and raises deterministic tags
+through `Invoke`. Unchanged refreshes start no run; cursor and admission are
+kept together, and restart resumes observing after the stored version. Source
+recovery never resumes blocked work without an explicit owner action.
+
 Standing assignments create paused schedules in the existing cron store. The
 schedule activates only after the contract is durable and the assignment is
 accepted or watching. Cancel pauses the schedule before saving the state.
@@ -80,9 +90,23 @@ The run ledger, not
 the contract, determines whether accepted helper work succeeded.
 
 `GET /api/agent-network` derives bounded visible edges from those contracts.
+Operation attention has its own inbox kind and part. Deadlines and escalation
+never claim a successful run failed, offer Retry Run or create a synthetic
+runtime question. Open Assignment and Open Handoff navigate to the actual
+versioned record; acknowledgement uses the existing inbox resolver.
+
 The console components expose controls, policy editing, creation and running
 of assignments, recorded run links and contract inspection. Navigation and
 phone/desktop captures are integrated by the presentation layer of the stack.
+
+Private assignment and handoff provenance is not automatically published with
+a conversation. The operations publication guard requires reviewed summary
+publication for any retained linked contract, and legacy operation reads must
+pass both the original project and current conversation audience. A host
+setup gate may allow an exact draft-owner/revision test to bypass that agent's
+pause only with ForceAsk. Setup readiness remains a separate admission check,
+so an ordinary unpause cannot activate an incomplete setup. Workspace pause and
+Never still deny those tests and their tools.
 
 Source-hard-staleness admission and source dependency presentation are supplied
 by the source-lifecycle layer. The operations store does not infer source

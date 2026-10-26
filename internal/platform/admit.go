@@ -38,7 +38,7 @@ func (e *Denied) Error() string { return "platform: " + e.Decision.Reason }
 // refused by the strictest of their limits, so nothing below a project escapes
 // the project's limit.
 func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project string, within []string, client string) error {
-	if err := p.operationAdmission(tag.Tenant, tag.Agent); err != nil {
+	if err := p.operationAdmissionTag(tag); err != nil {
 		return err
 	}
 	if tag.Origin == runs.OriginSystem {

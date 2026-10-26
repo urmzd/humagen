@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
@@ -24,16 +25,11 @@ func (p *Platform) checkOperationCall(ctx context.Context, parent runs.Run, req 
 	} else if restricted && !slices.Contains(allowed, ToolCallAgent) && !slices.Contains(allowed, ToolDelegate) && !slices.Contains(allowed, tagTool+req.Agent) {
 		return operations.ErrDenied
 	}
-	if err := p.operationAdmission(parent.Tenant, parent.Agent); err != nil {
+	if err := p.operationAdmissionRequest(runtime.Request{Tenant: parent.Tenant, RunID: parent.ID, Origin: parent.Origin, Meta: parent.Tag().Meta, Revision: agentrt.Revision{Rev: parent.Rev, Spec: agentrt.Spec{Name: parent.Agent}}}); err != nil {
 		return err
 	}
-	person := runs.AskedBy(parent)
-	if parent.Parent != "" {
-		if root, err := p.Runs.Get(parent.Tenant, parent.Root); err == nil {
-			person = runs.AskedBy(root)
-		}
-	}
-	level := p.ActionDecision(parent.Tenant, parent.Project, parent.Agent, person, operations.CallAgents)
+	person := p.operationPerson(parent)
+	level := p.ActionDecision(parent.Tenant, p.RunPlace(parent.Tenant, parent).Project, parent.Agent, person, operations.CallAgents)
 	if parent.Tag().Meta[operations.MetaForceAsk] == "true" && level != operations.Never {
 		level = operations.Ask
 	}
@@ -60,9 +56,11 @@ func (p *Platform) checkOperationCall(ctx context.Context, parent runs.Run, req 
 	return nil
 }
 func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag envelope.Tag, prepared call.Prepared) (operations.Handoff, error) {
+	p.admission.Lock()
+	defer p.admission.Unlock()
 	id := runtime.RunID(parent.Tenant, tag.ID)
 	if old, ok := p.Operations.Handoff(parent.Tenant, id); ok {
-		if old.State == operations.NeedsPerson && old.RunID == "" {
+		if old.RunID == "" {
 			return old, operations.ErrEscalation
 		}
 		return old, nil
@@ -122,7 +120,7 @@ func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag envelope
 		if _, saveErr := p.Operations.SetHandoff(parent.Tenant, h, 0, p.now()); saveErr != nil {
 			return operations.Handoff{}, saveErr
 		}
-		p.operationEscalation(parent.Tenant, h.ID, h.Project, h.Thread, parent.ID, h.From, h.Owner, h.Blocker)
+		p.operationEscalation(parent.Tenant, "handoff", h.ID, h.Project, h.Thread, parent.ID, h.From, h.Owner, h.Blocker)
 		return operations.Handoff{}, err
 	}
 	if err != nil {
@@ -130,15 +128,15 @@ func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag envelope
 	}
 	return out, nil
 }
-func (p *Platform) operationEscalation(tenant, id, project, thread, run, agent, owner, reason string) {
+func (p *Platform) operationEscalation(tenant, kind, id, project, thread, run, agent, owner, reason string) {
 	// The message shares the original place and uses one deterministic key.
 	// Its kind makes it Needs-you; it creates no synthetic runtime question.
-	m := inbox.Message{Kind: inbox.KindFailure, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: "Humagen"}, Severity: inbox.Warning, Source: inbox.Source{Project: project, Thread: thread, Run: run, Agent: agent}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartText, Text: reason}}}
+	m := inbox.Message{Kind: inbox.KindOperation, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: "Humagen"}, Severity: inbox.Warning, Source: inbox.Source{Project: project, Thread: thread, Run: run, Agent: agent}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartOperation, Operation: &inbox.OperationPart{Kind: kind, ID: id, Reason: reason}}}}
 	m.Audience = slices.Clone(fallbackApprovers)
 	if owner != "" {
 		m.Audience = append(m.Audience, owner)
 	}
-	if _, _, err := p.Inbox.RaiseOnce(tenant, "operation:"+id, m, p.now()); err != nil {
+	if _, _, err := p.Inbox.RaiseOnce(tenant, "operation:"+kind+":"+id, m, p.now()); err != nil {
 		p.log.Error("platform: operation escalation could not be kept", "error", err)
 	}
 }
@@ -149,4 +147,21 @@ func (p *Platform) sameHandoffTerms(run runs.Run, terms *call.Contract) bool {
 	}
 	h, ok := p.Operations.Handoff(run.Tenant, run.ID)
 	return ok && h.Goal == terms.Goal && h.DoneWhen == terms.DoneWhen && h.DueAt.Equal(terms.DueAt)
+}
+
+func (p *Platform) operationTagPerson(tag envelope.Tag, edge call.Edge) string {
+	if edge.Parent != "" {
+		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
+			return p.operationPerson(root)
+		}
+	}
+	if id := tag.Meta[metaAssignment]; id != "" {
+		if a, ok := p.Operations.Assignment(tag.Tenant, id); ok {
+			return a.Owner
+		}
+	}
+	if tag.Origin == runs.OriginAPI && !tag.Actor.Bot && tag.Actor.User == "" {
+		return tag.Actor.ID
+	}
+	return personOf(tag.Actor)
 }

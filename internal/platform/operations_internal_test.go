@@ -148,3 +148,26 @@ func TestAnApprovedToolRechecksTightenedPolicyAndPause(t *testing.T) {
 		t.Fatal("approved tool bypassed pause")
 	}
 }
+
+func TestAdmissionKeepsTighteningBeforeRunRecordExists(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.admitting.Store("r", admitted{tenant: "t", person: "owner", operationMeta: map[string]string{operations.MetaForceAsk: "true", operations.MetaTools: "[]"}})
+	req := runtime.Request{Tenant: "t", RunID: "r", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}}
+	if got := p.operationDecision(req, operations.WriteFiles); got != operations.Ask {
+		t.Fatal("admission lost ForceAsk")
+	}
+	tools, restricted, err := p.operationTools(req)
+	if err != nil || !restricted || len(tools) != 0 {
+		t.Fatal("admission lost pinned skill restriction")
+	}
+	_, err = p.Operations.SetPolicy("t", operations.Policy{Scope: operations.Scope{Kind: "personal", Name: "owner"}, Rules: map[operations.Category]operations.Level{operations.WriteFiles: operations.Never}}, 0, "owner", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.operationDecision(req, operations.WriteFiles); got != operations.Never {
+		t.Fatal("admission lost policy identity")
+	}
+}

@@ -27,22 +27,28 @@ func assignmentSchedule(tenant, id string) string {
 }
 func (p *Platform) SeesAssignment(who auth.Principal, a operations.Assignment) bool {
 	seer := p.Seer(who)
-	return seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
+	return seer.Project(a.Project) && seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
 }
 func (p *Platform) Assignments(who auth.Principal, limit int) []operations.Assignment {
 	seer := p.Seer(who)
-	return p.Operations.Assignments(who.Tenant, limit, func(a operations.Assignment) bool {
-		return seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
+	out := p.Operations.Assignments(who.Tenant, limit, func(a operations.Assignment) bool {
+		return seer.Project(a.Project) && seer.Place(Place{Project: a.Project, Thread: a.Thread}) && seer.Agent(a.Agent)
 	})
+	for i, a := range out {
+		out[i] = p.shownAssignment(who, a)
+	}
+	return out
 }
 func (p *Platform) Assignment(who auth.Principal, id string) (operations.Assignment, error) {
 	a, ok := p.Operations.Assignment(who.Tenant, id)
 	if !ok || !p.SeesAssignment(who, a) {
 		return operations.Assignment{}, operations.ErrNotFound
 	}
-	return a, nil
+	return p.shownAssignment(who, a), nil
 }
 func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a operations.Assignment, version int) (result operations.Assignment, resultErr error) {
+	p.admission.Lock()
+	defer p.admission.Unlock()
 	if !p.SeesAssignment(who, a) {
 		return operations.Assignment{}, operations.ErrNotFound
 	}
@@ -71,6 +77,9 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 		return operations.Assignment{}, err
 	}
 	old, exists := p.Operations.Assignment(who.Tenant, a.ID)
+	if err := p.prepareSourceAssignment(ctx, who, &a, old, exists); err != nil {
+		return operations.Assignment{}, err
+	}
 	if exists {
 		if old.Version != version {
 			return operations.Assignment{}, operations.ErrConflict
@@ -81,7 +90,7 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 		if old.Owner != who.Subject && !who.Can(auth.ProjectsGovern) {
 			return operations.Assignment{}, ErrForbidden
 		}
-		if old.Cron != a.Cron || old.Agent != a.Agent || old.Project != a.Project || old.Goal != a.Goal || old.DoneWhen != a.DoneWhen {
+		if old.Trigger != a.Trigger || old.Source != a.Source || old.Cron != a.Cron || old.Agent != a.Agent || old.Project != a.Project || old.Goal != a.Goal || old.DoneWhen != a.DoneWhen {
 			return operations.Assignment{}, fmt.Errorf("%w: create a new assignment to change its execution contract", operations.ErrInvalid)
 		}
 	}
@@ -115,7 +124,7 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 			return out, err
 		}
 	}
-	return out, nil
+	return p.shownAssignment(who, out), nil
 }
 
 // RunAssignment reserves a deterministic run before entering the same turn path
@@ -125,6 +134,8 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 	if err != nil {
 		return runs.Run{}, err
 	}
+	raw, _ := p.Operations.Assignment(who.Tenant, id)
+	a = raw
 	if a.Owner != who.Subject && !who.Can(auth.ProjectsGovern) {
 		return runs.Run{}, ErrForbidden
 	}
@@ -196,6 +207,21 @@ func (p *Platform) admitAssignment(tag envelope.Tag) error {
 	if a.Agent != tag.Agent || a.Project != runs.ProjectOf(tag) {
 		return operations.ErrDenied
 	}
+	if tag.Origin == runs.OriginAssignment {
+		if a.Trigger != operations.SourceTrigger || a.Thread != "" || !p.standingOwner(tag.Tenant, a.Project, a.Owner) || !p.assignmentSourceGrant(context.Background(), tag.Tenant, a.Project, a.Agent, a.Source) {
+			return operations.ErrDenied
+		}
+		version, err := strconv.ParseUint(tag.Meta[metaAssignmentSource], 10, 64)
+		if err != nil {
+			return operations.ErrInvalid
+		}
+		current, fresh := p.assignmentSourceVersion(tag.Tenant, a.Source)
+		if !fresh || version != current {
+			return operations.ErrDenied
+		}
+		_, err = p.Operations.ReserveSource(tag.Tenant, id, runtime.RunID(tag.Tenant, tag.ID), tag.ID, a.Version, version, p.now())
+		return err
+	}
 	if tag.Origin == "cron" {
 		if a.State != operations.Watching && a.State != operations.Accepted {
 			return operations.ErrConflict
@@ -208,15 +234,16 @@ func (p *Platform) admitAssignment(tag envelope.Tag) error {
 	}
 	return nil
 }
-func (p *Platform) settleOperations() {
+func (p *Platform) settleOperations(ctx context.Context) {
 	// Reservations survive a crash; only a ledger-backed terminal run changes
 	// them. The bounded store caps this recovery scan.
 	for _, tenant := range p.Operations.Tenants() {
+		p.pollSourceAssignments(ctx, tenant)
 		if notices, err := p.Operations.Due(tenant, p.now()); err != nil {
 			p.log.Error("platform: operation deadlines could not be kept", "error", err)
 		} else {
 			for _, n := range notices {
-				p.operationEscalation(tenant, n.ID, n.Project, n.Thread, n.Run, n.Agent, n.Owner, n.Reason)
+				p.operationEscalation(tenant, n.Kind, n.ID, n.Project, n.Thread, n.Run, n.Agent, n.Owner, n.Reason)
 			}
 		}
 		for _, a := range p.Operations.Assignments(tenant, operations.MaxResults, func(a operations.Assignment) bool { return a.State == operations.InProgress }) {

@@ -54,6 +54,7 @@ export const kinds: { id: string; label: string }[] = [
   { id: "clarification", label: "Questions" },
   { id: "alert", label: "Alerts" },
   { id: "failure", label: "Failed runs" },
+ {id:"operation",label:"Agent work"},
   { id: "memory", label: "Memory" },
   { id: "budget", label: "Limits" },
   { id: "artifact", label: "Artifacts" },
@@ -70,6 +71,7 @@ export const kinds: { id: string; label: string }[] = [
 const templateOf: Record<string, TemplateId> = {
   alert: "alert",
   failure: "failure",
+ operation:"note",
   memory: "memory",
   budget: "limit",
   approval: "approval",
@@ -185,6 +187,11 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
     ? { resolution: { outcome: str(out.action), by: decidedBy(out), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
     : {};
   switch (p.type) {
+    case "operation": {
+      const operation=obj(p.operation);const kind=str(operation.kind);const target=str(operation.id);const reason=str(operation.reason);
+      if ((kind!=="assignment"&&kind!=="handoff")||!target) return null;
+      return {id,type:"custom",name:"operation",data:{kind,id:target,reason},fallback:reason,resolvable:true,allowed,...resolution};
+    }
     case "text":
       return { id, type: "text", text: str(p.text) };
     case "alert": {

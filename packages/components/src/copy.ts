@@ -17,6 +17,10 @@ const OUTCOMES: Record<string, string> = {
 
 export const defaultCopy = {
   operations: {
+    openAssignment: "Open Assignment",
+    openHandoff: "Open Handoff",
+    acknowledge: "Acknowledge",
+    attention: "Agent work needs a person",
     controls: "Agent controls",
     workspaceControls: "Workspace controls",
     controlsHint:
@@ -57,7 +61,12 @@ export const defaultCopy = {
     project: "Project",
     owner: "Owner",
     due: "Due date",
-    cron: "Repeat (cron, optional)",
+    trigger: "When to run",
+    onDemand: "On demand",
+    onSchedule: "On a schedule",
+    onSourceChange: "When a retained source changes",
+    source: "Retained source",
+    cron: "Repeat (cron)",
     create: "Create Assignment",
     run: "Run Assignment",
     cancel: "Cancel Assignment",
@@ -80,6 +89,9 @@ export const defaultCopy = {
       needs_person: "Needs a person",
       cancelled: "Cancelled",
     },
+    working: "Working",
+    waitTime: "Waiting time",
+    minutes: (n: number) => `${n} min`,
     network: "Agent network",
     networkHint:
       "Recorded handoffs between agents you can read. Every count uses the same read rules as its contracts.",

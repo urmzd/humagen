@@ -72,40 +72,33 @@ func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operation
 	return p.Operations.SetControl(who.Tenant, legacy.BuiltinAgent(agent), c, version, who.Subject, p.now())
 }
 func (p *Platform) operationAdmission(tenant, agent string) error {
-	if p.Operations.Paused(tenant, legacy.BuiltinAgent(agent)) {
+	if p.Operations.Paused(tenant, legacy.BuiltinAgent(agent)) || !p.agentReady(tenant, agent) {
 		return operations.ErrPaused
 	}
 	return nil
 }
 func (p *Platform) operationPlace(req runtime.Request) (project, person string) {
 	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
-		person = runs.AskedBy(run)
-		if run.Parent != "" {
-			if root, err := p.Runs.Get(req.Tenant, run.Root); err == nil {
-				person = runs.AskedBy(root)
-			}
-		}
-		return run.Project, person
+
+		return p.RunPlace(req.Tenant, run).Project, p.operationPerson(run)
 	}
 	if v, ok := p.admitting.Load(req.RunID); ok {
-		return v.(admitted).place.Project, ""
+		a := v.(admitted)
+		return p.CurrentPlace(req.Tenant, a.place).Project, a.person
 	}
 	return "", ""
 }
 func (p *Platform) operationDecision(req runtime.Request, c operations.Category) operations.Level {
 	project, person := p.operationPlace(req)
 	level := p.ActionDecision(req.Tenant, project, req.Agent(), person, c)
-	force := req.Meta[operations.MetaForceAsk] == "true"
-	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
-		force = force || run.Tag().Meta[operations.MetaForceAsk] == "true"
-	}
+	force := p.operationForced(req)
 	if force && level != operations.Never {
 		return operations.Ask
 	}
 	return level
 }
 func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, error) {
-	if err := p.operationAdmission(req.Tenant, req.Agent()); err != nil {
+	if err := p.operationAdmissionRequest(req); err != nil {
 		return req, err
 	}
 	allowed, restricted, err := p.operationTools(req)
@@ -252,7 +245,7 @@ func (t *operationTool) check(ctx context.Context) error {
 	} else if restricted && !slices.Contains(allowed, t.Definition().Name) {
 		return operations.ErrDenied
 	}
-	if err := t.p.operationAdmission(t.req.Tenant, t.req.Agent()); err != nil {
+	if err := t.p.operationAdmissionRequest(t.req); err != nil {
 		return err
 	}
 	switch t.decision() {
@@ -332,19 +325,107 @@ func (p *Platform) SetActionPolicy(who auth.Principal, scope operations.Scope, r
 	defer func() { p.finishOperationsAudit(attempt, resultErr) }()
 	return p.Operations.SetPolicy(who.Tenant, operations.Policy{Scope: scope, Rules: rules}, version, who.Subject, p.now())
 }
+func (p *Platform) seesHandoff(seer *Seer, h operations.Handoff) bool {
+	return seer.Project(h.Project) && seer.Place(Place{Project: h.Project, Thread: h.Thread}) && seer.Agent(h.From) && seer.Agent(h.To)
+}
+func (p *Platform) shownHandoff(who auth.Principal, h operations.Handoff) operations.Handoff {
+	seer := p.Seer(who)
+	h.Chain = slices.DeleteFunc(slices.Clone(h.Chain), func(name string) bool { return !seer.Agent(name) })
+	inputs := []operations.Input{}
+	for _, in := range h.Inputs {
+		allowed := false
+		switch in.Type {
+		case "text":
+			allowed = true
+		case "run":
+			allowed = seer.RunID(in.Reference)
+		case "thread":
+			if th, err := p.Threads.Get(who.Tenant, in.Reference); err == nil {
+				allowed = seer.Place(Place{Project: th.Project, Thread: th.ID})
+			}
+		case "artifact":
+			id, _, _ := strings.Cut(in.Reference, "@")
+			if a, err := p.Artifacts.Get(who.Tenant, id); err == nil {
+				allowed = seer.Artifact(a)
+			}
+		}
+		if allowed {
+			inputs = append(inputs, in)
+		}
+	}
+	h.Inputs = inputs
+	return h
+}
 func (p *Platform) Handoffs(who auth.Principal, limit int) []operations.Handoff {
 	seer := p.Seer(who)
-	return p.Operations.Handoffs(who.Tenant, limit, func(h operations.Handoff) bool {
-		return seer.Place(Place{Project: h.Project, Thread: h.Thread}) && seer.Agent(h.From) && seer.Agent(h.To)
-	})
+	out := p.Operations.Handoffs(who.Tenant, limit, func(h operations.Handoff) bool { return p.seesHandoff(seer, h) })
+	for i, h := range out {
+		out[i] = p.shownHandoff(who, h)
+	}
+	return out
+}
+func (p *Platform) Handoff(who auth.Principal, id string) (operations.Handoff, error) {
+	h, ok := p.Operations.Handoff(who.Tenant, id)
+	if !ok || !p.seesHandoff(p.Seer(who), h) {
+		return operations.Handoff{}, operations.ErrNotFound
+	}
+	return p.shownHandoff(who, h), nil
+}
+
+type HandoffUpdate struct {
+	Version int                  `json:"version"`
+	State   operations.WorkState `json:"state"`
+	Owner   string               `json:"owner"`
+	Blocker string               `json:"blocker"`
+	DueAt   time.Time            `json:"due_at"`
+}
+
+func (p *Platform) UpdateHandoff(who auth.Principal, id string, in HandoffUpdate) (result operations.Handoff, resultErr error) {
+	visible, err := p.Handoff(who, id)
+	if err != nil {
+		return operations.Handoff{}, err
+	}
+	if visible.Owner != who.Subject {
+		if _, _, err := p.ProjectRole(who, visible.Project, projects.Owner); err != nil {
+			return operations.Handoff{}, err
+		}
+	}
+	if in.Owner != "" && in.Owner != who.Subject {
+		if _, err := p.People.Get(who.Tenant, in.Owner); err != nil {
+			return operations.Handoff{}, operations.ErrInvalid
+		}
+	}
+	if !slices.Contains([]operations.WorkState{operations.Accepted, operations.Blocked, operations.NeedsPerson, operations.Result}, in.State) || in.DueAt.IsZero() {
+		return operations.Handoff{}, operations.ErrInvalid
+	}
+	h, _ := p.Operations.Handoff(who.Tenant, id)
+	if in.State == operations.Result {
+		run, err := p.Runs.Get(who.Tenant, h.RunID)
+		if err != nil || run.Status != runs.Completed {
+			return operations.Handoff{}, operations.ErrConflict
+		}
+	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "handoff.update", Resource: "handoff", ID: id, Scope: "project", Project: h.Project, Thread: h.Thread, Agent: h.From, Before: map[string]string{"state": string(h.State)}, After: map[string]string{"state": string(in.State)}})
+	if err != nil {
+		return operations.Handoff{}, err
+	}
+	defer func() { p.finishOperationsAudit(attempt, resultErr) }()
+	h.State, h.Owner, h.Blocker, h.DueAt = in.State, in.Owner, in.Blocker, in.DueAt
+	out, err := p.Operations.SetHandoff(who.Tenant, h, in.Version, p.now())
+	if err != nil {
+		return operations.Handoff{}, err
+	}
+	return p.shownHandoff(who, out), nil
 }
 
 type NetworkEdge struct {
-	From     string `json:"from"`
-	To       string `json:"to"`
-	Handoffs int    `json:"handoffs"`
-	Blocked  int    `json:"blocked"`
-	Waiting  int    `json:"waiting"`
+	From           string `json:"from"`
+	To             string `json:"to"`
+	Handoffs       int    `json:"handoffs"`
+	Blocked        int    `json:"blocked"`
+	Waiting        int    `json:"waiting"`
+	Working        int    `json:"working"`
+	WaitingSeconds int64  `json:"waiting_seconds"`
 }
 type AgentNetwork struct {
 	Edges     []NetworkEdge `json:"edges"`
@@ -368,8 +449,19 @@ func (p *Platform) AgentNetwork(who auth.Principal) AgentNetwork {
 		if h.State == operations.Blocked || h.State == operations.NeedsPerson {
 			e.Blocked++
 		}
-		if h.State == operations.Requested || h.State == operations.Accepted || h.State == operations.InProgress {
+		if h.State == operations.InProgress {
+			e.Working++
+		}
+		if h.State == operations.Requested || h.State == operations.Accepted || h.State == operations.NeedsPerson {
 			e.Waiting++
+			wait := p.now().Sub(h.UpdatedAt)
+			if wait < 0 {
+				wait = 0
+			}
+			if wait > 31*24*time.Hour {
+				wait = 31 * 24 * time.Hour
+			}
+			e.WaitingSeconds += int64(wait / time.Second)
 		}
 	}
 	return out
@@ -380,6 +472,11 @@ func (p *Platform) operationTools(req runtime.Request) ([]string, bool, error) {
 	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
 		if v, pinned := run.Tag().Meta[operations.MetaTools]; pinned {
 			raw, ok = v, true
+		}
+	}
+	if !ok {
+		if v, exists := p.admitting.Load(req.RunID); exists && v.(admitted).tenant == req.Tenant {
+			raw, ok = v.(admitted).operationMeta[operations.MetaTools]
 		}
 	}
 	if !ok {
@@ -440,4 +537,96 @@ func (p *Platform) wrapOperationGroup(req runtime.Request, name string, ts []sai
 		out = append(out, wrapped)
 	}
 	return agentrt.ToolGroup{Name: name, Tools: out}, nil
+}
+
+// operationPerson supplies policy identity only. It never supplies a credential.
+// A clock has no actor but remains subject to its assignment owner's tightening.
+func (p *Platform) operationPerson(run runs.Run) string {
+	root := run
+	if run.Parent != "" {
+		if got, err := p.Runs.Get(run.Tenant, run.Root); err == nil {
+			root = got
+		}
+	}
+	if id := root.Tag().Meta[metaAssignment]; id != "" {
+		if a, ok := p.Operations.Assignment(run.Tenant, id); ok {
+			return a.Owner
+		}
+	}
+	return runs.AskedBy(root)
+}
+
+// ConversationOperationsSettled is deliberately conservative: raw retained
+// contract provenance requires a reviewed summary rather than history publication.
+func (p *Platform) ConversationOperationsSettled(tenant, thread string) bool {
+	return !p.Operations.HasConversation(tenant, thread)
+}
+
+type AgentControlView struct {
+	operations.Control
+	State           string      `json:"state"`
+	EffectivePaused bool        `json:"effective_paused"`
+	ManagerName     string      `json:"manager_name,omitempty"`
+	LastRun         string      `json:"last_run,omitempty"`
+	LastRunAt       time.Time   `json:"last_run_at,omitzero"`
+	LastRunStatus   runs.Status `json:"last_run_status,omitempty"`
+}
+
+// AgentState describes only work this reader can see, never hidden activity.
+func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView {
+	c := p.AgentControl(who.Tenant, agent)
+	view := AgentControlView{Control: c, State: "ready", EffectivePaused: p.Operations.Paused(who.Tenant, legacy.BuiltinAgent(agent)) || !p.agentReady(who.Tenant, agent), ManagerName: p.NameOf(who.Tenant, c.Manager)}
+	if view.EffectivePaused {
+		view.State = "paused"
+	}
+	if agent == "" || !who.Can(auth.RunsRead) {
+		return view
+	}
+	now := p.now()
+	latest := p.Runs.AgentWindow(who.Tenant, agent, now.Add(-31*24*time.Hour), now, 1, p.Seer(who).Run)
+	if len(latest) > 0 {
+		r := latest[0]
+		view.LastRun, view.LastRunAt, view.LastRunStatus = r.ID, r.CreatedAt, r.Status
+		if !view.EffectivePaused {
+			switch r.Status {
+			case runs.Parked:
+				view.State = "waiting_on_people"
+			case runs.Running, runs.Accepted:
+				view.State = "working"
+			case runs.Failed:
+				view.State = "failed"
+			}
+		}
+	}
+	if view.State == "ready" {
+		for _, a := range p.Assignments(who, operations.MaxResults) {
+			if a.Agent == agent && a.State == operations.Watching {
+				view.State = "watching"
+				break
+			}
+		}
+	}
+	return view
+}
+
+func operationMetaOf(meta map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, key := range []string{operations.MetaForceAsk, operations.MetaTools, metaAssignment, metaAssignmentSource} {
+		if value, ok := meta[key]; ok {
+			out[key] = value
+		}
+	}
+	return out
+}
+func (p *Platform) operationForced(req runtime.Request) bool {
+	if req.Meta[operations.MetaForceAsk] == "true" {
+		return true
+	}
+	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
+		return run.Tag().Meta[operations.MetaForceAsk] == "true"
+	}
+	if v, ok := p.admitting.Load(req.RunID); ok && v.(admitted).tenant == req.Tenant {
+		return v.(admitted).operationMeta[operations.MetaForceAsk] == "true"
+	}
+	return false
 }
