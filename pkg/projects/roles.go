@@ -176,20 +176,23 @@ func openness(r Role) int { return min(r.rank(), Member.rank()) }
 // projects below p go with it, so a move under a project everyone owns is
 // held to every members-only project it carries, however deep.
 func checkOpen(tree *Tree, p Project, parent *Project, children []Project) error {
+	if p.PersonalOwner != "" {
+		return nil
+	}
 	star := everyoneOf(p.Members)
 	if owned, ok := ownedAbove(tree, parent); ok {
 		if star == None {
 			return fmt.Errorf("%w: everyone owns %s, and owners above own everything below, so %s cannot be members only; name its owners first", ErrInvalid, display(owned), display(p.Name))
 		}
 		for _, below := range tree.Subtree(p.Name) {
-			if q, ok := tree.Get(below); ok && below != p.Name && everyoneOf(q.Members) == None {
+			if q, ok := tree.Get(below); ok && below != p.Name && q.PersonalOwner == "" && everyoneOf(q.Members) == None {
 				return fmt.Errorf("%w: everyone owns %s, and owners above own everything below, so %s cannot go under it while %s is members only; name its owners first", ErrInvalid, display(owned), display(p.Name), display(q.Name))
 			}
 		}
 	}
 	if star == Owner {
 		for _, below := range tree.Subtree(p.Name) {
-			if q, ok := tree.Get(below); ok && below != p.Name && everyoneOf(q.Members) == None {
+			if q, ok := tree.Get(below); ok && below != p.Name && q.PersonalOwner == "" && everyoneOf(q.Members) == None {
 				return fmt.Errorf("%w: %s is members only, so everyone cannot own %s above it", ErrInvalid, display(q.Name), display(p.Name))
 			}
 		}
@@ -311,6 +314,12 @@ type Access struct {
 // step is a reader's access at one project given their access at its parent.
 // top is true at the root, which has no parent.
 func step(p Project, above Access, r Reader, top bool) Access {
+	if p.PersonalOwner != "" {
+		if !r.Machine && r.Subject == p.PersonalOwner {
+			return Access{Role: Owner, From: p.Name, Via: r.Subject}
+		}
+		return Access{}
+	}
 	if above.Role == Owner {
 		return Access{Role: Owner, From: above.From, Via: ViaOwnerAbove}
 	}
@@ -336,7 +345,7 @@ func step(p Project, above Access, r Reader, top bool) Access {
 // hold, or a reader with no subject, has no role.
 func (t *Tree) Resolve(name string, r Reader) Access {
 	chain := t.Chain(name)
-	if chain == nil || r.Subject == "" {
+	if chain == nil || r.Subject == "" || (r.Machine && chain[0].PersonalOwner != "") {
 		return Access{}
 	}
 	var a Access
@@ -377,7 +386,7 @@ func (t *Tree) DeletedRole(x Tombstone, r Reader, tomb func(name string) (Tombst
 		if !chain[i].Kept {
 			return Access{}
 		}
-		a = step(Project{Name: chain[i].Name, Parent: chain[i].Parent, Members: chain[i].Members}, a, r, false)
+		a = step(Project{Name: chain[i].Name, Parent: chain[i].Parent, Members: chain[i].Members, PersonalOwner: chain[i].PersonalOwner}, a, r, false)
 	}
 	return a
 }
@@ -397,7 +406,7 @@ type InheritedOwner struct {
 func (t *Tree) InheritedOwners(name string) []InheritedOwner {
 	out := []InheritedOwner{}
 	chain := t.Chain(name)
-	if len(chain) < 2 {
+	if len(chain) < 2 || chain[0].PersonalOwner != "" {
 		return out
 	}
 	for _, p := range chain[1:] {
@@ -425,7 +434,7 @@ func (t *Tree) Roles(r Reader) map[string]Access {
 	}
 	if r.Govern && r.Subject != "" {
 		for name, a := range access {
-			if a.Role != Owner {
+			if a.Role != Owner && !(r.Machine && t.nodes[name].p.PersonalOwner != "") {
 				access[name] = Access{Role: Owner, From: Root, Via: ViaGovern}
 			}
 		}

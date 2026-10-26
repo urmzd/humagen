@@ -202,6 +202,9 @@ func (p *Platform) mayRetryIn(tree *projects.Tree, who auth.Principal, runID str
 	if err != nil {
 		return err
 	}
+	if p.RunPlace(who.Tenant, run).Project != run.Project {
+		return fmt.Errorf("%w: historical runs cannot replay after publication; post a new message in this conversation", threads.ErrInvalid)
+	}
 	project := projects.NameOf(run.Project)
 	if project == projects.Root || !tree.Has(project) {
 		return nil
@@ -227,6 +230,14 @@ func (p *Platform) seenBy(tree *projects.Tree, names Names, m inbox.Message, who
 	if id != "" {
 		if th, err := p.ThreadRecord(who.Tenant, id); err == nil && p.Seer(who).Place(Place{Project: th.Project, Thread: id}) {
 			m.Source.ThreadTitle = p.threadTitle(who.Tenant, th)
+			m.Source.Project = th.Project
+			for i := range m.Parts {
+				if m.Parts[i].Mention != nil {
+					mention := *m.Parts[i].Mention
+					mention.Project, mention.Channel = th.Project, th.Channel
+					m.Parts[i].Mention = &mention
+				}
+			}
 		}
 	}
 	for i := range m.Parts {
@@ -307,6 +318,7 @@ func readerOf(who auth.Principal) inbox.Reader {
 // announcements at the next read.
 func (p *Platform) inboxReader(tree *projects.Tree, who auth.Principal) inbox.Reader {
 	r := readerOf(who)
+	r.ProjectOf = p.inboxProject(who.Tenant)
 	reader := ReaderOf(who)
 	muted := p.Prefs.Get(who.Tenant, who.Subject).Muted
 	for _, name := range tree.Memberships(reader) {
@@ -321,6 +333,7 @@ func (p *Platform) inboxReader(tree *projects.Tree, who auth.Principal) inbox.Re
 func (p *Platform) inboxQuery(tree *projects.Tree, who auth.Principal, q inbox.Query) inbox.Query {
 	r := p.inboxReader(tree, who)
 	q.Reader, q.Roles, q.ReaderProjects, q.ReaderOwns, q.Now = r.Subject, r.Roles, r.Projects, r.Owns, p.now()
+	q.ProjectOf = r.ProjectOf
 	q.Visible = func(k inbox.Kind) bool { return who.Can(reads(k)) }
 	q.Sees = p.Seer(who).Message
 	return q

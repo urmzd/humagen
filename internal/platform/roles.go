@@ -329,6 +329,9 @@ func memoryProject(part inbox.Part) (string, bool) {
 // see is projects.ErrNotFound.
 func (p *Platform) MayFileIn(who auth.Principal, project string) error {
 	project = projects.NameOf(project)
+	if pr, ok := p.Projects.Tree(who.Tenant).Get(project); ok && pr.PersonalOwner != "" && (who.Kind != auth.User || pr.PersonalOwner != who.Subject) {
+		return ErrForbidden
+	}
 	if project == projects.Root {
 		return nil
 	}
@@ -342,7 +345,7 @@ func (p *Platform) MayFileIn(who auth.Principal, project string) error {
 // more than the route's permission.
 func (p *Platform) MayTry(who auth.Principal, agent string) error {
 	home, homed := p.Projects.Tree(who.Tenant).Home(agentspec.NormalizeName(agent))
-	if !homed {
+	if !homed || home == projects.Root {
 		return nil
 	}
 	return p.MayFileIn(who, home)
@@ -390,7 +393,7 @@ func (p *Platform) ownsHome(tree *projects.Tree, who auth.Principal, agent strin
 	// registry and every store resolve a name to, so a name in another
 	// case or with spaces around it is the same agent here too.
 	home, homed := tree.Home(agentspec.NormalizeName(agent))
-	if !homed {
+	if !homed || home == projects.Root {
 		return nil
 	}
 	_, _, err := p.projectRole(tree, who, home, projects.Owner)

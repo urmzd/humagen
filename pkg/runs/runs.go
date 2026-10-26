@@ -1187,3 +1187,18 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 	})
 	return out
 }
+
+// AnyActive returns whether an unfinished run satisfies keep. The callback is
+// pure and must not call the index. This includes delegated and system work,
+// which Conversation deliberately leaves out of its human turn list.
+func (x *Index) AnyActive(tenant string, keep func(Run) bool) bool {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	for _, id := range x.order {
+		r := x.runs[id]
+		if r.Tenant == tenant && !r.Status.Terminal() && keep(*r) {
+			return true
+		}
+	}
+	return false
+}

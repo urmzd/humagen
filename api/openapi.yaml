@@ -1553,6 +1553,59 @@ paths:
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/placement:
+    get:
+      operationId: previewThreadPlacement
+      tags: [threads]
+      summary: Review the audience and contents before moving completed work
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+        - {name: project, in: query, required: true, schema: {type: string, maxLength: 63}}
+        - {name: channel, in: query, schema: {type: string, maxLength: 40}}
+      responses:
+        "200":
+          description: A versioned preview to confirm before publication.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PlacementPreview"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/threads/{id}/publication:
+    post:
+      operationId: publishThreadSummary
+      tags: [threads]
+      summary: Publish only explicitly reviewed text as a new shared conversation
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [project, summary, placement_token]
+              properties:
+                project: {type: string, maxLength: 63}
+                channel: {type: string, maxLength: 40}
+                summary: {type: string, minLength: 1, maxLength: 16000}
+                placement_token: {type: string, maxLength: 64}
+      responses:
+        "201":
+          description: A new shared conversation with only the reviewed summary. The source remains private.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/threads/{id}/share:
     post:
       operationId: shareThread
@@ -3149,6 +3202,30 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/find-help:
+    get:
+      operationId: findHelp
+      tags: [projects]
+      summary: Find a readable project and available agent for a description of work
+      x-permission: projects:read
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 200}}
+      responses:
+        "200":
+          description: At most eight read-confined suggestions. No work is started.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestions]
+                properties:
+                  suggestions:
+                    type: array
+                    maxItems: 8
+                    items: {$ref: "#/components/schemas/HelpSuggestion"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /api/projects:
     get:
       operationId: listProjects
@@ -4881,6 +4958,12 @@ components:
           description: Everything the caller may do. Null, not an empty list, for a caller with no permission at all.
           type: [array, "null"]
           items: {$ref: "#/components/schemas/Permission"}
+        welcome_announcement:
+          description: Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements.
+          type: string
+        personal_project:
+          description: The signed-in human's private project address, absent for machines.
+          type: string
         first_admin:
           description: The caller is an admin in a workspace nobody has set up yet.
           type: boolean
@@ -5555,6 +5638,11 @@ components:
       type: object
       required: [id, project, channel, visibility, participants, version, created_by, created_at, updated_at]
       properties:
+        moves:
+          description: Number of committed placement changes, without former audience identities.
+          type: integer
+          minimum: 0
+          maximum: 100
         id:
           description: "`th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it."
           type: string
@@ -5814,11 +5902,39 @@ components:
           type: boolean
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+    HelpSuggestion:
+      type: object
+      required: [project, title, agent, reason]
+      properties:
+        project: {type: string}
+        title: {type: string}
+        agent: {type: string}
+        reason: {type: string}
+    PlacementPreview:
+      type: object
+      required: [thread, project, channel, audience, runs, token, exclusions]
+      properties:
+        summary_required:
+          description: Raw private-source history cannot move; publish only a person-reviewed summary copy.
+          type: boolean
+        thread: {type: string}
+        project: {type: string}
+        channel: {type: string}
+        audience: {type: string}
+        runs: {type: integer, minimum: 0}
+        token: {type: string}
+        exclusions:
+          type: array
+          items: {type: string}
     ThreadShare:
       description: Where a conversation is shared, and the people to add to it.
       type: object
       additionalProperties: false
       properties:
+        placement_token:
+          description: Required to move a conversation with completed runs, from its current placement preview.
+          type: string
+          maxLength: 64
         project:
           description: The project it is shared in. Empty keeps the thread's own; `~` is the workspace.
           type: string
@@ -5886,6 +6002,10 @@ components:
       additionalProperties: false
       required: [version]
       properties:
+        placement_token:
+          description: Explicit consent to publish completed private work, from its current placement preview.
+          type: string
+          maxLength: 64
         version: {type: integer}
         title: {type: string, maxLength: 200}
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
@@ -6397,6 +6517,9 @@ components:
       type: object
       required: [name, kind, experts, members, agents, version, created_at, updated_at]
       properties:
+        personal_owner:
+          description: Immutable human subject for a server-provisioned personal project.
+          type: string
         name: {type: string, maxLength: 63}
         title:
           description: What people see. Shown instead of the name when set.

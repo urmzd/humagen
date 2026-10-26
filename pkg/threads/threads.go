@@ -220,6 +220,9 @@ type Thread struct {
 	// Version counts the edits made to the record: its title, visibility,
 	// default and participants. Posting, and joining by posting, leave it.
 	Version int `json:"version"`
+	// Moves is a neutral indicator: earlier audience identities are never public.
+	Moves   int `json:"moves,omitempty"`
+	movedBy string
 	// CreatedBy is the person who started the thread, its owner. A record
 	// of a conversation from before threads that no person asked in, which
 	// a change by someone who may not own it wrote, has none until a member

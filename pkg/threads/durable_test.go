@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -310,6 +311,55 @@ func TestRoutingIsKept(t *testing.T) {
 			return nil
 		}); !errors.Is(err, threads.ErrInvalid) {
 			t.Fatalf("four agents all at once were kept: %v", err)
+		}
+	})
+}
+
+func TestPlacementAndHistoryCommitTogether(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		fault := statetest.NewFaulty(st)
+		s, err := threads.Open(fault)
+		if err != nil {
+			t.Fatal(err)
+		}
+		th, _ := start(t, s, "acme", threads.Thread{Project: "personal-opaque", Channel: "general", Visibility: threads.Private}, msg("dana", "ready"))
+		fault.Fail(statetest.ErrInjected)
+		if _, err := s.Share("acme", th.ID, th.Version, "Field", "general", "", nil, "", nil, nil, "dana", t0); !errors.Is(err, statetest.ErrInjected) {
+			t.Fatalf("failed placement write: %v", err)
+		}
+		current, _ := s.Get("acme", th.ID)
+		if current.Project != th.Project || current.Moves != 0 {
+			t.Fatal("failed placement leaked")
+		}
+		fault.Fail(nil)
+		moved, err := s.Share("acme", th.ID, th.Version, "Field", "general", "", nil, "", nil, nil, "dana", t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if moved.Moves != 1 {
+			t.Fatal("missing placement history marker")
+		}
+		again, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current, _ = again.Get("acme", th.ID)
+		if current.Project != "Field" || current.Moves != 1 {
+			t.Fatal("placement lost on restart")
+		}
+		records, err := st.Load(t.Context(), "threads")
+		if err != nil {
+			t.Fatal(err)
+		}
+		histories := 0
+		for _, r := range records {
+			if strings.HasPrefix(r.Key, "p:"+th.ID+":") {
+				histories++
+			}
+		}
+		if histories != 1 {
+			t.Fatalf("history count: %d", histories)
 		}
 	})
 }

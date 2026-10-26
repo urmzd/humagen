@@ -215,7 +215,24 @@ func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) 
 	// handle is how the platform names the caller elsewhere, as a thread's
 	// created_by and participants name people: their handle, or their
 	// subject when they have none and it holds no address.
-	ok(w, http.StatusOK, map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first, "handle": s.P.Names(who.Tenant).Key(who.Subject)})
+	out := map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first, "handle": s.P.Names(who.Tenant).Key(who.Subject)}
+	if who.Kind == auth.User && who.Subject != "" && who.Tenant != "" && len(who.Granted()) > 0 {
+		personal, err := s.P.PersonalProject(who)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		out["personal_project"] = "~" + personal.Name
+		if who.Can(auth.ProjectsRead) {
+			welcome, err := s.P.PostWelcome(who.Tenant)
+			if err != nil {
+				s.problem(w, err)
+				return
+			}
+			out["welcome_announcement"] = welcome.ID
+		}
+	}
+	ok(w, http.StatusOK, out)
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -509,7 +526,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) }))})
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRuns(who.Tenant, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -722,7 +739,7 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request, who auth.Princip
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, run)
+	ok(w, http.StatusOK, s.P.ShownRun(who.Tenant, run))
 }
 
 func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -731,7 +748,7 @@ func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Princi
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": tree})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree)})
 }
 
 func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -904,6 +921,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if !gate.seen(e.RunID) {
 				continue
 			}
+			e = s.P.ShownEvent(who, e)
 			// Who answered a question is called by name (shownEvent).
 			if e.Kind == envelope.KindResumed {
 				e = shownEvent(s.P.Names(who.Tenant), e)

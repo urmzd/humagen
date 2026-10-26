@@ -854,9 +854,11 @@ export const defaultCopy = {
     needsFailed: "What needs you could not be loaded. It is all in the inbox.",
     newsFailed: "What's new could not be loaded. It is all in the inbox.",
     /** Home for a person with nothing waiting and nothing new: what Home is for. */
+    banner: { label: "Company announcement", markRead: "Mark as Read", hide: "Hide for Me", open: "Open Announcement" },
+    findHelp: { title: "Find Help", description: "Find a project and an agent for your work", label: "Describe the work", placeholder: "What are you working on?", search: "Find Help", searching: "Finding help", empty: "No matching projects and agents you can read were found.", failed: "Help could not be loaded. Try again.", choose: "Choose", open: "Open Project" },
     welcome: {
-      title: "Welcome",
-      text: "Ask an agent above to start. When an agent needs you, or someone posts in one of your projects, it shows here.",
+      title: "Welcome to Humagen",
+      text: "Your conversations start in your personal project. Publish a reviewed result to a shared project when it is ready.",
       /** For a person who cannot start a conversation here. */
       quiet: "When an agent needs you, or someone posts in one of your projects, it shows here.",
     },
