@@ -1606,6 +1606,36 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/discovery:
+    get:
+      operationId: discoverWorkspace
+      tags: [projects]
+      summary: Search readable projects, agents and conversations within server bounds
+      description: Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly.
+      x-permission: authenticated
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+        - {name: kinds, in: query, schema: {type: string}, description: "Comma-separated project, agent and conversation kinds. Omitted includes all permitted kinds."}
+        - {name: project, in: query, schema: {type: string}, description: An optional project scope. For agents this selects only agents available there; for conversations this selects their current project.}
+      responses:
+        "200":
+          description: At most limit readable navigation destinations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 50
+                    items: {$ref: "#/components/schemas/DiscoveryItem"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/project-templates:
     get:
       operationId: listProjectTemplates
@@ -1647,6 +1677,9 @@ paths:
               additionalProperties: false
               required: [name]
               properties:
+                archive_conversations:
+                  description: Explicitly copy at most 20 readable conversations as immutable text archives. Every archive read continues to require source access. Archives cannot accept messages or runs.
+                  type: boolean
                 name: {type: string, maxLength: 63}
                 parent: {type: string}
                 title: {type: string, maxLength: 80}
@@ -5748,6 +5781,9 @@ components:
       type: object
       required: [id, project, channel, visibility, participants, version, created_by, created_at, updated_at]
       properties:
+        read_only:
+          description: A saved project-fork archive. Its passive history is immutable and it accepts no messages or runs.
+          type: boolean
         moves:
           description: Number of committed placement changes, without former audience identities.
           type: integer
@@ -5797,6 +5833,17 @@ components:
           description: When anything last happened in it.
           type: string
           format: date-time
+    DiscoveryItem:
+      type: object
+      additionalProperties: false
+      required: [kind, id, title]
+      properties:
+        kind: {type: string, enum: [project, agent, conversation]}
+        id: {type: string}
+        title: {type: string, maxLength: 200}
+        project: {type: string}
+        channel: {type: string}
+        hue: {type: number, minimum: 0, maximum: 360}
     ProjectTemplate:
       type: object
       additionalProperties: false
@@ -5810,7 +5857,7 @@ components:
     ProjectForkOperation:
       type: object
       additionalProperties: false
-      required: [id, source, destination, state, projects, agents, memory]
+      required: [id, source, destination, state, projects, agents, memory, archives]
       properties:
         id: {type: string}
         source: {type: string}
@@ -5820,6 +5867,7 @@ components:
         projects: {type: integer, minimum: 1, maximum: 20}
         agents: {type: integer, minimum: 0, maximum: 20}
         memory: {type: integer, minimum: 0, maximum: 100}
+        archives: {type: integer, minimum: 0, maximum: 20}
     ThreadFork:
       description: Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals.
       type: object

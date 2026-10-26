@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
@@ -103,5 +105,47 @@ func TestForkCannotBeContinuedAfterSourceMembershipIsRemoved(t *testing.T) {
 	turns, _ := p.Runs.Conversation(tenant, fork.ID)
 	if len(turns) != 0 {
 		t.Fatal("source removal still invoked agents")
+	}
+}
+
+func TestPersonalSourceResultsCannotBeCopiedByForkOrBringBack(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	first := startThread(t, p, admin, platform.ThreadInput{Project: "Field", Text: "public seed", PostOnly: true})
+	fork, err := p.ForkThread(t.Context(), admin, first.Thread.ID, platform.ForkInput{Through: first.Message.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "private-reader", Model: "offline", Provider: "offline", SystemPrompt: "Read privately.", Tools: []string{platform.ToolSourceSearch}}, admin.Subject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "r11111111111111111111111111111111"
+	if err := p.Runs.Record(id, envelope.Tag{ID: "private-turn", Tenant: tenant, Agent: "private-reader", Origin: "api", Text: "private request", At: time.Now(), Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: fork.ID}}, rev.Rev); err != nil {
+		t.Fatal(err)
+	}
+	if _, ended := p.Runs.End(id, runs.Completed, "private result", "", time.Now()); !ended {
+		t.Fatal("test result not completed")
+	}
+	if _, err := p.ForkThread(t.Context(), admin, fork.ID, platform.ForkInput{Through: id}); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("personal result copied into new fork: %v", err)
+	}
+	if _, err := p.BringBackResult(t.Context(), admin, fork.ID, platform.BringBackInput{Run: id}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("personal result published into parent: %v", err)
+	}
+}
+
+func TestForkPreservesTheChosenMessageBranchUsingTheLiveContextPath(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	first := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "common root", PostOnly: true})
+	post(t, p, operator, first.Thread.ID, platform.MessageInput{Text: "off-branch sibling", After: first.Message.ID, PostOnly: true})
+	chosen := post(t, p, operator, first.Thread.ID, platform.MessageInput{Text: "chosen branch", After: first.Message.ID, PostOnly: true})
+	fork, err := p.ForkThread(t.Context(), operator, first.Thread.ID, platform.ForkInput{Through: chosen.Message.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fork.Fork.Context) != 2 || fork.Fork.Context[0].Text != "common root" || fork.Fork.Context[1].Text != "chosen branch" {
+		t.Fatalf("fork copied a sibling branch: %+v", fork.Fork.Context)
 	}
 }

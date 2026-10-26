@@ -404,7 +404,7 @@ export function NewProject({
                 ...roomy.map((p) => ({
                   value: p.name,
                   label: titleOf(p),
-                  hint: [p.initiative ? defaultCopy.projectTemplates.underInitiative : kindWord(p.kind, own), above(p).length > 0 ? words.within(above(p)) : null].filter(Boolean).join(" · "),
+                  hint: [p.initiative ? defaultCopy.projectTemplates.underInitiative : kindWord(p.kind, own), above(p).length > 0 ? words.within(above(p)) : null].filter(Boolean).join(", "),
                 })),
               ]}
               onChange={setParentName}
@@ -1319,7 +1319,7 @@ export function ProjectPage({
           {meta}
           {lead && (
             <>
-              <span aria-hidden>·</span>
+
               {words.lead}
               {lead === "auto" ? "@auto" : (
                 <span className="inline-flex items-center gap-1">

@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 const (
@@ -36,6 +39,7 @@ type ProjectCopy struct {
 	Parent   string             `json:"parent"`
 	Config   projects.Project   `json:"config"`
 	Channels []projects.Channel `json:"channels"`
+	Rules    []sourcelinks.Rule `json:"rules,omitempty"`
 }
 type AgentCopy struct {
 	Source  string              `json:"source"`
@@ -43,10 +47,20 @@ type AgentCopy struct {
 	Project string              `json:"project"`
 	Spec    agentspec.AgentSpec `json:"spec"`
 }
+type ArchiveCopy struct {
+	SourceThread string             `json:"source_thread"`
+	Project      string             `json:"project"`
+	Channel      string             `json:"channel"`
+	Title        string             `json:"title"`
+	Through      string             `json:"through"`
+	Context      []threads.ForkTurn `json:"context"`
+}
+
 type NoteCopy struct {
-	Project  string `json:"project"`
-	SourceID string `json:"source_id"`
-	Text     string `json:"text"`
+	Project  string         `json:"project"`
+	SourceID string         `json:"source_id"`
+	Text     string         `json:"text"`
+	Details  memory.Details `json:"details,omitempty"`
 }
 
 // Plan is captured once from authorized source records. A retry never broadens it.
@@ -57,6 +71,7 @@ type Plan struct {
 	Projects    []ProjectCopy `json:"projects"`
 	Agents      []AgentCopy   `json:"agents"`
 	Notes       []NoteCopy    `json:"notes"`
+	Archives    []ArchiveCopy `json:"archives,omitempty"`
 }
 
 // Record is private to its creator. Ready is determined from the destination's
@@ -95,7 +110,7 @@ func Open(st state.Store) (*Store, error) {
 }
 func validate(record Record) error {
 	plan := record.Plan
-	if record.By == "" || record.At.IsZero() || len(record.ID) != 19 || !projects.ValidName(plan.Source) || !projects.ValidName(plan.Destination) || plan.Source == plan.Destination || len(plan.Projects) == 0 || len(plan.Projects) > MaxProjects || len(plan.Agents) > MaxAgents || len(plan.Notes) > MaxNotes || len(record.Error) > 1000 {
+	if record.By == "" || record.At.IsZero() || len(record.ID) != 19 || !projects.ValidName(plan.Source) || !projects.ValidName(plan.Destination) || plan.Source == plan.Destination || len(plan.Projects) == 0 || len(plan.Projects) > MaxProjects || len(plan.Agents) > MaxAgents || len(plan.Notes) > MaxNotes || len(plan.Archives) > 20 || len(record.Error) > 1000 {
 		return ErrInvalid
 	}
 	projectsByName := map[string]bool{}
@@ -121,6 +136,18 @@ func validate(record Record) error {
 	for _, note := range plan.Notes {
 		if !projectsByName[note.Project] || note.SourceID == "" || note.Text == "" {
 			return ErrInvalid
+		}
+	}
+	for _, copy := range plan.Archives {
+		if !threads.ValidID(copy.SourceThread) || !projectsByName[copy.Project] || len(copy.Context) == 0 || len(copy.Context) > threads.MaxForkTurns {
+			return ErrInvalid
+		}
+		bytes := 0
+		for _, turn := range copy.Context {
+			bytes += len(turn.Text) + len(turn.By) + len(turn.Name)
+			if bytes > threads.MaxForkBytes {
+				return ErrInvalid
+			}
 		}
 	}
 	raw, err := json.Marshal(record)

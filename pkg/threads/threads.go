@@ -217,6 +217,7 @@ type Thread struct {
 	// started, only a thread with a surface has one, and the thread's
 	// turns start with it.
 	Announcement string `json:"announcement,omitempty"`
+	ReadOnly     bool   `json:"read_only,omitempty"`
 	// Fork is immutable passive history from another conversation.
 	Fork *Fork `json:"fork,omitempty"`
 	// Version counts the edits made to the record: its title, visibility,
@@ -394,6 +395,9 @@ func (p Participant) validate() error {
 // validate checks a thread's record on its own. A private thread is a valid
 // record, so one written later still loads; writing one is refused.
 func (t Thread) validate() error {
+	if t.ReadOnly && (t.Fork == nil || t.Surface != nil || len(t.Agents) > 0 || t.Default != "") {
+		return fmt.Errorf("%w: an archive holds passive fork context only", ErrInvalid)
+	}
 	switch {
 	case !ValidID(t.ID):
 		return fmt.Errorf("%w: a thread's id is th- and 16 hex digits, or a run's id", ErrInvalid)

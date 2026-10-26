@@ -19,6 +19,7 @@ export const defaultCopy = {
   /** The product, as a sender: what every system message is shown from, whatever name its record keeps. */
   product: "Humagen",
   forking: {
+    archive: "Read-only conversation archive",
     title: "Fork Conversation",
     create: "Create Fork",
     name: "Fork title",
@@ -76,6 +77,9 @@ export const defaultCopy = {
     failed: "Templates could not be loaded.",
   },
   projectFork: {
+    archive: "Copy Conversations as Read-only Archive",
+    archiveHint:
+      "Copy saved text only, with source access still required. Archives cannot send messages or run agents.",
     origin: "Forked from",
     originHidden: "Forked project",
     title: "Fork Project",
@@ -88,7 +92,7 @@ export const defaultCopy = {
     memory: "Confirmed memory to copy",
     sources: "Sources to link",
     noMemory: "No confirmed memory is available.",
-    hint: "Copy project structure, agent configuration and skills. Conversations, schedules and approvals stay in the source. The new project is private; live bindings are detached and no integration rule is activated.",
+    hint: "Copy project structure, agent configuration and skills. Conversations, schedules and approvals stay in the source. The new project is private; integration rules are copied disabled and live bindings are detached.",
     hidden: "The copy stays hidden and cannot run until every step is ready.",
     failed: "The project could not be copied.",
     cancel: "Cancel",
@@ -101,11 +105,16 @@ export const defaultCopy = {
       `${projects} projects, ${agents} agents and ${memory} confirmed memories`,
   },
   projectSwitcher: {
-    title: "Switch Project",
-    search: "Find a project",
-    empty: "No visible projects match.",
-    failed: "Projects could not be loaded.",
-    loading: "Finding projects…",
+    title: "Search Workspace",
+    search: "Find projects, agents or conversations",
+    kinds: "Search in",
+    all: "All",
+    projects: "Projects",
+    agents: "Agents",
+    conversations: "Conversations",
+    empty: "No readable destinations match.",
+    failed: "Search could not be loaded.",
+    loading: "Searching…",
     open: "Switch Project",
   },
   conversation: {

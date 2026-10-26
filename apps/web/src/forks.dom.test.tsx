@@ -61,10 +61,10 @@ test("People & Access changes membership with the recorded version and explains 
 
 test("project switcher uses a bounded server search and preserves navigable links",async()=>{
  let query:URLSearchParams|undefined;
- net=stubFetch({"GET /api/projects":(_body,url)=>{query=url;return {projects:[{name:"Launch",title:"Launch Plan",path:[]}],next:null};}});
+ net=stubFetch({"GET /api/discovery":(_body,url)=>{query=url;return {items:[{kind:"project",id:"Launch",title:"Launch Plan"}]};}});
  const opened:unknown[]=[];
  render(<QuickSwitcher onClose={()=>{}} onGo={(route)=>opened.push(route)}/>);
- const link=await screen.findByRole("link",{name:"Launch Plan"});
+ const link=await screen.findByRole("link",{name:/^Launch Plan/});
  assert.equal(query?.get("limit"),"20");
  fireEvent.click(link);
  assert.deepEqual(opened,[{page:"project",name:"Launch",tab:"inbox"}]);
@@ -81,6 +81,7 @@ test("project fork copies only selected confirmed memory and does not navigate b
  render(<ForkProject source="Launch" projects={[]} onClose={()=>{}} onReady={(name)=>opened.push(name)}/>);
  fireEvent.click(await screen.findByRole("checkbox",{name:"Confirmed decision"}));
  assert.equal(screen.queryByText("Pending proposal"),null);
+ fireEvent.click(screen.getByRole("checkbox",{name:defaultCopy.projectFork.archive}));
  fireEvent.click(screen.getByRole("button",{name:defaultCopy.projectFork.create}));
  await screen.findByText("Copy stopped before publication.");
  assert.deepEqual(opened,[]);
@@ -90,6 +91,7 @@ test("project fork copies only selected confirmed memory and does not navigate b
  assert.equal(bodies.length,2);
  assert.deepEqual(bodies[0],bodies[1]);
  assert.deepEqual((bodies[0] as {memory:string[]}).memory,["n1"]);
+ assert.equal((bodies[0] as {archive_conversations:boolean}).archive_conversations,true);
 });
 
 
@@ -106,4 +108,19 @@ test("project creation chooses a native template and can live under an initiativ
  fireEvent.click(screen.getByRole("button",{name:defaultCopy.projects.createProject}));
  await waitFor(()=>assert.ok(posted));
  assert.deepEqual(posted,{name:"Launch",template:"delivery",kind:"team",parent:"Strategy"});
+});
+
+
+test("global discovery navigates real agent and conversation results using bounded kind filters",async()=>{
+ const seen:URLSearchParams[]=[];const opened:unknown[]=[];
+ net=stubFetch({"GET /api/discovery":(_body,query)=>{seen.push(query);return {items:query.get("kinds")==="conversation"?[{kind:"conversation",id:"th-task",title:"Review supplier plan",project:"Launch",channel:"general"}]:[{kind:"agent",id:"planner",title:"planner",hue:150}]};}});
+ render(<QuickSwitcher onClose={()=>{}} onGo={(route)=>opened.push(route)}/>);
+ fireEvent.click(await screen.findByRole("link",{name:/^planner/}));
+ assert.deepEqual(opened,[{page:"agent",name:"planner",tab:"prompt"}]);
+ fireEvent.change(screen.getByLabelText(defaultCopy.projectSwitcher.kinds),{target:{value:"conversation"}});
+ fireEvent.click(await screen.findByRole("link",{name:/^Review supplier plan/}));
+ assert.deepEqual(opened[1],{page:"conversation",id:"th-task"});
+ assert.equal(seen.at(-1)?.get("limit"),"20");
+ assert.equal(seen.at(-1)?.get("kinds"),"conversation");
+ assert.ok(net.seen.every((request)=>request.path.startsWith("/api/discovery?")));
 });

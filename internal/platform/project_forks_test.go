@@ -1,6 +1,7 @@
 package platform_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,8 +16,10 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 func projectForkSource(t *testing.T, p *platform.Platform) string {
@@ -269,5 +272,111 @@ func TestProjectForkResumeRechecksSourceAccessAfterRevocation(t *testing.T) {
 	}
 	if p.Seer(operator).Project("Copy") {
 		t.Fatal("failed copy published after source revocation")
+	}
+}
+
+func TestProjectForkExplicitArchivesArePassiveConfinedAndReplayable(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := &faultyIn{Store: open(t)}
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}})
+		projectForkSource(t, p)
+		first := startThread(t, p, admin, platform.ThreadInput{Project: "Field", Text: "saved conversation text", PostOnly: true})
+		if _, err := p.SourceLinks.Put(tenant, sourcelinks.Rule{ID: "launch-label", Provider: "github", Attribute: "label", Pattern: "original", Project: "Field", Mode: sourcelinks.Auto}); err != nil {
+			t.Fatal(err)
+		}
+		st.fail("threads")
+		failed, err := p.ForkProject(t.Context(), admin, "Field", platform.ProjectForkInput{Name: "Copy", ArchiveConversations: true})
+		if err != nil || failed.State != "failed" || failed.Archives != 1 {
+			t.Fatalf("archive copy failure: %+v %v", failed, err)
+		}
+		assertUnpublishedProjectFork(t, p)
+		st.fail("")
+		post(t, p, admin, first.Thread.ID, platform.MessageInput{Text: "later source message must not enter saved archive", PostOnly: true})
+		if _, err := p.SourceLinks.Put(tenant, sourcelinks.Rule{ID: "launch-label", Provider: "github", Attribute: "label", Pattern: "changed", Project: "Field", Mode: sourcelinks.Auto}); err != nil {
+			t.Fatal(err)
+		}
+		again, err := platform.New(platform.Config{Workspace: t.TempDir(), Backends: platform.Backends{State: st, Agents: p.Agents}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ready, err := again.ForkProject(t.Context(), admin, "Field", platform.ProjectForkInput{Name: "Copy"})
+		if err != nil || ready.State != "ready" || ready.Archives != 1 {
+			t.Fatalf("archive resume: %+v %v", ready, err)
+		}
+		rows, _, err := again.ThreadPageAs(admin, runs.ThreadQuery{Projects: []string{"Copy"}})
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("archive rows: %+v %v", rows, err)
+		}
+		archive, err := again.ThreadRecord(tenant, rows[0].ID)
+		if err != nil || !archive.ReadOnly || archive.Fork == nil || len(archive.Fork.Context) != 1 || archive.Fork.Context[0].Text != "saved conversation text" {
+			t.Fatalf("archive was not immutable passive context: %+v %v", archive, err)
+		}
+		if _, err := again.PostMessage(t.Context(), admin, archive.ID, platform.MessageInput{Text: "@planner never execute"}); !errors.Is(err, platform.ErrForbidden) {
+			t.Fatalf("archive accepted message: %v", err)
+		}
+		if _, _, err := again.Threads.Post(tenant, archive.ID, threads.Message{By: admin.Subject, Text: "no store bypass"}, time.Now()); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("archive accepted direct store message: %v", err)
+		}
+		_, err = again.Invoke(t.Context(), envelope.Tag{ID: "archive-no-run", Tenant: tenant, Agent: "copy-planner", Origin: "api", Text: "never execute", Meta: map[string]string{runs.MetaProject: "Copy", runs.MetaThread: archive.ID}})
+		if err == nil {
+			t.Fatal("archive accepted direct run")
+		}
+		for _, rule := range again.SourceLinks.List(tenant) {
+			if rule.Project == "Copy" && (rule.Mode != sourcelinks.Off || rule.Pattern != "original") {
+				t.Fatalf("copied rule activated or read a new snapshot: %+v", rule)
+			}
+		}
+	})
+}
+
+func TestCopiedMemoryStripsNonportableProvenanceWhenAudienceExpands(t *testing.T) {
+	p := startWith(t, platform.Config{})
+	projectForkSource(t, p)
+	expires := time.Now().Add(time.Hour)
+	note, err := p.Memory.AddDetailed(tenant, memory.ProjectOwner("Field"), "A selected confirmed decision", memory.Consolidated, memory.Approved, "r-private-original", time.Now(), memory.Details{Kind: memory.Decision, ExpiresAt: expires})
+	if err != nil {
+		t.Fatal(err)
+	}
+	author := operator
+	author.Scopes = []auth.Permission{auth.ProjectsWrite, auth.AgentsWrite, auth.AgentsRead}
+	op, err := p.ForkProject(t.Context(), author, "Field", platform.ProjectForkInput{Name: "Copy", Memory: []string{note.ID}})
+	if err != nil || op.State != "ready" {
+		t.Fatalf("copy: %+v %v", op, err)
+	}
+	copied, _ := p.Projects.Get(tenant, "Copy")
+	_, err = p.Projects.Update(tenant, "Copy", copied.Version, govern, time.Now(), func(pr *projects.Project) error {
+		pr.Members = append(pr.Members, projects.Entry{Who: "peer", Role: projects.Member})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := p.ProjectTree(tenant).Subtree("Field")
+	for i := len(names) - 1; i >= 0; i-- {
+		source, _ := p.Projects.Get(tenant, names[i])
+		if _, err = p.Projects.Update(tenant, source.Name, source.Version, govern, time.Now(), func(pr *projects.Project) error {
+			pr.Members = []projects.Entry{{Who: "original-owner", Role: projects.Owner}}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	peer := operator
+	peer.Subject = "peer"
+	if !p.Seer(peer).Project("Copy") || p.Seer(peer).Project("Field") {
+		t.Fatal("audience fixture does not isolate original source")
+	}
+	notes := p.Memory.List(tenant, memory.ProjectOwner("Copy"))
+	if len(notes) != 1 || notes[0].Kind != memory.Decision || !notes[0].ExpiresAt.Equal(expires) || notes[0].By != author.Subject || notes[0].ReviewedBy != author.Subject || notes[0].Source != memory.Person {
+		t.Fatalf("copied note retained nonportable metadata: %+v", notes)
+	}
+	encoded, _ := json.Marshal(notes)
+	if bytes.Contains(encoded, []byte("r-private-original")) {
+		t.Fatal("copied provenance disclosed original private run")
+	}
+	copied, _ = p.Projects.Get(tenant, "Copy")
+	shown := p.Seer(peer).ProjectForkOrigin(copied)
+	if shown.Fork == nil || shown.Fork.Source != "" || shown.Fork.By != "" {
+		t.Fatalf("lineage disclosed hidden source: %+v", shown.Fork)
 	}
 }

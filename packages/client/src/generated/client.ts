@@ -21,6 +21,7 @@ import type {
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
+  DiscoverWorkspaceResponse,
   EvalRun,
   EvalSuite,
   ForkProjectBody,
@@ -1732,6 +1733,35 @@ here too (429).
     return this.rawRequest<ThreadPosted>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly. */
+  async discoverWorkspace(q?: string, limit?: number, kinds?: string, project?: string, options?: RequestOptions): Promise<DiscoverWorkspaceResponse> {
+    let path = "/api/discovery";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (kinds !== undefined && kinds !== null) _q.set("kinds", String(kinds));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<DiscoverWorkspaceResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async discoverWorkspaceRaw(q?: string, limit?: number, kinds?: string, project?: string, options?: RequestOptions): Promise<ApiResponse<DiscoverWorkspaceResponse>> {
+    let path = "/api/discovery";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (kinds !== undefined && kinds !== null) _q.set("kinds", String(kinds));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<DiscoverWorkspaceResponse>("GET", path, {
       ...options,
     });
   }

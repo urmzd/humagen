@@ -203,16 +203,7 @@ func actionsOf(f projectFacts, p projects.Project) []string {
 // out every agent that lives in a project the caller may not read, and its
 // knowledge sources are shown only to a caller who may read knowledge.
 func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
-	if p.Fork != nil {
-		origin := *p.Fork
-		if !f.seer.Project(origin.Source) {
-			origin.Source = ""
-			origin.By = ""
-		} else {
-			origin.By = s.P.Names(f.who.Tenant).Key(origin.By)
-		}
-		p.Fork = &origin
-	}
+	p = f.seer.ProjectForkOrigin(p)
 	chain := f.tree.Chain(p.Name)
 	p.Agents = f.seer.ProjectAgents(p.Agents)
 	p.Knowledge = f.seer.Sources(p.Knowledge)

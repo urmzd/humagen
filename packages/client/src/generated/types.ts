@@ -519,6 +519,8 @@ visibility and an optional default agent. Its turns are its people's
 messages and its agents' runs.
  */
 export interface Thread {
+  /** A saved project-fork archive. Its passive history is immutable and it accepts no messages or runs. */
+  read_only?: boolean;
   /** Number of committed placement changes, without former audience identities. */
   moves?: number;
   /** `th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it. */
@@ -553,6 +555,15 @@ not selected. Absent when none is selected.
   updated_at: string;
 }
 
+export interface DiscoveryItem {
+  kind: "project" | "agent" | "conversation";
+  id: string;
+  title: string;
+  project?: string;
+  channel?: string;
+  hue?: number;
+}
+
 export interface ProjectTemplate {
   name: string;
   title: string;
@@ -570,6 +581,7 @@ export interface ProjectForkOperation {
   projects: number;
   agents: number;
   memory: number;
+  archives: number;
 }
 
 /** Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals. */
@@ -3143,11 +3155,16 @@ export interface ListThreadsResponse {
   next: string | null;
 }
 
+export interface DiscoverWorkspaceResponse {
+  items: DiscoveryItem[];
+}
+
 export interface ListProjectTemplatesResponse {
   templates: ProjectTemplate[];
 }
 
 export interface ForkProjectBody {
+  archive_conversations?: boolean;
   name: string;
   parent?: string;
   title?: string;

@@ -1596,6 +1596,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatal("governance-only private read was not in the audit")
 	}
 
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?q=Field&limit=5", "", http.StatusOK)
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?limit=51", "", http.StatusBadRequest)
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?kinds=unknown", "", http.StatusBadRequest)
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?project=UnknownProject", "", http.StatusNotFound)
 	templates := c.call(ana, "GET", "/api/project-templates", "/api/project-templates", "", http.StatusOK)
 	if len(sliceOf(templates.field("templates"))) != 3 {
 		t.Fatalf("template catalog: %s", templates.raw)

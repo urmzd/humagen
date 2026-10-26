@@ -17,15 +17,18 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // ProjectForkInput selects the destination and explicitly confirmed context.
 type ProjectForkInput struct {
-	Name    string   `json:"name"`
-	Parent  string   `json:"parent,omitempty"`
-	Title   string   `json:"title,omitempty"`
-	Memory  []string `json:"memory,omitempty"`
-	Sources []string `json:"sources,omitempty"`
+	ArchiveConversations bool     `json:"archive_conversations,omitempty"`
+	Name                 string   `json:"name"`
+	Parent               string   `json:"parent,omitempty"`
+	Title                string   `json:"title,omitempty"`
+	Memory               []string `json:"memory,omitempty"`
+	Sources              []string `json:"sources,omitempty"`
 }
 
 type ProjectForkOperation struct {
@@ -37,6 +40,7 @@ type ProjectForkOperation struct {
 	Projects    int    `json:"projects"`
 	Agents      int    `json:"agents"`
 	Memory      int    `json:"memory"`
+	Archives    int    `json:"archives"`
 }
 
 func (p *Platform) projectForkView(tenant string, record projectforks.Record) ProjectForkOperation {
@@ -48,7 +52,9 @@ func (p *Platform) projectForkView(tenant string, record projectforks.Record) Pr
 	if err == nil && pr.Fork != nil && pr.Fork.Operation == record.ID && pr.Fork.Ready {
 		state = "ready"
 	}
-	view := ProjectForkOperation{ID: record.ID, Source: record.Plan.Source, Destination: record.Plan.Destination, State: state, Projects: len(record.Plan.Projects), Agents: len(record.Plan.Agents), Memory: len(record.Plan.Notes)}
+	view := ProjectForkOperation{Archives: len(record.Plan.Archives), ID: record.ID, Source: record.Plan.Source, Destination: record.Plan.Destination, State: state, Projects: len(record.Plan.Projects), Agents: len(record.Plan.Agents), Memory: len(slices.DeleteFunc(slices.Clone(record.Plan.Notes), func(note projectforks.NoteCopy) bool {
+		return !note.Details.ExpiresAt.IsZero() && !note.Details.ExpiresAt.After(p.now())
+	}))}
 	if state != "ready" {
 		view.Error = record.Error
 	}
@@ -149,7 +155,7 @@ func (p *Platform) ForkProject(ctx context.Context, who auth.Principal, source s
 		}
 	}
 	for _, copy := range record.Plan.Projects {
-		if len(seer.Sources(copy.Config.Knowledge)) != len(copy.Config.Knowledge) {
+		if !p.forkProjectSourcesAllowed(who, copy.Name, copy.Config.Knowledge) {
 			return ProjectForkOperation{}, projects.ErrNotFound
 		}
 	}
@@ -196,7 +202,7 @@ func (p *Platform) planProjectFork(ctx context.Context, who auth.Principal, sour
 		known[src.Name] = true
 	}
 	for _, name := range in.Sources {
-		if !known[name] {
+		if !known[name] || !p.SourceVisible(who, name) || !p.SourceMayPublishIn(who.Tenant, name, in.Name) {
 			return plan, projects.ErrNotFound
 		}
 	}
@@ -298,20 +304,36 @@ func (p *Platform) planProjectFork(ctx context.Context, who auth.Principal, sour
 				config.Title = in.Title
 			}
 		}
-		plan.Projects = append(plan.Projects, projectforks.ProjectCopy{Source: name, Name: mapped[name], Parent: parent, Config: config, Channels: channels})
+		plan.Projects = append(plan.Projects, projectforks.ProjectCopy{Source: name, Name: mapped[name], Parent: parent, Config: config, Channels: channels, Rules: p.SourceLinkRulesForFork(who.Tenant, name)})
 	}
 	notes := p.Memory.List(who.Tenant, memory.ProjectOwner(source))
 	for _, id := range in.Memory {
 		found := false
 		for _, note := range notes {
-			if note.ID == id && note.Status == memory.Approved {
-				plan.Notes = append(plan.Notes, projectforks.NoteCopy{Project: in.Name, SourceID: id, Text: note.Text})
+			if note.ID == id && note.Status == memory.Approved && (note.ExpiresAt.IsZero() || note.ExpiresAt.After(p.now())) {
+				plan.Notes = append(plan.Notes, projectforks.NoteCopy{Project: in.Name, SourceID: id, Text: note.Text, Details: memory.Details{Kind: note.Kind, ExpiresAt: note.ExpiresAt}})
 				found = true
 				break
 			}
 		}
 		if !found {
 			return plan, projects.ErrNotFound
+		}
+	}
+	if in.ArchiveConversations {
+		rows, next, err := p.ThreadPageAs(who, runs.ThreadQuery{Projects: names, Limit: 21})
+		if err != nil {
+			return plan, err
+		}
+		if len(rows) > 20 || next != "" {
+			return plan, projects.ErrLimit
+		}
+		for _, row := range rows {
+			archive, err := p.planProjectArchive(ctx, who, row.ID, mapped)
+			if err != nil {
+				return plan, err
+			}
+			plan.Archives = append(plan.Archives, archive)
 		}
 	}
 	return plan, nil
@@ -412,8 +434,34 @@ func (p *Platform) copyProjectFork(ctx context.Context, who auth.Principal, reco
 			}
 		}
 	}
+	for _, copy := range record.Plan.Projects {
+		if err := p.RestoreSourceLinkRulesDisabled(who.Tenant, copy.Name, record.ID, copy.Rules); err != nil {
+			return err
+		}
+	}
 	for _, note := range record.Plan.Notes {
-		if _, err := p.Memory.Add(who.Tenant, memory.ProjectOwner(note.Project), note.Text, memory.Person, memory.Approved, who.Subject, p.now()); err != nil {
+		if !note.Details.ExpiresAt.IsZero() && !note.Details.ExpiresAt.After(p.now()) {
+			continue
+		}
+		if _, err := p.Memory.AddDetailed(who.Tenant, memory.ProjectOwner(note.Project), note.Text, memory.Person, memory.Approved, who.Subject, p.now(), note.Details); err != nil {
+			return err
+		}
+	}
+	for _, archive := range record.Plan.Archives {
+		if !p.SeesThread(who, archive.SourceThread) {
+			return projects.ErrNotFound
+		}
+		sum := sha256.Sum256([]byte(record.ID + "\x00" + archive.SourceThread))
+		id := "th-" + hex.EncodeToString(sum[:8])
+		if current, err := p.Threads.Get(who.Tenant, id); err == nil {
+			if !current.ReadOnly || current.Project != archive.Project || current.Fork == nil || current.Fork.SourceThread != archive.SourceThread || current.Fork.By != who.Subject || !current.Fork.At.Equal(record.At) || !reflect.DeepEqual(current.Fork.Context, archive.Context) {
+				return threads.ErrExists
+			}
+			continue
+		} else if !errors.Is(err, threads.ErrNotFound) {
+			return err
+		}
+		if _, err := p.Threads.Create(who.Tenant, threads.Thread{ID: id, Project: archive.Project, Channel: archive.Channel, Title: archive.Title, Visibility: threads.Private, CreatedBy: who.Subject, ReadOnly: true, Fork: &threads.Fork{SourceThread: archive.SourceThread, Through: archive.Through, By: who.Subject, At: record.At, Context: archive.Context}}, p.now()); err != nil {
 			return err
 		}
 	}
@@ -421,7 +469,7 @@ func (p *Platform) copyProjectFork(ctx context.Context, who auth.Principal, reco
 		if !p.Seer(who).Project(copy.Source) {
 			return projects.ErrNotFound
 		}
-		if len(p.Seer(who).Sources(copy.Config.Knowledge)) != len(copy.Config.Knowledge) {
+		if !p.forkProjectSourcesAllowed(who, copy.Name, copy.Config.Knowledge) {
 			return projects.ErrNotFound
 		}
 	}
@@ -448,4 +496,54 @@ func projectForkAgentName(project, agent string) string {
 		slug += "-" + hex.EncodeToString(sum[:4])
 	}
 	return slug
+}
+
+func (p *Platform) forkProjectSourcesAllowed(who auth.Principal, destination string, names []string) bool {
+	for _, name := range names {
+		if !p.SourceVisible(who, name) || !p.SourceMayPublishIn(who.Tenant, name, destination) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *Platform) planProjectArchive(ctx context.Context, who auth.Principal, id string, mapped map[string]string) (projectforks.ArchiveCopy, error) {
+	mu := p.moves.of(who.Tenant, id)
+	mu.RLock()
+	defer mu.RUnlock()
+	source, err := p.ThreadRecord(who.Tenant, id)
+	if err != nil || !p.SeesThread(who, id) {
+		return projectforks.ArchiveCopy{}, threads.ErrNotFound
+	}
+	if err := p.checkForkDepth(who.Tenant, source); err != nil {
+		return projectforks.ArchiveCopy{}, err
+	}
+	destination, ok := mapped[source.Project]
+	if !ok {
+		return projectforks.ArchiveCopy{}, threads.ErrNotFound
+	}
+	through := ""
+	for _, turn := range p.turnsOf(who.Tenant, source) {
+		if turn.Message != nil {
+			through = turn.Message.ID
+		}
+		if turn.Run != nil && turn.Run.Status.Terminal() && p.Seer(who).Run(*turn.Run) {
+			through = turn.Run.ID
+		}
+	}
+	var history []threads.ForkTurn
+	if through == "" && source.Fork != nil {
+		through = source.Fork.Through
+		history = slices.Clone(source.Fork.Context)
+	} else {
+		history, err = p.forkHistory(ctx, who, source, through)
+		if err != nil {
+			return projectforks.ArchiveCopy{}, err
+		}
+	}
+	title := source.Title
+	if title == "" && len(history) > 0 {
+		title = boundedTitle(history[0].Text)
+	}
+	return projectforks.ArchiveCopy{SourceThread: id, Project: destination, Channel: source.Channel, Title: title, Through: through, Context: history}, nil
 }

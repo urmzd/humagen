@@ -57,66 +57,14 @@ func (p *Platform) ForkThread(ctx context.Context, who auth.Principal, id string
 			known[source.Name] = true
 		}
 		for _, name := range *in.Sources {
-			if !known[name] {
+			if !known[name] || !p.SourceVisible(who, name) {
 				return threads.Thread{}, threads.ErrNotFound
 			}
 		}
 	}
-	// The lineage chain itself is bounded even when its saved text is short.
-	parent := source
-	for depth := 1; parent.Fork != nil; depth++ {
-		if depth >= threads.MaxForkDepth {
-			return threads.Thread{}, fmt.Errorf("%w: fork lineage is at most %d deep", threads.ErrInvalid, threads.MaxForkDepth)
-		}
-		parent, err = p.ThreadRecord(who.Tenant, parent.Fork.SourceThread)
-		if err != nil {
-			return threads.Thread{}, threads.ErrNotFound
-		}
-	}
-	history := []threads.ForkTurn{}
-	if source.Fork != nil {
-		history = append(history, source.Fork.Context...)
-	}
-	found := false
-	for _, turn := range p.turnsOf(who.Tenant, source) {
-		switch {
-		case turn.Message != nil:
-			m := turn.Message
-			history = append(history, threads.ForkTurn{Kind: threads.Person, By: m.By, Name: m.Name, Text: m.Text, At: m.At})
-			found = m.ID == in.Through
-		case turn.Run != nil:
-			r := turn.Run
-			if !r.Status.Terminal() {
-				if r.ID == in.Through {
-					return threads.Thread{}, fmt.Errorf("%w: fork from a completed turn", threads.ErrInvalid)
-				}
-				continue
-			}
-			if !p.Seer(who).Place(placeOfRun(*r)) {
-				continue
-			}
-			if r.Message == "" {
-				by, kind := runs.AskedBy(*r), threads.Person
-				if by == "" {
-					by, kind = "system", threads.System
-				}
-				history = append(history, threads.ForkTurn{Kind: kind, By: by, Text: r.Text, At: r.CreatedAt})
-			}
-			history = append(history, threads.ForkTurn{Kind: threads.Agent, By: r.Agent, Text: r.Answer, At: r.CreatedAt})
-			found = r.ID == in.Through
-		case turn.Announcement != nil:
-			a := turn.Announcement
-			history = append(history, threads.ForkTurn{Kind: a.Kind, By: a.By, Name: a.Name, Text: a.Text, At: a.At})
-		}
-		if len(history) > threads.MaxForkTurns {
-			return threads.Thread{}, fmt.Errorf("%w: fork history exceeds %d turns", threads.ErrInvalid, threads.MaxForkTurns)
-		}
-		if found {
-			break
-		}
-	}
-	if !found {
-		return threads.Thread{}, threads.ErrNotFound
+	history, err := p.forkHistory(ctx, who, source, in.Through)
+	if err != nil {
+		return threads.Thread{}, err
 	}
 	now := p.now()
 	attempt, err := p.BeginAudit(who, audit.Change{Action: "conversation.fork", Resource: "conversation", Scope: "personal", Subject: who.Subject, ID: id, Project: source.Project, Thread: id, After: map[string]string{"through": in.Through}})
@@ -136,14 +84,17 @@ type BringBackInput struct {
 
 // BringBackResult posts one explicit human message, with no tag interpretation,
 // tool execution, pending approvals or automatic agent invocation.
-func (p *Platform) BringBackResult(_ context.Context, who auth.Principal, id string, in BringBackInput) (threads.Message, error) {
+func (p *Platform) BringBackResult(ctx context.Context, who auth.Principal, id string, in BringBackInput) (threads.Message, error) {
 	fork, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil || !p.SeesThread(who, id) || fork.Fork == nil {
 		return threads.Message{}, threads.ErrNotFound
 	}
 	run, err := p.Runs.Get(who.Tenant, in.Run)
-	if err != nil || run.Thread != id || run.Status != runs.Completed || !p.Seer(who).Place(placeOfRun(run)) {
+	if err != nil || run.Thread != id || run.Status != runs.Completed || !p.Seer(who).Run(run) {
 		return threads.Message{}, threads.ErrNotFound
+	}
+	if p.RunUsesPersonalSources(ctx, run) {
+		return threads.Message{}, fmt.Errorf("%w: personal-source results stay in their original conversation", ErrForbidden)
 	}
 	mu := p.moves.of(who.Tenant, fork.Fork.SourceThread)
 	mu.RLock()
@@ -241,4 +192,89 @@ func (p *Platform) forkSourceSelection(tenant, thread string) *[]string {
 	}
 	names := slices.Clone(*th.Fork.Sources)
 	return &names
+}
+
+// forkHistory is the passive snapshot used by interactive forks and read-only
+// project archives. The caller holds the source placement lock.
+func (p *Platform) forkHistory(ctx context.Context, who auth.Principal, source threads.Thread, through string) ([]threads.ForkTurn, error) {
+	if err := p.checkForkDepth(who.Tenant, source); err != nil {
+		return nil, err
+	}
+	var turns []threads.Turn
+	if strings.HasPrefix(through, "m-") {
+		message, err := p.Threads.Message(who.Tenant, source.ID, through)
+		if err != nil {
+			return nil, threads.ErrNotFound
+		}
+		turns = append(p.roomBefore(who.Tenant, source, message), threads.MessageTurn(message))
+	} else {
+		run, err := p.Runs.Get(who.Tenant, through)
+		if err != nil || run.Thread != source.ID || !p.Seer(who).Run(run) {
+			return nil, threads.ErrNotFound
+		}
+		if !run.Status.Terminal() {
+			return nil, fmt.Errorf("%w: fork from a completed turn", threads.ErrInvalid)
+		}
+		path, err := p.Runs.Path(who.Tenant, run.ID)
+		if err != nil {
+			return nil, threads.ErrNotFound
+		}
+		turns = p.branchBefore(who.Tenant, source, path)
+	}
+	history := []threads.ForkTurn{}
+	seer := p.Seer(who)
+	for _, turn := range turns {
+		switch {
+		case turn.Message != nil:
+			m := turn.Message
+			if m.Thread != source.ID {
+				return nil, threads.ErrNotFound
+			}
+			history = append(history, threads.ForkTurn{Kind: threads.Person, By: m.By, Name: m.Name, Text: m.Text, At: m.At})
+		case turn.Run != nil:
+			r := turn.Run
+			if r.Thread != source.ID {
+				return nil, threads.ErrNotFound
+			}
+			if !seer.Run(*r) {
+				continue
+			}
+			if p.RunUsesPersonalSources(ctx, *r) {
+				return nil, fmt.Errorf("%w: personal-source results stay in their original conversation", threads.ErrInvalid)
+			}
+			if !r.Status.Terminal() {
+				continue
+			}
+			if r.Message == "" {
+				by, kind := runs.AskedBy(*r), threads.Person
+				if by == "" {
+					by, kind = "system", threads.System
+				}
+				history = append(history, threads.ForkTurn{Kind: kind, By: by, Text: r.Text, At: r.CreatedAt})
+			}
+			history = append(history, threads.ForkTurn{Kind: threads.Agent, By: r.Agent, Text: threads.PassiveReply(*r), At: r.CreatedAt})
+		case turn.Announcement != nil:
+			ann := turn.Announcement
+			history = append(history, threads.ForkTurn{Kind: ann.Kind, By: ann.By, Name: ann.Name, Text: ann.Text, At: ann.At})
+		}
+		if len(history) > threads.MaxForkTurns {
+			return nil, fmt.Errorf("%w: fork history exceeds %d turns", threads.ErrInvalid, threads.MaxForkTurns)
+		}
+	}
+	return history, nil
+}
+
+func (p *Platform) checkForkDepth(tenant string, source threads.Thread) error {
+	parent := source
+	for depth := 1; parent.Fork != nil; depth++ {
+		if depth >= threads.MaxForkDepth {
+			return fmt.Errorf("%w: fork lineage is at most %d deep", threads.ErrInvalid, threads.MaxForkDepth)
+		}
+		next, err := p.ThreadRecord(tenant, parent.Fork.SourceThread)
+		if err != nil {
+			return threads.ErrNotFound
+		}
+		parent = next
+	}
+	return nil
 }

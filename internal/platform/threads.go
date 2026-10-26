@@ -257,6 +257,9 @@ func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) 
 	if err == nil && th.Fork != nil && !p.SeesThread(person, at.Thread) {
 		return false, threads.ErrNotFound
 	}
+	if err == nil && th.ReadOnly {
+		return false, fmt.Errorf("%w: this conversation is a read-only archive", ErrForbidden)
+	}
 	if err != nil || th.Visibility != threads.Private || takesPart(th, person.Subject) {
 		return keeps, nil
 	}

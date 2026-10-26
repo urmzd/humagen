@@ -55,7 +55,7 @@ export function ForkConversation({ thread, through, onClose, onForked }: {
 export function ForkContext({ thread }: { thread: Thread }) {
   if (!thread.fork) return null;
   return <section className="flex min-w-0 flex-col gap-3">
-    <h3 className="text-aui-sm font-medium">{words.context}</h3>
+    <h3 className="text-aui-sm font-medium">{thread.read_only ? words.archive : words.context}</h3>
     <a className="text-aui-sm text-aui-accent underline" href={href({ page: "conversation", id: thread.fork.source_thread })}>{words.parent}</a>
     <p className="text-aui-xs text-aui-muted">{words.through}: {thread.fork.through}</p>
     <ol className="divide-aui-border divide-y">{thread.fork.context.map((turn, index) => <li key={`${index}:${turn.at}`} className="min-w-0 py-3"><div className="flex flex-wrap items-center gap-2 text-aui-xs text-aui-muted">{turn.kind === "agent" && <AgentMark name={turn.by} size={14} />}<span>{turn.name || turn.by}</span><time dateTime={turn.at}>{new Date(turn.at).toLocaleString()}</time></div><p className="mt-2 whitespace-pre-wrap break-words text-aui-sm">{turn.text}</p></li>)}</ol>
