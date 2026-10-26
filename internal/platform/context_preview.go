@@ -9,6 +9,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 )
 
@@ -97,6 +98,19 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		out.Layers = append(out.Layers, l)
 	}
 	out.Layers = append(out.Layers, p.personalLayers(who.Tenant, project, who.Subject)...)
+	decision := p.ActionDecision(who.Tenant, project, agent, humanSubject(who), operations.ReadContext)
+	if decision == operations.Ask || decision == operations.Never {
+		for i := range out.Layers {
+			l := &out.Layers[i]
+			if l.Kind == "agent_notes" || l.Kind == "project_notes" || l.Kind == "ancestor_notes" || l.Kind == "personal_notes" {
+				l.Sent = false
+				l.Omitted += l.Used
+				l.Used = 0
+				l.Text = ""
+			}
+		}
+	}
+
 	if seer.Knowledge() {
 		agentNames := []string{}
 		for _, src := range rev.Spec.Sources {

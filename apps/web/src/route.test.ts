@@ -239,3 +239,9 @@ test("Activity filters and tool visibility survive copied conversation links",()
  const url=new URL(href(route),"http://localhost");assert.deepEqual(parse(url.pathname,url.search),route);
  assert.equal(href(route),"/conversations/thread-1/activity/run-2?filter=decisions&tools=0");
 });
+
+
+test("Library resource links retain their confined scope and selection",()=>{
+ for(const route of [{page:"library",section:"skills",scope:"project",project:"Field engineering",skill:"sk-123"},{page:"library",section:"memory",scope:"agent",owner:"helper"}] as Route[]){const url=new URL(href(route),"http://localhost");assert.deepEqual(parse(url.pathname,url.search),route)}
+ assert.deepEqual(parse("/library/skills","?scope=unexpected&skill="+"x".repeat(161)),{page:"library",section:"skills"});
+});

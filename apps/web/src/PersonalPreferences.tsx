@@ -17,10 +17,10 @@ const initial: Personal = {
 };
 export function PersonalPreferences({
   section = "profile",
- onSaved,
+  onSaved,
 }: {
   section?: "profile" | "notifications" | "privacy" | "agents";
- onSaved?: (p:Preferences)=>void;
+  onSaved?: (p: Preferences) => void;
 }) {
   const copy = defaultCopy.personalPreferences;
   const [profile, setProfile] = useState<Preferences | null>(null);
@@ -59,7 +59,7 @@ export function PersonalPreferences({
         personal: value,
       });
       setProfile(result);
- onSaved?.(result);
+      onSaved?.(result);
       setValue(result.personal ?? initial);
       setSaved(true);
     } catch {

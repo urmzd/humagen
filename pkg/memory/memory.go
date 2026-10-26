@@ -23,6 +23,7 @@ package memory
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"slices"
@@ -92,6 +93,8 @@ type Details struct {
 
 // Note is one thing an agent remembers.
 type Note struct {
+	EditedBy   string    `json:"edited_by,omitempty"`
+	EditedAt   time.Time `json:"edited_at,omitzero"`
 	Uses       uint64    `json:"uses,omitempty"`
 	LastUsedAt time.Time `json:"last_used_at,omitzero"`
 	Details
@@ -228,7 +231,7 @@ func (s *Store) AddDetailed(tenant, agent, text string, source Source, status St
 		return Note{}, err
 	}
 	next := s.next + 1
-	note := Note{Details: details, ID: "m" + strconv.Itoa(next), Text: text, Source: source, Status: status, By: by, At: at}
+	note := Note{Details: details, ID: "m_" + rand.Text(), Text: text, Source: source, Status: status, By: by, At: at}
 	if status == Approved {
 		note.ReviewedBy = by
 		note.ReviewedAt = at
@@ -434,4 +437,56 @@ func (s *Store) UsedRendered(tenant, owner, text string, at time.Time) error {
 type Review struct {
 	By string
 	At time.Time
+}
+
+// Edit corrects text without replacing original provenance or admitting an
+// unreviewed proposal. A human correction of an approved note is reviewed.
+func (s *Store) Edit(tenant, owner, id, text, by string, at time.Time, details *Details) (Note, error) {
+	text, err := clean(text)
+	if err != nil {
+		return Note{}, err
+	}
+	if by == "" || at.IsZero() {
+		return Note{}, ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	notes := slices.Clone(s.by[key(tenant, owner)])
+	index := slices.IndexFunc(notes, func(note Note) bool { return note.ID == id })
+	if index < 0 {
+		return Note{}, ErrNotFound
+	}
+	note := notes[index]
+	if details != nil {
+		if details.Kind == "" {
+			details.Kind = note.Kind
+		}
+		if details.Kind == "" {
+			details.Kind = Fact
+		}
+		if details.Kind != Fact && details.Kind != Decision && details.Kind != Preference && details.Kind != PersonKind && details.Kind != Risk {
+			return Note{}, ErrInvalid
+		}
+		if !details.ExpiresAt.IsZero() && !details.ExpiresAt.After(at) && !details.ExpiresAt.Equal(note.ExpiresAt) {
+			return Note{}, ErrInvalid
+		}
+		note.Details = *details
+	}
+	for _, other := range notes {
+		if other.ID != id && strings.EqualFold(other.Text, text) {
+			return Note{}, ErrInvalid
+		}
+	}
+	note.Text = text
+	note.EditedBy = by
+	note.EditedAt = at
+	if note.Status == Approved {
+		note.ReviewedBy = by
+		note.ReviewedAt = at
+	}
+	notes[index] = note
+	if err := s.set(tenant, owner, notes, s.next); err != nil {
+		return Note{}, err
+	}
+	return note, nil
 }

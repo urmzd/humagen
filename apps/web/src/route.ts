@@ -62,7 +62,7 @@ export interface ConversationView {
 export type LibrarySection = "sources" | "skills" | "memory";
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
-  | {page:"library";section:LibrarySection}
+  | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string}
   | {page:"operations";section:"context"|"integrations"}
   | {page:"assignments";id?:string;agent?:string}
   | {page:"agent-network";handoff?:string}
@@ -145,7 +145,9 @@ export function documentTitle(r: Route, unread = 0): string {
 /** The address of a route, path and query. */
 export function href(r: Route): string {
   switch (r.page) {
-    case "library": return `/library/${r.section}`;
+    case "library": {
+      const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);return `/library/${r.section}${q.size?`?${q}`:""}`;
+    }
     case "operations":return `/operations/${r.section}`;
     case "assignments":return `${r.id?`/assignments/${enc(r.id)}`:"/assignments"}${r.agent?`?agent=${enc(r.agent)}`:""}`;
     case "agent-network":return r.handoff?`/agent-network/handoffs/${enc(r.handoff)}`:"/agent-network";
@@ -280,12 +282,16 @@ export function parse(pathname: string, search = ""): Route {
   return Object.fromEntries(Object.entries(read(pathname, search)).filter(([, v]) => v !== undefined)) as Route;
 }
 
+function queryText(q:URLSearchParams,key:string,max:number):string|undefined {
+ const value=q.get(key);return value!==null&&value.length<=max&&!/[\u0000\r\n]/.test(value)?value:undefined;
+}
+
 function read(pathname: string, search: string): Route {
   const q = new URLSearchParams(search);
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
   switch (head) {
-    case "library":return {page:"library",section:pick(a,["sources","skills","memory"] as const,"sources")};
+    case "library":return {page:"library",section:pick(a,["sources","skills","memory"] as const,"sources"),scope:oneOf(q.get("scope"),["personal","workspace","project","agent"] as const),project:queryText(q,"project",63),owner:queryText(q,"owner",512),skill:queryText(q,"skill",160)};
     case "operations":
       if(a==="audit")return {page:"audit"};
       if(a==="usage"){

@@ -960,6 +960,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "GET", "/api/me/memory", "/api/me/memory", "", http.StatusOK)
 	personalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Prefer concise answers","kind":"preference"}`, http.StatusCreated)
 	c.call(auditAdmin, "POST", "/api/me/memory/approve", "/api/me/memory/approve", `{"ids":[]}`, http.StatusOK)
+	c.call(auditAdmin, "PUT", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), `{"text":"Prefer concise paragraphs","kind":"preference"}`, http.StatusOK)
+	c.call(auditAdmin, "PUT", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), `{"text":""}`, http.StatusBadRequest)
+
 	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), "", http.StatusNoContent)
 	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/missing", "", http.StatusNotFound)
 	c.sweep(globex)
@@ -2049,7 +2052,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	ids := map[string]string{
 		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully", "channel": "general",
 	}
+	freshAgentNote := c.call(acme, "POST", "/api/agents/{name}/memory", "/api/agents/helper/memory", `{"text":"Agent correction source"}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/agents/{name}/memory/{id}", "/api/agents/helper/memory/"+freshAgentNote.str("id"), `{"text":"Corrected agent note"}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/memory/{id}", "/api/agents/helper/memory/"+freshAgentNote.str("id"), `{"text":""}`, http.StatusBadRequest)
+	freshProjectNote := c.call(acme, "POST", "/api/projects/{name}/memory", "/api/projects/Launch/memory", `{"text":"Project correction source"}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":"Corrected project note"}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
+	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/projects/{name}/memory/{id}":                    {"name": "Launch", "id": freshProjectNote.str("id")},
+		"/api/me/memory/{id}":                                 {"id": freshPersonalNote.str("id")},
 		"/api/library/skills/{id}":                            {"id": libraryID},
 		"/api/library/skills/{id}/versions/{version}/test":    {"id": libraryID, "version": "1"},
 		"/api/library/skills/{id}/versions/{version}/publish": {"id": libraryID, "version": "1"},
@@ -2059,7 +2071,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/handoffs/{id}":                 {"id": called.str("id")},
 		"/api/assignments/{id}":              {"id": "contract-assignment"},
 		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
-		"/api/agents/{name}/memory/{id}":     {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
+		"/api/agents/{name}/memory/{id}":     {"id": freshAgentNote.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
 		"/api/clients/{id}": {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/dependencies":  {"name": "handbook"},
@@ -2069,8 +2081,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
-		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
-		"/api/projects/{name}/members": {"name": "Launch"}, "/api/projects/{name}/move": {"name": "Launch"}, "/api/projects/{name}/limits": {"name": "Launch"},
+		"/api/projects/{name}/memory/approve": {"name": "Launch"},
+		"/api/projects/{name}/members":        {"name": "Launch"}, "/api/projects/{name}/move": {"name": "Launch"}, "/api/projects/{name}/limits": {"name": "Launch"},
 		"/api/projects/{name}/inbox": {"name": "Launch"}, "/api/projects/{name}/announcements": {"name": "Launch"},
 		"/api/projects/{name}/announcements/{id}": {"name": "Launch", "id": mid},
 		"/api/schedules/{name}":                   {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
@@ -2132,7 +2144,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			c.call(globex, op.method, op.path, path, valid[op.path], http.StatusNotFound)
 		}
 		if refusesUnknownFields(op) {
-			c.call(acme, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)
+			caller := acme
+			if strings.HasPrefix(op.path, "/api/me/memory") {
+				caller = auditAdmin
+			}
+			c.call(caller, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)
 		}
 	}
 
