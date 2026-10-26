@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -222,7 +223,12 @@ func TestAProjectsListsNameOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 		t.Fatalf("the owner reads Open's agents as %s", raw)
 	}
 	for _, path := range []string{"/api/projects", "/api/projects/Open", "/api/projects/Open/agents", "/api/projects/Open/history", "/api/projects/~/agents"} {
-		if raw, _ := read(t, f, writer, path); strings.Contains(raw, "spy") {
+		raw, page := read(t, f, writer, path)
+		content := raw
+		if strings.HasSuffix(path, "/history") {
+			content = projectHistoryContentJSON(t, page)
+		}
+		if strings.Contains(content, "spy") {
 			t.Errorf("%s shows the writer spy: %s", path, raw)
 		}
 	}
@@ -774,7 +780,7 @@ func TestAChannelNamesNoDefaultItsReaderMayNotRead(t *testing.T) {
 	if raw := mustJSON(t, room); strings.Contains(raw, "spy") || mustJSON(t, room["answers"]) != mustJSON(t, general["answers"]) {
 		t.Errorf("Ana reads #room as %s, beside #general %s", raw, mustJSON(t, general))
 	}
-	if raw, _ := read(t, f, ana, "/api/projects/Ops/history"); strings.Contains(raw, "spy") {
+	if raw, page := read(t, f, ana, "/api/projects/Ops/history"); strings.Contains(projectHistoryContentJSON(t, page), "spy") {
 		t.Errorf("Ana reads Ops's history as %s", raw)
 	}
 	if raw, _ := read(t, f, owner, "/api/projects/Ops/history"); !strings.Contains(raw, `"default":"spy"`) {
@@ -950,5 +956,47 @@ func TestAutoFallsBackPastADefaultItsPosterMayNotRead(t *testing.T) {
 	}
 	if got, without := answeredBy(hidden), answeredBy(plain); got != "helper" || without != "helper" {
 		t.Errorf("Ana's @auto is answered by %s, and in a thread with auto as its default by %s", got, without)
+	}
+}
+
+func projectHistoryContentJSON(t *testing.T, page map[string]any) string {
+	t.Helper()
+	// History positions are opaque HMACs, whose random bytes can spell an
+	// agent name by chance. Keep scanning every readable content field.
+	content := maps.Clone(page)
+	delete(content, "next")
+	changes := append([]any{}, sliceOf(page["changes"])...)
+	for i, raw := range changes {
+		change := maps.Clone(obj(raw))
+		delete(change, "seq")
+		changes[i] = change
+	}
+	content["changes"] = changes
+	return mustJSON(t, content)
+}
+
+func TestProjectHistoryPrivacyAssertionIgnoresOnlyOpaqueCursors(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		want       bool
+	}{
+		{"opaque cursor collision", `{"next":"h_hh0xmx17JNOmIAbGDm_1mXb7spyF9OJ3","changes":[{"seq":"h_hh0xmx17JNOmIAbGDm_1mXb7spyF9OJ3","channel":{"after":{"name":"room"}}}]}`, false},
+		{"actual hidden default", `{"next":null,"changes":[{"seq":"h_random","channel":{"after":{"default":"spy"}}}]}`, true},
+		{"name in readable text", `{"changes":[{"seq":"h_random","note":"Selected spy to answer"}]}`, true},
+		{"nested field is content", `{"changes":[{"seq":"h_random","channel":{"after":{"purpose":"spy"}}}]}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var page map[string]any
+			if err := json.Unmarshal([]byte(tc.body), &page); err != nil {
+				t.Fatal(err)
+			}
+			before := mustJSON(t, page)
+			if got := strings.Contains(projectHistoryContentJSON(t, page), "spy"); got != tc.want {
+				t.Fatalf("privacy content contains name=%v, want%v", got, tc.want)
+			}
+			if mustJSON(t, page) != before {
+				t.Fatal("privacy assertion mutated the recorded history")
+			}
+		})
 	}
 }
