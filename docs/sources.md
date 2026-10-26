@@ -125,3 +125,50 @@ layer verifies each private origin run belongs to the supplied evidence set,
 bounds rows, accepts only internal links and omits origin IDs from responses.
 Without that adapter the UI states both limits explicitly. Matching names in
 instruction or note text never creates a graph edge.
+
+## Optional live provider smoke tests
+
+The default Go suite skips `TestProviderLiveSmoke`. To run it, prepare a
+separate, non-sensitive test resource and a read-only provider token. The test
+reads provider content into process memory, but does not print it or write to
+Drive or Notion. It uses an isolated in-memory Humagen store. Avoid shell
+tracing and CI logs that expose environment variables. Do not use real customer
+content or production credentials.
+
+For Drive, create a folder containing a supported text file or Google Doc and
+share it with the token's identity. Supply the folder ID as `ORIGIN` and the
+file ID as `RESOURCE`. For Notion, share a page with the integration and use
+its page ID for both values. Use a small page with supported text blocks, and
+place a unique single-word marker in the selected document. The test searches
+for this marker; it should be a non-sensitive alphanumeric word. Provider
+limits and supported formats above apply. The Drive token needs access to list
+and read the selected resource; the Notion integration needs read access.
+
+Set the variables for each provider being tested. `CREDENTIAL_REF` uses the
+normal `env:`, `keychain:` or `op://` conventions; it is a reference, not a
+literal token. For example, with credentials already stored in environment
+variables, run one provider at a time:
+
+```sh
+export HUMAGEN_SMOKE_DRIVE_CREDENTIAL_REF=env:DRIVE_ACCESS_TOKEN
+export HUMAGEN_SMOKE_DRIVE_ORIGIN=your_test_folder_id
+export HUMAGEN_SMOKE_DRIVE_RESOURCE=your_test_file_id
+export HUMAGEN_SMOKE_DRIVE_MARKER=uniquesmokemarker
+HUMAGEN_SOURCE_LIVE_TEST=drive go test -race -count=1 -run '^TestProviderLiveSmoke$' -v ./pkg/knowledge
+```
+
+For Notion, use the corresponding `HUMAGEN_SMOKE_NOTION_CREDENTIAL_REF`,
+`HUMAGEN_SMOKE_NOTION_ORIGIN`, `HUMAGEN_SMOKE_NOTION_RESOURCE`, and
+`HUMAGEN_SMOKE_NOTION_MARKER` variables and set
+`HUMAGEN_SOURCE_LIVE_TEST=notion`. Set it to `both` only when all eight
+variables are configured. Missing or invalid configuration fails an enabled
+run rather than silently skipping it. Do not paste credentials or private IDs
+into issue reports.
+
+The test discovers the selected resource, imports and refreshes it, attempts a
+read with an intentionally invalid token, verifies the last good copy and
+indexed citation evidence, then retries with the valid token. It checks an
+unchanged refresh and authentication failure; it does not change provider
+content, simulate provider outages or exercise the full HTTP API, UI, or
+runtime access-control path. A skipped or fixture-only run is not live
+validation. Record live validation only after the opted-in test actually passes.
