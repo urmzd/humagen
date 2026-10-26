@@ -56,7 +56,7 @@ function SlideView({
       <section className="humagen-native-slide" aria-label={`Slide ${slide + 1}: ${value.title}`}>
         <div className="flex items-center gap-1.5 text-aui-accent">
           <HumagenMark size={16} />
-          <span>humagen · Slide preview</span>
+          <span>Humagen Slide Preview</span>
         </div>
         <h3>{value.title}</h3>
         <div className="humagen-slide-copy">
@@ -155,7 +155,7 @@ export function NativePreview({
         <dialog
           ref={presenting}
           data-layer="presentation"
-          aria-label={file.title}
+          aria-label={words.artifactPresentation(file.title)}
           className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-[#11151b] p-4 text-white backdrop:bg-black lg:p-8"
           onCancel={(event) => {
             event.preventDefault();
@@ -177,7 +177,7 @@ export function NativePreview({
           <div className="flex h-full min-h-0 flex-col gap-4">
             <header className="flex shrink-0 items-center justify-between gap-3">
               <span className="truncate text-aui-xs">
-                {file.title} · v{file.version}
+                {file.title} v{file.version}
               </span>
               <button
                 type="button"
@@ -193,7 +193,7 @@ export function NativePreview({
               </div>
             </div>
             <footer className="text-center text-aui-xs">
-              Slide {slide + 1} of {preview.slides.length} · ← →
+              Slide {slide + 1} of {preview.slides.length} ← →
             </footer>
           </div>
         </dialog>
@@ -606,7 +606,7 @@ export function Deliverables({
                         {item.title}
                       </strong>
                       <span className="mt-1 block text-aui-2xs text-aui-muted">
-                        v{item.version} · {item.agent}
+                        v{item.version} {item.agent}
                       </span>
                     </span>
                     <span aria-hidden>›</span>

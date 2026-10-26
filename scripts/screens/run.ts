@@ -34,6 +34,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
+import { startNativeModel } from "./native.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -72,6 +73,8 @@ interface Ids {
   privateChat: string;
   sharedChat: string;
   routedChat: string;
+  nativeThread: string;
+  nativeArtifact: string;
 }
 
 /** Opens a page's More menu. */
@@ -120,47 +123,143 @@ function chats(ids: Ids): Screen[] {
       name: "conversation-message-actions",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
-        const human=page.getByRole("article",{name:/^Message from /}).first();
-        const agent=page.getByRole("article",{name:"helper message",exact:true});
-        for (const message of [human,agent]) {
-          const actions=message.getByRole("toolbar",{name:"Message actions"});
-          await actions.getByRole("button",{name:/^Copy (message|answer)/}).waitFor();
-          await actions.getByRole("button",{name:"Reply",exact:true}).waitFor();
-          assert.equal(await message.getByRole("toolbar",{name:"Message actions"}).count(),1);
+        const human = page.getByRole("article", { name: /^Message from / }).first();
+        const agent = page.getByRole("article", { name: "helper message", exact: true });
+        for (const message of [human, agent]) {
+          const actions = message.getByRole("toolbar", { name: "Message actions" });
+          await actions.getByRole("button", { name: /^Copy (message|answer)/ }).waitFor();
+          await actions.getByRole("button", { name: "Reply", exact: true }).waitFor();
+          assert.equal(await message.getByRole("toolbar", { name: "Message actions" }).count(), 1);
         }
-        await agent.getByRole("button",{name:"Reply",exact:true}).focus();
+        await agent.getByRole("button", { name: "Reply", exact: true }).focus();
       },
     },
     {
       name: "conversation-agent-time",
       path: `/conversations/${ids.privateChat}`,
-      act: async(page)=>{
-        const message=page.getByRole("article",{name:"helper message",exact:true});
-        await message.getByRole("button",{name:/^Posted /}).click();
-        const tooltip=message.getByRole("tooltip");await tooltip.waitFor();
-        const box=await tooltip.boundingBox();
-        assert.ok(box && box.x>=0 && box.x+box.width<=(page.viewportSize()?.width??0),"Agent timestamp must stay in the viewport");
+      act: async (page) => {
+        const message = page.getByRole("article", { name: "helper message", exact: true });
+        await message.getByRole("button", { name: /^Posted / }).click();
+        const tooltip = message.getByRole("tooltip");
+        await tooltip.waitFor();
+        const box = await tooltip.boundingBox();
+        assert.ok(
+          box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0),
+          "Agent timestamp must stay in the viewport",
+        );
+      },
+    },
+    {
+      name: "conversation-native-deliverable",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        await bar(page).fill("Keep my unsent draft.");
+        await page
+          .getByRole("button", { name: "Open native-launch.pptx", exact: true })
+          .first()
+          .click();
+        await page
+          .getByRole("button", { name: "Slide 2: Owner and next action", exact: true })
+          .click();
+        await page.locator("summary").filter({ hasText: "Speaker notes" }).click();
+        await page.getByText("https://example.test/launch-owner", { exact: true }).waitFor();
+        const original = page.waitForEvent("download");
+        await page.getByRole("link", { name: "Download Original", exact: true }).click();
+        const office = await original;
+        const officePath = await office.path();
+        assert.ok(officePath);
+        assert.equal(office.suggestedFilename(), "native-launch.pptx");
+        assert.equal(readFileSync(officePath).subarray(0, 2).toString(), "PK");
+        const exported = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Download PDF", exact: true }).click();
+        const pdf = await exported;
+        const pdfPath = await pdf.path();
+        assert.ok(pdfPath);
+        assert.equal(pdf.suggestedFilename(), "native-launch.pdf");
+        assert.equal(readFileSync(pdfPath).subarray(0, 5).toString(), "%PDF-");
+        await page.getByRole("button", { name: "Present", exact: true }).click();
+        await page.getByRole("dialog", { name: "native-launch.pptx", exact: true }).waitFor();
+        await page.getByRole("button", { name: "Exit Presentation", exact: true }).click();
+        await page.getByRole("button", { name: "Request Changes", exact: true }).click();
+        await page.waitForFunction(() =>
+          (
+            document.querySelector(
+              "form[aria-label=Message] textarea",
+            ) as HTMLTextAreaElement | null
+          )?.value.includes("Requested changes:"),
+        );
+        const draft = await bar(page).inputValue();
+        assert.ok(draft.includes(`artifact:${ids.nativeArtifact}@1`));
+        assert.ok(draft.includes("slide 2"));
+        assert.ok(draft.includes("Keep my unsent draft."));
+      },
+    },
+    {
+      name: "conversation-native-revision",
+      path: `/conversations/${ids.nativeThread}/deliverables/${ids.nativeArtifact}`,
+      act: async (page) => {
+        const endpoint = new URL(`/api/artifacts?thread=${ids.nativeThread}`, page.url()).href;
+        const before = await (await page.request.get(endpoint)).json();
+        const previous = before.artifacts.find(
+          (file: { title: string }) => file.title === "native-launch.pptx",
+        );
+        assert.ok(previous);
+        await page
+          .getByRole("button", { name: "Slide 2: Owner and next action", exact: true })
+          .click();
+        await page.getByRole("button", { name: "Request Changes", exact: true }).click();
+        await page.waitForFunction(() =>
+          (
+            document.querySelector(
+              "form[aria-label=Message] textarea",
+            ) as HTMLTextAreaElement | null
+          )?.value.includes("Requested changes:"),
+        );
+        await bar(page).fill(
+          (await bar(page).inputValue()) +
+            " Make Developer the briefing owner. Preserve the launch date and sources.",
+        );
+        await page.getByRole("button", { name: "Send message", exact: true }).click();
+        let revised: { id: string; version: number; sha256: string } | undefined;
+        await waitFor(async () => {
+          const response = await (await page.request.get(endpoint)).json();
+          revised = response.artifacts.find(
+            (file: { title: string; version: number }) =>
+              file.title === "native-launch.pptx" && file.version > previous.version,
+          );
+          return Boolean(revised);
+        }, "The real revision tool pipeline did not publish a newer version");
+        assert.ok(revised);
+        assert.notEqual(revised.sha256, previous.sha256);
+        const original = await (
+          await page.request.get(new URL(`/api/artifacts/${ids.nativeArtifact}`, page.url()).href)
+        ).json();
+        assert.equal(original.version, 1);
+        await page.goto(
+          new URL(`/conversations/${ids.nativeThread}/deliverables/${revised.id}`, page.url()).href,
+        );
+        await page
+          .getByRole("button", { name: "Slide 2: Owner and next action", exact: true })
+          .click();
+        await page.getByText("Developer owns the briefing", { exact: true }).first().waitFor();
+        await page.locator("summary").filter({ hasText: "Speaker notes" }).click();
+        await page.getByText("https://example.test/launch-owner", { exact: true }).waitFor();
       },
     },
     {
       name: "conversation-outcome-redirect",
-      path: `/conversations/${ids.privateChat}`,
-      act: async(page)=>{
-        // A labelled visual fixture exercises the real authored-outcome wire shape.
-        // Runtime production and restart semantics are verified in Go tests.
-        await page.route(`**/api/threads/${ids.privateChat}`,async(route)=>{
-          const response=await route.fetch();
-          const body=await response.json();
-          const selected=body.turns.find((turn:{run?:{status:string}})=>turn.run?.status==="completed");
-          assert.ok(selected?.run,"Seeded conversation must have a completed run");
-          selected.run.outcome={kind:"recommendation",summary:"Review the launch owner before publishing.",decisions:["Keep the current launch date"],next_action:"Confirm who owns the briefing"};
-          return route.fulfill({response,json:body});
-        });
-        await page.reload();
-        await page.getByRole("button",{name:"Redirect",exact:true}).click();
-        await page.waitForFunction(() => (document.querySelector("form[aria-label=Message] textarea") as HTMLTextAreaElement | null)?.value.includes("Please change direction: "));
-        assert.match(await bar(page).inputValue(),/Please change direction: /);
-        await bar(page).fill((await bar(page).inputValue())+"Keep the date and clarify ownership.");
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        await page.getByRole("button", { name: "Redirect", exact: true }).last().click();
+        await page.waitForFunction(() =>
+          (
+            document.querySelector(
+              "form[aria-label=Message] textarea",
+            ) as HTMLTextAreaElement | null
+          )?.value.includes("Please change direction: "),
+        );
+        assert.match(await bar(page).inputValue(), /Please change direction: /);
+        await bar(page).fill(`${await bar(page).inputValue()}Keep the date and clarify ownership.`);
       },
     },
     {
@@ -642,7 +741,7 @@ const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 /** humagen with seeded agents, no sign-in and nothing kept, in a directory of its own. */
 async function startHumagen(
   port: number,
-): Promise<{ base: string; proc: ChildProcess; dir: string }> {
+): Promise<{ base: string; proc: ChildProcess; dir: string; closeModel: () => Promise<void> }> {
   if (!existsSync(bin))
     throw new Error(`No humagen binary at ${bin}. Run make build, or set HUMAGEN_BIN.`);
   if (!existsSync(join(web, "index.html")))
@@ -650,13 +749,32 @@ async function startHumagen(
       `No built console at ${web}. Run pnpm --filter @humagen/console build, or set HUMAGEN_WEB.`,
     );
   const dir = mkdtempSync(join(tmpdir(), "humagen-screens-"));
-  const env = { ...process.env };
+  const model = await startNativeModel();
+  const spec = join(dir, "screens-native.yaml");
+  writeFileSync(
+    spec,
+    `api_version: humagen/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  models:
+    - name: screens-native
+      kind: openai
+      openai: {base_url: "${model.base}", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
+`,
+  );
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    HUMAGEN_SCREENS_MODEL_KEY: "screens-fixture-only",
+  };
   // A model key would let the agents seeded to fail succeed.
   for (const k of Object.keys(env)) if (/_API_KEY$/.test(k)) delete env[k];
   const proc = spawn(
     bin,
     [
       "serve",
+      "-f",
+      spec,
       "-auth=dev",
       "-seed",
       "-state=memory",
@@ -679,7 +797,7 @@ async function startHumagen(
     if (proc.exitCode !== null) throw new Error(`humagen exited with ${proc.exitCode}:\n${log}`);
     try {
       const r = await fetch(`${base}/api/me`);
-      if (r.ok) return { base, proc, dir };
+      if (r.ok) return { base, proc, dir, closeModel: model.close };
     } catch {
       // Not listening yet.
     }
@@ -807,6 +925,8 @@ const ids0: Ids = {
   privateChat: "",
   sharedChat: "",
   routedChat: "",
+  nativeThread: "",
+  nativeArtifact: "",
 };
 
 interface Posted {
@@ -892,6 +1012,32 @@ async function seedChats(
     sharedChat: shared.thread.id,
     routedChat: routed.thread.id,
   };
+}
+
+async function seedNative(call: Call): Promise<Pick<Ids, "nativeThread" | "nativeArtifact">> {
+  await call("POST", "/api/agents", {
+    name: "native-writer",
+    description: "Deterministic local model fixture for native deliverable browser validation",
+    model: "screens-native",
+    provider: "screens-native",
+    system_prompt: "Produce only the requested native deliverable using the granted sandbox tools.",
+    tools: ["file_read", "file_write", "file_list", "publish_artifact", "record_outcome"],
+  });
+  const posted = await call<Posted>("POST", "/api/threads", {
+    project: "Launch",
+    visibility: "private",
+    text: "@native-writer Create the native launch briefing.",
+  });
+  assert.equal(posted.runs.length, 1);
+  for (const run of posted.runs) await settled(call, run.id);
+  const page = await call<{ artifacts: { id: string; mime: string; version: number }[] }>(
+    "GET",
+    `/api/artifacts?thread=${posted.thread.id}`,
+  );
+  const file = page.artifacts.find((item) => item.mime.includes("presentationml"));
+  assert.ok(file, "The actual model/tool pipeline must publish a native presentation");
+  assert.equal(file.version, 1);
+  return { nativeThread: posted.thread.id, nativeArtifact: file.id };
 }
 
 async function waitFor(ok: () => Promise<boolean>, failure: string): Promise<void> {
@@ -1174,7 +1320,7 @@ async function main(): Promise<void> {
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, "report.json"), "[]\n");
   const executablePath = chromiumPath();
-  const { base, proc, dir } = await startHumagen(await freePort());
+  const { base, proc, dir, closeModel } = await startHumagen(await freePort());
   let browser: Browser | undefined;
   try {
     browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
@@ -1289,6 +1435,7 @@ async function main(): Promise<void> {
       artifact: files.artifacts?.[0]?.id ?? "art-1",
       schedule: "weekly-summary",
       ...(await seedChats(call)),
+      ...(await seedNative(call)),
     };
     results.push(...(await capture(browser, base, screens(ids, call))));
 
@@ -1309,6 +1456,7 @@ async function main(): Promise<void> {
   } finally {
     await browser?.close();
     proc.kill();
+    await closeModel();
     rmSync(dir, { recursive: true, force: true });
   }
 }

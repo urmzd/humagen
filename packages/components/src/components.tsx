@@ -78,7 +78,7 @@ function previewFields(approval: Approval): Field[] {
 }
 
 function withReason(line: string, reason?: string) {
-  return reason ? `${line} · "${reason}"` : line;
+  return reason ? `${line}: "${reason}"` : line;
 }
 
 /**
@@ -224,7 +224,7 @@ export function ApprovalBatch({
           label: a.summary,
           description: previewFields(a)
             .map((f) => `${f.label}: ${f.value}`)
-            .join(" · "),
+            .join(" "),
         }))}
         selected={approvals.map((a) => a.id)}
       />
@@ -372,9 +372,7 @@ export function InterruptCard({
 export function NoticeView({ notice, copy = defaultCopy }: { notice: Notice } & WithCopy) {
   // What the runtime did on its own is a quiet record, not an alert.
   if (notice.kind === "silence" || notice.kind === "model_fallback" || notice.kind === "retried") {
-    return (
-      <Context items={[notice.title ? `**${notice.title}** · ${notice.body}` : notice.body]} />
-    );
+    return <Context items={[notice.title ? `**${notice.title}**: ${notice.body}` : notice.body]} />;
   }
   return (
     <>
@@ -556,7 +554,7 @@ export function TaskList({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy
         subagent
           ? [copy.subagent(subagent.name, subagent.steps, subagent.tokens), t.details]
               .filter(Boolean)
-              .join(" · ")
+              .join(" ")
           : t.details
       }
     />
@@ -643,12 +641,12 @@ export function TurnView({
       <Summary text={summarizeTurn(turn, copy)} />
       {/* Slack shows status as a reaction and the session status (see render-slack lifecycle). */}
       <Only surface="web">
-        <Context items={[`**${turn.agent.name}** · ${copy.status[turn.status]}`]} />
+        <Context items={[`**${turn.agent.name}**: ${copy.status[turn.status]}`]} />
       </Only>
       {turn.handoff && (
         <Context
           items={[
-            [`→ ${copy.handoff(turn.handoff.to)}`, turn.handoff.reason].filter(Boolean).join(" · "),
+            [`→ ${copy.handoff(turn.handoff.to)}`, turn.handoff.reason].filter(Boolean).join(" "),
           ]}
         />
       )}
@@ -855,7 +853,7 @@ export function SessionNotices({
           items={[
             [copy.compacted(formatTokens(compaction.savedTokens)), compaction.summary]
               .filter(Boolean)
-              .join(" · "),
+              .join(" "),
           ]}
         />
       )}
@@ -912,7 +910,7 @@ export function SystemAlertView({ alert, copy = defaultCopy }: { alert: SystemAl
     alert.url ? `[${copy.statusPage}](${alert.url})` : null,
   ].filter((x): x is string => x !== null);
   if (alert.status === "resolved" || alert.status === "operational") {
-    return <Context items={[`**${alert.service}** · ${status} · ${alert.title}`, ...meta]} />;
+    return <Context items={[`**${alert.service}**: ${status}. ${alert.title}`, ...meta]} />;
   }
   const body = [alert.body, alert.affects?.length ? copy.affects(alert.affects.join(", ")) : null]
     .filter(Boolean)
@@ -997,7 +995,7 @@ export function InboxView({
           <Context
             items={[
               `**${copy.resolved}**`,
-              ...resolved.map((i) => `${inboxTitle(i)} · ${i.source.label}`),
+              ...resolved.map((i) => `${inboxTitle(i)}: ${i.source.label}`),
             ]}
           />
         </>

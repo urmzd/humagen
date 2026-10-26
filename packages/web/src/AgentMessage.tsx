@@ -228,7 +228,7 @@ function MessageActions({
  * One agent turn in a web chat: the activity orb, name and live status in the
  * header, the reasoning trace, then the shared TurnView. Render inside a WebSurface.
  *
- * The header replaces the "Name · Status" context line TurnView emits for the
+ * The header replaces the "Name: Status" context line TurnView emits for the
  * web, so the status is said once. Slack shows status as a reaction instead.
  * Finished turns get a compact action row (copy, regenerate, rate, usage).
  */
@@ -271,7 +271,7 @@ export function AgentMessage({
   onReply?: () => void;
 }) {
   const inherited = useContext(ItemActionsContext);
-  const statusLine = `**${turn.agent.name}** · ${copy.status[turn.status]}`;
+  const statusLine = `**${turn.agent.name}**: ${copy.status[turn.status]}`;
   const final = turn.status === "done";
   const settledTurn = final || turn.status === "failed" || turn.status === "stopped";
   const suppressed = useMemo(() => {

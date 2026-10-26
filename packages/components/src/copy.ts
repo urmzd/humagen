@@ -53,6 +53,7 @@ export const defaultCopy = {
     sourcePassages: (count: number) => `${count} ${count === 1 ? "passage" : "passages"} indexed`,
     sourceExcluded: "Excluded from search",
     more: "Show More",
+    artifactPresentation: (name: string) => `Presentation: ${name}`,
     artifactPDF: "Download PDF",
     artifactPDFBusy: "Preparing PDF…",
     artifactPDFFailed:
