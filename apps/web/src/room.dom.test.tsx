@@ -18,6 +18,23 @@ const words = defaultCopy.threads;
 const at = "2026-10-01T09:00:00Z";
 const helper = { spec: { name: "helper", description: "Renewals and billing", model: "offline", provider: "offline", system_prompt: "Help." }, rev: 1 } as unknown as Revision;
 
+test("a channel's Plus picker offers explicit Company-home agents and excludes unavailable scoped homes", async () => {
+  net = stubFetch({
+    "GET /api/projects/Globex/channels": () => ({ channels: [{ project: "Globex", name: "renewals", version: 1, created_at: at, updated_at: at }] }),
+    "GET /api/threads": () => ({ threads: [], next: null }),
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+  });
+  const scoped = { ...helper, spec: { ...helper.spec, name: "scoped" } };
+  render(<ChannelPage project="Globex" channel="renewals" tick={0} agents={[helper, scoped]} homes={{ helper: "~", scoped: "Vault" }} projects={tree} root={null} workspaceName="Acme" canRun onOpenProject={() => {}} onOpenProjects={() => {}} onOpenThread={() => {}} />);
+  await waitFor(() => assert.ok(net?.seen.some((request) => request.path === "/api/projects/Globex/agents")));
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  const option = await within(menu).findByRole("checkbox", { name: /^helper/ });
+  fireEvent.click(option);
+  await waitFor(() => assert.equal(option.getAttribute("aria-checked"), "true"));
+  assert.equal(within(menu).queryByRole("checkbox", { name: /^scoped/ }), null);
+});
+
 const page: ThreadPage = {
   thread: {
     id: "th-0123456789abcdef",
