@@ -19,7 +19,7 @@ func fileWithRecap(text string) spec.Workspace {
 	return spec.Workspace{
 		Agents: &spec.Agents{Enable: []string{spec.EveryAgent}},
 		Projects: []spec.Project{{Name: "Field", AgentPosts: spec.AgentPostsReview, Schedules: []spec.Schedule{{
-			Name: "field-recap", Cron: "41 8 * * 1", Agent: "warp-analyst", Text: text, Deliver: spec.DeliverProject,
+			Name: "field-recap", Cron: "41 8 * * 1", Agent: "humagen-analyst", Text: text, Deliver: spec.DeliverProject,
 		}}}},
 	}
 }
@@ -95,7 +95,7 @@ func TestTheFileTakesOverAConsoleSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	applyAll(t, p, "acme", fileWithRecap("What changed?"))
-	if sc, _, _ := p.Schedules.Get("acme", "field-recap"); sc.Agent != "warp-analyst" || p.Schedules.About("field-recap").Managed != platform.ManagedFile {
+	if sc, _, _ := p.Schedules.Get("acme", "field-recap"); sc.Agent != "humagen-analyst" || p.Schedules.About("field-recap").Managed != platform.ManagedFile {
 		t.Fatalf("the console's schedule was not taken over: %+v", sc)
 	}
 	if err := applyProjects(p, "globex", fileWithRecap("x")); err != nil {

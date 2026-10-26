@@ -160,7 +160,7 @@ The runbook says to roll back before paging the on-call [[1]](https://example.co
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "text": "<https://example.com/sessions/turn-1|Open Conversation>",
           "type": "mrkdwn",
         },
       ],
@@ -319,7 +319,7 @@ The deploys service didn't answer within 30s.",
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "text": "<https://example.com/sessions/turn-1|Open Conversation>",
           "type": "mrkdwn",
         },
       ],
@@ -434,7 +434,7 @@ exports[`renderToSlack > renders the streaming turn 1`] = `
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "text": "<https://example.com/sessions/turn-1|Open Conversation>",
           "type": "mrkdwn",
         },
       ],
@@ -700,7 +700,7 @@ production",
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "text": "<https://example.com/sessions/turn-1|Open Conversation>",
           "type": "mrkdwn",
         },
       ],

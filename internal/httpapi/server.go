@@ -225,7 +225,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 	var all []agentspec.Revision
 	page := registry.Page{Size: 100}
 	for {
-		revs, next, err := s.P.Agents.List(r.Context(), who.Tenant, page)
+		revs, next, err := s.P.AgentDirectory(r.Context(), who.Tenant, page)
 		if err != nil {
 			s.problem(w, err)
 			return

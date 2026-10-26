@@ -85,3 +85,12 @@ test("a stopped record stops the turn, confirmed, and keeps what was said", () =
   assert.equal(turn.stop, "confirmed");
   assert.equal(turn.text, "Part one.");
 });
+
+test("the conversation link survives streaming and settling for a run in an existing thread", () => {
+  const record = run({ id: "second", thread: "thread/one" });
+  const f = follow(record, { href: (path) => `https://humagen.test${path}` });
+  assert.equal(f.turn.sessionUrl, "https://humagen.test/conversations/thread%2Fone");
+  f.apply(ev("lifecycle.accepted"));
+  assert.equal(f.turn.sessionUrl, "https://humagen.test/conversations/thread%2Fone");
+  assert.equal(f.settle({ ...record, status: "completed", answer: "Done" }).sessionUrl, f.turn.sessionUrl);
+});

@@ -631,7 +631,11 @@ export function TurnView({
   // One link: the session, where a person goes to see the run. The source's own page
   // stands in only when there is no session.
   const runUrl = turn.sessionUrl ?? turn.source?.url;
-  const session = runUrl ? <Context items={[copy.runLink(runUrl)]} /> : null;
+  const session = runUrl ? (
+    <Context
+      items={[turn.sessionUrl ? `[${copy.openConversation}](${runUrl})` : copy.runLink(runUrl)]}
+    />
+  ) : null;
   const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
 
   return (

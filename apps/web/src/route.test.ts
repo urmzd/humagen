@@ -40,7 +40,7 @@ test("every route survives a round trip through its address", () => {
     { page: "project", name: "Globex", tab: "history" },
     { page: "schedules" },
     { page: "schedules", name: "nightly" },
-    { page: "new", agent: "warp-analyst", ask: "How did runs go today?" },
+    { page: "new", agent: "humagen-analyst", ask: "How did runs go today?" },
     { page: "monitor", tab: "overview" },
     { page: "monitor", tab: "rules" },
     { page: "inbox", kind: "alert" },

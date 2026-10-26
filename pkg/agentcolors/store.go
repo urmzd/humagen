@@ -6,6 +6,7 @@ import (
 	"math"
 	"sync"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -56,7 +57,7 @@ func (s *Store) tenant(tenant string) map[string]float64 {
 // Preferred preserves the console's original twelve-hue mapping when available.
 func Preferred(name string) float64 {
 	h := 186
-	for _, c := range name {
+	for _, c := range legacy.BuiltinAgentKey(name) {
 		h = (h*31 + int(c)) % 1000003
 	}
 	return float64(h%12) * 30
@@ -88,16 +89,17 @@ func (s *Store) Assign(tenant string, names []string) (map[string]float64, error
 	added, out := map[string]float64{}, map[string]float64{}
 	batch := s.kept.Batch()
 	next := 0
-	for _, name := range names {
+	for _, requested := range names {
+		name := legacy.BuiltinAgentKey(requested)
 		if name == "" {
 			return nil, fmt.Errorf("agentcolors: empty name")
 		}
 		if hue, ok := hues[name]; ok {
-			out[name] = hue
+			out[requested] = hue
 			continue
 		}
 		if hue, ok := added[name]; ok {
-			out[name] = hue
+			out[requested] = hue
 			continue
 		}
 		if len(hues)+len(added) >= Limit {
@@ -110,7 +112,7 @@ func (s *Store) Assign(tenant string, names []string) (map[string]float64, error
 			}
 			hue = candidate(next)
 		}
-		added[name], out[name], used[hue] = hue, hue, true
+		added[name], out[requested], used[hue] = hue, hue, true
 		batch.Put(tenant, name, hue)
 	}
 	if err := batch.Commit(); err != nil {

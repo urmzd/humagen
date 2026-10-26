@@ -34,11 +34,11 @@ test("a recap's schedule name is one a schedule can have", () => {
 });
 
 test("Add Weekly Recap posts the agent's answer to the project", () => {
-  const s = weeklyRecap("Field", "warp-analyst", "What changed in Field engineering since the last recap?", "Weekly");
+  const s = weeklyRecap("Field", "humagen-analyst", "What changed in Field engineering since the last recap?", "Weekly");
   assert.deepEqual(s, {
     name: "field-recap",
     expression: recapCron("Field"),
-    agent: "warp-analyst",
+    agent: "humagen-analyst",
     text: "What changed in Field engineering since the last recap?",
     project: "Field",
     description: "Weekly",
@@ -48,7 +48,7 @@ test("Add Weekly Recap posts the agent's answer to the project", () => {
 
 test("the workspace's recap is filed in the workspace, ~", () => {
   for (const root of ["", "~"]) {
-    const s = weeklyRecap(root, "warp-analyst", "What changed?", "Weekly");
+    const s = weeklyRecap(root, "humagen-analyst", "What changed?", "Weekly");
     assert.equal(s.name, "workspace-recap");
     assert.equal(s.project, "~");
     assert.equal(s.expression, recapCron("~"));
@@ -70,8 +70,8 @@ test("only a schedule filed in a project can post to one", () => {
   assert.equal(deliverFor(undefined, "inbox"), "inbox");
 });
 
-test("a recap asks warp-analyst when it is there", () => {
-  assert.equal(recapAgent(["lead", "warp-analyst"]), "warp-analyst");
+test("a recap asks humagen-analyst when it is there", () => {
+  assert.equal(recapAgent(["lead", "humagen-analyst"]), "humagen-analyst");
   assert.equal(recapAgent(["lead"]), "lead");
   assert.equal(recapAgent([]), undefined);
 });

@@ -70,7 +70,7 @@ func TestARecapInTheFileLoads(t *testing.T) {
       - name: Field
         agent_posts: publish
         schedules:
-          - {name: field-recap, cron: "41 8 * * 1", agent: warp-analyst, text: "What changed in Field this week?", deliver: project}
+          - {name: field-recap, cron: "41 8 * * 1", agent: humagen-analyst, text: "What changed in Field this week?", deliver: project}
           - {name: field-digest, cron: "13 7 * * *", agent: lead, text: Yesterday in Field.}
 `
 	cfg, err := loadBody(t, platformDoc(workspace, platformAgentsYAML))

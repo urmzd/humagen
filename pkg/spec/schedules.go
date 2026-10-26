@@ -7,6 +7,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // What becomes of what a scheduled agent posts in a project.
@@ -43,6 +44,9 @@ func checkSchedules(sp PlatformSpec) error {
 	known := map[string]bool{}
 	for _, b := range BuiltinAgents {
 		known[b] = true
+	}
+	for old := range legacy.BuiltinAgents() {
+		known[old] = true
 	}
 	blind := false
 	homes := map[string]string{}

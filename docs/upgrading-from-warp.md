@@ -261,7 +261,7 @@ one. There is no deprecation release on the old path.
 |------|--------------|
 | Tag meta keys `warp.thread`, `warp.prev`, `warp.ask`, `warp.picked`, `warp.project`, `warp.channel`, `warp.message`, `warp.within`, `warp.sources`, `warp.client`, `warp.deliver`, `warp.call_input`, the call edges `warp.root`, `warp.parent`, `warp.depth`, `warp.mode`, `warp.lease`, the housekeeping keys `warp.hook`, `warp.for`, `warp.keeps_notes`, `warp.place.project`, `warp.place.thread`, and the private `_warp.sources`, `_warp.skills`, `_warp.routed` | Stored in run records, schedules and anchor's ledger. Reading two names would mean deleting both at every point that strips them, or a caller could smuggle an old key past admission |
 | Postgres table `warp_state` and lock class `0x77617270` | An older binary would create an empty table, and an older and a newer process on one schema must still exclude each other |
-| Built-in agents `warp-writer`, `warp-analyst`, `warp-builder` | Keys in the registry, runs, schedules, allow-lists, project agent lists and mentions |
+| Compatibility agent handles `warp-writer`, `warp-analyst`, `warp-builder` | Existing registry revisions, runs, schedules, allow-lists, project lists and mentions remain readable. New choices use `humagen-writer`, `humagen-analyst`, `humagen-builder` |
 | `/fix` grant domain `warp.github.mutation.v1` | Grants in flight keep verifying |
 | Image paths `/var/lib/warp`, `/etc/warp`, `/usr/share/warp/web`, uid 10001 | Volumes and specs bind them |
 | Workspace `os.UserCacheDir()/warp/workspace` | Attachments and files stored records point at |
@@ -276,9 +276,16 @@ one. There is no deprecation release on the old path.
 
 These are the defaults this release takes. Each can change in a later release.
 
-- **Built-in agent handles** stay `warp-writer`, `warp-analyst` and
-  `warp-builder`. Renaming them needs an alias at every read and a registry
-  migration.
+- **Built-in agent handles** are `humagen-writer`, `humagen-analyst` and
+  `humagen-builder`. The directory lists these new handles. Compatibility
+  definitions remain under `warp-writer`, `warp-analyst` and `warp-builder`,
+  protected from edits like the new ones and updated to the configured provider
+  and model. They keep the original keys and revision hashes: old runs,
+  schedules, project lists, call grants and client defaults are not re-keyed.
+  New configuration should use the new handles. If an existing custom agent
+  already uses one of them, startup refuses to overwrite it: preserve it under
+  another name before upgrading. An allow-list for an old
+  handle continues to grant only that handle; the rename grants no new access.
 - **Old default groups** (`warp-*`) keep their roles while the defaults are in
   force, with a note under OIDC. A later release could stop granting them; an
   identity provider that holds groups of those names for another product

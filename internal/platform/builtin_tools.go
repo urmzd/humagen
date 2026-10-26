@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/urmzd/humagen/internal/legacy"
 	"slices"
 	"sort"
 	"strconv"
@@ -124,7 +125,7 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				"tools":         "Comma-separated tools to grant, from: " + strings.Join(grantable(), ", ") + ". Leave out for none",
 			}),
 			func(ctx context.Context, args map[string]any) (string, error) {
-				if req.Agent() != BuiltinBuilder {
+				if legacy.BuiltinAgent(req.Agent()) != BuiltinBuilder {
 					return "", fmt.Errorf("%w: only %s saves agents", ErrBuilder, BuiltinBuilder)
 				}
 				rev, created, err := p.saveAgent(ctx, req.Tenant, args)
@@ -295,7 +296,7 @@ func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string
 	open := p.agentOpenFor(tenant, own)
 	page := registry.Page{Size: 100}
 	for len(out) < 200 {
-		revs, next, err := p.Agents.List(ctx, tenant, page)
+		revs, next, err := p.AgentDirectory(ctx, tenant, page)
 		if err != nil {
 			return "", err
 		}

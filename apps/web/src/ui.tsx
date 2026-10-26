@@ -1,3 +1,4 @@
+import { builtinAgentKey } from "./legacy.ts";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
 import { BanIcon, CheckIcon, ChevronDownIcon, ShieldIcon, Tooltip, XIcon } from "@humagen/render-web";
 import { defaultCopy } from "@humagen/components";
@@ -535,7 +536,7 @@ export function hueOf(name: string): number {
   const assigned = agentHue(name);
   if (assigned !== undefined) return assigned;
   let h = 186;
-  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 1000003;
+  for (const c of builtinAgentKey(name)) h = (h * 31 + c.charCodeAt(0)) % 1000003;
   return (h % AGENT_HUES) * (360 / AGENT_HUES);
 }
 

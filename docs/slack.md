@@ -238,7 +238,7 @@ the message too, and Retry asks the run again in its own thread. Neither it
 nor a mention's message offers Snooze or Dismiss: Humagen does those only as the
 caller, so in Slack they would be the app's. Ask a Question and Build an Agent
 open a form, and the words are posted as the person in their direct messages
-with the app, as the shortcut's are; Build an Agent tags `@warp-builder`, and
+with the app, as the shortcut's are; Build an Agent tags `@humagen-builder`, and
 is offered only where the client may reach it. Search Context opens the
 console. The tab shows no access or connections, which the app cannot know for
 the person. Their projects are left out when they cannot be read: the app's

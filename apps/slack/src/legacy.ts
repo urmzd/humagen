@@ -56,3 +56,13 @@ export function adoptEnv(env: Env): { env: Env; notes: string[] } {
   }
   return { env: out, notes: notes.sort() };
 }
+
+/** The current spelling of a built-in, for recognizing old mentions. */
+export function builtinAgent(name: string): string {
+  const aliases: Record<string, string> = {
+    "warp-writer": "humagen-writer",
+    "warp-analyst": "humagen-analyst",
+    "warp-builder": "humagen-builder",
+  };
+  return aliases[name] ?? name;
+}

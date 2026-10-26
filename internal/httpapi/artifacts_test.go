@@ -170,11 +170,11 @@ func TestArtifactsAreServedSafely(t *testing.T) {
 	}
 
 	// The platform's own agent cannot be edited or impersonated.
-	spec := `{"name":"warp-writer","model":"offline","provider":"offline","system_prompt":"x"}`
+	spec := `{"name":"humagen-writer","model":"offline","provider":"offline","system_prompt":"x"}`
 	if res, _ := f.do(t, nil, "POST", "/api/agents", admin, spec); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("creating an agent under a built-in's name = %d", res.StatusCode)
 	}
-	if res, _ := f.do(t, nil, "PUT", "/api/agents/warp-writer", admin, `{"spec":`+spec+`,"expected_rev":1}`); res.StatusCode != http.StatusForbidden {
+	if res, _ := f.do(t, nil, "PUT", "/api/agents/humagen-writer", admin, `{"spec":`+spec+`,"expected_rev":1}`); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("revising a built-in = %d", res.StatusCode)
 	}
 }

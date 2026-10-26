@@ -477,13 +477,13 @@ test("an agent's draft reads the same on both, with Publish and Discard for its 
     id: "m-12",
     kind: "announcement",
     subject: "Field shipped two fixes",
-    from: { kind: "agent", name: "warp-analyst" },
+    from: { kind: "agent", name: "humagen-analyst" },
     at: "2026-10-21T09:00:00Z",
     updated_at: "2026-10-21T09:00:00Z",
     severity: "info",
     state: "open",
     unread: true,
-    source: { project: "Field", run: "r1", agent: "warp-analyst" },
+    source: { project: "Field", run: "r1", agent: "humagen-analyst" },
     parts: [
       {
         id: "p1",
@@ -492,7 +492,7 @@ test("an agent's draft reads the same on both, with Publish and Discard for its 
         actions: ["publish", "discard"],
         draft: {
           project: "Field",
-          agent: "warp-analyst",
+          agent: "humagen-analyst",
           run: "r1",
           subject: "Field shipped two fixes",
           text: "Read [this](https://evil.example) <!here>",
@@ -504,7 +504,7 @@ test("an agent's draft reads the same on both, with Publish and Discard for its 
   bothSay(
     <MessageView message={message} />,
     "Field shipped two fixes",
-    defaultCopy.draftTitle("warp-analyst", "Field"),
+    defaultCopy.draftTitle("humagen-analyst", "Field"),
   );
   assert.deepEqual(
     slackButtons(<MessageView message={message} />),
@@ -677,7 +677,7 @@ test("Home's Needs you holds the same rows and the same total on both, an agent'
   const onWeb = plain(web(el));
   const rows = [
     defaultCopy.home.needsYou,
-    "warp-analyst Field shipped two fixes",
+    "humagen-analyst Field shipped two fixes",
     "Ana mentioned you in #renewals",
     "Limits Project Launch reached its daily run limit",
     "oncall-failure-rate oncall is failing more than half its runs",
@@ -706,4 +706,16 @@ test("Home's Needs you holds the same rows and the same total on both, an agent'
       `${surface} shows the draft once`,
     );
   }
+});
+
+test("a Slack task links to the conversation rather than its individual run", () => {
+  const record = run({ thread: "shared-thread" });
+  const f = follow(record, { href: (path) => `https://humagen.test${path}` });
+  const view = renderToSlack(
+    <TurnView turn={f.settle({ ...record, status: "completed", answer: "Done" })} />,
+  );
+  assert.match(
+    JSON.stringify(view),
+    /https:\/\/humagen\.test\/conversations\/shared-thread\|Open Conversation/,
+  );
 });

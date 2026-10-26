@@ -115,3 +115,33 @@ func TestOpenRefusesDuplicateStoredHues(t *testing.T) {
 		t.Fatal("accepted colliding stored hues")
 	}
 }
+
+func TestBuiltinRenameKeepsTheOriginalColor(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		before, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		old, err := before.Assign("a", []string{"warp-analyst", "warp-writer", "warp-builder", "helper"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current, err := after.Assign("a", []string{"humagen-analyst", "humagen-writer", "humagen-builder", "helper"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, suffix := range []string{"analyst", "writer", "builder"} {
+			if current["humagen-"+suffix] != old["warp-"+suffix] {
+				t.Fatalf("%s changed color", suffix)
+			}
+		}
+		if current["helper"] != old["helper"] {
+			t.Fatal("another agent moved")
+		}
+	})
+}
