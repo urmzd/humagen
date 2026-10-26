@@ -403,7 +403,7 @@ function chats(ids: Ids): Screen[] {
       act: async (page) => {
         await plus(page).click();
         const menu = page.getByRole("dialog", { name: "Add to this conversation" });
-        await menu.getByRole("button", { name: /Choose a project/ }).click();
+        await menu.getByRole("button", { name: /^(Choose a project|Personal)$/ }).click();
         await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
         await menu.getByRole("radio", { name: "#deals" }).click();
       },
