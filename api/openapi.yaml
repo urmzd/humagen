@@ -8013,6 +8013,7 @@ components:
       type: object
       required: [name, documents, passages, excluded, variants, updated_at]
       properties:
+        lifecycle: {$ref: "#/components/schemas/KnowledgeLifecycle"}
         name: {type: string}
         description: {type: string}
         documents: {type: integer}
@@ -8025,6 +8026,42 @@ components:
           items: {$ref: "#/components/schemas/KnowledgeVariant"}
         created_by: {type: string}
         updated_at: {type: string, format: date-time}
+    KnowledgeSourceConfig:
+      type: object
+      required: [mode, provider]
+      properties:
+        mode: {type: string, enum: [indexed, live, hybrid]}
+        provider: {type: string}
+        origin: {type: string, maxLength: 1024}
+        owner: {type: string, maxLength: 256}
+        project: {type: string, maxLength: 256}
+        stop_after_seconds: {type: integer, minimum: 60, maximum: 2592000, default: 86400}
+    KnowledgeLifecycle:
+      type: object
+      required: [mode, provider, status, stop_after_seconds, attempts, connected_at]
+      properties:
+        connected_at: {type: string, format: date-time}
+        mode: {type: string, enum: [indexed, live, hybrid]}
+        provider: {type: string}
+        origin: {type: string}
+        owner: {type: string}
+        project: {type: string}
+        status: {type: string, enum: [connected, importing, indexing, available, syncing, in_sync, needs_attention]}
+        cause: {type: string, enum: [auth_expired, quota, unsupported, unavailable, interrupted]}
+        last_good_at: {type: string, format: date-time}
+        stop_after_seconds: {type: integer, minimum: 60, maximum: 2592000}
+        attempts:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [id, started_at, status]
+            properties:
+              id: {type: string}
+              started_at: {type: string, format: date-time}
+              finished_at: {type: string, format: date-time}
+              status: {type: string, enum: [importing, indexing, syncing, succeeded, failed]}
+              cause: {type: string}
     KnowledgeDocument:
       type: object
       required: [id, title, bytes, passages, excluded, added_at]
@@ -8041,6 +8078,7 @@ components:
       type: object
       required: [source, document_id, title, index, text, score]
       properties:
+        mode: {type: string, enum: [indexed, live]}
         source: {type: string}
         document_id: {type: string}
         title: {type: string}
