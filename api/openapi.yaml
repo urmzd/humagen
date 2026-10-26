@@ -5469,6 +5469,11 @@ components:
       type: object
       required: [id, project, channel, visibility, participants, version, created_by, created_at, updated_at]
       properties:
+        moves:
+          description: Number of committed placement changes, without former audience identities.
+          type: integer
+          minimum: 0
+          maximum: 100
         id:
           description: "`th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it."
           type: string

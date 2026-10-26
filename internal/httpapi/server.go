@@ -518,7 +518,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) }))})
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRuns(who.Tenant, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -731,7 +731,7 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request, who auth.Princip
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, run)
+	ok(w, http.StatusOK, s.P.ShownRun(who.Tenant, run))
 }
 
 func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -740,7 +740,7 @@ func (s *Server) runTree(w http.ResponseWriter, r *http.Request, who auth.Princi
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": tree})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree)})
 }
 
 func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Principal) {

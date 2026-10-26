@@ -361,7 +361,9 @@ func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCoun
 	if len(hidden) > 0 {
 		keep = func(thread string) bool { return !hidden[thread] }
 	}
-	return p.Runs.ProjectCountsWhere(who.Tenant, mark, keep)
+	return p.Runs.ProjectCountsPlaced(who.Tenant, mark, keep, func(thread, original string) string {
+		return p.CurrentPlace(who.Tenant, Place{Project: original, Thread: thread}).Project
+	})
 }
 
 // SeesThread reports whether a reader may read a thread: its project, and in

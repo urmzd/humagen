@@ -142,7 +142,7 @@ func (s *Server) trace(w http.ResponseWriter, r *http.Request, who auth.Principa
 	for i, run := range tree {
 		ids[i] = run.ID
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": tree, "spans": orEmpty(s.P.Journal.Trace(who.Tenant, ids))})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree), "spans": orEmpty(s.P.Journal.Trace(who.Tenant, ids))})
 }
 
 // runEvents returns one run's events as they were published, oldest first, for
@@ -200,7 +200,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 	out := make([]entry, 0, len(tree))
 	seer := s.P.Seer(who)
 	for _, run := range tree {
-		e := entry{Run: run, State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
+		e := entry{Run: s.P.ShownRun(who.Tenant, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
 		if run.Stopping {
 			e.State = "stopping"
 		}

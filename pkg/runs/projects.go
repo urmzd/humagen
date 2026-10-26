@@ -163,11 +163,18 @@ func (x *Index) Opened(tenant string) int {
 // with no scan. keep is called under the index's read lock, so it must not
 // call the index.
 func (x *Index) ProjectCountsWhere(tenant string, mark int, keep func(thread string) bool) map[string]ProjectCount {
+	return x.ProjectCountsPlaced(tenant, mark, keep, nil)
+}
+
+// ProjectCountsPlaced groups operational counts by the authoritative current
+// placement. The resolver must not call the run index. Accounting stays filed
+// under its original immutable attribution.
+func (x *Index) ProjectCountsPlaced(tenant string, mark int, keep func(string) bool, place func(thread, original string) string) map[string]ProjectCount {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
 	opened := x.counts.opened[tenant]
 	since := opened[min(max(mark, 0), len(opened)):]
-	if keep == nil && len(since) == 0 {
+	if place == nil && keep == nil && len(since) == 0 {
 		return x.projectCounts(tenant)
 	}
 	late := make(map[string]bool, len(since))
@@ -180,6 +187,9 @@ func (x *Index) ProjectCountsWhere(tenant string, mark int, keep func(thread str
 			continue
 		}
 		project := x.counts.filed[tenant+"\x00"+thread]
+		if place != nil {
+			project = place(thread, project)
+		}
 		sum := out[project]
 		sum.Threads += n.Threads
 		sum.Active += n.Active

@@ -491,6 +491,8 @@ visibility and an optional default agent. Its turns are its people's
 messages and its agents' runs.
  */
 export interface Thread {
+  /** Number of committed placement changes, without former audience identities. */
+  moves?: number;
   /** `th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it. */
   id: string;
   /** The project it is filed in. Empty is the workspace itself. */

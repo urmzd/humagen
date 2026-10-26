@@ -315,10 +315,16 @@ type Query struct {
 	// Keep, when set, keeps only the files it accepts: those the reader may
 	// read. A page is full of those.
 	Keep func(Artifact) bool
+	// ProjectOf resolves operational placement without rewriting storage attribution.
+	ProjectOf func(Artifact) string
 }
 
 func (q Query) match(a *Artifact) bool {
-	return (q.Keep == nil || q.Keep(*a)) && (q.Project == "" || a.Project == q.Project) && (q.Agent == "" || a.Agent == q.Agent) &&
+	project := a.Project
+	if q.ProjectOf != nil {
+		project = q.ProjectOf(*a)
+	}
+	return (q.Keep == nil || q.Keep(*a)) && (q.Project == "" || project == q.Project) && (q.Agent == "" || a.Agent == q.Agent) &&
 		(q.Run == "" || a.Run == q.Run) && (q.Thread == "" || a.Thread == q.Thread) && (q.Kind == "" || a.Kind == q.Kind) &&
 		(q.Title == "" || strings.Contains(strings.ToLower(a.Title), strings.ToLower(q.Title)))
 }
