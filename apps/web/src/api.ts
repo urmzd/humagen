@@ -759,6 +759,8 @@ export const api = {
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
   /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
+  forkProject: (source: string, input: { name: string; parent?: string; title?: string; memory?: string[]; sources?: string[] }) => call<ProjectForkOperation>("POST", `/api/projects/${projectPath(source)}/fork`, input),
+  projectFork: (name: string) => call<ProjectForkOperation>("GET", `/api/project-forks/${encodeURIComponent(name)}`),
   findProjects: (q: string) => call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${new URLSearchParams({ q, limit: "20" })}`).then((page) => page.projects),
   projects: async () => {
     // Read a page at a time, at most the 500 a workspace holds.
@@ -1293,3 +1295,7 @@ export const coworking = {
 };
 
 export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };
+
+export interface ProjectForkOperation {
+ id: string; source: string; destination: string; state: "preparing" | "failed" | "ready"; error?: string; projects: number; agents: number; memory: number;
+}

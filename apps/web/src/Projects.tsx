@@ -1182,12 +1182,14 @@ export function ProjectPage({
   onAgentsChanged,
   onDeleted,
   onOpenChannel,
+  onFork,
 }: {
   /** "" is the workspace. */
   name: string;
   tab: ProjectTab;
   /** Open one of the project's channels. */
   onOpenChannel?: (channel: string) => void;
+  onFork?: () => void;
   onTab: (tab: ProjectTab) => void;
   /** The message open in its inbox, and how another is opened. */
   message?: string;
@@ -1339,6 +1341,7 @@ export function ProjectPage({
                   },
                 ]
               : []),
+            ...(can("projects:write") && !root && !p.personal_owner && onFork ? [{label: defaultCopy.projectFork.title, onSelect: onFork}] : []),
             ...(canWrite && !root && !editing ? [{ label: words.editProject, onSelect: () => setEditing(true) }] : []),
             ...(may("move") && moving === null ? [{ label: defaultCopy.roles.moveProject, onSelect: () => setMoving(p.parent ?? "") }] : []),
             ...(may("archive")
@@ -1367,6 +1370,7 @@ export function ProjectPage({
         />
       }
     >
+      {p.fork?.ready && <p className="text-aui-xs text-aui-muted">{defaultCopy.projectFork.ready}{p.fork.source && <>: <Go to={projectHref(p.fork.source)} onGo={() => onOpen(p.fork?.source || "")} className="text-aui-accent underline">{p.fork.source}</Go></>}</p>}
       <Problem message={problem} />
       {deleting && (
         <Confirm

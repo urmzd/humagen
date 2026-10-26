@@ -23,6 +23,7 @@ import type {
   CreateRunRequest,
   EvalRun,
   EvalSuite,
+  ForkProjectBody,
   ForkThreadBody,
   GetAgentHuesResponse,
   GetInboxMessageResponse,
@@ -80,6 +81,7 @@ import type {
   ProjectContext,
   ProjectDetail,
   ProjectExperts,
+  ProjectForkOperation,
   ProjectInput,
   ProjectKnowledge,
   ProjectKnowledgeInput,
@@ -1631,6 +1633,44 @@ here too (429).
     return this.rawRequest<ThreadPosted>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Copies at most 20 visible projects and 20 agents. New projects stay invisible and cannot run until all selected configuration is copied and one durable publication gate opens. Copies no conversations, schedules or approvals. Select confirmed memory explicitly. Live bindings are detached and copied integration rules stay disabled. Repeating the same source, destination and parent resumes the creator's saved operation. */
+  async forkProject(name: string, body: ForkProjectBody, options?: RequestOptions): Promise<ProjectForkOperation> {
+    let path = "/api/projects/{name}/fork";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectForkOperation>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async forkProjectRaw(name: string, body: ForkProjectBody, options?: RequestOptions): Promise<ApiResponse<ProjectForkOperation>> {
+    let path = "/api/projects/{name}/fork";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectForkOperation>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Only the exact human creator can read a workflow, including before its staged resources become visible. Source access remains required to resume a copy. Another creator's operation answers like a missing one. */
+  async getProjectFork(name: string, options?: RequestOptions): Promise<ProjectForkOperation> {
+    let path = "/api/project-forks/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectForkOperation>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectForkRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectForkOperation>> {
+    let path = "/api/project-forks/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectForkOperation>("GET", path, {
       ...options,
     });
   }

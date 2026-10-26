@@ -31,6 +31,7 @@ test("every route survives a round trip through its address", () => {
     // A kind the workspace defines has an address too.
     { page: "projects", kind: "partner" },
     { page: "project", name: "Q4 launch", tab: "inbox" },
+    { page: "project", name: "Q4 launch", tab: "inbox", fork: true },
     { page: "project", name: "Q4 launch", tab: "inbox", message: "m7" },
     { page: "project", name: "Q4 launch", tab: "overview" },
     { page: "project", name: "Q4 launch", tab: "context" },

@@ -44,6 +44,7 @@ import (
 	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -89,6 +90,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.putToolCredential))
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
+	mux.HandleFunc("POST /api/projects/{name}/fork", s.authed(auth.ProjectsWrite, s.seenProject(s.forkProject)))
+	mux.HandleFunc("GET /api/project-forks/{name}", s.authed(auth.ProjectsRead, s.projectFork))
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
@@ -939,7 +942,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
-	case errors.Is(err, runs.ErrNotFound), errors.Is(err, registry.ErrNotFound), errors.Is(err, platform.ErrScheduleNotFound),
+	case errors.Is(err, projectforks.ErrNotFound), errors.Is(err, runs.ErrNotFound), errors.Is(err, registry.ErrNotFound), errors.Is(err, platform.ErrScheduleNotFound),
 		errors.Is(err, platform.ErrProjectNotFound), errors.Is(err, errNotSeen),
 		errors.Is(err, alerts.ErrNotFound), errors.Is(err, knowledge.ErrNotFound), errors.Is(err, evals.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound), errors.Is(err, policy.ErrNotFound), errors.Is(err, inbox.ErrNotFound),
@@ -966,9 +969,9 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, platform.ErrScheduleManaged))
 	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, projects.ErrInvalid):
+	case errors.Is(err, projectforks.ErrInvalid), errors.Is(err, projects.ErrInvalid):
 		fail(w, http.StatusBadRequest, detail(err, projects.ErrInvalid))
-	case errors.Is(err, projects.ErrLimit):
+	case errors.Is(err, projectforks.ErrLimit), errors.Is(err, projects.ErrLimit):
 		fail(w, http.StatusTooManyRequests, detail(err, projects.ErrLimit))
 	case errors.Is(err, projects.ErrManaged):
 		fail(w, http.StatusConflict, detail(err, projects.ErrManaged))

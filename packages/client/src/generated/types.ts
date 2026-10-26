@@ -523,6 +523,17 @@ not selected. Absent when none is selected.
   updated_at: string;
 }
 
+export interface ProjectForkOperation {
+  id: string;
+  source: string;
+  destination: string;
+  state: "preparing" | "failed" | "ready";
+  error?: string;
+  projects: number;
+  agents: number;
+  memory: number;
+}
+
 /** Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals. */
 export interface ThreadFork {
   sources?: string[];
@@ -1094,6 +1105,7 @@ a path), which has no title, parent or account: show the workspace's
 name for it. It reads as version 0 until it is first changed.
  */
 export interface Project {
+  fork?: ProjectFork;
   /** Immutable human subject for a server-provisioned personal project. */
   personal_owner?: string;
   name: string;
@@ -2935,6 +2947,14 @@ export interface ThreadForkContextItem {
   at: string;
 }
 
+export interface ProjectFork {
+  operation: string;
+  source?: string;
+  by: string;
+  at: string;
+  ready: boolean;
+}
+
 export interface ProjectChangeChannel {
   before?: Channel;
   after?: Channel;
@@ -3030,6 +3050,14 @@ export interface ListRunEventsResponse {
 export interface ListThreadsResponse {
   threads: ThreadSummary[];
   next: string | null;
+}
+
+export interface ForkProjectBody {
+  name: string;
+  parent?: string;
+  title?: string;
+  memory?: string[];
+  sources?: string[];
 }
 
 export interface ForkThreadBody {

@@ -6,6 +6,7 @@ import type { Thread } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { BringBackResult, ForkContext, ForkConversation } from "./ForkConversation.tsx";
 import { ConversationAccess } from "./ConversationAccess.tsx";
+import { ForkProject } from "./ForkProject.tsx";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 
 const at="2026-10-20T12:00:00Z";
@@ -66,4 +67,26 @@ test("project switcher uses a bounded server search and preserves navigable link
  assert.equal(query?.get("limit"),"20");
  fireEvent.click(link);
  assert.deepEqual(opened,[{page:"project",name:"Launch",tab:"inbox"}]);
+});
+
+
+test("project fork copies only selected confirmed memory and does not navigate before publication",async()=>{
+ let calls=0;const bodies:unknown[]=[];const opened:string[]=[];
+ net=stubFetch({
+  "GET /api/projects/Launch/memory":()=>({notes:[{id:"n1",text:"Confirmed decision",status:"approved"},{id:"n2",text:"Pending proposal",status:"pending"}]}),
+  "GET /api/knowledge":()=>({sources:[]}),
+  "POST /api/projects/Launch/fork":(body)=>{bodies.push(body);calls++;return {id:"pf-1",source:"Launch",destination:"Launch-copy",state:calls===1?"failed":"ready",error:calls===1?"Copy stopped before publication.":undefined,projects:2,agents:1,memory:1};},
+ });
+ render(<ForkProject source="Launch" projects={[]} onClose={()=>{}} onReady={(name)=>opened.push(name)}/>);
+ fireEvent.click(await screen.findByRole("checkbox",{name:"Confirmed decision"}));
+ assert.equal(screen.queryByText("Pending proposal"),null);
+ fireEvent.click(screen.getByRole("button",{name:defaultCopy.projectFork.create}));
+ await screen.findByText("Copy stopped before publication.");
+ assert.deepEqual(opened,[]);
+ assert.equal((screen.getByLabelText(defaultCopy.projectFork.name) as HTMLInputElement).disabled,true);
+ fireEvent.click(screen.getByRole("button",{name:defaultCopy.projectFork.retry}));
+ await waitFor(()=>assert.deepEqual(opened,["Launch-copy"]));
+ assert.equal(bodies.length,2);
+ assert.deepEqual(bodies[0],bodies[1]);
+ assert.deepEqual((bodies[0] as {memory:string[]}).memory,["n1"]);
 });

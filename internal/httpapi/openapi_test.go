@@ -1587,6 +1587,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatal("governance-only private read was not in the audit")
 	}
 
+	copiedProject := c.call(ana, "POST", "/api/projects/{name}/fork", "/api/projects/Field/fork", `{"name":"Forked"}`, http.StatusAccepted)
+	if copiedProject.str("state") != "ready" {
+		t.Fatalf("project fork did not publish: %s", copiedProject.raw)
+	}
+	c.call(ana, "GET", "/api/project-forks/{name}", "/api/project-forks/Forked", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/project-forks/{name}", "/api/project-forks/Forked", "", http.StatusNotFound)
+	c.call(ana, "POST", "/api/projects/{name}/fork", "/api/projects/Field/fork", `{"name":"Launch"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/projects/{name}/fork", "/api/projects/Field/fork", `{"name":""}`, http.StatusBadRequest)
 	forkPath := "/api/threads/" + obj(draft.field("thread"))["id"].(string) + "/fork"
 	forked := c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-1","title":"Alternative"}`, http.StatusCreated)
 	c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-999"}`, http.StatusNotFound)
@@ -1788,6 +1796,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
+		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
 		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
@@ -1809,8 +1818,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/fork":  {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
 	}
 	valid := map[string]string{
-		"/api/runs/{id}/feedback": `{"rating":"up"}`,
-		"/api/agents/{name}":      revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
+		"/api/projects/{name}/fork": `{"name":"ForkedGhost"}`,
+		"/api/runs/{id}/feedback":   `{"rating":"up"}`,
+		"/api/agents/{name}":        revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
 		"/api/clients/{id}": `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
@@ -1929,6 +1939,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"POST /api/projects/{name}/fork 429":    "bounded private operation-plan capacity, covered by projectforks store tests",
 	"POST /api/threads/{id}/fork 429":       "bounded workspace or project thread cap, covered by thread store tests",
 	"POST /api/threads/{id}/bring-back 429": "bounded per-person posting rate and thread message cap, covered by platform and thread store tests",
 	// A workspace holds at most 1,000 call policies, one per agent. Making

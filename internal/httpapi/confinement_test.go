@@ -461,7 +461,7 @@ func (h hidden) value(path, param string) (string, bool) {
 		switch {
 		case prefix("/api/agents/"):
 			return h.agent, true
-		case prefix("/api/projects/"):
+		case prefix("/api/projects/"), prefix("/api/project-forks/"):
 			return h.project, true
 		case prefix("/api/schedules/"):
 			return h.schedule, true

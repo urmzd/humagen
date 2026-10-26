@@ -70,7 +70,7 @@ export type Route =
   /** Every project, searched with `q` and narrowed to one kind. */
   | { page: "projects"; q?: string; kind?: ProjectKindFilter }
   /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
-  | { page: "project"; name: string; tab: ProjectTab; message?: string }
+  | { page: "project"; name: string; tab: ProjectTab; message?: string; fork?: boolean }
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
@@ -131,6 +131,7 @@ export function href(r: Route): string {
       return query ? `/projects?${query}` : "/projects";
     }
     case "project": {
+      if (r.fork) return `/projects/${enc(r.name || "~")}/fork`;
       // Names never hold "/", so nesting lives in the tree, never in the path.
       const base = `/projects/${r.name === "" ? "~" : enc(r.name)}`;
       if (r.tab !== "inbox") return `${base}/${r.tab}`;
@@ -251,6 +252,7 @@ function read(pathname: string, search: string): Route {
       return { page: "conversation", id: a, message: q.get("message") || undefined };
     case "projects": {
       if (!a) return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };
+      if (b === "fork") return { page: "project", name: a === "~" ? "" : a, tab: "inbox", fork: true };
       // A channel is a page of its own, under the project's Channels tab.
       if (b === "channels" && parts[3]) return { page: "channel", project: a === "~" ? "" : a, channel: parts[3] };
       const tab = pick(b, PROJECT_TABS, "inbox");

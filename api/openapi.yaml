@@ -1513,6 +1513,64 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/fork:
+    post:
+      operationId: forkProject
+      tags: [projects]
+      summary: Copy bounded project structure and configuration through a hidden staging workflow
+      description: Copies at most 20 visible projects and 20 agents. New projects stay invisible and cannot run until all selected configuration is copied and one durable publication gate opens. Copies no conversations, schedules or approvals. Select confirmed memory explicitly. Live bindings are detached and copied integration rules stay disabled. Repeating the same source, destination and parent resumes the creator's saved operation.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string, maxLength: 63}
+                parent: {type: string}
+                title: {type: string, maxLength: 80}
+                memory: {type: array, maxItems: 100, items: {type: string}}
+                sources: {type: array, maxItems: 16, items: {type: string}}
+      responses:
+        "202":
+          description: The saved workflow, ready or stopped safely before publication.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectForkOperation"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/project-forks/{name}:
+    get:
+      operationId: getProjectFork
+      tags: [projects]
+      summary: Read your own saved project fork workflow
+      description: Only the exact human creator can read a workflow, including before its staged resources become visible. Source access remains required to resume a copy. Another creator's operation answers like a missing one.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The creator's saved workflow.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectForkOperation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/threads/{id}/fork:
     post:
       operationId: forkThread
@@ -5588,6 +5646,19 @@ components:
           description: When anything last happened in it.
           type: string
           format: date-time
+    ProjectForkOperation:
+      type: object
+      additionalProperties: false
+      required: [id, source, destination, state, projects, agents, memory]
+      properties:
+        id: {type: string}
+        source: {type: string}
+        destination: {type: string}
+        state: {type: string, enum: [preparing, failed, ready]}
+        error: {type: string}
+        projects: {type: integer, minimum: 1, maximum: 20}
+        agents: {type: integer, minimum: 0, maximum: 20}
+        memory: {type: integer, minimum: 0, maximum: 100}
     ThreadFork:
       description: Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals.
       type: object
@@ -6414,6 +6485,16 @@ components:
       type: object
       required: [name, kind, experts, members, agents, version, created_at, updated_at]
       properties:
+        fork:
+          type: object
+          additionalProperties: false
+          required: [operation, by, at, ready]
+          properties:
+            operation: {type: string}
+            source: {type: string}
+            by: {type: string}
+            at: {type: string, format: date-time}
+            ready: {type: boolean}
         personal_owner:
           description: Immutable human subject for a server-provisioned personal project.
           type: string

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -118,7 +119,13 @@ func (p *Platform) ForkThread(ctx context.Context, who auth.Principal, id string
 		return threads.Thread{}, threads.ErrNotFound
 	}
 	now := p.now()
-	return p.Threads.Create(who.Tenant, threads.Thread{Project: source.Project, Channel: source.Channel, Title: in.Title, Visibility: threads.Private, CreatedBy: person.Subject, Agents: agents, Mode: mode, Fork: &threads.Fork{Sources: in.Sources, SourceThread: id, Through: in.Through, By: person.Subject, At: now, Context: history}}, now)
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "conversation.fork", Resource: "conversation", Scope: "personal", Subject: who.Subject, ID: id, Project: source.Project, Thread: id, After: map[string]string{"through": in.Through}})
+	if err != nil {
+		return threads.Thread{}, err
+	}
+	result, err := p.Threads.Create(who.Tenant, threads.Thread{Project: source.Project, Channel: source.Channel, Title: in.Title, Visibility: threads.Private, CreatedBy: person.Subject, Agents: agents, Mode: mode, Fork: &threads.Fork{Sources: in.Sources, SourceThread: id, Through: in.Through, By: person.Subject, At: now, Context: history}}, now)
+	_ = attempt.Finish(err)
+	return result, err
 }
 
 // BringBackInput selects an outcome. Text, if present, is the caller's edit.
@@ -173,7 +180,12 @@ func (p *Platform) BringBackResult(_ context.Context, who auth.Principal, id str
 	if err != nil {
 		return threads.Message{}, err
 	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "conversation.bring_back", Resource: "conversation", ID: parent.ID, Project: parent.Project, Thread: parent.ID, After: map[string]string{"fork": id, "run": run.ID}})
+	if err != nil {
+		return threads.Message{}, err
+	}
 	m, _, err := p.Threads.Post(who.Tenant, parent.ID, threads.Message{By: person.Subject, Name: p.NameOf(who.Tenant, person.Subject), Text: text, Prev: prev, Via: threads.ViaConsole}, p.now())
+	_ = attempt.Finish(err)
 	return m, err
 }
 

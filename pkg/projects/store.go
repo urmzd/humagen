@@ -644,6 +644,8 @@ func (s *Store) update(tenantName, name string, version int, w Writer, at time.T
 	}
 	next.Agents = next.Agents.canonical()
 	switch {
+	case !sameForkOrigin(next.Fork, cur.Fork):
+		return Project{}, fmt.Errorf("%w: fork lineage and publication are changed by the fork workflow", ErrInvalid)
 	case next.PersonalOwner != cur.PersonalOwner:
 		return Project{}, fmt.Errorf("%w: personal ownership is immutable", ErrInvalid)
 	case next.Name != cur.Name:

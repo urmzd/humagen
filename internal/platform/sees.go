@@ -146,6 +146,9 @@ func (s *Seer) Place(at Place) bool {
 
 func (s *Seer) placeDirect(at Place) bool {
 	at = s.p.CurrentPlace(s.who.Tenant, at)
+	if s.tree.PendingFork(at.Project) {
+		return false
+	}
 	if pr, ok := s.tree.Get(at.Project); ok && pr.PersonalOwner != "" && s.who.Kind == auth.Machine {
 		return false
 	}

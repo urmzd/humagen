@@ -67,6 +67,7 @@ import (
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -206,7 +207,8 @@ type Platform struct {
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
-	Projects *projects.Store
+	Projects     *projects.Store
+	ProjectForks *projectforks.Store
 	// People is each tenant's directory of people.
 	People *people.Store
 	// Threads is each tenant's shared threads: their records and the
