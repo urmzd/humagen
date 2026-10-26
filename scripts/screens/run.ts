@@ -117,6 +117,53 @@ async function twoAgents(page: Page): Promise<void> {
 function chats(ids: Ids): Screen[] {
   return [
     {
+      name: "conversation-message-actions",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const human=page.getByRole("article",{name:/^Message from /}).first();
+        const agent=page.getByRole("article",{name:"helper message",exact:true});
+        for (const message of [human,agent]) {
+          const actions=message.getByRole("toolbar",{name:"Message actions"});
+          await actions.getByRole("button",{name:/^Copy (message|answer)/}).waitFor();
+          await actions.getByRole("button",{name:"Reply",exact:true}).waitFor();
+          assert.equal(await message.getByRole("toolbar",{name:"Message actions"}).count(),1);
+        }
+        await agent.getByRole("button",{name:"Reply",exact:true}).focus();
+      },
+    },
+    {
+      name: "conversation-agent-time",
+      path: `/conversations/${ids.privateChat}`,
+      act: async(page)=>{
+        const message=page.getByRole("article",{name:"helper message",exact:true});
+        await message.getByRole("button",{name:/^Posted /}).click();
+        const tooltip=message.getByRole("tooltip");await tooltip.waitFor();
+        const box=await tooltip.boundingBox();
+        assert.ok(box && box.x>=0 && box.x+box.width<=(page.viewportSize()?.width??0),"Agent timestamp must stay in the viewport");
+      },
+    },
+    {
+      name: "conversation-outcome-redirect",
+      path: `/conversations/${ids.privateChat}`,
+      act: async(page)=>{
+        // A labelled visual fixture exercises the real authored-outcome wire shape.
+        // Runtime production and restart semantics are verified in Go tests.
+        await page.route(`**/api/threads/${ids.privateChat}`,async(route)=>{
+          const response=await route.fetch();
+          const body=await response.json();
+          const selected=body.turns.find((turn:{run?:{status:string}})=>turn.run?.status==="completed");
+          assert.ok(selected?.run,"Seeded conversation must have a completed run");
+          selected.run.outcome={kind:"recommendation",summary:"Review the launch owner before publishing.",decisions:["Keep the current launch date"],next_action:"Confirm who owns the briefing"};
+          return route.fulfill({response,json:body});
+        });
+        await page.reload();
+        await page.getByRole("button",{name:"Redirect",exact:true}).click();
+        await page.waitForFunction(() => (document.querySelector("form[aria-label=Message] textarea") as HTMLTextAreaElement | null)?.value.includes("Please change direction: "));
+        assert.match(await bar(page).inputValue(),/Please change direction: /);
+        await bar(page).fill((await bar(page).inputValue())+"Keep the date and clarify ownership.");
+      },
+    },
+    {
       name: "conversation-message-time",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
@@ -726,6 +773,7 @@ async function artifactFixtures(page: Page, thread: string): Promise<void> {
       return route.fulfill({
         json: { versions: source.filter((other) => other.title === item.title).map(metadata) },
       });
+    if (parts[3] === "pdf") return route.continue();
     if (parts[3] === "content")
       return route.fulfill({
         body: item.bytes,
@@ -1111,7 +1159,7 @@ async function main(): Promise<void> {
   if (showcase && only.length)
     throw new Error("SCREENS_SHOWCASE requires every screen; unset SCREENS_ONLY.");
   // A mistyped name would otherwise capture nothing and pass.
-  const unknown = only.filter((n) => n !== "home-new" && !screens(ids0).some((s) => s.name === n));
+  const unknown = only.filter((n) => n !== "home-new" && !screens(ids0, async () => { throw new Error("Screen selection must not call the seed API"); }).some((s) => s.name === n));
   if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
   // Only a folder this script wrote, or a new one, is cleared.
   if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, "report.json"))) {
