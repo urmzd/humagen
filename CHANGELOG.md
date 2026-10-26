@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.27.0 (2026-10-26)
+
+### Features
+
+- **workspace**: complete native outcomes and the integrated console (#85) ([55167c7](https://github.com/urmzd/humagen/commit/55167c7236218e238e7d170970d94ffe915352d5))
+- **notifications**: deliver opted-in updates through native SMTP (#84) ([3db89b0](https://github.com/urmzd/humagen/commit/3db89b039e275e72d715cd261b3847ee492a952e))
+- **usage**: add recorded assistance and daily analytics (#83) ([2721236](https://github.com/urmzd/humagen/commit/2721236794905cdebe85771a026c6a3ea16c9861))
+- **conversations**: add confined forks and project workflows (#82) ([cacc710](https://github.com/urmzd/humagen/commit/cacc710f8af6bc2512b1cbd2d8b578ea88490ec5))
+- **library**: add scoped skills and personal memory controls (#81) ([6596685](https://github.com/urmzd/humagen/commit/6596685815b2cb79336344f047a914b194397d36))
+- **sources**: complete lifecycle controls and trusted citation provenance (#80) ([d708cdf](https://github.com/urmzd/humagen/commit/d708cdf691b592b0f71f3848afde961a0e6210eb))
+- **agents**: add durable assignments and scoped action controls (#79) ([d8bb10c](https://github.com/urmzd/humagen/commit/d8bb10ccf19fb6a352988ec031284e7d20de0fc5))
+- **workspace**: add Company homes and reviewed publication (#78) ([6a18f1c](https://github.com/urmzd/humagen/commit/6a18f1c087c9daa8ba355296a4f6a6266ac0b772))
+- add shared audit and source foundations for the workspace (#76) ([5fcde6c](https://github.com/urmzd/humagen/commit/5fcde6cf1d9bbb8dc6c3f6631bb7e0c503c9ef4f))
+
+### Bug Fixes
+
+- **web**: keep message actions and agent badges consistent (#75) ([ba38dd7](https://github.com/urmzd/humagen/commit/ba38dd75d319b7723347fa0dc3544f5d4dbbcab8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.26.4...v0.27.0)
+
+
 ## 0.26.4 (2026-10-26)
 
 ### Bug Fixes
