@@ -50,7 +50,7 @@ export type QueueAction =
   | { type: "clear" }
   | { type: "stop" }
   | { type: "turnEnded"; outcome: "done" | "failed" | "stopped" }
-  /** The host rejected the post before accepting a turn. Retain it for explicit retry. */
+  /** The post failed or acceptance is unknown. Retain it for explicit retry. */
   | { type: "rejected" }
   /** Release a held queue: run the next message. */
   | { type: "resume" }

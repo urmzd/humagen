@@ -206,18 +206,19 @@ export function NativePreview({
         <div className="mb-5 text-aui-accent">
           <HumagenMark />
         </div>
-        {preview.paragraphs.map((paragraph, i) =>
-          i === 0 ? (
-            <h3 key={`${i}:${paragraph.slice(0, 30)}`} className="mb-5 text-aui-lg font-semibold">
-              {paragraph}
-            </h3>
+        {(preview.blocks ?? preview.paragraphs.map((text) => ({ kind: "paragraph" as const, text }))).map((block, i) =>
+          block.kind === "table" ? (
+            <div key={i} className="aui-scroll mb-4 overflow-x-auto">
+              <table className="w-full border-collapse text-left text-aui-xs">
+                <tbody>{block.rows.map((row, r) => <tr key={r}>{row.map((cell, c) => r === 0
+                  ? <th key={c} scope="col" className="border border-aui-border px-3 py-2 whitespace-pre-wrap break-words">{cell}</th>
+                  : <td key={c} className="border border-aui-border px-3 py-2 whitespace-pre-wrap break-words">{cell}</td>)}</tr>)}</tbody>
+              </table>
+            </div>
+          ) : i === 0 ? (
+            <h3 key={i} className="mb-5 text-aui-lg font-semibold">{block.text}</h3>
           ) : (
-            <p
-              key={`${i}:${paragraph.slice(0, 30)}`}
-              className="mb-3 whitespace-pre-wrap break-words"
-            >
-              {paragraph}
-            </p>
+            <p key={i} className="mb-3 whitespace-pre-wrap break-words">{block.text}</p>
           ),
         )}
         {preview.truncated && (

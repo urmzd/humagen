@@ -56,7 +56,7 @@ func (s *Server) seenThread(h handler) handler {
 func (s *Server) seenArtifact(h handler) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 		a, err := s.P.Artifacts.Get(who.Tenant, r.PathValue("id"))
-		if err == nil && !s.P.Seer(who).Artifact(a) {
+		if err != nil || !s.P.Seer(who).Artifact(a) {
 			notFound(w)
 			return
 		}

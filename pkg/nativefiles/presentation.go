@@ -22,7 +22,11 @@ func presentation(parts map[string]string, d Document) string {
 		n := i + 1
 		slide := fmt.Sprintf("ppt/slides/slide%d.xml", n)
 		notes := fmt.Sprintf("ppt/notesSlides/notesSlide%d.xml", n)
-		parts[slide] = root("sld", `<p:cSld name="`+esc(s.Title)+`"><p:spTree>`+group()+shape(2, "Title", []string{s.Title}, 365760, 914400, 3200)+shape(3, "Body", s.Body, 1463040, 4572000, 2000)+`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>`)
+		title := []string{s.Title}
+		if i == 0 && d.Title != "" {
+			title = append([]string{d.Title}, title...)
+		}
+		parts[slide] = root("sld", `<p:cSld name="`+esc(s.Title)+`"><p:spTree>`+group()+shape(2, "Title", title, 365760, 914400, 3200)+shape(3, "Body", s.Body, 1463040, 4572000, 2000)+`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>`)
 		parts[fmt.Sprintf("ppt/slides/_rels/slide%d.xml.rels", n)] = rels(rel("rId1", "slideLayout", "../slideLayouts/slideLayout1.xml") + rel("rId2", "notesSlide", fmt.Sprintf("../notesSlides/notesSlide%d.xml", n)))
 		noteText := []string{s.Notes}
 		noteText = append(noteText, s.Sources...)

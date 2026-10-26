@@ -1,14 +1,16 @@
 package httpapi
 
 import (
+	"net/http"
+
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
-	"net/http"
 )
 
 func (s *Server) agentSetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agent-setups", s.authed(auth.AgentsWrite, s.createAgentSetup))
+	mux.HandleFunc("PUT /api/agent-setups/{name}", s.authed(auth.AgentsWrite, s.amendAgentSetup))
 	mux.HandleFunc("GET /api/agent-setups/{name}", s.authed(auth.AgentsWrite, s.getAgentSetup))
 	mux.HandleFunc("POST /api/agent-setups/{name}/resume", s.authed(auth.AgentsWrite, s.resumeAgentSetup))
 	mux.HandleFunc("POST /api/agent-setups/{name}/test", s.authed(auth.AgentsWrite, s.testAgentSetup))
@@ -23,7 +25,11 @@ func (s *Server) getAgentSetup(w http.ResponseWriter, r *http.Request, who auth.
 	ok(w, http.StatusOK, record)
 }
 func (s *Server) setupChange(w http.ResponseWriter, r *http.Request, who auth.Principal, name, action string, apply func() (platform.AgentSetup, error)) {
-	attempt, err := s.P.BeginAudit(who, audit.Change{Action: "agent.setup." + action, Resource: "agent_setup", ID: name, Scope: "personal", Subject: who.Subject, Agent: name, Route: r.Method + " /api/agent-setups" + map[bool]string{true: "/{name}/" + action, false: ""}[action != "create"], Rule: string(auth.AgentsWrite)})
+	route := r.Method + " /api/agent-setups" + map[bool]string{true: "/{name}/" + action, false: ""}[action != "create"]
+	if action == "amend" {
+		route = r.Method + " /api/agent-setups/{name}"
+	}
+	attempt, err := s.P.BeginAudit(who, audit.Change{Action: "agent.setup." + action, Resource: "agent_setup", ID: name, Scope: "personal", Subject: who.Subject, Agent: name, Route: route, Rule: string(auth.AgentsWrite)})
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -83,4 +89,22 @@ func (s *Server) activateAgentSetup(w http.ResponseWriter, r *http.Request, who 
 		return
 	}
 	s.setupChange(w, r, who, name, "activate", func() (platform.AgentSetup, error) { return s.P.ActivateAgentSetup(r.Context(), who, name) })
+}
+
+func (s *Server) amendAgentSetup(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	name := r.PathValue("name")
+	if _, err := s.P.AgentSetup(who, name); err != nil {
+		s.problem(w, err)
+		return
+	}
+	var body struct {
+		Version int                     `json:"version"`
+		Plan    platform.AgentSetupPlan `json:"plan"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	s.setupChange(w, r, who, name, "amend", func() (platform.AgentSetup, error) {
+		return s.P.AmendAgentSetup(r.Context(), who, name, body.Plan, body.Version)
+	})
 }

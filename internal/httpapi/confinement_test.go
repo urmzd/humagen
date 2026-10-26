@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/pkg/auth"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -53,6 +55,7 @@ const marker = "zqx"
 
 // hidden is what one workspace holds that an outsider must not see.
 type hidden struct {
+	setup                                                         string
 	handoff                                                       string
 	notificationID                                                string
 	librarySkill                                                  string
@@ -130,6 +133,7 @@ func outsiders(t *testing.T, f *fixture) map[string]struct {
 func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	t.Helper()
 	h := hidden{
+		setup:   seedHiddenSetup(t, f),
 		inside:  inside,
 		project: "Canary" + marker, agent: "canary-" + marker, schedule: "canary-" + marker, rule: "canary-" + marker,
 		source: "canary-" + marker, eval: "canary-" + marker, client: "canary-" + marker, variant: "lean-" + marker,
@@ -354,7 +358,7 @@ func (h hidden) naming(body string) string {
 // hidden; Field, its agent and its rule are everyone's to see.
 func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	t.Helper()
-	h := hidden{inside: true, private: true, project: "Field", agent: "helper", rule: "slow", channel: "general"}
+	h := hidden{setup: seedHiddenSetup(t, f), inside: true, private: true, project: "Field", agent: "helper", rule: "slow", channel: "general"}
 	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
 	// Every run in Field is slow enough to raise an alert.
@@ -504,6 +508,8 @@ func (h hidden) value(path, param string) (string, bool) {
 	switch param {
 	case "name":
 		switch {
+		case prefix("/api/agent-setups/"):
+			return h.setup, true
 		case prefix("/api/agents/"):
 			return h.agent, true
 		case prefix("/api/projects/"), prefix("/api/project-forks/"):
@@ -1267,4 +1273,18 @@ func streamOf(t *testing.T, f *fixture, owner, outsider, tenant string, h hidden
 	if !sawControl || !sawNotice {
 		t.Fatalf("the outsider's own run (%v) or notice (%v) never arrived, so the sweep proves nothing", sawControl, sawNotice)
 	}
+}
+
+func seedHiddenSetup(t *testing.T, f *fixture) string {
+	t.Helper()
+	who := auth.Principal{Tenant: "acme", Subject: "setup-owner", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+	project, err := f.p.PersonalProject(who)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := f.p.CreateAgentSetup(t.Context(), who, platform.AgentSetupPlan{Spec: agentspec.AgentSpec{Name: "setup-" + marker, Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Private setup " + marker}, Project: project.Name})
+	if err != nil || saved.Phase != "configured" {
+		t.Fatalf("hidden setup=%+v,%v", saved, err)
+	}
+	return saved.Name
 }

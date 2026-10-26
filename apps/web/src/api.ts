@@ -1,5 +1,7 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
+  AgentSetup,
+  AgentSetupPlan,
   KnowledgeLifecycle,
   KnowledgeSourceConfig,
   Note as GeneratedNote,
@@ -688,6 +690,12 @@ export const api = {
    * project lives, and which projects enable each ("~" is the workspace).
    */
   agentHues: (names: string[], path = "/api/agent-hues") => call<{ hues: Record<string, number> }>("GET", `${path}?names=${encodeURIComponent(names.join(","))}`),
+  agentSetup:(name:string)=>call<AgentSetup>("GET",`/api/agent-setups/${encodeURIComponent(name)}`),
+  createAgentSetup:(plan:AgentSetupPlan)=>call<AgentSetup>("POST","/api/agent-setups",plan),
+  resumeAgentSetup:(name:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/resume`),
+  amendAgentSetup:(name:string,version:number,plan:AgentSetupPlan)=>call<AgentSetup>("PUT",`/api/agent-setups/${encodeURIComponent(name)}`,{version,plan}),
+  testAgentSetup:(name:string,text:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/test`,{text}),
+  activateAgentSetup:(name:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/activate`),
   modelProviders:()=>call<{providers:{name:string;declared:boolean}[]}>("GET","/api/model-providers").then(response=>response.providers),
   agentList: () =>
     call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]>; hues?: Record<string, number> }>("GET", "/api/agents"),

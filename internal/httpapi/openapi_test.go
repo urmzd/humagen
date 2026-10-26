@@ -887,6 +887,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// An agent on the "ollama" provider asks a person, so a run can park on
 	// a question here. Every other agent is offline.
 	f := newFixtureWith(t, platform.Config{AgentOptions: []agentrt.Option{
+		agentrt.WithProvider(agentrt.ProviderOpenAI, func(agentrt.Spec) (saigetypes.Provider, error) {
+			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
+		}),
 		agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
 				agenttest.ToolCallResponse("call-ask", "ask_person", map[string]any{"question": "Which colour?", "options": []any{"red", "blue"}}),
@@ -1921,15 +1924,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/resume", setupPath+"/resume", "", http.StatusOK)
 	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", setupPath+"/activate", "", http.StatusBadRequest)
 	testedSetup := c.call(auditAdmin, "POST", "/api/agent-setups/{name}/test", setupPath+"/test", `{"text":"Answer a setup check."}`, http.StatusOK)
-	// This contract fixture advances the already server-reserved test record;
-	// the platform integration test executes a real adapter and native approval.
 	setupRunID := testedSetup.str("test_run")
-	if _, err := f.p.Runs.Get("acme", setupRunID); err != nil {
-		if err := f.p.Runs.Record(setupRunID, envelope.Tag{ID: "contract-setup", Tenant: "acme", Agent: "reviewed-setup", Origin: runs.OriginAPI, Text: "Answer a setup check.", Actor: envelope.Actor{User: setupReply.str("owner")}, At: time.Now()}, 1); err != nil {
-			t.Fatal(err)
-		}
-	}
-	f.p.Runs.End(setupRunID, runs.Completed, "Setup contract response", "", time.Now())
+	c.settled(auditAdmin, setupRunID)
+
 	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", setupPath+"/activate", "", http.StatusOK)
 	c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", strings.Replace(setupPlanJSON, "Help with reviewed company work.", "Another definition.", 1), http.StatusConflict)
 	c.call(auditAdmin, "PUT", "/api/agents/{name}/home", "/api/agents/reviewed-setup/home", `{"project":"~"}`, http.StatusOK)
@@ -1939,12 +1936,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", changedPlan, http.StatusOK)
 	changedTest := c.call(auditAdmin, "POST", "/api/agent-setups/{name}/test", "/api/agent-setups/changed-setup/test", `{"text":"Check this draft."}`, http.StatusOK)
 	changedID := changedTest.str("test_run")
-	if _, err := f.p.Runs.Get("acme", changedID); err != nil {
-		if err := f.p.Runs.Record(changedID, envelope.Tag{ID: "contract-changed-setup", Tenant: "acme", Agent: "changed-setup", At: time.Now()}, 1); err != nil {
-			t.Fatal(err)
-		}
-	}
-	f.p.Runs.End(changedID, runs.Completed, "Checked", "", time.Now())
+	c.settled(auditAdmin, changedID)
+
 	changedRev, err := f.p.Agents.Get(t.Context(), "acme", "changed-setup", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -1955,6 +1948,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", "/api/agent-setups/changed-setup/activate", "", http.StatusConflict)
+
+	amendmentPlan := strings.Replace(strings.Replace(setupPlanJSON, "reviewed-setup", "amended-setup", 1), "Launch", "~", 1)
+	beforeAmend := c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", amendmentPlan, http.StatusOK)
+	correctedPlan := strings.Replace(amendmentPlan, "gpt-4o-mini", "gpt-4o", 1)
+	amendBody := fmt.Sprintf(`{"version":%v,"plan":%s}`, beforeAmend.field("version"), correctedPlan)
+	c.call(auditAdmin, "PUT", "/api/agent-setups/{name}", "/api/agent-setups/amended-setup", amendBody, http.StatusOK)
+	c.call(auditAdmin, "PUT", "/api/agent-setups/{name}", "/api/agent-setups/amended-setup", amendBody, http.StatusConflict)
 
 	c.call(acme, "GET", "/api/model-providers", "/api/model-providers", "", http.StatusOK)
 	// The busy workspace, read end to end, then taken apart.
@@ -1971,7 +1971,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			continue
 		}
 		caller := acme
-		if strings.HasPrefix(op.path, "/api/me/memory") {
+		if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") {
 			caller = auditAdmin
 		}
 		c.call(caller, op.method, op.path, op.path, `{"unknown_field":1}`, http.StatusBadRequest)
@@ -2061,6 +2061,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/agent-setups/{name}":                            {"name": "amended-setup"},
+		"/api/agent-setups/{name}/test":                       {"name": "amended-setup"},
 		"/api/projects/{name}/memory/{id}":                    {"name": "Launch", "id": freshProjectNote.str("id")},
 		"/api/me/memory/{id}":                                 {"id": freshPersonalNote.str("id")},
 		"/api/library/skills/{id}":                            {"id": libraryID},
@@ -2103,6 +2105,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/fork":        {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
 	}
 	valid := map[string]string{
+		"/api/agent-setups/{name}":              `{"version":1,"plan":{"spec":{"name":"helper","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help"},"project":"~"}}`,
 		"/api/agent-setups/{name}/test":         `{"text":"Setup check"}`,
 		"/api/artifacts/{id}/promote-memory":    `{"version":1,"accepted":true}`,
 		"/api/artifacts/{id}/promote-knowledge": `{"version":1,"source":"accepted-native","accepted":true}`,
@@ -2147,7 +2150,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
-			if strings.HasPrefix(op.path, "/api/me/memory") {
+			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") {
 				caller = auditAdmin
 			}
 			c.call(caller, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)

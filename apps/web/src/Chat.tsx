@@ -449,7 +449,7 @@ export function Chat({
       };
       const failed = (e: unknown) => {
         setProblem(e instanceof ApiError ? e.message : words.failed.post);
-        queue.turnEnded("failed");
+        queue.reject();
       };
       // Home starts a private conversation in the picked project, or a
       // shared thread when it was opened from a channel. Either opens at

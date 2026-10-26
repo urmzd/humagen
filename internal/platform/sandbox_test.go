@@ -504,7 +504,11 @@ func TestNativeDocumentsPublishAsEditableOfficeAndKeepPriorVersions(t *testing.T
 	run, req := turn(t, p, "native-files", "")
 	for _, ext := range []string{"docx", "pptx", "xlsx"} {
 		name := "plan." + ext
-		content := `{"title":"Original","paragraphs":["The original plan"],"slides":[{"title":"Original","body":["The plan"],"notes":"Explain the evidence","sources":["https://example.test/evidence"]}],"rows":[["Status","Original"]]}`
+		content := map[string]string{
+			"docx": `{"title":"Original","paragraphs":["The original plan"],"rows":[["Status","Original"]],"sources":["https://example.test/evidence"]}`,
+			"pptx": `{"title":"Original","slides":[{"title":"Original","body":["The plan"],"notes":"Explain the evidence","sources":["https://example.test/evidence"]}]}`,
+			"xlsx": `{"rows":[["Status","Original"]]}`,
+		}[ext]
 		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": name, "format": "native", "content": content}); err != nil {
 			t.Fatal(err)
 		}
@@ -516,7 +520,7 @@ func TestNativeDocumentsPublishAsEditableOfficeAndKeepPriorVersions(t *testing.T
 			t.Fatalf("not native: %+v", published)
 		}
 		read, err := use(t, p, req, platform.ToolFileRead, map[string]any{"path": name})
-		if err != nil || !strings.Contains(read, "Explain the evidence") {
+		if err != nil || !strings.Contains(read, "Original") {
 			t.Fatalf("native revision source = %q,%v", read, err)
 		}
 		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": name, "format": "native", "content": strings.ReplaceAll(content, "Original", "Revised")}); err != nil {

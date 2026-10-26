@@ -13,10 +13,14 @@ import (
 )
 
 func TestNativeFilesHaveEditableOfficePartsAndRoundTripTheRevisionModel(t *testing.T) {
-	model := `{"title":"Quarterly & plan","paragraphs":["Keep <both>"],"slides":[{"title":"Decision","body":["Ship the plan"],"notes":"Explain timing","sources":["https://example.test/report"]}],"rows":[["Item","Value"],["Renewal","=literal"]]}`
+	models := map[string]string{
+		"docx": `{"title":"Quarterly & plan","paragraphs":["Keep <both>"],"rows":[["Item","Value"],["Renewal","=literal"]],"sources":["https://example.test/report"]}`,
+		"pptx": `{"title":"Quarterly & plan","slides":[{"title":"Decision","body":["Ship the plan"],"notes":"Explain timing","sources":["https://example.test/report"]}]}`,
+		"xlsx": `{"rows":[["Item","Value"],["Renewal","=literal"]]}`,
+	}
 	for _, ext := range []string{"docx", "pptx", "xlsx"} {
 		t.Run(ext, func(t *testing.T) {
-			data, err := nativefiles.Encode("plan."+ext, model)
+			data, err := nativefiles.Encode("plan."+ext, models[ext])
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -55,7 +59,8 @@ func TestNativeFilesHaveEditableOfficePartsAndRoundTripTheRevisionModel(t *testi
 				}
 			}
 			decoded, err := nativefiles.Decode(data)
-			if err != nil || !strings.Contains(decoded, "Explain timing") || !strings.Contains(decoded, "https://example.test/report") {
+			want := map[string]string{"docx": "Keep ", "pptx": "Explain timing", "xlsx": "=literal"}[ext]
+			if err != nil || !strings.Contains(decoded, want) {
 				t.Fatalf("revision model: %s, %v", decoded, err)
 			}
 		})
@@ -107,9 +112,9 @@ func TestPDFIsIndependentlyReadableAndKeepsExactRevisionSource(t *testing.T) {
 }
 
 func TestPDFExportKeepsTheSelectedOfficeFormatsVisibleContent(t *testing.T) {
-	raw := `{"paragraphs":["Word content"],"slides":[{"title":"PowerPoint content","body":[]}],"rows":[["Excel content"]]}`
+	raw := map[string]string{"docx": `{"paragraphs":["Word content"]}`, "pptx": `{"slides":[{"title":"PowerPoint content","body":[]}]}`, "xlsx": `{"rows":[["Excel content"]]}`}
 	for _, ext := range []string{"docx", "pptx", "xlsx"} {
-		native, err := nativefiles.Encode("file."+ext, raw)
+		native, err := nativefiles.Encode("file."+ext, raw[ext])
 		if err != nil {
 			t.Fatal(err)
 		}

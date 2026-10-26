@@ -649,6 +649,38 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/agent-setups/{name}:
+    put:
+      operationId: amendAgentSetup
+      tags: [agents]
+      summary: Correct your inactive draft specification and invalidate its previous test
+      description: Only the setup owner may amend its exact saved version. The agent name and all non-specification plan choices stay fixed. An active or uncertain test must settle first. The corrected specification must pass a fresh real dry run before activation.
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version, plan]
+              properties:
+                version: {type: integer, minimum: 1}
+                plan: {$ref: "#/components/schemas/AgentSetupPlan"}
+      responses:
+        "200":
+          description: The exact saved amendment progress.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSetup"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
     get:
       operationId: getAgentSetup
       tags: [agents]
@@ -6884,7 +6916,7 @@ components:
           type: object
           maxProperties: 6
           additionalProperties: {type: string, enum: [allow, ask, never]}
-        daily_spend: {type: integer, minimum: 0, description: Optional daily micro-USD cap, requiring billing:write.}
+        daily_spend: {type: integer, minimum: 0, description: "Optional daily micro-USD cap, requiring billing:write."}
         max_lease: {type: integer, minimum: 0}
         assignment:
           type: object
@@ -6909,7 +6941,7 @@ components:
         name: {type: string}
         owner: {type: string}
         plan: {$ref: "#/components/schemas/AgentSetupPlan"}
-        phase: {type: string, enum: [reserved, created, home, controls, policy, budget, assignment, configured, activating, ready]}
+        phase: {type: string, enum: [reserved, created, home, controls, policy, budget, assignment, configured, amending, activating, ready]}
         version: {type: integer, minimum: 1}
         revision: {type: integer, minimum: 1}
         revision_hash: {type: string}
@@ -9992,7 +10024,7 @@ components:
       type: object
       required: [id, title, kind, mime, size, sha256, version, run, thread, agent, created_by, created_at]
       properties:
-        id: {type: string}
+        id: {type: string, description: "Opaque immutable artifact identity. Released legacy IDs remain readable; new IDs reveal no publication count."}
         title: {type: string}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         mime:

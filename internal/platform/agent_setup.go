@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	anchorrun "github.com/urmzd/anchor/pkg/run"
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
@@ -193,60 +194,92 @@ func (p *Platform) failSetup(tenant string, record AgentSetup, cause error) (Age
 	record.TestTag = ""
 	return record, nil
 }
-func (p *Platform) CreateAgentSetup(ctx context.Context, who auth.Principal, plan AgentSetupPlan) (AgentSetup, error) {
-	if who.Kind != auth.User {
-		return AgentSetup{}, auth.ErrForbidden
+
+// Reviewed setup cannot treat the offline notice adapter, directly or through
+// a fallback policy, as evidence that a real configured provider works.
+func (p *Platform) checkSetupRealModels(tenant string, spec agentspec.AgentSpec) error {
+	refs := append([]agentspec.ModelRef{{Provider: spec.Provider, Model: spec.Model}}, spec.Fallbacks...)
+	if spec.Provider == PolicyProvider {
+		policy, ok := policyIn(p.Settings(tenant).ModelPolicies, spec.Model)
+		if !ok {
+			return ErrModelPolicy
+		}
+		refs = policy.Models
 	}
+	for _, ref := range refs {
+		if ref.Provider == "offline" {
+			return fmt.Errorf("%w: reviewed setup requires a real provider without an offline fallback", operations.ErrInvalid)
+		}
+	}
+	return nil
+}
+
+func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, plan AgentSetupPlan) (AgentSetupPlan, error) {
 	spec, err := p.checkSetupSpec(ctx, who, plan.Spec)
 	if err != nil {
-		return AgentSetup{}, err
+		return AgentSetupPlan{}, err
 	}
 	canonical, err := agentspec.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders())
 	if err != nil {
-		return AgentSetup{}, err
+		return AgentSetupPlan{}, err
 	}
 	spec = canonical.Spec
 	plan.Spec = spec
+	if err := p.checkSetupRealModels(who.Tenant, spec); err != nil {
+		return AgentSetupPlan{}, err
+	}
 	plan.Project = projects.NameOf(plan.Project)
 	if _, _, err := p.ProjectRole(who, plan.Project, projects.Owner); err != nil {
-		return AgentSetup{}, err
+		return AgentSetupPlan{}, err
 	}
 	if plan.Spec.Provider == "offline" || plan.DailySpend < 0 || plan.MaxLease < 0 || len(plan.StopRules) > 4000 || len(plan.Manager) > 200 {
-		return AgentSetup{}, operations.ErrInvalid
+		return AgentSetupPlan{}, operations.ErrInvalid
 	}
 	if (plan.DailySpend > 0 || plan.MaxLease > 0) && !who.Can(auth.BillingWrite) {
-		return AgentSetup{}, auth.ErrForbidden
+		return AgentSetupPlan{}, auth.ErrForbidden
 	}
 
 	// Validate choices before reserving a name. Later failures can then be
 	// resumed after an unavailable store or source is repaired.
 	scratch, _ := operations.Open(nil)
 	if _, err := scratch.SetPolicy(who.Tenant, operations.Policy{Scope: operations.Scope{Kind: "agent", Name: spec.Name}, Rules: plan.Rules}, 0, who.Subject, p.now()); err != nil {
-		return AgentSetup{}, err
+		return AgentSetupPlan{}, err
 	}
 	if plan.Manager != "" {
 		if _, err := p.People.Get(who.Tenant, plan.Manager); err != nil {
-			return AgentSetup{}, operations.ErrInvalid
+			return AgentSetupPlan{}, operations.ErrInvalid
 		}
 	}
 	if plan.DailySpend > 0 || plan.MaxLease > 0 {
 		if err := (policy.Policy{Scope: policy.Scope{Kind: policy.Agent, Name: spec.Name}, Period: policy.Day, SpendLimit: plan.DailySpend, MaxLease: plan.MaxLease, Action: policy.Block}).Validate(); err != nil {
-			return AgentSetup{}, err
+			return AgentSetupPlan{}, err
 		}
 	}
 	if a := plan.Assignment; a != nil {
 		if _, err := scratch.SetAssignment(who.Tenant, operations.Assignment{ID: "validation", Agent: spec.Name, Owner: who.Subject, Project: plan.Project, Goal: a.Goal, DoneWhen: a.DoneWhen, Cron: a.Cron, Trigger: a.Trigger, Source: a.Source, State: operations.Requested}, 0, who.Subject, p.now()); err != nil {
-			return AgentSetup{}, err
+			return AgentSetupPlan{}, err
 		}
 		if a.Cron != "" {
 			if err := (cron.Schedule{Name: "validation", Tenant: who.Tenant, Agent: spec.Name, Expression: a.Cron, Text: a.Goal}).Validate(); err != nil {
-				return AgentSetup{}, err
+				return AgentSetupPlan{}, err
 			}
 		}
 		if a.Source != "" && !p.SourceVisible(who, a.Source) {
-			return AgentSetup{}, operations.ErrNotFound
+			return AgentSetupPlan{}, operations.ErrNotFound
 		}
 	}
+	return plan, nil
+}
+
+func (p *Platform) CreateAgentSetup(ctx context.Context, who auth.Principal, plan AgentSetupPlan) (AgentSetup, error) {
+	if who.Kind != auth.User {
+		return AgentSetup{}, auth.ErrForbidden
+	}
+	plan, err := p.validateSetupPlan(ctx, who, plan)
+	if err != nil {
+		return AgentSetup{}, err
+	}
+	spec := plan.Spec
 	lock := p.setups.lock(who.Tenant, spec.Name)
 	lock.Lock()
 	defer lock.Unlock()
@@ -272,6 +305,142 @@ func (p *Platform) CreateAgentSetup(ctx context.Context, who auth.Principal, pla
 	}
 	return p.resumeAgentSetup(ctx, who, record)
 }
+
+// AmendAgentSetup replaces only an inactive draft's reviewed spec. The saved
+// amending phase is the durable intent and invalidates its old test capability
+// before any registry write. Other setup choices keep their original contracts.
+func (p *Platform) AmendAgentSetup(ctx context.Context, who auth.Principal, name string, plan AgentSetupPlan, version int) (AgentSetup, error) {
+	if _, err := p.AgentSetup(who, name); err != nil {
+		return AgentSetup{}, err
+	}
+	if !who.Can(auth.AgentsWrite) {
+		return AgentSetup{}, auth.ErrForbidden
+	}
+	lock := p.setups.lock(who.Tenant, name)
+	lock.Lock()
+	defer lock.Unlock()
+	record, ok := p.setups.get(who.Tenant, name)
+	if !ok || record.Owner != who.Subject {
+		return AgentSetup{}, operations.ErrNotFound
+	}
+	if record.Version != version || record.Phase == "ready" || record.Phase == "activating" || record.Phase == "amending" {
+		return AgentSetup{}, operations.ErrConflict
+	}
+	p.admission.Lock()
+	plan, err := p.validateSetupPlan(ctx, who, plan)
+	if err != nil {
+		p.admission.Unlock()
+		return AgentSetup{}, err
+	}
+	unchanged := record.Plan
+	unchanged.Spec = plan.Spec
+	if plan.Spec.Name != name || !reflect.DeepEqual(unchanged, plan) {
+		p.admission.Unlock()
+		return AgentSetup{}, operations.ErrInvalid
+	}
+	if err := p.setupTestSettled(ctx, who.Tenant, record); err != nil {
+		p.admission.Unlock()
+		return AgentSetup{}, err
+	}
+	if home, homed := p.Projects.Tree(who.Tenant).Home(name); homed && home != record.Plan.Project {
+		p.admission.Unlock()
+		return AgentSetup{}, operations.ErrConflict
+	}
+	current, getErr := p.Agents.Get(ctx, who.Tenant, name, 0)
+	if getErr == nil {
+		if current.CreatedBy != record.Owner || (record.Revision != 0 && (current.Rev != record.Revision || current.Hash != record.RevisionHash)) || (record.Revision == 0 && !reflect.DeepEqual(current.Spec, record.Plan.Spec)) {
+			p.admission.Unlock()
+			return AgentSetup{}, operations.ErrConflict
+		}
+		record.Revision, record.RevisionHash = current.Rev, current.Hash
+	} else if !errors.Is(getErr, registry.ErrNotFound) || record.Revision != 0 {
+		p.admission.Unlock()
+		return AgentSetup{}, operations.ErrConflict
+	}
+	record.Plan, record.TestRun, record.TestTag = plan, "", ""
+	err = p.saveSetup(who.Tenant, &record, "amending")
+	p.admission.Unlock()
+	if err != nil {
+		return AgentSetup{}, err
+	}
+	return p.resumeAgentSetup(ctx, who, record)
+}
+
+// setupTestSettled runs under admission, so an unaccepted test cannot race a
+// new acceptance while its capability is invalidated. Unknown outcomes deny.
+func (p *Platform) setupTestSettled(ctx context.Context, tenant string, record AgentSetup) error {
+	if record.TestRun == "" {
+		if record.TestTag != "" {
+			return operations.ErrConflict
+		}
+		return nil
+	}
+	if _, ok := p.admitting.Load(record.TestRun); ok {
+		return operations.ErrConflict
+	}
+	if run, err := p.Runs.Get(tenant, record.TestRun); err == nil && !run.Status.Terminal() {
+		return operations.ErrConflict
+	}
+	if run, err := p.ledger.GetRun(ctx, record.TestRun); err == nil {
+		if !run.Status.Terminal() {
+			return operations.ErrConflict
+		}
+	} else if !errors.Is(err, anchorrun.ErrNotFound) {
+		return err
+	}
+	return nil
+}
+
+func (p *Platform) applySetupAmendment(ctx context.Context, who auth.Principal, record *AgentSetup) error {
+	p.admission.Lock()
+	defer p.admission.Unlock()
+	plan, err := p.validateSetupPlan(ctx, who, record.Plan)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(plan, record.Plan) {
+		return operations.ErrConflict
+	}
+	if home, ok := p.Projects.Tree(who.Tenant).Home(record.Name); ok && home != record.Plan.Project {
+		return operations.ErrConflict
+	}
+	if err := p.Projects.SetHome(who.Tenant, record.Name, record.Plan.Project, WriterOf(who), p.now(), nil); err != nil {
+		return err
+	}
+	control := p.AgentControl(who.Tenant, record.Name)
+	if !control.Paused {
+		control.Paused = true
+		if _, err := p.Operations.SetControl(who.Tenant, record.Name, control, control.Version, who.Subject, p.now()); err != nil {
+			return err
+		}
+	}
+	current, err := p.Agents.Get(ctx, who.Tenant, record.Name, 0)
+	var revision agentspec.Revision
+	switch {
+	case errors.Is(err, registry.ErrNotFound) && record.Revision == 0:
+		revision, err = p.Agents.Create(ctx, who.Tenant, record.Plan.Spec, who.Subject)
+	case err != nil:
+		return err
+	case record.Revision == 0 && current.Rev == 1 && current.CreatedBy == record.Owner && reflect.DeepEqual(current.Spec, record.Plan.Spec):
+		revision = current
+	case current.Rev == record.Revision && current.Hash == record.RevisionHash && current.CreatedBy == record.Owner:
+		revision, err = p.Agents.Revise(ctx, who.Tenant, record.Plan.Spec, record.Revision, who.Subject)
+	case current.Rev == record.Revision+1 && current.CreatedBy == record.Owner && reflect.DeepEqual(current.Spec, record.Plan.Spec):
+		prior, priorErr := p.Agents.Get(ctx, who.Tenant, record.Name, record.Revision)
+		if priorErr != nil || prior.Hash != record.RevisionHash {
+			return operations.ErrConflict
+		}
+		revision = current
+	default:
+		return operations.ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	record.Revision, record.RevisionHash = revision.Rev, revision.Hash
+	return nil
+}
+
 func (p *Platform) ResumeAgentSetup(ctx context.Context, who auth.Principal, name string) (AgentSetup, error) {
 	_, err := p.AgentSetup(who, name)
 	if err != nil {
@@ -298,7 +467,10 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 		return p.saveSetup(who.Tenant, &record, next)
 	}
 	var err error
-	if record.Phase == "reserved" {
+	if record.Phase == "amending" {
+		err = step("created", func() error { return p.applySetupAmendment(ctx, who, &record) })
+	}
+	if err == nil && record.Phase == "reserved" {
 		err = step("created", func() error {
 			p.admission.Lock()
 			defer p.admission.Unlock()
@@ -459,6 +631,9 @@ func (p *Platform) TestAgentSetup(ctx context.Context, who auth.Principal, name,
 	if record.Phase != "configured" || len(text) == 0 || len(text) > 8000 {
 		return AgentSetup{}, operations.ErrInvalid
 	}
+	if err := p.checkSetupRealModels(who.Tenant, record.Plan.Spec); err != nil {
+		return AgentSetup{}, err
+	}
 	if record.TestRun != "" {
 		if run, err := p.Runs.Get(who.Tenant, record.TestRun); err == nil && !run.Status.Terminal() {
 			record.TestTag = ""
@@ -501,8 +676,11 @@ func (p *Platform) ActivateAgentSetup(ctx context.Context, who auth.Principal, n
 		return AgentSetup{}, operations.ErrInvalid
 	}
 	run, err := p.Runs.Get(who.Tenant, record.TestRun)
-	if err != nil || run.Status != runs.Completed {
+	if err != nil || run.Status != runs.Completed || run.Usage == nil || run.Usage.Own.ModelCalls < 1 {
 		return AgentSetup{}, fmt.Errorf("%w: a completed real dry run is required", operations.ErrInvalid)
+	}
+	if err := p.checkSetupRealModels(who.Tenant, record.Plan.Spec); err != nil {
+		return AgentSetup{}, err
 	}
 	rev, err := p.Agents.Get(ctx, who.Tenant, name, 0)
 	if err != nil || rev.Rev != record.Revision || rev.Hash != record.RevisionHash {

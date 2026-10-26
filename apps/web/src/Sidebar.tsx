@@ -171,6 +171,7 @@ function Choices<T extends string>({
  */
 function TaskRow({
   task,
+  projectTitle,
   current,
   pinned,
   onSelect,
@@ -178,6 +179,7 @@ function TaskRow({
   flash = null,
 }: {
   task: ThreadSummary;
+  projectTitle: string;
   current: boolean;
   pinned: boolean;
   onSelect: () => void;
@@ -193,7 +195,7 @@ function TaskRow({
       <button
         type="button"
         onClick={onSelect}
-        title={`${title}\n${state}${task.project ? ` · ${task.project}` : ""}`}
+        title={`${title}\n${state}\n${projectTitle}`}
         aria-current={current ? "page" : undefined}
         className="flex min-h-10 w-full items-center gap-2 rounded-aui py-1.5 pr-8 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
       >
@@ -279,6 +281,7 @@ export function Sidebar({
   onSearch?:()=>void;
   notifications?:ReactNode;
 }) {
+  const projectTitle = (project?:string) => project===me.personal_project ? defaultCopy.projects.personalTitle : !project||project==="~" ? workspaceName||defaultCopy.projects.companyName : projects.find(item=>item.name===project)?.title||project;
   const who = me.principal;
   const dev = who.subject === "dev";
   const name = prefs?.display_name || who.name || who.email || who.subject;
@@ -386,6 +389,7 @@ export function Sidebar({
               <TaskRow
                 key={t.id}
                 task={t}
+                projectTitle={projectTitle(t.project)}
                 current={isCurrent(t)}
                 pinned
                 onSelect={() => go({ page: "conversation", id: t.id })}
@@ -476,10 +480,11 @@ export function Sidebar({
                 {filters > 0 ? "No conversation matches these filters." : "Your conversations appear here. Start with New."}
               </li>
             )}
-            {[...new Set(unpinned.map((thread) => thread.project ?? ""))].map((project) => <li key={project} className="min-w-0 pt-2"><details open><summary className="flex min-h-7 cursor-pointer items-center gap-1.5 px-2.5 text-aui-xs font-medium text-aui-muted"><FolderIcon size={13} /><span className="min-w-0 flex-1 truncate">{projects.find((item) => item.name === project)?.title || (project===me.personal_project?defaultCopy.projects.personalTitle:project) || workspaceName || defaultCopy.projects.workspace}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter((thread) => (thread.project ?? "") === project).map((t) => (
+            {[...new Set(unpinned.map((thread) => thread.project ?? ""))].map((project) => <li key={project} className="min-w-0 pt-2"><details open><summary className="flex min-h-7 cursor-pointer items-center gap-1.5 px-2.5 text-aui-xs font-medium text-aui-muted"><FolderIcon size={13} /><span className="min-w-0 flex-1 truncate">{projectTitle(project)}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter((thread) => (thread.project ?? "") === project).map((t) => (
               <TaskRow
                 key={t.id}
                 task={t}
+                projectTitle={projectTitle(t.project)}
                 current={isCurrent(t)}
                 pinned={false}
                 onSelect={() => go({ page: "conversation", id: t.id })}

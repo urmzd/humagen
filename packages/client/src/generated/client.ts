@@ -14,6 +14,7 @@ import type {
   AgentSpec,
   Alert,
   AlertRule,
+  AmendAgentSetupBody,
   AnnouncementInput,
   Approved,
   Artifact,
@@ -992,6 +993,27 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     let path = "/api/agent-setups/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<AgentSetup>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Only the setup owner may amend its exact saved version. The agent name and all non-specification plan choices stay fixed. An active or uncertain test must settle first. The corrected specification must pass a fresh real dry run before activation. */
+  async amendAgentSetup(name: string, body: AmendAgentSetupBody, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async amendAgentSetupRaw(name: string, body: AmendAgentSetupBody, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

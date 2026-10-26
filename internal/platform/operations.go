@@ -233,11 +233,14 @@ func (t *operationTool) Approval(c saigetypes.ToolCallPart) (agentrt.ApprovalReq
 		return agentrt.ApprovalRequest{}, false
 	}
 	control := t.p.AgentControl(t.req.Tenant, t.req.Agent())
-	approvers := slices.Clone(fallbackApprovers)
-	if control.Manager != "" {
-		approvers = append(approvers, control.Manager)
+	approvers := slices.Clone(t.req.Revision.Spec.Approvers)
+	if len(approvers) == 0 {
+		approvers = slices.Clone(fallbackApprovers)
+		if control.Manager != "" {
+			approvers = append(approvers, control.Manager)
+		}
 	}
-	return agentrt.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: approvers, ExpiresIn: 24 * time.Hour}, true
+	return agentrt.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: approvers, SelfApproval: t.req.Revision.Spec.SelfApproval, ExpiresIn: 24 * time.Hour}, true
 }
 func (t *operationTool) check(ctx context.Context) error {
 	if allowed, restricted, err := t.p.operationTools(t.req); err != nil {

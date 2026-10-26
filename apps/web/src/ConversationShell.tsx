@@ -234,12 +234,14 @@ function SourceCard({ name, source }: { name: string; source?: Source }) {
 }
 
 export function ConversationInfo({
+  onShare,
   panel,
   thread,
   project,
   onClose,
 }: {
   panel?: ConversationPanel;
+  onShare?:()=>void;
   thread: Thread;
   project: string;
   onClose: () => void;
@@ -249,7 +251,7 @@ export function ConversationInfo({
     <Inspector open title={words[panel]} onClose={onClose}>
       {panel === "context" ? (
         <div className="flex flex-col gap-6"><ForkContext thread={thread} /><Sources project={thread.project} /></div>
-      ) : <ConversationAccess thread={thread} />}
+      ) : <ConversationAccess thread={thread} onShare={onShare} />}
 
     </Inspector>
   );

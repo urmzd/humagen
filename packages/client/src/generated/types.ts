@@ -235,7 +235,7 @@ export interface AgentSetupPlan {
   manager?: string;
   stop_rules?: string;
   rules?: Record<string, "allow" | "ask" | "never">;
-  /** Optional daily micro-USD cap */
+  /** Optional daily micro-USD cap, requiring billing:write. */
   daily_spend?: number;
   max_lease?: number;
   assignment?: AgentSetupPlanAssignment;
@@ -249,7 +249,7 @@ export interface AgentSetup {
   name: string;
   owner: string;
   plan: AgentSetupPlan;
-  phase: "reserved" | "created" | "home" | "controls" | "policy" | "budget" | "assignment" | "configured" | "activating" | "ready";
+  phase: "reserved" | "created" | "home" | "controls" | "policy" | "budget" | "assignment" | "configured" | "amending" | "activating" | "ready";
   version: number;
   revision?: number;
   revision_hash?: string;
@@ -2286,6 +2286,7 @@ export type ArtifactKind = "document" | "spreadsheet" | "presentation" | "image"
 
 /** The record of one published file. Its bytes are served by `getArtifactContent`. */
 export interface Artifact {
+  /** Opaque immutable artifact identity. Released legacy IDs remain readable; new IDs reveal no publication count. */
   id: string;
   title: string;
   kind: ArtifactKind;
@@ -3466,6 +3467,11 @@ export interface GetAgentHuesResponse {
 
 export interface GetProjectAgentHuesResponse {
   hues: Record<string, number>;
+}
+
+export interface AmendAgentSetupBody {
+  version: number;
+  plan: AgentSetupPlan;
 }
 
 export interface ListModelProvidersResponseProvidersItem {

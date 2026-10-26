@@ -13,6 +13,7 @@ import (
 	"io"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -125,7 +126,10 @@ func MIME(name string, data []byte) string {
 	if _, err := Decode(data); err != nil {
 		return ""
 	}
-	r, _ := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return ""
+	}
 	required := map[string]string{"docx": "word/document.xml", "pptx": "ppt/presentation.xml", "xlsx": "xl/workbook.xml"}[ext]
 	if reader, err := r.Open(required); err != nil {
 		return ""
@@ -143,18 +147,50 @@ func Encode(name, raw string) ([]byte, error) {
 		return nil, err
 	}
 	ext := strings.TrimPrefix(strings.ToLower(path.Ext(name)), ".")
+	if err := renderedFields(ext, d); err != nil {
+		return nil, err
+	}
 	parts := map[string]string{}
 	types := ""
 	switch ext {
 	case "pdf":
 		return pdfDocument(d)
 	case "docx":
-		if len(d.Paragraphs) == 0 {
-			return nil, errors.New("native file: a document requires paragraphs")
+		if len(d.Paragraphs) == 0 && len(d.Rows) == 0 {
+			return nil, errors.New("native file: a document requires paragraphs or table rows")
 		}
 		body := ""
-		for _, s := range append(append([]string{d.Title}, d.Paragraphs...), d.Sources...) {
-			body += `<w:p><w:r><w:t xml:space="preserve">` + esc(s) + `</w:t></w:r></w:p>`
+		for _, s := range append([]string{d.Title}, d.Paragraphs...) {
+			body += wordParagraph(s)
+		}
+		if len(d.Rows) > 0 {
+			columns := 0
+			for _, row := range d.Rows {
+				columns = max(columns, len(row))
+			}
+			if columns == 0 {
+				return nil, errors.New("native file: a table needs at least one cell")
+			}
+			body += `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/><w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/><w:insideH w:val="single" w:sz="4"/><w:insideV w:val="single" w:sz="4"/></w:tblBorders></w:tblPr><w:tblGrid>`
+			for range columns {
+				body += `<w:gridCol w:w="` + strconv.Itoa(9360/columns) + `"/>`
+			}
+			body += `</w:tblGrid>`
+			for _, row := range d.Rows {
+				body += `<w:tr>`
+				for i := range columns {
+					value := ""
+					if i < len(row) {
+						value = row[i]
+					}
+					body += `<w:tc><w:tcPr><w:tcW w:w="` + strconv.Itoa(9360/columns) + `" w:type="dxa"/></w:tcPr>` + wordParagraph(value) + `</w:tc>`
+				}
+				body += `</w:tr>`
+			}
+			body += `</w:tbl><w:p/>`
+		}
+		for _, source := range d.Sources {
+			body += wordParagraph(source)
 		}
 		parts["word/document.xml"] = xmlFile(`<w:document xmlns:w="` + wordNS + `"><w:body>` + body + `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`)
 		parts["_rels/.rels"] = rels(rel("rId1", "officeDocument", "word/document.xml"))
@@ -238,6 +274,9 @@ func Decode(data []byte) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		if err := validateRevision(data, d); err != nil {
+			return "", err
+		}
 		canonical, _ := json.Marshal(d)
 		return string(canonical), nil
 	}
@@ -266,6 +305,9 @@ func Decode(data []byte) (string, error) {
 			if err != nil {
 				return "", err
 			}
+			if err := validateRevision(data, d); err != nil {
+				return "", err
+			}
 			canonical, _ := json.Marshal(d)
 			return string(canonical), nil
 		}
@@ -275,49 +317,4 @@ func Decode(data []byte) (string, error) {
 
 // Text returns the visible authored content, notes and sources of a native
 // document, for an explicit audience-checked promotion. It never reads links.
-func Text(name string, data []byte) (string, error) {
-	raw, err := Decode(data)
-	if err != nil {
-		return "", err
-	}
-	model, err := parse(raw)
-	if err != nil {
-		return "", err
-	}
-	var lines []string
-	if model.Title != "" {
-		lines = append(lines, model.Title)
-	}
-	switch strings.ToLower(path.Ext(name)) {
-	case ".docx":
-		lines = append(lines, model.Paragraphs...)
-	case ".pptx":
-		for _, slide := range model.Slides {
-			lines = append(lines, slide.Title)
-			lines = append(lines, slide.Body...)
-			if slide.Notes != "" {
-				lines = append(lines, slide.Notes)
-			}
-			lines = append(lines, slide.Sources...)
-		}
-	case ".xlsx":
-		for _, row := range model.Rows {
-			lines = append(lines, strings.Join(row, " | "))
-		}
-	case ".pdf":
-		lines = append(lines, model.Paragraphs...)
-		for _, slide := range model.Slides {
-			lines = append(lines, slide.Title)
-			lines = append(lines, slide.Body...)
-			lines = append(lines, slide.Notes)
-			lines = append(lines, slide.Sources...)
-		}
-		for _, row := range model.Rows {
-			lines = append(lines, strings.Join(row, " | "))
-		}
-	default:
-		return "", errors.New("native file: no text extractor for this format")
-	}
-	lines = append(lines, model.Sources...)
-	return strings.TrimSpace(strings.Join(lines, "\n\n")), nil
-}
+func Text(name string, data []byte) (string, error) { return visibleText(name, data) }

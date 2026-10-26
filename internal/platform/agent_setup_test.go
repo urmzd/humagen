@@ -222,6 +222,42 @@ func TestAgentSetupDryRunUsesRealAdapterAndApprovalBeforeActivation(t *testing.T
 	if completed.Answer == "" || requests.Load() < 2 {
 		t.Fatal("native adapter did not complete the real approved tool round trip")
 	}
+	// A reviewed correction must invalidate this successful test and use the
+	// same real adapter and native approval lifecycle for the new revision.
+	currentSetup, err := p.AgentSetup(admin, saved.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	correctedPlan := currentSetup.Plan
+	correctedPlan.Spec.Model = "gpt-4o"
+	correctedPlan.Spec.SystemPrompt = "Write only the reviewed corrected draft."
+	correctedPlan.Spec.Approvals = []string{platform.ToolFileWrite}
+	correctedPlan.Spec.SelfApproval = true
+	corrected, err := p.AmendAgentSetup(t.Context(), admin, saved.Name, correctedPlan, currentSetup.Version)
+	if err != nil || corrected.Phase != "configured" || corrected.Revision != currentSetup.Revision+1 {
+		t.Fatalf("corrected=%+v,%v", corrected, err)
+	}
+	if _, err := p.ActivateAgentSetup(t.Context(), admin, saved.Name); err == nil {
+		t.Fatal("corrected draft reused the old successful test")
+	}
+	retested, err := p.TestAgentSetup(t.Context(), admin, saved.Name, "Write the corrected local draft.")
+	if err != nil || retested.TestRun == tested.TestRun {
+		t.Fatalf("retest=%+v,%v", retested, err)
+	}
+	reparked := await(t, p, retested.TestRun, runs.Parked)
+	if reparked.Question == nil {
+		t.Fatal("reviewed self-approval bypassed the native Ask state")
+	}
+	if _, err := os.Stat(filepath.Join(p.SandboxDir(tenant, reparked.Thread), "draft.md")); err == nil {
+		t.Fatal("amended tool executed before explicit self-approval")
+	}
+	if _, err := p.AnswerQuestion(t.Context(), admin, reparked.ID, reparked.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, retested.TestRun, runs.Completed)
+	if requests.Load() < 4 {
+		t.Fatal("amended test did not execute the real model/tool round trip")
+	}
 	active, err := p.ActivateAgentSetup(t.Context(), admin, saved.Name)
 	if err != nil || active.Phase != "ready" || p.AgentControl(tenant, saved.Name).Paused {
 		t.Fatalf("activate=%+v,%v", active, err)
@@ -314,6 +350,54 @@ func TestAgentSetupReservesPrivateHomeBeforeRegistryVisibility(t *testing.T) {
 		saved, err := p.CreateAgentSetup(t.Context(), admin, plan)
 		if err != nil || saved.Phase != "configured" || !observed {
 			t.Fatalf("private setup=%+v,%v,observed=%v", saved, err, observed)
+		}
+	})
+}
+
+type setupAmendRegistry struct {
+	registry.Store
+	afterRevise func()
+}
+
+func (r setupAmendRegistry) Revise(ctx context.Context, tenant string, spec agentspec.AgentSpec, expected int, by string) (agentspec.Revision, error) {
+	revision, err := r.Store.Revise(ctx, tenant, spec, expected, by)
+	if err == nil && r.afterRevise != nil {
+		r.afterRevise()
+	}
+	return revision, err
+}
+
+func TestAgentSetupAmendmentRestartsAcrossRealRegistryAndStateBackends(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b platform.Backends, again func() platform.Backends) {
+		fault := statetest.NewFaulty(b.State)
+		b.State = fault
+		p, stop := running(t, b)
+		saved, err := p.CreateAgentSetup(t.Context(), admin, setupPlan("registry-correction"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		corrected := saved.Plan
+		corrected.Spec.Model = "gpt-4o"
+		corrected.Spec.SystemPrompt = "Reviewed corrected configuration."
+		p.Agents = setupAmendRegistry{Store: p.Agents, afterRevise: func() { fault.Fail(statetest.ErrInjected) }}
+		if _, err := p.AmendAgentSetup(t.Context(), admin, saved.Name, corrected, saved.Version); !errors.Is(err, statetest.ErrInjected) {
+			t.Fatalf("partial registry/state failure=%v", err)
+		}
+		fault.Fail(nil)
+		stop()
+		restarted, stop2 := running(t, again())
+		defer stop2()
+		resumed, err := restarted.ResumeAgentSetup(t.Context(), admin, saved.Name)
+		if err != nil || resumed.Phase != "configured" || resumed.Revision != saved.Revision+1 || resumed.TestRun != "" {
+			t.Fatalf("cross-store replay=%+v,%v", resumed, err)
+		}
+		repeated, err := restarted.ResumeAgentSetup(t.Context(), admin, saved.Name)
+		if err != nil || repeated.Revision != resumed.Revision || repeated.RevisionHash != resumed.RevisionHash {
+			t.Fatalf("replay duplicated registry revision: %+v,%v", repeated, err)
+		}
+		current, err := restarted.Agents.Get(t.Context(), tenant, saved.Name, 0)
+		if err != nil || current.Spec.Model != "gpt-4o" || !restarted.AgentControl(tenant, saved.Name).Paused {
+			t.Fatalf("wrong or active corrected revision: %+v,%v", current, err)
 		}
 	})
 }

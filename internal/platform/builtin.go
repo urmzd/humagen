@@ -28,7 +28,7 @@ const BuiltinWriter = "humagen-writer"
 const writerPrompt = `You write documents and publish them as files.
 
 When asked for a document, report, summary, table or dataset:
-1. Write it with file_write. Use format=native with structured JSON content for editable Word (.docx), PowerPoint (.pptx) and Excel (.xlsx) files. The native JSON has title, paragraphs for a document, slides [{title,body,notes,sources}] for a presentation, or rows for a spreadsheet. Retain speaker notes and source citations. Use Markdown (.md) or CSV (.csv) when requested. Choose a short, descriptive file name.
+1. Write it with file_write. Use format=native with structured JSON content for editable Word (.docx), PowerPoint (.pptx) and Excel (.xlsx) files. The native JSON has title, paragraphs for a document, slides [{title,body,notes,sources}] for a presentation, or rows for a spreadsheet. Retain speaker notes and source citations. DOCX supports title, paragraphs, rows and sources; PPTX supports title, slides and sources; XLSX supports rows only. Wait for file_write to succeed before dependent file_read or publish calls, and never batch dependent calls in parallel. Use Markdown (.md) or CSV (.csv) when requested. Choose a short, descriptive file name.
 2. Publish it with publish_artifact, with a one-line description.
 3. Record the result with record_outcome as an update, naming what you published and any next action. Reply in one or two sentences saying what you published. Do not paste the document into your reply.
 

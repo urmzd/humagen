@@ -21,8 +21,11 @@ func pdfDocument(d Document) ([]byte, error) {
 	}
 	var pages [][]string
 	if len(d.Slides) > 0 {
-		for _, slide := range d.Slides {
+		for i, slide := range d.Slides {
 			lines := []string{slide.Title}
+			if i == 0 && d.Title != "" {
+				lines = append([]string{d.Title}, lines...)
+			}
 			lines = append(lines, slide.Body...)
 			if slide.Notes != "" {
 				lines = append(lines, "Notes: "+slide.Notes)
@@ -117,30 +120,22 @@ func wrap(paragraphs []string) []string {
 	return lines
 }
 
-// ExportPDF renders only the parts visible in the selected native format;
-// the retained revision model can also carry unused data for another format.
+// ExportPDF renders authored content from the actual saved bytes. Retained
+// revision metadata is never substituted for content missing from the file.
 func ExportPDF(name string, data []byte) ([]byte, error) {
 	raw, err := Decode(data)
 	if err != nil {
 		return nil, err
 	}
+	ext := strings.ToLower(path.Ext(name))
+	if ext != ".pdf" && MIME(name, data) == "" {
+		return nil, errors.New("native PDF: no export for this file type")
+	}
 	model, err := parse(raw)
 	if err != nil {
 		return nil, err
 	}
-	switch strings.ToLower(path.Ext(name)) {
-	case ".docx":
-		model.Slides = nil
-		model.Rows = nil
-	case ".pptx":
-		model.Paragraphs = nil
-		model.Rows = nil
-	case ".xlsx":
-		model.Paragraphs = nil
-		model.Slides = nil
-	case ".pdf":
-	default:
-		return nil, errors.New("native PDF: no export for this file type")
-	}
+	// Decode verified every authored part against this revision. Preserve
+	// slide page boundaries and actual DOCX rows without reviving old extras.
 	return pdfDocument(model)
 }
