@@ -5,13 +5,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
+	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
 func TestLibraryUsesPublishedRevisionThroughRealPinnedSkillComposition(t *testing.T) {
@@ -108,4 +113,51 @@ func TestPersonalSkillPromotionRedactsPrivateProvenance(t *testing.T) {
 	if _, err := p.LibrarySkill(auth.Principal{Kind: auth.Machine, Tenant: tenant, Subject: "ada", Scopes: []auth.Permission{auth.ProjectsGovern}}, r.ID); !errors.Is(err, library.ErrNotFound) {
 		t.Fatal("machine impersonated personal owner")
 	}
+}
+
+func TestPersonalSkillClassifiedBeforeDispatchAndSurvivesReplay(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := &faultyIn{Store: open(t)}
+		provider := &privateContextWitness{Provider: script(say("Done.")), calls: make(chan struct{}, 10)}
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}, AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return provider, nil })}})
+		who := auth.Principal{Kind: auth.User, Tenant: tenant, Subject: "ada", Roles: []auth.Role{auth.Admin}}
+		home, err := p.PersonalProject(who)
+		if err != nil {
+			t.Fatal(err)
+		}
+		definition := library.Definition{Skill: projects.Skill{Name: "private-brief", Description: "Brief me", Instructions: "Use the private briefing outline."}, Tools: []string{}}
+		revision, err := p.DraftSkill(who, library.Scope{Kind: "personal", Subject: who.Subject}, definition, 0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		turn := platform.Turn{ID: "private-skill-admission", Agent: "lead", Project: home.Name, Text: "Prepare a brief", Actor: platform.ActorOf(who), ForceAsk: true, TestSkill: &revision}
+		st.fail("context.flags")
+		if _, err := p.Converse(t.Context(), tenant, turn); err == nil {
+			t.Fatal("private instructions dispatched without durable classification")
+		}
+		select {
+		case <-provider.calls:
+			t.Fatal("model consumed private skill after failed write")
+		default:
+		}
+		st.fail("")
+		accepted, err := p.Converse(t.Context(), tenant, turn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		completed := await(t, p, accepted.ID, runs.Completed)
+		if completed.Tag().Meta[platform.MetaPrivateLibraryContext] != "true" || !p.ContextFlags.Has(tenant, completed.ID) || !p.RunRequiresReviewedSummary(t.Context(), completed, "") {
+			t.Fatal("private library context was publishable")
+		}
+		turn.TestSkill = nil
+		turn.Text = "Changed retry"
+		same, err := p.Converse(t.Context(), tenant, turn)
+		if err != nil || same.ID != completed.ID || same.Tag().Meta[platform.MetaPrivateLibraryContext] != "true" {
+			t.Fatal("retry changed private classification")
+		}
+		again, err := contextflags.Open(st)
+		if err != nil || !again.Has(tenant, completed.ID) {
+			t.Fatal("private classification lost on restart")
+		}
+	})
 }

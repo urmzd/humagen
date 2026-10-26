@@ -47,6 +47,7 @@ import (
 
 // pinnedSkill is one skill as a run's tag carries it.
 type pinnedSkill struct {
+	Private bool      `json:"private,omitempty"`
 	Version int       `json:"version,omitempty"`
 	Tools   *[]string `json:"tools,omitempty"`
 	Name    string    `json:"name"`
@@ -176,6 +177,9 @@ func pinSkills(meta map[string]string, skills []pinnedSkill) {
 	var allowed []string
 	restricted := false
 	for _, skill := range skills {
+		if skill.Private {
+			meta[MetaPrivateLibraryContext] = "true"
+		}
 		if skill.Tools == nil {
 			continue
 		}

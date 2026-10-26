@@ -14,7 +14,7 @@ func (p *Platform) MarkPrivateContext(tenant, run string) error {
 }
 
 func (p *Platform) runNeedsSummary(ctx context.Context, run runs.Run, destination string) bool {
-	if run.UsesPrivateContext() || run.Tag().Meta[MetaPersonalMemoryContext] == "true" || p.RunUsesPersonalSources(ctx, run) {
+	if run.UsesPrivateContext() || run.Tag().Meta[MetaPersonalMemoryContext] == "true" || run.Tag().Meta[MetaPrivateLibraryContext] == "true" || p.ContextFlags.Has(run.Tenant, run.ID) || p.RunUsesPersonalSources(ctx, run) {
 		return true
 	}
 	revision, err := p.Agents.Get(ctx, run.Tenant, run.Agent, run.Rev)
