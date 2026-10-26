@@ -2189,6 +2189,7 @@ export interface KnowledgeVariant {
 }
 
 export interface KnowledgeSource {
+  lifecycle?: KnowledgeLifecycle;
   name: string;
   description?: string;
   documents: number;
@@ -2198,6 +2199,29 @@ export interface KnowledgeSource {
   variants: KnowledgeVariant[];
   created_by?: string;
   updated_at: string;
+}
+
+export interface KnowledgeSourceConfig {
+  mode: "indexed" | "live" | "hybrid";
+  provider: string;
+  origin?: string;
+  owner?: string;
+  project?: string;
+  stop_after_seconds?: number;
+}
+
+export interface KnowledgeLifecycle {
+  connected_at: string;
+  mode: "indexed" | "live" | "hybrid";
+  provider: string;
+  origin?: string;
+  owner?: string;
+  project?: string;
+  status: "connected" | "importing" | "indexing" | "available" | "syncing" | "in_sync" | "needs_attention";
+  cause?: "auth_expired" | "quota" | "unsupported" | "unavailable" | "interrupted";
+  last_good_at?: string;
+  stop_after_seconds: number;
+  attempts: KnowledgeLifecycleAttemptsItem[];
 }
 
 export interface KnowledgeDocument {
@@ -2212,6 +2236,7 @@ export interface KnowledgeDocument {
 }
 
 export interface KnowledgeHit {
+  mode?: "indexed" | "live";
   source: string;
   document_id: string;
   title: string;
@@ -2915,6 +2940,14 @@ export interface PreparedCallInputMessagesItem {
 export interface ProjectChangeChannel {
   before?: Channel;
   after?: Channel;
+}
+
+export interface KnowledgeLifecycleAttemptsItem {
+  id: string;
+  started_at: string;
+  finished_at?: string;
+  status: "importing" | "indexing" | "syncing" | "succeeded" | "failed";
+  cause?: string;
 }
 
 export interface ClientInputCredentials {
