@@ -13,6 +13,8 @@ test("every route survives a round trip through its address", () => {
     { page: "new", project: "launch" },
     { page: "conversation", id: "t-1" },
     { page: "conversation", id: "t-1", share: true },
+    { page: "conversation", id: "t-1", fork: "m-5" },
+    { page: "conversation", id: "t-1", bringBack: "r/1" },
     { page: "conversation", id: "t-1", panel: "context" },
     { page: "conversation", id: "t-1", panel: "people" },
     { page: "conversation", id: "t-1", panel: "activity" },

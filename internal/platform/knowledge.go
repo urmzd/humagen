@@ -45,6 +45,8 @@ func sourceURI(name string) string { return "knowledge://" + name }
 // called run is given its root's, as it counts toward its root's ancestors,
 // so a whole conversation is grounded alike. A housekeeping run is given
 // none: it is filed at the workspace whatever turn it serves.
+const metaForkSources = "_humagen.fork_sources"
+
 func (p *Platform) sourcesFor(tag envelope.Tag, edge call.Edge, project string) []string {
 	if tag.Origin == runs.OriginSystem {
 		return nil
@@ -53,6 +55,9 @@ func (p *Platform) sourcesFor(tag envelope.Tag, edge call.Edge, project string) 
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
 			return runs.SourcesOf(root.Tag().Meta)
 		}
+	}
+	if names := p.forkSourceSelection(tag.Tenant, tag.Meta[runs.MetaThread]); names != nil {
+		return *names
 	}
 	var out []string
 	for _, s := range p.Projects.Tree(tag.Tenant).Knowledge(project) {
@@ -87,17 +92,23 @@ func withSources(req runtime.Request) runtime.Request {
 	pinned := runs.SourcesOf(req.Meta)
 	_, now := req.Meta[runs.MetaSources]
 	_, before := req.Meta[runs.MetaSourcesV0]
-	if now || before {
+	selection, selected := req.Meta[metaForkSources]
+	if now || before || selected {
 		meta := maps.Clone(req.Meta)
 		delete(meta, runs.MetaSources)
 		delete(meta, runs.MetaSourcesV0)
+		delete(meta, metaForkSources)
 		req.Meta = meta
 	}
-	if len(pinned) == 0 {
+	if len(pinned) == 0 && !selected {
 		return req
 	}
 	spec := req.Revision.Spec
 	sources := slices.Clone(spec.Sources)
+	if selected {
+		names := strings.Split(selection, ",")
+		sources = slices.DeleteFunc(sources, func(source agentrt.Source) bool { return !slices.Contains(names, source.Name) })
+	}
 	for _, name := range pinned {
 		if !slices.ContainsFunc(sources, func(s agentrt.Source) bool { return s.Name == name }) {
 			sources = append(sources, agentrt.Source{Name: name, URI: sourceURI(name)})

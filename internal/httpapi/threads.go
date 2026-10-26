@@ -24,6 +24,8 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.seenProject(s.archiveChannel)))
 	mux.HandleFunc("GET /api/projects/{name}/experts", s.authed(auth.ProjectsRead, s.seenProject(s.getExperts)))
 	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.seenProject(s.putExperts)))
+	mux.HandleFunc("POST /api/threads/{id}/fork", s.authed(auth.RunsWrite, s.seenThread(s.forkThread)))
+	mux.HandleFunc("POST /api/threads/{id}/bring-back", s.authed(auth.RunsWrite, s.seenThread(s.bringBackResult)))
 	mux.HandleFunc("POST /api/threads", s.authed(auth.RunsWrite, s.startThread))
 	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.seenThread(s.postMessage)))

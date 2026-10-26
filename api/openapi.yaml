@@ -1513,6 +1513,81 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/fork:
+    post:
+      operationId: forkThread
+      tags: [threads]
+      summary: Start a private fork at a saved turn
+      description: Copies bounded passive context through a message or completed run. No action, approval or run is copied. The fork stays in the source project. Every read still requires access to its source chain.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [through]
+              additionalProperties: false
+              properties:
+                through: {type: string}
+                sources:
+                  description: Omitted inherits sources; an empty list sends none. Selected names require knowledge read access and stay fixed for this fork.
+                  type: array
+                  maxItems: 16
+                  items: {type: string}
+                title: {type: string, maxLength: 200}
+                agents: {type: array, maxItems: 5, items: {type: string}}
+                mode: {$ref: "#/components/schemas/ThreadMode"}
+      responses:
+        "201":
+          description: The saved private fork.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/threads/{id}/bring-back:
+    post:
+      operationId: bringBackThreadResult
+      tags: [threads]
+      summary: Post a completed fork result to its parent without executing actions
+      description: The caller explicitly posts a completed result as their own passive message. Requires posting access to the parent and read access to both conversations. Tags are plain text, not routing or notification instructions.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [run]
+              additionalProperties: false
+              properties:
+                run: {type: string}
+                text: {type: string, maxLength: 8000}
+      responses:
+        "201":
+          description: The explicit parent message.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ThreadMessage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/threads/{id}/participants:
     put:
       operationId: updateThreadParticipants
@@ -5495,6 +5570,7 @@ components:
           items: {type: string}
         mode: {$ref: "#/components/schemas/ThreadMode"}
         surface: {$ref: "#/components/schemas/ThreadSurface"}
+        fork: {$ref: "#/components/schemas/ThreadFork"}
         announcement:
           description: The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it.
           type: string
@@ -5509,6 +5585,33 @@ components:
           description: When anything last happened in it.
           type: string
           format: date-time
+    ThreadFork:
+      description: Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals.
+      type: object
+      additionalProperties: false
+      required: [source_thread, through, by, at, context]
+      properties:
+        sources:
+          type: array
+          maxItems: 16
+          items: {type: string}
+        source_thread: {type: string}
+        through: {type: string}
+        by: {type: string}
+        at: {type: string, format: date-time}
+        context:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, by, text, at]
+            properties:
+              kind: {type: string, enum: [person, agent, system]}
+              by: {type: string}
+              name: {type: string}
+              text: {type: string}
+              at: {type: string, format: date-time}
     ThreadMention:
       description: One tag in a message, and what it came to.
       type: object

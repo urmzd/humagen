@@ -66,7 +66,7 @@ export type Route =
    * `share` is. Links from when they were called tasks, `/tasks/{id}`,
    * open the same conversation.
    */
-  | ({ page: "conversation"; id: string; message?: string; share?: boolean } & ConversationView)
+  | ({ page: "conversation"; id: string; message?: string; share?: boolean; fork?: string; bringBack?: string } & ConversationView)
   /** Every project, searched with `q` and narrowed to one kind. */
   | { page: "projects"; q?: string; kind?: ProjectKindFilter }
   /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
@@ -113,6 +113,8 @@ export function href(r: Route): string {
       return query ? `/?${query}` : "/";
     }
     case "conversation":
+      if (r.fork) return `/conversations/${enc(r.id)}/fork/${enc(r.fork)}`;
+      if (r.bringBack) return `/conversations/${enc(r.id)}/bring-back/${enc(r.bringBack)}`;
       if (r.share) return `/conversations/${enc(r.id)}/share`;
       if (r.panel) {
         const base = `/conversations/${enc(r.id)}/${r.panel}`;
@@ -223,7 +225,7 @@ export function parse(pathname: string, search = ""): Route {
 function read(pathname: string, search: string): Route {
   const q = new URLSearchParams(search);
   const parts = pathname.split("/").filter(Boolean).map(dec);
-  const [head, a, b] = parts;
+  const [head, a, b, c] = parts;
   switch (head) {
     case undefined:
       return (
@@ -239,6 +241,8 @@ function read(pathname: string, search: string): Route {
     case "conversations":
     case "tasks":
       if (!a) return { page: "new" };
+      if (b === "fork" && c) return { page: "conversation", id: a, fork: c };
+      if (b === "bring-back" && c) return { page: "conversation", id: a, bringBack: c };
       if (b === "share") return { page: "conversation", id: a, share: true };
       if (oneOf(b, CONVERSATION_PANELS)) {
         const slide = Number(q.get("slide"));

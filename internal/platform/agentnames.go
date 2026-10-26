@@ -581,6 +581,15 @@ func (s *Seer) threadAgents(th threads.Thread) func(string) bool {
 // agent left out of its participants unless it answered there. One that
 // answered is named by its runs, which the reader reads.
 func (s *Seer) Thread(th threads.Thread) threads.Thread {
+	if th.Fork != nil && th.Fork.Sources != nil {
+		f := *th.Fork
+		names := s.Sources(*f.Sources)
+		if names == nil {
+			names = []string{}
+		}
+		f.Sources = &names
+		th.Fork = &f
+	}
 	shown := s.participantShown(th)
 	if th.Default != "" && !s.threadAgents(th)(th.Default) {
 		th.Default = ""

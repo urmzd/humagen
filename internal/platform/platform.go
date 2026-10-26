@@ -578,6 +578,16 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	if len(sources) > 0 {
 		meta[runs.MetaSources] = strings.Join(sources, ",")
 	}
+	delete(meta, metaForkSources)
+	if edge.Parent != "" {
+		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
+			if names, ok := root.Tag().Meta[metaForkSources]; ok {
+				meta[metaForkSources] = names
+			}
+		}
+	} else if names := p.forkSourceSelection(tag.Tenant, tag.Meta[runs.MetaThread]); names != nil {
+		meta[metaForkSources] = strings.Join(*names, ",")
+	}
 	// Only the platform pins skills, on a person's message (answerMessage):
 	// any other tag that carries the key is not believed.
 	if tag.Origin != runs.OriginAPI || edge.Parent != "" {

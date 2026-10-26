@@ -759,6 +759,7 @@ export const api = {
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
   /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
+  findProjects: (q: string) => call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${new URLSearchParams({ q, limit: "20" })}`).then((page) => page.projects),
   projects: async () => {
     // Read a page at a time, at most the 500 a workspace holds.
     const all: ProjectView[] = [];
@@ -1055,6 +1056,10 @@ export interface Thread {
   /** The agents an untagged message goes to, from the + menu, and how: the best fit of them, or every one. */
   agents?: string[];
   mode?: "best_fit" | "all";
+  fork?: {
+    source_thread: string; through: string; by: string; at: string; sources?: string[];
+    context: { kind: "person" | "agent" | "system"; by: string; name?: string; text: string; at: string }[];
+  };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -1204,6 +1209,9 @@ const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
 
 /** Channels, experts and shared threads: where people and agents work together. */
 export const coworking = {
+  fork: (id: string, input: { through: string; title?: string; agents?: string[]; mode?: "best_fit" | "all"; sources?: string[] }) => call<Thread>("POST", `${threadPath(id)}/fork`, input),
+  bringBack: (id: string, input: { run: string; text?: string }) => call<ThreadMessage>("POST", `${threadPath(id)}/bring-back`, input),
+  participants: (id: string, input: { version: number; add?: { kind: "person" | "agent"; name: string }[]; remove?: string[] }) => call<Thread>("PUT", `${threadPath(id)}/participants`, input),
   channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (project: string, c: { name: string; title?: string; purpose?: string; default?: string }) =>
     call<Channel>("POST", `${projectAt(project)}/channels`, c),

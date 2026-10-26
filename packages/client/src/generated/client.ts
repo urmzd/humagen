@@ -9,6 +9,7 @@ import type {
   AnnouncementInput,
   Approved,
   Artifact,
+  BringBackThreadResultBody,
   CallPolicy,
   CallPolicyInput,
   ChannelInput,
@@ -22,6 +23,7 @@ import type {
   CreateRunRequest,
   EvalRun,
   EvalSuite,
+  ForkThreadBody,
   GetAgentHuesResponse,
   GetInboxMessageResponse,
   GetProjectAgentHuesResponse,
@@ -111,6 +113,7 @@ import type {
   Summary,
   Thread,
   ThreadInput,
+  ThreadMessage,
   ThreadMessageInput,
   ThreadPage,
   ThreadParticipantsUpdate,
@@ -1626,6 +1629,48 @@ here too (429).
     let path = "/api/threads/{id}/messages";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<ThreadPosted>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Copies bounded passive context through a message or completed run. No action, approval or run is copied. The fork stays in the source project. Every read still requires access to its source chain. */
+  async forkThread(id: string, body: ForkThreadBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/fork";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async forkThreadRaw(id: string, body: ForkThreadBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/fork";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The caller explicitly posts a completed result as their own passive message. Requires posting access to the parent and read access to both conversations. Tags are plain text, not routing or notification instructions. */
+  async bringBackThreadResult(id: string, body: BringBackThreadResultBody, options?: RequestOptions): Promise<ThreadMessage> {
+    let path = "/api/threads/{id}/bring-back";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async bringBackThreadResultRaw(id: string, body: BringBackThreadResultBody, options?: RequestOptions): Promise<ApiResponse<ThreadMessage>> {
+    let path = "/api/threads/{id}/bring-back";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadMessage>("POST", path, {
       body,
       contentType: "application/json",
       ...options,

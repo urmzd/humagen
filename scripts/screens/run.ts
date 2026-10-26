@@ -70,6 +70,7 @@ interface Ids {
   schedule: string;
   /** Conversations the chat states open: a private one answered, a shared one, and one its selected agents answered. */
   privateChat: string;
+  forkChat: string;
   sharedChat: string;
   routedChat: string;
 }
@@ -139,6 +140,8 @@ function chats(ids: Ids): Screen[] {
         await page.getByText("Origin: drive://launch/supplier-eta", { exact: true }).waitFor();
       },
     },
+    { name: "conversation-fork-context", path: `/conversations/${ids.forkChat}/context` },
+    { name: "conversation-fork-people", path: `/conversations/${ids.forkChat}/people` },
     { name: "conversation-people", path: `/conversations/${ids.privateChat}/people` },
     {
       name: "conversation-activity",
@@ -698,6 +701,7 @@ const ids0: Ids = {
   artifact: "",
   schedule: "",
   privateChat: "",
+  forkChat: "",
   sharedChat: "",
   routedChat: "",
 };
@@ -714,7 +718,7 @@ interface Posted {
  */
 async function seedChats(
   call: Call,
-): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat">> {
+): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat" | "forkChat">> {
   await call("POST", "/api/knowledge", {
     name: "launch-context",
     description: "Imported supplier updates for the launch",
@@ -780,7 +784,9 @@ async function seedChats(
     mode: "all",
   });
   await answered(routed);
+  const fork = await call<{ id: string }>("POST", `/api/threads/${mine.thread.id}/fork`, { through: "m-1", title: "Launch alternative", agents: ["helper"], sources: [] });
   return {
+    forkChat: fork.id,
     privateChat: mine.thread.id,
     sharedChat: shared.thread.id,
     routedChat: routed.thread.id,

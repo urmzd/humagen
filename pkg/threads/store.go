@@ -564,7 +564,7 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 	moves := next.Project != cur.Project || next.Channel != cur.Channel
 	tn := s.of(tenantName)
 	switch {
-	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement:
+	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 	case moves && (!moving || cur.Visibility != Private || next.Visibility != Private || cur.Surface != nil || cur.Announcement != ""):
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started; a private conversation moves, and Share moves one as it shares it", ErrInvalid)

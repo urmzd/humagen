@@ -509,6 +509,7 @@ not selected. Absent when none is selected.
   agents?: string[];
   mode?: ThreadMode;
   surface?: ThreadSurface;
+  fork?: ThreadFork;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
@@ -518,6 +519,16 @@ not selected. Absent when none is selected.
   created_at: string;
   /** When anything last happened in it. */
   updated_at: string;
+}
+
+/** Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals. */
+export interface ThreadFork {
+  sources?: string[];
+  source_thread: string;
+  through: string;
+  by: string;
+  at: string;
+  context: ThreadForkContextItem[];
 }
 
 /** One tag in a message, and what it came to. */
@@ -2912,6 +2923,14 @@ export interface PreparedCallInputMessagesItem {
   text: string;
 }
 
+export interface ThreadForkContextItem {
+  kind: "person" | "agent" | "system";
+  by: string;
+  name?: string;
+  text: string;
+  at: string;
+}
+
 export interface ProjectChangeChannel {
   before?: Channel;
   after?: Channel;
@@ -3007,6 +3026,19 @@ export interface ListRunEventsResponse {
 export interface ListThreadsResponse {
   threads: ThreadSummary[];
   next: string | null;
+}
+
+export interface ForkThreadBody {
+  through: string;
+  sources?: string[];
+  title?: string;
+  agents?: string[];
+  mode?: ThreadMode;
+}
+
+export interface BringBackThreadResultBody {
+  run: string;
+  text?: string;
 }
 
 export interface ListSchedulesResponse {
