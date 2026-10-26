@@ -110,7 +110,7 @@ export async function notificationEmailFixture(
           data.push(line.startsWith("..") ? line.slice(1) : line);
           continue;
         }
-        const command = line.split(" ", 1)[0].toUpperCase();
+        const command = (line.split(" ", 1)[0] ?? "").toUpperCase();
         if (command === "EHLO" || command === "HELO") {
           reset();
           socket.write("250 humagen-screens\r\n");

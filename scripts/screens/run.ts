@@ -13,7 +13,9 @@
  * CHROMIUM (a Chromium or Chrome to use instead of the first one found),
  * SCREENS_ONLY (a comma-separated list of screen names), SCREENS_SHOWCASE=1
  * (also refresh the eight committed showcase images, using the gallery fixtures
- * for primitives and approval; requires all screens).
+ * for primitives and approval; requires all screens). SCREENS_VIEWPORTS can
+ * override sizes with comma-separated WIDTHxHEIGHT values; SCREENS_COLOR_SCHEME
+ * accepts light (default) or dark for explicit responsive/theme acceptance.
  */
 
 import assert from "node:assert/strict";
@@ -34,8 +36,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
+import { emailScreens, notificationEmailFixture } from "./email.ts";
+import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
+import { activityFilters, usageScreens } from "./observability.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
+import { workspaceScreens } from "./workspace.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -46,16 +52,31 @@ const showcase = process.env.SCREENS_SHOWCASE === "1";
 const only = (process.env.SCREENS_ONLY ?? "").split(",").filter(Boolean);
 
 interface Viewport {
-  name: "phone" | "desktop";
+  name: string;
   width: number;
   height: number;
   rules: Rules;
 }
 
-const VIEWPORTS: Viewport[] = [
+const defaultViewports: Viewport[] = [
   { name: "phone", width: 390, height: 844, rules: PHONE },
   { name: "desktop", width: 1280, height: 800, rules: DESKTOP },
 ];
+const colorScheme = process.env.SCREENS_COLOR_SCHEME ?? "light";
+if (colorScheme !== "light" && colorScheme !== "dark")
+  throw new Error("SCREENS_COLOR_SCHEME must be light or dark");
+const VIEWPORTS: Viewport[] = process.env.SCREENS_VIEWPORTS
+  ? process.env.SCREENS_VIEWPORTS.split(",").map((value) => {
+      const match = /^(\d+)x(\d+)$/.exec(value);
+      const width = Number(match?.[1]);
+      const height = Number(match?.[2]);
+      assert.ok(
+        width >= 240 && width <= 2560 && height >= 480 && height <= 2160,
+        "Invalid SCREENS_VIEWPORTS size",
+      );
+      return { name: value, width, height, rules: width < 768 ? PHONE : DESKTOP };
+    })
+  : defaultViewports;
 
 interface Screen {
   name: string;
@@ -126,7 +147,7 @@ function chats(ids: Ids): Screen[] {
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
         const human = page.getByRole("article", { name: /^Message from / }).first();
-        const agent = page.getByRole("article", { name: "helper message", exact: true });
+        const agent = page.getByRole("article", { name: "helper message", exact: true }).first();
         for (const message of [human, agent]) {
           const actions = message.getByRole("toolbar", { name: "Message actions" });
           await actions.getByRole("button", { name: /^Copy (message|answer)/ }).waitFor();
@@ -140,7 +161,7 @@ function chats(ids: Ids): Screen[] {
       name: "conversation-agent-time",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
-        const message = page.getByRole("article", { name: "helper message", exact: true });
+        const message = page.getByRole("article", { name: "helper message", exact: true }).first();
         await message.getByRole("button", { name: /^Posted / }).click();
         const tooltip = message.getByRole("tooltip");
         await tooltip.waitFor();
@@ -320,7 +341,7 @@ function chats(ids: Ids): Screen[] {
         assert.equal(new URL(page.url()).searchParams.get("slide"), "3");
         await page.getByRole("button", { name: "Present", exact: true }).click();
         await page.keyboard.press("ArrowRight");
-        await page.getByText("Slide 4 of 6 · ← →", { exact: true }).waitFor();
+        await page.getByText("Slide 4 of 6 ← →", { exact: true }).waitFor();
         await page.keyboard.press("Escape");
         await page.getByRole("button", { name: "Request Changes", exact: true }).waitFor();
         assert.equal(
@@ -383,7 +404,7 @@ function chats(ids: Ids): Screen[] {
         await plus(page).click();
         const menu = page.getByRole("dialog", { name: "Add to this conversation" });
         await menu.getByRole("button", { name: /Choose a project/ }).click();
-        await menu.getByRole("button", { name: /^Launch/ }).click();
+        await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
         await menu.getByRole("radio", { name: "#deals" }).click();
       },
     },
@@ -777,6 +798,17 @@ function screens(ids: Ids, call: Call): Screen[] {
       path: `/settings/${s}`,
     })),
   ];
+  list.push(
+    ...libraryScreens(call),
+    ...workspaceScreens(call),
+    ...usageScreens(),
+    ...emailScreens(call),
+  );
+  list.push({
+    name: "conversation-activity-filters",
+    path: `/conversations/${ids.privateChat}/activity`,
+    act: activityFilters,
+  });
   return only.length ? list.filter((s) => only.includes(s.name)) : list;
 }
 
@@ -829,6 +861,7 @@ async function startHumagen(
     );
   const dir = mkdtempSync(join(tmpdir(), "humagen-screens-"));
   const model = await startNativeModel();
+  const email = await notificationEmailFixture(dir, `http://127.0.0.1:${port}`, "default", "dev");
   const spec = join(dir, "screens-native.yaml");
   writeFileSync(
     spec,
@@ -854,6 +887,8 @@ spec:
       "serve",
       "-f",
       spec,
+      "-f",
+      email.file,
       "-auth=dev",
       "-seed",
       "-state=memory",
@@ -876,7 +911,16 @@ spec:
     if (proc.exitCode !== null) throw new Error(`humagen exited with ${proc.exitCode}:\n${log}`);
     try {
       const r = await fetch(`${base}/api/me`);
-      if (r.ok) return { base, proc, dir, closeModel: model.close };
+      if (r.ok)
+        return {
+          base,
+          proc,
+          dir,
+          closeModel: async () => {
+            await model.close();
+            await email.close();
+          },
+        };
     } catch {
       // Not listening yet.
     }
@@ -1308,14 +1352,14 @@ async function capture(
   const results: Result[] = [];
   for (const vp of VIEWPORTS) {
     mkdirSync(join(out, vp.name), { recursive: true });
-    const phone = vp.name === "phone";
+    const phone = vp.width < 768;
     const context = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: phone ? 2 : 1,
       isMobile: phone,
-      hasTouch: phone,
+      hasTouch: vp.width < 1024,
       reducedMotion: "reduce",
-      colorScheme: "light",
+      colorScheme,
       locale: "en-US",
       timezoneId: "UTC",
     });
@@ -1405,7 +1449,7 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     reducedMotion: "reduce",
-    colorScheme: "light",
+    colorScheme,
     locale: "en-US",
     timezoneId: "UTC",
   });
@@ -1460,12 +1504,6 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
 async function main(): Promise<void> {
   if (showcase && only.length)
     throw new Error("SCREENS_SHOWCASE requires every screen; unset SCREENS_ONLY.");
-  // A mistyped name would otherwise capture nothing and pass.
-  const names = screens(ids0, async () => {
-    throw new Error("Screen discovery cannot call the API.");
-  }).map((screen) => screen.name);
-  const unknown = only.filter((n) => n !== "home-new" && !names.includes(n));
-  if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
   // Only a folder this script wrote, or a new one, is cleared.
   if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, "report.json"))) {
     throw new Error(
@@ -1479,6 +1517,12 @@ async function main(): Promise<void> {
   const { base, proc, dir, closeModel } = await startHumagen(await freePort());
   let browser: Browser | undefined;
   try {
+    // A mistyped name would otherwise capture nothing and pass.
+    const names = screens(ids0, async () => {
+      throw new Error("Screen discovery cannot call the API.");
+    }).map((screen) => screen.name);
+    const unknown = only.filter((n) => n !== "home-new" && !names.includes(n));
+    if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
     browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
     const call = api(base);
     const results: Result[] = [];
