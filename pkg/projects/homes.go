@@ -60,7 +60,12 @@ func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Tim
 	defer s.mu.Unlock()
 	tx := s.begin(tenantName)
 	old, had := tx.t.homes[agent]
-	if (had && old.Project == project) || (!had && project == Root) {
+	if had {
+		if owner := tx.t.projects[old.Project].PersonalOwner; owner != "" && owner != w.By {
+			return fmt.Errorf("%w: only the personal owner changes this agent home", ErrForbidden)
+		}
+	}
+	if had && old.Project == project {
 		return nil
 	}
 	if project != Root {
@@ -68,18 +73,18 @@ func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Tim
 		if !ok {
 			return fmt.Errorf("%w: %q", ErrNotFound, project)
 		}
+		if p.PersonalOwner != "" && p.PersonalOwner != w.By {
+			return fmt.Errorf("%w: only the personal owner places an agent here", ErrForbidden)
+		}
 		if p.Kind == Company && !w.Govern {
 			return fmt.Errorf("%w: an agent lives in a company project only with projects:govern", ErrForbidden)
 		}
 	}
-	if had && tx.t.projects[old.Project].Kind == Company && !w.Govern {
+	if had && old.Project != Root && tx.t.projects[old.Project].Kind == Company && !w.Govern {
 		return fmt.Errorf("%w: an agent leaves a company project only with projects:govern", ErrForbidden)
 	}
 	before := build(tx.t.projects, homeNames(tx.t.homes))
-	if project == Root {
-		delete(tx.t.homes, agent)
-		tx.delete(keyHome + agent)
-	} else {
+	{
 		h := home{Agent: agent, Project: project, By: w.By, At: at}
 		tx.t.homes[agent] = h
 		tx.put(keyHome+agent, h)
@@ -92,9 +97,7 @@ func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Tim
 	if len(users) > 0 {
 		return fmt.Errorf("%w: %s would lose %s: %s", ErrInUse, plural(len(users), "place"), agent, strings.Join(users, ", "))
 	}
-	if project != Root {
-		tx.record(Change{At: at, By: w.By, Project: project, What: HomeChanged, Agent: agent, Note: LivesHereNote})
-	}
+	tx.record(Change{At: at, By: w.By, Project: project, What: HomeChanged, Agent: agent, Note: LivesHereNote})
 	if had {
 		tx.record(Change{At: at, By: w.By, Project: old.Project, What: HomeChanged, Agent: agent, Note: LeftNote})
 	}
@@ -185,5 +188,35 @@ func (s *Store) EnsureRoot(tenantName, by string, at time.Time) error {
 		return nil
 	}
 	tx.root(by, at)
+	return tx.commit()
+}
+
+// EnsureCompanyHomes records missing legacy homes in one transaction. Existing
+// choices win concurrent migrations, including a move made while a registry
+// page was being read. It never changes an agent's availability.
+func (s *Store) EnsureCompanyHomes(tenantName string, agents []string, at time.Time) error {
+	if len(agents) > MaxPage {
+		return fmt.Errorf("%w: too many homes in one migration page", ErrLimit)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx := s.begin(tenantName)
+	changed := false
+	for _, agent := range agents {
+		if !ValidAgent(agent) {
+			return fmt.Errorf("%w: invalid agent home", ErrInvalid)
+		}
+		if _, exists := tx.t.homes[agent]; exists {
+			continue
+		}
+		h := home{Agent: agent, Project: Root, By: "platform", At: at}
+		tx.t.homes[agent] = h
+		tx.put(keyHome+agent, h)
+		tx.record(Change{At: at, By: "platform", Project: Root, What: HomeChanged, Agent: agent, Note: LivesHereNote})
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
 	return tx.commit()
 }

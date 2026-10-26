@@ -1105,6 +1105,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.settled(acme, called.str("id"))
 	c.settled(acme, lead.str("id"))
+	handoff := c.call(acme, "GET", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), "", http.StatusOK)
+	handoffBody := fmt.Sprintf(`{"version":%v,"state":"result","owner":"svc-acme","blocker":"","due_at":"2999-01-01T00:00:00Z"}`, handoff.field("version"))
+	c.call(acme, "PUT", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), handoffBody, http.StatusOK)
+	c.call(acme, "PUT", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), handoffBody, http.StatusConflict)
+	c.call(acme, "GET", "/api/agent-roster", "/api/agent-roster?names=helper,missing", "", http.StatusOK)
+	c.call(acme, "GET", "/api/agent-roster", "/api/agent-roster", "", http.StatusBadRequest)
 
 	// Another workspace's run is not there, whatever is asked of it.
 	for _, op := range []struct{ method, template, suffix string }{
@@ -1415,8 +1421,35 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(acme, "POST", "/api/alerts/{id}/ack", "/api/alerts/nope/ack", "", http.StatusNotFound)
 
+	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"remote"}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/ana/drive"}`, http.StatusOK)
+	capReader := f.person(t, "acme", "source-cap", "Source capacity reader", "humagen-admins")
+	for i := 0; i < credentials.MaxPerPerson; i++ {
+		if _, err := f.p.Credentials.Put("acme", "source-cap", fmt.Sprintf("cap-%d", i), credentials.Input{Ref: fmt.Sprintf("op://People/source-cap/cap-%d", i)}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.call(capReader, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/source-cap/drive"}`, http.StatusTooManyRequests)
+
+	pending, err := f.p.Knowledge.BeginSync("acme", "remote", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusConflict)
+	if _, err := f.p.Knowledge.FailSync("acme", "remote", pending, knowledge.Interrupted, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// A machine has no person's credential: this records a real failed attempt,
+	// without calling Drive or representing a fake boundary as a live connection.
+	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusOK)
+	c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/remote", "", http.StatusNoContent)
+
 	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"handbook","description":"How we work."}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"handbook"}`, http.StatusConflict)
+	c.call(acme, "GET", "/api/knowledge/{name}/dependencies", "/api/knowledge/handbook/dependencies", "", http.StatusOK)
 	c.call(acme, "GET", "/api/knowledge/{name}/documents", "/api/knowledge/handbook/documents", "", http.StatusOK)
 	c.call(acme, "GET", "/api/knowledge/search", "/api/knowledge/search?q=zebra", "", http.StatusOK)
 	c.call(acme, "GET", "/api/knowledge/search", "/api/knowledge/search?q=", "", http.StatusBadRequest)
@@ -1561,7 +1594,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/skills", "/api/skills", "", http.StatusOK)
 	c.call(acme, "GET", "/api/skills", "/api/skills?project=Nowhere", "", http.StatusNotFound)
 	got = c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field", "", http.StatusOK)
-	if k := sliceOf(got.field("kinds")); len(k) < 2 || obj(k[0])["kind"] != "sme" || obj(k[1])["kind"] != "skill" {
+	if k := sliceOf(got.field("kinds")); len(k) != 1 || obj(k[0])["kind"] != "skill" {
 		t.Errorf("the mention kinds are %s", got.raw)
 	}
 	got = c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field&kind=skill&q=rev", "", http.StatusOK)
@@ -1586,6 +1619,29 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if len(sliceOf(auditRows.field("records"))) == 0 {
 		t.Fatal("governance-only private read was not in the audit")
 	}
+
+	c.call(ana, "GET", "/api/find-help", "/api/find-help?q=renewal", "", http.StatusOK)
+	c.call(ana, "GET", "/api/find-help", "/api/find-help", "", http.StatusBadRequest)
+	placementRoute := "/api/threads/{id}/placement"
+	draftID := obj(draft.field("thread"))["id"].(string)
+	previewed := c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement?project=Field&channel=renewals", "", http.StatusOK)
+	publicationRoute := "/api/threads/{id}/publication"
+	publicationPath := "/api/threads/" + draftID + "/publication"
+	summaryPublished := c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"Reviewed summary for the project","placement_token":%q}`, previewed.str("token")), http.StatusCreated)
+	if summaryPublished.str("id") == draftID || strings.Contains(string(summaryPublished.raw), draftID) {
+		t.Fatal("summary publication copied private source linkage")
+	}
+	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"reviewed","placement_token":"stale"}`, http.StatusConflict)
+	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"","placement_token":"stale"}`, http.StatusConflict)
+	c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"","placement_token":%q}`, previewed.str("token")), http.StatusBadRequest)
+	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement", "", http.StatusBadRequest)
+	activeDraft := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"preview only"}`, http.StatusCreated)
+	activeID := obj(activeDraft.field("thread"))["id"].(string)
+	activeTag := envelope.Tag{ID: "placement-active", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "active", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: activeID}, At: time.Now()}
+	if err := c.f.p.Runs.Record(runtime.RunID("acme", activeTag.ID), activeTag, 1); err != nil {
+		t.Fatal(err)
+	}
+	c.call(ana, "GET", placementRoute, "/api/threads/"+activeID+"/placement?project=Field&channel=renewals", "", http.StatusConflict)
 
 	share, draftPath := "/api/threads/{id}/share", "/api/threads/"+obj(draft.field("thread"))["id"].(string)+"/share"
 	c.call(ana, "POST", share, draftPath, `{"add":["nobody"]}`, http.StatusBadRequest)
@@ -1766,6 +1822,43 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.callFromLiveRun(acme, `{"key":"k429","agent":"helper","text":"hi","mode":"delegate"}`, http.StatusTooManyRequests)
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
 
+	// Durable agent operations use the same contract and admission path.
+	for _, path := range []string{"/api/agent-controls", "/api/agents/helper/control"} {
+		template := path
+		if path != "/api/agent-controls" {
+			template = "/api/agents/{name}/control"
+		}
+		c.call(acme, "GET", template, path, "", http.StatusOK)
+		c.call(acme, "PUT", template, path, `{"paused":false,"version":0}`, http.StatusOK)
+		c.call(acme, "PUT", template, path, `{"paused":false,"version":0}`, http.StatusConflict)
+	}
+	for _, pair := range [][2]string{{"/api/action-policy", "/api/action-policy"}, {"/api/agents/{name}/action-policy", "/api/agents/helper/action-policy"}, {"/api/projects/{name}/action-policy", "/api/projects/Launch/action-policy"}, {"/api/me/action-policy", "/api/me/action-policy"}} {
+		c.call(acme, "GET", pair[0], pair[1], "", http.StatusOK)
+		c.call(acme, "PUT", pair[0], pair[1], `{"rules":{},"version":0}`, http.StatusOK)
+		c.call(acme, "PUT", pair[0], pair[1], `{"rules":{},"version":0}`, http.StatusConflict)
+	}
+	assignmentBody := `{"id":"contract-assignment","agent":"helper","project":"","owner":"svc-acme","goal":"Inspect queue","done_when":"Report items","state":"requested","version":0}`
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", assignmentBody, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", assignmentBody, http.StatusConflict)
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", strings.Replace(assignmentBody, `"helper"`, `"ghost"`, 1), http.StatusNotFound)
+	c.call(acme, "GET", "/api/assignments", "/api/assignments?limit=201", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/handoffs", "/api/handoffs?limit=201", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/assignments/{id}", "/api/assignments/contract-assignment", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/assignments/{id}", "/api/assignments/contract-assignment", strings.Replace(assignmentBody, `"version":0`, `"version":1`, 1), http.StatusOK)
+	c.call(acme, "PUT", "/api/assignments/{id}", "/api/assignments/contract-assignment", assignmentBody, http.StatusConflict)
+	c.call(acme, "PUT", "/api/agents/{name}/control", "/api/agents/helper/control", `{"paused":true,"version":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusConflict)
+	c.call(acme, "PUT", "/api/agents/{name}/control", "/api/agents/helper/control", `{"paused":false,"version":2}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"agent","name":"helper"},"period":"day","max_runs":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusTooManyRequests)
+	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","spend_limit":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusPaymentRequired)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":1000000}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusOK)
+	c.call(acme, "GET", "/api/handoffs", "/api/handoffs", "", http.StatusOK)
+	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
+
 	// Two rules hold for every route that takes something: another
 	// workspace's object is not found, and a body with a field the route
 	// does not know is refused. Both are asked of every operation the spec
@@ -1774,9 +1867,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully", "channel": "general",
 	}
 	real := map[string]map[string]string{
-		"/api/agents/{name}/memory/{id}": {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
+		"/api/projects/{name}/action-policy": {"name": "Launch"},
+		"/api/handoffs/{id}":                 {"id": called.str("id")},
+		"/api/assignments/{id}":              {"id": "contract-assignment"},
+		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
+		"/api/agents/{name}/memory/{id}":     {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
 		"/api/clients/{id}": {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
+		"/api/knowledge/{name}/dependencies":  {"name": "handbook"},
+		"/api/knowledge/{name}/configuration": {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
@@ -1796,7 +1895,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
 		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
-		"/api/threads/{id}/share": {"id": tid},
+		"/api/threads/{id}/share":       {"id": tid},
+		"/api/threads/{id}/publication": {"id": draftID},
 	}
 	valid := map[string]string{
 		"/api/runs/{id}/feedback": `{"rating":"up"}`,
@@ -1918,6 +2018,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"POST /api/knowledge/{name}/documents 409": "source scope can change between authorization and insertion; atomic rejection is exercised by pkg/knowledge promotion and scope tests",
 	// A workspace holds at most 1,000 call policies, one per agent. Making
 	// that many agents here would only test a counter, which
 	// pkg/callpolicy's tests do.

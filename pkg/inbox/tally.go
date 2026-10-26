@@ -78,10 +78,35 @@ func signature(m *Message) string {
 			field(s)
 		}
 	}
+	field(m.Source.Knowledge)
 	field(m.Source.Run)
 	field(m.Source.Project)
 	field(m.Source.Thread)
 	field(m.Source.Agent)
+	for _, part := range scopeParts(m) {
+		if part.Operation != nil {
+			field("operation")
+			field(part.Operation.Kind)
+			field(part.Operation.ID)
+		}
+		if part.Memory != nil {
+			field("memory")
+			field(part.Memory.Owner)
+		}
+		if part.Budget != nil {
+			field("budget")
+			field(part.Budget.ScopeKind)
+			field(part.Budget.ScopeName)
+		}
+		if part.Question != nil {
+			field("question")
+			field(part.Question.Run)
+		}
+		if part.Draft != nil {
+			field("draft")
+			field(part.Draft.Project)
+		}
+	}
 	return b.String()
 }
 
@@ -89,7 +114,8 @@ func signature(m *Message) string {
 func representative(m *Message) Message {
 	return Message{
 		Kind: m.Kind, Broadcast: m.Broadcast, To: m.To, Audience: slices.Clone(m.Audience), Excluded: slices.Clone(m.Excluded),
-		Source: Source{Run: m.Source.Run, Project: m.Source.Project, Thread: m.Source.Thread, Agent: m.Source.Agent},
+		Source: Source{Knowledge: m.Source.Knowledge, Run: m.Source.Run, Project: m.Source.Project, Thread: m.Source.Thread, Agent: m.Source.Agent},
+		Parts:  scopeParts(m),
 	}
 }
 
@@ -271,4 +297,25 @@ func (t *tenant) count(f filter) Counts {
 		}
 	}
 	return c
+}
+
+// scopeParts retains only the independent configuration scopes needed by read
+// confinement. Their contents, outcomes and action data never enter counters.
+func scopeParts(m *Message) []Part {
+	var out []Part
+	for _, p := range m.Parts {
+		switch {
+		case p.Operation != nil:
+			out = append(out, Part{Operation: &OperationPart{Kind: p.Operation.Kind, ID: p.Operation.ID}})
+		case p.Question != nil:
+			out = append(out, Part{Question: &QuestionPart{Run: p.Question.Run}})
+		case p.Memory != nil:
+			out = append(out, Part{Memory: &MemoryPart{Owner: p.Memory.Owner}})
+		case p.Budget != nil:
+			out = append(out, Part{Budget: &BudgetPart{ScopeKind: p.Budget.ScopeKind, ScopeName: p.Budget.ScopeName}})
+		case p.Draft != nil:
+			out = append(out, Part{Draft: &DraftPart{Project: p.Draft.Project}})
+		}
+	}
+	return out
 }

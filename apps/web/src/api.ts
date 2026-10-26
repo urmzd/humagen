@@ -1,5 +1,7 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
+  KnowledgeLifecycle,
+  KnowledgeSourceConfig,
   ProjectContext,
   AgentHome,
   Person,
@@ -307,6 +309,7 @@ export interface Alert {
 }
 
 export interface Source {
+  lifecycle?: KnowledgeLifecycle;
   name: string;
   description?: string;
   documents: number;
@@ -329,6 +332,7 @@ export interface Doc {
 }
 
 export interface Hit {
+  mode?: "indexed" | "live";
   source: string;
   document_id: string;
   title: string;
@@ -647,7 +651,23 @@ export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
   return edit;
 }
 
+export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
+import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
+
 export const api = {
+  agentControl: (agent = "") => call<AgentControl>("GET", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls"),
+  saveAgentControl: (agent: string, input: AgentControlInput) => call<AgentControl>("PUT", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls", input),
+  actionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name = "") => call<ActionPolicy>("GET", operationPolicyPath(scope, name)),
+  saveActionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name: string, input: ActionPolicyInput) => call<ActionPolicy>("PUT", operationPolicyPath(scope, name), input),
+  assignment: (id:string) => call<Assignment>("GET",`/api/assignments/${encodeURIComponent(id)}`),
+  agentRoster:(names:string[]) => call<{controls:Record<string,AgentControl>;window_days:number}>("GET",`/api/agent-roster?${new URLSearchParams({names:names.join(",")})}`).then(r=>r.controls),
+  assignments: () => call<Assignment[]>("GET", "/api/assignments?limit=200"),
+  saveAssignment: (input: AssignmentInput) => call<Assignment>(input.version === 0 ? "POST" : "PUT", input.version === 0 ? "/api/assignments" : `/api/assignments/${encodeURIComponent(input.id)}`, input),
+  runAssignment: (id: string) => call<Run>("POST", `/api/assignments/${encodeURIComponent(id)}/run`),
+  handoff: (id:string) => call<HandoffContract>("GET",`/api/handoffs/${encodeURIComponent(id)}`),
+  saveHandoff: (id:string,input:import("../../../packages/client/src/generated/types.ts").HandoffUpdate) => call<HandoffContract>("PUT",`/api/handoffs/${encodeURIComponent(id)}`,input),
+  handoffs: () => call<HandoffContract[]>("GET", "/api/handoffs?limit=200"),
+  agentNetwork: () => call<AgentNetwork>("GET", "/api/agent-network"),
  readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
@@ -880,6 +900,10 @@ export const api = {
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
   createSource: (name: string, description: string) => call<Source>("POST", "/api/knowledge", { name, description }),
+  sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
+  configureSource: (name: string, config: KnowledgeSourceConfig) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
+  connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
+  syncSource: (name: string) => call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),
   deleteSource: (name: string) => call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}`),
   documents: (name: string) =>
     call<{ documents: Doc[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/documents`).then((r) => r.documents),
@@ -893,6 +917,7 @@ export const api = {
     call<{ name: string }>("POST", `/api/knowledge/${encodeURIComponent(name)}/variants`, { name: variant }),
   deleteVariant: (name: string, variant: string) =>
     call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}/variants/${encodeURIComponent(variant)}`),
+  searchKnowledgeDetailed: (q: string, source: string, variant="") => call<{hits:Hit[];warnings?:{source:string;cause:string}[]}>("GET",`/api/knowledge/search?${new URLSearchParams(variant?{q,source,variant}:{q,source})}`),
   searchKnowledge: (q: string, source: string, variant = "") =>
     call<{ hits: Hit[] }>(
       "GET",
@@ -1285,3 +1310,9 @@ export const coworking = {
 };
 
 export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };
+
+function operationPolicyPath(scope: "workspace" | "agent" | "project" | "personal", name: string) {
+  if (scope === "personal") return "/api/me/action-policy";
+  if (scope === "workspace") return "/api/action-policy";
+  return `/api/${scope === "agent" ? "agents" : "projects"}/${encodeURIComponent(name || "~")}/action-policy`;
+}

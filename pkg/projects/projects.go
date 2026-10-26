@@ -176,8 +176,10 @@ type Project struct {
 	Name string `json:"name"`
 	// Title is what people see. The root shows the workspace's name
 	// instead, so it has none.
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
+	Title string `json:"title,omitempty"`
+	// PersonalOwner is the immutable human subject whose private workspace this is.
+	PersonalOwner string `json:"personal_owner,omitempty"`
+	Description   string `json:"description,omitempty"`
 	// Kind defaults to team. The root is company.
 	Kind Kind `json:"kind"`
 	// Parent is fixed at creation. "" is the root.
@@ -302,9 +304,10 @@ type Tombstone struct {
 	// by then, under its parent as the parent stands now (DeletedRole). A
 	// tombstone written before they were kept has neither, and what it held
 	// is read only with projects:govern.
-	Parent  string  `json:"parent,omitempty"`
-	Members []Entry `json:"members,omitempty"`
-	Kept    bool    `json:"kept,omitempty"`
+	PersonalOwner string  `json:"personal_owner,omitempty"`
+	Parent        string  `json:"parent,omitempty"`
+	Members       []Entry `json:"members,omitempty"`
+	Kept          bool    `json:"kept,omitempty"`
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)
@@ -327,6 +330,8 @@ var validField = map[string]bool{
 func (p Project) validate() error {
 	chars := utf8.RuneCountInString
 	switch {
+	case p.PersonalOwner != "" && (p.IsRoot() || p.Parent != Root || p.Kind != Team || p.Managed != "" || p.Archived || len(p.Members) != 1 || p.Members[0] != (Entry{Who: p.PersonalOwner, Role: Owner})):
+		return fmt.Errorf("%w: a personal project has one human owner and stays under Company", ErrInvalid)
 	case p.IsRoot() && p.Kind != Company:
 		return fmt.Errorf("%w: the workspace is a company project", ErrInvalid)
 	case p.IsRoot() && (p.Title != "" || p.Parent != "" || p.Account != nil):

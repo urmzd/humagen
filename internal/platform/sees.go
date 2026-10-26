@@ -140,12 +140,18 @@ func (p *Platform) Sees(who auth.Principal, at Place) bool { return p.Seer(who).
 // Place reports whether the reader sees what lives in a place. Besides the
 // rule, the machine a client names to host its surface reads the threads on
 // that surface, wherever they are filed: the Slack thread is already its own.
-func (s *Seer) Place(at Place) bool {
+func (s *Seer) Place(at Place) bool { return s.placeDirect(at) }
+
+func (s *Seer) placeDirect(at Place) bool {
+	at = s.p.CurrentPlace(s.who.Tenant, at)
+	if pr, ok := s.tree.Get(at.Project); ok && pr.PersonalOwner != "" && s.who.Kind == auth.Machine {
+		return false
+	}
 	if s.govern {
 		ordinary := *s
 		ordinary.govern = false
 		ordinary.roles = s.own
-		if ordinary.Place(at) {
+		if ordinary.placeDirect(at) {
 			return true
 		}
 		if s.who.AuditRead != nil {
@@ -243,6 +249,55 @@ func (s *Seer) RunID(id string) bool {
 // into another project is read where the conversation went. Who it is
 // addressed to is the inbox's to decide besides.
 func (s *Seer) Message(m inbox.Message) bool {
+	if m.Source.Knowledge != "" && !s.p.SourceVisible(s.who, m.Source.Knowledge) {
+		return false
+	}
+	if m.Kind == inbox.KindOperation {
+		found := false
+		for _, part := range m.Parts {
+			if part.Operation == nil {
+				continue
+			}
+			found = true
+			op := part.Operation
+			switch op.Kind {
+			case "assignment":
+				a, ok := s.p.Operations.Assignment(s.who.Tenant, op.ID)
+				if !ok || !s.Project(a.Project) || !s.Place(Place{Project: a.Project, Thread: a.Thread}) || !s.Agent(a.Agent) {
+					return false
+				}
+			case "handoff":
+				h, ok := s.p.Operations.Handoff(s.who.Tenant, op.ID)
+				if !ok || !s.p.seesHandoff(s, h) {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	// Moving a conversation does not publish its original project settings,
+	// memory proposals, limits or drafts. Those retain their own scope.
+	for _, part := range m.Parts {
+		if part.Memory != nil && !s.MemoryOwner(part.Memory.Owner) {
+			return false
+		}
+		if part.Budget != nil && part.Budget.ScopeKind == "project" && !s.Project(part.Budget.ScopeName) {
+			return false
+		}
+		if part.Draft != nil && !s.Project(part.Draft.Project) {
+			return false
+		}
+		if part.Question != nil && m.Source.Run != "" {
+			if run, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil && s.p.RunPlace(s.who.Tenant, run).Project != run.Project && !s.Project(run.Project) {
+				return false
+			}
+		}
+	}
 	if m.Source.Run != "" {
 		if r, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil {
 			return s.Run(r)
@@ -278,6 +333,9 @@ func (s *Seer) Notice(e usage.Entry) bool {
 // Suite reports whether the reader sees an eval suite: one that tests an
 // agent where they see the agent.
 func (s *Seer) Suite(suite evals.Suite) bool {
+	if suite.Target == evals.Knowledge {
+		return s.p.SourceVisible(s.who, suite.Subject)
+	}
 	return suite.Target != evals.Agent || s.Agent(suite.Subject)
 }
 
@@ -355,7 +413,9 @@ func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCoun
 	if len(hidden) > 0 {
 		keep = func(thread string) bool { return !hidden[thread] }
 	}
-	return p.Runs.ProjectCountsWhere(who.Tenant, mark, keep)
+	return p.Runs.ProjectCountsPlaced(who.Tenant, mark, keep, func(thread, original string) string {
+		return p.CurrentPlace(who.Tenant, Place{Project: original, Thread: thread}).Project
+	})
 }
 
 // SeesThread reports whether a reader may read a thread: its project, and in

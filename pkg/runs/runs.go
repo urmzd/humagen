@@ -37,6 +37,9 @@ var ErrNotFound = errors.New("runs: not found")
 // OriginManual marks a schedule fired by a person rather than by the clock.
 const OriginManual = "manual"
 
+// OriginAssignment is retained source-change work raised by the platform.
+const OriginAssignment = "assignment"
+
 // OriginSystem marks a run the platform raised for its own housekeeping, such
 // as naming a conversation. Nothing outside the platform can raise one.
 const OriginSystem = "system"
@@ -348,6 +351,7 @@ type Run struct {
 	// Spend changes nothing. settledUp is set once its spend has been
 	// settled into its caller, so a call that ends later climbs past it.
 	closed, settledUp bool
+	privateContext    bool
 }
 
 // Requesters returns the names pinned for the person who asked for the run.
@@ -463,7 +467,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	// The agent is sent the conversation so far, or a schedule's text with
 	// its project's context. What was actually asked is kept apart, and is
 	// what the record shows. The platform writes it for these origins.
-	if v := tag.Meta[MetaAsk]; v != "" && (tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual) {
+	if v := tag.Meta[MetaAsk]; v != "" && (tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual || tag.Origin == OriginAssignment) {
 		text = v
 	}
 	if top, ok := x.runs[root]; ok && parent != "" && top.Tenant == tag.Tenant {
@@ -1181,4 +1185,19 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 		return cmp.Or(b.UpdatedAt.Compare(a.UpdatedAt), strings.Compare(a.ID, b.ID))
 	})
 	return out
+}
+
+// AnyActive returns whether an unfinished run satisfies keep. The callback is
+// pure and must not call the index. This includes delegated and system work,
+// which Conversation deliberately leaves out of its human turn list.
+func (x *Index) AnyActive(tenant string, keep func(Run) bool) bool {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	for _, id := range x.order {
+		r := x.runs[id]
+		if r.Tenant == tenant && !r.Status.Terminal() && keep(*r) {
+			return true
+		}
+	}
+	return false
 }

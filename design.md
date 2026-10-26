@@ -22,8 +22,10 @@ govern implementation, including shared presentation and agent identity.
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Board interaction checked in Chromium; native conversation-fork API pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
+| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
+| DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
 
 ### DES-001: Working integrations
 
@@ -41,6 +43,14 @@ govern implementation, including shared presentation and agent identity.
   Automatic resource linking, Drive, Notion, live search, and other board
   features require their own implementation evidence before being offered as
   working capabilities.
+- Source lifecycle foundation: bounded durable refresh attempts, last-good
+  copies, typed failures, stale stop rules and publication access predicates
+  are implemented. Native Drive/Notion boundaries, personal reference resolution,
+  scoped lifecycle APIs, source dependency views and connection controls are
+  implemented. Automated transport tests, memory/Postgres replay, HTTP contract
+  tests, three DOM states and eight phone/desktop source-state captures pass.
+  Live provider accounts and resource-rule configuration/application remain
+  pending. See [sources](docs/sources.md) for supported formats and limits.
 - Acceptance: exercise each newly wired control through its real host/API
   boundary, including a saved success, a visible failure, and denied access.
   Distinguish automated or simulated API checks from a live external-service
@@ -159,3 +169,11 @@ A Slack task card exposes Open Conversation when the host has configured
 `HUMAGEN_PUBLIC_URL`. It points to the run's conversation, including a later
 run in an existing conversation, and remains attached throughout streaming
 and settlement. Adapter and Slack rendering regressions cover the link.
+
+### DES-007: Agent badge containment
+
+Agent names and status badges wrap as whole items, and badge height follows
+its text. Long scope labels truncate within the badge without losing their
+accessible text. The `agent-status-badges` browser state makes the analyst the
+workspace default and checks both badges in dark mode with enlarged text.
+The containment assertion reproduces the reported failure before the fix.

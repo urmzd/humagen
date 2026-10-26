@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credentials"
@@ -23,12 +24,14 @@ import (
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -122,6 +125,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("journal", err)
 	p.Alerts, err = alerts.Open(st)
 	keep("alerts", err)
+	p.SourceLinks, err = sourcelinks.Open(st)
+	keep("source link rules", err)
 	p.Knowledge, err = knowledge.Open(st)
 	keep("knowledge", err)
 	p.Evals, err = evals.Open(st)
@@ -142,10 +147,17 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("threads", err)
 	p.Policies, err = policy.Open(st)
 	keep("policies", err)
+	p.Operations, err = operations.Open(st)
+	keep("operations", err)
+	if err == nil {
+		keep("operation publication guard", p.RegisterPublicationGuard(p))
+	}
 	p.CallPolicies, err = callpolicy.Open(st)
 	keep("call policies", err)
 	p.Usage, err = usage.Open(st)
 	keep("usage", err)
+	p.Audit, err = audit.Open(st)
+	keep("audit", err)
 	p.ReadAudit, err = readaudit.Open(st)
 	keep("read audit", err)
 	p.Inbox, err = inbox.OpenStore(st)
