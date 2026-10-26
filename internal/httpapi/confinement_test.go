@@ -25,6 +25,7 @@ import (
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 )
 
 // The confinement sweep reads every GET in the contract, and the event
@@ -57,6 +58,7 @@ type hidden struct {
 	notificationID                                                string
 	librarySkill                                                  string
 	sourceRule                                                    string
+	sourceSuggestion                                              string
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	personalNote                                                  string
@@ -153,6 +155,11 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	must("PUT", "/api/agents/"+h.agent+"/home", `{"project":"`+h.project+`"}`, http.StatusOK)
 	must("PUT", "/api/projects/"+h.project+"/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
 	h.sourceRule = str(must("POST", "/api/source-link-rules", `{"provider":"github","attribute":"repository","pattern":"`+marker+`/private","project":"`+h.project+`","mode":"suggest"}`, http.StatusOK), "id")
+	suggestions, err := f.p.SourceSuggestions.Observe("acme", "", "", sourcelinks.Resource{Provider: "github", ID: marker + "/private", Attributes: map[string][]string{"repository": {marker + "/private"}}}, []sourcelinks.Match{{Project: h.project, Mode: sourcelinks.Suggest, Rules: []string{h.sourceRule}}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.sourceSuggestion = suggestions[0].ID
 	h.projectNote = str(must("POST", "/api/projects/"+h.project+"/memory", `{"text":"Project note `+marker+`."}`, http.StatusCreated), "id")
 	h.agentNote = str(must("POST", "/api/agents/"+h.agent+"/memory", `{"text":"Agent note `+marker+`."}`, http.StatusCreated), "id")
 	personal, err := f.p.Memory.Add("acme", memory.PersonalOwner("canary-memory-owner"), "Personal note "+marker+".", memory.Person, memory.Approved, "canary-memory-owner", time.Now())
@@ -537,6 +544,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.projectNote, true
 		case prefix("/api/knowledge/{name}/documents/"):
 			return h.doc, true
+		case prefix("/api/source-link-suggestions/"):
+			return h.sourceSuggestion, true
 		case prefix("/api/source-link-rules/"):
 			return h.sourceRule, true
 		case prefix("/api/handoffs/"):

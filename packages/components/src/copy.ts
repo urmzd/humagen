@@ -16,8 +16,32 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
+  citation: {
+    indexed: "Indexed Copy",
+    live: "Live Results",
+    unknown: "Source Mode Unknown",
+    freshnessUnknown: "Freshness Unknown",
+    lastGoodCopy: "Last Good Copy",
+    copyFrom: "Copy from",
+    queriedLive: "Retrieved for This Turn",
+  },
   attachedFilesPrompt: "Please review the attached files.",
   sourceOperations: {
+    contextPlacement: "Context Placement",
+    attachmentHint:
+      "Choose where context is included. Source read access follows its project scope; this does not change channel membership.",
+    targetProject: "Target Project",
+    targetChannel: "Target Channel (Optional)",
+    attachProject: "Attach to Project",
+    attachChannel: "Attach to Channel (Optional)",
+    attach: "Attach Context",
+    detach: "Detach Context",
+    explicitGrants: "Explicit agent source grants remain active after detaching context.",
+    noAttachments: "This source is not attached to readable project or channel context.",
+    liveAttachment:
+      "Attaching a live source records where it may be queried. It does not verify provider access.",
+    importPlacement:
+      "Import the selected copy, then attach it to the context below after the provider import succeeds.",
     health: "Context Health",
     healthHint: "Where readable sources come from, how fresh they are and who depends on them.",
     integrations: "Integrations",
@@ -29,6 +53,21 @@ export const defaultCopy = {
     access: "Access",
     events: "Events",
     actions: "Actions",
+    inactive: "Inactive",
+    linkHistory: "Link History",
+    linkStates: {
+      suggested: "Pending Suggestions",
+      linked: "Linked History",
+      ignored: "Ignored History",
+    },
+    refreshSuggestions: "Refresh Suggestions",
+    linked: "Linked",
+    ignored: "Ignored",
+    noSuggestions: "No pending readable suggestions.",
+    matchedRules: "Matched Rules",
+    verifiedResource: "Verified Resource",
+    ruleDraftHint:
+      "A suggested rule is a draft. Preview it and save explicitly; linking this resource remains a separate decision.",
     capabilities: "Connection Capabilities",
     subscriptions: "Event Subscriptions",
     registeredActions: "Registered Actions",
@@ -190,7 +229,7 @@ export const defaultCopy = {
     neverAction: "Never",
     policies: "Open Policies",
     reconnectRequired:
-      "Your access needs reconnecting. Save your own credential reference in Connect, then retry.",
+      "Your access needs reconnecting. Save your own credential reference, then retry.",
     healthMissing:
       "Missing access or provider failures are shown here. Provider test fixtures are not live validation.",
   },
@@ -235,6 +274,7 @@ export const defaultCopy = {
       "Live search is unavailable. Any indexed results below come from the retained copy.",
     lastGood: "Last good copy",
     noCopy: "No successful copy yet",
+    manualDocuments: "Manually added documents; no external refresh",
     attempts: "Recent refresh attempts",
     emptyAttempts: "No refresh attempted",
     stopHint: "Dependent work stops after this limit. Manual sources do not expire.",
@@ -250,6 +290,7 @@ export const defaultCopy = {
     },
     cause: {
       auth_expired: "Your access needs reconnecting",
+      stale: "Freshness stop rule reached. Refresh or keep a snapshot.",
       quota: "Provider quota reached",
       unsupported: "Resource format or size is unsupported",
       unavailable: "Provider unavailable",
@@ -265,6 +306,45 @@ export const defaultCopy = {
     workspaceControls: "Workspace controls",
     controlsHint:
       "Pause new work while keeping recorded work and approval rules intact. Running work reaches its recorded outcome.",
+    pauseReasons: {
+      workspace: "Workspace pause is in effect. Resuming this agent does not resume the workspace.",
+      setup: "Complete and validate the reviewed setup before this agent can accept new work.",
+      agent: "This agent is paused.",
+    },
+    unansweredReminder: "Remind about unanswered questions after (minutes)",
+    blockedReminder: "Remind about blocked work after (minutes)",
+    reminderInvalid: "Use a whole number of minutes between 0 and 10080.",
+    reminderHint:
+      "Use 0 to disable a reminder. Reminders update the existing item; they never approve or restart work.",
+    effective: "Effective at this scope",
+    scopeKinds: {
+      workspace: "Workspace",
+      project: "Project",
+      agent: "Agent",
+      personal: "Only you",
+      inherited: "Inherited policy",
+    },
+    policyContext: "Project, agent and personal rules may narrow this further when a run starts.",
+    lockedBy: "Restricted by",
+    reviewDeadline: "Review Deadline",
+    saveDeadline: "Save Deadline",
+    reviewLatest: "Review Latest Record",
+    clearDeadline: "Clear Deadline",
+    expiredDeadline: "This deadline has passed. Review it before starting or resuming work.",
+    lateResult: "The recorded run completed after its deadline.",
+    recordedRunState: "Recorded run",
+    inputs: "Inputs",
+    noInputs: "No input objects were attached.",
+    inputKinds: { run: "Run", artifact: "Artifact", thread: "Conversation", text: "Brief" },
+    openInputRun: "Open Input Run",
+    openInputConversation: "Open Input Conversation",
+    openInputArtifact: "Open Input Artifact",
+    artifactVersion: (n: string) => `Version ${n}`,
+    unassigned: "Unassigned",
+    recordedOwner: "Recorded owner",
+    findPerson: (label: string) => `Find a person for ${label.toLowerCase()}`,
+    ownerSelectionUnavailable:
+      "The people directory is unavailable. The recorded owner will be kept.",
     paused: "Paused",
     active: "Accepting new work",
     pause: "Pause Agent",
@@ -295,6 +375,7 @@ export const defaultCopy = {
     assignmentsHint:
       "Durable work with an owner, a goal and a clear definition of done. Standing assignments use the workspace scheduler.",
     newAssignment: "New Assignment",
+    cancelCreate: "Cancel New Assignment",
     goal: "Goal",
     doneWhen: "Done when",
     agent: "Agent",

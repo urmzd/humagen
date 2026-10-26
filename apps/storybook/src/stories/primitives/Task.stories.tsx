@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components";
 import type { TaskStatus } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
 import { Plan, Task } from "@humagen/primitives";
@@ -25,6 +26,7 @@ const meta = {
   render: ({ title, status, details, output }) => (
     <Canvas>
       <Task
+        sourceLabels={defaultCopy.citation}
         {...{ id: "t" }}
         title={title}
         status={status}
@@ -45,9 +47,12 @@ export const Timeline: Story = {
   render: () => (
     <Canvas>
       {fx.codingTurn.tasks.map((t) => (
-        <Task key={t.id} {...t} />
+        <Task sourceLabels={defaultCopy.citation} key={t.id} {...t} />
       ))}
-      <Task {...{ id: "p", title: "Open a pull request", status: "pending" }} />
+      <Task
+        sourceLabels={defaultCopy.citation}
+        {...{ id: "p", title: "Open a pull request", status: "pending" }}
+      />
     </Canvas>
   ),
 };
@@ -58,9 +63,12 @@ export const PlanRunning: Story = {
     <Canvas>
       <Plan title={fx.streamingTurn.planTitle ?? "Working"}>
         {fx.streamingTurn.tasks.map((t) => (
-          <Task key={t.id} {...t} />
+          <Task sourceLabels={defaultCopy.citation} key={t.id} {...t} />
         ))}
-        <Task {...{ id: "t4", title: "Summarize findings", status: "pending" }} />
+        <Task
+          sourceLabels={defaultCopy.citation}
+          {...{ id: "t4", title: "Summarize findings", status: "pending" }}
+        />
       </Plan>
     </Canvas>
   ),
@@ -72,7 +80,7 @@ export const PlanDone: Story = {
     <Canvas>
       <Plan title="Worked for 12s">
         {fx.doneTurn.tasks.map((t) => (
-          <Task key={t.id} {...t} />
+          <Task sourceLabels={defaultCopy.citation} key={t.id} {...t} />
         ))}
       </Plan>
     </Canvas>
@@ -85,7 +93,7 @@ export const PlanFailed: Story = {
     <Canvas>
       <Plan title="Error">
         {fx.failedTurn.tasks.map((t) => (
-          <Task key={t.id} {...t} />
+          <Task sourceLabels={defaultCopy.citation} key={t.id} {...t} />
         ))}
       </Plan>
     </Canvas>
@@ -109,6 +117,7 @@ function LivePlan() {
       >
         {titles.map((title, i) => (
           <Task
+            sourceLabels={defaultCopy.citation}
             key={title}
             id={title}
             title={title}

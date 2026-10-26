@@ -44,6 +44,9 @@ func (p *Platform) CheckAssignmentSources(tenant string, names []string) error {
 	}
 	for _, name := range names {
 		source, err := p.Knowledge.Get(tenant, name)
+		if err == nil && source.HardStale(p.now()) {
+			p.sourceAttention(tenant, source.HealthAt(p.now()))
+		}
 		if err != nil || source.HardStale(p.now()) {
 			return ErrSourceStop
 		}
@@ -72,6 +75,9 @@ func (p *Platform) SourceChangeVersion(tenant, name string) (uint64, bool) {
 	}
 	if source.Lifecycle != nil && source.Lifecycle.Provider != "manual" && source.Lifecycle.Mode != knowledge.Live && source.Lifecycle.LastGoodAt == nil {
 		return source.ContentVersion, false
+	}
+	if source.HardStale(p.now()) {
+		p.sourceAttention(tenant, source.HealthAt(p.now()))
 	}
 	if source.HardStale(p.now()) || (source.Lifecycle != nil && source.Lifecycle.Mode == knowledge.Live) {
 		return source.ContentVersion, false

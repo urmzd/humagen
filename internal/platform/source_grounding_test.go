@@ -12,12 +12,18 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 func sourceGroundingPlatform(t *testing.T) *Platform {
 	t.Helper()
-	p := &Platform{Knowledge: knowledge.NewStore(), Projects: projects.NewStore(), now: time.Now}
+	ops, err := operations.Open(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &Platform{Operations: ops, Runs: runs.NewIndex(), Knowledge: knowledge.NewStore(), SourceEvidence: knowledge.NewEvidenceStore(), Projects: projects.NewStore(), now: time.Now}
 	for _, name := range []string{"Secret", "Other"} {
 		if _, err := p.Projects.Create("tenant", projects.Project{Name: name, Members: []projects.Entry{{Who: "owner", Role: projects.Owner}}}, projects.Writer{By: "owner", Govern: true}, p.now()); err != nil {
 			t.Fatal(err)

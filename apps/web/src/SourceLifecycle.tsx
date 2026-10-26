@@ -107,7 +107,9 @@ export function SourceLifecycle({
       <p className="text-aui-xs text-aui-muted">
         {lifecycle?.last_good_at
           ? `${words.lastGood}: ${ago(lifecycle.last_good_at)}`
-          : words.noCopy}
+          : (!lifecycle || lifecycle.provider === "manual") && source.documents > 0
+            ? words.manualDocuments
+            : words.noCopy}
       </p>
       {lifecycle?.origin && (
         <p className="break-all text-aui-sm">
@@ -300,6 +302,8 @@ export function SourceResources({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const lifecycle = source.lifecycle;
+  const [targetProject, setTargetProject] = useState(lifecycle?.project || "~");
+  const [targetChannel, setTargetChannel] = useState("");
   const load = async () => {
     setBusy(true);
     setProblem(null);
@@ -322,7 +326,15 @@ export function SourceResources({
     }
   };
   const save = async () => {
-    if (!lifecycle || !complete || selected.length === 0 || busy || !canWrite) return;
+    if (
+      !lifecycle ||
+      !complete ||
+      selected.length === 0 ||
+      !targetProject.trim() ||
+      busy ||
+      !canWrite
+    )
+      return;
     setBusy(true);
     setProblem(null);
     try {
@@ -331,10 +343,13 @@ export function SourceResources({
         resources: selected,
       });
       await api.syncSource(source.name);
+      await api.attachSource(source.name, {
+        project: targetProject,
+        ...(targetChannel ? { channel: targetChannel } : {}),
+      });
       onChanged();
     } catch (error) {
       setProblem(sourceProblem(error));
-      onChanged();
     } finally {
       setBusy(false);
     }
@@ -402,6 +417,34 @@ export function SourceResources({
         ))}
       </ul>
       {resources && canWrite && (
+        <fieldset
+          className="grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-2"
+          disabled={busy || lifecycle?.mode === "live" || lifecycle?.snapshot}
+        >
+          <legend className="mb-2 text-aui-sm font-semibold">{words.contextPlacement}</legend>
+          <p className="text-aui-xs text-aui-muted sm:col-span-2">{words.importPlacement}</p>
+          <Label text={words.targetProject}>
+            <input
+              aria-label={words.targetProject}
+              className={field}
+              required
+              maxLength={256}
+              value={targetProject}
+              onChange={(event) => setTargetProject(event.target.value)}
+            />
+          </Label>
+          <Label text={words.targetChannel}>
+            <input
+              aria-label={words.targetChannel}
+              className={field}
+              maxLength={40}
+              value={targetChannel}
+              onChange={(event) => setTargetChannel(event.target.value)}
+            />
+          </Label>
+        </fieldset>
+      )}
+      {resources && canWrite && (
         <button
           type="button"
           className={`${button} self-start`}
@@ -409,6 +452,7 @@ export function SourceResources({
             busy ||
             !complete ||
             selected.length === 0 ||
+            !targetProject.trim() ||
             lifecycle?.mode === "live" ||
             lifecycle?.snapshot
           }
@@ -504,7 +548,7 @@ export function SourceSyncSettings({
           <button
             type="button"
             className={button}
-            disabled={busy || !lifecycle.last_good_at || lifecycle.snapshot}
+            disabled={busy || !lifecycle.last_good_at || (lifecycle.snapshot && lifecycle.status !== "needs_attention")}
             onClick={() => void run(() => api.snapshotSource(source.name))}
           >
             {words.keepSnapshot}
@@ -600,5 +644,141 @@ export function SourceAccessMode({
         {words.saveAccess}
       </button>
     </form>
+  );
+}
+
+export function SourceAttachments({
+  source,
+  canWrite,
+  onChanged,
+}: {
+  source: Source;
+  canWrite: boolean;
+  onChanged: () => void;
+}) {
+  const words = defaultCopy.sourceOperations;
+  const [attachments, setAttachments] = useState<import("./api.ts").SourceAttachment[] | null>(
+    null,
+  );
+  const [project, setProject] = useState(source.lifecycle?.project || "~");
+  const [channel, setChannel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    setAttachments(null);
+    api
+      .sourceAttachments(source.name)
+      .then((result) => {
+        if (active) setAttachments(result);
+      })
+      .catch((error) => {
+        if (active) setProblem(sourceProblem(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [source.name, source.updated_at]);
+  const detach = async (target: import("./api.ts").SourceAttachment) => {
+    if (busy || !canWrite) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.detachSource(source.name, target);
+      setAttachments(await api.sourceAttachments(source.name));
+      onChanged();
+    } catch (error) {
+      setProblem(sourceProblem(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const attach = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !canWrite || !project.trim()) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.attachSource(source.name, { project, ...(channel ? { channel } : {}) });
+      setAttachments(await api.sourceAttachments(source.name));
+      onChanged();
+    } catch (error) {
+      setProblem(sourceProblem(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section aria-label={words.contextPlacement} className="flex min-w-0 flex-col gap-3">
+      <h2 className="text-aui-sm font-semibold">{words.contextPlacement}</h2>
+      <p className="text-aui-xs text-aui-muted">{words.attachmentHint}</p>
+      {source.lifecycle?.mode === "live" && (
+        <p className="text-aui-xs text-aui-muted">{words.liveAttachment}</p>
+      )}
+      <Problem message={problem} />
+      {!attachments && !problem && <output>{words.loading}</output>}
+      {attachments?.length === 0 && (
+        <p className="text-aui-sm text-aui-muted">{words.noAttachments}</p>
+      )}
+      <ul className="divide-y divide-aui-border">
+        {attachments?.map((target) => (
+          <li
+            key={`${target.project}:${target.channel ?? ""}`}
+            className="flex flex-wrap items-center gap-3"
+          >
+            <a
+              className="inline-flex min-h-11 items-center break-words text-aui-sm underline"
+              href={`/projects/${encodeURIComponent(target.project || "~")}${target.channel ? `/channels/${encodeURIComponent(target.channel)}` : "/context"}`}
+            >
+              {target.project || words.workspace}
+              {target.channel ? ` / #${target.channel}` : ""}
+            </a>
+            {canWrite && (
+              <button
+                type="button"
+                className={button}
+                disabled={busy}
+                onClick={() => void detach(target)}
+              >
+                {words.detach}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {canWrite && <p className="text-aui-xs text-aui-muted">{words.explicitGrants}</p>}
+      {canWrite && (
+        <form onSubmit={attach} className="grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
+          <Label text={words.attachProject}>
+            <input
+              aria-label={words.attachProject}
+              className={field}
+              required
+              maxLength={256}
+              value={project}
+              disabled={busy}
+              onChange={(event) => setProject(event.target.value)}
+            />
+          </Label>
+          <Label text={words.attachChannel}>
+            <input
+              aria-label={words.attachChannel}
+              className={field}
+              maxLength={40}
+              value={channel}
+              disabled={busy}
+              onChange={(event) => setChannel(event.target.value)}
+            />
+          </Label>
+          <button
+            type="submit"
+            className={`${button} justify-self-start`}
+            disabled={busy || !project.trim()}
+          >
+            {words.attach}
+          </button>
+        </form>
+      )}
+    </section>
   );
 }

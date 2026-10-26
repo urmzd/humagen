@@ -53,6 +53,9 @@ func (p *Platform) SourceResources(ctx context.Context, who auth.Principal, name
 	if err != nil || current.Lifecycle == nil || !current.Lifecycle.Equal(src.Lifecycle.SourceConfig) {
 		return nil, knowledge.ErrNotFound
 	}
+	if err := p.observeKnowledgeSource(who.Tenant, current); err != nil {
+		return nil, err
+	}
 	return resources, nil
 }
 func (p *Platform) SnapshotSource(who auth.Principal, name string) (knowledge.Source, error) {
@@ -70,7 +73,16 @@ func (p *Platform) SnapshotSource(who auth.Principal, name string) (knowledge.So
 	if cfg.Project == "" {
 		cfg.Project = "~"
 	}
-	result, err := p.ConfigureSource(who, name, cfg)
+	checked, err := p.authorizeSourceConfig(who, cfg)
+	if err != nil {
+		return knowledge.Source{}, err
+	}
+	attempt, err := p.beginSourceAudit(who, "source.snapshot", src, map[string]string{"snapshot": "true", "mode": "indexed", "project": checked.Project})
+	if err != nil {
+		return knowledge.Source{}, err
+	}
+	result, err := p.Knowledge.KeepSnapshot(who.Tenant, name, checked, p.now(), &src.Lifecycle.SourceConfig)
+	p.finishSourceAudit(attempt, err)
 	if err == nil {
 		p.settleSourceAttention(who.Tenant, result)
 	}

@@ -210,6 +210,8 @@ type Platform struct {
 	Alerts             *alerts.Engine
 	Knowledge          *knowledge.Store
 	SourceLinks        *sourcelinks.Store
+	SourceSuggestions  *sourcelinks.Suggestions
+	SourceEvidence     *knowledge.EvidenceStore
 	Evals              *evals.Store
 	Feedback           *feedback.Store
 	Prefs              *prefs.Store
@@ -235,6 +237,8 @@ type Platform struct {
 	assignmentSources          sync.Map
 	assignmentSourceCursor     sync.Map
 	assignmentSettlementCursor sync.Map
+	operationReminderCursor    sync.Map
+	operationScheduleCursor    sync.Map
 	CallPolicies               *callpolicy.Store
 	Operations                 *operations.Store
 	Usage                      *usage.Ledger
@@ -802,7 +806,9 @@ const flushEvery = 250 * time.Millisecond
 // fallback for when there is none: a run that exhausts its retries is failed in
 // the ledger with nothing further published.
 func (p *Platform) reconcile(ctx context.Context) {
+	p.reconcileOperationReminders(ctx)
 	p.settleOperations(ctx)
+	p.syncAssignmentSchedules()
 	for _, id := range p.Runs.Active() {
 		p.settleFromLedger(ctx, id)
 	}
@@ -868,6 +874,12 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 		return
 	}
 	p.admission.Lock()
+	if e.Kind == envelope.KindCitation {
+		metadata, _, _ := p.trustedCitation(e)
+		if err := p.Runs.RecordCitation(e, metadata); err != nil {
+			p.log.Error("citation could not be retained", "error", err)
+		}
+	}
 	run, ended := p.Runs.Observe(e)
 	if ended {
 		p.free(run)

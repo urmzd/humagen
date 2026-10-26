@@ -55,7 +55,7 @@ func (p *Platform) SourceAs(who auth.Principal, name string) (knowledge.Source, 
 	if err != nil || !p.sourceRecordVisible(who, src) {
 		return knowledge.Source{}, knowledge.ErrNotFound
 	}
-	return src, nil
+	return src.HealthAt(p.now()), nil
 }
 
 func (p *Platform) runtimeSourceAllowed(tenant, name, project string) bool {

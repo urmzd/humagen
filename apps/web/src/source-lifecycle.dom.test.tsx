@@ -28,10 +28,12 @@ const source: Source = {
     ],
   },
 };
-let net: ReturnType<typeof stubFetch>;
+let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
+  if (!net) return;
   cleanup();
   net.restore();
+  net = undefined;
 });
 
 test("saving a source reference does not claim verified provider access", async () => {
@@ -101,4 +103,14 @@ test("source readers cannot configure or refresh workspace copies", async () => 
     (await screen.findByRole("link", { name: "Agents: helper" })).getAttribute("href"),
     "/agents/helper",
   );
+});
+
+test("an available manual source does not claim its retained documents are missing", async () => {
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/dependencies": () => ({ agents: [], projects: [] }),
+  });
+  render(<SourceLifecycle source={{ ...source, lifecycle: undefined }} canWrite={false} onChanged={() => undefined} />);
+  await screen.findByText("No visible declarations in this directory window");
+  assert.equal(screen.queryByText("No successful copy yet") === null, true);
+  assert.ok(screen.getByText("Manually added documents; no external refresh"));
 });

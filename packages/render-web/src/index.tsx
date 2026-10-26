@@ -8,7 +8,14 @@ import { webImpls } from "./impls";
 
 export { Amount } from "./amount";
 export { ActionContext, buttonClass, DenseContext, Menu } from "./buttons";
-export { CitationChip, CitationRegistry, Favicon, hostOf, SourceMark } from "./citations";
+export {
+  CitationChip,
+  CitationProvenance,
+  CitationRegistry,
+  Favicon,
+  hostOf,
+  SourceMark,
+} from "./citations";
 export { CodeBlock, CopyButton, Terminal } from "./code";
 export { Feedback, FeedbackPromptContext, Rating } from "./feedback";
 export { ArtifactIcon, FileTile, phaseLabel } from "./file";

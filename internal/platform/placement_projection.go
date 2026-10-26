@@ -14,6 +14,7 @@ import (
 // moved conversation's operational event view. Durable journal bytes are never
 // rewritten. The publication preview names this exclusion explicitly.
 func (p *Platform) ShownEvent(who auth.Principal, event envelope.Event) envelope.Event {
+	event = p.enrichCitation(event)
 	run, err := p.Runs.Get(who.Tenant, event.RunID)
 	if err != nil {
 		return event

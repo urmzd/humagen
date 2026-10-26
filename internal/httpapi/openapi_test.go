@@ -657,7 +657,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"SlackCommand": {typ: clients.Command{}}, "SlackOptions": {typ: clients.SlackOptions{}}, "GitHubOptions": {typ: clients.GitHubOptions{}},
 		"ClientView": {typ: clientView{}}, "ClientCaps": {typ: clients.Caps{}}, "ClientInput": {typ: clientBody{}, written: true},
 		"TextPayload": {typ: payload.Text{}}, "ThinkingPayload": {typ: payload.Thinking{}}, "ToolCallPayload": {typ: payload.ToolCall{}},
-		"ToolDonePayload": {typ: payload.ToolDone{}}, "Provenance": {typ: payload.Provenance{}}, "CitationPayload": {typ: payload.Citation{}},
+		"ToolDonePayload": {typ: payload.ToolDone{}}, "Provenance": {typ: payload.Provenance{}}, "CitationPayload": {typ: runs.CitationPayload{}},
 		"LifecyclePayload": {typ: payload.Lifecycle{}}, "Question": {typ: payload.Question{}}, "Answer": {typ: struct {
 			payload.Answer
 			// What a route hands out beside the subject (shownEvent).
@@ -1581,6 +1581,23 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/remote", "", http.StatusNoContent)
 
 	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"handbook","description":"How we work."}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/knowledge/{name}/attachment", "/api/knowledge/handbook/attachment", `{"project":"Launch","channel":"general"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/knowledge/{name}/attachments", "/api/knowledge/handbook/attachments", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/knowledge/{name}/attachment", "/api/knowledge/handbook/attachment", `{"project":""}`, http.StatusBadRequest)
+	c.call(acme, "DELETE", "/api/knowledge/{name}/attachment", "/api/knowledge/handbook/attachment", "", http.StatusBadRequest)
+	c.call(acme, "DELETE", "/api/knowledge/{name}/attachment", "/api/knowledge/handbook/attachment?project=Launch&channel=general", "", http.StatusNoContent)
+	seededSuggestions, err := f.p.SourceSuggestions.Observe("acme", "", "handbook", sourcelinks.Resource{Provider: "manual", ID: "handbook", Attributes: map[string][]string{"source": {"handbook"}}}, []sourcelinks.Match{{Project: "~", Mode: sourcelinks.Suggest, Rules: []string{}}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	suggestionID := seededSuggestions[0].ID
+	c.call(acme, "GET", "/api/source-link-suggestions", "/api/source-link-suggestions", "", http.StatusOK)
+	c.call(acme, "GET", "/api/source-link-suggestions", "/api/source-link-suggestions?limit=201", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/source-link-suggestions/{id}/decision", "/api/source-link-suggestions/"+suggestionID+"/decision", `{"action":"unsupported","version":1}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/source-link-suggestions/{id}/decision", "/api/source-link-suggestions/"+suggestionID+"/decision", `{"action":"link","version":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/source-link-suggestions/{id}/decision", "/api/source-link-suggestions/"+suggestionID+"/decision", `{"action":"ignore","version":1}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/source-link-suggestions/{id}/decision", "/api/source-link-suggestions/"+suggestionID+"/decision", `{"action":"ignore","version":2}`, http.StatusOK)
+
 	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"handbook"}`, http.StatusConflict)
 	c.call(acme, "GET", "/api/knowledge/{name}/dependencies", "/api/knowledge/handbook/dependencies", "", http.StatusOK)
 	c.call(acme, "GET", "/api/knowledge/{name}/documents", "/api/knowledge/handbook/documents", "", http.StatusOK)
@@ -2039,7 +2056,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/assignments/{id}":              {"id": "contract-assignment"},
 		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
 		"/api/agents/{name}/memory/{id}":     {"id": freshAgentNote.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
-		"/api/clients/{id}": {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
+		"/api/source-link-suggestions/{id}/decision": {"id": suggestionID},
+		"/api/knowledge/{name}/attachment":           {"name": "handbook"},
+		"/api/knowledge/{name}/attachments":          {"name": "handbook"},
+		"/api/clients/{id}":                          {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
 		"/api/knowledge/{name}/dependencies":  {"name": "handbook"},
@@ -2190,9 +2210,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
-	"POST /api/source-link-rules 409":        "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
-	"PUT /api/source-link-rules/{id} 409":    "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
-	"DELETE /api/source-link-rules/{id} 409": "concurrent rule change is rejected by store snapshot test",
+	"PUT /api/knowledge/{name}/attachment 429": "bounded relation store refuses new attachments at10000 records; cap exercised in source-link suggestion store tests",
+	"POST /api/source-link-rules 409":          "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
+	"PUT /api/source-link-rules/{id} 409":      "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
+	"DELETE /api/source-link-rules/{id} 409":   "concurrent rule change is rejected by store snapshot test",
 
 	"POST /api/knowledge/{name}/documents 409": "source scope can change between authorization and insertion; atomic rejection is exercised by pkg/knowledge promotion and scope tests",
 	// A workspace holds at most 1,000 call policies, one per agent. Making

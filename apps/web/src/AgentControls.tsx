@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type AgentControl, api } from "./api.ts";
+import { OperationPersonField } from "./OperationPersonField.tsx";
 import { AgentMark, field, Label, Page, Problem, primary } from "./ui.tsx";
 
 const words = defaultCopy.operations;
@@ -19,28 +20,72 @@ export function AgentControls({
   const [stopRules, setStopRules] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reminder, setReminder] = useState(240);
+  const [blockedReminder, setBlockedReminder] = useState(120);
+  const [reminderChanged, setReminderChanged] = useState(false);
+  const [baselineVersion, setBaselineVersion] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  const refreshEpoch = useRef(0);
+  const changed = () => {
+    dirtyRef.current = true;
+    setDirty(true);
+  };
+  const adopt = (c: AgentControl) => {
+    setManager(c.manager ?? "");
+    setStopRules(c.stop_rules ?? "");
+    setReminder((c.reminder_after_seconds ?? c.effective_reminder_after_seconds ?? 14400) / 60);
+    setBlockedReminder(
+      (c.blocked_reminder_after_seconds ?? c.effective_blocked_reminder_after_seconds ?? 7200) / 60,
+    );
+    setBaselineVersion(c.version);
+    setReminderChanged(false);
+    dirtyRef.current = false;
+    setDirty(false);
+  };
+  const selected = useRef(agent);
+  selected.current = agent;
   useEffect(() => {
     let live = true;
     setControl(null);
+    setBusy(false);
+    setReminderChanged(false);
     setProblem(null);
-    api
-      .agentControl(agent)
-      .then((c) => {
-        if (live) {
-          setControl(c);
-          setManager(c.manager ?? "");
-          setStopRules(c.stop_rules ?? "");
-        }
-      })
-      .catch(() => {
+    dirtyRef.current = false;
+    setDirty(false);
+    const refresh = async () => {
+      const epoch = refreshEpoch.current;
+      try {
+        const c = await api.agentControl(agent);
+        if (!live || epoch !== refreshEpoch.current) return;
+        setControl(c);
+        if (!dirtyRef.current) adopt(c);
+        setProblem(null);
+      } catch {
         if (live) setProblem(words.loadFailed);
-      });
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
     return () => {
       live = false;
+      window.clearInterval(timer);
     };
   }, [agent]);
   const save = async (paused: boolean) => {
-    if (!control || busy || !canWrite) return;
+    if (!control || busy || !canWrite || (dirty && control.version !== baselineVersion)) return;
+    if (
+      !Number.isInteger(reminder) ||
+      !Number.isInteger(blockedReminder) ||
+      reminder < 0 ||
+      reminder > 10080 ||
+      blockedReminder < 0 ||
+      blockedReminder > 10080
+    ) {
+      setProblem(words.reminderInvalid);
+      return;
+    }
+    refreshEpoch.current += 1;
     setBusy(true);
     setProblem(null);
     try {
@@ -48,16 +93,25 @@ export function AgentControls({
         paused,
         manager,
         stop_rules: stopRules,
-        version: control.version,
+        version: baselineVersion,
+        ...(reminderChanged
+          ? {
+              reminder_after_seconds: Math.round(reminder * 60),
+              blocked_reminder_after_seconds: Math.round(blockedReminder * 60),
+            }
+          : {}),
       });
+      if (selected.current !== agent) return;
       setControl(c);
+      adopt(c);
       onChanged?.();
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : words.failed);
+      if (selected.current === agent) setProblem(e instanceof Error ? e.message : words.failed);
     } finally {
-      setBusy(false);
+      if (selected.current === agent) setBusy(false);
     }
   };
+  const stale = !!control && dirty && control.version !== baselineVersion;
   return (
     <Page
       title={agent ? words.controls : words.workspaceControls}
@@ -65,17 +119,25 @@ export function AgentControls({
       lede={words.controlsHint}
     >
       <Problem message={problem} />
+      {stale && control && (
+        <button type="button" className={primary} onClick={() => adopt(control)}>
+          {words.reviewLatest}
+        </button>
+      )}
       {!control ? (
         <output>{words.loading}</output>
       ) : (
         <div className="flex max-w-xl flex-col gap-5">
           <output className="text-aui-sm text-aui-fg">
-            {control.paused ? words.paused : words.active}
+            {(control.effective_paused ?? control.paused) ? words.paused : words.active}
           </output>
+          {control.pause_reason && (
+            <p className="text-aui-sm text-aui-muted">{words.pauseReasons[control.pause_reason]}</p>
+          )}
           <button
             type="button"
             className={primary}
-            disabled={!canWrite || busy}
+            disabled={!canWrite || busy || stale}
             onClick={() => void save(!control.paused)}
           >
             {agent
@@ -86,31 +148,78 @@ export function AgentControls({
                 ? words.resumeAll
                 : words.pauseAll}
           </button>
+          <Label text={words.unansweredReminder}>
+            <input
+              type="number"
+              min={0}
+              max={10080}
+              step={1}
+              className={field}
+              value={reminder}
+              disabled={!canWrite || busy}
+              onChange={(event) => {
+                setReminder(Number(event.target.value));
+                setReminderChanged(true);
+                changed();
+              }}
+            />
+          </Label>
+          <Label text={words.blockedReminder}>
+            <input
+              type="number"
+              min={0}
+              max={10080}
+              step={1}
+              className={field}
+              value={blockedReminder}
+              disabled={!canWrite || busy}
+              onChange={(event) => {
+                setBlockedReminder(Number(event.target.value));
+                setReminderChanged(true);
+                changed();
+              }}
+            />
+          </Label>
+          <p className="text-aui-xs text-aui-muted">{words.reminderHint}</p>
+          {!agent && (
+            <button
+              type="button"
+              className={primary}
+              disabled={!canWrite || busy || stale}
+              onClick={() => void save(control.paused)}
+            >
+              {busy ? words.saving : words.save}
+            </button>
+          )}
           {agent && (
             <>
-              <Label text={words.manager}>
-                <input
-                  className={field}
-                  value={manager}
-                  maxLength={256}
-                  disabled={!canWrite || busy}
-                  onChange={(e) => setManager(e.target.value)}
-                />
-              </Label>
+              <OperationPersonField
+                label={words.manager}
+                value={manager}
+                displayName={control.manager_name}
+                disabled={!canWrite || busy}
+                onChange={(value) => {
+                  setManager(value);
+                  changed();
+                }}
+              />
               <Label text={words.stopRules}>
                 <textarea
                   className={field}
                   value={stopRules}
                   maxLength={4000}
                   disabled={!canWrite || busy}
-                  onChange={(e) => setStopRules(e.target.value)}
+                  onChange={(e) => {
+                    setStopRules(e.target.value);
+                    changed();
+                  }}
                 />
               </Label>
               <p className="text-aui-xs text-aui-muted">{words.stopRulesHint}</p>
               <button
                 type="button"
                 className={primary}
-                disabled={!canWrite || busy}
+                disabled={!canWrite || busy || stale}
                 onClick={() => void save(control.paused)}
               >
                 {busy ? words.saving : words.save}

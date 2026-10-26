@@ -10,6 +10,7 @@ import {
   SourceResources,
   SourceSyncSettings,
   SourceAccessMode,
+  SourceAttachments,
   sourceConfiguration,
 } from "./SourceLifecycle.tsx";
 
@@ -107,6 +108,10 @@ test("Add Selected pins exact provider IDs before actual import and preserves ex
       return configured;
     },
     "POST /api/knowledge/runbooks/sync": () => source,
+    "PUT /api/knowledge/runbooks/attachment": (body) => {
+      assert.deepEqual(body, { project: "Launch" });
+      return { source: "runbooks", project: "Launch" };
+    },
   });
   render(<SourceResources source={configured} canWrite onChanged={() => changed++} />);
   fireEvent.click(screen.getByRole("button", { name: "Load Remote Resources" }));
@@ -115,7 +120,7 @@ test("Add Selected pins exact provider IDs before actual import and preserves ex
   await waitFor(() => assert.equal(changed, 1));
   assert.deepEqual(
     net.seen.map((r) => r.method),
-    ["GET", "PUT", "POST"],
+    ["GET", "PUT", "POST", "PUT"],
   );
 });
 
@@ -162,6 +167,7 @@ test("integrations link rules are persisted with exact input and previews do not
     "GET /api/clients": () => ({ clients: [], caps: { max: 20, max_per_surface: 10 } }),
     "GET /api/knowledge": () => ({ sources: [source] }),
     "GET /api/source-link-rules": () => [],
+    "GET /api/source-link-suggestions": () => ({ suggestions: [] }),
     "POST /api/source-link-rules": (body) => {
       posted = body;
       return { id: "new", ...(body as object) };
@@ -268,6 +274,189 @@ test("Access changes live mode explicitly and clears indexed resource pins", asy
   assert.equal((sent as { mode: string }).mode, "live");
   assert.equal(Object.hasOwn(sent as object, "resources"), false);
   assert.equal((sent as { project: string }).project, "Launch");
+});
+
+const suggestion = {
+  id: "verified-1",
+  client: "drive-connection",
+  resource: { provider: "drive", id: "verified-page", attributes: { name: ["Launch Plan"] } },
+  project: "Launch",
+  channel: "general",
+  knowledge: "runbooks",
+  rules: ["rule-a"],
+  state: "suggested",
+  automatic: false,
+  version: 3,
+  created_at: at,
+  updated_at: at,
+};
+test("Link acts only on the persisted verified suggestion and its displayed version", async () => {
+  let decision: unknown;
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [source] }),
+    "GET /api/source-link-rules": () => [],
+    "GET /api/source-link-suggestions": () => ({ suggestions: [suggestion] }),
+    "POST /api/source-link-suggestions/verified-1/decision": (body) => {
+      decision = body;
+      return { ...suggestion, state: "linked", version: 4 };
+    },
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="source:runbooks" tab="links" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Link" }));
+  assert.ok(await screen.findByText("Linked"));
+  assert.deepEqual(decision, { action: "link", version: 3 });
+  assert.equal(screen.queryByRole("button", { name: "Link" }), null);
+});
+
+test("a refused Ignore keeps the verified suggestion pending and offers no invented success", async () => {
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [source] }),
+    "GET /api/source-link-rules": () => [],
+    "GET /api/source-link-suggestions": () => ({ suggestions: [suggestion] }),
+    "POST /api/source-link-suggestions/verified-1/decision": () =>
+      new Response(JSON.stringify({ error: "suggestion changed; reload" }), { status: 409 }),
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="source:runbooks" tab="links" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Ignore" }));
+  await screen.findByText("suggestion changed; reload");
+  assert.equal(screen.queryByText("Ignored"), null);
+  assert.ok(screen.getByRole("button", { name: "Link" }));
+  assert.ok(screen.getByRole("button", { name: "Refresh Suggestions" }));
+});
+
+test("Turn Into Rule opens a Suggest draft and never accepts or enables the resource", async () => {
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [source] }),
+    "GET /api/source-link-rules": () => [],
+    "GET /api/source-link-suggestions": () => ({ suggestions: [suggestion] }),
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="source:runbooks" tab="links" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Turn Into Rule" }));
+  assert.equal((screen.getByLabelText("Match Pattern") as HTMLInputElement).value, "Launch Plan");
+  assert.equal((screen.getByLabelText("Destination Project") as HTMLInputElement).value, "Launch");
+  assert.equal((screen.getByLabelText("Link Mode") as HTMLSelectElement).value, "suggest");
+  assert.equal((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled, true);
+  assert.equal(
+    net.seen.some((request) => request.method !== "GET"),
+    false,
+  );
+});
+
+test("failed provider import never attaches context or claims an available copy", async () => {
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/resources": () => ({
+      complete: true,
+      resources: [{ id: "a", name: "Allowed Page", kind: "page", uri: "", supported: true }],
+    }),
+    "PUT /api/knowledge/runbooks/configuration": () => source,
+    "POST /api/knowledge/runbooks/sync": () =>
+      new Response(JSON.stringify({ error: "provider unavailable" }), { status: 503 }),
+  });
+  render(
+    <SourceResources
+      source={source}
+      canWrite
+      onChanged={() => assert.fail("failed import reported completion")}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Load Remote Resources" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: /Allowed Page/ }));
+  fireEvent.change(screen.getByLabelText("Target Project"), { target: { value: "" } });
+  assert.equal(
+    (screen.getByRole("button", { name: /Add Selected/ }) as HTMLButtonElement).disabled,
+    true,
+  );
+  fireEvent.change(screen.getByLabelText("Target Project"), { target: { value: "Launch" } });
+  fireEvent.click(screen.getByRole("button", { name: /Add Selected/ }));
+  await screen.findByText(defaultCopy.sourceLifecycle.cause.unavailable);
+  assert.equal(
+    net.seen.some((request) => request.path.includes("/attachment")),
+    false,
+  );
+});
+
+test("live context attachment records channel placement without claiming provider verification", async () => {
+  let attached = false;
+  let sent: unknown;
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/attachments": () => ({
+      attachments: attached ? [{ source: "runbooks", project: "Launch", channel: "planning" }] : [],
+    }),
+    "PUT /api/knowledge/runbooks/attachment": (body) => {
+      sent = body;
+      attached = true;
+      return { source: "runbooks", ...(body as object) };
+    },
+  });
+  render(
+    <SourceAttachments
+      source={{ ...source, lifecycle: { ...source.lifecycle!, mode: "live", status: "connected" } }}
+      canWrite
+      onChanged={() => {}}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Attach to Channel (Optional)"), {
+    target: { value: "planning" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Attach Context" }));
+  const placed = await screen.findByRole("link", { name: "Launch / #planning" });
+  assert.equal(placed.getAttribute("href"), "/projects/Launch/channels/planning");
+  assert.deepEqual(sent, { project: "Launch", channel: "planning" });
+  assert.ok(screen.getByText(defaultCopy.sourceOperations.liveAttachment));
+  assert.equal(
+    net.seen.some((request) => request.path.endsWith("/sync")),
+    false,
+  );
+  assert.equal(screen.queryByText("In sync"), null);
+});
+
+test("detaching exact channel context preserves the source and its retained documents", async () => {
+  let attached = true;
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/attachments": () => ({
+      attachments: attached ? [{ source: "runbooks", project: "Launch", channel: "planning" }] : [],
+    }),
+    "DELETE /api/knowledge/runbooks/attachment": (_body, query) => {
+      assert.equal(query.get("project"), "Launch");
+      assert.equal(query.get("channel"), "planning");
+      attached = false;
+    },
+  });
+  render(<SourceAttachments source={source} canWrite onChanged={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Detach Context" }));
+  await screen.findByText(defaultCopy.sourceOperations.noAttachments);
+  assert.equal(
+    net.seen.some(
+      (request) => request.method === "DELETE" && request.path === "/api/knowledge/runbooks",
+    ),
+    false,
+  );
+  assert.equal(source.documents, 1);
+});
+
+test("automatic link history shows inactive relationships without implying current attachment", async () => {
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [source] }),
+    "GET /api/source-link-rules": () => [],
+    "GET /api/source-link-suggestions": (_body, query) => {
+      assert.equal(query.get("knowledge"), "runbooks");
+      assert.equal(query.get("limit"), "200");
+      return {
+        suggestions:
+          query.get("state") === "linked"
+            ? [{ ...suggestion, state: "linked", automatic: true, active: false }]
+            : [],
+      };
+    },
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="source:runbooks" tab="links" />);
+  fireEvent.change(await screen.findByLabelText("Link History"), { target: { value: "linked" } });
+  await screen.findByText("Inactive");
+  assert.equal(screen.queryByRole("button", { name: "Link" }), null);
 });
 
 const client = {

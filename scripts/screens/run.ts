@@ -365,7 +365,26 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "monitor", path: "/monitor" },
     { name: "monitor-rules", path: "/monitor/rules" },
     { name: "context", path: "/context" },
+    {
+      name: "source-citation-indexed",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const facts = page.getByText("Indexed Copy", { exact: true }).last();
+        await facts.waitFor();
+        await facts.scrollIntoViewIfNeeded();
+      },
+    },
     { name: "source-available", path: "/context/launch-context" },
+    {
+      name: "source-attachments",
+      path: "/context/launch-context",
+      act: async (page) => {
+        await page
+          .getByRole("heading", { name: "Context Placement", exact: true })
+          .scrollIntoViewIfNeeded();
+        await page.getByRole("link", { name: "Launch / #deals", exact: true }).waitFor();
+      },
+    },
     { name: "source-attention", path: "/context/source-attention" },
     {
       name: "source-configuration",
@@ -421,7 +440,15 @@ function screens(ids: Ids, call: Call): Screen[] {
         const agent = page.getByRole("button", { name: /^humagen-analyst Workspace Default/ });
         await agent.waitFor();
         const badges = agent.locator("span.rounded-full");
-        assert.equal(await badges.count(), 2, "The default built-in has both status badges");
+        const labels = await badges.allTextContents();
+        assert.ok(
+          labels.includes("Workspace Default"),
+          "The default agent identifies its workspace role",
+        );
+        assert.ok(
+          labels.includes("Built in, read only"),
+          "The built-in identifies its edit restriction",
+        );
         // Enlarged text must remain inside the badge outline, too.
         await badges.evaluateAll((items) => {
           for (const item of items) {
@@ -877,6 +904,10 @@ async function seedChats(
   });
   // A second channel, so the + menu's channel row has a choice.
   await call("POST", "/api/projects/Launch/channels", { name: "deals", purpose: "Partner deals" });
+  await call("PUT", "/api/knowledge/launch-context/attachment", {
+    project: "Launch",
+    channel: "deals",
+  });
   const answered = async (p: Posted) => {
     for (const r of p.runs) await settled(call, r.id);
   };
@@ -893,6 +924,21 @@ async function seedChats(
       text: "@helper what would you check first?",
     }),
   );
+  // This goes through native retained-document retrieval and the offline model.
+  // The capture is refused unless the API returns durable retrieval evidence.
+  const requestedScreens = process.env.SCREENS_ONLY?.split(",");
+  if (!requestedScreens || requestedScreens.includes("source-citation-indexed")) {
+    const grounded = await call<Posted>("POST", `/api/threads/${mine.thread.id}/messages`, {
+      text: "@helper When does packaging arrive, and what are the November press embargo and retail availability dates?",
+    });
+    await answered(grounded);
+    const run = await call<{ citations?: { mode?: string; copy_at?: string }[] }>(
+      "GET",
+      `/api/runs/${grounded.runs[0]?.id}`,
+    );
+    if (!run.citations?.some((citation) => citation.mode === "indexed"))
+      throw new Error("The native grounded screen run did not record indexed citation evidence");
+  }
   const shared = await call<Posted>("POST", "/api/threads", {
     project: "Launch",
     text: "@lead draft the launch checklist with me",

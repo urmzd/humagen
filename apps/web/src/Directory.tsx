@@ -57,7 +57,7 @@ export function DirectoryPage({
   const tabs = DIRECTORY_TABS.filter((t) => readable[t]);
   const shown = readable[tab] ? tab : (tabs[0] ?? tab);
   const title = (name: string) => {
-    if (name === "") return workspaceName;
+    if (nameOfAddress(name) === "") return workspaceName;
     const p = (projects ?? []).find((x) => x.name === name);
     return p ? titleOf(p) : name;
   };
@@ -189,7 +189,7 @@ function Agents({
                 {home ? (
                   <>
                     {defaultCopy.agentPlace.livesIn("")}
-                    <a href={href({ page: "project", name: home, tab: "agents" })} onClick={follow(() => onOpenProject(home))} className={textLink}>
+                    <a href={href({ page: "project", name: nameOfAddress(home), tab: "agents" })} onClick={follow(() => onOpenProject(nameOfAddress(home)))} className={`${textLink} inline-flex min-h-[44px] min-w-[44px] items-center`}>
                       {title(home)}
                     </a>
                   </>
@@ -223,7 +223,7 @@ function Projects({
   if (projects === null) return <SkeletonRows count={5} />;
   const living = (name: string) =>
     Object.entries(homes)
-      .filter(([, h]) => h === name)
+      .filter(([, h]) => nameOfAddress(h) === name)
       .map(([a]) => a)
       .sort();
   return (

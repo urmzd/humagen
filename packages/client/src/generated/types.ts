@@ -68,6 +68,9 @@ export interface HandoffTerms {
 export interface AgentControl {
   state?: "ready" | "working" | "waiting_on_people" | "watching" | "paused" | "failed";
   effective_paused?: boolean;
+  pause_reason?: "workspace" | "agent" | "setup";
+  effective_reminder_after_seconds?: number;
+  effective_blocked_reminder_after_seconds?: number;
   manager_name?: string;
   last_run?: string;
   last_run_at?: string;
@@ -76,6 +79,10 @@ export interface AgentControl {
   paused: boolean;
   manager?: string;
   stop_rules?: string;
+  /** Unanswered-question reminder delay; 0 disables, omitted defaults to four hours. */
+  reminder_after_seconds?: number;
+  /** Blocked-work reminder delay; 0 disables, omitted defaults to two hours. */
+  blocked_reminder_after_seconds?: number;
   version: number;
   updated_by: string;
   updated_at: string;
@@ -85,12 +92,17 @@ export interface AgentControlInput {
   paused: boolean;
   manager?: string;
   stop_rules?: string;
+  /** Unanswered-question reminder delay; 0 disables, omitted defaults to four hours. */
+  reminder_after_seconds?: number;
+  /** Blocked-work reminder delay; 0 disables, omitted defaults to two hours. */
+  blocked_reminder_after_seconds?: number;
   version: number;
 }
 
 export interface ActionPolicy {
   scope: ActionPolicyScope;
   rules: Record<string, "allow" | "ask" | "never">;
+  effective?: Record<string, ActionPolicyEffectiveValue>;
   version: number;
   updated_by: string;
   updated_at: string;
@@ -115,11 +127,13 @@ export interface Assignment {
   goal: string;
   done_when: string;
   due_at?: string;
+  deadline_missed?: boolean;
   schedule?: string;
   cron?: string;
   state: "requested" | "accepted" | "in_progress" | "watching" | "result" | "blocked" | "needs_person" | "cancelled";
   blocker?: string;
   run_id?: string;
+  run_status?: RunStatus;
   version: number;
   updated_by: string;
   updated_at: string;
@@ -150,11 +164,13 @@ export interface HandoffContract {
   project: string;
   thread?: string;
   owner?: string;
+  owner_name?: string;
   goal: string;
   done_when: string;
   inputs: HandoffContractInputsItem[];
   chain: string[];
   due_at?: string;
+  deadline_missed?: boolean;
   state: "requested" | "accepted" | "in_progress" | "watching" | "result" | "blocked" | "needs_person" | "cancelled";
   blocker?: string;
   run_id?: string;
@@ -244,7 +260,7 @@ export interface Me {
   permissions: Permission[] | null;
   /** Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements. */
   welcome_announcement?: string;
-  /** The signed-in human's private project address, absent for machines. */
+  /** The signed-in human's canonical private project name, directly usable in project routes and thread creation, absent for machines. */
   personal_project?: string;
   /** The caller is an admin in a workspace nobody has set up yet. */
   first_admin: boolean;
@@ -534,6 +550,7 @@ export interface RunFeedback {
 
 /** One run and its place in the call tree and in its conversation. */
 export interface Run {
+  citations: RunCitation[];
   /** The run's id, `r` and 32 hex digits, derived from the workspace and the trigger's id. */
   id: string;
   /** The trigger's id the run was accepted with: an event id, or for a
@@ -2180,7 +2197,7 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded";
   part?: string;
   action?: string;
   note?: string;
@@ -2508,6 +2525,22 @@ export interface KnowledgeSource {
   updated_at: string;
 }
 
+export interface SourceLinkSuggestion {
+  id: string;
+  client: string;
+  resource: SourceLinkResource;
+  project: string;
+  channel?: string;
+  knowledge?: string;
+  rules: string[];
+  state: "suggested" | "linked" | "ignored";
+  automatic: boolean;
+  active?: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SourceLinkRuleInput {
   provider: "github" | "slack" | "drive" | "notion";
   attribute: string;
@@ -2520,7 +2553,7 @@ export interface SourceLinkRuleInput {
 export type SourceLinkRule = SourceLinkRuleInput & { id: string; mode: "suggest" | "auto_link" | "off"; copied_from?: string };
 
 export interface SourceLinkResource {
-  provider: "github" | "slack" | "drive" | "notion";
+  provider: string;
   id: string;
   candidate?: SourceLinkRuleInput;
   attributes: Record<string, string[]>;
@@ -2531,6 +2564,12 @@ export interface SourceLinkMatch {
   channel?: string;
   mode: "suggest";
   rules: string[];
+}
+
+export interface KnowledgeAttachment {
+  source: string;
+  project: string;
+  channel?: string;
 }
 
 export interface KnowledgeResource {
@@ -2565,7 +2604,7 @@ export interface KnowledgeLifecycle {
   owner?: string;
   project?: string;
   status: "connected" | "importing" | "indexing" | "available" | "syncing" | "in_sync" | "needs_attention";
-  cause?: "auth_expired" | "quota" | "unsupported" | "unavailable" | "interrupted";
+  cause?: "auth_expired" | "quota" | "unsupported" | "unavailable" | "interrupted" | "stale";
   last_good_at?: string;
   stop_after_seconds: number;
   attempts: KnowledgeLifecycleAttemptsItem[];
@@ -2930,8 +2969,22 @@ export interface Provenance {
   section_index?: number;
 }
 
+/** A retained citation. Missing mode is historically unknown; no current configuration is substituted. */
+export interface RunCitation {
+  id: string;
+  title: string;
+  url?: string;
+  snippet?: string;
+  mode?: "indexed" | "live";
+  copy_at?: string;
+  refresh_failed?: boolean;
+}
+
 /** One retrieved passage the turn was grounded in. */
 export interface CitationPayload {
+  mode?: "indexed" | "live";
+  copy_at?: string;
+  refresh_failed?: boolean;
   /** The inline marker, such as `[1]`. */
   label: string;
   /** The exact source text. */
@@ -3283,6 +3336,20 @@ export interface ActionPolicyScope {
   name?: string;
 }
 
+export interface ActionPolicyEffectiveValueSourcesItem {
+  kind: "workspace" | "project" | "agent" | "personal" | "inherited";
+  name?: string;
+  label: string;
+  level: "allow" | "ask" | "never";
+}
+
+export interface ActionPolicyEffectiveValue {
+  level?: "allow" | "ask" | "never";
+  inherited?: "allow" | "ask" | "never";
+  locked: boolean;
+  sources: ActionPolicyEffectiveValueSourcesItem[];
+}
+
 export interface HandoffContractInputsItem {
   type: "run" | "artifact" | "thread" | "text";
   reference: string;
@@ -3533,8 +3600,26 @@ export interface KnowledgeSourceDependenciesResponse {
   projects: string[];
 }
 
+export interface ListSourceLinkSuggestionsResponse {
+  suggestions: SourceLinkSuggestion[];
+}
+
+export interface DecideSourceLinkSuggestionBody {
+  action: "link" | "ignore";
+  version: number;
+}
+
 export interface PreviewSourceLinkRulesResponse {
   matches: SourceLinkMatch[];
+}
+
+export interface ListKnowledgeAttachmentsResponse {
+  attachments: KnowledgeAttachment[];
+}
+
+export interface AttachKnowledgeSourceBody {
+  project: string;
+  channel?: string;
 }
 
 export interface ListKnowledgeResourcesResponse {
