@@ -1,10 +1,10 @@
 import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
-import { CopyButton, WebSurface } from "@humagen/render-web";
-import { AgentMessage, Thread as ThreadList, useQueue } from "@humagen/web";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { actedFor, type Run } from "./adapter.ts";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage, MessageActionRow, Thread as ThreadList, useQueue } from "@humagen/web";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { actedFor, turnOf, type Run } from "./adapter.ts";
 import {
   ApiError,
   api,
@@ -36,7 +36,9 @@ import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChip
 import { useThreadSelection } from "./selection.ts";
 import { ShareDialog } from "./Share.tsx";
 import { mergeTurns } from "./turns.ts";
-import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary, useInsideGutter } from "./ui.tsx";
+import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
+import { useRunStop } from "./RunStop.tsx";
+import { MessageTime } from "./MessageTime.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
 
 /**
@@ -193,48 +195,6 @@ function RoomComposer({
   );
 }
 
-/** A message's exact local date and time, available without a pointer. */
-function MessageTime({ at }: { at: string }) {
-  const id = useId();
-  const root = useRef<HTMLSpanElement>(null);
-  const panel = useRef<HTMLSpanElement>(null);
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const [activated, setActivated] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const open = !dismissed && (hovered || focused || activated);
-  const shift = useInsideGutter(panel, root, open);
-  const date = new Date(at);
-  if (!Number.isFinite(date.getTime())) return null;
-  const exact = date.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
-  return (
-    <span
-      ref={root}
-      className="relative inline-flex"
-      onMouseEnter={() => { setHovered(true); setDismissed(false); }}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <button
-        type="button"
-        aria-label={words.posted(exact)}
-        aria-describedby={open ? id : undefined}
-        className="min-h-6 rounded-aui text-left focus-visible:outline-2 focus-visible:outline-aui-accent"
-        onFocus={() => { setFocused(true); setDismissed(false); }}
-        onBlur={() => { setFocused(false); setActivated(false); }}
-        onClick={() => { setActivated(true); setDismissed(false); }}
-        onKeyDown={(event) => { if (event.key === "Escape") { setDismissed(true); setActivated(false); } }}
-      >
-        <time dateTime={at}>{ago(at)}</time>
-      </button>
-      {open && (
-        <span ref={panel} id={id} role="tooltip" style={{ transform: `translateX(${shift}px)` }} className="absolute left-0 top-full z-40 mt-1 w-max max-w-[min(20rem,75vw)] rounded-aui border border-aui-border bg-aui-pop px-2.5 py-1.5 text-aui-xs text-aui-fg shadow-lg">
-          {exact}
-        </span>
-      )}
-    </span>
-  );
-}
-
 /** A person's message: who posted it, when, and what it says. */
 function MessageView({ m, focused, onReply }: { m: ThreadMessage; focused: boolean; onReply?: () => void }) {
   const ref = useRef<HTMLElement>(null);
@@ -255,9 +215,10 @@ function MessageView({ m, focused, onReply }: { m: ThreadMessage; focused: boole
           <MessageTime at={m.at} />
           {m.surface_id && <span>{words.fromSlack}</span>}
           {m.answers && <span>{words.answered}</span>}
-          <span className="ml-auto flex items-center gap-1"><CopyButton text={m.text} label="Copy message" />{onReply && <button type="button" className="min-h-6 rounded-aui px-1.5 py-1 hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent" onClick={onReply}>{defaultCopy.conversation.reply}</button>}</span>
+
         </p>
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{m.text}</p>
+        <MessageActionRow text={m.text} copyLabel={defaultCopy.conversation.copyMessage} onReply={onReply} />
       </div>
     </article>
   );
@@ -331,7 +292,7 @@ function retryInRoom(run: Run, me: string): string {
  * given.
  */
 function AnswerView({
-  run,
+  run: originalRun,
   me,
   live,
   ask,
@@ -339,8 +300,10 @@ function AnswerView({
   routed,
   onAsk,
   onReply,
+  canStop = false,
 }: {
   run: Run;
+  canStop?: boolean;
   me: string;
   live: boolean;
   ask?: ThreadAsk;
@@ -350,20 +313,11 @@ function AnswerView({
   onAsk?: () => void;
   onReply?: () => void;
 }) {
+  const { run, control } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(live ? run : undefined);
   const drawn = useMemo(
     () =>
-      turn ?? {
-        id: run.id,
-        agent: { name: run.agent },
-        status: run.status === "completed" ? ("done" as const) : run.status === "failed" ? ("failed" as const) : ("working" as const),
-        text: run.answer ?? "",
-        tasks: [],
-        citations: [],
-        interrupts: [],
-        notices: [],
-        failure: run.status === "failed" ? { kind: "internal" as const, message: cause(run.error) || "The run failed.", reference: run.id } : undefined,
-      },
+      turn ? { ...turn, ...(run.status === "stopped" ? { status: "stopped" as const } : {}) } : turnOf(run),
     [turn, run],
   );
   const shown = useMemo(() => {
@@ -379,7 +333,7 @@ function AnswerView({
       {/* The answer names its agent; why @auto chose it is said above it. */}
       {(routed || run.picked) && <p className="pl-11 text-aui-xs text-aui-muted">{[routed, run.picked].filter(Boolean).join(". ")}</p>}
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} />
+        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} />
       </AgentTint>
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
@@ -647,6 +601,7 @@ export function ThreadRoom({
               <AnswerView
                 key={t.run.id}
                 run={t.run}
+                canStop={canRun}
                 routed={routedOf(t.run)}
                 onAsk={posts ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" }) : undefined}
                 onReply={posts ? () => setSeed({ text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `, mode: "prepend" }) : undefined}
