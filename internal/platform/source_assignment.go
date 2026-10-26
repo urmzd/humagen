@@ -21,6 +21,13 @@ func (p *Platform) CheckAssignmentSourceHealth(req runtime.Request) error {
 		return nil
 	}
 	names := runs.SourcesOf(req.Meta)
+	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
+		for _, name := range runs.SourcesOf(run.Tag().Meta) {
+			if !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+	}
 	for _, source := range req.Revision.Spec.Sources {
 		if !slices.Contains(names, source.Name) {
 			names = append(names, source.Name)

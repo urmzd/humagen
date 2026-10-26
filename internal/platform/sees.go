@@ -258,7 +258,9 @@ func (s *Seer) RunID(id string) bool {
 // into another project is read where the conversation went. Who it is
 // addressed to is the inbox's to decide besides.
 func (s *Seer) Message(m inbox.Message) bool {
-
+	if m.Source.Knowledge != "" && !s.p.SourceVisible(s.who, m.Source.Knowledge) {
+		return false
+	}
 	if m.Kind == inbox.KindOperation {
 		found := false
 		for _, part := range m.Parts {
@@ -305,11 +307,6 @@ func (s *Seer) Message(m inbox.Message) bool {
 			}
 		}
 	}
-
-	if m.Source.Knowledge != "" && !s.p.SourceVisible(s.who, m.Source.Knowledge) {
-		return false
-	}
-
 	if m.Source.Run != "" {
 		if r, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil {
 			return s.Run(r)

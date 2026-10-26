@@ -307,7 +307,7 @@ type setupStrictApprovalProbe struct{ *saigetypes.ToolFunc }
 func (*setupStrictApprovalProbe) Approval(saigetypes.ToolCallPart) (agentrt.ApprovalRequest, bool) {
 	return agentrt.ApprovalRequest{Prompt: "Stricter tool policy", Approvers: []string{"strict-reviewer"}, SelfApproval: false}, true
 }
-func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *testing.T) {
+func TestSetupAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *testing.T) {
 	p, err := New(Config{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)

@@ -526,8 +526,41 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "context", path: "/context" },
     { name: "source-available", path: "/context/launch-context" },
     { name: "source-attention", path: "/context/source-attention" },
-    { name: "source-configuration", path: "/context/source-attention", act: async(page)=>{await page.getByText("Configure Source",{exact:true}).click();} },
-    { name: "source-reference-denied", path: "/context/source-attention", act: async(page)=>{await page.getByRole("textbox",{name:"Your credential reference",exact:true}).fill("op://Screens/not-allowed/token");await page.getByRole("button",{name:"Save Reference",exact:true}).click();await page.getByText(/that reference cannot be used/).waitFor();} },
+    {
+      name: "source-configuration",
+      path: "/context/source-attention",
+      act: async (page) => {
+        await page.getByText("Configure Source", { exact: true }).click();
+      },
+    },
+    {
+      name: "source-resources-denied",
+      path: "/context/source-attention",
+      act: async (page) => {
+        await page.getByRole("button", { name: "Load Remote Resources", exact: true }).click();
+        await page.getByRole("alert").last().waitFor();
+      },
+    },
+    {
+      name: "source-sync-settings",
+      path: "/context/source-attention",
+      act: async (page) => {
+        await page
+          .getByRole("heading", { name: "Sync Settings", exact: true })
+          .scrollIntoViewIfNeeded();
+      },
+    },
+    {
+      name: "source-reference-denied",
+      path: "/context/source-attention",
+      act: async (page) => {
+        await page
+          .getByRole("textbox", { name: "Your credential reference", exact: true })
+          .fill("op://Screens/not-allowed/token");
+        await page.getByRole("button", { name: "Save Reference", exact: true }).click();
+        await page.getByText(/that reference cannot be used/).waitFor();
+      },
+    },
     { name: "agents", path: "/agents" },
     {
       name: "agent-status-badges",
@@ -972,9 +1005,34 @@ async function seedChats(
 ): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat" | "forkChat">> {
   // No token is supplied: this exercises a real denied credential lookup,
   // without calling Drive or simulating a successful external connection.
-  await call("POST","/api/knowledge",{name:"source-attention",description:"A configured Drive source awaiting the reader’s own access"});
-  await call("PUT","/api/knowledge/source-attention/configuration",{mode:"indexed",provider:"drive",origin:"folder1",project:"~"});
-  await call("POST","/api/knowledge/source-attention/sync");
+  await call("POST", "/api/knowledge", {
+    name: "source-attention",
+    description: "A configured Drive source awaiting the reader’s own access",
+  });
+  await call("PUT", "/api/knowledge/source-attention/configuration", {
+    mode: "indexed",
+    provider: "drive",
+    origin: "folder1",
+    project: "~",
+  });
+  try {
+    await call("POST", "/api/knowledge/source-attention/sync");
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !/^POST \/api\/knowledge\/source-attention\/sync: (401|403|503) /.test(error.message)
+    )
+      throw error;
+  }
+  const failedSources = await call<{ sources: { name: string; lifecycle?: { status: string } }[] }>(
+    "GET",
+    "/api/knowledge",
+  );
+  if (
+    failedSources.sources.find((source) => source.name === "source-attention")?.lifecycle
+      ?.status !== "needs_attention"
+  )
+    throw new Error("Expected the real missing-credential refresh to require attention");
   await call("POST", "/api/knowledge", {
     name: "launch-context",
     description: "Imported supplier updates for the launch",

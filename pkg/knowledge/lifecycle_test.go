@@ -191,7 +191,7 @@ func TestAuthorizedSourceSnapshotCannotRaceConfiguration(t *testing.T) {
 		t.Fatalf("old scope overwritten: %v", err)
 	}
 	src, _ := s.Get("acme", "docs")
-	if src.Lifecycle.SourceConfig != second || len(src.Lifecycle.Attempts) != 0 {
+	if !src.Lifecycle.Equal(second) || len(src.Lifecycle.Attempts) != 0 {
 		t.Fatal("denied operation changed source", src.Lifecycle)
 	}
 }

@@ -154,8 +154,8 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 }
 
 var offered = map[inbox.PartType][]string{
-	inbox.PartSource:    {ActRetry},
 	inbox.PartAlert:     {ActAcknowledge},
+	inbox.PartSource:    {ActRetry},
 	inbox.PartOperation: {ActAcknowledge},
 	inbox.PartFailure:   {ActRetry, ActAcknowledge},
 	inbox.PartMemory:    {ActKeep, ActDiscard},

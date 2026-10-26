@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -204,5 +205,57 @@ func TestAssignmentRecoveryAdvancesPastFullPageOfUnfinishedRuns(t *testing.T) {
 	a, _ := p.Operations.Assignment("t", last)
 	if a.State != operations.Result {
 		t.Fatal("a full page of unfinished reservations starved completed work")
+	}
+}
+
+type operationStrictApprovalProbe struct{ *saigetypes.ToolFunc }
+
+func (*operationStrictApprovalProbe) Approval(saigetypes.ToolCallPart) (agentrt.ApprovalRequest, bool) {
+	return agentrt.ApprovalRequest{Prompt: "Stricter tool policy", Approvers: []string{"strict-reviewer"}, SelfApproval: false}, true
+}
+func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	req := runtime.Request{Tenant: "t", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a", Approvers: []string{"designated-reviewer"}, SelfApproval: true}}}
+	if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.Other: operations.Ask}}, 0, "owner", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Operations.SetControl("t", "a", operations.Control{Manager: "outside-manager"}, 0, "owner", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	base := &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "action"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}
+	tool := p.operationTool(req, base, operations.Other)
+	approval, needed := tool.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
+	if !needed || !approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"designated-reviewer"}) {
+		t.Fatalf("declared approval audience widened: %+v", approval)
+	}
+	fallbackReq := req
+	fallbackReq.Revision.Spec.Approvers = nil
+	fallbackReq.Revision.Spec.SelfApproval = false
+	fallback := p.operationTool(fallbackReq, base, operations.Other)
+	fallbackApproval, fallbackNeeded := fallback.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
+	if !fallbackNeeded || fallbackApproval.SelfApproval || !slices.Contains(fallbackApproval.Approvers, "outside-manager") {
+		t.Fatalf("missing native audience lost the existing fallback: %+v", fallbackApproval)
+	}
+	strict := p.operationTool(req, &operationStrictApprovalProbe{ToolFunc: base}, operations.Other)
+	approval, needed = strict.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
+	if !needed || approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"strict-reviewer"}) {
+		t.Fatalf("underlying tool approval weakened: %+v", approval)
+	}
+	if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.Other: operations.Never}}, 1, "owner", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tool.Execute(t.Context(), nil); !errors.Is(err, operations.ErrDenied) || calls != 0 {
+		t.Fatalf("self approval bypassed Never: %v, %d", err, calls)
+	}
+	if _, err := p.Operations.SetControl("t", "", operations.Control{Paused: true}, 0, "owner", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tool.Execute(t.Context(), nil); !errors.Is(err, operations.ErrPaused) || calls != 0 {
+		t.Fatalf("self approval bypassed workspace pause: %v, %d", err, calls)
 	}
 }

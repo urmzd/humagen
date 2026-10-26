@@ -82,7 +82,7 @@ func (p *Platform) operationPlace(req runtime.Request) (project, person string) 
 
 		return p.RunPlace(req.Tenant, run).Project, p.operationPerson(run)
 	}
-	if v, ok := p.admitting.Load(req.RunID); ok {
+	if v, ok := p.admitting.Load(req.RunID); ok && v.(admitted).tenant == req.Tenant {
 		a := v.(admitted)
 		return p.CurrentPlace(req.Tenant, a.place).Project, a.person
 	}

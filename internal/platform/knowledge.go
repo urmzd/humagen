@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -77,16 +78,22 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if err != nil {
 		return req, err
 	}
+	if err := p.CheckAssignmentSourceHealth(req); err != nil {
+		return req, err
+	}
 	req, err = p.resolveOperations(req)
 	if err != nil {
 		return req, err
 	}
 	req = withSources(req)
-	project, person := "", ""
-	if run, e := p.Runs.Get(req.Tenant, req.RunID); e == nil {
-		project, person = run.Project, personOf(run.Actor)
+	project, person := p.operationPlace(req)
+	if level := p.operationDecision(req, operations.ReadContext); level == operations.Ask || level == operations.Never {
+		// Grounding cannot ask for consent. Only an already granted, wrapped
+		// source_search tool may perform an approved read.
+		req.Revision.Spec.Sources = nil
+	} else {
+		req, err = p.withSourceGrounding(req, project, person)
 	}
-	req, err = p.withSourceGrounding(req, project, person)
 	if err != nil {
 		return req, err
 	}
@@ -147,10 +154,27 @@ var ErrSourceInUse = errors.New("platform: knowledge source in use")
 // that a project names it, not which. A source that does not exist is not
 // found, whoever names it.
 func (p *Platform) DeleteSource(who auth.Principal, name string) error {
+	return p.deleteSource(who, name, nil, false)
+}
+
+// DeleteSourceForScope binds deletion to the caller's exact authorized source.
+func (p *Platform) DeleteSourceForScope(who auth.Principal, name string, expected *knowledge.SourceConfig) error {
+	return p.deleteSource(who, name, expected, true)
+}
+func (p *Platform) deleteSource(who auth.Principal, name string, wanted *knowledge.SourceConfig, guard bool) error {
 	snapshot, err := p.Knowledge.Get(who.Tenant, name)
 	if err != nil || (snapshot.Lifecycle != nil && snapshot.Lifecycle.Project != "" && !p.Sees(who, Place{Project: snapshot.Lifecycle.Project})) {
 		return knowledge.ErrNotFound
 	}
+	if guard {
+		if wanted == nil && snapshot.Lifecycle != nil {
+			return knowledge.ErrNotFound
+		}
+		if wanted != nil && (snapshot.Lifecycle == nil || !snapshot.Lifecycle.Equal(*wanted)) {
+			return knowledge.ErrNotFound
+		}
+	}
+
 	var expected *knowledge.SourceConfig
 	if snapshot.Lifecycle != nil {
 		cfg := snapshot.Lifecycle.SourceConfig

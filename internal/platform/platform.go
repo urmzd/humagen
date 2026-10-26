@@ -89,6 +89,9 @@ var ErrForbidden = errors.New("platform: forbidden")
 type Config struct {
 	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
 	ProjectTemplates []projects.Template
+	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
+	AssignmentSources operations.SourceChanges
+
 	// Backends are where everything the platform keeps is kept. The zero
 	// value is in memory, lost with the process. OpenPostgres fills it from
 	// one database.
@@ -384,6 +387,14 @@ func New(cfg Config) (*Platform, error) {
 	}
 
 	if err := p.RegisterPublicationGuard(forkPublicationGuard{p}); err != nil {
+		return nil, err
+	}
+
+	provider := cfg.AssignmentSources
+	if provider == nil {
+		provider = p
+	}
+	if err := p.RegisterAssignmentSources(provider); err != nil {
 		return nil, err
 	}
 
@@ -977,6 +988,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("source refresh", func() error { return p.refreshSources(ctx) })
 	loop("inbox retention", func() error {
 		tick := time.NewTicker(retainEvery)
 		defer tick.Stop()

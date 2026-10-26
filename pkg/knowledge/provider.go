@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -14,7 +13,8 @@ import (
 )
 
 // Provider imports one explicitly selected resource with the current reader's credential.
-// It must fail rather than return a truncated snapshot. Implementations must not log credentials.
+// It must honor context cancellation and fail rather than return a truncated
+// snapshot. Implementations must not log credentials.
 type Provider interface {
 	Fetch(context.Context, string, mcptools.Secret) ([]ImportDocument, error)
 }
@@ -63,6 +63,9 @@ func (p HTTPProvider) read(ctx context.Context, secret mcptools.Secret, address 
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	response, err := client.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ProviderError{Interrupted}
+		}
 		return nil, ProviderError{Unavailable}
 	}
 	defer response.Body.Close()
@@ -135,48 +138,7 @@ func (p HTTPProvider) Fetch(ctx context.Context, origin string, secret mcptools.
 	return docs, nil
 }
 func (p HTTPProvider) drive(ctx context.Context, origin string, secret mcptools.Secret) ([]ImportDocument, error) {
-	var listing struct {
-		Next       string `json:"nextPageToken"`
-		Incomplete bool   `json:"incompleteSearch"`
-		Files      []struct{ ID, Name, MimeType, WebViewLink string }
-	}
-	q := url.Values{"q": {"'" + origin + "' in parents and trashed = false"}, "pageSize": {"200"}, "fields": {"nextPageToken,incompleteSearch,files(id,name,mimeType,webViewLink)"}}
-	_, err := p.read(ctx, secret, "https://www.googleapis.com/drive/v3/files?"+q.Encode(), &listing)
-	if err != nil {
-		return nil, err
-	}
-	if listing.Files == nil || listing.Next != "" || listing.Incomplete || len(listing.Files) > MaxImportDocuments {
-		return nil, ProviderError{Unsupported}
-	}
-	docs := []ImportDocument{}
-	size := 0
-	for _, f := range listing.Files {
-		if !resourceID.MatchString(f.ID) {
-			return nil, ProviderError{Unsupported}
-		}
-		address := "https://www.googleapis.com/drive/v3/files/" + f.ID
-		switch f.MimeType {
-		case "application/vnd.google-apps.document":
-			address += "/export?mimeType=text%2Fplain"
-		case "text/plain", "text/markdown", "text/csv":
-			address += "?alt=media"
-		default:
-			return nil, ProviderError{Unsupported}
-		}
-		text, err := p.read(ctx, secret, address, nil)
-		if err != nil {
-			return nil, err
-		}
-		size += len(text)
-		if size > MaxImportBytes {
-			return nil, ProviderError{Unsupported}
-		}
-		if strings.TrimSpace(string(text)) == "" {
-			continue
-		}
-		docs = append(docs, ImportDocument{ID: f.ID, Title: f.Name, URI: "https://drive.google.com/file/d/" + f.ID + "/view", Text: string(text)})
-	}
-	return docs, nil
+	return p.driveSelected(ctx, origin, nil, secret)
 }
 func (p HTTPProvider) notion(ctx context.Context, origin string, secret mcptools.Secret) ([]ImportDocument, error) {
 	queue := []string{origin}
