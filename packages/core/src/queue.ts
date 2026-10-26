@@ -50,6 +50,8 @@ export type QueueAction =
   | { type: "clear" }
   | { type: "stop" }
   | { type: "turnEnded"; outcome: "done" | "failed" | "stopped" }
+  /** The post failed or acceptance is unknown. Retain it for explicit retry. */
+  | { type: "rejected" }
   /** Release a held queue: run the next message. */
   | { type: "resume" }
   | { type: "setMode"; mode: QueueMode };
@@ -141,6 +143,20 @@ export function queueReduce(state: QueueState, action: QueueAction): [QueueState
     case "stop":
       if (state.status !== "running") return [state, none];
       return [{ ...state, status: "stopping" }, { type: "interrupt" }];
+
+    case "rejected":
+      if (!state.current) return [state, none];
+      return [
+        {
+          ...state,
+          status: "held",
+          current: null,
+          pending: [state.current, ...state.pending],
+          heldReason: "failed",
+          interruptFor: undefined,
+        },
+        none,
+      ];
 
     case "turnEnded": {
       const ended = { ...state, current: null };

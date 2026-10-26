@@ -41,6 +41,8 @@ test("every route survives a round trip through its address", () => {
     { page: "project", name: "", tab: "people" },
     { page: "project", name: "Globex", tab: "limits" },
     { page: "project", name: "Globex", tab: "history" },
+    { page: "operations", section: "integrations", selected: "drive/account", tab: "resources" },
+    { page: "operations", section: "context", selected: "source name" },
     { page: "schedules" },
     { page: "schedules", name: "nightly" },
     { page: "new", agent: "humagen-analyst", ask: "How did runs go today?" },
@@ -218,4 +220,49 @@ test("the tab title names the place, then the product, with unread in front", ()
   assert.equal(documentTitle({ page: "agent", name: "analyst", tab: "prompt" }), "analyst · Humagen");
   assert.equal(documentTitle({ page: "project", name: "", tab: "inbox" }), "Workspace · Humagen");
   assert.equal(documentTitle({ page: "channel", project: "ops", channel: "launch" }), "#launch · Humagen");
+});
+
+test("an explicit Company composer destination is distinct from the personal Home default",()=>{
+  assert.equal(href({page:"new",project:""}),"/?project=%7E");
+  assert.deepEqual(at("/?project=%7E"),{page:"new",project:""});
+  assert.deepEqual(at("/"),{page:"new"});
+});
+
+
+test("Library Operations and You selections have reloadable canonical addresses",()=>{
+ const routes:Route[]=[{page:"library",section:"skills"},{page:"library",section:"memory"},{page:"library",section:"sources"},{page:"operations",section:"integrations"},{page:"operations",section:"context"},{page:"assignments",id:"as/shared 1"},{page:"agent-network",handoff:"h/shared 1"},{page:"agent-control",agent:"helper"},{page:"agent-control"},{page:"action-policy",scope:"agent",name:"helper"},{page:"audit"},{page:"you",section:"profile"},{page:"you",section:"connections",provider:"drive"},{page:"agent-setup",name:"draft"},{page:"agent-setup"},{page:"usage",days:14,day:"2026-10-20",display:"table"}];
+ for(const route of routes){const url=new URL(href(route),"http://localhost");assert.deepEqual(parse(url.pathname,url.search),route,href(route));}
+ assert.deepEqual(parse("/operations/usage","?day=2026-02-30&days=999&display=unknown"),{page:"usage",days:14,display:"chart"});
+});
+
+
+test("Activity filters and tool visibility survive copied conversation links",()=>{
+ const route:Route={page:"conversation",id:"thread-1",panel:"activity",run:"run-2",filter:"decisions",showTools:false};
+ const url=new URL(href(route),"http://localhost");assert.deepEqual(parse(url.pathname,url.search),route);
+ assert.equal(href(route),"/conversations/thread-1/activity/run-2?filter=decisions&tools=0");
+});
+
+
+test("Library resource links retain their confined scope and selection",()=>{
+ for(const route of [{page:"library",section:"skills",scope:"project",project:"Field engineering",skill:"sk-123"},{page:"library",section:"memory",scope:"agent",owner:"helper"}] as Route[]){const url=new URL(href(route),"http://localhost");assert.deepEqual(parse(url.pathname,url.search),route)}
+ assert.deepEqual(parse("/library/skills","?scope=unexpected&skill="+"x".repeat(161)),{page:"library",section:"skills"});
+});
+
+test("Company policy links use workspace authority rather than an empty project policy",()=>{
+ assert.equal(href({page:"action-policy",scope:"project",name:"~"}),"/operations/policies");
+ assert.equal(href({page:"action-policy",scope:"project",name:""}),"/operations/policies");
+ assert.equal(at(href({page:"action-policy",scope:"project",name:"Launch"})).page,"action-policy");
+});
+
+
+test("exact published skill links preserve the selected immutable version",()=>{
+ const route:Route={page:"library",section:"skills",scope:"personal",skill:"opaque-skill",version:1};
+ assert.deepEqual(at(href(route)),route);
+ assert.equal(at("/library/skills?skill=x&version=-1").page,"library");
+});
+
+test("conversation Instructions context is addressable and reloadable", () => {
+  const route = {page:"conversation",id:"saved thread",panel:"context",contextTab:"instructions"} as const;
+  assert.equal(href(route),"/conversations/saved%20thread/context/instructions");
+  assert.deepEqual(parse(href(route)),route);
 });

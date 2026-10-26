@@ -87,11 +87,11 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
+	ProjectTemplates []projects.Template
 	// Email is a configured relay and explicit tenant/subject recipient mapping. Nil disables email.
 	Email *EmailConfig
 
-	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
-	ProjectTemplates []projects.Template
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
 	// SourceDependencies optionally projects authoritative extra-store origin references.
@@ -220,17 +220,17 @@ type Platform struct {
 	Alerts               *alerts.Engine
 	Knowledge            *knowledge.Store
 	SourceLinks          *sourcelinks.Store
-	SourceSuggestions    *sourcelinks.Suggestions
-	SourceEvidence       *knowledge.EvidenceStore
 	Evals                *evals.Store
 	Feedback             *feedback.Store
 	Prefs                *prefs.Store
 	Memory               *memory.Store
 	SkillLibrary         *library.Store
-	Notifications        *notifications.Store
-	ContextFlags         *contextflags.Store
 	AgentSkillDefaults   *library.DefaultsStore
 	skillDefaultsMu      sync.Mutex
+	Notifications        *notifications.Store
+	ContextFlags         *contextflags.Store
+	SourceSuggestions    *sourcelinks.Suggestions
+	SourceEvidence       *knowledge.EvidenceStore
 	EmailNotifications   *notifications.Store
 	emailCursor          int
 	emailMu              sync.Mutex
@@ -261,6 +261,7 @@ type Platform struct {
 	ReadAudit                  *readaudit.Store
 	Audit                      *audit.Store
 	Artifacts                  *artifacts.Index
+	setups                     *agentSetups
 
 	AuditReferences *auditrefs.Store
 	// Clients is the external clients each tenant answers through.
@@ -352,6 +353,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.ProjectTemplates == nil {
+		cfg.ProjectTemplates = projects.DefaultTemplates()
+	}
+	if err := projects.ValidateTemplates(cfg.ProjectTemplates); err != nil {
+		return nil, err
+	}
 	if err := validateEmail(cfg.Email); err != nil {
 		return nil, err
 	}
@@ -362,12 +369,6 @@ func New(cfg Config) (*Platform, error) {
 			email.Recipients[tenant] = maps.Clone(people)
 		}
 		cfg.Email = &email
-	}
-	if cfg.ProjectTemplates == nil {
-		cfg.ProjectTemplates = projects.DefaultTemplates()
-	}
-	if err := projects.ValidateTemplates(cfg.ProjectTemplates); err != nil {
-		return nil, err
 	}
 	log := cfg.Log
 	if log == nil {
@@ -411,6 +412,11 @@ func New(cfg Config) (*Platform, error) {
 	// Every store is in memory, reading back what Backends.State holds.
 	if err := p.openStores(cfg); err != nil {
 		return nil, err
+	}
+	if cfg.SourceDependencies == nil {
+		if err := p.RegisterSourceDependencyReader(outcomeSourceDependencies{p}); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := p.RegisterPublicationGuard(forkPublicationGuard{p}); err != nil {

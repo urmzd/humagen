@@ -3,6 +3,7 @@ import { Markdown } from "@humagen/primitives";
 import { ArtifactIcon, WebSurface } from "@humagen/render-web";
 import { HumagenMark, Inspector } from "@humagen/web";
 import { useEffect, useRef, useState } from "react";
+import { ArtifactPromotion, type ArtifactPromotionAccess } from "./ArtifactPromotion.tsx";
 import type { FilePreview } from "./artifactPreview.ts";
 import { appendPage, contentUrl, type Stored } from "./storage.ts";
 import { AgentMark, ago, button, primary, Problem, SkeletonRows } from "./ui.tsx";
@@ -17,8 +18,25 @@ export function revisionPrompt(file: Stored, slide?: number): string {
     panel: "deliverables",
     artifact: file.id,
   });
-  return `@${file.agent} please revise [this artifact, v${file.version}${slide ? `, slide ${slide}` : ""}](${target}): `;
+  return `@${file.agent} please revise [this artifact, v${file.version}${slide ? `, slide ${slide}` : ""}](${target}).${words.artifactReadSource(file.id,file.version)} Requested changes: `;
 }
+function ExportPDF({file}:{file:Stored}) {
+  const [busy,setBusy]=useState(false);
+  const [problem,setProblem]=useState("");
+  if (!file.mime.includes("openxmlformats")) return null;
+  const download=async()=>{
+    setBusy(true);setProblem("");
+    try {
+      const response=await fetch(`/api/artifacts/${encodeURIComponent(file.id)}/pdf`,{credentials:"same-origin"});
+      if (!response.ok) {const body=await response.json().catch(()=>null);throw new Error(body?.error || words.artifactPDFFailed)}
+      const url=URL.createObjectURL(await response.blob());
+      const link=document.createElement("a");link.href=url;link.download=file.title.replace(/\.[^.]+$/,"")+".pdf";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch(error) {setProblem(error instanceof Error ? error.message : words.artifactPDFFailed)}
+    finally {setBusy(false)}
+  };
+  return <div className="flex flex-col gap-2"><button type="button" className={`${button} self-start`} disabled={busy} onClick={download}>{busy?words.artifactPDFBusy:words.artifactPDF}</button>{problem && <p role="alert" className="text-aui-xs text-aui-bad">{problem}</p>}</div>;
+}
+
 async function get<T>(path: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(path, { signal, credentials: "same-origin" });
   if (!response.ok) throw new Error(words.artifactFailed);
@@ -39,7 +57,7 @@ function SlideView({
       <section className="humagen-native-slide" aria-label={`Slide ${slide + 1}: ${value.title}`}>
         <div className="flex items-center gap-1.5 text-aui-accent">
           <HumagenMark size={16} />
-          <span>humagen · Slide preview</span>
+          <span>Humagen Slide Preview</span>
         </div>
         <h3>{value.title}</h3>
         <div className="humagen-slide-copy">
@@ -138,7 +156,7 @@ export function NativePreview({
         <dialog
           ref={presenting}
           data-layer="presentation"
-          aria-label={file.title}
+          aria-label={words.artifactPresentation(file.title)}
           className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-[#11151b] p-4 text-white backdrop:bg-black lg:p-8"
           onCancel={(event) => {
             event.preventDefault();
@@ -160,7 +178,7 @@ export function NativePreview({
           <div className="flex h-full min-h-0 flex-col gap-4">
             <header className="flex shrink-0 items-center justify-between gap-3">
               <span className="truncate text-aui-xs">
-                {file.title} · v{file.version}
+                {file.title} v{file.version}
               </span>
               <button
                 type="button"
@@ -176,7 +194,7 @@ export function NativePreview({
               </div>
             </div>
             <footer className="text-center text-aui-xs">
-              Slide {slide + 1} of {preview.slides.length} · ← →
+              Slide {slide + 1} of {preview.slides.length} ← →
             </footer>
           </div>
         </dialog>
@@ -188,18 +206,19 @@ export function NativePreview({
         <div className="mb-5 text-aui-accent">
           <HumagenMark />
         </div>
-        {preview.paragraphs.map((paragraph, i) =>
-          i === 0 ? (
-            <h3 key={`${i}:${paragraph.slice(0, 30)}`} className="mb-5 text-aui-lg font-semibold">
-              {paragraph}
-            </h3>
+        {(preview.blocks ?? preview.paragraphs.map((text) => ({ kind: "paragraph" as const, text }))).map((block, i) =>
+          block.kind === "table" ? (
+            <div key={i} className="aui-scroll mb-4 overflow-x-auto">
+              <table className="w-full border-collapse text-left text-aui-xs">
+                <tbody>{block.rows.map((row, r) => <tr key={r}>{row.map((cell, c) => r === 0
+                  ? <th key={c} scope="col" className="border border-aui-border px-3 py-2 whitespace-pre-wrap break-words">{cell}</th>
+                  : <td key={c} className="border border-aui-border px-3 py-2 whitespace-pre-wrap break-words">{cell}</td>)}</tr>)}</tbody>
+              </table>
+            </div>
+          ) : i === 0 ? (
+            <h3 key={i} className="mb-5 text-aui-lg font-semibold">{block.text}</h3>
           ) : (
-            <p
-              key={`${i}:${paragraph.slice(0, 30)}`}
-              className="mb-3 whitespace-pre-wrap break-words"
-            >
-              {paragraph}
-            </p>
+            <p key={i} className="mb-3 whitespace-pre-wrap break-words">{block.text}</p>
           ),
         )}
         {preview.truncated && (
@@ -296,8 +315,10 @@ function FileBody({
 }) {
   const [preview, setPreview] = useState<FilePreview>();
   const [problem, setProblem] = useState<string>();
+  const [attempt,setAttempt]=useState(0);
   useEffect(() => {
     const abort = new AbortController();
+    setProblem(undefined);setPreview(undefined);
     if (file.mime.startsWith("image/") || file.mime === "application/pdf") {
       setPreview({ kind: "none" });
       return () => abort.abort();
@@ -318,8 +339,8 @@ function FileBody({
           setProblem(error instanceof Error ? error.message : words.artifactFailed);
       });
     return () => abort.abort();
-  }, [file.id, file.mime, file.title, onSlides]);
-  if (problem) return <Problem message={problem} />;
+  }, [file.id, file.mime, file.title, onSlides,attempt]);
+  if (problem) return <div className="flex flex-col gap-3"><Problem message={problem}/><button type="button" className={`${button} self-start`} onClick={()=>setAttempt(value=>value+1)}>{defaultCopy.retry}</button></div>;
   if (!preview) return <SkeletonRows count={4} />;
   return <NativePreview file={file} preview={preview} slide={slide} onSlide={onSlide} />;
 }
@@ -331,12 +352,14 @@ export function Deliverables({
   onView,
   onClose,
   onRevise,
+  promotion,
 }: {
   thread: string;
   view: ConversationView;
   onView: (view: ConversationView) => void;
   onClose: () => void;
   onRevise?: (file: Stored, slide?: number) => void;
+  promotion?: ArtifactPromotionAccess;
 }) {
   const [items, setItems] = useState<Stored[]>();
   const [file, setFile] = useState<Stored>();
@@ -468,6 +491,7 @@ export function Deliverables({
               >
                 Download Original
               </a>
+              <ExportPDF key={`pdf:${file.id}`} file={file} />
               <div className="flex gap-4 border-aui-border border-b" aria-label="Artifact views">
                 {(["preview", "versions", "provenance"] as const).map((value) => (
                   <button
@@ -487,7 +511,7 @@ export function Deliverables({
               </div>
               {tab === "preview" ? (
                 <FileBody
-                  key={file.id}
+                  key={`preview:${file.id}`}
                   file={file}
                   slide={slide}
                   onSlide={setSlide}
@@ -529,6 +553,7 @@ export function Deliverables({
                   <dd className="break-all font-aui-mono">{file.sha256}</dd>
                 </dl>
               )}
+              {promotion && <ArtifactPromotion key={`promote-${file.id}`} file={file} access={promotion} />}
               {onRevise && (
                 <div className="flex flex-wrap items-center justify-between gap-3 border-aui-border border-t pt-4">
                   <p className="min-w-0 flex-1 text-aui-2xs text-aui-muted">
@@ -588,7 +613,7 @@ export function Deliverables({
                         {item.title}
                       </strong>
                       <span className="mt-1 block text-aui-2xs text-aui-muted">
-                        v{item.version} · {item.agent}
+                        v{item.version} {item.agent}
                       </span>
                     </span>
                     <span aria-hidden>›</span>

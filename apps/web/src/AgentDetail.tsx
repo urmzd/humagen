@@ -1,5 +1,6 @@
+import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import { defaultCopy } from "@humagen/components";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode,useEffect, useMemo, useState } from "react";
 import {
   type AgentPlace,
   type AgentSpec,
@@ -256,6 +257,7 @@ export const BUILTIN_LOCKED =
 
 /** One agent: its prompt, its setup, how it is measured, and its history. */
 export function AgentDetail({
+  operations,
   revision,
   tab: wanted = "prompt",
   onTab,
@@ -291,6 +293,7 @@ export function AgentDetail({
   seed,
   viewer,
 }: {
+  operations?:ReactNode;
   /** null creates a new agent. */
   revision: Revision | null;
   /** The tab on screen. The address holds it, so a link can open any tab. */
@@ -510,6 +513,7 @@ export function AgentDetail({
       }
       tabs={<Tabs label="Agent sections" value={tab} onChange={setTab} tabs={tabs} />}
     >
+        {operations}
         {revision && tab === "prompt" && (
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
@@ -724,6 +728,7 @@ export function AgentDetail({
           <ApprovalQueue agent={name} viewer={viewer} onOpenTask={onOpenTask} onCount={setWaiting} />
         )}
 
+        {tab === "context" && revision && <AgentDefaultSkills agent={revision.spec.name} home={place?.home??""} agentRevision={revision.rev} canWrite={canWrite}/>}
         {tab === "context" && (
           <Section
             title="Context"

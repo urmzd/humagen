@@ -75,14 +75,18 @@ func TestCleanTitle(t *testing.T) {
 	}
 }
 
-func TestIDsAreIssuedPerTenantInOrder(t *testing.T) {
+func TestIDsAreOpaqueAndReservationsAreUnique(t *testing.T) {
 	x := artifacts.NewIndex()
-	if a, b, c := x.NextID("acme"), x.NextID("acme"), x.NextID("globex"); a != "art-1" || b != "art-2" || c != "art-1" {
-		t.Fatalf("ids = %s %s %s", a, b, c)
+	a, b, c := x.NextID("acme"), x.NextID("acme"), x.NextID("globex")
+	for _, id := range []string{a, b, c} {
+		opaque(t, id)
 	}
-	// A reserved id that is never published is not reused.
-	if got := put(t, x, "acme", artifacts.Artifact{Thread: "t", Title: "a.md"}); got.ID != "art-3" {
-		t.Fatalf("next id = %s", got.ID)
+	if a == b || b == c || a == c {
+		t.Fatal("reservations collided")
+	}
+	got := put(t, x, "acme", artifacts.Artifact{Thread: "t", Title: "a.md"})
+	if got.ID == a || got.ID == b {
+		t.Fatal("abandoned reservation reused")
 	}
 }
 
@@ -160,9 +164,8 @@ func TestTenantsDoNotSeeEachOther(t *testing.T) {
 		t.Fatal(err)
 	}
 	// globex has an artifact with the same id, which is not acme's.
-	b := put(t, x, "globex", artifacts.Artifact{Thread: "t", Title: "b.md", Size: 3})
-	if b.ID != a.ID {
-		t.Fatalf("ids %s and %s", a.ID, b.ID)
+	if _, err := x.Publish("globex", artifacts.Artifact{ID: a.ID, Key: "other-tenant-key", Thread: "t", Title: "b.md", Kind: artifacts.Document, Size: 3}); err != nil {
+		t.Fatal(err)
 	}
 	if got, _ := x.Get("globex", a.ID); got.Title != "b.md" {
 		t.Fatalf("globex reads %q", got.Title)
@@ -212,13 +215,13 @@ func TestDelete(t *testing.T) {
 
 func TestPageListsTheLatestOfEachFile(t *testing.T) {
 	x := artifacts.NewIndex()
-	put(t, x, "acme", artifacts.Artifact{Thread: "t1", Title: "plan.md", Agent: "lead", Project: "Launch"})
-	put(t, x, "acme", artifacts.Artifact{Thread: "t1", Title: "chart.png", Kind: artifacts.Image, Agent: "lead", Run: "r1"})
+	plan1 := put(t, x, "acme", artifacts.Artifact{Thread: "t1", Title: "plan.md", Agent: "lead", Project: "Launch"})
+	chart := put(t, x, "acme", artifacts.Artifact{Thread: "t1", Title: "chart.png", Kind: artifacts.Image, Agent: "lead", Run: "r1"})
 	plan2 := put(t, x, "acme", artifacts.Artifact{Thread: "t1", Title: "plan.md", Agent: "lead", Project: "Launch"})
 	notes := put(t, x, "acme", artifacts.Artifact{Thread: "t2", Title: "Notes.TXT", Agent: "helper"})
 
 	page, next, err := x.Page("acme", artifacts.Query{})
-	if err != nil || next != "" || ids(page) != notes.ID+" "+plan2.ID+" art-2" {
+	if err != nil || next != "" || ids(page) != notes.ID+" "+plan2.ID+" "+chart.ID {
 		t.Fatalf("page = %s, %q, %v", ids(page), next, err)
 	}
 	for name, c := range map[string]struct {
@@ -226,10 +229,10 @@ func TestPageListsTheLatestOfEachFile(t *testing.T) {
 		want string
 	}{
 		"project":                {artifacts.Query{Project: "Launch"}, plan2.ID},
-		"agent":                  {artifacts.Query{Agent: "lead"}, plan2.ID + " art-2"},
-		"run":                    {artifacts.Query{Run: "r1"}, "art-2"},
+		"agent":                  {artifacts.Query{Agent: "lead"}, plan2.ID + " " + chart.ID},
+		"run":                    {artifacts.Query{Run: "r1"}, chart.ID},
 		"thread":                 {artifacts.Query{Thread: "t2"}, notes.ID},
-		"kind":                   {artifacts.Query{Kind: artifacts.Image}, "art-2"},
+		"kind":                   {artifacts.Query{Kind: artifacts.Image}, chart.ID},
 		"title in any case":      {artifacts.Query{Title: "notes"}, notes.ID},
 		"title part":             {artifacts.Query{Title: "AN."}, plan2.ID},
 		"nothing matches":        {artifacts.Query{Agent: "nobody"}, ""},
@@ -245,27 +248,28 @@ func TestPageListsTheLatestOfEachFile(t *testing.T) {
 	if _, err := x.Delete("acme", plan2.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _, _ := x.Page("acme", artifacts.Query{Project: "Launch"}); ids(got) != "art-1" {
+	if got, _, _ := x.Page("acme", artifacts.Query{Project: "Launch"}); ids(got) != plan1.ID {
 		t.Fatalf("after deleting the latest = %s", ids(got))
 	}
 }
 
 func TestPagingIsStable(t *testing.T) {
 	x := artifacts.NewIndex()
+	issued := []artifacts.Artifact{}
 	for i := range 7 {
-		put(t, x, "acme", artifacts.Artifact{Thread: "t", Title: fmt.Sprintf("f%d.md", i)})
+		issued = append(issued, put(t, x, "acme", artifacts.Artifact{Thread: "t", Title: fmt.Sprintf("f%d.md", i)}))
 	}
 	first, next, err := x.Page("acme", artifacts.Query{Limit: 3})
-	if err != nil || ids(first) != "art-7 art-6 art-5" || next == "" {
+	if err != nil || ids(first) != issued[6].ID+" "+issued[5].ID+" "+issued[4].ID || next == "" {
 		t.Fatalf("first = %s, %q, %v", ids(first), next, err)
 	}
 	// Something published and something deleted between pages moves nothing.
 	put(t, x, "acme", artifacts.Artifact{Thread: "t", Title: "new.md"})
-	if _, err := x.Delete("acme", "art-4"); err != nil {
+	if _, err := x.Delete("acme", issued[3].ID); err != nil {
 		t.Fatal(err)
 	}
 	second, next, err := x.Page("acme", artifacts.Query{Limit: 3, Before: next})
-	if err != nil || ids(second) != "art-3 art-2 art-1" {
+	if err != nil || ids(second) != issued[2].ID+" "+issued[1].ID+" "+issued[0].ID {
 		t.Fatalf("second = %s, %v", ids(second), err)
 	}
 	if next != "" {

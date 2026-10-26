@@ -1,6 +1,6 @@
 import { emptyTurn, reduce, type Turn } from "@humagen/core";
 import { useEffect, useReducer } from "react";
-import { replay as fold } from "@humagen/adapter";
+import { replay as fold, settled } from "@humagen/adapter";
 import { adapter, type BusEvent, type Run, turnOf } from "./adapter.ts";
 import { api, subscribe } from "./api.ts";
 import { hueOf, isEnded } from "./ui.tsx";
@@ -66,7 +66,12 @@ export function useRunTurn(run: Run | undefined): Turn | undefined {
     });
   }, [id, agent]);
 
-  return run ? state.turn : undefined;
+  if (!run || !state.turn) return undefined;
+  const recorded = turnOf(run);
+  const turn = settled(state.turn, run).reduce(reduce, state.turn);
+  const citations = new Map(turn.citations.map((citation) => [citation.id,citation]));
+  for (const citation of recorded.citations) citations.set(citation.id,citation);
+  return { ...turn, citations: [...citations.values()], ...(recorded.outcome ? {outcome:recorded.outcome} : {}) };
 }
 
 type Show = "all" | "live" | "failed" | "done";

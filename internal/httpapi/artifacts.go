@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"github.com/urmzd/humagen/pkg/nativefiles"
 	"mime"
 	"net/http"
+	"path"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/artifacts"
@@ -17,6 +20,9 @@ func (s *Server) artifactRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/artifacts/{id}", s.authed(auth.ArtifactsRead, s.seenArtifact(s.getArtifact)))
 	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactVersions)))
 	mux.HandleFunc("GET /api/artifacts/{id}/content", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactContent)))
+	mux.HandleFunc("POST /api/artifacts/{id}/promote-memory", s.authed(auth.RunsWrite, s.seenArtifact(s.promoteArtifactMemory)))
+	mux.HandleFunc("POST /api/artifacts/{id}/promote-knowledge", s.authed(auth.KnowledgeWrite, s.seenArtifact(s.promoteArtifactKnowledge)))
+	mux.HandleFunc("GET /api/artifacts/{id}/pdf", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactPDF)))
 	mux.HandleFunc("DELETE /api/artifacts/{id}", s.authed(auth.ArtifactsWrite, s.seenArtifact(s.deleteArtifact)))
 	mux.HandleFunc("GET /api/storage", s.authed(auth.ArtifactsRead, s.storage))
 }
@@ -138,10 +144,76 @@ func (s *Server) storage(w http.ResponseWriter, _ *http.Request, who auth.Princi
 	})
 }
 
+// artifactPDF exports only the exact read-confined saved version.
+func (s *Server) artifactPDF(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	artifact, bytes, err := s.P.OpenArtifact(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	pdf, err := nativefiles.ExportPDF(artifact.Title, bytes)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	name := strings.TrimSuffix(artifact.Title, path.Ext(artifact.Title)) + ".pdf"
+	header := w.Header()
+	header.Set("Content-Type", "application/pdf")
+	header.Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	header.Set("Cross-Origin-Resource-Policy", "same-origin")
+	header.Set("Cache-Control", "private, no-store")
+	header.Set("Content-Length", strconv.Itoa(len(pdf)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(pdf)
+}
+
+func (s *Server) promoteArtifactKnowledge(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Accepted bool   `json:"accepted"`
+		Version  int    `json:"version"`
+		Source   string `json:"source"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !body.Accepted {
+		fail(w, http.StatusBadRequest, "Review and accept this version before promoting it.")
+		return
+	}
+	document, err := s.P.PromoteArtifactKnowledge(r.Context(), who, r.PathValue("id"), body.Version, body.Source)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, document)
+}
+
 func shownArtifacts(p *platform.Platform, tenant string, list []artifacts.Artifact) []artifacts.Artifact {
 	out := make([]artifacts.Artifact, len(list))
 	for i, a := range list {
 		out[i] = p.ShownArtifact(tenant, a)
 	}
 	return out
+}
+
+func (s *Server) promoteArtifactMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Accepted bool `json:"accepted"`
+		Version  int  `json:"version"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !body.Accepted {
+		fail(w, http.StatusBadRequest, "Review and accept this version before suggesting it as memory.")
+		return
+	}
+	note, err := s.P.PromoteArtifactMemory(r.Context(), who, r.PathValue("id"), body.Version)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, note)
 }

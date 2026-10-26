@@ -276,6 +276,137 @@ test("Access changes live mode explicitly and clears indexed resource pins", asy
   assert.equal((sent as { project: string }).project, "Launch");
 });
 
+const client = {
+  id: "local",
+  name: "Local Slack",
+  surface: "slack",
+  identity: { team: "T123" },
+  credentials: { token: {}, signing_secret: {} },
+  enabled: true,
+  version: 4,
+} as const;
+test("connection limits send exact versioned allow-lists and keep refused edits unsaved", async () => {
+  let put: unknown;
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [client], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [] }),
+    "GET /api/clients/local/capabilities": () => ({
+      version: 4,
+      managed: false,
+      legacy: true,
+      events: [
+        { id: "app_mention", enabled: true },
+        { id: "message", enabled: false },
+      ],
+      actions: [
+        {
+          id: "slack_post",
+          description: "Post a message",
+          category: "external_message",
+          enabled: true,
+        },
+      ],
+      deliver_outcomes: true,
+    }),
+    "PUT /api/clients/local/capabilities": (body) => {
+      put = body;
+      return new Response(JSON.stringify({ error: "connection changed; reload" }), { status: 409 });
+    },
+    "GET /api/journal": () => ({ entries: [] }),
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="events" />);
+  const mention = await screen.findByRole("checkbox", { name: "App Mentions" });
+  fireEvent.click(mention);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Deliver Outcomes" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save Connection Limits" }));
+  await screen.findByText("connection changed; reload");
+  assert.deepEqual(put, {
+    version: 4,
+    events: [],
+    actions: ["slack_post"],
+    deliver_outcomes: false,
+  });
+  assert.equal((mention as HTMLInputElement).checked, false);
+  assert.ok(screen.getByText(defaultCopy.sourceOperations.workspaceEvents));
+});
+
+test("Slack direction uses latest version while preserving the channel and exact binding identity", async () => {
+  let direction = "two_way";
+  let put: unknown;
+  net = stubFetch({
+    "GET /api/clients": () => ({
+      clients: [{ ...client, managed: "environment" }],
+      caps: { max: 20, max_per_surface: 10 },
+    }),
+    "GET /api/knowledge": () => ({ sources: [] }),
+    "GET /api/clients/local/bindings": () => ({
+      bindings: [{ project: "Launch", channel: "general", slack_channel: "C123", direction }],
+    }),
+    "GET /api/projects/Launch/channels": () => ({
+      channels: [
+        {
+          name: "general",
+          version: 8,
+          title: "Launch Chat",
+          purpose: "Keep the launch on track",
+          default: "helper",
+          slack: { client: "local", channel: "C123", direction },
+        },
+      ],
+    }),
+    "PUT /api/projects/Launch/channels/general": (body) => {
+      put = body;
+      direction = (body as { slack: { direction: string } }).slack.direction;
+      return body;
+    },
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="resources" />);
+  fireEvent.change(await screen.findByRole("combobox", { name: "Bridge Direction: C123" }), {
+    target: { value: "inbound" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save Direction" }));
+  await waitFor(() => assert.ok(put));
+  assert.deepEqual(put, {
+    version: 8,
+    title: "Launch Chat",
+    purpose: "Keep the launch on track",
+    default: "helper",
+    slack: { client: "local", channel: "C123", direction: "inbound" },
+  });
+});
+
+test("a bridge whose direction changed since display is never overwritten with a fresh hidden version", async () => {
+  net = stubFetch({
+    "GET /api/clients": () => ({ clients: [client], caps: { max: 20, max_per_surface: 10 } }),
+    "GET /api/knowledge": () => ({ sources: [] }),
+    "GET /api/clients/local/bindings": () => ({
+      bindings: [
+        { project: "Launch", channel: "general", slack_channel: "C123", direction: "two_way" },
+      ],
+    }),
+    "GET /api/projects/Launch/channels": () => ({
+      channels: [
+        {
+          name: "general",
+          version: 9,
+          slack: { client: "local", channel: "C123", direction: "outcomes" },
+        },
+      ],
+    }),
+  });
+  render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="resources" />);
+  fireEvent.change(await screen.findByRole("combobox", { name: "Bridge Direction: C123" }), {
+    target: { value: "inbound" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save Direction" }));
+  await screen.findByText(defaultCopy.sourceOperations.bindingChanged);
+  assert.equal(
+    net.seen.some((request) => request.method === "PUT"),
+    false,
+  );
+});
+
+
 const suggestion = {
   id: "verified-1",
   client: "drive-connection",
@@ -459,135 +590,6 @@ test("automatic link history shows inactive relationships without implying curre
   assert.equal(screen.queryByRole("button", { name: "Link" }), null);
 });
 
-const client = {
-  id: "local",
-  name: "Local Slack",
-  surface: "slack",
-  identity: { team: "T123" },
-  credentials: { token: {}, signing_secret: {} },
-  enabled: true,
-  version: 4,
-} as const;
-test("connection limits send exact versioned allow-lists and keep refused edits unsaved", async () => {
-  let put: unknown;
-  net = stubFetch({
-    "GET /api/clients": () => ({ clients: [client], caps: { max: 20, max_per_surface: 10 } }),
-    "GET /api/knowledge": () => ({ sources: [] }),
-    "GET /api/clients/local/capabilities": () => ({
-      version: 4,
-      managed: false,
-      legacy: true,
-      events: [
-        { id: "app_mention", enabled: true },
-        { id: "message", enabled: false },
-      ],
-      actions: [
-        {
-          id: "slack_post",
-          description: "Post a message",
-          category: "external_message",
-          enabled: true,
-        },
-      ],
-      deliver_outcomes: true,
-    }),
-    "PUT /api/clients/local/capabilities": (body) => {
-      put = body;
-      return new Response(JSON.stringify({ error: "connection changed; reload" }), { status: 409 });
-    },
-    "GET /api/journal": () => ({ entries: [] }),
-  });
-  render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="events" />);
-  const mention = await screen.findByRole("checkbox", { name: "App Mentions" });
-  fireEvent.click(mention);
-  fireEvent.click(screen.getByRole("checkbox", { name: "Deliver Outcomes" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save Connection Limits" }));
-  await screen.findByText("connection changed; reload");
-  assert.deepEqual(put, {
-    version: 4,
-    events: [],
-    actions: ["slack_post"],
-    deliver_outcomes: false,
-  });
-  assert.equal((mention as HTMLInputElement).checked, false);
-  assert.ok(screen.getByText(defaultCopy.sourceOperations.workspaceEvents));
-});
-
-test("Slack direction uses latest version while preserving the channel and exact binding identity", async () => {
-  let direction = "two_way";
-  let put: unknown;
-  net = stubFetch({
-    "GET /api/clients": () => ({
-      clients: [{ ...client, managed: "environment" }],
-      caps: { max: 20, max_per_surface: 10 },
-    }),
-    "GET /api/knowledge": () => ({ sources: [] }),
-    "GET /api/clients/local/bindings": () => ({
-      bindings: [{ project: "Launch", channel: "general", slack_channel: "C123", direction }],
-    }),
-    "GET /api/projects/Launch/channels": () => ({
-      channels: [
-        {
-          name: "general",
-          version: 8,
-          title: "Launch Chat",
-          purpose: "Keep the launch on track",
-          default: "helper",
-          slack: { client: "local", channel: "C123", direction },
-        },
-      ],
-    }),
-    "PUT /api/projects/Launch/channels/general": (body) => {
-      put = body;
-      direction = (body as { slack: { direction: string } }).slack.direction;
-      return body;
-    },
-  });
-  render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="resources" />);
-  fireEvent.change(await screen.findByRole("combobox", { name: "Bridge Direction: C123" }), {
-    target: { value: "inbound" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Save Direction" }));
-  await waitFor(() => assert.ok(put));
-  assert.deepEqual(put, {
-    version: 8,
-    title: "Launch Chat",
-    purpose: "Keep the launch on track",
-    default: "helper",
-    slack: { client: "local", channel: "C123", direction: "inbound" },
-  });
-});
-
-test("a bridge whose direction changed since display is never overwritten with a fresh hidden version", async () => {
-  net = stubFetch({
-    "GET /api/clients": () => ({ clients: [client], caps: { max: 20, max_per_surface: 10 } }),
-    "GET /api/knowledge": () => ({ sources: [] }),
-    "GET /api/clients/local/bindings": () => ({
-      bindings: [
-        { project: "Launch", channel: "general", slack_channel: "C123", direction: "two_way" },
-      ],
-    }),
-    "GET /api/projects/Launch/channels": () => ({
-      channels: [
-        {
-          name: "general",
-          version: 9,
-          slack: { client: "local", channel: "C123", direction: "outcomes" },
-        },
-      ],
-    }),
-  });
-  render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="resources" />);
-  fireEvent.change(await screen.findByRole("combobox", { name: "Bridge Direction: C123" }), {
-    target: { value: "inbound" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Save Direction" }));
-  await screen.findByText(defaultCopy.sourceOperations.bindingChanged);
-  assert.equal(
-    net.seen.some((request) => request.method === "PUT"),
-    false,
-  );
-});
 
 test("a direction chosen as a binding appears survives its initial effects", async () => {
   net = stubFetch({

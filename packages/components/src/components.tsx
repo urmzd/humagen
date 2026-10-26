@@ -78,7 +78,7 @@ function previewFields(approval: Approval): Field[] {
 }
 
 function withReason(line: string, reason?: string) {
-  return reason ? `${line} · "${reason}"` : line;
+  return reason ? `${line}: "${reason}"` : line;
 }
 
 /**
@@ -224,7 +224,7 @@ export function ApprovalBatch({
           label: a.summary,
           description: previewFields(a)
             .map((f) => `${f.label}: ${f.value}`)
-            .join(" · "),
+            .join(" "),
         }))}
         selected={approvals.map((a) => a.id)}
       />
@@ -372,9 +372,7 @@ export function InterruptCard({
 export function NoticeView({ notice, copy = defaultCopy }: { notice: Notice } & WithCopy) {
   // What the runtime did on its own is a quiet record, not an alert.
   if (notice.kind === "silence" || notice.kind === "model_fallback" || notice.kind === "retried") {
-    return (
-      <Context items={[notice.title ? `**${notice.title}** · ${notice.body}` : notice.body]} />
-    );
+    return <Context items={[notice.title ? `**${notice.title}**: ${notice.body}` : notice.body]} />;
   }
   return (
     <>
@@ -402,6 +400,14 @@ export function failureTitle(failure: Failure, copy: Copy = defaultCopy): string
   return capitalize(copy.failure[failure.kind](failure.service));
 }
 
+/** Keep credential configuration paths in authorized run details, not the answer body. */
+function failureMessage(failure: Failure, copy: Copy): string {
+  return /(?:op:\/\/|1password|credential|api[_ -]?key|secret reference)/i.test(failure.message) &&
+    failure.kind === "internal"
+    ? copy.credentialUnavailable
+    : failure.message;
+}
+
 /**
  * A failed run, by who can fix it: the user (reconnect), time (retry later),
  * or us (report). Severity is in the words, recovery is a button, never a dead end.
@@ -417,7 +423,7 @@ export function FailureAlert({
   /** Offer Report Issue. False when the host has nowhere to send a report. */
   report?: boolean;
 } & WithCopy) {
-  const lines = [failure.message];
+  const lines = [failureMessage(failure, copy)];
   if (failure.retryAfterSeconds) lines.push(copy.retryIn(failure.retryAfterSeconds));
   const payload = { turnId, target: failure.kind };
   const actions =
@@ -557,7 +563,7 @@ export function TaskList({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy
         subagent
           ? [copy.subagent(subagent.name, subagent.steps, subagent.tokens), t.details]
               .filter(Boolean)
-              .join(" · ")
+              .join(" ")
           : t.details
       }
     />
@@ -586,7 +592,7 @@ export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy): string {
       : copy.inputNeeded(pending.question);
   }
   if (turn.status === "failed" && turn.failure) {
-    return `${failureTitle(turn.failure, copy)}: ${turn.failure.message}`;
+    return `${failureTitle(turn.failure, copy)}: ${failureMessage(turn.failure, copy)}`;
   }
   if (turn.status === "stopped") return copy.stopped;
   const answer = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
@@ -644,12 +650,12 @@ export function TurnView({
       <Summary text={summarizeTurn(turn, copy)} />
       {/* Slack shows status as a reaction and the session status (see render-slack lifecycle). */}
       <Only surface="web">
-        <Context items={[`**${turn.agent.name}** · ${copy.status[turn.status]}`]} />
+        <Context items={[`**${turn.agent.name}**: ${copy.status[turn.status]}`]} />
       </Only>
       {turn.handoff && (
         <Context
           items={[
-            [`→ ${copy.handoff(turn.handoff.to)}`, turn.handoff.reason].filter(Boolean).join(" · "),
+            [`→ ${copy.handoff(turn.handoff.to)}`, turn.handoff.reason].filter(Boolean).join(" "),
           ]}
         />
       )}
@@ -657,7 +663,27 @@ export function TurnView({
       {settled.map((i) => (
         <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
       ))}
-      {!streamed && turn.text && (
+      {turn.outcome && (
+        <>
+          <Header text={copy.conversation.outcomeKind[turn.outcome.kind]} />
+          <Markdown text={linkCitations(turn.outcome.summary, turn.citations)} />
+          {!!turn.outcome.decisions?.length && (
+            <>
+              <Header text={copy.conversation.outcomeDecisions} />
+              <Markdown
+                text={turn.outcome.decisions.map((decision) => `- ${decision}`).join("\n")}
+              />
+            </>
+          )}
+          {turn.outcome.nextAction && (
+            <>
+              <Header text={copy.conversation.outcomeNext} />
+              <Markdown text={turn.outcome.nextAction} />
+            </>
+          )}
+        </>
+      )}
+      {!streamed && turn.text && turn.text.trim() !== turn.outcome?.summary.trim() && (
         <Markdown
           text={linkCitations(turn.text, turn.citations)}
           streaming={turn.status === "working" && !turn.detached}
@@ -838,7 +864,7 @@ export function SessionNotices({
           items={[
             [copy.compacted(formatTokens(compaction.savedTokens)), compaction.summary]
               .filter(Boolean)
-              .join(" · "),
+              .join(" "),
           ]}
         />
       )}
@@ -895,7 +921,7 @@ export function SystemAlertView({ alert, copy = defaultCopy }: { alert: SystemAl
     alert.url ? `[${copy.statusPage}](${alert.url})` : null,
   ].filter((x): x is string => x !== null);
   if (alert.status === "resolved" || alert.status === "operational") {
-    return <Context items={[`**${alert.service}** · ${status} · ${alert.title}`, ...meta]} />;
+    return <Context items={[`**${alert.service}**: ${status}. ${alert.title}`, ...meta]} />;
   }
   const body = [alert.body, alert.affects?.length ? copy.affects(alert.affects.join(", ")) : null]
     .filter(Boolean)
@@ -980,7 +1006,7 @@ export function InboxView({
           <Context
             items={[
               `**${copy.resolved}**`,
-              ...resolved.map((i) => `${inboxTitle(i)} · ${i.source.label}`),
+              ...resolved.map((i) => `${inboxTitle(i)}: ${i.source.label}`),
             ]}
           />
         </>

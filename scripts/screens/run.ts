@@ -13,7 +13,10 @@
  * CHROMIUM (a Chromium or Chrome to use instead of the first one found),
  * SCREENS_ONLY (a comma-separated list of screen names), SCREENS_SHOWCASE=1
  * (also refresh the eight committed showcase images, using the gallery fixtures
- * for primitives and approval; requires all screens).
+ * for primitives and approval; requires all screens). SCREENS_VIEWPORTS can
+ * override sizes with comma-separated WIDTHxHEIGHT values; SCREENS_COLOR_SCHEME
+ * accepts light (default) or dark for explicit responsive/theme acceptance.
+ * SCREENS_SHOWCASE_ONLY=1 exports from an existing complete passing report.
  */
 
 import assert from "node:assert/strict";
@@ -34,27 +37,51 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
+import { emailScreens, notificationEmailFixture } from "./email.ts";
+import { libraryScreens } from "./library.ts";
+import { startNativeModel } from "./native.ts";
+import { activityFilters, usageScreens } from "./observability.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
+import { workspaceScreens } from "./workspace.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
 const bin = resolve(process.env.HUMAGEN_BIN ?? join(repo, "bin/humagen"));
 const web = resolve(process.env.HUMAGEN_WEB ?? join(repo, "apps/web/dist"));
 const out = resolve(process.env.SCREENS_OUT ?? join(repo, ".screens"));
-const showcase = process.env.SCREENS_SHOWCASE === "1";
+const showcaseOnly = process.env.SCREENS_SHOWCASE_ONLY === "1";
+const showcase = process.env.SCREENS_SHOWCASE === "1" || showcaseOnly;
 const only = (process.env.SCREENS_ONLY ?? "").split(",").filter(Boolean);
 
 interface Viewport {
-  name: "phone" | "desktop";
+  name: string;
   width: number;
   height: number;
   rules: Rules;
 }
 
-const VIEWPORTS: Viewport[] = [
+const defaultViewports: Viewport[] = [
   { name: "phone", width: 390, height: 844, rules: PHONE },
   { name: "desktop", width: 1280, height: 800, rules: DESKTOP },
 ];
+const colorScheme: "light" | "dark" = (() => {
+  const value = process.env.SCREENS_COLOR_SCHEME ?? "light";
+  if (value !== "light" && value !== "dark")
+    throw new Error("SCREENS_COLOR_SCHEME must be light or dark");
+  return value;
+})();
+const VIEWPORTS: Viewport[] = process.env.SCREENS_VIEWPORTS
+  ? process.env.SCREENS_VIEWPORTS.split(",").map((value) => {
+      const match = /^(\d+)x(\d+)$/.exec(value);
+      const width = Number(match?.[1]);
+      const height = Number(match?.[2]);
+      assert.ok(
+        width >= 240 && width <= 2560 && height >= 480 && height <= 2160,
+        "Invalid SCREENS_VIEWPORTS size",
+      );
+      return { name: value, width, height, rules: width < 768 ? PHONE : DESKTOP };
+    })
+  : defaultViewports;
 
 interface Screen {
   name: string;
@@ -74,6 +101,8 @@ interface Ids {
   forkChat: string;
   sharedChat: string;
   routedChat: string;
+  nativeThread: string;
+  nativeArtifact: string;
 }
 
 /** Opens a page's More menu. */
@@ -118,6 +147,153 @@ async function twoAgents(page: Page): Promise<void> {
  */
 function chats(ids: Ids): Screen[] {
   return [
+    {
+      name: "conversation-message-actions",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const human = page.getByRole("article", { name: /^Message from / }).first();
+        const agent = page.getByRole("article", { name: "helper message", exact: true }).first();
+        for (const message of [human, agent]) {
+          const actions = message.getByRole("toolbar", { name: "Message actions" });
+          await actions.getByRole("button", { name: /^Copy (message|answer)/ }).waitFor();
+          await actions.getByRole("button", { name: "Reply", exact: true }).waitFor();
+          assert.equal(await message.getByRole("toolbar", { name: "Message actions" }).count(), 1);
+        }
+        await agent.getByRole("button", { name: "Reply", exact: true }).focus();
+      },
+    },
+    {
+      name: "conversation-agent-time",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const message = page.getByRole("article", { name: "helper message", exact: true }).first();
+        await message.getByRole("button", { name: /^Posted / }).click();
+        const tooltip = message.getByRole("tooltip");
+        await tooltip.waitFor();
+        const box = await tooltip.boundingBox();
+        assert.ok(
+          box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0),
+          "Agent timestamp must stay in the viewport",
+        );
+      },
+    },
+    {
+      name: "conversation-native-deliverable",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        await bar(page).fill("Keep my unsent draft.");
+        await page
+          .getByRole("button", { name: "Open native-launch.pptx", exact: true })
+          .first()
+          .click();
+        await page
+          .getByRole("button", { name: "Slide 2: Owner and next action", exact: true })
+          .click();
+        await page.locator("summary").filter({ hasText: "Speaker notes" }).click();
+        await page.getByText("https://example.test/launch-owner", { exact: true }).waitFor();
+        const original = page.waitForEvent("download");
+        await page.getByRole("link", { name: "Download Original", exact: true }).click();
+        const office = await original;
+        const officePath = await office.path();
+        assert.ok(officePath);
+        assert.equal(office.suggestedFilename(), "native-launch.pptx");
+        assert.equal(readFileSync(officePath).subarray(0, 2).toString(), "PK");
+        const exported = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Download PDF", exact: true }).click();
+        const pdf = await exported;
+        const pdfPath = await pdf.path();
+        assert.ok(pdfPath);
+        assert.equal(pdf.suggestedFilename(), "native-launch.pdf");
+        assert.equal(readFileSync(pdfPath).subarray(0, 5).toString(), "%PDF-");
+        await page.getByRole("button", { name: "Present", exact: true }).click();
+        await page.getByRole("dialog", { name: "native-launch.pptx", exact: true }).waitFor();
+        await page.getByRole("button", { name: "Exit Presentation", exact: true }).click();
+        await page.getByRole("button", { name: "Request Changes", exact: true }).click();
+        await page.waitForFunction(() =>
+          (
+            document.querySelector(
+              "form[aria-label=Message] textarea",
+            ) as HTMLTextAreaElement | null
+          )?.value.includes("Requested changes:"),
+        );
+        const draft = await bar(page).inputValue();
+        assert.ok(draft.includes(`artifact:${ids.nativeArtifact}@1`));
+        assert.ok(draft.includes("slide 2"));
+        assert.ok(draft.includes("Keep my unsent draft."));
+      },
+    },
+    {
+      name: "conversation-native-revision",
+      path: `/conversations/${ids.nativeThread}/deliverables/${ids.nativeArtifact}`,
+      act: async (page) => {
+        const endpoint = new URL(`/api/artifacts?thread=${ids.nativeThread}`, page.url()).href;
+        const sourceVersion = await (
+          await page.request.get(new URL(`/api/artifacts/${ids.nativeArtifact}`, page.url()).href)
+        ).json();
+        const before = await (await page.request.get(endpoint)).json();
+        const previous = before.artifacts.find(
+          (file: { title: string }) => file.title === "native-launch.pptx",
+        );
+        assert.ok(previous);
+        await page
+          .getByRole("button", { name: "Slide 2: Owner and next action", exact: true })
+          .click();
+        await page.getByRole("button", { name: "Request Changes", exact: true }).click();
+        await page.waitForFunction(() =>
+          (
+            document.querySelector(
+              "form[aria-label=Message] textarea",
+            ) as HTMLTextAreaElement | null
+          )?.value.includes("Requested changes:"),
+        );
+        await bar(page).fill(
+          (await bar(page).inputValue()) +
+            " Make Developer the briefing owner. Preserve the launch date and sources.",
+        );
+        await page.getByRole("button", { name: "Send message", exact: true }).click();
+        let revised: { id: string; version: number; sha256: string } | undefined;
+        await waitFor(async () => {
+          const response = await (await page.request.get(endpoint)).json();
+          revised = response.artifacts.find(
+            (file: { title: string; version: number }) =>
+              file.title === "native-launch.pptx" && file.version > previous.version,
+          );
+          return Boolean(revised);
+        }, "The real revision tool pipeline did not publish a newer version");
+        assert.ok(revised);
+        assert.notEqual(revised.sha256, sourceVersion.sha256);
+        const original = await (
+          await page.request.get(new URL(`/api/artifacts/${ids.nativeArtifact}`, page.url()).href)
+        ).json();
+        assert.equal(original.version, 1);
+        assert.equal(original.sha256, sourceVersion.sha256);
+        await page.goto(
+          new URL(`/conversations/${ids.nativeThread}/deliverables/${revised.id}`, page.url()).href,
+        );
+        await page
+          .getByRole("button", { name: "Slide 2: Owner and next action", exact: true })
+          .click();
+        await page.getByText("Developer owns the briefing", { exact: true }).first().waitFor();
+        await page.locator("summary").filter({ hasText: "Speaker notes" }).click();
+        await page.getByText("https://example.test/launch-owner", { exact: true }).waitFor();
+      },
+    },
+    {
+      name: "conversation-outcome-redirect",
+      path: `/conversations/${ids.nativeThread}`,
+      act: async (page) => {
+        await page.getByRole("button", { name: "Redirect", exact: true }).last().click();
+        await page.waitForFunction(() =>
+          (
+            document.querySelector(
+              "form[aria-label=Message] textarea",
+            ) as HTMLTextAreaElement | null
+          )?.value.includes("Please change direction: "),
+        );
+        assert.match(await bar(page).inputValue(), /Please change direction: /);
+        await bar(page).fill(`${await bar(page).inputValue()}Keep the date and clarify ownership.`);
+      },
+    },
     {
       name: "conversation-message-time",
       path: `/conversations/${ids.privateChat}`,
@@ -174,7 +350,7 @@ function chats(ids: Ids): Screen[] {
         assert.equal(new URL(page.url()).searchParams.get("slide"), "3");
         await page.getByRole("button", { name: "Present", exact: true }).click();
         await page.keyboard.press("ArrowRight");
-        await page.getByText("Slide 4 of 6 · ← →", { exact: true }).waitFor();
+        await page.getByText("Slide 4 of 6 ← →", { exact: true }).waitFor();
         await page.keyboard.press("Escape");
         await page.getByRole("button", { name: "Request Changes", exact: true }).waitFor();
         assert.equal(
@@ -236,7 +412,7 @@ function chats(ids: Ids): Screen[] {
       act: async (page) => {
         await plus(page).click();
         const menu = page.getByRole("dialog", { name: "Add to this conversation" });
-        await menu.getByRole("button", { name: /Choose a project/ }).click();
+        await menu.getByRole("button", { name: /^(Choose a project|Personal)$/ }).click();
         await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
         await menu.getByRole("radio", { name: "#deals" }).click();
       },
@@ -463,8 +639,9 @@ function screens(ids: Ids, call: Call): Screen[] {
         });
         await page.reload({ waitUntil: "domcontentloaded" });
         await page.emulateMedia({ colorScheme: "dark" });
-        const agent = page.getByRole("button", { name: /^humagen-analyst Workspace Default/ });
+        const agent = page.getByRole("button", { name: /^humagen-analyst(?:\s|$)/ });
         await agent.waitFor();
+        await agent.getByText("Workspace Default", { exact: true }).waitFor();
         const badges = agent.locator("span.rounded-full");
         const labels = await badges.allTextContents();
         assert.ok(
@@ -509,7 +686,7 @@ function screens(ids: Ids, call: Call): Screen[] {
             default: fallback,
           });
         }
-        await badgePage?.emulateMedia({ colorScheme: "light" });
+        await badgePage?.emulateMedia({ colorScheme });
       },
     },
     {
@@ -644,6 +821,17 @@ function screens(ids: Ids, call: Call): Screen[] {
       path: `/settings/${s}`,
     })),
   ];
+  list.push(
+    ...libraryScreens(call),
+    ...workspaceScreens(call),
+    ...usageScreens(),
+    ...emailScreens(call),
+  );
+  list.push({
+    name: "conversation-activity-filters",
+    path: `/conversations/${ids.privateChat}/activity`,
+    act: activityFilters,
+  });
   return only.length ? list.filter((s) => only.includes(s.name)) : list;
 }
 
@@ -687,7 +875,7 @@ const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 /** humagen with seeded agents, no sign-in and nothing kept, in a directory of its own. */
 async function startHumagen(
   port: number,
-): Promise<{ base: string; proc: ChildProcess; dir: string }> {
+): Promise<{ base: string; proc: ChildProcess; dir: string; closeModel: () => Promise<void> }> {
   if (!existsSync(bin))
     throw new Error(`No humagen binary at ${bin}. Run make build, or set HUMAGEN_BIN.`);
   if (!existsSync(join(web, "index.html")))
@@ -695,13 +883,35 @@ async function startHumagen(
       `No built console at ${web}. Run pnpm --filter @humagen/console build, or set HUMAGEN_WEB.`,
     );
   const dir = mkdtempSync(join(tmpdir(), "humagen-screens-"));
-  const env = { ...process.env };
+  const model = await startNativeModel();
+  const email = await notificationEmailFixture(dir, `http://127.0.0.1:${port}`, "default", "dev");
+  const spec = join(dir, "screens-native.yaml");
+  writeFileSync(
+    spec,
+    `api_version: humagen/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  models:
+    - name: screens-native
+      kind: openai
+      openai: {base_url: "${model.base}", key: {ref: env:HUMAGEN_SCREENS_MODEL_KEY}}
+`,
+  );
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    HUMAGEN_SCREENS_MODEL_KEY: "screens-fixture-only",
+  };
   // A model key would let the agents seeded to fail succeed.
   for (const k of Object.keys(env)) if (/_API_KEY$/.test(k)) delete env[k];
   const proc = spawn(
     bin,
     [
       "serve",
+      "-f",
+      spec,
+      "-f",
+      email.file,
       "-auth=dev",
       "-seed",
       "-state=memory",
@@ -724,7 +934,16 @@ async function startHumagen(
     if (proc.exitCode !== null) throw new Error(`humagen exited with ${proc.exitCode}:\n${log}`);
     try {
       const r = await fetch(`${base}/api/me`);
-      if (r.ok) return { base, proc, dir };
+      if (r.ok)
+        return {
+          base,
+          proc,
+          dir,
+          closeModel: async () => {
+            await model.close();
+            await email.close();
+          },
+        };
     } catch {
       // Not listening yet.
     }
@@ -818,6 +1037,7 @@ async function artifactFixtures(page: Page, thread: string): Promise<void> {
       return route.fulfill({
         json: { versions: source.filter((other) => other.title === item.title).map(metadata) },
       });
+    if (parts[3] === "pdf") return route.continue();
     if (parts[3] === "content")
       return route.fulfill({
         body: item.bytes,
@@ -852,6 +1072,8 @@ const ids0: Ids = {
   forkChat: "",
   sharedChat: "",
   routedChat: "",
+  nativeThread: "",
+  nativeArtifact: "",
 };
 
 interface Posted {
@@ -984,6 +1206,7 @@ async function seedChats(
     channel: "general",
     placement_token: sharedPreview.token,
   });
+
   const routed = await call<Posted>("POST", "/api/threads", {
     project: "Launch",
     text: "What should we check before the launch?",
@@ -1016,6 +1239,32 @@ async function seedChats(
     sharedChat: shared.thread.id,
     routedChat: routed.thread.id,
   };
+}
+
+async function seedNative(call: Call): Promise<Pick<Ids, "nativeThread" | "nativeArtifact">> {
+  await call("POST", "/api/agents", {
+    name: "native-writer",
+    description: "Deterministic local model fixture for native deliverable browser validation",
+    model: "screens-native",
+    provider: "screens-native",
+    system_prompt: "Produce only the requested native deliverable using the granted sandbox tools.",
+    tools: ["file_read", "file_write", "file_list", "publish_artifact", "record_outcome"],
+  });
+  const posted = await call<Posted>("POST", "/api/threads", {
+    project: "Launch",
+    visibility: "private",
+    text: "@native-writer Create the native launch briefing.",
+  });
+  assert.equal(posted.runs.length, 1);
+  for (const run of posted.runs) await settled(call, run.id);
+  const page = await call<{ artifacts: { id: string; mime: string; version: number }[] }>(
+    "GET",
+    `/api/artifacts?thread=${posted.thread.id}`,
+  );
+  const file = page.artifacts.find((item) => item.mime.includes("presentationml"));
+  assert.ok(file, "The actual model/tool pipeline must publish a native presentation");
+  assert.equal(file.version, 1);
+  return { nativeThread: posted.thread.id, nativeArtifact: file.id };
 }
 
 async function waitFor(ok: () => Promise<boolean>, failure: string): Promise<void> {
@@ -1057,6 +1306,12 @@ async function shoot(
     )
     .catch(() => {});
   await page.evaluate(() => document.fonts.ready);
+  if (process.env.SCREENS_COLOR_SCHEME) {
+    await page.waitForFunction(
+      (expected) => document.documentElement.dataset.theme === expected,
+      colorScheme,
+    );
+  }
   if (s.act) {
     try {
       await s.act(page);
@@ -1130,14 +1385,14 @@ async function capture(
   const results: Result[] = [];
   for (const vp of VIEWPORTS) {
     mkdirSync(join(out, vp.name), { recursive: true });
-    const phone = vp.name === "phone";
+    const phone = vp.width < 768;
     const context = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: phone ? 2 : 1,
       isMobile: phone,
-      hasTouch: phone,
+      hasTouch: vp.width < 1024,
       reducedMotion: "reduce",
-      colorScheme: "light",
+      colorScheme,
       locale: "en-US",
       timezoneId: "UTC",
     });
@@ -1189,13 +1444,16 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
   mkdirSync(target, { recursive: true });
   for (const [name, screen] of Object.entries({
     agents: "agents",
-    analytics: "monitor",
+    analytics: "usage-chart",
     home: "home",
-    onboarding: "home-new",
-    runs: "task",
-    "ui-agent-turn": "chat-private",
+    onboarding: "agent-setup-role",
+    runs: "conversation-native-deliverable",
+    "ui-agent-turn": "conversation-outcome-redirect",
   })) {
-    copyFileSync(join(out, "desktop", `${screen}.png`), join(target, `${name}.png`));
+    const full = join(out, "desktop", `${screen}.full.png`);
+    const image =
+      name === "runs" && existsSync(full) ? full : join(out, "desktop", `${screen}.png`);
+    copyFileSync(image, join(target, `${name}.png`));
   }
   // The gallery is deliberately outside the production build. Serve its
   // existing fixtures with Vite, alongside the same isolated seeded server.
@@ -1227,7 +1485,7 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     reducedMotion: "reduce",
-    colorScheme: "light",
+    colorScheme,
     locale: "en-US",
     timezoneId: "UTC",
   });
@@ -1262,6 +1520,7 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
     await fixtureHues();
     await page.evaluate(() => document.fonts.ready);
     await page.getByRole("heading", { name: "Console primitives" }).waitFor();
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       path: join(target, "primitives.png"),
       fullPage: true,
@@ -1282,27 +1541,46 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
 async function main(): Promise<void> {
   if (showcase && only.length)
     throw new Error("SCREENS_SHOWCASE requires every screen; unset SCREENS_ONLY.");
-  // A mistyped name would otherwise capture nothing and pass.
-  const names = screens(ids0, async () => {
-    throw new Error("Screen discovery cannot call the API.");
-  }).map((screen) => screen.name);
-  const unknown = only.filter((n) => n !== "home-new" && !names.includes(n));
-  if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
   // Only a folder this script wrote, or a new one, is cleared.
   if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, "report.json"))) {
     throw new Error(
       `${out} is not empty and holds no report.json, so it is not cleared. Set SCREENS_OUT to another folder.`,
     );
   }
-  rmSync(out, { recursive: true, force: true });
-  mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, "report.json"), "[]\n");
+  if (!showcaseOnly) {
+    rmSync(out, { recursive: true, force: true });
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, "report.json"), "[]\n");
+  }
   const executablePath = chromiumPath();
-  const { base, proc, dir } = await startHumagen(await freePort());
+  const { base, proc, dir, closeModel } = await startHumagen(await freePort());
   let browser: Browser | undefined;
   try {
+    // A mistyped name would otherwise capture nothing and pass.
+    const names = screens(ids0, async () => {
+      throw new Error("Screen discovery cannot call the API.");
+    }).map((screen) => screen.name);
+    const unknown = only.filter((n) => n !== "home-new" && !names.includes(n));
+    if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
     browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
     const call = api(base);
+    if (showcaseOnly) {
+      const recorded = JSON.parse(readFileSync(join(out, "report.json"), "utf8")) as Result[];
+      assert.ok(
+        recorded.length > 0 && recorded.every((item) => item.problems.length === 0),
+        "Showcase-only export requires a completed passing screen report",
+      );
+      for (const viewport of VIEWPORTS) {
+        for (const screen of ["home-new", ...names]) {
+          assert.ok(
+            recorded.some((item) => item.viewport === viewport.name && item.screen === screen),
+            `Missing recorded capture: ${viewport.name} ${screen}`,
+          );
+        }
+      }
+      await exportShowcase(browser, base);
+      return;
+    }
     const results: Result[] = [];
 
     // A person with nothing waiting and nothing new: Home's welcome. The
@@ -1413,6 +1691,7 @@ async function main(): Promise<void> {
       artifact: files.artifacts?.[0]?.id ?? "art-1",
       schedule: "weekly-summary",
       ...(await seedChats(call)),
+      ...(await seedNative(call)),
     };
     results.push(...(await capture(browser, base, screens(ids, call))));
 
@@ -1433,6 +1712,7 @@ async function main(): Promise<void> {
   } finally {
     await browser?.close();
     proc.kill();
+    await closeModel();
     rmSync(dir, { recursive: true, force: true });
   }
 }

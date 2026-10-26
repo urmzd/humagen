@@ -122,7 +122,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/projects/{name}/fork", s.authed(auth.ProjectsWrite, s.seenProject(s.forkProject)))
 	mux.HandleFunc("GET /api/project-forks/{name}", s.authed(auth.ProjectsRead, s.projectFork))
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
+	mux.HandleFunc("GET /api/model-providers", s.authed(auth.AgentsRead, s.modelProviders))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
+	s.agentSetupRoutes(mux)
+	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
@@ -372,7 +375,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	rev, err := s.P.Agents.Create(r.Context(), who.Tenant, spec, who.Subject)
+	rev, err := s.P.CreateAgentBy(r.Context(), who, spec)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -1109,7 +1112,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, "that suite is already running")
 	case errors.Is(err, registry.ErrConflict):
 		fail(w, http.StatusConflict, "the agent was revised by someone else, reload and try again")
-	case errors.Is(err, platform.ErrForbidden), errors.Is(err, call.ErrDepth), errors.Is(err, call.ErrFanOut), errors.Is(err, call.ErrBudget),
+	case errors.Is(err, platform.ErrForbidden), errors.Is(err, auth.ErrForbidden), errors.Is(err, call.ErrDepth), errors.Is(err, call.ErrFanOut), errors.Is(err, call.ErrBudget),
 		errors.Is(err, platform.ErrBusy):
 		fail(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, call.ErrInvalid), errors.Is(err, registry.ErrInvalid), errors.Is(err, agentspec.ErrInvalid),
@@ -1215,4 +1218,8 @@ func spa(dir string) http.Handler {
 // derived from this and the tenant.
 func APITagID(subject, key string) string {
 	return "api-" + strconv.Itoa(len(subject)) + "-" + subject + "-" + key
+}
+
+func (s *Server) modelProviders(w http.ResponseWriter, _ *http.Request, _ auth.Principal) {
+	ok(w, http.StatusOK, map[string]any{"providers": s.P.ModelProviderChoices()})
 }

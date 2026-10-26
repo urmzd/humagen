@@ -9,6 +9,7 @@ package artifacts
 
 import (
 	"cmp"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -81,6 +82,8 @@ type Artifact struct {
 	// left out, pinned when it was published: whose storage it counts
 	// toward besides its project's, even once its project is deleted.
 	Within []string `json:"-"`
+	order  int
+	record string
 }
 
 // CleanTitle turns what a model called a file into a name that is safe to
@@ -112,9 +115,12 @@ func CleanTitle(title string) (string, error) {
 }
 
 type tenant struct {
-	items []*Artifact // oldest first
-	byID  map[string]*Artifact
-	next  int
+	items     []*Artifact // oldest first
+	byID      map[string]*Artifact
+	next      int
+	legacyMax int
+	orders    map[string]int
+	reserved  map[string]bool
 }
 
 // Index holds every tenant's artifacts.
@@ -127,8 +133,12 @@ type Index struct {
 
 // stored is one record: an artifact, or a tenant's id counter.
 type stored struct {
-	Artifact *storedArtifact `json:"artifact,omitempty"`
-	Next     int             `json:"next,omitempty"`
+	Artifact  *storedArtifact `json:"artifact,omitempty"`
+	Next      int             `json:"next,omitempty"`
+	Opaque    bool            `json:"opaque,omitempty"`
+	LegacyMax int             `json:"legacy_max,omitempty"`
+	Order     int             `json:"order,omitempty"`
+	CursorID  string          `json:"cursor_id,omitempty"`
 }
 
 // storedArtifact is an artifact with what its wire form leaves out.
@@ -145,8 +155,8 @@ func seqOf(id string) int {
 	return n
 }
 
-// recordKey sorts a tenant's artifacts in the order their ids were issued.
-func recordKey(id string) string { return "artifact/" + state.Seq(int64(seqOf(id))) }
+// recordKey sorts records by private durable publication order.
+func recordKey(order int) string { return "artifact/" + state.Seq(int64(order)) }
 
 // NewIndex returns an empty index in memory.
 func NewIndex() *Index { return &Index{tenants: map[string]*tenant{}} }
@@ -154,9 +164,8 @@ func NewIndex() *Index { return &Index{tenants: map[string]*tenant{}} }
 // Open returns an index that keeps its records in st, holding what st
 // already has. A nil st is NewIndex.
 //
-// Ids are issued once. NextID reserves one in memory, and Publish writes the
-// counter with the record, so an id reserved and never published may be
-// issued again after a restart: nothing was kept under it.
+// New identities are random. Private publication order and cursor tombstones
+// are durable; legacy identifiers and blob paths remain unchanged.
 func Open(st state.Store) (*Index, error) {
 	x := NewIndex()
 	x.kept = state.NewTable[stored](st, "artifacts")
@@ -164,27 +173,47 @@ func Open(st state.Store) (*Index, error) {
 		t := x.of(name)
 		if key == nextKey {
 			t.next = max(t.next, r.Next)
+			if r.Opaque {
+				t.legacyMax = max(t.legacyMax, r.LegacyMax)
+			} else {
+				t.legacyMax = max(t.legacyMax, r.Next)
+			}
 			return nil
+		}
+		if r.CursorID != "" {
+			t.orders[r.CursorID] = r.Order
+			t.next = max(t.next, r.Order)
 		}
 		if r.Artifact == nil {
 			return nil
 		}
 		a := r.Artifact.Artifact
 		a.Key, a.Within = r.Artifact.Key, r.Artifact.Within
+		a.order, a.record = r.Order, key
+		if r.Order == 0 {
+			a.order = seqOf(a.ID)
+		}
+		if n, ok := seq(a.ID); ok {
+			t.legacyMax = max(t.legacyMax, n)
+		}
+		t.orders[a.ID] = a.order
 		t.items = append(t.items, &a)
 		t.byID[a.ID] = &a
-		t.next = max(t.next, seqOf(a.ID))
+		t.next = max(t.next, a.order)
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("artifacts: load: %w", err)
+	}
+	for _, t := range x.tenants {
+		slices.SortFunc(t.items, func(a, b *Artifact) int { return cmp.Compare(a.order, b.order) })
 	}
 	return x, nil
 }
 
 // empty stands in for a tenant with nothing published, for readers. It is
 // never written to.
-var empty = &tenant{byID: map[string]*Artifact{}}
+var empty = &tenant{byID: map[string]*Artifact{}, orders: map[string]int{}}
 
 // peek returns a tenant for reading. It does not add one, so it is safe under
 // the read lock.
@@ -199,7 +228,7 @@ func (x *Index) peek(name string) *tenant {
 func (x *Index) of(name string) *tenant {
 	t, ok := x.tenants[name]
 	if !ok {
-		t = &tenant{byID: map[string]*Artifact{}}
+		t = &tenant{byID: map[string]*Artifact{}, orders: map[string]int{}, reserved: map[string]bool{}}
 		x.tenants[name] = t
 	}
 	return t
@@ -211,8 +240,15 @@ func (x *Index) NextID(tenantName string) string {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 	t := x.of(tenantName)
-	t.next++
-	return "art-" + strconv.Itoa(t.next)
+	// crypto/rand.Text uses the runtime's secure source and fails closed if
+	// entropy cannot be obtained. Never fall back to a counter or weak random.
+	for {
+		id := "art-" + rand.Text()
+		if _, exists := t.orders[id]; !exists && !t.reserved[id] {
+			t.reserved[id] = true
+			return id
+		}
+	}
 }
 
 // Publish records an artifact under an id from NextID. A file with a title
@@ -227,7 +263,7 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 	t := x.of(tenantName)
-	if t.byID[a.ID] != nil {
+	if _, used := t.orders[a.ID]; used {
 		return Artifact{}, fmt.Errorf("%w: %s is already published", ErrInvalid, a.ID)
 	}
 	a.Version = 1
@@ -237,12 +273,21 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 		}
 	}
 	b := x.kept.Batch()
-	b.Put(tenantName, nextKey, stored{Next: max(t.next, seqOf(a.ID))})
+	a.order = max(t.next+1, seqOf(a.ID))
+	a.record = recordKey(a.order)
+	legacyMax := t.legacyMax
+	if n, ok := seq(a.ID); ok {
+		legacyMax = max(legacyMax, n)
+	}
+	b.Put(tenantName, nextKey, stored{Next: a.order, Opaque: true, LegacyMax: legacyMax})
 	a.Within = slices.Clone(a.Within)
-	b.Put(tenantName, recordKey(a.ID), stored{Artifact: &storedArtifact{Artifact: a, Key: a.Key, Within: a.Within}})
+	b.Put(tenantName, a.record, stored{Order: a.order, Artifact: &storedArtifact{Artifact: a, Key: a.Key, Within: a.Within}})
 	if err := b.Commit(); err != nil {
 		return Artifact{}, fmt.Errorf("artifacts: write: %w", err)
 	}
+	t.next, t.legacyMax = a.order, legacyMax
+	t.orders[a.ID] = a.order
+	delete(t.reserved, a.ID)
 	t.items = append(t.items, &a)
 	t.byID[a.ID] = &a
 	return a, nil
@@ -287,7 +332,15 @@ func (x *Index) Delete(tenantName, id string) (Artifact, error) {
 	if a == nil {
 		return Artifact{}, fmt.Errorf("%w: artifact %q", ErrNotFound, id)
 	}
-	if err := x.kept.Delete(tenantName, recordKey(id)); err != nil {
+	// Keep the private boundary for opaque cursors after deletion. Legacy
+	// cursors resolve numerically within the pre-opaque watermark as before.
+	var err error
+	if _, legacy := seq(id); legacy {
+		err = x.kept.Delete(tenantName, a.record)
+	} else {
+		err = x.kept.Put(tenantName, a.record, stored{Order: a.order, CursorID: id})
+	}
+	if err != nil {
 		return Artifact{}, fmt.Errorf("artifacts: write: %w", err)
 	}
 	delete(t.byID, id)
@@ -340,7 +393,7 @@ func seq(id string) (int, bool) {
 
 // Page returns one page of a tenant's artifacts, newest first, and the cursor
 // for the page after it. Only the latest version of each file is listed. Ids
-// are issued in order and never reused, so a page neither repeats nor skips
+// resolve to private durable order, so a page neither repeats nor skips
 // when something is published or deleted between pages.
 func (x *Index) Page(tenantName string, q Query) ([]Artifact, string, error) {
 	limit := q.Limit
@@ -348,18 +401,32 @@ func (x *Index) Page(tenantName string, q Query) ([]Artifact, string, error) {
 		limit = DefaultPage
 	}
 	limit = min(limit, MaxPage)
-	before := 0
+	var beforeID string
 	if q.Before != "" {
 		raw, err := base64.RawURLEncoding.DecodeString(q.Before)
-		n, ok := seq(string(raw))
-		if err != nil || !ok {
+		if err != nil || len(raw) == 0 || len(raw) > 200 {
 			return nil, "", ErrCursor
 		}
-		before = n
+		beforeID = string(raw)
 	}
 	x.mu.RLock()
 	defer x.mu.RUnlock()
 	t := x.peek(tenantName)
+	before := -1
+	if beforeID != "" {
+		if n, legacy := seq(beforeID); legacy {
+			if n <= 0 || n > t.legacyMax {
+				return nil, "", ErrCursor
+			}
+			before = n
+		} else {
+			var ok bool
+			before, ok = t.orders[beforeID]
+			if !ok {
+				return nil, "", ErrCursor
+			}
+		}
+	}
 	// A newer version of the same file hides the older ones.
 	latest := map[string]bool{}
 	out := []Artifact{}
@@ -371,7 +438,7 @@ func (x *Index) Page(tenantName string, q Query) ([]Artifact, string, error) {
 			continue
 		}
 		latest[file] = true
-		if n, _ := seq(a.ID); before > 0 && n >= before {
+		if before >= 0 && a.order >= before {
 			continue
 		}
 		if !q.match(a) {

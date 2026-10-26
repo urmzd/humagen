@@ -746,6 +746,171 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/agent-setups:
+    post:
+      operationId: createAgentSetup
+      tags: [agents]
+      summary: Save an inactive agent setup
+      x-permission: agents:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentSetupPlan"}
+      responses:
+        "200":
+          description: Exact saved progress, with an actionable problem when a later phase could not complete.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSetup"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agent-setups/{name}:
+    put:
+      operationId: amendAgentSetup
+      tags: [agents]
+      summary: Correct your inactive draft specification and invalidate its previous test
+      description: Only the setup owner may amend its exact saved version. The agent name and all non-specification plan choices stay fixed. An active or uncertain test must settle first. The corrected specification must pass a fresh real dry run before activation.
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version, plan]
+              properties:
+                version: {type: integer, minimum: 1}
+                plan: {$ref: "#/components/schemas/AgentSetupPlan"}
+      responses:
+        "200":
+          description: The exact saved amendment progress.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSetup"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    get:
+      operationId: getAgentSetup
+      tags: [agents]
+      summary: Read your saved agent setup
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: Exact saved progress, with an actionable problem when a later phase could not complete.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSetup"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agent-setups/{name}/resume:
+    post:
+      operationId: resumeAgentSetup
+      tags: [agents]
+      summary: Resume incomplete setup without duplicating the agent
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: Exact saved progress, with an actionable problem when a later phase could not complete.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSetup"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agent-setups/{name}/test:
+    post:
+      operationId: testAgentSetup
+      tags: [agents]
+      summary: Test the exact inactive revision through the real runtime
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentSetupTest"}
+      responses:
+        "200":
+          description: Exact saved progress, with an actionable problem when a later phase could not complete.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSetup"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agent-setups/{name}/activate:
+    post:
+      operationId: activateAgentSetup
+      tags: [agents]
+      summary: Activate a reviewed setup after its completed dry run
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: Exact saved progress, with an actionable problem when a later phase could not complete.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSetup"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/model-providers:
+    get:
+      operationId: listModelProviders
+      tags: [agents]
+      summary: List bounded supported and declared model provider names
+      description: Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential.
+      x-permission: agents:read
+      responses:
+        "200":
+          description: At most 100 supported provider choices, sorted by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    maxItems: 100
+                    items:
+                      type: object
+                      required: [name, declared]
+                      properties:
+                        name: {type: string}
+                        declared: {type: boolean}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents:
     get:
       operationId: listAgents
@@ -1405,6 +1570,94 @@ paths:
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/runs/{id}/learning:
+    get:
+      operationId: previewOutcomeLearning
+      tags: [runs]
+      summary: Preview a confined authored outcome for reviewed learning
+      x-permission: runs:read
+      parameters:
+        - {$ref: '#/components/parameters/RunID'}
+        - name: scope
+          in: query
+          schema: {type: string, enum: [personal, project], default: personal}
+      responses:
+        '200':
+          description: Current confined outcome and permitted learning destinations.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OutcomeLearningPreview'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
+  /api/runs/{id}/skill-draft:
+    post:
+      operationId: draftSkillFromOutcome
+      tags: [runs]
+      summary: Save a reviewed authored outcome as a new tool-free skill draft
+      x-permission: projects:write
+      parameters:
+        - {$ref: '#/components/parameters/RunID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [snapshot, definition]
+              properties:
+                snapshot: {type: string, maxLength: 256}
+                scope: {$ref: '#/components/schemas/LibraryScope'}
+                definition: {$ref: '#/components/schemas/LibrarySkillDefinition'}
+      responses:
+        '201':
+          description: The durable human-reviewed learning record, with no external action or automatic skill activation.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LibrarySkill'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
+  /api/runs/{id}/decision-memory:
+    post:
+      operationId: rememberOutcomeDecision
+      tags: [runs]
+      summary: Approve an explicitly human-reviewed authored decision as memory
+      x-permission: projects:write
+      parameters:
+        - {$ref: '#/components/parameters/RunID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [snapshot, decision, text]
+              properties:
+                snapshot: {type: string, maxLength: 256}
+                scope: {$ref: '#/components/schemas/LibraryScope'}
+                decision: {type: integer, minimum: 0, maximum: 19}
+                text: {type: string, minLength: 1, maxLength: 300}
+      responses:
+        '201':
+          description: The durable human-reviewed learning record, with no external action or automatic skill activation.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/ServerError'}
   /api/runs/{id}:
     get:
       operationId: getRun
@@ -3136,6 +3389,103 @@ paths:
           content:
             application/octet-stream:
               schema: {type: string, format: binary}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/artifacts/{id}/promote-memory:
+    post:
+      operationId: promoteArtifactMemory
+      tags: [artifacts]
+      summary: Suggest an accepted immutable shared result as project memory
+      description: Requires artifacts:read and membership in the current shared project. The exact whole-file text must fit the memory policy. Always pending owner review, with immutable artifact provenance.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ArtifactID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version, accepted]
+              properties:
+                version: {type: integer, minimum: 1}
+                accepted: {type: boolean, const: true}
+      responses:
+        "201":
+          description: A pending memory proposal for project owners to review.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Note"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/artifacts/{id}/promote-knowledge:
+    post:
+      operationId: promoteArtifactKnowledge
+      tags: [artifacts]
+      summary: Add an accepted immutable result to knowledge in the same project
+      description: |
+        Requires artifacts:read and knowledge:read as well as knowledge:write.
+        The version must be exact, its conversation shared, and the target an
+        indexed manual source in the same current project. Private results,
+        wider audiences, external provider snapshots and oversized text are refused.
+        Provenance points to the immutable artifact version. Writes an audit attempt.
+      x-permission: knowledge:write
+      parameters:
+        - {$ref: "#/components/parameters/ArtifactID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, source, accepted]
+              additionalProperties: false
+              properties:
+                accepted: {type: boolean, const: true}
+                version: {type: integer, minimum: 1}
+                source: {type: string, minLength: 1, maxLength: 80}
+      responses:
+        "201":
+          description: The retained accepted result, with immutable artifact provenance.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeDocument"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/artifacts/{id}/pdf:
+    get:
+      operationId: exportArtifactPDF
+      tags: [artifacts]
+      summary: Export an immutable native deliverable version as PDF
+      description: |
+        Renders the retained native revision model of this exact artifact.
+        Supports up to 100 pages using Windows-1252 text. Unsupported characters
+        and overfull slides are refused, never silently replaced or cut.
+        Does not publish a new version or run an agent.
+      x-permission: artifacts:read
+      parameters:
+        - {$ref: "#/components/parameters/ArtifactID"}
+      responses:
+        "200":
+          description: Real PDF bytes generated from this immutable version.
+          headers:
+            Content-Disposition: {schema: {type: string}}
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -7212,6 +7562,65 @@ components:
         workspace_areas:
           type: array
           items: {type: string}
+    AgentSetupPlan:
+      type: object
+      additionalProperties: false
+      required: [spec, project]
+      properties:
+        spec: {$ref: "#/components/schemas/AgentSpec"}
+        project: {type: string, maxLength: 63}
+        skills:
+          description: Up to four exact published default skill revisions, read-confined to the selected home. Changing them invalidates the previous dry run.
+          type: array
+          maxItems: 4
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, version]
+            properties:
+              id: {type: string}
+              version: {type: integer, minimum: 1}
+        manager: {type: string, maxLength: 200}
+        stop_rules: {type: string, maxLength: 4000}
+        rules:
+          type: object
+          maxProperties: 6
+          additionalProperties: {type: string, enum: [allow, ask, never]}
+        daily_spend: {type: integer, minimum: 0, description: "Optional daily micro-USD cap, requiring billing:write."}
+        max_lease: {type: integer, minimum: 0}
+        assignment:
+          type: object
+          additionalProperties: false
+          required: [goal, done_when]
+          properties:
+            goal: {type: string, maxLength: 4000}
+            done_when: {type: string, maxLength: 2000}
+            cron: {type: string, maxLength: 120}
+            trigger: {type: string, enum: [manual, cron, source_change]}
+            source: {type: string, maxLength: 80}
+    AgentSetupTest:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, minLength: 1, maxLength: 8000}
+    AgentSetup:
+      type: object
+      required: [name, owner, plan, phase, version, created_at, updated_at]
+      properties:
+        name: {type: string}
+        owner: {type: string}
+        plan: {$ref: "#/components/schemas/AgentSetupPlan"}
+        phase: {type: string, enum: [reserved, created, home, skills, controls, policy, budget, assignment, configured, amending, activating, ready]}
+        version: {type: integer, minimum: 1}
+        revision: {type: integer, minimum: 1}
+        revision_hash: {type: string}
+        problem: {type: string}
+        test_run: {type: string}
+        assignment_id: {type: string}
+        skill_bindings_version: {type: integer, minimum: 0}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     AgentSpec:
       description: An agent's definition.
       type: object
@@ -7394,6 +7803,9 @@ components:
               maxItems: 10
               items: {type: string}
             from: {$ref: '#/components/schemas/LibraryProvenance'}
+            origin_run:
+              description: Server-recorded authored outcome origin, present only while this reader may read that run. Promotion drops this private lineage.
+              type: string
     AuditRecord:
       type: object
       required: [id, actor, at, outcome, action, resource, resource_id, scope]
@@ -7577,6 +7989,30 @@ components:
         reason: {type: string}
         comment: {type: string}
         updated_at: {type: string, format: date-time}
+    OutcomeLearningPreview:
+      description: A current confined authored outcome snapshot for explicit human review. Personal scope is the default; project scope is derived from current placement and ordinary ownership.
+      type: object
+      required: [run, snapshot, scope, outcome, may_project, can_draft, can_remember]
+      properties:
+        run: {type: string}
+        snapshot: {type: string, maxLength: 256}
+        scope: {$ref: '#/components/schemas/LibraryScope'}
+        outcome: {$ref: '#/components/schemas/RunOutcome'}
+        project: {type: string}
+        project_title: {type: string}
+        may_project: {type: boolean}
+        can_draft: {type: boolean}
+        can_remember: {type: boolean}
+    RunOutcome:
+      description: Agent-authored result framing. It never records approval or external execution.
+      type: object
+      required: [kind, summary]
+      additionalProperties: false
+      properties:
+        kind: {type: string, enum: [recommendation, decision, update]}
+        summary: {type: string, minLength: 1, maxLength: 4000}
+        decisions: {type: array, maxItems: 20, items: {type: string, maxLength: 1000}}
+        next_action: {type: string, maxLength: 2000}
     SourceDependency:
       type: object
       required: [id, title, relation]
@@ -7605,10 +8041,6 @@ components:
       type: object
       required: [citations, id, tag_id, tenant, agent, rev, origin, text, root, depth, thread, lease, granted, spent, calls, status, created_at, updated_at]
       properties:
-        citations:
-          type: array
-          maxItems: 64
-          items: {$ref: "#/components/schemas/RunCitation"}
         id:
           description: The run's id, `r` and 32 hex digits, derived from the workspace and the trigger's id.
           type: string
@@ -7726,6 +8158,11 @@ components:
             partial answer, what the agent had said when it stopped, which may
             be empty. It is never the whole answer when `status` is `stopped`.
           type: string
+        outcome: {$ref: "#/components/schemas/RunOutcome"}
+        citations:
+          type: array
+          maxItems: 64
+          items: {$ref: "#/components/schemas/RunCitation"}
         error: {type: string}
         reason:
           description: What a parked run is waiting for.
@@ -10296,7 +10733,7 @@ components:
       type: object
       required: [id, title, kind, mime, size, sha256, version, run, thread, agent, created_by, created_at]
       properties:
-        id: {type: string}
+        id: {type: string, description: "Opaque immutable artifact identity. Released legacy IDs remain readable; new IDs reveal no publication count."}
         title: {type: string}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         mime:
@@ -11319,10 +11756,10 @@ components:
       type: object
       required: [id, title]
       properties:
-        id: {type: string}
-        title: {type: string}
-        url: {type: string}
-        snippet: {type: string}
+        id: {type: string, maxLength: 128}
+        title: {type: string, maxLength: 500}
+        url: {type: string, maxLength: 2048}
+        snippet: {type: string, maxLength: 8000}
         mode: {type: string, enum: [indexed, live]}
         copy_at: {type: string, format: date-time}
         refresh_failed: {type: boolean}

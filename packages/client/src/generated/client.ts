@@ -8,11 +8,15 @@ import type {
   AgentControlInput,
   AgentHome,
   AgentNetwork,
+  AgentSetup,
+  AgentSetupPlan,
+  AgentSetupTest,
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
   AgentSpec,
   Alert,
   AlertRule,
+  AmendAgentSetupBody,
   AnnouncementInput,
   Approved,
   Artifact,
@@ -37,6 +41,7 @@ import type {
   DecideSourceLinkSuggestionBody,
   DiscoverWorkspaceResponse,
   DraftLibrarySkillBody,
+  DraftSkillFromOutcomeBody,
   EvalRun,
   EvalSuite,
   FindHelpResponse,
@@ -81,6 +86,7 @@ import type {
   ListKnowledgeSourcesResponse,
   ListLibrarySkillsResponse,
   ListMentionsResponse,
+  ListModelProvidersResponse,
   ListNativeNotificationsResponse,
   ListPendingMemoryResponse,
   ListPeopleResponse,
@@ -105,6 +111,7 @@ import type {
   NoteInput,
   NoteList,
   NoteSelection,
+  OutcomeLearningPreview,
   PlacementPreview,
   Policy,
   PolicyInput,
@@ -128,12 +135,15 @@ import type {
   ProjectSkillsInput,
   ProjectUpdate,
   ProjectView,
+  PromoteArtifactKnowledgeBody,
+  PromoteArtifactMemoryBody,
   PromoteLibrarySkillBody,
   PromoteMemoryBody,
   PublishThreadSummaryBody,
   PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
   QuestionAnswer,
+  RememberOutcomeDecisionBody,
   Resolution,
   ReviseAgentBody,
   Revision,
@@ -1085,6 +1095,133 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     });
   }
 
+  /** Save an inactive agent setup */
+  async createAgentSetup(body: AgentSetupPlan, options?: RequestOptions): Promise<AgentSetup> {
+    const path = "/api/agent-setups";
+    return this.request<AgentSetup>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createAgentSetupRaw(body: AgentSetupPlan, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    const path = "/api/agent-setups";
+    return this.rawRequest<AgentSetup>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read your saved agent setup */
+  async getAgentSetup(name: string, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentSetupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Only the setup owner may amend its exact saved version. The agent name and all non-specification plan choices stay fixed. An active or uncertain test must settle first. The corrected specification must pass a fresh real dry run before activation. */
+  async amendAgentSetup(name: string, body: AmendAgentSetupBody, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async amendAgentSetupRaw(name: string, body: AmendAgentSetupBody, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Resume incomplete setup without duplicating the agent */
+  async resumeAgentSetup(name: string, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}/resume";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("POST", path, {
+      ...options,
+    });
+  }
+
+  async resumeAgentSetupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}/resume";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Test the exact inactive revision through the real runtime */
+  async testAgentSetup(name: string, body: AgentSetupTest, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}/test";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async testAgentSetupRaw(name: string, body: AgentSetupTest, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}/test";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Activate a reviewed setup after its completed dry run */
+  async activateAgentSetup(name: string, options?: RequestOptions): Promise<AgentSetup> {
+    let path = "/api/agent-setups/{name}/activate";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSetup>("POST", path, {
+      ...options,
+    });
+  }
+
+  async activateAgentSetupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSetup>> {
+    let path = "/api/agent-setups/{name}/activate";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSetup>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Names are runtime configuration metadata, never keys or credential references. Declared does not mean a live call has been verified; a dry run checks the actual adapter and credential. */
+  async listModelProviders(options?: RequestOptions): Promise<ListModelProvidersResponse> {
+    const path = "/api/model-providers";
+    return this.request<ListModelProvidersResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listModelProvidersRaw(options?: RequestOptions): Promise<ApiResponse<ListModelProvidersResponse>> {
+    const path = "/api/model-providers";
+    return this.rawRequest<ListModelProvidersResponse>("GET", path, {
+      ...options,
+    });
+  }
+
   /** The latest revision of every agent in the workspace the caller may
 read: one that lives in a project they may not read is left out, and
 so is every agent it names in another's spec. Not paged.
@@ -1644,6 +1781,73 @@ agents answering the next message are sent.
       headers: { ..._hdr, ...options?.headers },
       retry: options?.retry,
       timeout: options?.timeout,
+    });
+  }
+
+  /** Preview a confined authored outcome for reviewed learning */
+  async previewOutcomeLearning(id: string, scope?: "personal" | "project", options?: RequestOptions): Promise<OutcomeLearningPreview> {
+    let path = "/api/runs/{id}/learning";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<OutcomeLearningPreview>("GET", path, {
+      ...options,
+    });
+  }
+
+  async previewOutcomeLearningRaw(id: string, scope?: "personal" | "project", options?: RequestOptions): Promise<ApiResponse<OutcomeLearningPreview>> {
+    let path = "/api/runs/{id}/learning";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<OutcomeLearningPreview>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Save a reviewed authored outcome as a new tool-free skill draft */
+  async draftSkillFromOutcome(id: string, body: DraftSkillFromOutcomeBody, options?: RequestOptions): Promise<LibrarySkill> {
+    let path = "/api/runs/{id}/skill-draft";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async draftSkillFromOutcomeRaw(id: string, body: DraftSkillFromOutcomeBody, options?: RequestOptions): Promise<ApiResponse<LibrarySkill>> {
+    let path = "/api/runs/{id}/skill-draft";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Approve an explicitly human-reviewed authored decision as memory */
+  async rememberOutcomeDecision(id: string, body: RememberOutcomeDecisionBody, options?: RequestOptions): Promise<Note> {
+    let path = "/api/runs/{id}/decision-memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async rememberOutcomeDecisionRaw(id: string, body: RememberOutcomeDecisionBody, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/runs/{id}/decision-memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
     });
   }
 
@@ -3037,6 +3241,74 @@ the file's SHA-256.
     if (inline !== undefined && inline !== null) _q.set("inline", String(inline));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
+    return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Requires artifacts:read and membership in the current shared project. The exact whole-file text must fit the memory policy. Always pending owner review, with immutable artifact provenance. */
+  async promoteArtifactMemory(id: string, body: PromoteArtifactMemoryBody, options?: RequestOptions): Promise<Note> {
+    let path = "/api/artifacts/{id}/promote-memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteArtifactMemoryRaw(id: string, body: PromoteArtifactMemoryBody, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/artifacts/{id}/promote-memory";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Requires artifacts:read and knowledge:read as well as knowledge:write.
+The version must be exact, its conversation shared, and the target an
+indexed manual source in the same current project. Private results,
+wider audiences, external provider snapshots and oversized text are refused.
+Provenance points to the immutable artifact version. Writes an audit attempt.
+ */
+  async promoteArtifactKnowledge(id: string, body: PromoteArtifactKnowledgeBody, options?: RequestOptions): Promise<KnowledgeDocument> {
+    let path = "/api/artifacts/{id}/promote-knowledge";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<KnowledgeDocument>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteArtifactKnowledgeRaw(id: string, body: PromoteArtifactKnowledgeBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeDocument>> {
+    let path = "/api/artifacts/{id}/promote-knowledge";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<KnowledgeDocument>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Renders the retained native revision model of this exact artifact.
+Supports up to 100 pages using Windows-1252 text. Unsupported characters
+and overfull slides are refused, never silently replaced or cut.
+Does not publish a new version or run an agent.
+ */
+  async exportArtifactPdf(id: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/api/artifacts/{id}/pdf";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async exportArtifactPdfRaw(id: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/api/artifacts/{id}/pdf";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<Blob>("GET", path, {
       ...options,
     });

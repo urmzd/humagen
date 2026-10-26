@@ -304,6 +304,40 @@ kept.
   workspace_areas?: string[];
 }
 
+export interface AgentSetupPlan {
+  spec: AgentSpec;
+  project: string;
+  /** Up to four exact published default skill revisions, read-confined to the selected home. Changing them invalidates the previous dry run. */
+  skills?: AgentSetupPlanSkillsItem[];
+  manager?: string;
+  stop_rules?: string;
+  rules?: Record<string, "allow" | "ask" | "never">;
+  /** Optional daily micro-USD cap, requiring billing:write. */
+  daily_spend?: number;
+  max_lease?: number;
+  assignment?: AgentSetupPlanAssignment;
+}
+
+export interface AgentSetupTest {
+  text: string;
+}
+
+export interface AgentSetup {
+  name: string;
+  owner: string;
+  plan: AgentSetupPlan;
+  phase: "reserved" | "created" | "home" | "skills" | "controls" | "policy" | "budget" | "assignment" | "configured" | "amending" | "activating" | "ready";
+  version: number;
+  revision?: number;
+  revision_hash?: string;
+  problem?: string;
+  test_run?: string;
+  assignment_id?: string;
+  skill_bindings_version?: number;
+  created_at: string;
+  updated_at: string;
+}
+
 /** An agent's definition. */
 export interface AgentSpec {
   name: string;
@@ -421,7 +455,7 @@ export interface LibraryProvenance {
   version: number;
 }
 
-export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance };
+export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance; origin_run?: string };
 
 export interface AuditRecord {
   id: string;
@@ -562,6 +596,27 @@ export interface RunFeedback {
   updated_at: string;
 }
 
+/** A current confined authored outcome snapshot for explicit human review. Personal scope is the default; project scope is derived from current placement and ordinary ownership. */
+export interface OutcomeLearningPreview {
+  run: string;
+  snapshot: string;
+  scope: LibraryScope;
+  outcome: RunOutcome;
+  project?: string;
+  project_title?: string;
+  may_project: boolean;
+  can_draft: boolean;
+  can_remember: boolean;
+}
+
+/** Agent-authored result framing. It never records approval or external execution. */
+export interface RunOutcome {
+  kind: "recommendation" | "decision" | "update";
+  summary: string;
+  decisions?: string[];
+  next_action?: string;
+}
+
 export interface SourceDependency {
   id: string;
   title: string;
@@ -582,7 +637,6 @@ export interface SourceDependencies {
 
 /** One run and its place in the call tree and in its conversation. */
 export interface Run {
-  citations: RunCitation[];
   /** The run's id, `r` and 32 hex digits, derived from the workspace and the trigger's id. */
   id: string;
   /** The trigger's id the run was accepted with: an event id, or for a
@@ -664,6 +718,8 @@ partial answer, what the agent had said when it stopped, which may
 be empty. It is never the whole answer when `status` is `stopped`.
  */
   answer?: string;
+  outcome?: RunOutcome;
+  citations: RunCitation[];
   error?: string;
   /** What a parked run is waiting for. */
   reason?: string;
@@ -2338,6 +2394,7 @@ export type ArtifactKind = "document" | "spreadsheet" | "presentation" | "image"
 
 /** The record of one published file. Its bytes are served by `getArtifactContent`. */
 export interface Artifact {
+  /** Opaque immutable artifact identity. Released legacy IDs remain readable; new IDs reveal no publication count. */
   id: string;
   title: string;
   kind: ArtifactKind;
@@ -3473,6 +3530,19 @@ export interface RefusalPolicy {
   period: PolicyPeriod;
 }
 
+export interface AgentSetupPlanSkillsItem {
+  id: string;
+  version: number;
+}
+
+export interface AgentSetupPlanAssignment {
+  goal: string;
+  done_when: string;
+  cron?: string;
+  trigger?: "manual" | "cron" | "source_change";
+  source?: string;
+}
+
 export interface PreparedCallInputMessagesItem {
   role: "user" | "assistant";
   text: string;
@@ -3620,6 +3690,20 @@ export interface GetProjectAgentHuesResponse {
   hues: Record<string, number>;
 }
 
+export interface AmendAgentSetupBody {
+  version: number;
+  plan: AgentSetupPlan;
+}
+
+export interface ListModelProvidersResponseProvidersItem {
+  name: string;
+  declared: boolean;
+}
+
+export interface ListModelProvidersResponse {
+  providers: ListModelProvidersResponseProvidersItem[];
+}
+
 export interface ListAgentsResponse {
   agents: Revision[];
   builtin: string[];
@@ -3648,6 +3732,19 @@ export interface ListReachableAgentsResponse {
 
 export interface ListPendingMemoryResponse {
   proposals: MemoryProposal[];
+}
+
+export interface DraftSkillFromOutcomeBody {
+  snapshot: string;
+  scope?: LibraryScope;
+  definition: LibrarySkillDefinition;
+}
+
+export interface RememberOutcomeDecisionBody {
+  snapshot: string;
+  scope?: LibraryScope;
+  decision: number;
+  text: string;
 }
 
 export interface ListRunFeedbackResponse {
@@ -3746,6 +3843,17 @@ export interface ListArtifactsResponse {
 
 export interface ListArtifactVersionsResponse {
   versions: Artifact[];
+}
+
+export interface PromoteArtifactMemoryBody {
+  version: number;
+  accepted: string;
+}
+
+export interface PromoteArtifactKnowledgeBody {
+  accepted: string;
+  version: number;
+  source: string;
 }
 
 export interface QueryJournalResponse {

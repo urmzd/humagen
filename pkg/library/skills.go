@@ -84,7 +84,8 @@ type Provenance struct {
 	Version int    `json:"version"`
 }
 type Revision struct {
-	ID string `json:"id"`
+	OriginRun string `json:"origin_run,omitempty"`
+	ID        string `json:"id"`
 	Definition
 	Scope       Scope       `json:"scope"`
 	Version     int         `json:"version"`
@@ -163,8 +164,8 @@ func (s *Store) put(tenant string, scope Scope, name string, rows []Revision) er
 
 // Draft appends an immutable revision; expected is the latest version read.
 // Provenance is validated by the platform before entering this store.
-func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time) (Revision, error) {
-	if tenant == "" || by == "" || !scope.Valid() || !d.Valid() || at.IsZero() {
+func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time, trustedOrigin ...string) (Revision, error) {
+	if tenant == "" || by == "" || !scope.Valid() || !d.Valid() || at.IsZero() || len(trustedOrigin) > 1 || len(trustedOrigin) == 1 && len(trustedOrigin[0]) > 128 {
 		return Revision{}, ErrInvalid
 	}
 	s.mu.Lock()
@@ -183,7 +184,7 @@ func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int
 	if d.Tools == nil {
 		d.Tools = []string{}
 	}
-	r := clone(Revision{ID: ID(scope, d.Name), Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
+	r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
 	next := append(slices.Clone(previous), r)
 	if err := s.put(tenant, scope, d.Name, next); err != nil {
 		return Revision{}, err

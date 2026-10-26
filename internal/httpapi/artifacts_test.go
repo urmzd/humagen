@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/policy"
 )
 
@@ -353,6 +354,45 @@ func TestRunManifest(t *testing.T) {
 	for _, path := range []string{"/events", "/manifest"} {
 		if res, _ := f.do(t, nil, "GET", "/api/runs/"+id+path, globex, ""); res.StatusCode != http.StatusNotFound {
 			t.Errorf("another tenant reading %s = %d", path, res.StatusCode)
+		}
+	}
+}
+
+func TestNativePDFExportReadsTheExactConfinedVersion(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machine(t, "acme", everything...)
+	reader := f.machine(t, "acme", "humagen:artifacts:read")
+	foreign := f.machine(t, "other", "humagen:artifacts:read")
+	if res, _ := f.do(t, nil, "POST", "/api/projects", admin, `{"name":"Exports"}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("create project: %d", res.StatusCode)
+	}
+	publish := func(text string) string {
+		bytes, err := nativefiles.Encode("plan.docx", `{"paragraphs":["`+text+`"]}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.p.PutFile("acme", "export-thread", "plan.docx", string(bytes)); err != nil {
+			t.Fatal(err)
+		}
+		file, err := f.p.Publish(t.Context(), platform.Publication{Tenant: "acme", Thread: "export-thread", Project: "Exports", Agent: "helper", Path: "plan.docx"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return file.ID
+	}
+	original := publish("Original decision")
+	publish("Revised decision")
+	response, body := f.raw(t, "/api/artifacts/"+original+"/pdf", reader)
+	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "application/pdf" || !strings.HasPrefix(body, "%PDF-") || !strings.Contains(body, "Original decision") || strings.Contains(body, "Revised decision") {
+		t.Fatalf("export = %d %q", response.StatusCode, body)
+	}
+	if response.Header.Get("Cache-Control") != "private, no-store" {
+		t.Fatal("export cache is not private")
+	}
+	for _, path := range []string{"/api/artifacts/" + original + "/pdf", "/api/artifacts/not-real/pdf"} {
+		response, _ := f.raw(t, path, foreign)
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("foreign export = %d", response.StatusCode)
 		}
 	}
 }

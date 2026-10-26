@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { KindChips } from "./InboxPage.tsx";
 import { FADE_PX, GUTTER_PX } from "./layout.ts";
 import { kinds as mailKinds } from "./mail.ts";
 import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
-import { Menu, Popover, Segmented, Tabs } from "./ui.tsx";
+import { Menu, MoreMenu, Popover, Segmented, Tabs } from "./ui.tsx";
 
 // happy-dom lays nothing out: every box is 0 wide. These tests give the boxes
 // that matter the sizes a 390px phone gives them, through the same properties
@@ -208,4 +208,83 @@ test("a browser that closed the sidebar before the rename starts with it closed"
   window.localStorage.clear();
   assert.equal(sidebarStartsOpen(1440), true);
   assert.equal(sidebarStartsOpen(390), false);
+});
+
+
+function tabletActions(main: {left:number;width:number}|null, controlLeft=320) {
+  const menuWidth=224;
+  patch(HTMLElement.prototype,"clientWidth",el=>el===document.documentElement?768:undefined);
+  patch(HTMLElement.prototype,"offsetWidth",el=>el.getAttribute("role")==="menu"?menuWidth:undefined);
+  patch(HTMLElement.prototype,"offsetLeft",el=>el.getAttribute("role")==="menu"?24-menuWidth:undefined);
+  patchRect(el=>el.tagName==="MAIN"?main??undefined:el.querySelector(':scope > [role="menu"]')?{left:controlLeft,width:24}:undefined);
+  const actions=<MoreMenu label="Project Actions" items={[{label:"Delete Project",onSelect:()=>{}}]}/>;
+  render(main?<><aside aria-label="Navigation"/><main>{actions}</main></>:actions);
+  fireEvent.click(screen.getByRole("button",{name:"Project Actions"}));
+  const panel=screen.getByRole("menu",{name:"Project Actions"});
+  const left=()=>controlLeft+24-menuWidth+(Number.parseFloat(panel.style.translate)||0);
+  return {panel,left,width:menuWidth};
+}
+
+test("tablet page actions stay in the main column instead of opening behind the sidebar",()=>{
+  const main={left:256,width:512};
+  const menu=tabletActions(main);
+  assert.ok(menu.left()>=main.left+GUTTER_PX,`Menu starts at ${menu.left()}, behind the content column`);
+  assert.ok(menu.left()+menu.width<=main.left+main.width-GUTTER_PX);
+});
+
+test("a narrower main column also bounds the right edge of its page actions",()=>{
+  const main={left:256,width:344};
+  const menu=tabletActions(main,760);
+  assert.ok(menu.left()>=main.left+GUTTER_PX);
+  assert.ok(menu.left()+menu.width<=main.left+main.width-GUTTER_PX,`Menu ends at ${menu.left()+menu.width}, outside the content column`);
+});
+
+test("page actions outside a main column retain their viewport placement",()=>{
+  const menu=tabletActions(null);
+  assert.equal(menu.left(),120);
+});
+
+test("an open page action menu remeasures its main column after viewport resize",()=>{
+  const main={left:256,width:512};
+  const menu=tabletActions(main);
+  main.left=320;main.width=448;
+  fireEvent(window,new Event("resize"));
+  assert.ok(menu.left()>=main.left+GUTTER_PX);
+  assert.ok(menu.left()+menu.width<=768-GUTTER_PX);
+});
+
+
+test("sidebar column resize reclamps an open menu and releases the observer on close",()=>{
+  const original=globalThis.ResizeObserver;
+  let resize:()=>void=()=>assert.fail("No main-column observer installed");
+  let observed:Element|undefined;
+  let released=false;
+  class ColumnObserver {
+    constructor(callback:ResizeObserverCallback){resize=()=>callback([],this as unknown as ResizeObserver)}
+    observe(target:Element){observed=target}
+    unobserve(){}
+    disconnect(){released=true}
+  }
+  Object.assign(globalThis,{ResizeObserver:ColumnObserver});
+  patched.push(()=>Object.assign(globalThis,{ResizeObserver:original}));
+  const main={left:256,width:512};
+  const menu=tabletActions(main);
+  assert.equal(observed,screen.getByRole("main"));
+  main.left=320;main.width=448;
+  act(()=>resize());
+  assert.ok(menu.left()>=main.left+GUTTER_PX);
+  fireEvent.click(screen.getByRole("button",{name:"Project Actions"}));
+  assert.equal(released,true);
+});
+
+test("main-column menu bounds still work without ResizeObserver",()=>{
+  const original=globalThis.ResizeObserver;
+  Object.assign(globalThis,{ResizeObserver:undefined});
+  patched.push(()=>Object.assign(globalThis,{ResizeObserver:original}));
+  const main={left:256,width:512};
+  const menu=tabletActions(main);
+  assert.ok(menu.left()>=main.left+GUTTER_PX);
+  main.left=320;main.width=448;
+  fireEvent(window,new Event("resize"));
+  assert.ok(menu.left()>=main.left+GUTTER_PX);
 });

@@ -238,7 +238,7 @@ export function FileTile(props: FileProps) {
           <button
             type="button"
             onClick={() => open(props)}
-            className="truncate text-left font-medium text-aui-fg text-aui-sm hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+            className="min-h-6 truncate text-left font-medium text-aui-fg text-aui-sm hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
             {title}
           </button>
@@ -251,20 +251,15 @@ export function FileTile(props: FileProps) {
         )}
         <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
           <span className={`shrink-0 tabular-nums ${busy ? "aui-shimmer" : ""}`}>
-            {meta.join(" · ")}
+            {meta.join(" ")}
           </span>
           {(error || description) && (
-            <>
-              <span aria-hidden className="opacity-50">
-                ·
-              </span>
-              <span
-                className={`truncate ${error ? "text-aui-bad" : ""}`}
-                title={error ?? description}
-              >
-                {error ?? description}
-              </span>
-            </>
+            <span
+              className={`truncate ${error ? "text-aui-bad" : ""}`}
+              title={error ?? description}
+            >
+              {error ?? description}
+            </span>
           )}
         </span>
       </span>

@@ -6,9 +6,9 @@ import { AgentMark, field, Label, primary, Problem } from "./ui.tsx";
 const words = defaultCopy.projects.context.preview;
 
 /** A preview comes from the live composer, with the reader's confinement. */
-export function ProjectContextPreview({ project, version }: { project: string; version: number }) {
-  const [agent, setAgent] = useState("");
-  const [channel, setChannel] = useState("");
+export function ProjectContextPreview({ project, version, initialAgent = "", initialChannel = "" }: { project: string; version: number; initialAgent?: string; initialChannel?: string }) {
+  const [agent, setAgent] = useState(initialAgent);
+  const [channel, setChannel] = useState(initialChannel);
   const [preview, setPreview] = useState<ProjectContext | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);

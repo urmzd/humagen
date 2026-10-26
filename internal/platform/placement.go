@@ -6,6 +6,7 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"slices"
 	"strings"
 )
 
@@ -30,6 +31,15 @@ func (p *Platform) RunPlace(tenant string, run runs.Run) Place {
 // execution record, accounting ancestry and replay input remain untouched.
 func (p *Platform) ShownRun(tenant string, run runs.Run) runs.Run {
 	if th, err := p.Threads.Get(tenant, run.Thread); err == nil && (th.Project != run.Project || th.Channel != cmp.Or(run.Channel, projects.General)) {
+		if run.Outcome != nil {
+			outcome := *run.Outcome
+			outcome.Decisions = slices.Clone(outcome.Decisions)
+			run.Outcome = &outcome
+		}
+		// Retained evidence can carry an original private source title or
+		// passage even after its journal event expired. A placement move does
+		// not grant those original capabilities to the new audience.
+		run.Citations = nil
 		hidden := append([]string{run.Project}, run.Within...)
 		hidden = append(hidden, runs.SourcesOf(run.Tag().Meta)...)
 		for _, old := range hidden {
@@ -41,6 +51,13 @@ func (p *Platform) ShownRun(tenant string, run runs.Run) runs.Run {
 			run.Error = strings.ReplaceAll(run.Error, old, "[Private context]")
 			run.Reason = strings.ReplaceAll(run.Reason, old, "[Private context]")
 			run.Cause = strings.ReplaceAll(run.Cause, old, "[Private context]")
+			if run.Outcome != nil {
+				run.Outcome.Summary = strings.ReplaceAll(run.Outcome.Summary, old, "[Private context]")
+				run.Outcome.NextAction = strings.ReplaceAll(run.Outcome.NextAction, old, "[Private context]")
+				for i, decision := range run.Outcome.Decisions {
+					run.Outcome.Decisions[i] = strings.ReplaceAll(decision, old, "[Private context]")
+				}
+			}
 		}
 		run.Project, run.Channel = th.Project, th.Channel
 		run.Within = nil

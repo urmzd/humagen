@@ -15,6 +15,7 @@ export type TurnEvent =
       source?: Turn["source"];
       disclaimer?: string;
     }
+  | { type: "outcome.updated"; outcome: NonNullable<Turn["outcome"]> }
   | { type: "text.delta"; text: string }
   | { type: "reasoning.delta"; text: string }
   | { type: "plan.updated"; title: string }
@@ -134,6 +135,8 @@ export function reduce(turn: Turn, event: TurnEvent): Turn {
         ...(reason ? { feedbackReason: reason } : {}),
       };
     }
+    case "outcome.updated":
+      return { ...turn, outcome: event.outcome };
     case "turn.completed":
       return { ...turn, status: "done" };
     case "turn.failed":

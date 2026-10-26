@@ -38,10 +38,11 @@ const field: ProjectView = {
 const older: Revision = { ...writer, rev: 1, hash: "h1", spec: { ...writer.spec, system_prompt: "Write." } };
 const notes: Note[] = [{ id: "n1", text: "Releases go out on Tuesdays.", source: "person", status: "approved", by: "ada", at: new Date().toISOString() }];
 
-let net: ReturnType<typeof stubFetch>;
+let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
   cleanup();
   net?.restore();
+  net = undefined;
 });
 
 function open(builtin: boolean, onHomed: () => void = () => {}) {
@@ -104,10 +105,10 @@ test("a built-in agent: the spec cannot be changed or saved, nor moved into a pr
   await screen.findByText("Releases go out on Tuesdays.");
   fireEvent.change(screen.getByLabelText("Something to remember"), { target: { value: "Ship on Fridays." } });
   fireEvent.click(screen.getByRole("button", { name: "Remember" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST" && r.path === "/api/agents/humagen-writer/memory")));
+  await waitFor(() => assert.ok(net!.seen.some((r) => r.method === "POST" && r.path === "/api/agents/humagen-writer/memory")));
   fireEvent.click(screen.getByRole("button", { name: "Forget" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "DELETE" && r.path === "/api/agents/humagen-writer/memory/n1")));
-  assert.ok(!net.seen.some((r) => r.method === "PUT"), "nothing revised the agent");
+  await waitFor(() => assert.ok(net!.seen.some((r) => r.method === "DELETE" && r.path === "/api/agents/humagen-writer/memory/n1")));
+  assert.ok(!net!.seen.some((r) => r.method === "PUT"), "nothing revised the agent");
 });
 
 test("the same agent, not built in: editing makes a save, and an older revision can be restored", async () => {
@@ -130,6 +131,43 @@ test("an agent of the workspace's own comes to live in a project from its Access
   tab("Access");
   fireEvent.click(screen.getByRole("button", { name: /^Lives in:/ }));
   fireEvent.click(await screen.findByRole("option", { name: /Field/ }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/humagen-writer/home")));
+  await waitFor(() => assert.ok(net!.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/humagen-writer/home")));
   await waitFor(() => assert.equal(homed, 1));
+});
+
+test("the agent directory filters authoritative operational states and saves a versioned workspace pause",async()=>{
+ const {Agents}=await import("./Agents.tsx");
+ const {defaultCopy}=await import("@humagen/components");
+ const state={paused:false,version:3,updated_at:"2026-10-01T00:00:00Z",updated_by:"ada"};
+ let saved:unknown;
+ net=stubFetch({"GET /api/agent-roster":()=>({controls:{"humagen-writer":{...state,state:"watching",effective_paused:false}},window_days:31}),"GET /api/agent-controls":()=>state,"PUT /api/agent-controls":body=>{saved=body;return {...state,paused:true,version:4}}});
+ render(<Agents operational agents={[writer]} stats={new Map()} canWrite onOpen={()=>{}} onNew={()=>{}}/>);
+ await waitFor(()=>assert.ok(!(screen.getByRole("button",{name:defaultCopy.agentOperations.pauseAll}) as HTMLButtonElement).disabled));
+ fireEvent.change(screen.getByLabelText(defaultCopy.agentOperations.filter),{target:{value:"watching"}});
+ assert.ok(screen.getByRole("button",{name:/humagen-writer/}));
+ fireEvent.click(screen.getByRole("button",{name:defaultCopy.agentOperations.pauseAll}));
+ await screen.findByRole("button",{name:defaultCopy.agentOperations.resumeAll});
+ assert.deepEqual(saved,{version:3,paused:true});
+});
+
+test("the roster filters Needs Review without presenting stale skill bindings as ready", async () => {
+  const {Agents}=await import("./Agents.tsx");
+  const {defaultCopy}=await import("@humagen/components");
+  const state={paused:false,version:1,updated_at:"2026-10-01T00:00:00Z",updated_by:"ada"};
+  const ready={...writer,spec:{...writer.spec,name:"ready-agent"}};
+  net=stubFetch({"GET /api/agent-roster":()=>({controls:{"humagen-writer":{...state,state:"needs_review",needs_skill_review:true,effective_paused:false},"ready-agent":{...state,state:"ready",effective_paused:false}},window_days:31}),"GET /api/agent-controls":()=>state});
+  render(<Agents operational agents={[writer,ready]} stats={new Map()} canWrite onOpen={()=>{}} onNew={()=>{}}/>);
+  await screen.findByRole("option",{name:"Needs Review"});
+  fireEvent.change(screen.getByLabelText(defaultCopy.agentOperations.filter),{target:{value:"needs_review"}});
+  assert.ok(await screen.findByRole("button",{name:/humagen-writer/}));
+  assert.ok(!screen.queryByRole("button",{name:/ready-agent/}));
+});
+
+test("agent detail offers Context review for native skill audience review even with current revision", async () => {
+  const {AgentOperations}=await import("./AgentOperations.tsx");
+  net=stubFetch({"GET /api/agent-roster":()=>({controls:{"humagen-writer":{paused:false,version:1,state:"needs_review",needs_skill_review:true,effective_paused:false}},window_days:31}),"GET /api/agents/humagen-writer/skills":()=>({agent:"humagen-writer",agent_revision:2,version:1,skills:[{id:"published-exact",version:1}]}),"GET /api/agent-setups/humagen-writer":()=>new Response(null,{status:404})});
+  render(<AgentOperations name="humagen-writer" revision={2} canReadRuns canWrite onRun={()=>{}}/>);
+  const review=await screen.findByRole("link",{name:"Review Default Skills"});
+  assert.equal(review.getAttribute("href"),"/agents/humagen-writer/context");
+  assert.ok(screen.getByText("Needs Review"));
 });

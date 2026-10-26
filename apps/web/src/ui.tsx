@@ -740,8 +740,8 @@ export function Tabs<T extends string>({
 }
 
 /**
- * How far to move an open panel sideways so it stays inside the screen's
- * gutter, when the control it hangs from sits near an edge, as the composer's
+ * How far to move an open panel sideways so it stays inside its main content
+ * column, or the screen gutter outside a main column, when the control it hangs from sits near an edge, as the composer's
  * agent menu does on a phone. It is measured from the panel's laid-out box,
  * which its opening scale does not change, and again when the window resizes.
  */
@@ -749,16 +749,29 @@ export function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefO
   const [shift, setShift] = useState(0);
   useLayoutEffect(() => {
     if (!open) return;
+    const column = root.current?.closest<HTMLElement>("main, [role=main]");
     const place = () => {
       const p = panel.current;
       const r = root.current;
       if (!p || !r) return;
       const left = r.getBoundingClientRect().left + r.clientLeft + p.offsetLeft;
-      setShift(nudgeInto({ left, width: p.offsetWidth }, document.documentElement.clientWidth || window.innerWidth));
+      const viewport = document.documentElement.clientWidth || window.innerWidth;
+      const box = column?.getBoundingClientRect();
+      const start = Math.max(0, box?.left ?? 0);
+      const end = Math.min(viewport, box?.right ?? viewport);
+      // An unmeasured or off-screen column falls back to the viewport.
+      const origin = end > start ? start : 0;
+      const width = end > start ? end - start : viewport;
+      setShift(nudgeInto({ left: left - origin, width: p.offsetWidth }, width));
     };
     place();
     window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
+    const observer = column && typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : undefined;
+    if (column) observer?.observe(column);
+    return () => {
+      window.removeEventListener("resize", place);
+      observer?.disconnect();
+    };
   }, [open, panel, root]);
   return shift;
 }
@@ -1352,7 +1365,7 @@ export function Menu<T extends string>({
     <div ref={root} className={`relative ${quiet ? "inline-flex" : "flex"} ${className}`}>
       <button
         type="button"
-        aria-label={`${label}: ${chosen?.label ?? "none"}`}
+        aria-label={chosen ? `${label}: ${chosen.label}` : value ? `${label}: ${value}` : label}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? id : undefined}

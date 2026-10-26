@@ -532,6 +532,16 @@ func (p *Platform) AgentPlaces(tenant string, agents []string) map[string]AgentP
 // elsewhere, an alert rule watching it elsewhere, or a client that routes to
 // it, since a client files its runs at the root. The platform's own agents live nowhere.
 func (p *Platform) SetAgentHome(ctx context.Context, tenant, agent, project string, w projects.Writer) error {
+	unlock, err := p.lockSetupRevision(tenant, agent)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return p.setAgentHome(ctx, tenant, agent, project, w)
+}
+
+// setAgentHome is also used by the setup flow while it holds the same lock.
+func (p *Platform) setAgentHome(ctx context.Context, tenant, agent, project string, w projects.Writer) error {
 	p.skillDefaultsMu.Lock()
 	defer p.skillDefaultsMu.Unlock()
 	if IsBuiltin(agent) && projects.NameOf(project) != projects.Root {

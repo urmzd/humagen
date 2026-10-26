@@ -20,7 +20,7 @@ export function StorageUsed({ use }: { use: StorageUse }) {
         <ul className="flex flex-col gap-2" aria-label="Storage by project">
           {top.map((p) => (
             <li key={p.name} className="flex items-baseline justify-between gap-3 text-aui-sm">
-              <span className="min-w-0 truncate text-aui-fg">{p.name || "Projectless"}</span>
+              <span className="min-w-0 truncate text-aui-fg">{p.name || defaultCopy.projects.companyName}</span>
               <span className="shrink-0 text-aui-xs tabular-nums text-aui-muted">
                 {bytes(p.bytes)}, {p.count} {p.count === 1 ? "artifact" : "artifacts"}
               </span>
@@ -101,7 +101,7 @@ export function StoredDetail({
             <time dateTime={file.created_at}>{ago(file.created_at)}</time>
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           {onOpenArtifact && <button type="button" className={button} onClick={() => onOpenArtifact(file)}>Open in Workspace</button>}
           <a className={primary} href={contentUrl(file.id)} download={file.title}>
             Download

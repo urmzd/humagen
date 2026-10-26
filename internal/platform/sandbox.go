@@ -8,12 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -26,8 +28,10 @@ import (
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // Files an agent makes.
@@ -51,10 +55,13 @@ const (
 	ToolFileRead  = "file_read"
 	ToolFileList  = "file_list"
 	ToolPublish   = "publish_artifact"
+	ToolOutcome   = "record_outcome"
 )
 
 // FileTools lists the names an agent's spec may grant.
-func FileTools() []string { return []string{ToolFileWrite, ToolFileRead, ToolFileList, ToolPublish} }
+func FileTools() []string {
+	return []string{ToolFileWrite, ToolFileRead, ToolFileList, ToolPublish, ToolOutcome}
+}
 
 // Bounds on a conversation's scratch directory.
 const (
@@ -215,6 +222,9 @@ var textTypes = map[string]string{
 // sniff says what bytes are. A name never makes binary content into text or
 // text into something a browser would run as another type.
 func sniff(name string, b []byte) string {
+	if mime := nativefiles.MIME(name, b); mime != "" {
+		return mime
+	}
 	found, _, _ := strings.Cut(http.DetectContentType(b), ";")
 	if strings.HasPrefix(found, "text/") && utf8.Valid(b) {
 		if t, ok := textTypes[strings.ToLower(path.Ext(name))]; ok {
@@ -233,6 +243,12 @@ func isText(mime string) bool {
 func kindOf(mime, name string) artifacts.Kind {
 	ext := strings.ToLower(path.Ext(name))
 	switch {
+	case strings.Contains(mime, "wordprocessingml.document"):
+		return artifacts.Document
+	case strings.Contains(mime, "presentationml.presentation"):
+		return artifacts.Presentation
+	case strings.Contains(mime, "spreadsheetml.sheet"):
+		return artifacts.Spreadsheet
 	case mime == "application/pdf":
 		return artifacts.PDF
 	case mime == "text/html":
@@ -513,38 +529,101 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(payload.Action
 		return &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name, Description: desc, Parameters: params}, Fn: fn}
 	}
 	return map[string]saigetypes.Tool{
+		ToolOutcome: tool(ToolOutcome,
+			"Record the result's recommendation, decision or update as structured authored content. This never approves or executes an external action. Keep tool/call execution claims grounded in their actual results. The summary is required; decisions is a JSON array of strings; next_action describes what the person should do next.",
+			schema([]string{"kind", "summary"}, map[string]string{"kind": "recommendation, decision or update", "summary": "Result summary, up to 4000 bytes", "decisions": "JSON array of at most 20 decisions, each up to 1000 bytes", "next_action": "Next action, up to 2000 bytes"}),
+			func(_ context.Context, args map[string]any) (string, error) {
+				outcome := runs.Outcome{Kind: arg(args, "kind"), Summary: arg(args, "summary"), NextAction: arg(args, "next_action")}
+				if raw := arg(args, "decisions"); raw != "" {
+					if len(raw) > 22000 || json.Unmarshal([]byte(raw), &outcome.Decisions) != nil {
+						return "", fmt.Errorf("outcome: decisions must be a bounded JSON array of strings")
+					}
+				}
+				if err := outcome.Validate(); err != nil {
+					return "", err
+				}
+				if req.RunID == "" {
+					return "", fmt.Errorf("outcome: a recorded run is required")
+				}
+				if _, err := p.Runs.Get(req.Tenant, req.RunID); err != nil {
+					return "", err
+				}
+				data, _ := json.Marshal(outcome)
+				if action == nil {
+					return "", fmt.Errorf("outcome: recording is unavailable")
+				}
+				if err := action(payload.Action{Name: ToolOutcome, Summary: "Recorded authored outcome", Data: data}); err != nil {
+					return "", err
+				}
+				return "Recorded the authored outcome. This granted no approval and executed no external action.", nil
+			}),
 		ToolDelegate:  p.delegateTool(req, action),
 		ToolCallAgent: p.callAgentTool(req, action),
 		ToolFileWrite: tool(ToolFileWrite,
-			"Write a text file in this conversation's working directory, replacing it if it exists. Files stay for later turns. Publish one with publish_artifact to give it to the person.",
-			schema([]string{"path", "content"}, map[string]string{"path": "Relative path, such as report.md or data/q3.csv", "content": "The whole content of the file"}),
+			"Write a file in this conversation's working directory, replacing it if it exists. For editable Office output use format=native with a .docx, .pptx, .xlsx or .pdf path and JSON content: {title?, paragraphs?:string[], slides?:[{title,body:string[],notes?,sources?:string[]}], rows?:string[][], sources?:string[]}. DOCX supports title, paragraphs, rows and sources; PPTX supports title, slides and sources; XLSX supports rows only; PDF supports title and sources with either paragraphs/rows or slides. Unsupported meaningful fields are rejected. Wait for a successful file_write before dependent file_read or publish calls; do not batch dependent calls in parallel. Max 100 slides, 1000 rows, 100 columns, 500 paragraphs, 32000 bytes per text, 1 MB JSON. PDF uses Windows-1252 text and refuses unsupported characters instead of dropping them. Other formats use plain text. Publish with publish_artifact to give it to the person.",
+			schema([]string{"path", "content"}, map[string]string{"path": "Relative path, such as report.md or data/q3.csv", "content": "The whole file content; for format=native, the complete revision JSON", "format": "native for editable DOCX, PPTX, XLSX or PDF; omit for text"}),
 			func(_ context.Context, args map[string]any) (string, error) {
 				_, _, root, err := where()
 				if err != nil {
 					return "", err
 				}
 				defer func() { _ = root.Close() }()
-				f, err := writeSandbox(root, arg(args, "path"), arg(args, "content"))
+				content := arg(args, "content")
+				switch format := arg(args, "format"); format {
+				case "native":
+					data, err := nativefiles.Encode(arg(args, "path"), content)
+					if err != nil {
+						return "", fmt.Errorf("%w: %v", ErrSandbox, err)
+					}
+					content = string(data)
+				case "", "text":
+				default:
+					return "", fmt.Errorf("%w: format must be text or native", ErrSandbox)
+				}
+				f, err := writeSandbox(root, arg(args, "path"), content)
 				if err != nil {
 					return "", err
 				}
 				return fmt.Sprintf("Wrote %s (%d bytes).", f.Path, f.Size), nil
 			}),
 		ToolFileRead: tool(ToolFileRead,
-			"Read a file from this conversation's working directory.",
+			"Read text or the editable revision JSON of a native Office file from this conversation. To revise an immutable published version, use path artifact:<id>@<version>. Other conversations are never read.",
 			schema([]string{"path"}, map[string]string{"path": "Relative path of the file"}),
-			func(_ context.Context, args map[string]any) (string, error) {
-				_, _, root, err := where()
+			func(ctx context.Context, args map[string]any) (string, error) {
+				thread, _, root, err := where()
 				if err != nil {
 					return "", err
 				}
 				defer func() { _ = root.Close() }()
-				b, _, err := readSandbox(root, arg(args, "path"))
+				var b []byte
+				requested := arg(args, "path")
+				if strings.HasPrefix(requested, "artifact:") {
+					id, rawVersion, ok := strings.Cut(strings.TrimPrefix(requested, "artifact:"), "@")
+					version, parseErr := strconv.Atoi(rawVersion)
+					artifact, getErr := p.Artifacts.Get(req.Tenant, id)
+					if !ok || parseErr != nil || version < 1 || getErr != nil || artifact.Thread != thread || artifact.Version != version {
+						return "", fmt.Errorf("%w: that version is not available in this conversation", ErrSandbox)
+					}
+					reader, _, openErr := p.Blobs.Get(ctx, dirName(req.Tenant), artifact.Key)
+					if openErr != nil {
+						return "", fmt.Errorf("%w: that version is not available in this conversation", ErrSandbox)
+					}
+					defer func() { _ = reader.Close() }()
+					b, err = io.ReadAll(io.LimitReader(reader, MaxFileBytes+1))
+					if len(b) > MaxFileBytes {
+						return "", fmt.Errorf("%w: that file exceeds the read limit", ErrSandbox)
+					}
+				} else {
+					b, _, err = readSandbox(root, requested)
+				}
 				if err != nil {
 					return "", err
 				}
+				if model, err := nativefiles.Decode(b); err == nil {
+					return model, nil
+				}
 				if !utf8.Valid(b) {
-					return "", fmt.Errorf("%w: that file is not text", ErrSandbox)
+					return "", fmt.Errorf("%w: that file is not text or a native revision model", ErrSandbox)
 				}
 				return string(b), nil
 			}),

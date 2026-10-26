@@ -111,9 +111,10 @@ type Note struct {
 
 // Store holds every agent's notes.
 type Store struct {
-	mu   sync.RWMutex
-	by   map[string][]Note
-	next int
+	mu      sync.RWMutex
+	by      map[string][]Note
+	origins map[string]map[string]string
+	next    int
 	// kept is where each owner's notes are written. Nil keeps them only in
 	// memory.
 	kept *state.Table[stored]
@@ -124,12 +125,15 @@ type Store struct {
 // restart. An owner whose notes are all gone keeps its record for the same
 // reason.
 type stored struct {
-	Notes []Note `json:"notes"`
-	Next  int    `json:"next"`
+	Notes   []Note            `json:"notes"`
+	Next    int               `json:"next"`
+	Origins map[string]string `json:"reviewed_origins,omitempty"`
 }
 
 // NewStore returns an empty store in memory.
-func NewStore() *Store { return &Store{by: map[string][]Note{}} }
+func NewStore() *Store {
+	return &Store{by: map[string][]Note{}, origins: map[string]map[string]string{}}
+}
 
 // Open returns a store that keeps every note in st, holding what st already
 // has. A nil st is NewStore.
@@ -145,6 +149,7 @@ func Open(st state.Store) (*Store, error) {
 		}
 		if len(r.Notes) > 0 {
 			s.by[key(tenant, owner)] = r.Notes
+			s.origins[key(tenant, owner)] = r.Origins
 		}
 		return nil
 	})
@@ -159,12 +164,24 @@ func key(tenant, agent string) string { return tenant + "\x00" + agent }
 // set replaces an owner's notes, writing them first. It is called with the
 // lock held, and on a failed write leaves everything as it was.
 func (s *Store) set(tenant, owner string, notes []Note, next int) error {
-	if err := s.kept.Put(tenant, owner, stored{Notes: notes, Next: next}); err != nil {
+	return s.setOrigins(tenant, owner, notes, next, s.origins[key(tenant, owner)])
+}
+
+func (s *Store) setOrigins(tenant, owner string, notes []Note, next int, origins map[string]string) error {
+	retained := map[string]string{}
+	for _, n := range notes {
+		if origin := origins[n.ID]; origin != "" {
+			retained[n.ID] = origin
+		}
+	}
+	if err := s.kept.Put(tenant, owner, stored{Notes: notes, Next: next, Origins: retained}); err != nil {
 		return fmt.Errorf("memory: write: %w", err)
 	}
 	s.next = next
+	s.origins[key(tenant, owner)] = retained
 	if len(notes) == 0 {
 		delete(s.by, key(tenant, owner))
+		delete(s.origins, key(tenant, owner))
 		return nil
 	}
 	s.by[key(tenant, owner)] = notes

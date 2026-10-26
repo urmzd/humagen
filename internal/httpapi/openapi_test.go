@@ -53,6 +53,7 @@ import (
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -597,8 +598,9 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
 		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: revisionView{}}, "Choice": {typ: pick.Choice{}},
-		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
+
+		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
 		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
@@ -894,6 +896,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// An agent on the "ollama" provider asks a person, so a run can park on
 	// a question here. Every other agent is offline.
 	f := newFixtureWith(t, platform.Config{AgentOptions: []agentrt.Option{
+		agentrt.WithProvider(agentrt.ProviderOpenAI, func(agentrt.Spec) (saigetypes.Provider, error) {
+			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
+		}),
 		agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
 				agenttest.ToolCallResponse("call-ask", "ask_person", map[string]any{"question": "Which colour?", "options": []any{"red", "blue"}}),
@@ -1786,6 +1791,29 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatal("governance-only private read was not in the audit")
 	}
 
+	c.call(ana, "GET", "/api/find-help", "/api/find-help?q=renewal", "", http.StatusOK)
+	c.call(ana, "GET", "/api/find-help", "/api/find-help", "", http.StatusBadRequest)
+	placementRoute := "/api/threads/{id}/placement"
+	draftID := obj(draft.field("thread"))["id"].(string)
+	previewed := c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement?project=Field&channel=renewals", "", http.StatusOK)
+	publicationRoute := "/api/threads/{id}/publication"
+	publicationPath := "/api/threads/" + draftID + "/publication"
+	summaryPublished := c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"Reviewed summary for the project","placement_token":%q}`, previewed.str("token")), http.StatusCreated)
+	if summaryPublished.str("id") == draftID || strings.Contains(string(summaryPublished.raw), draftID) {
+		t.Fatal("summary publication copied private source linkage")
+	}
+	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"reviewed","placement_token":"stale"}`, http.StatusConflict)
+	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"","placement_token":"stale"}`, http.StatusConflict)
+	c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"","placement_token":%q}`, previewed.str("token")), http.StatusBadRequest)
+	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement", "", http.StatusBadRequest)
+	activeDraft := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"preview only"}`, http.StatusCreated)
+	activeID := obj(activeDraft.field("thread"))["id"].(string)
+	activeTag := envelope.Tag{ID: "placement-active", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "active", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: activeID}, At: time.Now()}
+	if err := c.f.p.Runs.Record(runtime.RunID("acme", activeTag.ID), activeTag, 1); err != nil {
+		t.Fatal(err)
+	}
+	c.call(ana, "GET", placementRoute, "/api/threads/"+activeID+"/placement?project=Field&channel=renewals", "", http.StatusConflict)
+
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?q=Field&limit=5", "", http.StatusOK)
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?limit=51", "", http.StatusBadRequest)
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?kinds=unknown", "", http.StatusBadRequest)
@@ -1816,29 +1844,6 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	forkRun := obj(sliceOf(forkAnswer.field("runs"))[0])["id"].(string)
 	c.settled(ana, forkRun)
 	c.call(ana, "POST", "/api/threads/{id}/bring-back", "/api/threads/"+forked.str("id")+"/bring-back", `{"run":"`+forkRun+`","text":"Alternative result"}`, http.StatusCreated)
-
-	c.call(ana, "GET", "/api/find-help", "/api/find-help?q=renewal", "", http.StatusOK)
-	c.call(ana, "GET", "/api/find-help", "/api/find-help", "", http.StatusBadRequest)
-	placementRoute := "/api/threads/{id}/placement"
-	draftID := obj(draft.field("thread"))["id"].(string)
-	previewed := c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement?project=Field&channel=renewals", "", http.StatusOK)
-	publicationRoute := "/api/threads/{id}/publication"
-	publicationPath := "/api/threads/" + draftID + "/publication"
-	summaryPublished := c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"Reviewed summary for the project","placement_token":%q}`, previewed.str("token")), http.StatusCreated)
-	if summaryPublished.str("id") == draftID || strings.Contains(string(summaryPublished.raw), draftID) {
-		t.Fatal("summary publication copied private source linkage")
-	}
-	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"reviewed","placement_token":"stale"}`, http.StatusConflict)
-	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"","placement_token":"stale"}`, http.StatusConflict)
-	c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"","placement_token":%q}`, previewed.str("token")), http.StatusBadRequest)
-	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement", "", http.StatusBadRequest)
-	activeDraft := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"preview only"}`, http.StatusCreated)
-	activeID := obj(activeDraft.field("thread"))["id"].(string)
-	activeTag := envelope.Tag{ID: "placement-active", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "active", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: activeID}, At: time.Now()}
-	if err := c.f.p.Runs.Record(runtime.RunID("acme", activeTag.ID), activeTag, 1); err != nil {
-		t.Fatal(err)
-	}
-	c.call(ana, "GET", placementRoute, "/api/threads/"+activeID+"/placement?project=Field&channel=renewals", "", http.StatusConflict)
 
 	share, draftPath := "/api/threads/{id}/share", "/api/threads/"+obj(draft.field("thread"))["id"].(string)+"/share"
 	c.call(ana, "POST", share, draftPath, `{"add":["nobody"]}`, http.StatusBadRequest)
@@ -1967,6 +1972,37 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/preferences/photo", "/api/preferences/photo", "not a picture", http.StatusBadRequest)
 	c.call(acme, "DELETE", "/api/preferences/photo", "/api/preferences/photo", "", http.StatusOK)
 
+	// Authored outcomes become learning only after a current human review.
+	learningMe := c.call(auditAdmin, "GET", "/api/me", "/api/me", "", http.StatusOK)
+	learningThread, _, err := f.p.Threads.Start("acme", threads.Thread{Channel: "general", Visibility: threads.Private}, threads.Message{By: learningMe.str("handle"), Text: "Review this decision"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	learningID := runtime.RunID("acme", "contract-learning")
+	if err := f.p.Runs.Record(learningID, envelope.Tag{ID: "contract-learning", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "Review the plan", Meta: map[string]string{runs.MetaThread: learningThread.ID}, At: time.Now()}, 1); err != nil {
+		t.Fatal(err)
+	}
+	learningAction, _ := payload.Encode(payload.Action{Name: platform.ToolOutcome, Data: json.RawMessage(`{"kind":"decision","summary":"Use the reviewed plan","decisions":["Keep the Tuesday launch"]}`)})
+	f.p.Runs.Observe(envelope.Event{Tenant: "acme", RunID: learningID, Kind: envelope.KindActionTaken, Payload: learningAction, At: time.Now()})
+	learningEnd, _ := payload.Encode(payload.Lifecycle{Text: "The decision is ready."})
+	f.p.Runs.Observe(envelope.Event{Tenant: "acme", RunID: learningID, Kind: envelope.KindCompleted, Payload: learningEnd, At: time.Now()})
+	if err := f.p.Runs.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	learningAt := "/api/runs/" + learningID
+	previewLearning := c.call(auditAdmin, "GET", "/api/runs/{id}/learning", learningAt+"/learning", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/runs/{id}/learning", learningAt+"/learning?scope=invalid", "", http.StatusBadRequest)
+	c.call(auditAdmin, "GET", "/api/runs/{id}/learning", "/api/runs/"+id+"/learning", "", http.StatusConflict)
+	c.call(acme, "GET", "/api/runs/{id}/learning", learningAt+"/learning", "", http.StatusNotFound)
+	learningSkillBody := `{"snapshot":"` + previewLearning.str("snapshot") + `","definition":{"name":"learned-contract","description":"Review the facts","instructions":"State the decision and owner","tools":[]}}`
+	c.call(auditAdmin, "POST", "/api/runs/{id}/skill-draft", learningAt+"/skill-draft", learningSkillBody, http.StatusCreated)
+	c.call(auditAdmin, "POST", "/api/runs/{id}/skill-draft", learningAt+"/skill-draft", strings.Replace(learningSkillBody, previewLearning.str("snapshot"), "stale", 1), http.StatusConflict)
+	c.call(auditAdmin, "POST", "/api/runs/{id}/skill-draft", learningAt+"/skill-draft", strings.Replace(learningSkillBody, `"tools":[]`, `"tools":["file_write"]`, 1), http.StatusBadRequest)
+	learningMemoryBody := `{"snapshot":"` + previewLearning.str("snapshot") + `","decision":0,"text":"Keep the Tuesday launch"}`
+	c.call(auditAdmin, "POST", "/api/runs/{id}/decision-memory", learningAt+"/decision-memory", strings.Replace(learningMemoryBody, previewLearning.str("snapshot"), "stale", 1), http.StatusConflict)
+	c.call(auditAdmin, "POST", "/api/runs/{id}/decision-memory", learningAt+"/decision-memory", strings.Replace(learningMemoryBody, `"decision":0`, `"decision":99`, 1), http.StatusBadRequest)
+	c.call(auditAdmin, "POST", "/api/runs/{id}/decision-memory", learningAt+"/decision-memory", learningMemoryBody, http.StatusCreated)
+
 	// Published files.
 	if err := f.p.PutFile("acme", first.str("thread"), "notes.txt", "Refunds fell by a third."); err != nil {
 		t.Fatal(err)
@@ -1987,7 +2023,93 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("the download is %q as %q", file.raw, file.header.Get("Content-Type"))
 	}
 	c.call(globex, "GET", "/api/artifacts/{id}/content", artifactPath+"/content", "", http.StatusNotFound)
+	native, err := nativefiles.Encode("brief.docx", `{"paragraphs":["An actual native brief."]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.p.PutFile("acme", first.str("thread"), "brief.docx", string(native)); err != nil {
+		t.Fatal(err)
+	}
+	nativeArtifact, err := f.p.Publish(t.Context(), platform.Publication{Tenant: "acme", Thread: first.str("thread"), Run: first.str("id"), Agent: "helper", Project: "Launch", Path: "brief.docx"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(acme, "GET", "/api/artifacts/{id}/pdf", "/api/artifacts/"+nativeArtifact.ID+"/pdf", "", http.StatusOK)
+	c.call(acme, "GET", "/api/artifacts/{id}/pdf", artifactPath+"/pdf", "", http.StatusBadRequest)
+	c.call(globex, "GET", "/api/artifacts/{id}/pdf", artifactPath+"/pdf", "", http.StatusNotFound)
+	promoter := auth.Principal{Subject: "accepted-reviewer", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+	acceptedThread, err := f.p.StartThread(t.Context(), promoter, platform.ThreadInput{Project: "Launch", Visibility: threads.Shared, Text: "Accepted brief"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.p.PutFile("acme", acceptedThread.Thread.ID, "accepted.md", "The reviewed accepted result."); err != nil {
+		t.Fatal(err)
+	}
+	acceptedFile, err := f.p.Publish(t.Context(), platform.Publication{Tenant: "acme", Thread: acceptedThread.Thread.ID, Project: "Launch", Agent: "helper", Path: "accepted.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Knowledge.Create("acme", "accepted-native", "Accepted project results", "accepted-reviewer", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Knowledge.Configure("acme", "accepted-native", knowledge.SourceConfig{Mode: knowledge.Indexed, Provider: "manual", Owner: "accepted-reviewer", Project: "Launch"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	promotionPath := "/api/artifacts/" + acceptedFile.ID + "/promote-knowledge"
+	c.call(acme, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":1,"source":"accepted-native","accepted":true}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":2,"source":"accepted-native","accepted":true}`, http.StatusBadRequest)
+	c.call(globex, "POST", "/api/artifacts/{id}/promote-knowledge", promotionPath, `{"version":1,"source":"accepted-native","accepted":true}`, http.StatusNotFound)
 
+	memoryPath := "/api/artifacts/" + acceptedFile.ID + "/promote-memory"
+	c.call(acme, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":1,"accepted":true}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":2,"accepted":true}`, http.StatusBadRequest)
+	c.call(globex, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":1,"accepted":true}`, http.StatusNotFound)
+
+	setupPlanJSON := `{"spec":{"name":"reviewed-setup","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help with reviewed company work."},"project":"Launch"}`
+	setupPlanJSON = strings.Replace(setupPlanJSON, `"project":"Launch"`, `"project":"Launch","skills":[{"id":"`+libraryID+`","version":1}]`, 1)
+	setupReply := c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", setupPlanJSON, http.StatusOK)
+	if setupReply.str("phase") != "configured" {
+		t.Fatalf("setup phase=%s", setupReply.raw)
+	}
+	setupPath := "/api/agent-setups/reviewed-setup"
+	c.call(auditAdmin, "GET", "/api/agent-setups/{name}", setupPath, "", http.StatusOK)
+	c.call(globex, "GET", "/api/agent-setups/{name}", setupPath, "", http.StatusNotFound)
+	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/resume", setupPath+"/resume", "", http.StatusOK)
+	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", setupPath+"/activate", "", http.StatusBadRequest)
+	testedSetup := c.call(auditAdmin, "POST", "/api/agent-setups/{name}/test", setupPath+"/test", `{"text":"Answer a setup check."}`, http.StatusOK)
+	setupRunID := testedSetup.str("test_run")
+	c.settled(auditAdmin, setupRunID)
+
+	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", setupPath+"/activate", "", http.StatusOK)
+	c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", strings.Replace(setupPlanJSON, "Help with reviewed company work.", "Another definition.", 1), http.StatusConflict)
+	c.call(auditAdmin, "PUT", "/api/agents/{name}/home", "/api/agents/reviewed-setup/home", `{"project":"~"}`, http.StatusOK)
+
+	c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", strings.Replace(setupPlanJSON, "Launch", "no-such-project", 1), http.StatusNotFound)
+	changedPlan := strings.Replace(strings.Replace(setupPlanJSON, "reviewed-setup", "changed-setup", 1), "Launch", "~", 1)
+	c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", changedPlan, http.StatusOK)
+	changedTest := c.call(auditAdmin, "POST", "/api/agent-setups/{name}/test", "/api/agent-setups/changed-setup/test", `{"text":"Check this draft."}`, http.StatusOK)
+	changedID := changedTest.str("test_run")
+	c.settled(auditAdmin, changedID)
+
+	changedRev, err := f.p.Agents.Get(t.Context(), "acme", "changed-setup", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedSpec := changedRev.Spec
+	changedSpec.Description = "Changed after testing"
+	if _, err := f.p.Agents.Revise(t.Context(), "acme", changedSpec, changedRev.Rev, setupReply.str("owner")); err != nil {
+		t.Fatal(err)
+	}
+	c.call(auditAdmin, "POST", "/api/agent-setups/{name}/activate", "/api/agent-setups/changed-setup/activate", "", http.StatusConflict)
+
+	amendmentPlan := strings.Replace(strings.Replace(setupPlanJSON, "reviewed-setup", "amended-setup", 1), "Launch", "~", 1)
+	beforeAmend := c.call(auditAdmin, "POST", "/api/agent-setups", "/api/agent-setups", amendmentPlan, http.StatusOK)
+	correctedPlan := strings.Replace(amendmentPlan, "gpt-4o-mini", "gpt-4o", 1)
+	amendBody := fmt.Sprintf(`{"version":%v,"plan":%s}`, beforeAmend.field("version"), correctedPlan)
+	c.call(auditAdmin, "PUT", "/api/agent-setups/{name}", "/api/agent-setups/amended-setup", amendBody, http.StatusOK)
+	c.call(auditAdmin, "PUT", "/api/agent-setups/{name}", "/api/agent-setups/amended-setup", amendBody, http.StatusConflict)
+
+	c.call(acme, "GET", "/api/model-providers", "/api/model-providers", "", http.StatusOK)
 	// The busy workspace, read end to end, then taken apart.
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=24h&bucket=1h", "", http.StatusOK)
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?since=2026-10-01T00:00:00Z&until=2026-10-02T00:00:00Z&bucket=24h", "", http.StatusOK)
@@ -2002,7 +2124,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			continue
 		}
 		caller := acme
-		if strings.HasPrefix(op.path, "/api/me/memory") {
+		if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 			caller = auditAdmin
 		}
 		c.call(caller, op.method, op.path, op.path, `{"unknown_field":1}`, http.StatusBadRequest)
@@ -2092,6 +2214,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/runs/{id}/questions/{question}/answer":          {"id": id, "question": "x"},
+		"/api/runs/{id}/feedback":                             {"id": id},
+		"/api/runs/{id}/learning":                             {"id": learningID},
+		"/api/runs/{id}/skill-draft":                          {"id": learningID},
+		"/api/runs/{id}/decision-memory":                      {"id": learningID},
+		"/api/agent-setups/{name}":                            {"name": "amended-setup"},
+		"/api/agent-setups/{name}/test":                       {"name": "amended-setup"},
 		"/api/clients/{id}/capabilities":                      {"id": "support"},
 		"/api/projects/{name}/memory/{id}":                    {"name": "Launch", "id": freshProjectNote.str("id")},
 		"/api/me/memory/{id}":                                 {"id": freshPersonalNote.str("id")},
@@ -2101,14 +2230,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/library/skills/{id}/versions/{version}/promote": {"id": libraryID, "version": "1"},
 
 		"/api/projects/{name}/action-policy": {"name": "Launch"},
+		"/api/source-link-rules/{id}":        {"id": link.str("id")},
+		"/api/handoffs/{id}":                 {"id": called.str("id")},
 		"/api/assignments/{id}":              {"id": "contract-assignment"},
 		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
 		"/api/agents/{name}/memory/{id}":     {"id": freshAgentNote.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
+
 		"/api/source-link-suggestions/{id}/decision": {"id": suggestionID},
 		"/api/knowledge/{name}/attachment":           {"name": "handbook"},
 		"/api/knowledge/{name}/attachments":          {"name": "handbook"},
-		"/api/source-link-rules/{id}":                {"id": link.str("id")},
-		"/api/handoffs/{id}":                         {"id": called.str("id")},
 		"/api/clients/{id}":                          {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
@@ -2119,31 +2249,35 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
-		"/api/projects/{name}/rollup":         {"name": "Launch"},
 		"/api/projects/{name}/memory/approve": {"name": "Launch"},
 		"/api/projects/{name}/members":        {"name": "Launch"}, "/api/projects/{name}/move": {"name": "Launch"}, "/api/projects/{name}/limits": {"name": "Launch"},
-		"/api/projects/{name}/inbox": {"name": "Launch"}, "/api/projects/{name}/announcements": {"name": "Launch"},
+		"/api/projects/{name}/rollup": {"name": "Launch"},
+		"/api/projects/{name}/inbox":  {"name": "Launch"}, "/api/projects/{name}/announcements": {"name": "Launch"},
 		"/api/projects/{name}/announcements/{id}": {"name": "Launch", "id": mid},
 		"/api/schedules/{name}":                   {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
 		"/api/schedules/{name}/resume": {"name": "nightly"}, "/api/schedules/{name}/run": {"name": "nightly"},
 		"/api/inbox/{id}": {"id": mid}, "/api/inbox/{id}/read": {"id": mid}, "/api/inbox/{id}/dismiss": {"id": mid},
 		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid}, "/api/inbox/{id}/unhide": {"id": mid},
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
-		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
+		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/artifacts/{id}/pdf": {"id": published.ID}, "/api/artifacts/{id}/promote-knowledge": {"id": published.ID}, "/api/artifacts/{id}/promote-memory": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
 		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
-		"/api/threads/{id}/share": {"id": tid},
-		"/api/threads/{id}/fork":  {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
+		"/api/threads/{id}/share":       {"id": tid},
 		"/api/threads/{id}/publication": {"id": draftID},
+		"/api/threads/{id}/fork":        {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
 	}
 	valid := map[string]string{
+		"/api/agent-setups/{name}":              `{"version":1,"plan":{"spec":{"name":"helper","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help"},"project":"~"}}`,
+		"/api/agent-setups/{name}/test":         `{"text":"Setup check"}`,
+		"/api/artifacts/{id}/promote-memory":    `{"version":1,"accepted":true}`,
+		"/api/artifacts/{id}/promote-knowledge": `{"version":1,"source":"accepted-native","accepted":true}`,
+		"/api/runs/{id}/feedback":               `{"rating":"up"}`,
+		"/api/agents/{name}":                    revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
 		"/api/projects/{name}/fork": `{"name":"ForkedGhost"}`,
-		"/api/runs/{id}/feedback":   `{"rating":"up"}`,
-		"/api/agents/{name}":        revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
-		"/api/clients/{id}": `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
+		"/api/clients/{id}":         `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
@@ -2181,7 +2315,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
-			if strings.HasPrefix(op.path, "/api/me/memory") {
+			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 				caller = auditAdmin
 			}
 			c.call(caller, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)
@@ -2265,13 +2399,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
-	"POST /api/projects/{name}/fork 429":       "bounded private operation-plan capacity, covered by projectforks store tests",
-	"POST /api/threads/{id}/fork 429":          "bounded workspace or project thread cap, covered by thread store tests",
-	"POST /api/threads/{id}/bring-back 429":    "bounded per-person posting rate and thread message cap, covered by platform and thread store tests",
+	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
+	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
+	"POST /api/projects/{name}/fork 429":             "bounded private operation-plan capacity, covered by projectforks store tests",
+	"POST /api/threads/{id}/fork 429":                "bounded workspace or project thread cap, covered by thread store tests",
+	"POST /api/threads/{id}/bring-back 429":          "bounded per-person posting rate and thread message cap, covered by platform and thread store tests",
+	"POST /api/source-link-rules 409":                "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
+	"PUT /api/source-link-rules/{id} 409":            "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
+	"DELETE /api/source-link-rules/{id} 409":         "concurrent rule change is rejected by store snapshot test",
+
 	"PUT /api/knowledge/{name}/attachment 429": "bounded relation store refuses new attachments at10000 records; cap exercised in source-link suggestion store tests",
-	"POST /api/source-link-rules 409":          "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
-	"PUT /api/source-link-rules/{id} 409":      "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
-	"DELETE /api/source-link-rules/{id} 409":   "concurrent rule change is rejected by store snapshot test",
 
 	"POST /api/knowledge/{name}/documents 409": "source scope can change between authorization and insertion; atomic rejection is exercised by pkg/knowledge promotion and scope tests",
 	// A workspace holds at most 1,000 call policies, one per agent. Making

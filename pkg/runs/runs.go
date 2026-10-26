@@ -318,8 +318,9 @@ type Run struct {
 	// Answer is the final text of a completed run. On a stopped run it is the
 	// partial answer: what the agent had said when it stopped, which people
 	// may already have read. It is never the whole answer, and Status says so.
-	Answer string `json:"answer,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Answer  string   `json:"answer,omitempty"`
+	Outcome *Outcome `json:"outcome,omitempty"`
+	Error   string   `json:"error,omitempty"`
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`
@@ -517,6 +518,9 @@ func (x *Index) Called(runID string, lease int64) {
 // caller can react to an ending exactly once. Other kinds, and events for runs
 // this index never recorded, change nothing.
 func (x *Index) Observe(e envelope.Event) (Run, bool) {
+	if e.Kind == envelope.KindActionTaken {
+		return x.observeDetail(e), false
+	}
 	if e.Kind.Family() != "lifecycle" {
 		return Run{}, false
 	}
@@ -1204,6 +1208,21 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 	return out
 }
 
+// AnyActive returns whether an unfinished run satisfies keep. The callback is
+// pure and must not call the index. This includes delegated and system work,
+// which Conversation deliberately leaves out of its human turn list.
+func (x *Index) AnyActive(tenant string, keep func(Run) bool) bool {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	for _, id := range x.order {
+		r := x.runs[id]
+		if r.Tenant == tenant && !r.Status.Terminal() && keep(*r) {
+			return true
+		}
+	}
+	return false
+}
+
 // neededPerson propagates only within the authoritative execution tree.
 // The caller holds the index lock. The flag survives question resolution.
 func (x *Index) neededPerson(r *Run) {
@@ -1223,19 +1242,4 @@ func (x *Index) finishAssistance(r *Run) {
 	if r.Assistance == "" && x.observed[r.ID] {
 		r.Assistance = "none"
 	}
-}
-
-// AnyActive returns whether an unfinished run satisfies keep. The callback is
-// pure and must not call the index. This includes delegated and system work,
-// which Conversation deliberately leaves out of its human turn list.
-func (x *Index) AnyActive(tenant string, keep func(Run) bool) bool {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	for _, id := range x.order {
-		r := x.runs[id]
-		if r.Tenant == tenant && !r.Status.Terminal() && keep(*r) {
-			return true
-		}
-	}
-	return false
 }

@@ -1,6 +1,22 @@
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import { setAgentHues } from "./ui.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SkillsLibrary } from "./SkillsLibrary.tsx";
+import { MemoryLibrary } from "./MemoryLibrary.tsx";
+import { PersonalPreferences } from "./PersonalPreferences.tsx";
+import { NotificationPanel } from "./Notifications.tsx";
+import { Audit } from "./Audit.tsx";
+import { AgentControls } from "./AgentControls.tsx";
+import { ActionPolicies } from "./ActionPolicies.tsx";
+import { Assignments } from "./Assignments.tsx";
+import { AgentNetwork } from "./AgentNetwork.tsx";
+import { QuickSwitcher } from "./QuickSwitcher.tsx";
+import { ForkProject } from "./ForkProject.tsx";
+import { Usage,defaultUsageView } from "./Usage.tsx";
+import { Integrations } from "./Integrations.tsx";
+import { ContextHealth } from "./ContextHealth.tsx";
+import { AgentSetupWizard } from "./AgentSetup.tsx";
+import { AgentOperations } from "./AgentOperations.tsx";
 import { AgentDetail } from "./AgentDetail.tsx";
 import { Agents } from "./Agents.tsx";
 import {
@@ -26,6 +42,7 @@ import { YourConnections } from "./Connections.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { InboxPage } from "./InboxPage.tsx";
+import { FindHelp } from "./FindHelp.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { Monitor } from "./Monitor.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
@@ -36,12 +53,13 @@ import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { notificationsOf, updatesOf } from "@humagen/adapter";
 import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@humagen/core";
-import { HomeBoxes, type Loaded } from "./HomePage.tsx";
+import { HomeBoxes, type Loaded, type HomeAnnouncement } from "./HomePage.tsx";
 import { usePreferences } from "./preferences.ts";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
 import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { type AgentTab, documentTitle, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
-import { Page, primary } from "./ui.tsx";
+import { defaultCopy } from "@humagen/components";
+import { Page, primary, Problem,SkeletonRows,button } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
 
@@ -128,6 +146,11 @@ function useAppearance(prefs: Preferences | null) {
 function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const can = useCallback((p: string) => me.permissions.includes(p), [me]);
   const [route, go] = useRoute();
+  const [searchOpen,setSearchOpen]=useState(false);
+  useEffect(()=>{
+    const search=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"&&!event.altKey&&!event.isComposing){event.preventDefault();setSearchOpen(current=>!current)}};
+    window.addEventListener("keydown",search);return()=>window.removeEventListener("keydown",search);
+  },[]);
   const page = route.page;
   const thread = route.page === "conversation" ? route.id : null;
   // The inbox is the server's. This holds only its totals for the badge, a
@@ -144,6 +167,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);
+  const [agentRead,setAgentRead]=useState<"loading"|"ready"|"error">(can("agents:read")?"loading":"ready");
   // The agents the platform provides. They run like any other and cannot be edited.
   const [builtin, setBuiltin] = useState<string[]>([]);
   // Where each agent that lives in a project lives, and which projects enable each.
@@ -162,6 +186,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const { prefs, prefsRead, setPrefs, pin, mute } = usePreferences();
   // The reader's own open announcements, for What's new on Home, and the
   // newest of what needs them with how many do, for Needs you.
+  const [welcome,setWelcome]=useState<PlatformMessage>();
+  const [welcomeBusy,setWelcomeBusy]=useState(false);
+  const [welcomeProblem,setWelcomeProblem]=useState("");
   const [announced, setAnnounced] = useState<Loaded<PlatformMessage[]>>({ state: "loading" });
   const [needing, setNeeding] = useState<Loaded<{ messages: PlatformMessage[]; open: number }>>({ state: "loading" });
   const [day, setDay] = useState<Summary | null>(null);
@@ -194,11 +221,12 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       .then((r) => {
         setAgentHues(r.hues ?? {});
         setAgents(r.agents);
+        setAgentRead("ready");
         setBuiltin(r.builtin ?? []);
         setHomes(r.homes ?? {});
         setEnabledIn(r.enabled_in ?? {});
       })
-      .catch(() => {});
+      .catch(() => setAgentRead("error"));
     api.settings().then(setWorkspace).catch(() => {});
     if (can("projects:read")) {
       api
@@ -209,6 +237,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   }, [can]);
   const loadInbox = useCallback(() => {
     if (!can("runs:read")) return;
+    if(me.welcome_announcement)mail.get(me.welcome_announcement).then(setWelcome).catch(()=>{});
     api.inboxCount().then(setInboxCounts).catch(() => {});
     // A read that fails after one that worked keeps what was shown.
     mail
@@ -223,7 +252,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     setInboxTick((t) => t + 1);
     // Settling a message settles its alert, which the Alerts badge counts.
     if (can("alerts:read")) api.alerts().then(setAlerts).catch(() => {});
-  }, [can]);
+  }, [can,me.welcome_announcement]);
   const loadProjects = useCallback(() => {
     if (!can("projects:read")) return;
     api.projects().then(setProjects).catch(() => setProjects((was) => was ?? []));
@@ -336,8 +365,11 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // A project opens on its inbox.
   const openProject = (name: string, tab: ProjectTab = "inbox") => go({ page: "project", name: name === "~" ? "" : name, tab });
   const projectNames = useMemo(() => (projects ?? []).map((p) => p.name), [projects]);
-  const workspaceName = workspace?.workspace_name || me.principal.tenant;
-  const openAgent = (name: string | null, tab: AgentTab = "prompt") => go({ page: "agent", name, tab });
+  const workspaceName = workspace?.workspace_name || defaultCopy.projects.companyName;
+  const policyScope=route.page==="action-policy"&&route.scope==="project"&&(!route.name||route.name==="~")?"workspace":route.page==="action-policy"?route.scope??"workspace":"workspace";
+  const policyRead=policyScope==="personal"?me.principal.kind==="user":can(policyScope==="project"?"projects:read":"agents:read");
+  const policyWrite=policyScope==="personal"?me.principal.kind==="user":can(policyScope==="project"?"projects:write":"agents:write");
+  const openAgent = (name: string | null, tab: AgentTab = "prompt") => name ? go({ page: "agent", name, tab }) : go({page:"agent-setup"});
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
   // What a message is about, opened where it lives.
   const openSource = (source: About) =>
@@ -364,12 +396,23 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     return {
       state: "ready",
       value: updatesOf(
-        announced.value,
+        announced.value.filter(message=>message.id!==me.welcome_announcement),
         (name) => (name === "" ? workspaceName : (titles.get(name) ?? name)),
         (name, id) => href({ page: "project", name, tab: "inbox", message: id }),
       ),
     };
-  }, [can, announced, projects, workspaceName]);
+  }, [can, announced, projects, workspaceName,me.welcome_announcement]);
+  const welcomeAction=async(call:"read"|"dismiss")=>{
+    if(!welcome)return;
+    setWelcomeBusy(true);setWelcomeProblem("");
+    try{setWelcome(await mail.send(welcome,{call}));loadInbox()}
+    catch(error){setWelcomeProblem(error instanceof Error?error.message:defaultCopy.home.banner.failed)}
+    finally{setWelcomeBusy(false)}
+  };
+  const banner:HomeAnnouncement|undefined=welcome && !welcome.hidden && !welcome.dismissedAt && !welcome.snoozedUntil ? {
+    id:welcome.id,source:welcome.from.name,title:welcome.subject,text:welcome.parts.filter(part=>part.type==="text").map(part=>part.type==="text"?part.text:"").join("\n\n"),unread:!!welcome.unread,busy:welcomeBusy,
+    onRead:()=>{void welcomeAction("read")},onHide:()=>{void welcomeAction("dismiss")},onOpen:()=>go({page:"inbox",message:welcome.id}),
+  }:undefined;
   const notifications = useMemo((): Loaded<HomeNotifications> | undefined => {
     if (!can("runs:read")) return undefined;
     if (needing.state !== "ready") return needing;
@@ -394,14 +437,30 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         onPin={pin}
         inboxCount={inboxCounts.open}
         live={live}
+        onSearch={()=>{setSearchOpen(true);if(window.innerWidth<768)setOpen(false)}}
+        notifications={can("runs:read")&&me.principal.kind==="user"?<NotificationPanel/>:undefined}
         onSignOut={() => api.logout().then(onSignedOut).catch(onSignedOut)}
       />
+      {searchOpen&&<QuickSwitcher onClose={()=>setSearchOpen(false)} onGo={(next)=>{setSearchOpen(false);navigate(next)}}/>}
       <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
       {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
+        {route.page==="library"&&<WorkspaceTabs label={defaultCopy.navigation.library} items={(["sources","skills","memory"] as const).filter(section=>can(section==="sources"?"knowledge:read":"projects:read")).map(section=>({label:defaultCopy.navigation[section],route:{page:"library",section}}))} current={href(route)} onGo={go}/>}
+        {route.page==="library"&&route.section==="skills"&&(can("projects:read")?<SkillsLibrary key={href(route)} onLocationChange={location=>go({page:"library",section:"skills",...location})}/>:<Page title={defaultCopy.navigation.skills}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="library"&&route.section==="memory"&&(can("projects:read")?<MemoryLibrary key={href(route)} onLocationChange={location=>go({page:"library",section:"memory",...location})}/>:<Page title={defaultCopy.navigation.memory}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="assignments"&&(can("runs:read")?<Assignments agent={route.agent} selectedId={route.id} agents={agents.map(agent=>agent.spec.name)} sources={sources.map(source=>({name:source.name,label:source.name}))} projects={[{name:"",title:workspaceName},...(projects??[]).filter(project=>project.name!=="").map(project=>({name:project.name,title:project.title||project.name}))]} subject={me.principal.subject} canWrite={can("runs:write")} onRun={openRun} onConversation={openThread}/>:<Page title={defaultCopy.navigation.assignments}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="agent-network"&&(can("runs:read")?<AgentNetwork selectedId={route.handoff} canWrite={can("runs:write")} onAgent={openAgent} onRun={openRun}/>:<Page title={defaultCopy.navigation.network}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="agent-control"&&(can("agents:read")?<AgentControls key={route.agent??"workspace"} agent={route.agent} canWrite={can("agents:write")} onChanged={loadAgents}/>:<Page title={defaultCopy.navigation.controls}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="action-policy"&&(policyRead?<ActionPolicies key={`${policyScope}:${route.name}`} scope={policyScope} name={policyScope==="workspace"?undefined:route.name} canWrite={policyWrite}/>:<Page title={defaultCopy.navigation.policies}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="audit"&&(can("projects:govern")?<Audit/>:<Page title={defaultCopy.navigation.audit}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="usage"&&(can("runs:read")?<Usage agents={agents.map(agent=>agent.spec.name)} tick={tick} onOpenRun={openRun} onOpenAgent={openAgent} view={{days:route.days??defaultUsageView.days,day:route.day,display:route.display??defaultUsageView.display}} onViewChange={view=>go({page:"usage",...view},{replace:true})}/>:<Page title={defaultCopy.navigation.usage}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="operations"&&route.section==="integrations"&&((can("clients:read")||can("knowledge:read"))?<Integrations selected={route.selected} tab={route.tab} onSelect={(selected,tab)=>go({page:"operations",section:"integrations",selected,tab})} canWrite={can("clients:write")} canKnowledgeWrite={can("knowledge:write")} onOpenSource={source=>go({page:"context",source})} onOpenProject={openProject}/>:<Page title={defaultCopy.navigation.integrations}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="operations"&&route.section==="context"&&(can("knowledge:read")?<ContextHealth selected={route.selected} onSelect={selected=>go({page:"operations",section:"context",selected})} canWrite={can("knowledge:write")} onOpenSource={source=>go({page:"context",source})} onOpenAgent={openAgent} onOpenProject={openProject}/>:<Page title={defaultCopy.sourceOperations.health}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="you"&&<><WorkspaceTabs label={defaultCopy.navigation.you} items={(["profile","notifications","agents","connections","privacy"] as const).map(section=>({label:defaultCopy.navigation[section==="agents"?"personalAgents":section],route:{page:"you",section}}))} current={href(route)} onGo={go}/>{route.section==="connections"?<YourConnections open={route.provider} onOpen={provider=>go({page:"you",section:"connections",provider},{replace:true})} canConnect={can(CONNECT_PERMISSION)} onWhy={()=>go({page:"settings",section:"access",permission:CONNECT_PERMISSION})}/>:<PersonalPreferences key={route.section} section={route.section} onSaved={setPrefs}/>}</>}
+
         {(page === "new" || page === "conversation") && (
           <Chat
-            key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.channel ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
+            key={thread ?? `new:${route.page === "new" ? JSON.stringify([route.project,route.channel,route.agent,route.ask]) : ""}`}
             threadId={thread}
             me={me.principal.subject}
             handle={me.handle ?? ""}
@@ -411,6 +470,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             startChannel={route.page === "new" ? route.channel : undefined}
             focus={route.page === "conversation" ? route.message : undefined}
             sharing={route.page === "conversation" && !!route.share}
+            forkActions={route.page==="conversation"?{point:route.fork,bringBack:route.bringBack,onFork:point=>go({page:"conversation",id:route.id,fork:point}),onBringBack:run=>go({page:"conversation",id:route.id,bringBack:run}),onClose:()=>go({page:"conversation",id:route.id}),onOpenThread:openThread}:undefined}
             view={route.page === "conversation" ? route : undefined}
             onView={(view) => {
               if (thread) go({ page: "conversation", id: thread, ...view }, {
@@ -437,9 +497,16 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             homes={homes}
             projects={can("projects:read") ? projects : []}
             canRun={can("runs:write")}
+            canLearn={me.principal.kind==="user"&&can("projects:write")}
+            artifactActions={{knowledge:can("artifacts:read") && can("knowledge:read") && can("knowledge:write"), memory:can("artifacts:read") && can("runs:write")}}
             canCreateProject={can("projects:write")}
             greeting={greeting(shownName)}
+            personalProject={me.personal_project}
+            banner={banner}
+            findHelp={can("projects:read") ? <FindHelp canChoose={can("runs:write")} onSearch={api.findHelp} onChoose={(suggestion,description)=>go({page:"new",project:suggestion.project,agent:suggestion.agent,ask:description})} onOpen={openProject}/> : undefined}
             home={
+              <>
+              <Problem message={welcomeProblem}/>
               <HomeBoxes
                 notifications={notifications}
                 updates={updates}
@@ -449,6 +516,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
                 onUpdate={(u) => go({ page: "project", name: u.project, tab: "inbox", message: u.id })}
                 onUpdates={() => go({ page: "inbox", kind: "announcement" })}
               />
+              </>
             }
             onProjectCreated={(project) => {
               setProjects((current) => [...(current ?? []).filter((p) => p.name !== project.name), project]);
@@ -499,8 +567,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             can={can}
             tick={tick}
             onOpen={openProject}
+            onFork={()=>go({...route,fork:true})}
             onOpenAll={() => go({ page: "projects" })}
-            onNewChat={() => newChat(route.name || undefined)}
+            onNewChat={() => newChat(route.name)}
             onOpenThread={openThread}
             onChanged={() => {
               loadProjects();
@@ -515,6 +584,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpenChannel={(channel) => go({ page: "channel", project: route.name, channel })}
           />
         )}
+        {route.page==="project"&&route.fork&&<ForkProject source={route.name} projects={projects??[]} onClose={()=>go({...route,fork:undefined})} onReady={name=>{loadProjects();openProject(name)}}/>}
         {route.page === "channel" && (
           <ChannelPage
             key={`${route.project}/${route.channel}`}
@@ -576,13 +646,13 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpen={openSource}
           />
         )}
-        {route.page === "context" && (
+        {(route.page === "context" || (route.page==="library"&&route.section==="sources")) && (
           <Knowledge
             sources={sources}
             agents={agents}
             suites={suites}
-            selected={route.source ?? null}
-            tab={route.tab ?? "documents"}
+            selected={route.page==="context"?route.source??null:null}
+            tab={route.page==="context"?route.tab??"documents":"documents"}
             onSelect={(source, tab) => go({ page: "context", source: source ?? undefined, tab })}
             canWrite={can("knowledge:write")}
             canEval={can("evals:write")}
@@ -592,7 +662,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           />
         )}
         {route.page === "agents" && (
-          <Agents
+          <Agents operational
             builtin={builtin}
             agents={agents}
             runs={runs}
@@ -605,11 +675,13 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onBuild={canAsk(BUILTIN_BUILDER) ? () => go({ page: "new", agent: BUILTIN_BUILDER, ask: "Help me build an agent that " }) : undefined}
           />
         )}
-        {route.page === "agent" &&
-          (route.name !== null && agents.length > 0 && !editing ? (
+        {(route.page==="agent-setup"||(route.page==="agent"&&route.name===null))&&(can("agents:write")?<AgentSetupWizard key={route.page==="agent-setup"?route.name??"new":"new"} name={route.page==="agent-setup"?route.name:undefined} me={me} agents={agents} projects={projects??[]} sources={sources} policies={workspace?.model_policies??[]} canBill={can("billing:write")} onSaved={name=>{loadAgents();if(route.page!=="agent-setup"||route.name!==name)go({page:"agent-setup",name},{replace:true})}} onActivated={name=>{loadAgents();openAgent(name)}} onBack={()=>go({page:"agents"})} onModels={()=>openSettings("models")}/>:<Page title={defaultCopy.agentSetup.title}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page === "agent" &&route.name!==null&&
+          (!editing ? agentRead==="loading" ? <Page title={defaultCopy.navigation.agents}><SkeletonRows count={3}/></Page> : agentRead==="error" ? <Page title={defaultCopy.navigation.agents}><Problem message={defaultCopy.agentOperations.failed}/><button type="button" className={button} onClick={loadAgents}>{defaultCopy.retry}</button></Page> : (
             <Missing what="agent" name={route.name} onBack={() => go({ page: "agents" })} />
           ) : (
             <AgentDetail
+              operations={route.name?<AgentOperations revision={editing?.rev??0} onRun={openRun} name={route.name} canReadRuns={can("runs:read")} canWrite={can("agents:write")}/>:undefined}
               key={route.name ?? "new"}
               revision={editing}
               tab={route.tab}
@@ -719,4 +791,9 @@ function Missing({ what, name, onBack }: { what: string; name: string; onBack: (
       {null}
     </Page>
   );
+}
+
+
+function WorkspaceTabs({label,items,current,onGo}:{label:string;items:{label:string;route:Route}[];current:string;onGo:(route:Route)=>void}) {
+ return <nav aria-label={label} className="flex shrink-0 flex-wrap gap-1 border-aui-border border-b px-4 py-2">{items.map(item=><a key={item.label} href={href(item.route)} aria-current={current===href(item.route)?"page":undefined} onClick={event=>{if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();onGo(item.route)}}} className="inline-flex min-h-10 items-center rounded-aui px-3 text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg">{item.label}</a>)}</nav>;
 }

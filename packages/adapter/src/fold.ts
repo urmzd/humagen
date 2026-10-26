@@ -24,17 +24,16 @@ export interface Follower {
 type Options = Parameters<typeof adapter>[0];
 
 /** Follow one run from its first event. */
-export function follow(
-  run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread">>,
-  opts: Options = {},
-): Follower {
+export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread" | "citations" | "outcome">>, opts: Options = {}): Follower {
   const to = adapter(opts);
   const sessionUrl = opts.href?.(`/conversations/${encodeURIComponent(run.thread || run.id)}`);
   let turn = emptyTurn(run.id, { name: run.agent });
   if (sessionUrl) turn = { ...turn, sessionUrl };
+  if(run.citations !== undefined) turn={...turn,citations:run.citations.map(citationOf)};
   const push = (...events: TurnEvent[]) => {
     turn = events.reduce(reduce, turn);
     if (sessionUrl) turn = { ...turn, sessionUrl };
+    turn = {...turn,...(!turn.outcome && run.outcome ? {outcome:{kind:run.outcome.kind,summary:run.outcome.summary,decisions:run.outcome.decisions,nextAction:run.outcome.next_action}} : {})};
     return turn;
   };
   return {
@@ -53,17 +52,16 @@ export function follow(
       if (record.status === "completed" && record.answer && !ended(turn)) {
         if (!record.answer.startsWith(turn.text)) turn = { ...turn, text: "" };
       }
-      return push(...settled(turn, record));
+      const drawn = push(...settled(turn, record));
+      const metadata = turnOf(record);
+      turn = {...drawn,...(record.citations !== undefined ? {citations:metadata.citations}:{}),...(metadata.outcome?{outcome:metadata.outcome}:{})};
+      return turn;
     },
   };
 }
 
 /** A turn rebuilt from the events the journal still holds. Undefined when it holds none. */
-export function replay(
-  run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread">>,
-  events: BusEvent[],
-  opts: Options = {},
-): Turn | undefined {
+export function replay(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread" | "citations" | "outcome">>, events: BusEvent[], opts: Options = {}): Turn | undefined {
   if (events.length === 0) return undefined;
   const f = follow(run, opts);
   for (const e of events) f.apply(e);

@@ -211,6 +211,9 @@ func humanSubject(who auth.Principal) string {
 // LibraryView removes private source and test references before returning a
 // revision. A public promotion never reveals the private source's owner.
 func (p *Platform) LibraryView(who auth.Principal, r library.Revision) library.Revision {
+	if r.OriginRun != "" && !p.Seer(who).RunID(r.OriginRun) {
+		r.OriginRun = ""
+	}
 	if r.From != nil && p.LibraryScope(who, r.From.Scope, false) != nil {
 		r.From = nil
 	}

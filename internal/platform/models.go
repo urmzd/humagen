@@ -169,3 +169,27 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 	req.Revision.Spec = spec
 	return req, nil
 }
+
+// ModelProviderChoice describes configuration names, never credential values.
+// Declared records a host registration; actual connectivity requires a run.
+type ModelProviderChoice struct {
+	Name     string `json:"name"`
+	Declared bool   `json:"declared"`
+}
+
+func (p *Platform) ModelProviderChoices() []ModelProviderChoice {
+	names := p.agentProviders()
+	slices.Sort(names)
+	names = slices.Compact(names)
+	out := []ModelProviderChoice{}
+	for _, name := range names {
+		if name == PolicyProvider {
+			continue
+		}
+		out = append(out, ModelProviderChoice{Name: name, Declared: p.cfg.Ext.Providers[name] != nil || (name != "offline" && p.cfg.BuiltinProvider == name)})
+		if len(out) >= 100 {
+			break
+		}
+	}
+	return out
+}

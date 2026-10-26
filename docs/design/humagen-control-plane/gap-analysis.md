@@ -35,18 +35,18 @@ repository root.
 | Memory | Agent and project notes, approval, provenance | Expiry, personal memory, per-note scope |
 | Audit | Policy, project and agent histories with before and after; break-glass reads | One cross-domain log; memory and call-policy changes |
 | Sharing and People | Share inspector; read-only participant list | Who can see this; roles; removal |
-| Evidence chips | Citations on live turns | Citations on turns loaded from records |
+| Evidence chips | Bounded citation projection on run records and streaming events, including memory/Postgres restart | Source lifecycle health is tracked separately |
 | Thread branches | Regenerate creates sibling answers with a switcher | Fork into a new conversation; branches in rooms |
 | GitHub | Installations, webhooks, reviews, labels | Repo-to-project links; GitHub user mapping |
 | Live context | Person-scoped MCP tool providers | First-party live search, OAuth, hybrid mode |
-| Composer | Wraps safely | Compact height; controls under the composer as text |
+| Composer | One-line initial height, bounded growth, wrapping controls | Existing text-control styling is retained |
 | Workspace message presentation | Shared persistent Copy/Reply footer for people and agents; recorded agent timestamps with focus, hover and tap detail; answer before expandable work | Structured outcomes and Redirect |
 
 ## Not built
 
 | Spec item | Note |
 |---|---|
-| Structured outcomes | Answers precede work in `packages/web/src/AgentMessage.tsx`; recommendation, decisions, next action and Redirect are still missing |
+| Structured outcomes | Built through shared primitives and the explicit `record_outcome` tool; Redirect prepares editable human intent through the normal conversation path |
 | Moving a conversation after agents ran | Refused by design (`ErrStaysInProject` in `internal/platform/threads.go`); see [company-workspace.md](../../company-workspace.md) |
 | Durable assignments | Listed as next work in [conversation-workspace.md](../../conversation-workspace.md) |
 | Pause an agent, pause all | Console Stop Turn calls the existing stop API and waits for the run ledger, with bounded polling and retryable errors |

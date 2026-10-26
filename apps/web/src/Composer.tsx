@@ -5,7 +5,7 @@ import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef,
 import { insertTag, matching, sigilOf, type TagOption, type Typing, tagAt } from "./tags.ts";
 import { AgentMark } from "./ui.tsx";
 
-const MAX_HEIGHT = 260;
+const MAX_HEIGHT = 200;
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 200 * 1024;
 
@@ -128,7 +128,7 @@ export function Composer({
   /**
    * The + menu, in place of + attaching files at once: what it shows, given
    * a way to close it and to attach files, and the chips of what it
-   * selected, shown in the bottom row. Ctrl+/ (Cmd+/) opens it.
+   * selected, shown as text controls below the composer. Ctrl+/ (Cmd+/) opens it.
    */
   plus?: { menu: (close: () => void, attach: () => void, leave: () => void) => ReactNode; chips?: ReactNode };
 }) {
@@ -318,6 +318,7 @@ export function Composer({
   };
 
   return (
+    <div className="flex min-w-0 flex-col gap-1.5">
     <form
       ref={form}
       aria-label="Message"
@@ -406,7 +407,7 @@ export function Composer({
       <textarea
         id="composer-input"
         ref={input}
-        rows={2}
+        rows={1}
         value={value}
         placeholder={placeholder}
         onChange={(e) => {
@@ -424,7 +425,7 @@ export function Composer({
         aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
         aria-autocomplete={tags ? "list" : undefined}
         aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
-        className="max-h-[260px] min-h-14 w-full resize-none bg-transparent px-3 pt-2 text-aui-lg text-aui-fg outline-none placeholder:text-aui-muted"
+        className="max-h-[200px] min-h-10 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
       />
       {notice && (
         <p role="status" className="px-3 text-aui-xs text-aui-muted">
@@ -463,7 +464,7 @@ export function Composer({
           </button>
         )}
         {leading}
-        <div className="min-w-0 flex-1">{plus?.chips}</div>
+        <div className="min-w-0 flex-1" />
         {trailing}
         {/*
           One button in one place. With nothing to send it listens, and once
@@ -495,5 +496,7 @@ export function Composer({
         )}
       </div>
     </form>
+    {plus?.chips && <div className="min-w-0 px-1">{plus.chips}</div>}
+    </div>
   );
 }

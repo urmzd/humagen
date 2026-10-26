@@ -90,7 +90,7 @@ export function ProjectChoices({ projects, kinds = [], value, canCreate = true, 
         <SearchField label={words.search} value={query} onChange={setQuery} inputRef={input} />
       </div>
       <button type="button" className={choice} aria-pressed={value === ""} onClick={() => select("")}>
-        <MessageIcon size={18} className="text-aui-muted" /><span className="min-w-0 flex-1"><span className="block">Projectless</span><span className="block text-aui-xs text-aui-muted">Start without a project</span></span>
+        <MessageIcon size={18} className="text-aui-muted" /><span className="min-w-0 flex-1"><span className="block">{words.companyName}</span><span className="block text-aui-xs text-aui-muted">{words.companyStart}</span></span>
         {value === "" && <CheckIcon size={14} />}
       </button>
       <div className="my-1 h-px bg-aui-border" />
@@ -122,14 +122,14 @@ export function ProjectPicker({ projects, kinds, value, canCreate = true, onChan
   projects: ProjectView[] | null;
   /** The workspace's own kinds, so a project of one is called by its title. */
   kinds?: ProjectKindSpec[];
-  /** null is untouched; an empty string explicitly chooses projectless work. */
+  /** null is untouched; an empty string explicitly chooses Company. */
   value: string | null;
   canCreate?: boolean;
   onChange: (name: string) => void;
   onCreated: (project: ProjectView) => void;
 }) {
   const chosen = value ? projects?.find((p) => p.name === value) : undefined;
-  const label = value === null ? "Select project" : value === "" ? "Projectless" : chosen ? titleOf(chosen) : value;
+  const label = value === null ? "Select project" : value === "" ? words.companyName : chosen ? titleOf(chosen) : value;
   return <div className="humagen-project-picker min-w-0"><Popover label={value === null ? "Select project" : `Select project: ${label}`} up
     className="inline-flex h-8 max-w-32 items-center gap-1 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent sm:max-w-40"
     button={<>{value === "" ? <MessageIcon size={16} /> : value ? <FolderOpenIcon size={16} /> : <FolderIcon size={16} />}<span className="truncate">{label}</span><ChevronDownIcon size={14} className="hidden shrink-0 sm:block" /></>}>

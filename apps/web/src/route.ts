@@ -49,7 +49,10 @@ const CONVERSATION_PANELS: ConversationPanel[] = ["activity", "context", "people
 export type ArtifactTab = "preview" | "versions" | "provenance";
 const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
 export interface ConversationView {
+  contextTab?: "sources" | "instructions";
   panel?: ConversationPanel;
+  filter?:"all"|"handoffs"|"tools"|"decisions";
+  showTools?:boolean;
   run?: string;
   artifact?: string;
   artifactTab?: ArtifactTab;
@@ -57,7 +60,19 @@ export interface ConversationView {
   slide?: number;
 }
 
+export type LibrarySection = "sources" | "skills" | "memory";
+export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
+  | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string;version?:number}
+  | {page:"operations";section:"context"|"integrations";selected?:string;tab?:"connect"|"resources"|"links"|"access"|"events"|"actions"}
+  | {page:"assignments";id?:string;agent?:string}
+  | {page:"agent-network";handoff?:string}
+  | {page:"agent-control";agent?:string}
+  | {page:"action-policy";scope?:"workspace"|"agent"|"project"|"personal";name?:string}
+  | {page:"audit"}
+  | {page:"usage";days?:7|14|30;day?:string;display?:"chart"|"table"}
+  | {page:"you";section:YouSection;provider?:string}
+  | {page:"agent-setup";name?:string}
   /** A new conversation, optionally with an agent picked and a first message written for it. */
   | { page: "new"; project?: string; channel?: string; agent?: string; ask?: string }
   /**
@@ -101,6 +116,7 @@ const oneOf = <T extends string>(value: string | null | undefined, allowed: read
 const pick = <T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T => oneOf(value, allowed) ?? fallback;
 
 const PAGE_TITLES: Record<Page, string> = {
+  library:"Library",operations:"Operations",assignments:"Assignments","agent-network":"Agent Network","agent-control":"Agent Controls","action-policy":"Action Policies",audit:"Audit",usage:"Usage",you:"You","agent-setup":"New Agent",
   new: "New conversation",
   conversation: "Conversation",
   projects: "Projects",
@@ -130,9 +146,23 @@ export function documentTitle(r: Route, unread = 0): string {
 /** The address of a route, path and query. */
 export function href(r: Route): string {
   switch (r.page) {
+    case "library": {
+      const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);if(r.version&&Number.isSafeInteger(r.version)&&r.version>0)q.set("version",String(r.version));return `/library/${r.section}${q.size?`?${q}`:""}`;
+    }
+    case "operations":return `/operations/${r.section}${r.selected?`/${enc(r.selected)}${r.section==="integrations"&&r.tab&&r.tab!=="connect"?`/${r.tab}`:""}`:""}`;
+    case "assignments":return `${r.id?`/assignments/${enc(r.id)}`:"/assignments"}${r.agent?`?agent=${enc(r.agent)}`:""}`;
+    case "agent-network":return r.handoff?`/agent-network/handoffs/${enc(r.handoff)}`:"/agent-network";
+    case "agent-control":return r.agent?`/agents/${enc(r.agent)}/control`:"/agent-controls";
+    case "agent-setup":return r.name?`/agents/${enc(r.name)}/setup`:"/agents/new/setup";
+    case "action-policy":return r.scope&&r.scope!=="workspace"&&!(r.scope==="project"&&(!r.name||r.name==="~"))?`/operations/policies/${r.scope}${r.name?`/${enc(r.name)}`:""}`:"/operations/policies";
+    case "audit":return "/operations/audit";
+    case "usage":{
+      const q=new URLSearchParams();if(r.days&&r.days!==14)q.set("days",String(r.days));if(r.day)q.set("day",r.day);if(r.display==="table")q.set("display","table");return `/operations/usage${q.size?`?${q}`:""}`;
+    }
+    case "you":return `/you${r.section==="profile"?"":`/${r.section}`}${r.section==="connections"&&r.provider?`/${enc(r.provider)}`:""}`;
     case "new": {
       const q = new URLSearchParams();
-      if (r.project) q.set("project", r.project);
+      if (r.project!==undefined) q.set("project",r.project===""?"~":r.project);
       if (r.channel) q.set("channel", r.channel);
       if (r.agent) q.set("agent", r.agent);
       if (r.ask) q.set("ask", r.ask);
@@ -145,7 +175,11 @@ export function href(r: Route): string {
       if (r.share) return `/conversations/${enc(r.id)}/share`;
       if (r.panel) {
         const base = `/conversations/${enc(r.id)}/${r.panel}`;
-        if (r.panel === "activity" && r.run) return `${base}/${enc(r.run)}`;
+        if(r.panel==="activity"){
+          const q=new URLSearchParams();if(r.filter&&r.filter!=="all")q.set("filter",r.filter);if(r.showTools===false)q.set("tools","0");
+          return `${base}${r.run?`/${enc(r.run)}`:""}${q.size?`?${q}`:""}`;
+        }
+        if(r.panel === "context" && r.contextTab === "instructions") return `${base}/instructions`;
         if (r.panel === "deliverables" && r.artifact) return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${r.slide ? `?slide=${r.slide}` : ""}`;
         return base;
       }
@@ -250,16 +284,33 @@ export function parse(pathname: string, search = ""): Route {
   return Object.fromEntries(Object.entries(read(pathname, search)).filter(([, v]) => v !== undefined)) as Route;
 }
 
+function queryText(q:URLSearchParams,key:string,max:number):string|undefined {
+ const value=q.get(key);return value!==null&&value.length<=max&&!/[\u0000\r\n]/.test(value)?value:undefined;
+}
+
 function read(pathname: string, search: string): Route {
   const q = new URLSearchParams(search);
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
   switch (head) {
+    case "library":return {page:"library",section:pick(a,["sources","skills","memory"] as const,"sources"),scope:oneOf(q.get("scope"),["personal","workspace","project","agent"] as const),project:queryText(q,"project",63),owner:queryText(q,"owner",512),skill:queryText(q,"skill",160),version:Number.isSafeInteger(Number(q.get("version")))&&Number(q.get("version"))>0?Number(q.get("version")):undefined};
+    case "operations":
+      if(a==="audit")return {page:"audit"};
+      if(a==="usage"){
+        const days=Number(q.get("days"));const day=q.get("day");const validDay=day&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&!Number.isNaN(Date.parse(`${day}T00:00:00Z`))&&new Date(`${day}T00:00:00Z`).toISOString().slice(0,10)===day;
+        return {page:"usage",days:days===7||days===30?days:14,day:validDay?day:undefined,display:q.get("display")==="table"?"table":"chart"};
+      }
+      if(a==="policies")return {page:"action-policy",scope:oneOf(b,["workspace","agent","project","personal"] as const),name:parts[3]};
+      return {page:"operations",section:a==="integrations"?"integrations":"context",selected:b,tab:a==="integrations"&&b?oneOf(c,["connect","resources","links","access","events","actions"] as const):undefined};
+    case "assignments":return {page:"assignments",id:a,agent:q.get("agent")||undefined};
+    case "agent-network":return {page:"agent-network",handoff:a==="handoffs"?b:undefined};
+    case "agent-controls":return {page:"agent-control"};
+    case "you":return {page:"you",section:pick(a,["profile","notifications","privacy","agents","connections"] as const,"profile"),provider:a==="connections"?b:undefined};
     case undefined:
       return (
         legacy(q) ?? {
           page: "new",
-          project: q.get("project") ?? undefined,
+          project: q.get("project")==="~"?"":q.get("project") ?? undefined,
           channel: q.get("channel") ?? undefined,
           agent: q.get("agent") ?? undefined,
           ask: q.get("ask") ?? undefined,
@@ -274,7 +325,7 @@ function read(pathname: string, search: string): Route {
       if (b === "share") return { page: "conversation", id: a, share: true };
       if (oneOf(b, CONVERSATION_PANELS)) {
         const slide = Number(q.get("slide"));
-        return { page: "conversation", id: a, panel: b as ConversationPanel, ...(b === "activity" && parts[3] ? { run: parts[3] } : {}), ...(b === "deliverables" && parts[3] ? { artifact: parts[3], artifactTab: oneOf(parts[4], ARTIFACT_TABS), slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined } : {}) };
+        return { page: "conversation", id: a, panel: b as ConversationPanel, ...(b === "context" && parts[3] === "instructions" ? {contextTab:"instructions" as const} : {}), ...(b === "activity" ? {run:parts[3],filter:oneOf(q.get("filter"),["all","handoffs","tools","decisions"] as const),showTools:q.get("tools")==="0"?false:undefined} : {}), ...(b === "deliverables" && parts[3] ? { artifact: parts[3], artifactTab: oneOf(parts[4], ARTIFACT_TABS), slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined } : {}) };
       }
       return { page: "conversation", id: a, message: q.get("message") || undefined };
     case "projects": {
@@ -301,6 +352,8 @@ function read(pathname: string, search: string): Route {
     case "knowledge":
       return a ? { page: "context", source: a, tab: pick(b, SOURCE_TABS, "documents") } : { page: "context" };
     case "agents":
+      if(b==="setup")return {page:"agent-setup",name:a==="new"?undefined:a};
+      if(b==="control")return {page:"agent-control",agent:a};
       if (!a) return { page: "agents" };
       return {
         page: "agent",

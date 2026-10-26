@@ -38,13 +38,13 @@ export function ModelChain({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="@container flex min-w-0 flex-col gap-4">
       <ol className="flex flex-col gap-2" aria-label={`${label}, in the order they are tried`}>
         {models.map((m, i) => {
           const role = i === 0 ? "Primary" : `Fallback ${i}`;
           return (
-            <li key={`${i}:${m.provider}`} className={`${card} grid grid-cols-1 items-end gap-3 sm:grid-cols-[6rem_11rem_minmax(0,1fr)_auto]`}>
-              <span className="text-aui-sm font-medium text-aui-fg sm:pb-2">{role}</span>
+            <li key={`${i}:${m.provider}`} className={`${card} grid grid-cols-1 items-end gap-3 @3xl:grid-cols-[6rem_11rem_minmax(10rem,1fr)_auto]`}>
+              <span className="text-aui-sm font-medium text-aui-fg @3xl:pb-2">{role}</span>
               <Label text="Provider">
                 <Menu
                   label={`Provider, ${role.toLowerCase()}`}

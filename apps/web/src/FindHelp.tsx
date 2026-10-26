@@ -6,9 +6,10 @@ import { AgentMark, field, textAction } from "./ui.tsx";
 export type { HelpSuggestion } from "../../../packages/client/src/generated/types.ts";
 
 /** Discovery only. Choosing a suggestion never publishes an existing chat. */
-export function FindHelp({ onSearch, onChoose, onOpen }: {
+export function FindHelp({ onSearch, onChoose, onOpen, canChoose = true }: {
   onSearch: (description: string) => Promise<HelpSuggestion[]>;
-  onChoose: (suggestion: HelpSuggestion) => void;
+  onChoose: (suggestion: HelpSuggestion, description:string) => void;
+  canChoose?:boolean;
   onOpen: (project: string) => void;
 }) {
   const c = defaultCopy.home.findHelp;
@@ -44,7 +45,7 @@ export function FindHelp({ onSearch, onChoose, onOpen }: {
         {results.map((result) => <li key={`${result.project}:${result.agent}`} className="flex flex-wrap items-start gap-3 py-3">
           <AgentMark name={result.agent} />
           <div className="min-w-0 flex-1"><p className="break-words text-aui-sm text-aui-fg">{result.title} <span className="text-aui-muted">{result.agent}</span></p><p className="mt-1 text-aui-sm text-aui-muted">{result.reason}</p></div>
-          <div className="flex flex-wrap gap-4"><button type="button" className={textAction} onClick={() => onChoose(result)}>{c.choose}</button><button type="button" className={textAction} onClick={() => onOpen(result.project)}>{c.open}</button></div>
+          <div className="flex flex-wrap gap-4">{canChoose && <button type="button" className={textAction} onClick={() => onChoose(result, description.trim())}>{c.choose}</button>}<button type="button" className={textAction} onClick={() => onOpen(result.project)}>{c.open}</button></div>
         </li>)}
       </ul>}
     </details>

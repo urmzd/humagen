@@ -6,7 +6,7 @@ import { AgentMark, button, Confirm, field, Label, primary, Problem } from "./ui
 const words = defaultCopy.conversationAccess;
 
 /** Conversation participation is narrower than project roles. The server owns both checks. */
-export function ConversationAccess({ thread, onChanged }: { thread: Thread; onChanged?: (thread: Thread) => void }) {
+export function ConversationAccess({ thread, onChanged, onShare }: { thread: Thread; onShare?:()=>void; onChanged?: (thread: Thread) => void }) {
   const [current, setCurrent] = useState(thread);
   const [handle, setHandle] = useState("");
   const [kind, setKind] = useState<"person" | "agent">("person");
@@ -41,7 +41,7 @@ export function ConversationAccess({ thread, onChanged }: { thread: Thread; onCh
   return <div className="flex min-w-0 flex-col gap-5">
     <p className="text-aui-sm text-aui-muted">{current.visibility === "private" ? words.privateHint : words.sharedHint}</p>
     {current.fork && <p className="text-aui-xs text-aui-muted">{words.forkHint}</p>}
-    {manage && <button type="button" className={`${button} self-start`} disabled={saving} onClick={() => change(coworking.update(current.id, { version: current.version, title: current.title || "", visibility: current.visibility === "private" ? "shared" : "private", default: current.default || "", agents: current.agents, mode: current.mode }))}>{current.visibility === "private" ? words.share : words.makePrivate}</button>}
+    {manage && (current.visibility!=="private"||onShare) && <button type="button" className={`${button} self-start`} disabled={saving} onClick={() => current.visibility === "private" ? onShare?.() : change(coworking.update(current.id, { version: current.version, title: current.title || "", visibility:"private", default: current.default || "", agents: current.agents, mode: current.mode }))}>{current.visibility === "private" ? words.share : words.makePrivate}</button>}
     <ul className="divide-aui-border divide-y">{current.participants.map((person) => <li key={`${person.kind}:${person.name}`} className="flex min-w-0 flex-wrap items-center gap-2 py-3 text-aui-sm">
       {person.kind === "agent" && <AgentMark name={person.name} size={15} />}<span className="min-w-0 flex-1 break-words">{person.name}</span><span className="text-aui-xs text-aui-muted">{person.owner ? words.owner : person.kind === "person" ? words.person : words.agent}</span>
       {write && !person.owner && (manage || person.kind === "person" && person.name === myHandle) && (remove === person.name ? <Confirm question={`${words.remove} ${person.name}?`} action={words.remove} onKeep={() => setRemove(null)} onConfirm={() => { setRemove(null); change(coworking.participants(current.id, { version: current.version, remove: [person.name] })); }} /> : <button type="button" className={button} disabled={saving} onClick={() => setRemove(person.name)}>{words.remove}</button>)}

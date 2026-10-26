@@ -29,6 +29,8 @@ export interface QueueControls {
   stop: () => void;
   /** Tell the queue the running turn ended; it may start the next message. */
   turnEnded: (outcome: "done" | "failed" | "stopped") => void;
+  /** Retain a post that the server did not accept, for editing and explicit retry. */
+  reject: () => void;
   resume: () => void;
   setMode: (mode: QueueMode) => void;
   /** A turn is running or stopping. */
@@ -77,6 +79,7 @@ export function useQueue({
       clear: () => dispatch({ type: "clear" }),
       stop: () => dispatch({ type: "stop" }),
       turnEnded: (outcome) => dispatch({ type: "turnEnded", outcome }),
+      reject: () => dispatch({ type: "rejected" }),
       resume: () => dispatch({ type: "resume" }),
       setMode: (m) => dispatch({ type: "setMode", mode: m }),
       running: state.status === "running" || state.status === "stopping",

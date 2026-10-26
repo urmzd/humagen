@@ -2,21 +2,23 @@ import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
-import { AgentMessage, Thread, useQueue } from "@humagen/web";
+import { AgentMessage, messageTextActionButton, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { MessageTime } from "./MessageTime.tsx";
-import { actedFor, turnOf, type Run } from "./adapter.ts";
+import { actedFor, citationOf, turnOf, type Run } from "./adapter.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { OutcomeActions } from "./OutcomeActions.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
+import { ConversationForkPanels,type ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { href, type ConversationPanel, type ConversationView } from "./route.ts";
 import { ApiError, api, coworking, type ProjectView, type Revision, type Thread as ThreadRecord, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
 import { askedOf, copyFor } from "./asks.ts";
 import { useCompletion } from "./completion.ts";
 import { useThreadSelection } from "./selection.ts";
-import { HomePage } from "./HomePage.tsx";
+import { HomePage, type HomeAnnouncement } from "./HomePage.tsx";
 import { emptySelection, MAX_SELECTED, PlusMenu, withAgent, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
 import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
 import { rememberSaid } from "./conflicts.ts";
@@ -98,11 +100,12 @@ function TurnView({
   run: originalRun,
   me,
   siblings,
-  live,
   ask,
   onSwitch,
   onAsk,
   onReply,
+  onRedirect,
+  actions,
   canStop = false,
 }: {
   run: Run;
@@ -117,15 +120,20 @@ function TurnView({
   onSwitch: (id: string) => void;
   onAsk?: () => void;
   onReply?: () => void;
+  onRedirect?: () => void;
+  actions?:ReactNode;
 }) {
   const { run, control } = useRunStop(originalRun, canStop);
-  const turn = useRunTurn(live ? run : undefined);
+  const turn = useRunTurn(run);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
   const refused = notAskable(run, me, siblings);
   const drawn = useMemo(
     () =>
-      turn ? { ...turn, ...(run.status === "stopped" ? { status: "stopped" as const } : {}) } : turnOf(run),
+      {
+      const base = turn ?? turnOf(run);
+      return run.citations !== undefined ? {...base,citations:run.citations.map(citationOf)} : base;
+    },
     [turn, run],
   );
   // Neither Retry nor Regenerate is offered on a turn the reader may not ask
@@ -149,7 +157,7 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} />
+        <AgentMessage actions={<>{control}{actions}</>} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -262,15 +270,24 @@ export function Chat({
   homes = {},
   projects,
   canRun,
+  artifactActions,
+  canLearn=false,
+  forkActions,
   canCreateProject,
   greeting,
   onThread,
   onChanged,
   onProjectCreated,
   home,
+  banner,
+  findHelp,
+  personalProject,
 }: {
   /** Quiet lines under the prompt on Home: what needs the person, and what is new. */
   home?: ReactNode;
+  banner?:HomeAnnouncement;
+  findHelp?:ReactNode;
+  personalProject?:string;
   threadId: string | null;
   /** The reader's subject: Retry asks a turn again as them, so only on a turn that acted for them. */
   me: string;
@@ -304,6 +321,9 @@ export function Chat({
   /** The project tree a new conversation can be filed in, or null while it loads. */
   projects: ProjectView[] | null;
   canRun: boolean;
+  canLearn?:boolean;
+  artifactActions?: {knowledge:boolean;memory:boolean};
+  forkActions?:ConversationForkActions;
   /** May make a project from the picker. */
   canCreateProject: boolean;
   greeting: string;
@@ -329,10 +349,15 @@ export function Chat({
   const [selection, setSelection] = useState<Selection>(() => ({
     ...emptySelection,
     agents: startAgent ? [startAgent] : [],
-    project: startIn ?? null,
+    project: startIn ?? personalProject ?? null,
     channel: startChannel || "general",
   }));
-  const project = selection.project;
+
+ useEffect(()=>{
+  if(!threadId&&startIn===undefined&&personalProject!==undefined)setSelection(current=>current.project===null?{...current,project:personalProject}:current);
+ },[threadId,startIn,personalProject]);
+  const project = selection.project ?? personalProject ?? null;
+  const select=(next:Selection)=>setSelection(next.project===null && personalProject!==undefined?{...next,project:personalProject,channel:"general"}:next);
   const [draft, setDraft] = useState("");
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
@@ -342,7 +367,7 @@ export function Chat({
   const [localView, setLocalView] = useState<ConversationView>({});
   const shownView = onView ? view ?? {} : localView;
   const openPanel = (panel?: ConversationPanel, selection: Omit<ConversationView, "panel"> = {}) => {
-    const next = { ...selection, panel };
+    const next = { ...(panel==="activity"&&shownView.panel==="activity"?{filter:shownView.filter,showTools:shownView.showTools}:{}),...selection, panel };
     if (onView) onView(next);
     else setLocalView(next);
   };
@@ -411,7 +436,7 @@ export function Chat({
   const post = useCallback(
     async (text: string, to: string, after: string | undefined, filed: string | null = project) => {
       setProblem(null);
-      const run = await api.createRun(to, text, after ? { after } : filed ? { project: filed } : {});
+      const run = await api.createRun(to, text, after ? { after } : filed!==null ? { project: filed } : {});
       setTurns((t) => (t.some((x) => x.id === run.id) ? t : [...t, run]));
       setChosen((c) => ({ ...c, [run.prev ?? ""]: run.id }));
       onChanged();
@@ -430,7 +455,7 @@ export function Chat({
       };
       const failed = (e: unknown) => {
         setProblem(e instanceof ApiError ? e.message : words.failed.post);
-        queue.turnEnded("failed");
+        queue.reject();
       };
       // Home starts a private conversation in the picked project, or a
       // shared thread when it was opened from a channel. Either opens at
@@ -554,11 +579,12 @@ export function Chat({
                     onAttach={attach}
                     onClose={close}
                     projects={projects}
+                    personalProject={personalProject}
                     kinds={root?.kinds}
                     projectFixed={defaultCopy.threads.shareProjectFixed}
                   />
                 ),
-                chips: <SelectionChips selection={runs.selection} projects={projects} workspace={workspaceName} onChange={runs.select} projectFixed />,
+                chips: <SelectionChips personalProject={personalProject} selection={runs.selection} projects={projects} workspace={workspaceName} onChange={runs.select} projectFixed />,
               })
             : (available) => ({
                 menu: (close, attach, leave) => (
@@ -566,16 +592,17 @@ export function Chat({
                     onLeave={leave}
                     agents={available}
                     selection={selection}
-                    onChange={setSelection}
+                    onChange={select}
                     onAttach={attach}
                     onClose={close}
                     projects={projects}
+                    personalProject={personalProject}
                     kinds={root?.kinds}
                     canCreateProject={canCreateProject}
                     onProjectCreated={onProjectCreated}
                   />
                 ),
-                chips: <SelectionChips selection={selection} projects={projects} workspace={workspaceName} onChange={setSelection} />,
+                chips: <SelectionChips personalProject={personalProject} selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectFixed={selection.project===personalProject} />,
               })
         }
       />
@@ -583,7 +610,7 @@ export function Chat({
   );
 
   // A thread people have posted in is a room: their messages and the agents' answers, side by side.
-  if (threadId && room && room.thread.id === threadId && room.turns.some((t) => t.message)) {
+  if (threadId && room && room.thread.id === threadId && (room.thread.read_only || room.turns.some((t) => t.message))) {
     return (
       <ThreadRoom
         key={threadId}
@@ -598,11 +625,16 @@ export function Chat({
         root={root ?? null}
         workspaceName={workspaceName ?? ""}
         canRun={canRun}
+        personalProject={personalProject}
+        artifactActions={artifactActions}
+        canLearn={canLearn}
+        forkActions={forkActions}
         focus={focus}
         sharing={sharing}
         onSharing={onSharing}
         view={view}
         onView={onView}
+        onOpenThread={onThread}
         onOpenChannel={(p, c) => onOpenChannel?.(p, c)}
         onChanged={onChanged}
       />
@@ -626,7 +658,7 @@ export function Chat({
 
   if (!threadId || path.length === 0) {
     return (
-      <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
+      <HomePage banner={banner} greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={<>{findHelp}{home}</>}>
         {composer}
         {/*
           Suggestions sit with the chat bar, as quiet text under it, until
@@ -637,7 +669,7 @@ export function Chat({
           // One line, never one left alone on a line of its own: a phone
           // shows the first two, which fit inside its gutter, and a wider
           // screen all of them.
-          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-4 overflow-hidden px-7">
+          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-3 overflow-hidden px-4 sm:gap-x-4 sm:px-7">
             {starters.map((st, i) => (
               <li key={st.agent} className={`shrink-0 ${i >= 2 ? "hidden sm:block" : ""}`}>
                 <button
@@ -667,19 +699,21 @@ export function Chat({
     <section className="flex min-h-0 flex-1">
       <ConversationPage
         title={summary?.title ?? path[0]?.text ?? "Conversation"}
-        project={projects?.find((p) => p.name === where)?.title || where || workspaceName || defaultCopy.projects.workspace}
+        project={projects?.find((p) => p.name === where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace}
         private={room?.thread.visibility === "private"}
         agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
         onPanel={(next) => openPanel(next)}
         onArtifact={(id) => openPanel("deliverables", { artifact: id })}
       >
+      {room&&canRun&&!room.thread.read_only&&<ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions}/>}
       <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
         <Thread className="mx-auto w-full max-w-4xl flex-1 px-4" busy={tailWorking} label="Conversation">
           {path.map((run, i) => (
             <TurnView
               key={run.id}
               run={run}
-              canStop={canRun}
+              canStop={canRun&&!room?.thread.read_only}
+              actions={!room?.thread.read_only&&run.status==="completed"?<><OutcomeActions run={run} canWrite={canLearn}/>{canRun&&forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(run.id)}>{defaultCopy.forking.fromHere}</button>}{canRun&&room?.thread.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(run.id)}>{defaultCopy.forking.bringBack}</button>}</>:undefined}
               me={me}
               ask={asks[run.id]}
               siblings={siblingsOf(turns, run)}
@@ -687,17 +721,19 @@ export function Chat({
               onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
               onAsk={canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined}
               onReply={canRun ? () => setSeed({ text: `@${run.agent} following up on [this answer](${href({ page: "conversation", id: threadId, panel: "activity", run: run.id })}): `, mode: "prepend" }) : undefined}
+              onRedirect={canRun ? () => setSeed({text:defaultCopy.conversation.redirectPrompt(run.agent,href({page:"conversation",id:threadId,panel:"activity",run:run.id})),mode:"prepend"}) : undefined}
             />
           ))}
         </Thread>
       </WebSurface>
       {composer}
       </ConversationPage>
-      {room && <ConversationInfo panel={shownView.panel} thread={room.thread} project={where || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
-      {shownView.panel === "deliverables" && <Deliverables thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
+      {room && <ConversationInfo panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={room.thread} project={projects?.find(project=>project.name===where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
+      {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:room?.thread.project??where??"",shared:room?.thread.visibility==="shared",...artifactActions}:undefined} thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
       <Presence when={activity !== null} ms={180}>
         {(leaving) => (
           <Activity
+            filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length}
             leaving={leaving}
             turns={path}
             stamp={turns.map((t) => `${t.id}:${t.calls}:${t.status}`).join("|")}

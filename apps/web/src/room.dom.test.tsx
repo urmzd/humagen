@@ -11,6 +11,7 @@ import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
 import { liveEventSource, stubEventSource, stubFetch } from "./dom.ts";
 import { PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
+import { ShareDialog } from "./Share.tsx";
 import { globex, tree } from "./projects.fixtures.ts";
 
 const words = defaultCopy.threads;
@@ -72,9 +73,9 @@ afterEach(() => {
   net = undefined;
 });
 
-function room(routes: Record<string, (body: unknown) => unknown> = {}) {
+function room(routes: Record<string, (body: unknown) => unknown> = {}, initial: ThreadPage = page) {
   net = stubFetch({
-    "GET /api/threads/th-0123456789abcdef": () => page,
+    "GET /api/threads/th-0123456789abcdef": () => initial,
     "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
     "GET /api/people": () => ({ people: [{ subject: "00u-dana", name: "Dana Scully", handle: "dana", roles: [], picture: null }], next: null }),
     "GET /api/runs/r1/events": () => ({ events: [] }),
@@ -85,7 +86,7 @@ function room(routes: Record<string, (body: unknown) => unknown> = {}) {
     <ThreadRoom
       id="th-0123456789abcdef"
       me="ana"
-      initial={page}
+      initial={initial}
       tick={0}
       agents={[helper]}
       projects={tree}
@@ -1106,7 +1107,7 @@ test("Share at the top of a private conversation moves it into a project's chann
   assert.ok(screen.getByText(words.sharedTold(["dana"])));
 });
 
-test("the project is fixed once an agent has run, and a project the server will not move it to says why", async () => {
+test("completed work requires destination review, and an unseen run refusal stays actionable", async () => {
   const ran: ThreadPage = { ...mine, turns: [...mine.turns, page.turns[1] as ThreadTurn] };
   net = stubFetch({
     "GET /api/threads/th-00000000000000aa": () => ran,
@@ -1114,15 +1115,21 @@ test("the project is fixed once an agent has run, and a project the server will 
     "GET /api/projects/Globex/channels": () => ({ channels: [] }),
     "GET /api/projects/Initech/channels": () => ({ channels: [] }),
     "GET /api/runs/r1/events": () => ({ events: [] }),
-    "POST /api/threads/th-00000000000000aa/share": () =>
-      new Response(JSON.stringify({ error: "a conversation that has runs stays in its project" }), { status: 409 }),
+    "GET /api/threads/th-00000000000000aa/placement": () => ({thread:mine.thread.id,project:"Globex",channel:"renewals",audience:"Globex members",runs:1,token:"review-token",exclusions:[]}),
+    "POST /api/threads/th-00000000000000aa/share": () => ({...ran,thread:{...ran.thread,visibility:"shared"},not_added:[]}),
   });
   render(<Sharing initial={ran} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
   let dialog = await screen.findByRole("dialog", { name: words.shareTitle });
   const fixed = within(dialog).getByLabelText(new RegExp(`^${words.shareProject}`)) as HTMLSelectElement;
-  assert.equal(fixed.disabled, true);
-  assert.ok(within(dialog).getByText(words.shareProjectFixed));
+  assert.equal(fixed.disabled, false);
+  const publish = within(dialog).getByRole("button", {name:words.share}) as HTMLButtonElement;
+  assert.equal(publish.disabled,true);
+  fireEvent.click(await within(dialog).findByRole("checkbox", {name:words.placementReview}));
+  assert.equal(publish.disabled,false);
+  fireEvent.click(publish);
+  await waitFor(() => assert.ok(net?.seen.some((request) => request.method === "POST")));
+  assert.equal((net?.seen.find((request) => request.method === "POST")?.body as {placement_token:string}).placement_token,"review-token");
   cleanup();
   net?.restore();
 
@@ -1383,13 +1390,14 @@ test("a channel's first message says what it did in the conversation it opens", 
   assert.ok(await screen.findByText(words.notified(["dana"])));
 });
 
-test("Share keeps the channel a conversation is in, which can't change once an agent has run, and says why in words", async () => {
+test("Share preserves the selected channel and invalidates consent after a stale placement", async () => {
   const ran: ThreadPage = { ...mine, thread: { ...mine.thread, channel: "deals" }, turns: [...mine.turns, page.turns[1] as ThreadTurn] };
   net = stubFetch({
     "GET /api/threads/th-00000000000000aa": () => ran,
     "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
     "GET /api/projects/Globex/channels": () => ({ channels: ["general", "deals"].map((name) => ({ project: "Globex", name, version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } })) }),
     "GET /api/runs/r1/events": () => ({ events: [] }),
+    "GET /api/threads/th-00000000000000aa/placement": () => ({thread:mine.thread.id,project:"Globex",channel:"deals",audience:"Globex members",runs:1,token:"channel-token",exclusions:[]}),
     "POST /api/threads/th-00000000000000aa/share": () => new Response(JSON.stringify({ error: "a conversation that has runs stays in its channel" }), { status: 409 }),
   });
   render(<Sharing initial={ran} />);
@@ -1397,11 +1405,12 @@ test("Share keeps the channel a conversation is in, which can't change once an a
   const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
   const channel = within(dialog).getByLabelText(words.shareChannel) as HTMLSelectElement;
   await waitFor(() => assert.equal(channel.value, "deals"));
-  assert.equal(channel.disabled, true);
+  assert.equal(channel.disabled, false);
+  fireEvent.click(await within(dialog).findByRole("checkbox",{name:words.placementReview}));
   fireEvent.click(within(dialog).getByRole("button", { name: words.share }));
   await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST")));
-  assert.deepEqual(net?.seen.find((s) => s.method === "POST")?.body, { channel: "deals" });
-  assert.ok(await within(dialog).findByText(words.shareChannelFixed));
+  assert.deepEqual(net?.seen.find((s) => s.method === "POST")?.body, { channel: "deals", placement_token:"channel-token" });
+  assert.ok(await within(dialog).findByText(words.placementChanged));
   assert.ok(!within(dialog).queryByText(/stays in its channel$/));
 });
 
@@ -1585,4 +1594,108 @@ test("Stop Turn reports a request and waits for the ledger, rather than inventin
   terminal = true;
   await waitFor(() => assert.equal(screen.getByLabelText("Recorded status").textContent, "stopped"), { timeout: 2000 });
   assert.equal(screen.queryByText(defaultCopy.conversation.stopPending), null);
+});
+
+test("recorded outcomes lead with recommendations and Redirect prepares human intent without executing it", async () => {
+  const initial: ThreadPage = {...page,turns:page.turns.map(turn => turn.run ? {...turn,run:{...turn.run,outcome:{kind:"recommendation",summary:"Renew the agreement.",decisions:["Keep the current term"],next_action:"Confirm the owner"},citations:[{id:"[1]",title:"Agreement",url:"https://example.test/agreement",snippet:"The source passage"}]}} : turn)};
+  room({},initial);
+  const message=await screen.findByRole("article",{name:"helper message"});
+  assert.ok(within(message).getByText("Recommendation"));
+  assert.ok(within(message).getByText("Keep the current term"));
+  assert.ok(within(message).getByText("Confirm the owner"));
+  fireEvent.click(within(message).getByRole("button",{name:"Redirect"}));
+  const composer=screen.getByPlaceholderText(words.channel("renewals")) as HTMLTextAreaElement;
+  assert.ok(composer.value.includes("@helper redirecting [this outcome]"));
+  assert.ok(composer.value.endsWith("Please change direction: "));
+  assert.equal(net?.seen.filter(call=>call.method==="POST").length,0);
+
+});
+
+test("answer copy is an action menu and never exposes an empty-selection sentinel",async()=>{
+  room();
+  const answer=await screen.findByRole("article",{name:"helper message"});
+  const copy=within(answer).getByRole("button",{name:"Copy answer as"});
+  assert.equal(copy.getAttribute("aria-label"),"Copy answer as");
+  fireEvent.click(copy);
+  assert.ok(await screen.findByRole("listbox"));
+  assert.ok(!copy.getAttribute("aria-label")?.includes("none"));
+});
+
+
+test("private source history publishes only a reviewed summary and stale consent preserves the draft", async () => {
+  let previews = 0;
+  let published = "";
+  let posts = 0;
+  net = stubFetch({
+    "GET /api/projects/Globex/channels": () => ({channels:[]}),
+    "GET /api/threads/th-00000000000000aa/placement": () => ({thread:mine.thread.id,project:"Globex",channel:"general",audience:"Globex members",runs:1,token:`review-${++previews}`,exclusions:["Private source history stays private"],summary_required:true}),
+    "POST /api/threads/th-00000000000000aa/publication": () => ++posts === 1 ? new Response(JSON.stringify({error:"placement changed"}),{status:409}) : {...mine.thread,id:"published-summary",visibility:"shared"},
+  });
+  render(<ShareDialog thread={mine.thread} hasRuns projects={tree} workspaceName="Acme" me="ana" onClose={()=>{}} onShared={()=>assert.fail("raw history must not publish")} onPublished={(thread)=>{published=thread.id;}}/>);
+  const dialog = screen.getByRole("dialog");
+  const input = await within(dialog).findByLabelText(new RegExp(`^${words.publicationSummary}`));
+  fireEvent.change(input,{target:{value:"Only the approved delivery date."}});
+  fireEvent.click(within(dialog).getByRole("checkbox",{name:words.placementReview}));
+  fireEvent.click(within(dialog).getByRole("button",{name:words.publishSummary}));
+  assert.ok(await within(dialog).findByText(words.placementChanged));
+  assert.equal((input as HTMLTextAreaElement).value,"Only the approved delivery date.");
+  await waitFor(()=>assert.ok(previews >= 2));
+  assert.equal((within(dialog).getByRole("button",{name:words.publishSummary}) as HTMLButtonElement).disabled,true);
+  assert.equal(published,"");
+  assert.equal(net.seen.some((request)=>request.path.endsWith("/share")),false);
+  assert.deepEqual(net.seen.find((request)=>request.method === "POST")?.body,{project:"Globex",channel:"general",summary:"Only the approved delivery date.",placement_token:"review-1"});
+  fireEvent.click(await within(dialog).findByRole("checkbox",{name:words.placementReview}));
+  fireEvent.click(within(dialog).getByRole("button",{name:words.publishSummary}));
+  await waitFor(()=>assert.equal(published,"published-summary"));
+  assert.equal(net.seen.filter((request)=>request.method === "POST").length,2);
+});
+
+
+test("human and completed-agent fork actions share the Copy and Reply footer", async()=>{
+ const points:string[]=[];
+ net=stubFetch({["GET /api/threads/"+page.thread.id]:()=>page,"GET /api/runs/r1/events":()=>({events:[]}),"GET /api/projects/Globex/agents":()=>({version:1,available:{all:true,names:[]},homes:[],default_resolved:null})});
+ render(<ThreadRoom id={page.thread.id} me="ana" initial={page} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun forkActions={{onFork:point=>points.push(point)}} onOpenChannel={()=>{}} onChanged={()=>{}}/>);
+ const human=screen.getByRole("article",{name:"Message from Ana"});
+ const actions=within(human).getByRole("toolbar",{name:defaultCopy.conversation.messageActions});
+ assert.ok(within(actions).getByRole("button",{name:defaultCopy.conversation.copyMessage}));
+ fireEvent.click(within(actions).getByRole("button",{name:defaultCopy.forking.fromHere}));
+ const agent=screen.getByRole("article",{name:"Answered by helper"});
+ fireEvent.click(within(agent).getByRole("button",{name:defaultCopy.forking.fromHere}));
+ assert.deepEqual(points,["m-1","r1"]);
+});
+
+test("a read-only conversation archive presents saved context and exposes no composer or run action",async()=>{
+ const archive:ThreadPage={...page,thread:{...page.thread,read_only:true,fork:{source_thread:"source-thread",through:"source-last",by:"ana",at,context:[{kind:"person",by:"ana",name:"Ana",text:"Retained source decision",at}]}},turns:[]};
+ net=stubFetch({["GET /api/threads/"+archive.thread.id]:()=>archive,"GET /api/projects/Globex/agents":()=>({version:1,available:{all:true,names:[]},homes:[],default_resolved:null})});
+ render(<ThreadRoom id={archive.thread.id} me="ana" initial={archive} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun forkActions={{onFork:()=>assert.fail("archive cannot fork")}} onOpenChannel={()=>{}} onChanged={()=>{}}/>);
+ assert.ok(await screen.findByText(defaultCopy.forking.archive));
+ assert.ok(screen.getByText("Retained source decision"));
+ assert.ok(!screen.queryByRole("textbox"));
+ assert.ok(!screen.queryByRole("button",{name:defaultCopy.forking.fromHere}));
+ assert.ok(!screen.queryByRole("button",{name:words.share}));
+ assert.equal(net.seen.some(request=>request.method!=="GET"),false);
+});
+
+test("multiple replies by the same agent each retain one accessible Copy and Reply footer", async () => {
+  const followup = {
+    kind: "message",
+    message: { ...page.turns[0]!.message!, id: "m-2", text: "Who owns the next step?" },
+  } as ThreadTurn;
+  const secondRun = {
+    kind: "run",
+    run: { ...page.turns[1]!.run!, id: "r2", message: "m-2", prev: "m-2", answer: "Ana owns the next step." },
+  } as ThreadTurn;
+  room({"GET /api/runs/r2/events":()=>({events:[]})}, {...page,turns:[...page.turns,followup,secondRun]});
+  const agents = await screen.findAllByRole("article",{name:"helper message"});
+  assert.equal(agents.length,2);
+  const humans=screen.getAllByRole("article",{name:"Message from Ana"});
+  assert.equal(humans.length,2);
+  for(const message of [...humans,...agents]) {
+    const actions=within(message).getAllByRole("toolbar",{name:defaultCopy.conversation.messageActions});
+    assert.equal(actions.length,1);
+    assert.equal(within(actions[0]!).getAllByRole("button",{name:/^Copy (message|answer)/}).length,1);
+    assert.equal(within(actions[0]!).getAllByRole("button",{name:"Reply"}).length,1);
+  }
+  fireEvent.click(within(agents[1]!).getByRole("button",{name:"Reply"}));
+  await waitFor(()=>assert.ok((document.querySelector('form[aria-label="Message"] textarea') as HTMLTextAreaElement | null)?.value.includes("activity/r2")));
 });

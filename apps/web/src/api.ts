@@ -1,9 +1,13 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
-  AnalyticsGroup,
-  AnalyticsBucket,
+  AgentSetup,
+  AgentSetupPlan,
   SkillUsage,
+  AgentSkillDefaults,
+  AgentSkillDefaultsUpdate,
+  KnowledgeLifecycle,
   SourceDependencies,
+  KnowledgeSourceConfig,
   Note as GeneratedNote,
   NoteInput,
   PersonalPreferences,
@@ -12,10 +16,8 @@ import type {
   LibrarySkill,
   LibraryScope,
   LibrarySkillDefinition,
-  AgentSkillDefaults,
-  AgentSkillDefaultsUpdate,
-  KnowledgeLifecycle,
-  KnowledgeSourceConfig,
+  AnalyticsGroup,
+  AnalyticsBucket,
   ProjectContext,
   AgentHome,
   Person,
@@ -36,6 +38,7 @@ import type {
   MentionKind,
   MentionItem,
   ThreadShare,
+  PlacementPreview,
 } from "../../../packages/client/src/generated/types.ts";
 import type { BusEvent, Run } from "./adapter.ts";
 
@@ -97,8 +100,9 @@ export interface Principal {
 }
 
 export interface Me {
+  personal_project?: string;
+  welcome_announcement?: string;
   email_notifications_available?: boolean;
- personal_project?: string;
   principal: Principal;
   permissions: string[];
   /** The caller is an admin in a workspace nobody has set up yet. */
@@ -318,14 +322,16 @@ export type SourceLinkRule=GeneratedSourceLinkRule;
 export type SourceRuleResource=SourceLinkResource;
 export type SourceRuleMatch=SourceLinkMatch;
 
-export type SourceLinkSuggestion=GeneratedSourceLinkSuggestion;
-
-export type SourceAttachment=KnowledgeAttachment;
-
 import type { InstallationCapabilities,ClientCapabilityPolicy,PutClientCapabilitiesBodyPart2,SlackBinding,ListClientBindingsResponse } from "../../../packages/client/src/generated/types.ts";
 export type BridgeDirection=NonNullable<SlackBinding["direction"]>;
 export type ClientCapabilities=InstallationCapabilities;
 export type ClientCapabilityInput=ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2;
+
+
+export type SourceLinkSuggestion=GeneratedSourceLinkSuggestion;
+
+export type SourceAttachment=KnowledgeAttachment;
+
 
 export interface Source {
   lifecycle?: KnowledgeLifecycle;
@@ -666,6 +672,10 @@ export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, 
 import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
+ outcomeLearning:(id:string,scope:"personal"|"project"="personal")=>call<import("../../../packages/client/src/generated/types.ts").OutcomeLearningPreview>("GET",`/api/runs/${encodeURIComponent(id)}/learning?${new URLSearchParams({scope})}`),
+ draftOutcomeSkill:(id:string,input:{snapshot:string;scope?:LibraryScope;definition:LibrarySkillDefinition})=>call<LibrarySkill>("POST",`/api/runs/${encodeURIComponent(id)}/skill-draft`,input),
+ rememberOutcomeDecision:(id:string,input:{snapshot:string;scope?:LibraryScope;decision:number;text:string})=>call<GeneratedNote>("POST",`/api/runs/${encodeURIComponent(id)}/decision-memory`,input),
+
   projectRollup: (name: string) => call<ProjectRollup>("GET", `${projectAt(name)}/rollup`),
 
   agentControl: (agent = "") => call<AgentControl>("GET", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls"),
@@ -712,6 +722,13 @@ export const api = {
    * project lives, and which projects enable each ("~" is the workspace).
    */
   agentHues: (names: string[], path = "/api/agent-hues") => call<{ hues: Record<string, number> }>("GET", `${path}?names=${encodeURIComponent(names.join(","))}`),
+  agentSetup:(name:string)=>call<AgentSetup>("GET",`/api/agent-setups/${encodeURIComponent(name)}`),
+  createAgentSetup:(plan:AgentSetupPlan)=>call<AgentSetup>("POST","/api/agent-setups",plan),
+  resumeAgentSetup:(name:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/resume`),
+  amendAgentSetup:(name:string,version:number,plan:AgentSetupPlan)=>call<AgentSetup>("PUT",`/api/agent-setups/${encodeURIComponent(name)}`,{version,plan}),
+  testAgentSetup:(name:string,text:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/test`,{text}),
+  activateAgentSetup:(name:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/activate`),
+  modelProviders:()=>call<{providers:{name:string;declared:boolean}[]}>("GET","/api/model-providers").then(response=>response.providers),
   agentList: () =>
     call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]>; hues?: Record<string, number> }>("GET", "/api/agents"),
   /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
@@ -778,6 +795,7 @@ export const api = {
   /** Everything recorded about a run and the runs under it, as one document. */
   manifest: (id: string) => call<unknown>("GET", `/api/runs/${encodeURIComponent(id)}/manifest`),
   /** Open and unread count what may need the reader; updates are announcements they have not read, which never grow the badge. */
+  findHelp: (q:string) => call<{suggestions:import("../../../packages/client/src/generated/types.ts").HelpSuggestion[]}>("GET",`/api/find-help?${new URLSearchParams({q})}`).then(response=>response.suggestions),
   inboxCount: () => call<{ open: number; unread: number; updates: number }>("GET", "/api/inbox/count"),
   /** The id of the message an alert raised, or null when it raised none. */
   inboxFor: (alert: string) =>
@@ -960,12 +978,13 @@ export const api = {
   saveSourceLinkRule: (rule:SourceLinkRule,creating=false) => { const {id,copied_from,...input}=rule; return call<SourceLinkRule>(creating?"POST":"PUT",creating?"/api/source-link-rules":`/api/source-link-rules/${encodeURIComponent(id)}`,input); },
   deleteSourceLinkRule: (id:string) => call<void>("DELETE",`/api/source-link-rules/${encodeURIComponent(id)}`),
   previewSourceLinkRules: (resource:SourceRuleResource) => call<{matches:SourceRuleMatch[]}>("POST","/api/source-link-rules/preview",resource),
-  sourceLinkSuggestions:(client?:string,knowledge?:string,state:SourceLinkSuggestion["state"]="suggested")=>call<ListSourceLinkSuggestionsResponse>("GET",`/api/source-link-suggestions?${new URLSearchParams({state,limit:"200",...(client?{client}:{}),...(knowledge?{knowledge}:{})})}`).then(result=>result.suggestions),
-  decideSourceLink:(id:string,action:DecideSourceLinkSuggestionBody["action"],version:number)=>call<SourceLinkSuggestion>("POST",`/api/source-link-suggestions/${encodeURIComponent(id)}/decision`,{action,version}),
   clientCapabilities:(id:string)=>call<ClientCapabilities>("GET",`/api/clients/${encodeURIComponent(id)}/capabilities`),
   saveClientCapabilities:(id:string,input:ClientCapabilityInput)=>call<ClientCapabilities>("PUT",`/api/clients/${encodeURIComponent(id)}/capabilities`,input),
   setSlackDirection:(project:string,channel:Channel,direction:BridgeDirection)=>call<Channel>("PUT",`${projectAt(project)}/channels/${encodeURIComponent(channel.name)}`,{version:channel.version,title:channel.title??"",purpose:channel.purpose??"",default:channel.default??"",slack:{...channel.slack,direction}}),
   clientBindings:(id:string)=>call<ListClientBindingsResponse>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(result=>result.bindings),
+
+  sourceLinkSuggestions:(client?:string,knowledge?:string,state:SourceLinkSuggestion["state"]="suggested")=>call<ListSourceLinkSuggestionsResponse>("GET",`/api/source-link-suggestions?${new URLSearchParams({state,limit:"200",...(client?{client}:{}),...(knowledge?{knowledge}:{})})}`).then(result=>result.suggestions),
+  decideSourceLink:(id:string,action:DecideSourceLinkSuggestionBody["action"],version:number)=>call<SourceLinkSuggestion>("POST",`/api/source-link-suggestions/${encodeURIComponent(id)}/decision`,{action,version}),
   sourceDependencies: (name: string) => call<SourceDependencies>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
   configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
   connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
@@ -1347,6 +1366,8 @@ export const coworking = {
    * and adds people by handle. The project may change only while the thread
    * has no runs: the server answers 409 otherwise.
    */
+  placement: (id: string, project: string, channel: string) => call<PlacementPreview>("GET", `${threadPath(id)}/placement?${new URLSearchParams({project: project || "~", channel})}`),
+  publishSummary: (id: string, body: {project:string;channel:string;summary:string;placement_token:string}) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>
@@ -1385,14 +1406,14 @@ export const coworking = {
 
 export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };
 
-export interface ProjectForkOperation {
- id: string; source: string; destination: string; state: "preparing" | "failed" | "ready"; error?: string; projects: number; agents: number; memory: number; archives: number;
-}
-
-export interface DiscoveryItem { kind: "project" | "agent" | "conversation"; id: string; title: string; project?: string; channel?: string; hue?: number }
-
 function operationPolicyPath(scope: "workspace" | "agent" | "project" | "personal", name: string) {
   if (scope === "personal") return "/api/me/action-policy";
   if (scope === "workspace") return "/api/action-policy";
   return `/api/${scope === "agent" ? "agents" : "projects"}/${encodeURIComponent(name || "~")}/action-policy`;
 }
+
+export interface ProjectForkOperation {
+ id: string; source: string; destination: string; state: "preparing" | "failed" | "ready"; error?: string; projects: number; agents: number; memory: number; archives: number;
+}
+
+export interface DiscoveryItem { kind: "project" | "agent" | "conversation"; id: string; title: string; project?: string; channel?: string; hue?: number }

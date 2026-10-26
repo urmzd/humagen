@@ -693,3 +693,19 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
   // Its project shows as a chip that can't be removed.
   assert.equal(screen.queryByRole("button", { name: /^Remove (Acme|Workspace|Projectless)/ }), null);
 });
+
+
+test("a late personal-home address never becomes visible while project titles load",async()=>{
+ const personal="~personal-opaque-address";
+ net=stubFetch({"GET /api/projects/~/agents":()=>workspace(),["GET /api/projects/"+encodeURIComponent(personal)+"/agents"]:()=>workspace(),"GET /api/skills":()=>({skills:[]}),"GET /api/mentions":()=>({kinds:[]}),"GET /api/people":()=>({people:[]}),"POST /api/threads":()=>({thread:{id:"new-personal",project:personal},runs:[],notified:[],refused:[],message:{id:"message",text:"Keep this internal"}})});
+ const props:Parameters<typeof Chat>[0]={threadId:null,me:"ada",summary:undefined,tick:0,agents,homes:{},projects:[],canRun:true,canCreateProject:false,greeting:"Good afternoon",onThread:()=>{},onChanged:()=>{},onProjectCreated:()=>{}};
+ const mounted=render(<Chat {...props}/>);
+ mounted.rerender(<Chat {...props} personalProject={personal} projects={null}/>);
+ const selected=await screen.findByRole("list",{name:defaultCopy.chat.selected});
+ assert.ok(within(selected).getByText(defaultCopy.projects.personalTitle));
+ assert.ok(!document.body.textContent?.includes(personal));
+ assert.ok(!screen.queryByRole("button",{name:new RegExp(personal)}));
+ assert.ok(!within(selected).queryByRole("button",{name:defaultCopy.chat.removeProject(defaultCopy.projects.personalTitle)}));
+ mounted.rerender(<Chat {...props} personalProject={personal} projects={[]}/>);
+ assert.ok(within(selected).getByText(defaultCopy.projects.personalTitle));
+});

@@ -7,6 +7,7 @@ import { AgentMessage } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
+import { ArtifactPromotion } from "./ArtifactPromotion.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { stubFetch } from "./dom.ts";
 import type { ConversationView } from "./route.ts";
@@ -235,6 +236,7 @@ test("the workbench opens an older saved version and sends that exact version fo
     false,
   );
   assert.match(revisionPrompt(previous, 3), /v1, slide 3/);
+  assert.match(revisionPrompt(previous, 3), /file_read path artifact:art-1@1/);
   assert.match(revisionPrompt(previous, 3), /\/conversations\/thread-1\/deliverables\/art-1/);
 });
 
@@ -349,4 +351,60 @@ test("project context shows the document's origin and actual import time", async
   const date = document.querySelector("time");
   assert.equal(date?.getAttribute("datetime"), "2026-10-23T09:42:00Z");
   assert.equal(screen.queryByText("Live"), null);
+});
+
+test("PDF export uses the selected immutable version and a refusal keeps the original available", async () => {
+  const native={...saved,title:"Launch brief.docx",mime:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"};
+  net=stubFetch({
+    "GET /api/artifacts":()=>({artifacts:[native],next:null}),
+    "GET /api/artifacts/art-2":()=>native,
+    "GET /api/artifacts/art-2/versions":()=>({versions:[native]}),
+    "GET /api/artifacts/art-2/content":()=>new Response("not a valid Office preview"),
+    "GET /api/artifacts/art-2/pdf":()=>new Response(JSON.stringify({error:"This file has no native revision model to export."}),{status:400}),
+  });
+  render(<Deliverables thread="thread-1" view={{panel:"deliverables",artifact:"art-2"}} onView={()=>{}} onClose={()=>{}} />);
+  fireEvent.click(await screen.findByRole("button",{name:words.artifactPDF}));
+  assert.ok(await screen.findByText("This file has no native revision model to export."));
+  assert.equal(screen.getByRole("link",{name:"Download Original"}).getAttribute("href"),"/api/artifacts/art-2/content");
+  assert.ok(net.seen.some(request=>request.path==="/api/artifacts/art-2/pdf"));
+  assert.ok(!net.seen.some(request=>request.method==="POST"));
+});
+
+test("accepted results require whole-file review and a same-project manual indexed source", async () => {
+  net=stubFetch({
+    "GET /api/knowledge":()=>({sources:[{name:"accepted",lifecycle:{mode:"indexed",provider:"manual",project:"Launch"}},{name:"broader",lifecycle:{mode:"indexed",provider:"manual",project:""}},{name:"live",lifecycle:{mode:"live",provider:"drive",project:"Launch"}}]}),
+    "POST /api/artifacts/art-2/promote-knowledge":()=>({id:"document-1",uri:"humagen://artifacts/art-2?version=2"}),
+  });
+  render(<ArtifactPromotion file={saved} access={{project:"Launch",shared:true,knowledge:true,memory:false}} />);
+  const source=await screen.findByRole("combobox");
+  assert.ok(!screen.queryByRole("option",{name:"broader"}));
+  assert.ok(!screen.queryByRole("option",{name:"live"}));
+  const submit=screen.getByRole("button",{name:words.artifactAddKnowledge}) as HTMLButtonElement;
+  assert.equal(submit.disabled,true);
+  fireEvent.change(source,{target:{value:"accepted"}});
+  assert.equal(submit.disabled,true);
+  fireEvent.click(screen.getByRole("checkbox",{name:words.artifactAccept}));
+  fireEvent.click(submit);
+  await screen.findByText(words.artifactPromoted);
+  const posted=net.seen.find(request=>request.method==="POST");
+  assert.deepEqual(posted?.body,{version:2,accepted:true,source:"accepted"});
+});
+
+test("private results offer no promotion and query no destination sources",()=>{
+  net=stubFetch({});
+  render(<ArtifactPromotion file={saved} access={{project:"Launch",shared:false,knowledge:true,memory:true}} />);
+  assert.ok(screen.getByText(words.artifactSharedRequired));
+  assert.equal(screen.queryByRole("button"),null);
+  assert.equal(net.seen.length,0);
+});
+
+
+test("a failed artifact preview can retry its actual content without changing the selected immutable version",async()=>{
+ let reads=0;
+ net=stubFetch({"GET /api/artifacts":()=>({artifacts:[saved],next:null}),"GET /api/artifacts/art-2":()=>saved,"GET /api/artifacts/art-2/versions":()=>({versions:[saved]}),"GET /api/artifacts/art-2/content":()=>++reads===1?new Response(null,{status:503}):new Response("# Retried brief\n\nThe saved file remains intact.")});
+ render(<Deliverables thread="thread-1" view={{panel:"deliverables",artifact:saved.id}} onView={()=>{}} onClose={()=>{}}/>);
+ fireEvent.click(await screen.findByRole("button",{name:defaultCopy.retry}));
+ assert.ok(await screen.findByText("Retried brief"));
+ assert.equal(reads,2);
+ assert.ok(net.seen.every(request=>request.method==="GET"));
 });

@@ -42,6 +42,8 @@ func TestMovedHistoryDoesNotRevealPrivatePlacementMetadata(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		raw.Outcome = &runs.Outcome{Kind: "recommendation", Summary: "Review " + personal.Name, Decisions: []string{"Use private-source"}, NextAction: "Ask " + personal.Name}
+		raw.Citations = []runs.Citation{{ID: "[1]", Title: "private-source", Snippet: "Private evidence"}}
 		if _, err := p.Threads.Share(tenant, th.ID, th.Version, "Field", "general", "", nil, "", nil, nil, "ada", time.Now()); err != nil {
 			t.Fatal(err)
 		}
@@ -51,6 +53,13 @@ func TestMovedHistoryDoesNotRevealPrivatePlacementMetadata(t *testing.T) {
 		}
 		if strings.Contains(string(shown), personal.Name) || strings.Contains(string(shown), "private-source") {
 			t.Fatalf("private identity in operational run: %s", shown)
+		}
+		projected := p.ShownRun(tenant, raw)
+		if len(projected.Citations) != 0 || strings.Contains(projected.Outcome.Summary, personal.Name) || strings.Contains(projected.Outcome.Decisions[0], "private-source") {
+			t.Fatalf("private retained outcome/evidence: %+v", projected)
+		}
+		if raw.Outcome.Summary != "Review "+personal.Name || raw.Outcome.Decisions[0] != "Use private-source" || len(raw.Citations) != 1 {
+			t.Fatal("projection mutated original authored outcome/evidence")
 		}
 		payload, _ := json.Marshal(map[string]any{"project": personal.Name, "meta": tag.Meta, "text": "finished private-source", "input": map[string]any{"context": personal.Name}})
 		event := p.ShownEvent(who, envelope.Event{Tenant: tenant, RunID: id, Kind: envelope.KindCompleted, Payload: payload})
