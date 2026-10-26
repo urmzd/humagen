@@ -831,6 +831,7 @@ export const defaultCopy = {
     promotionHint:
       "The destination can read the copied instructions. Promotion creates a draft that must be tested before publication.",
     testRun: "Open Test Conversation",
+    testUses: "Agents That Tested This Version",
     refresh: "Refresh",
     provenance: "Promoted From",
     readOnly: "You may read this scope. Its owners manage revisions.",
@@ -897,6 +898,12 @@ export const defaultCopy = {
     },
   },
   memoryLibrary: {
+    promote: "Propose to Project",
+    destination: "Destination Project",
+    promotionReview:
+      "The selected text, kind and expiry will be shared with this project. Its owners must confirm the new suggestion. Original private provenance stays private.",
+    promotionSaved: "Suggested to the project. Its owners will review it.",
+
     search: "Search Memory",
     scope: "Scope",
     workspace: "Workspace",
@@ -913,7 +920,7 @@ export const defaultCopy = {
     emptyScope: "Choose a project or agent.",
 
     title: "Memory",
-    approve: "Confirm",
+    approve: "Keep",
     description:
       "Private notes stay yours. Project and workspace notes are reviewed where the work happens.",
     personal: "Personal",

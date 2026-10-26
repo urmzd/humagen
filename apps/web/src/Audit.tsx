@@ -55,14 +55,14 @@ export function Audit() {
     URL.revokeObjectURL(url);
   };
   const resource = (row: AuditRecord) =>
-    row.thread
-      ? href({ page: "conversation", id: row.thread })
-      : row.agent
-        ? href({ page: "agent", name: row.agent, tab: "prompt" })
-        : row.resource === "source"
-          ? href({ page: "context", source: row.resource_id, tab: "documents" })
-          : row.resource === "memory"
-            ? "/library/memory"
+    row.resource === "memory"
+      ? `/library/memory?${new URLSearchParams({ scope: row.scope === "agent" ? "agent" : row.scope === "project" ? (row.project ? "project" : "workspace") : "personal", owner: row.agent ?? row.project ?? "" })}`
+      : row.thread
+        ? href({ page: "conversation", id: row.thread })
+        : row.agent
+          ? href({ page: "agent", name: row.agent, tab: "prompt" })
+          : row.resource === "source"
+            ? href({ page: "context", source: row.resource_id, tab: "documents" })
             : row.resource === "skill"
               ? `/library/skills?${new URLSearchParams({ scope: row.scope, project: row.project ?? "", skill: row.resource_id })}`
               : row.scope === "project"
@@ -166,7 +166,7 @@ export function Audit() {
               </div>
               <p>{row.resource_id}</p>
               <p className="text-aui-sm text-aui-muted">
-                {row.actor} · {row.scope}
+                {row.actor}, {row.scope}
                 {row.project ? ` / ${row.project}` : ""}
               </p>
               {row.route && (

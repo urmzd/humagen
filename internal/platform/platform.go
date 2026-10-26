@@ -579,7 +579,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
-	if tag.Meta["_humagen.context.personal_memory"] == "true" {
+	if tag.Meta[MetaPersonalMemoryContext] == "true" || tag.Meta[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
 			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
 			return runs.Run{}, err
@@ -624,8 +624,13 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	meta := make(map[string]string, len(tag.Meta)+3)
 	maps.Copy(meta, tag.Meta)
 	if edge.Parent != "" {
-		if parent, err := p.Runs.Get(tag.Tenant, edge.Parent); err == nil && parent.Tag().Meta["_humagen.context.personal_memory"] == "true" {
-			meta["_humagen.context.personal_memory"] = "true"
+
+		if parent, err := p.Runs.Get(tag.Tenant, edge.Parent); err == nil {
+			for _, key := range []string{MetaPersonalMemoryContext, MetaPrivateLibraryContext} {
+				if parent.Tag().Meta[key] == "true" {
+					meta[key] = "true"
+				}
+			}
 		}
 	}
 	delete(meta, runs.MetaWithin)

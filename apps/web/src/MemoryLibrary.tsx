@@ -9,10 +9,23 @@ const localDate = (value: string) => {
   const date = new Date(value);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
-export function MemoryLibrary() {
+export interface MemoryLibraryLocation {
+  scope: Scope;
+  owner?: string;
+}
+export function MemoryLibrary({
+  onLocationChange,
+}: {
+  onLocationChange?: (location: MemoryLibraryLocation) => void;
+} = {}) {
   const copy = defaultCopy.memoryLibrary;
-  const [scope, setScope] = useState<Scope>("personal");
-  const [owner, setOwner] = useState("");
+  const [scope, setScope] = useState<Scope>(() => {
+    const value = new URLSearchParams(window.location.search).get("scope");
+    return value === "workspace" || value === "project" || value === "agent" ? value : "personal";
+  });
+  const [owner, setOwner] = useState(
+    () => new URLSearchParams(window.location.search).get("owner") ?? "",
+  );
   const [projects, setProjects] = useState<ProjectView[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);
   const [homes, setHomes] = useState<Record<string, string>>({});
@@ -27,6 +40,8 @@ export function MemoryLibrary() {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [destination, setDestination] = useState("~");
+  const [promotionSaved, setPromotionSaved] = useState(false);
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
     let live = true;
@@ -139,6 +154,24 @@ export function MemoryLibrary() {
       setBusy(false);
     }
   };
+  const promote = async (note: Note) => {
+    setBusy(true);
+    setFailed(false);
+    setPromotionSaved(false);
+    try {
+      await api.promoteMemory(
+        scope,
+        scope === "personal" || scope === "workspace" ? "" : owner,
+        note.id,
+        destination,
+      );
+      setPromotionSaved(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
   const forget = async (id: string) => {
     setBusy(true);
     setFailed(false);
@@ -185,8 +218,10 @@ export function MemoryLibrary() {
             className={`${field} mt-2`}
             value={scope}
             onChange={(event) => {
-              setScope(event.target.value as Scope);
+              const next = event.target.value as Scope;
+              setScope(next);
               setOwner("");
+              onLocationChange?.({ scope: next });
             }}
           >
             {(["personal", "workspace", "project", "agent"] as const).map((value) => (
@@ -202,7 +237,10 @@ export function MemoryLibrary() {
             <select
               className={`${field} mt-2 max-w-full`}
               value={owner}
-              onChange={(event) => setOwner(event.target.value)}
+              onChange={(event) => {
+                setOwner(event.target.value);
+                onLocationChange?.({ scope, owner: event.target.value });
+              }}
             >
               <option value="">{copy.emptyScope}</option>
               {scope === "project"
@@ -252,7 +290,7 @@ export function MemoryLibrary() {
             <label>
               {copy.kind}
               <select
-                className={`${field} ml-2`}
+                className={`${field} mt-2 block max-w-full`}
                 value={kind}
                 onChange={(event) => setKind(event.target.value as NoteInput["kind"])}
               >
@@ -267,7 +305,7 @@ export function MemoryLibrary() {
               {copy.expires}
               <input
                 type="datetime-local"
-                className={`${field} ml-2 max-w-full`}
+                className={`${field} mt-2 block max-w-full`}
                 value={expires}
                 onChange={(event) => setExpires(event.target.value)}
               />
@@ -300,6 +338,11 @@ export function MemoryLibrary() {
       {!canWrite && notes !== null && notes.length > 0 && (
         <p className="text-aui-muted">{copy.readOnly}</p>
       )}
+      {promotionSaved && (
+        <p role="status" className="text-aui-muted">
+          {copy.promotionSaved}
+        </p>
+      )}
       {notes === null ? (
         <SkeletonRows count={3} />
       ) : visible.length === 0 ? (
@@ -316,7 +359,7 @@ export function MemoryLibrary() {
             <li key={note.id} className={`${card} min-w-0 break-words p-4`}>
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <span className="text-aui-sm text-aui-muted">
-                  {copy[scope]} · {copy[note.kind ?? "fact"]} ·{" "}
+                  {copy[scope]}: {copy[note.kind ?? "fact"]},{" "}
                   {note.expires_at && new Date(note.expires_at) <= new Date()
                     ? copy.expired
                     : note.status === "approved"
@@ -332,6 +375,49 @@ export function MemoryLibrary() {
                       {copy.openSource}
                     </a>
                   )}
+                  {permissions.includes("projects:write") &&
+                    note.status === "approved" &&
+                    (!note.expires_at || new Date(note.expires_at) > new Date()) && (
+                      <details className="min-w-0 max-w-full">
+                        <summary className="cursor-pointer py-3 text-aui-accent">
+                          {copy.promote}
+                        </summary>
+                        <div className="max-w-md space-y-3 py-2">
+                          <p className="text-aui-sm text-aui-muted">{copy.promotionReview}</p>
+                          <label className="block">
+                            {copy.destination}
+                            <select
+                              className={`${field} mt-2 block max-w-full`}
+                              aria-label={copy.destination}
+                              value={destination}
+                              onChange={(event) => setDestination(event.target.value)}
+                            >
+                              <option value="~">{copy.workspace}</option>
+                              {projects
+                                .filter(
+                                  (project) =>
+                                    project.name !== owner &&
+                                    (project.actions.includes("propose") ||
+                                      project.actions.includes("notes")),
+                                )
+                                .map((project) => (
+                                  <option key={project.name} value={project.name}>
+                                    {project.title || project.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            className="min-h-11 text-aui-accent"
+                            disabled={busy}
+                            onClick={() => void promote(note)}
+                          >
+                            {copy.promote}
+                          </button>
+                        </div>
+                      </details>
+                    )}
                   {canWrite && (
                     <>
                       <button
@@ -371,7 +457,7 @@ export function MemoryLibrary() {
               </div>
               <p className="whitespace-pre-wrap">{note.text}</p>
               <p className="mt-3 text-aui-sm text-aui-muted">
-                {copy.source}: {note.source_name ?? note.by_name ?? note.source} · {copy.uses}:{" "}
+                {copy.source}: {note.source_name ?? note.by_name ?? note.source}, {copy.uses}:{" "}
                 {note.uses ?? 0}
               </p>
               <time dateTime={note.at} className="text-aui-sm text-aui-muted">

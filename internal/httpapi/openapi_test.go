@@ -52,6 +52,7 @@ import (
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
+	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/pick"
@@ -1004,6 +1005,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
 
+	// Explicit copies never activate learning without destination review.
+	promotionNote, err := f.p.Memory.Add("acme", memory.PersonalOwner("ana"), "Review product outcomes", memory.Person, memory.Approved, "ana", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	promotionBody := `{"scope":"personal","id":"` + promotionNote.ID + `","destination":"~"}`
+	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", promotionBody, http.StatusCreated)
+	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", promotionBody, http.StatusBadRequest)
+	c.call(ana, "POST", "/api/memory/promote", "/api/memory/promote", `{"scope":"personal","id":"missing","destination":"~"}`, http.StatusNotFound)
 	// Agents, revisions and what they remember.
 	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusOK)
 	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusOK)

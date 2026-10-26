@@ -128,7 +128,7 @@ func Open(st state.Store) (*Store, error) {
 			} else if r.ID != ID(r.Scope, r.Name) {
 				return ErrInvalid
 			}
-			if !r.Definition.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 {
+			if !r.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 {
 				return ErrInvalid
 			}
 		}
