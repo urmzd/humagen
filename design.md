@@ -177,3 +177,14 @@ its text. Long scope labels truncate within the badge without losing their
 accessible text. The `agent-status-badges` browser state makes the analyst the
 workspace default and checks both badges in dark mode with enlarged text.
 The containment assertion reproduces the reported failure before the fix.
+
+### Library subsystem implementation evidence
+
+- `pkg/audit`, `internal/platform/audit_view.go`: durable pending/succeeded/failed change attempts,
+  bounded redacted snapshots, retained legacy adapters and exact-owner personal filtering.
+- `pkg/memory`, `internal/httpapi/personal_memory.go`: private personal owner namespace,
+  reviewed kind/provenance, expiry at composition, immediate audited forget and persisted use counts.
+- `pkg/prefs/personal.go`: persisted briefing, notification delivery policy, midnight/DST quiet
+  hours and privacy choices. Provider dispatch is an explicit integration boundary.
+- `apps/web/src/Audit.tsx`, `MemoryLibrary.tsx`, `PersonalPreferences.tsx`: standalone views for
+  shared navigation integration. Broader versioned skill workflows remain in progress.

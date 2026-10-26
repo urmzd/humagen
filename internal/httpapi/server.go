@@ -31,6 +31,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
@@ -125,12 +126,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.addMemory))))
 	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.removeMemory))))
 	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.approveMemory))))
+	mux.HandleFunc("GET /api/me/memory", s.authed(auth.RunsRead, s.listPersonalMemory))
+	mux.HandleFunc("POST /api/me/memory", s.authed(auth.RunsWrite, s.addPersonalMemory))
+	mux.HandleFunc("DELETE /api/me/memory/{id}", s.authed(auth.RunsWrite, s.forgetPersonalMemory))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
 	mux.HandleFunc("GET /api/threads", s.authed(auth.RunsRead, s.listThreads))
 	mux.HandleFunc("GET /api/threads/{id}", s.authed(auth.RunsRead, s.seenThread(s.getThread)))
 	mux.HandleFunc("GET /api/pick", s.authed(auth.AgentsRead, s.pickAgent))
+	mux.HandleFunc("GET /api/audit", s.authed(auth.ProjectsGovern, s.listAudit))
 	mux.HandleFunc("GET /api/read-audit", s.authed(auth.ProjectsGovern, s.listReadAudit))
 	mux.HandleFunc("GET /api/settings", s.authed(auth.AgentsRead, s.getSettings))
 	mux.HandleFunc("PUT /api/settings", s.authed(auth.AgentsWrite, s.putSettings))
@@ -468,6 +473,7 @@ func viewNotes(names platform.Names, notes []memory.Note) []noteView {
 func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		Text string `json:"text"`
+		memory.Details
 	}
 	if !decode(w, r, &body) {
 		return
@@ -477,7 +483,15 @@ func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	// A person writing a note is the approval.
-	note, err := s.P.Memory.Add(who.Tenant, owner, body.Text, memory.Person, memory.Approved, who.Subject, time.Now())
+	attempt, err := s.P.BeginAudit(who, audit.Change{Action: "memory.remember", Resource: "memory", ID: owner, Scope: "agent", Agent: owner, Route: "POST /api/agents/{name}/memory", Rule: string(auth.AgentsWrite)})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	note, err := s.P.Memory.AddDetailed(who.Tenant, owner, body.Text, memory.Person, memory.Approved, who.Subject, time.Now(), body.Details)
+	if auditErr := attempt.Finish(err); auditErr != nil {
+		s.P.LogAuditCompletionFailure(auditErr)
+	}
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -540,11 +554,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 	if !found {
 		return
 	}
-	if err := s.P.RemoveMemory(who.Tenant, owner, r.PathValue("id")); err != nil {
-		s.problem(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	s.forgetOwnedMemory(w, r, who, owner, "DELETE /api/agents/{name}/memory/{id}", string(auth.AgentsWrite))
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {

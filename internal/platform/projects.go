@@ -438,6 +438,20 @@ func (p *Platform) contextIn(tenant, project, channel, agent, body string) strin
 		chain = []projects.Project{{Name: project}, tree.Root()}
 	}
 	layers := p.turnLayers(tenant, tree, chain, project, channel, agent)
+	for _, layer := range layers {
+		owner := ""
+		switch layer.Kind {
+		case "agent_notes":
+			owner = agent
+		case "project_notes", "ancestor_notes":
+			owner = memory.ProjectOwner(layer.From)
+		default:
+			continue
+		}
+		if err := p.Memory.UsedRendered(tenant, owner, layer.Text, p.now()); err != nil {
+			p.log.Warn("platform: memory use could not be recorded", "error", err)
+		}
+	}
 	parts := make([]string, 0, len(layers)+1)
 	for _, l := range layers {
 		if l.Text == "" {
@@ -504,14 +518,14 @@ func (p *Platform) noteLayers(tenant string, chain []projects.Project, workspace
 	if own.IsRoot() {
 		heading = fmt.Sprintf("What everyone in %s knows:", titleOf(own, workspace))
 	}
-	if s := p.Memory.PromptAs(tenant, memory.ProjectOwner(own.Name), heading); s != "" {
+	if s := p.Memory.PromptAt(tenant, memory.ProjectOwner(own.Name), heading, p.now()); s != "" {
 		parts = append(parts, ContextLayer{Kind: "project_notes", From: own.Name, Text: s, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, memory.ProjectOwner(own.Name)), Sent: true, Unit: "characters"})
 	}
 	used, full := 0, false
 	for _, pr := range chain[1:] {
 		var notes []string
 		for _, n := range p.Memory.List(tenant, memory.ProjectOwner(pr.Name)) {
-			if n.Status == memory.Approved {
+			if n.Status == memory.Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(p.now())) {
 				notes = append(notes, n.Text)
 			}
 		}

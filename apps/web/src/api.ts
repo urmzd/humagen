@@ -2,6 +2,10 @@ import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
   KnowledgeLifecycle,
   KnowledgeSourceConfig,
+  Note as GeneratedNote,
+  NoteInput,
+  PersonalPreferences,
+  AuditRecord,
   ProjectContext,
   AgentHome,
   Person,
@@ -506,17 +510,7 @@ export interface PolicyChange {
   after?: Policy;
 }
 
-export interface Note {
-  id: string;
-  text: string;
-  source: "person" | "consolidated";
-  /** Pending notes are proposals: not used until a person approves them. */
-  status: "approved" | "pending";
-  by?: string;
-  /** What the person who wrote it is called. Shown in place of `by`, the subject. */
-  by_name?: string;
-  at: string;
-}
+export type Note = GeneratedNote;
 
 /**
  * A tool that acts as you: an MCP provider reached with each person's own
@@ -549,6 +543,7 @@ export interface ToolCredentials {
 export type ToolCredentialInput = { ref: string } | { value: string };
 
 export interface Preferences {
+  personal?: PersonalPreferences;
   display_name: string;
   theme: "system" | "light" | "dark";
   accent: string;
@@ -668,6 +663,10 @@ export const api = {
   saveHandoff: (id:string,input:import("../../../packages/client/src/generated/types.ts").HandoffUpdate) => call<HandoffContract>("PUT",`/api/handoffs/${encodeURIComponent(id)}`,input),
   handoffs: () => call<HandoffContract[]>("GET", "/api/handoffs?limit=200"),
   agentNetwork: () => call<AgentNetwork>("GET", "/api/agent-network"),
+  personalMemory: () => call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then(r => r.notes),
+  rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
+  forgetPersonal: (id: string) => call<void>("DELETE", `/api/me/memory/${encodeURIComponent(id)}`),
+  audit: () => call<{ records: AuditRecord[] }>("GET", "/api/audit").then(r => r.records),
  readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
@@ -848,7 +847,7 @@ export const api = {
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[] }) =>
+  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[]; personal?: PersonalPreferences }) =>
     call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.

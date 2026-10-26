@@ -73,12 +73,32 @@ const (
 	Consolidated Source = "consolidated"
 )
 
+type Kind string
+
+const (
+	Fact       Kind = "fact"
+	Decision   Kind = "decision"
+	Preference Kind = "preference"
+	PersonKind Kind = "person"
+)
+
+// Details are reviewable metadata. Empty kind means fact for old notes.
+type Details struct {
+	Kind      Kind      `json:"kind,omitempty"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
+}
+
 // Note is one thing an agent remembers.
 type Note struct {
-	ID     string `json:"id"`
-	Text   string `json:"text"`
-	Source Source `json:"source"`
-	Status Status `json:"status"`
+	Uses       uint64    `json:"uses,omitempty"`
+	LastUsedAt time.Time `json:"last_used_at,omitzero"`
+	Details
+	ReviewedBy string    `json:"reviewed_by,omitempty"`
+	ReviewedAt time.Time `json:"reviewed_at,omitzero"`
+	ID         string    `json:"id"`
+	Text       string    `json:"text"`
+	Source     Source    `json:"source"`
+	Status     Status    `json:"status"`
 	// By is the person who wrote it, or the run it was drawn from.
 	By string    `json:"by,omitempty"`
 	At time.Time `json:"at"`
@@ -175,6 +195,19 @@ func clean(text string) (string, error) {
 // never pushed out by an automatic one. When the pending list is full, the
 // oldest proposal is dropped.
 func (s *Store) Add(tenant, agent, text string, source Source, status Status, by string, at time.Time) (Note, error) {
+	return s.AddDetailed(tenant, agent, text, source, status, by, at, Details{})
+}
+
+func (s *Store) AddDetailed(tenant, agent, text string, source Source, status Status, by string, at time.Time, details Details) (Note, error) {
+	if details.Kind == "" {
+		details.Kind = Fact
+	}
+	if details.Kind != Fact && details.Kind != Decision && details.Kind != Preference && details.Kind != PersonKind {
+		return Note{}, ErrInvalid
+	}
+	if !details.ExpiresAt.IsZero() && !details.ExpiresAt.After(at) {
+		return Note{}, ErrInvalid
+	}
 	text, err := clean(text)
 	if err != nil {
 		return Note{}, err
@@ -193,7 +226,11 @@ func (s *Store) Add(tenant, agent, text string, source Source, status Status, by
 		return Note{}, err
 	}
 	next := s.next + 1
-	note := Note{ID: "m" + strconv.Itoa(next), Text: text, Source: source, Status: status, By: by, At: at}
+	note := Note{Details: details, ID: "m" + strconv.Itoa(next), Text: text, Source: source, Status: status, By: by, At: at}
+	if status == Approved {
+		note.ReviewedBy = by
+		note.ReviewedAt = at
+	}
 	if err := s.set(tenant, agent, append(notes, note), next); err != nil {
 		return Note{}, err
 	}
@@ -337,10 +374,15 @@ func OwnerProject(owner string) (string, bool) { return strings.CutPrefix(owner,
 
 // PromptAs renders an owner's approved notes under a heading, or "" for none.
 func (s *Store) PromptAs(tenant, owner, heading string) string {
+	return s.PromptAt(tenant, owner, heading, time.Now())
+}
+
+// PromptAt excludes expired notes at the turn clock, including after replay.
+func (s *Store) PromptAt(tenant, owner, heading string, at time.Time) string {
 	var b strings.Builder
 	for _, n := range s.List(tenant, owner) {
 		// A proposal nobody has approved is not a memory yet.
-		if n.Status != Approved {
+		if n.Status != Approved || !n.ExpiresAt.IsZero() && !n.ExpiresAt.After(at) {
 			continue
 		}
 		if b.Len() == 0 {
@@ -350,4 +392,28 @@ func (s *Store) PromptAs(tenant, owner, heading string) string {
 		b.WriteString(n.Text)
 	}
 	return b.String()
+}
+
+// PersonalOwner is private to one human subject, never an agent or project name.
+func PersonalOwner(subject string) string     { return "person:" + subject }
+func OwnerPerson(owner string) (string, bool) { return strings.CutPrefix(owner, "person:") }
+
+// UsedRendered records only approved, unexpired notes actually present in the
+// composed turn. A preview never calls this method.
+func (s *Store) UsedRendered(tenant, owner, text string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	notes := slices.Clone(s.by[key(tenant, owner)])
+	changed := false
+	for i, n := range notes {
+		if n.Status == Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(at)) && strings.Contains(text, "\n- "+n.Text) {
+			notes[i].Uses++
+			notes[i].LastUsedAt = at
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return s.set(tenant, owner, notes, s.next)
 }

@@ -99,6 +99,33 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/audit:
+    get:
+      operationId: listAudit
+      tags: [projects]
+      summary: List recorded workspace changes
+      description: Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone.
+      x-permission: projects:govern
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses:
+        '200':
+          description: Newest visible attempts first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records]
+                properties:
+                  records:
+                    type: array
+                    maxItems: 500
+                    items: {$ref: '#/components/schemas/AuditRecord'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /api/read-audit:
     get:
       operationId: listReadAudit
@@ -769,6 +796,52 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/me/memory:
+    get:
+      operationId: listPersonalMemory
+      tags: [agents]
+      summary: Read your private memory
+      x-permission: runs:read
+      responses:
+        '200':
+          description: Your private notes
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NoteList'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      operationId: addPersonalMemory
+      tags: [agents]
+      summary: Remember a private note
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '201':
+          description: Saved private memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/me/memory/{id}:
+    delete:
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      operationId: forgetPersonalMemory
+      tags: [agents]
+      summary: Immediately forget a private note
+      x-permission: runs:write
+      responses:
+        '204': {description: Forgotten}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/memory/pending:
     get:
       operationId: listPendingMemory
@@ -3160,6 +3233,7 @@ paths:
             schema:
               type: object
               properties:
+                personal: {$ref: '#/components/schemas/PersonalPreferences'}
                 display_name: {type: string}
                 theme: {$ref: "#/components/schemas/Theme"}
                 accent: {type: string}
@@ -6187,11 +6261,38 @@ components:
           type: array
           items: {type: string}
 
+    AuditRecord:
+      type: object
+      required: [id, actor, at, outcome, action, resource, resource_id, scope]
+      properties:
+        id: {type: string}
+        actor: {type: string}
+        at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time}
+        route: {type: string, maxLength: 512}
+        rule: {type: string, maxLength: 512}
+        outcome: {type: string, enum: [pending, succeeded, failed]}
+        action: {type: string}
+        resource: {type: string}
+        resource_id: {type: string}
+        scope: {type: string, enum: [workspace, project, personal, agent]}
+        project: {type: string}
+        thread: {type: string}
+        subject: {type: string}
+        agent: {type: string}
+        before: {type: object, additionalProperties: {type: string}}
+        after: {type: object, additionalProperties: {type: string}}
     Note:
       description: One thing an agent or a project remembers.
       type: object
       required: [id, text, source, status, at]
       properties:
+        kind: {type: string, enum: [fact, decision, preference, person]}
+        expires_at: {type: string, format: date-time}
+        uses: {type: integer, minimum: 0}
+        last_used_at: {type: string, format: date-time}
+        reviewed_by: {type: string}
+        reviewed_at: {type: string, format: date-time}
         id: {type: string}
         text: {type: string}
         source: {type: string, enum: [person, consolidated]}
@@ -6216,6 +6317,8 @@ components:
       required: [text]
       properties:
         text: {type: string}
+        kind: {type: string, enum: [fact, decision, preference, person]}
+        expires_at: {type: string, format: date-time}
     NoteSelection:
       type: object
       required: [ids]
@@ -8217,11 +8320,26 @@ components:
     Theme:
       type: string
       enum: [system, light, dark]
+    PersonalPreferences:
+      type: object
+      required: [briefing, notifications, quiet_start, quiet_end, timezone, remember, use_personal_memory_in_projects]
+      properties:
+        briefing: {type: string, maxLength: 500}
+        notifications:
+          type: object
+          maxProperties: 10
+          additionalProperties: {type: string, enum: [immediate, digest, off]}
+        quiet_start: {type: string}
+        quiet_end: {type: string}
+        timezone: {type: string}
+        remember: {type: boolean}
+        use_personal_memory_in_projects: {type: boolean}
     Preferences:
       description: A person's own settings.
       type: object
-      required: [display_name, theme, accent, has_photo, photo_version, pinned, muted]
+      required: [display_name, theme, accent, has_photo, photo_version, pinned, muted, personal]
       properties:
+        personal: {$ref: '#/components/schemas/PersonalPreferences'}
         display_name: {type: string}
         theme: {$ref: "#/components/schemas/Theme"}
         accent: {type: string}
