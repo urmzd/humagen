@@ -333,3 +333,28 @@ func (src Source) HardStale(at time.Time) bool {
 	}
 	return at.Sub(since) >= time.Duration(lc.StopAfterSeconds)*time.Second
 }
+
+// IndexSync records that provider fetching completed and local indexing begins.
+// It never replaces or marks the retained documents successful.
+func (s *Store) IndexSync(tenant, name, id string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	src, err := s.get(tenant, name)
+	if err != nil {
+		return err
+	}
+	lc := lifecycle(src.Source)
+	if active(lc) != id || id == "" {
+		return fmt.Errorf("%w: inactive attempt", ErrInvalid)
+	}
+	lc.Status = Indexing
+	lc.Attempts[len(lc.Attempts)-1].Status = string(Indexing)
+	next := cloneSource(src.Source)
+	next.Lifecycle = lc
+	next.UpdatedAt = at
+	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &next}); err != nil {
+		return err
+	}
+	src.Source = next
+	return nil
+}

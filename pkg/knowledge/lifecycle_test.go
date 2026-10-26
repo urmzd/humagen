@@ -129,3 +129,41 @@ func TestRefreshCannotReattributeOrAcceptUnstableDocumentIDs(t *testing.T) {
 		t.Fatal("invalid snapshot changed good copy")
 	}
 }
+
+func TestInterruptedIndexingRetainsCopyAndCanRetry(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = s.Create("acme", "docs", "", "ana", now)
+		_, _ = s.Add("acme", "docs", "Good", "", "trusted copy", "ana", now)
+		id, err := s.BeginSync("acme", "docs", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.IndexSync("acme", "docs", id, now); err != nil {
+			t.Fatal(err)
+		}
+		src, _ := s.Get("acme", "docs")
+		if src.Lifecycle.Status != Indexing {
+			t.Fatal(src.Lifecycle.Status)
+		}
+		again, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src, _ = again.Get("acme", "docs")
+		if src.Lifecycle.Status != NeedsAttention || src.Lifecycle.Cause != Interrupted {
+			t.Fatal(src.Lifecycle)
+		}
+		hits, err := again.Search("acme", []string{"docs"}, "trusted", 6, "")
+		if err != nil || len(hits) != 1 {
+			t.Fatalf("lost retained copy: %+v %v", hits, err)
+		}
+		if _, err := again.BeginSync("acme", "docs", now); err != nil {
+			t.Fatal("interrupted attempt prevented retry", err)
+		}
+	})
+}

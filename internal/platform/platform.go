@@ -69,6 +69,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -192,16 +193,17 @@ type Platform struct {
 	log *slog.Logger
 	now func() time.Time
 
-	Agents    registry.Store
-	Runs      *runs.Index
-	Schedules *Schedules
-	Journal   *journal.Journal
-	Alerts    *alerts.Engine
-	Knowledge *knowledge.Store
-	Evals     *evals.Store
-	Feedback  *feedback.Store
-	Prefs     *prefs.Store
-	Memory    *memory.Store
+	Agents      registry.Store
+	Runs        *runs.Index
+	Schedules   *Schedules
+	Journal     *journal.Journal
+	Alerts      *alerts.Engine
+	Knowledge   *knowledge.Store
+	SourceLinks *sourcelinks.Store
+	Evals       *evals.Store
+	Feedback    *feedback.Store
+	Prefs       *prefs.Store
+	Memory      *memory.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
