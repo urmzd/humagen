@@ -29,6 +29,7 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.seenThread(s.postMessage)))
 	mux.HandleFunc("PUT /api/threads/{id}/participants", s.authed(auth.RunsWrite, s.seenThread(s.putParticipants)))
 	mux.HandleFunc("GET /api/threads/{id}/placement", s.authed(auth.ProjectsRead, s.seenThread(s.previewPlacement)))
+	mux.HandleFunc("POST /api/threads/{id}/publication", s.authed(auth.RunsWrite, s.seenThread(s.publishSummary)))
 	mux.HandleFunc("POST /api/threads/{id}/share", s.authed(auth.RunsWrite, s.seenThread(s.shareThread)))
 }
 
@@ -336,4 +337,21 @@ func (s *Server) previewPlacement(w http.ResponseWriter, r *http.Request, who au
 		return
 	}
 	ok(w, http.StatusOK, preview)
+}
+
+func (s *Server) publishSummary(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if _, err := s.P.ThreadRecord(who.Tenant, r.PathValue("id")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	var in platform.SummaryPublication
+	if !decode(w, r, &in) {
+		return
+	}
+	th, err := s.P.PublishSummary(r.Context(), who, r.PathValue("id"), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, s.P.Seer(who).Thread(s.P.ShowThread(who.Tenant, th)))
 }

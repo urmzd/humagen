@@ -30,6 +30,7 @@ import (
 // not found. The workspace and company projects are changed only with
 // projects:govern as well.
 func (s *Server) projectRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/find-help", s.authed(auth.ProjectsRead, s.findHelp))
 	mux.HandleFunc("GET /api/projects", s.authed(auth.ProjectsRead, s.listProjects))
 	mux.HandleFunc("POST /api/projects", s.authed(auth.ProjectsWrite, s.createProject))
 	mux.HandleFunc("GET /api/projects/{name}", s.authed(auth.ProjectsRead, s.seenProject(s.getProject)))

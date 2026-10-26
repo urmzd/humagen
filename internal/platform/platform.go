@@ -268,7 +268,8 @@ type Platform struct {
 	// clientsMu serializes creating, updating and deleting clients.
 	clientsMu sync.Mutex
 	// admitting holds runs between admission and their record, by run id.
-	admitting sync.Map
+	admitting         sync.Map
+	publicationGuards []ConversationPublicationGuard
 	// moves serialize starting a thread's runs with moving the thread.
 	moves threadLocks
 	// afterAccept, when set, runs between a run's acceptance and its record.

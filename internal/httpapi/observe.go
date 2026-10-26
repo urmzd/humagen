@@ -112,6 +112,7 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 	entries := s.P.Journal.Query(journal.Query{
 		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
+		ProjectEvent: func(e envelope.Event) envelope.Event { return s.P.ShownEvent(who, e) },
 	})
 	// An event of a run the caller may not read is left out, as is one of
 	// an agent that lives in a project they cannot see.

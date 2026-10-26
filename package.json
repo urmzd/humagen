@@ -15,7 +15,9 @@
     "sandbox": "pnpm --silent --filter @humagen/slack-sandbox cli",
     "dev": "pnpm --filter @humagen/console dev",
     "test:server": "pnpm --filter @humagen/slack test:server",
-    "validate:slack": "pnpm sandbox validate && pnpm --filter @humagen/slack validate"
+    "validate:slack": "pnpm sandbox validate && pnpm --filter @humagen/slack validate",
+    "welcome-copy": "node scripts/welcome-copy.mjs",
+    "welcome-copy:check": "node scripts/welcome-copy.mjs --check"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",

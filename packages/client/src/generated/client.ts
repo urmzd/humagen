@@ -29,6 +29,7 @@ import type {
   CreateRunRequest,
   EvalRun,
   EvalSuite,
+  FindHelpResponse,
   GetAgentHuesResponse,
   GetAgentRosterResponse,
   GetInboxMessageResponse,
@@ -100,6 +101,7 @@ import type {
   ProjectSkillsInput,
   ProjectUpdate,
   ProjectView,
+  PublishThreadSummaryBody,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -1702,6 +1704,27 @@ whoever started the thread or an owner of its project (403).
     });
   }
 
+  /** Publish only explicitly reviewed text as a new shared conversation */
+  async publishThreadSummary(id: string, body: PublishThreadSummaryBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/publication";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async publishThreadSummaryRaw(id: string, body: PublishThreadSummaryBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/publication";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** Makes the conversation shared in `channel` of `project`, read by
 everyone who can see that project, and adds the people `add` names,
 by handle, as participants (400 for a handle nobody goes by). `project`
@@ -2974,6 +2997,29 @@ grounds nothing until a source of that name is made again.
   async deletePreferencesPhotoRaw(options?: RequestOptions): Promise<ApiResponse<Preferences>> {
     const path = "/api/preferences/photo";
     return this.rawRequest<Preferences>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Find a readable project and available agent for a description of work */
+  async findHelp(q: string, options?: RequestOptions): Promise<FindHelpResponse> {
+    let path = "/api/find-help";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<FindHelpResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async findHelpRaw(q: string, options?: RequestOptions): Promise<ApiResponse<FindHelpResponse>> {
+    let path = "/api/find-help";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<FindHelpResponse>("GET", path, {
       ...options,
     });
   }

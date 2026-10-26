@@ -1,6 +1,6 @@
 # Company, personal work and finding help
 
-Prepared design, not implemented. This follows the workspace direction given
+Implementation in progress. This follows the workspace direction given
 on 2026-10-22. The current behavior remains described in [Projects](projects.md)
 and the [architecture status table](architecture.md#status).
 
@@ -195,3 +195,21 @@ streams resolve the conversation's current placement. Publication attempts are
 recorded under the source's private scope and placement/history commit in the
 same thread-store write. Historical runs cannot replay old private inputs
 after publication; the person posts a fresh turn in the destination instead.
+
+Reviewed summary publication creates a separate shared conversation containing
+only the exact text the participating owner reviewed. It copies no private
+thread link, run, source, citation, file, operation contract or capability. A
+content-and-audience token prevents stale consent and makes retries idempotent.
+The original conversation and all accounting remain private.
+
+The welcome copy is generated from `packages/components/src/copy.ts` by
+`pnpm welcome-copy`; `pnpm welcome-copy:check` checks freshness. `GET /api/me`
+returns its retained announcement ID, so Home selects the actual Company
+welcome and uses existing per-reader read/hide state. The banner component
+precedes the greeting and empty Home boxes no longer duplicate it. Host wiring
+and reproducible phone/desktop captures are validated in the upper UI layer.
+
+Find Help scores only readable projects and readable agents available there,
+returns at most eight suggestions, and neither starts work nor changes an
+existing conversation's placement. The component requires explicit selection
+and shows actual request failures. SME routing retirement remains pending.

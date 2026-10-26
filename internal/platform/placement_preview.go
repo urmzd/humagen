@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"slices"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -17,13 +16,14 @@ import (
 // PlacementPreview binds explicit publication consent to current contents and
 // destination audience. It contains no former project or private source IDs.
 type PlacementPreview struct {
-	Thread     string   `json:"thread"`
-	Project    string   `json:"project"`
-	Channel    string   `json:"channel"`
-	Audience   string   `json:"audience"`
-	Runs       int      `json:"runs"`
-	Token      string   `json:"token"`
-	Exclusions []string `json:"exclusions"`
+	SummaryRequired bool     `json:"summary_required"`
+	Thread          string   `json:"thread"`
+	Project         string   `json:"project"`
+	Channel         string   `json:"channel"`
+	Audience        string   `json:"audience"`
+	Runs            int      `json:"runs"`
+	Token           string   `json:"token"`
+	Exclusions      []string `json:"exclusions"`
 }
 
 func (p *Platform) PreviewPlacement(ctx context.Context, who auth.Principal, id, project, channel string) (PlacementPreview, error) {
@@ -59,6 +59,13 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 	}
 	turns, _ := p.Runs.Conversation(who.Tenant, th.ID)
 	ids := make([]string, 0, len(turns))
+	summaryRequired := false
+	operationalPrivate := false
+	for _, guard := range p.publicationGuards {
+		if !guard.ConversationOperationsSettled(who.Tenant, th.ID) {
+			summaryRequired, operationalPrivate = true, true
+		}
+	}
 	for _, turn := range turns {
 		tree, err := p.Runs.Tree(who.Tenant, turn.ID)
 		if err != nil {
@@ -71,13 +78,15 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 			if run.Client != "" || len(run.Tag().Routes()) > 0 {
 				return PlacementPreview{}, fmt.Errorf("%w: externally delivered work stays on its original surface", threads.ErrInvalid)
 			}
-			rev, err := p.Agents.Get(ctx, who.Tenant, run.Agent, run.Rev)
-			if err != nil {
-				return PlacementPreview{}, fmt.Errorf("%w: cannot verify the historical source boundary", threads.ErrInvalid)
+			if p.RunUsesPersonalSources(ctx, run) {
+				summaryRequired = true
 			}
-			if slices.Contains(rev.Spec.Tools, "source_search") {
-				return PlacementPreview{}, fmt.Errorf("%w: private connected sources require a reviewed summary before publication", threads.ErrInvalid)
+			for _, source := range runs.SourcesOf(run.Tag().Meta) {
+				if !p.SourceMayPublishIn(who.Tenant, source, project) {
+					summaryRequired = true
+				}
 			}
+
 			ids = append(ids, run.ID+":"+run.UpdatedAt.String())
 		}
 	}
@@ -99,5 +108,57 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 	if target, ok := tree.Get(project); ok && target.PersonalOwner != "" {
 		audience = "Only the destination personal project's owner"
 	}
-	return PlacementPreview{Thread: th.ID, Project: project, Channel: channel, Audience: audience, Runs: len(ids), Token: hex.EncodeToString(digest[:]), Exclusions: []string{"Original execution inputs and private source provenance", "Former personal project identities"}}, nil
+	exclusions := []string{"Original execution inputs and private source provenance", "Former personal project identities"}
+	if operationalPrivate {
+		exclusions = append(exclusions, "Private assignment and handoff contracts remain in the original conversation")
+	}
+	return PlacementPreview{SummaryRequired: summaryRequired, Thread: th.ID, Project: project, Channel: channel, Audience: audience, Runs: len(ids), Token: hex.EncodeToString(digest[:]), Exclusions: exclusions}, nil
+}
+
+func (p *Platform) threadNeedsSummary(ctx context.Context, tenant, thread, destination string) bool {
+	for _, guard := range p.publicationGuards {
+		if !guard.ConversationOperationsSettled(tenant, thread) {
+			return true
+		}
+	}
+	turns, _ := p.Runs.Conversation(tenant, thread)
+	for _, turn := range turns {
+		tree, err := p.Runs.Tree(tenant, turn.ID)
+		if err != nil {
+			return true
+		}
+		for _, run := range tree {
+			if p.RunUsesPersonalSources(ctx, run) {
+				return true
+			}
+			for _, source := range runs.SourcesOf(run.Tag().Meta) {
+				if !p.SourceMayPublishIn(tenant, source, destination) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// ConversationPublicationGuard lets optional operational subsystems retain
+// private contract provenance without a dependency from this lower layer.
+// False requires a reviewed summary copy; it never grants raw publication.
+type ConversationPublicationGuard interface {
+	ConversationOperationsSettled(tenant, thread string) bool
+}
+
+// RegisterPublicationGuard is called while initializing an operational
+// subsystem. It shares the same admission lock as preview and publication.
+func (p *Platform) RegisterPublicationGuard(guard ConversationPublicationGuard) error {
+	if guard == nil {
+		return fmt.Errorf("%w: a publication guard is required", threads.ErrInvalid)
+	}
+	p.admission.Lock()
+	defer p.admission.Unlock()
+	if len(p.publicationGuards) >= 8 {
+		return fmt.Errorf("%w: too many publication guards", threads.ErrInvalid)
+	}
+	p.publicationGuards = append(p.publicationGuards, guard)
+	return nil
 }

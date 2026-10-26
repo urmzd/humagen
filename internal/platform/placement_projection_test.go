@@ -133,3 +133,65 @@ func TestCompletedConversationPublicationRequiresCurrentPreview(t *testing.T) {
 		}
 	})
 }
+
+func TestPrivateSourceHistoryPublishesOnlyReviewedSummaryCopy(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		p, err := newOn(t, open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		who := auth.Principal{Tenant: tenant, Subject: "ada", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+		if _, err := p.Projects.Create(tenant, projects.Project{Name: "Field"}, projects.Writer{By: "ada"}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help.", Tools: []string{"source_search"}}, "ada"); err != nil {
+			t.Fatal(err)
+		}
+		th, _, err := p.Threads.Start(tenant, threads.Thread{Project: "Field", Channel: "general", Visibility: threads.Private}, threads.Message{By: "ada", Name: "Ada", Text: "PRIVATE-SOURCE-MARKER"}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := runtime.RunID(tenant, "private-connected")
+		tag := envelope.Tag{ID: "private-connected", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "PRIVATE-SOURCE-MARKER", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: th.ID}, At: time.Now()}
+		if err := p.Runs.Record(id, tag, 1); err != nil {
+			t.Fatal(err)
+		}
+		p.Runs.Observe(envelope.Event{Tenant: tenant, RunID: id, Kind: envelope.KindCompleted, Payload: []byte(`{"text":"PRIVATE-SOURCE-MARKER"}`), At: time.Now()})
+		preview, err := p.PreviewPlacement(t.Context(), who, th.ID, "Field", "general")
+		if err != nil || !preview.SummaryRequired {
+			t.Fatalf("private source classification: %+v %v", preview, err)
+		}
+		if _, err := p.Share(t.Context(), who, th.ID, platform.ThreadShare{PlacementToken: preview.Token}); err == nil {
+			t.Fatal("same-project raw publication widened private source history")
+		}
+		if _, err := p.UpdateThread(t.Context(), who, th.ID, platform.ThreadUpdate{Version: th.Version, Visibility: threads.Shared, PlacementToken: preview.Token}); err == nil {
+			t.Fatal("visibility edit bypassed private source boundary")
+		}
+		input := platform.SummaryPublication{Project: "Field", Channel: "general", Summary: "Reviewed public result", PlacementToken: preview.Token}
+		published, err := p.PublishSummary(t.Context(), who, th.ID, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		replay, err := p.PublishSummary(t.Context(), who, th.ID, input)
+		if err != nil || replay.ID != published.ID {
+			t.Fatal("publication retry duplicated the copy")
+		}
+		source, _ := p.Threads.Get(tenant, th.ID)
+		if source.Visibility != threads.Private {
+			t.Fatal("summary publication changed source audience")
+		}
+		messages, _, err := p.Threads.Messages(tenant, published.ID, "", 10)
+		if err != nil || len(messages) != 1 || messages[0].Text != input.Summary {
+			t.Fatalf("publication copied raw history: %v %v", messages, err)
+		}
+		bytes, _ := json.Marshal(published)
+		if strings.Contains(string(bytes), th.ID) || strings.Contains(string(bytes), "PRIVATE-SOURCE-MARKER") {
+			t.Fatal("publication exposed private provenance")
+		}
+		ben := auth.Principal{Tenant: tenant, Subject: "ben", Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
+		raw, _ := p.Runs.Get(tenant, id)
+		if p.Seer(ben).Run(raw) || !p.Seer(ben).Place(platform.Place{Project: "Field", Thread: published.ID}) {
+			t.Fatal("copy granted a raw source capability")
+		}
+	})
+}

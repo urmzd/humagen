@@ -47,6 +47,8 @@ const (
 // Scope is workspace, project, personal or agent. An omitted scope is inferred
 // from Subject, Agent and Project, in that order, else workspace.
 type Change struct {
+	Route    string            `json:"route,omitempty"`
+	Rule     string            `json:"rule,omitempty"`
 	Action   string            `json:"action"`
 	Resource string            `json:"resource"`
 	ID       string            `json:"resource_id"`
@@ -125,7 +127,7 @@ func clean(change Change) (Change, error) {
 	if !namePattern.MatchString(change.Action) || !namePattern.MatchString(change.Resource) || change.ID == "" {
 		return Change{}, ErrInvalid
 	}
-	for _, value := range []string{change.ID, change.Project, change.Thread, change.Subject, change.Agent} {
+	for _, value := range []string{change.ID, change.Project, change.Thread, change.Subject, change.Agent, change.Route, change.Rule} {
 		if len(value) > 512 || !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
 			return Change{}, ErrInvalid
 		}

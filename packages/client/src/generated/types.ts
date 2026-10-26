@@ -197,6 +197,8 @@ export interface Me {
   principal: Principal;
   /** Everything the caller may do. Null, not an empty list, for a caller with no permission at all. */
   permissions: Permission[] | null;
+  /** Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements. */
+  welcome_announcement?: string;
   /** The signed-in human's private project address, absent for machines. */
   personal_project?: string;
   /** The caller is an admin in a workspace nobody has set up yet. */
@@ -824,7 +826,16 @@ export interface ThreadInput {
   surface?: SurfaceRef;
 }
 
+export interface HelpSuggestion {
+  project: string;
+  title: string;
+  agent: string;
+  reason: string;
+}
+
 export interface PlacementPreview {
+  /** Raw private-source history cannot move; publish only a person-reviewed summary copy. */
+  summary_required?: boolean;
   thread: string;
   project: string;
   channel: string;
@@ -883,6 +894,8 @@ owner of its project. The selected agents and default must be able
 to answer where the thread is after the change.
  */
 export interface ThreadUpdate {
+  /** Explicit consent to publish completed private work, from its current placement preview. */
+  placement_token?: string;
   version: number;
   title?: string;
   visibility?: ThreadVisibility;
@@ -2343,6 +2356,7 @@ export interface KnowledgeVariant {
 }
 
 export interface KnowledgeSource {
+  lifecycle?: KnowledgeLifecycle;
   name: string;
   description?: string;
   documents: number;
@@ -2352,6 +2366,29 @@ export interface KnowledgeSource {
   variants: KnowledgeVariant[];
   created_by?: string;
   updated_at: string;
+}
+
+export interface KnowledgeSourceConfig {
+  mode: "indexed" | "live" | "hybrid";
+  provider: string;
+  origin?: string;
+  owner?: string;
+  project?: string;
+  stop_after_seconds?: number;
+}
+
+export interface KnowledgeLifecycle {
+  connected_at: string;
+  mode: "indexed" | "live" | "hybrid";
+  provider: string;
+  origin?: string;
+  owner?: string;
+  project?: string;
+  status: "connected" | "importing" | "indexing" | "available" | "syncing" | "in_sync" | "needs_attention";
+  cause?: "auth_expired" | "quota" | "unsupported" | "unavailable" | "interrupted";
+  last_good_at?: string;
+  stop_after_seconds: number;
+  attempts: KnowledgeLifecycleAttemptsItem[];
 }
 
 export interface KnowledgeDocument {
@@ -2366,6 +2403,7 @@ export interface KnowledgeDocument {
 }
 
 export interface KnowledgeHit {
+  mode?: "indexed" | "live";
   source: string;
   document_id: string;
   title: string;
@@ -3081,6 +3119,14 @@ export interface ProjectChangeChannel {
   after?: Channel;
 }
 
+export interface KnowledgeLifecycleAttemptsItem {
+  id: string;
+  started_at: string;
+  finished_at?: string;
+  status: "importing" | "indexing" | "syncing" | "succeeded" | "failed";
+  cause?: string;
+}
+
 export interface ClientInputCredentials {
   token?: SecretInput;
   signing_secret?: SecretInput;
@@ -3171,6 +3217,13 @@ export interface ListRunEventsResponse {
 export interface ListThreadsResponse {
   threads: ThreadSummary[];
   next: string | null;
+}
+
+export interface PublishThreadSummaryBody {
+  project: string;
+  channel?: string;
+  summary: string;
+  placement_token: string;
 }
 
 export interface ListSchedulesResponse {
@@ -3265,6 +3318,10 @@ export interface UpdatePreferencesBody {
   onboarded?: boolean;
   pinned?: string[];
   muted?: string[];
+}
+
+export interface FindHelpResponse {
+  suggestions: HelpSuggestion[];
 }
 
 export interface ListProjectsResponse {
