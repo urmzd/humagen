@@ -413,6 +413,11 @@ func New(cfg Config) (*Platform, error) {
 	if err := p.openStores(cfg); err != nil {
 		return nil, err
 	}
+	if cfg.SourceDependencies == nil {
+		if err := p.RegisterSourceDependencyReader(outcomeSourceDependencies{p}); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := p.RegisterPublicationGuard(forkPublicationGuard{p}); err != nil {
 		return nil, err

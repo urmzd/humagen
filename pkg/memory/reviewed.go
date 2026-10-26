@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 )
@@ -12,8 +13,11 @@ var ErrReviewConflict = errors.New("memory: this text already has a different re
 
 // RememberDecision records exactly the text a human reviewed, atomically. A
 // pending duplicate never becomes approved through an unrelated learning write.
-func (s *Store) RememberDecision(tenant, owner, text, reviewer string, at time.Time) (Note, error) {
+func (s *Store) RememberDecision(tenant, owner, text, reviewer string, at time.Time, trustedRun ...string) (Note, error) {
 	if tenant == "" || owner == "" || reviewer == "" || at.IsZero() {
+		return Note{}, ErrInvalid
+	}
+	if len(trustedRun) > 1 || len(trustedRun) == 1 && (trustedRun[0] == "" || len(trustedRun[0]) > 255) {
 		return Note{}, ErrInvalid
 	}
 	reviewed := strings.TrimSpace(text)
@@ -40,7 +44,14 @@ func (s *Store) RememberDecision(tenant, owner, text, reviewer string, at time.T
 		return Note{}, err
 	}
 	note := Note{ID: "m_" + rand.Text(), Text: text, Details: Details{Kind: Decision}, Source: Person, Status: Approved, By: reviewer, At: at, ReviewedBy: reviewer, ReviewedAt: at}
-	if err := s.set(tenant, owner, append(notes, note), s.next+1); err != nil {
+	origins := maps.Clone(s.origins[k])
+	if len(trustedRun) == 1 {
+		if origins == nil {
+			origins = map[string]string{}
+		}
+		origins[note.ID] = trustedRun[0]
+	}
+	if err := s.setOrigins(tenant, owner, append(notes, note), s.next+1, origins); err != nil {
 		return Note{}, err
 	}
 	return note, nil

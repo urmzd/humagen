@@ -250,7 +250,7 @@ func (p *Platform) RememberOutcomeDecision(who auth.Principal, id string, in Out
 	var result memory.Note
 	err = p.guardLearning(who, state, in.Snapshot, func() error {
 		var write error
-		result, write = p.Memory.RememberDecision(who.Tenant, owner, text, who.Subject, p.now())
+		result, write = p.Memory.RememberDecision(who.Tenant, owner, text, who.Subject, p.now(), id)
 		return write
 	})
 	if completion := attempt.Finish(err); completion != nil {
