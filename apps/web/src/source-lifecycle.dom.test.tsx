@@ -104,3 +104,13 @@ test("source readers cannot configure or refresh workspace copies", async () => 
     "/agents/helper",
   );
 });
+
+test("an available manual source does not claim its retained documents are missing", async () => {
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/dependencies": () => ({ agents: [], projects: [] }),
+  });
+  render(<SourceLifecycle source={{ ...source, lifecycle: undefined }} canWrite={false} onChanged={() => undefined} />);
+  await screen.findByText("No visible declarations in this directory window");
+  assert.equal(screen.queryByText("No successful copy yet") === null, true);
+  assert.ok(screen.getByText("Manually added documents; no external refresh"));
+});

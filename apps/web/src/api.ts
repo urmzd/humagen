@@ -329,6 +329,7 @@ export type SourceLinkSuggestion=GeneratedSourceLinkSuggestion;
 
 export type SourceAttachment=KnowledgeAttachment;
 
+
 export interface Source {
   lifecycle?: KnowledgeLifecycle;
   name: string;

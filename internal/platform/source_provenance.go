@@ -40,6 +40,7 @@ func (p *Platform) enrichCitation(e envelope.Event) envelope.Event {
 	}
 	body, err := payload.Decode[payload.Citation](e)
 	if err != nil {
+		e.Payload = nil
 		return e
 	}
 	shown := runs.CitationPayload{Citation: body}

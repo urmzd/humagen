@@ -64,4 +64,9 @@ func TestCitationProjectionRetainsQueryTimeFactsAndClearsRevokedEvidence(t *test
 	if _, _, ok := p.trustedCitation(forged); ok {
 		t.Fatal("label alone authorized forged metadata")
 	}
+	malformed := event
+	malformed.Payload = json.RawMessage(`{"label":"[1]","source":"invalid","mode":"live"}`)
+	if p.enrichCitation(malformed).Payload != nil {
+		t.Fatal("malformed raw event retained model-claimed facts")
+	}
 }
