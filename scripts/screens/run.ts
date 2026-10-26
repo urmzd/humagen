@@ -1570,6 +1570,14 @@ async function main(): Promise<void> {
         recorded.length > 0 && recorded.every((item) => item.problems.length === 0),
         "Showcase-only export requires a completed passing screen report",
       );
+      for (const viewport of VIEWPORTS) {
+        for (const screen of ["home-new", ...names]) {
+          assert.ok(
+            recorded.some((item) => item.viewport === viewport.name && item.screen === screen),
+            `Missing recorded capture: ${viewport.name} ${screen}`,
+          );
+        }
+      }
       await exportShowcase(browser, base);
       return;
     }

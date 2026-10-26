@@ -57,3 +57,11 @@ At runtime checkpoint `a0d7059`, the complete Go race suite passed across 47 pac
 Actual native DOCX and XLSX phone/desktop journeys passed original ZIP download, PDF export, a reviewed exact-version revision, new version 2 and an unchanged original checksum. Native email preference, Usage, Activity and exact default-skill controls passed 12 responsive captures. Personal project selection and conversation Instructions passed six further captures. These focused results do not replace the final complete screen suite or the eight showcase exports.
 
 GitHub installation and new full-stack external webhook delivery are still unverified: the GitHub settings page continues waiting for passkey input, and an approved 1Password item read timed out after 60 seconds. No credential values are included here.
+
+## Final private skill test
+
+After correcting the client destination, the canonical native request tested `local-docx-review` version 1 using the existing personal `local-ui-validation` agent. Real Claude run `rd595bc4475bfe862423280db90be21fe` completed in the caller's canonical personal project with one recorded model call and `HUMAGEN_SKILL_TEST_VALIDATED`. This final request used the native API while Chrome awaited authentication; the component regression separately verifies the exact request body and eligible-agent controls. The draft remains unpublished, with no tools granted.
+
+The complete responsive acceptance now passes 266 phone/desktop captures and 399 dark captures across 320, 768 and 1440 pixels. All eight showcase files were re-captured from the same seed and visually inspected. The standalone gallery's fixed-height clipping was corrected, and the native run image retains its complete turn heading. Full console checks after the personal-scope correction pass 574 tests with zero skips.
+
+GitHub CLI authenticates successfully as `urmzd` and confirms App 5473438 with only Issues read/write and metadata read. Installation lookup with the ordinary CLI token returns HTTP 401, requiring the App JWT. The direct approved App-key read from 1Password returned `error initializing client: response: promptError`; no credential value was returned or logged. Browser confirmation also remained pending. These results do not establish sandbox installation or new webhook delivery.

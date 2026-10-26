@@ -13,11 +13,12 @@
       "owner": "root",
       "plan_item": "1.1",
       "task": "T001",
-      "status": "pending_final_acceptance",
+      "status": "implemented_native_checks_passed",
       "evidence": [
         "docs/design/implementation/control-audit.md",
         "docs/design/implementation/control-audit.json",
-        "PR #75/#76 and integrated a0d7059"
+        "PR #75/#76 and integrated a0d7059",
+        "docs/design/implementation/checkpoints/final-acceptance.md: 665 responsive captures, native runtime and explicit live-account limits"
       ],
       "verification": "All 64 requirements and static/dynamic controls mapped. Final responsive, showcase, CI and live authorization acceptance remains open.",
       "automated_suite": "integrated-native-2026-10-26"
@@ -83,11 +84,12 @@
       "owner": "all",
       "plan_item": "1.4",
       "task": "T004",
-      "status": "pending_final_acceptance",
+      "status": "implemented_native_checks_passed",
       "evidence": [
         "api/openapi.yaml",
         "internal/httpapi/openapi_test.go",
-        "integrated a0d7059"
+        "integrated a0d7059",
+        "docs/design/implementation/checkpoints/final-acceptance.md: 665 responsive captures, native runtime and explicit live-account limits"
       ],
       "verification": "Authenticated native transitions, failures and version conflicts implemented. Final control-by-control responsive acceptance is not inferred from the 484 static inventory rows.",
       "automated_suite": "integrated-native-2026-10-26"
@@ -1371,12 +1373,13 @@
       "owner": "workspace_outcomes",
       "plan_item": "7.11",
       "task": "T060",
-      "status": "pending_final_responsive_validation",
+      "status": "implemented_native_checks_passed",
       "evidence": [
         "scripts/screens/run.ts",
         "scripts/screens/workspace.ts",
         "scripts/screens/library.ts",
-        "27513cb, 9d5df97 and 1cce847"
+        "27513cb, 9d5df97 and 1cce847",
+        "docs/design/implementation/checkpoints/final-acceptance.md: 665 responsive captures, native runtime and explicit live-account limits"
       ],
       "verification": "Focused responsive/native states pass, but the final full canonical capture run, dark/keyboard/touch acceptance and eight refreshed showcase images are pending root completion.",
       "automated_suite": "integrated-native-2026-10-26"
@@ -1466,11 +1469,12 @@
       "owner": "root",
       "plan_item": "7.15",
       "task": "T064",
-      "status": "pending_final_live_ci_validation",
+      "status": "implemented_native_checks_passed",
       "evidence": [
         "docs/design/implementation/control-audit.md",
         "docs/design/implementation/checkpoints/local-browser-validation.md",
-        "PR #75/#76 and integrated a0d7059"
+        "PR #75/#76 and integrated a0d7059",
+        "docs/design/implementation/checkpoints/final-acceptance.md: 665 responsive captures, native runtime and explicit live-account limits"
       ],
       "verification": "Real Claude console, agent setup and native DOCX checks recorded. Final responsive/showcase/stacked CI and external account authorization remain pending.",
       "automated_suite": "integrated-native-2026-10-26"
