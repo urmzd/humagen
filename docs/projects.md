@@ -2205,3 +2205,17 @@ original private run, thread or artifact capability.
 Workspace discovery returns at most 50 readable destinations per query, with
 separate project, agent and conversation read permissions. Searches enforce
 query and scan bounds on the server and return no hidden-object counts.
+
+### Initiative rollups
+
+`GET /api/projects/{name}/rollup` returns at most 100 readable descendant rows,
+100 approved unexpired decision/risk notes, and 50 inbox needs for the reader.
+Rows report current-placement conversation/activity counters, the reader's
+unread and actionable inbox counters, and runs started during the preceding
+30 days. Run counts require `runs:read`. Hidden projects, conversations and
+source chains contribute no names or counts. More flags describe only readable
+items beyond these caps. Notes omit original author/run/artifact provenance.
+The initiative Overview links each item to its original project for review.
+Progress and risks are never guessed from conversation text. Initiative agents
+coordinate at their own level; cross-project handoff remains the explicit open
+question in the control-plane spec and is denied by the existing call path.

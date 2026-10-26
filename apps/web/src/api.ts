@@ -18,6 +18,7 @@ import type {
   ProjectEntry,
   ProjectInput,
   ProjectTemplate,
+  ProjectRollup,
   ProjectKnowledge,
   ProjectLimitInput,
   ProjectMembers,
@@ -50,6 +51,7 @@ export type {
   ProjectEntry,
   ProjectInput,
   ProjectTemplate,
+  ProjectRollup,
   ProjectKind,
   ProjectKindSpec,
   ProjectKnowledge,
@@ -654,6 +656,8 @@ export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, 
 import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
+  projectRollup: (name: string) => call<ProjectRollup>("GET", `${projectAt(name)}/rollup`),
+
   notifications: () => call<{notifications:NativeNotification[]}>("GET","/api/me/notifications").then(r=>r.notifications??[]),
   acknowledgeNotification: (id:string) => call<void>("POST",`/api/me/notifications/${encodeURIComponent(id)}/ack`),
   librarySkills: (scope: LibraryScope) => call<{skills:LibrarySkill[]}>("GET", `/api/library/skills?${new URLSearchParams({scope:scope.kind,...(scope.project?{project:scope.project}:{})})}`).then(r=>r.skills),

@@ -592,7 +592,12 @@
       "owner": "conversation_actions",
       "plan_item": "6.1",
       "task": "T043",
-      "status": "pending_native_verification"
+      "status": "pending_native_verification",
+      "evidence": [
+        "internal/platform/forks_test.go: chosen-branch snapshot, real future context, source revocation, dynamic-private-context refusal; memory/Postgres fork persistence tests pass",
+        "apps/web/src/forks.dom.test.tsx: native fork request, explicit empty source scope and read-only context; phone/desktop conversation-fork-context captures passed",
+        "Upper UI stack owns shared message footer and host dialog wiring"
+      ]
     },
     {
       "id": "REQ-044",
@@ -605,7 +610,12 @@
       "owner": "conversation_actions",
       "plan_item": "6.2",
       "task": "T044",
-      "status": "pending_native_verification"
+      "status": "pending_native_verification",
+      "evidence": [
+        "internal/platform/forks_test.go: explicit bring-back posts human text without mentions/actions or agent invocation; private result and full call-tree summary checks",
+        "apps/web/src/forks.dom.test.tsx: bring-back requires explicit reviewed Post action",
+        "Upper UI stack owns completed-run action host wiring"
+      ]
     },
     {
       "id": "REQ-045",
@@ -618,7 +628,12 @@
       "owner": "conversation_actions",
       "plan_item": "6.3",
       "task": "T045",
-      "status": "pending_native_verification"
+      "status": "pending_native_verification",
+      "evidence": [
+        "internal/platform/project_forks_test.go: staged hidden/unrunnable configuration copy, immutable selected notes/rules, failure/restart/retry/concurrent-reader checks, disabled rules, optional passive archives; memory/Postgres pass",
+        "pkg/projects/forks_test.go and pkg/projectforks/projectforks_test.go: atomic all-resource publication, private bounded durable plan, failure and replay checks",
+        "apps/web/src/forks.dom.test.tsx: publication wait/retry and read-only archive opt-in; phone/desktop project-fork-ready captures passed"
+      ]
     },
     {
       "id": "REQ-046",
@@ -631,7 +646,11 @@
       "owner": "conversation_actions",
       "plan_item": "6.4",
       "task": "T046",
-      "status": "pending_native_verification"
+      "status": "pending_native_verification",
+      "evidence": [
+        "apps/web/src/ConversationAccess.tsx and ConversationShell.tsx: actual participants, role-aware versioned mutation, shared/private access explanation and removal",
+        "apps/web/src/forks.dom.test.tsx: actual versioned participant request and shared-visibility explanation; phone/desktop conversation-people and conversation-fork-people captures passed"
+      ]
     },
     {
       "id": "REQ-047",
@@ -644,7 +663,12 @@
       "owner": "conversation_actions",
       "plan_item": "6.5",
       "task": "T047",
-      "status": "pending_native_verification"
+      "status": "pending_native_verification",
+      "evidence": [
+        "GET /api/discovery: server limit50, bounded agent scan1000, native readable project/agent/conversation discovery, actual per-kind permissions and source-chain confinement",
+        "internal/platform/discovery_test.go and focused DOM/route tests pass",
+        "Upper UI stack owns single global Search trigger and keyboard host wiring"
+      ]
     },
     {
       "id": "REQ-048",
@@ -658,7 +682,14 @@
       "owner": "conversation_actions",
       "plan_item": "6.6",
       "task": "T048",
-      "status": "pending_native_verification"
+      "status": "pending_native_verification",
+      "evidence": [
+        "GET /api/projects/{name}/rollup: capped100 readable descendants/typed approved unexpired notes and50 reader needs, current placement, exact rolling30-day runs, no hidden provenance",
+        "internal/platform/project_rollup_test.go: memory/Postgres replay, typed approval/expiry filtering, hidden-project exclusion and immutable accounting placement",
+        "apps/web/src/ProjectRollup.tsx: native initiative Overview and original-project review links; focused DOM test passes",
+        "Cross-project agent execution remains denied while explicit spec open question is unresolved",
+        "SCREENS_ONLY=project-initiative make screens: phone and desktop layout/target checks pass; captures visually inspected"
+      ]
     },
     {
       "id": "REQ-049",
@@ -671,7 +702,12 @@
       "owner": "conversation_actions",
       "plan_item": "6.7",
       "task": "T049",
-      "status": "pending_native_verification"
+      "status": "pending_native_verification",
+      "evidence": [
+        "pkg/projects/templates.json: blank plus delivery/initiative/account file templates, atomic channels/skills creation, template-kind checks and initiative execution scope",
+        "apps/web/src/Projects.tsx: template selection and initiative parent selection; dedicated ForkProject workflow; phone/desktop project-template and project-initiative captures",
+        "Upper UI stack owns exact four-way creation menu and final host navigation verification"
+      ]
     },
     {
       "id": "REQ-050",

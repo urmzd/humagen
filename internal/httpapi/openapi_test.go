@@ -1655,6 +1655,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?limit=51", "", http.StatusBadRequest)
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?kinds=unknown", "", http.StatusBadRequest)
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?project=UnknownProject", "", http.StatusNotFound)
+	c.call(ana, "GET", "/api/projects/{name}/rollup", "/api/projects/Field/rollup", "", http.StatusOK)
 	templates := c.call(ana, "GET", "/api/project-templates", "/api/project-templates", "", http.StatusOK)
 	if len(sliceOf(templates.field("templates"))) != 3 {
 		t.Fatalf("template catalog: %s", templates.raw)
@@ -1950,6 +1951,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
+		"/api/projects/{name}/rollup":         {"name": "Launch"},
 		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
 		"/api/projects/{name}/members": {"name": "Launch"}, "/api/projects/{name}/move": {"name": "Launch"}, "/api/projects/{name}/limits": {"name": "Launch"},
 		"/api/projects/{name}/inbox": {"name": "Launch"}, "/api/projects/{name}/announcements": {"name": "Launch"},

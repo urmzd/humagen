@@ -131,7 +131,7 @@ paths:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
-        '204': {description: Notification projection acknowledged, inbox unchanged}
+        '204': {description: "Notification projection acknowledged, inbox unchanged"}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -1799,6 +1799,26 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/rollup:
+    get:
+      operationId: getProjectRollup
+      tags: [projects]
+      summary: Read bounded descendant activity, decisions, risks and reader needs
+      description: Only readable current project placements contribute. Confirmed unexpired typed decisions and risks are projected without private provenance. Rows are capped at 100 projects, 100 notes and 50 needs. Runs are counted over the preceding 30 days and require runs:read. No child work is executed by an initiative.
+      x-permission: projects:read
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Read-confined initiative or project rollup.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectRollup"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/discovery:
     get:
       operationId: discoverWorkspace
@@ -7151,6 +7171,56 @@ components:
           description: When anything last happened in it.
           type: string
           format: date-time
+    ProjectRollup:
+      type: object
+      additionalProperties: false
+      required: [project, since, projects, notes, needs, more_projects, more_notes, more_needs]
+      properties:
+        project: {type: string}
+        since: {type: string, format: date-time}
+        more_projects: {type: boolean}
+        more_notes: {type: boolean}
+        more_needs: {type: boolean}
+        projects:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, title, parent, active, conversations, unread, needs, runs_30_days]
+            properties:
+              name: {type: string}
+              title: {type: string}
+              parent: {type: string}
+              active: {type: integer, minimum: 0}
+              conversations: {type: integer, minimum: 0}
+              unread: {type: integer, minimum: 0}
+              needs: {type: integer, minimum: 0}
+              runs_30_days: {type: integer, minimum: 0}
+        notes:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, project, text, kind]
+            properties:
+              id: {type: string}
+              project: {type: string}
+              text: {type: string, maxLength: 300}
+              kind: {type: string, enum: [decision, risk]}
+        needs:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, project, subject, kind]
+            properties:
+              id: {type: string}
+              project: {type: string}
+              subject: {type: string}
+              kind: {type: string}
     DiscoveryItem:
       type: object
       additionalProperties: false

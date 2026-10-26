@@ -1,3 +1,4 @@
+import { ProjectRollup } from "./ProjectRollup.tsx";
 import { defaultCopy } from "@humagen/components";
 import { FolderIcon, FolderPlusIcon } from "@humagen/render-web";
 import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useState } from "react";
@@ -1493,6 +1494,7 @@ export function ProjectPage({
         // Tasks, what sits below and what holds the project take the wide column; what every task is sent and what runs on a timer sit beside them.
         <div className="grid grid-cols-1 items-start gap-8 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="flex flex-col gap-8">
+            {p.initiative && <ProjectRollup project={p.name} signal={tick} />}
             <ProjectTasks key={p.name} name={p.name} hasChildren={p.children > 0} tick={tick} onOpenThread={onOpenThread} />
             <SubProjects
               detail={detail}

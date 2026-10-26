@@ -107,6 +107,7 @@ import type {
   ProjectMembers,
   ProjectMembersInput,
   ProjectMove,
+  ProjectRollup,
   ProjectSkills,
   ProjectSkillsInput,
   ProjectUpdate,
@@ -1909,6 +1910,23 @@ here too (429).
     return this.rawRequest<ThreadPosted>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Only readable current project placements contribute. Confirmed unexpired typed decisions and risks are projected without private provenance. Rows are capped at 100 projects, 100 notes and 50 needs. Runs are counted over the preceding 30 days and require runs:read. No child work is executed by an initiative. */
+  async getProjectRollup(name: string, options?: RequestOptions): Promise<ProjectRollup> {
+    let path = "/api/projects/{name}/rollup";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectRollup>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectRollupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectRollup>> {
+    let path = "/api/projects/{name}/rollup";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectRollup>("GET", path, {
       ...options,
     });
   }
