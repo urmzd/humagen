@@ -464,7 +464,7 @@ func TestASlackReplyToAMentionStartsNoRun(t *testing.T) {
 // Experts named by a role are sent a mention as one message to the role, so
 // a client's machine hears of it for every person it maps who holds the
 // role, to tell each of them in Slack, and for nobody else.
-func TestAMachineHearsOfAnExpertQuestionForEveryoneItMapsInTheRole(t *testing.T) {
+func TestAMachineHearsOfARecordedRoleMentionForEveryoneItMapsInTheRole(t *testing.T) {
 	p, slackMachine := slackRoom(t, func(in *platform.ClientInput) {
 		in.Slack.People["U0OLU"] = "olu"
 	})
@@ -481,18 +481,12 @@ grant viewer, security to subject "olu"
 		t.Fatal(err)
 	}
 	machine := auth.Principal{Subject: slackMachine.Subject, Tenant: tenant, Kind: auth.Machine, Scopes: slackMachine.Scopes}.WithPolicy(pol)
-	cur, err := p.ProjectExperts(tenant, "Field")
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "Earlier role conversation", PostOnly: true})
+	m, _, err := p.Inbox.Raise(tenant, "recorded-role-mention", inbox.Message{Kind: inbox.KindMention, Subject: "Earlier question", Audience: []string{"role:security"}, Source: inbox.Source{Project: "Field", Thread: got.Thread.ID}, Parts: []inbox.Part{{Type: inbox.PartMention, Mention: &inbox.MentionPart{Thread: got.Thread.ID, Message: "m-1", Project: "Field", Channel: "general", By: "opal", Excerpt: "Earlier question"}}}}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "role:security", Topics: []string{"security"}}}}); err != nil {
-		t.Fatal(err)
-	}
-	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "@sme:security is this safe to ship?"})
-	m, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "role:security"))
-	if !ok {
-		t.Fatalf("the experts were not told: %+v", got)
-	}
+
 	heard := p.SurfaceNoticesFor(machine, inbox.Notice{ID: m.ID, Kind: inbox.KindMention, State: inbox.Open})
 	want := []platform.ActAs{{Client: "app", User: "U0OLU"}, {Client: "app", User: "U0VIC"}}
 	if !slices.Equal(heard, want) {

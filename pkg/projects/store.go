@@ -47,8 +47,9 @@ type tenant struct {
 	// tombs is every deleted name, by its lower case.
 	tombs map[string]Tombstone
 	// history is the tenant's changes, oldest first.
-	history []Change
-	seq     int64
+	history      []Change
+	seq          int64
+	cursorSecret string
 	// homes is where each agent with a home lives, by agent.
 	homes map[string]home
 	// channels is every project's written channels, by project and name.
@@ -60,7 +61,7 @@ func newTenant() *tenant {
 }
 
 func (t *tenant) copy() *tenant {
-	return &tenant{projects: maps.Clone(t.projects), tombs: maps.Clone(t.tombs), history: slices.Clone(t.history), seq: t.seq, homes: maps.Clone(t.homes), channels: maps.Clone(t.channels)}
+	return &tenant{projects: maps.Clone(t.projects), tombs: maps.Clone(t.tombs), history: slices.Clone(t.history), seq: t.seq, cursorSecret: t.cursorSecret, homes: maps.Clone(t.homes), channels: maps.Clone(t.channels)}
 }
 
 // stored reports whether the tenant has written anything.
@@ -160,11 +161,21 @@ func Open(st state.Store, opts ...Option) (*Store, error) {
 		}
 		s.trees.Store(name, t.tree())
 	}
+	if err := s.ensureHistorySecrets(); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
 func (t *tenant) load(key string, raw json.RawMessage) error {
 	switch {
+	case key == keyHistorySecret:
+		if err := json.Unmarshal(raw, &t.cursorSecret); err != nil {
+			return err
+		}
+		if !validHistorySecret(t.cursorSecret) {
+			return fmt.Errorf("%w: invalid history cursor key", ErrInvalid)
+		}
 	case strings.HasPrefix(key, keyProject):
 		var r stored
 		if err := json.Unmarshal(raw, &r); err != nil {
@@ -242,8 +253,15 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 // project nobody matches as one nobody sees.
 func (t *tenant) check() error {
 	seen := map[string]string{}
+	personal := map[string]bool{}
 	kinds := t.projects[Root].Kinds
 	for name, p := range t.projects {
+		if p.PersonalOwner != "" {
+			if personal[p.PersonalOwner] {
+				return fmt.Errorf("%w: duplicate personal owner", ErrInvalid)
+			}
+			personal[p.PersonalOwner] = true
+		}
 		if err := p.validate(); err != nil {
 			return fmt.Errorf("%q: %w", name, err)
 		}
@@ -276,7 +294,7 @@ func (t *tenant) check() error {
 		switch _, ok := t.projects[h.Project]; {
 		case !ValidAgent(agent):
 			return fmt.Errorf("%w: %q cannot live in a project", ErrInvalid, agent)
-		case h.Project == Root || !ok:
+		case h.Project != Root && !ok:
 			return fmt.Errorf("%w: %s lives in %q, which is not a project", ErrInvalid, agent, h.Project)
 		}
 	}
@@ -376,6 +394,15 @@ func (w *write) project(p Project) {
 
 // record appends a change, dropping the oldest past MaxHistory.
 func (w *write) record(c Change) {
+	if w.t.cursorSecret == "" {
+		secret, err := newHistorySecret()
+		if err != nil {
+			w.err = err
+			return
+		}
+		w.t.cursorSecret = secret
+		w.put(keyHistorySecret, secret)
+	}
 	w.t.seq++
 	c.Seq = w.t.seq
 	w.t.history = append(w.t.history, c)
@@ -473,6 +500,9 @@ func ptr(p Project) *Project {
 // openness and the counts the caps bound. The caller holds the lock.
 func (s *Store) place(tree *Tree, p Project, w Writer) error {
 	parent, ok := tree.Get(p.Parent)
+	if ok && parent.PersonalOwner != "" {
+		return fmt.Errorf("%w: personal projects cannot contain subprojects", ErrInvalid)
+	}
 	if !ok {
 		return fmt.Errorf("%w: there is no project %q to put it under", ErrInvalid, p.Parent)
 	}
@@ -509,6 +539,9 @@ func (s *Store) place(tree *Tree, p Project, w Writer) error {
 // open than the parent allows. The checks and the insert are one step, so
 // two creates cannot both take one name or the last place.
 func (s *Store) Create(tenantName string, p Project, w Writer, at time.Time) (Project, error) {
+	if p.PersonalOwner != "" {
+		return Project{}, fmt.Errorf("%w: personal ownership is server managed", ErrInvalid)
+	}
 	p = p.clone()
 	p.Kind = cmp.Or(p.Kind, Team)
 	p.Managed, p.FileOwns = "", nil
@@ -631,6 +664,8 @@ func (s *Store) update(tenantName, name string, version int, w Writer, at time.T
 	}
 	next.Agents = next.Agents.canonical()
 	switch {
+	case next.PersonalOwner != cur.PersonalOwner:
+		return Project{}, fmt.Errorf("%w: personal ownership is immutable", ErrInvalid)
 	case next.Name != cur.Name:
 		return Project{}, fmt.Errorf("%w: a project's name is fixed when it is created", ErrInvalid)
 	case next.Parent != cur.Parent:
@@ -772,6 +807,9 @@ func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse fu
 	if !ok {
 		return fmt.Errorf("%w: %q", ErrNotFound, name)
 	}
+	if cur.PersonalOwner != "" {
+		return fmt.Errorf("%w: a personal project cannot be deleted", ErrInvalid)
+	}
 	if cur.Managed == ManagedFile {
 		return fmt.Errorf("%w: %q is declared in the platform file; remove it there", ErrManaged, name)
 	}
@@ -795,7 +833,7 @@ func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse fu
 	delete(tx.t.projects, name)
 	tx.delete(keyProject + name)
 	tx.dropChannels(name)
-	if err := tx.bury(Tombstone{Name: name, By: w.By, At: at, Parent: cur.Parent, Members: slices.Clone(cur.Members), Kept: true}); err != nil {
+	if err := tx.bury(Tombstone{Name: name, By: w.By, At: at, Parent: cur.Parent, Members: slices.Clone(cur.Members), PersonalOwner: cur.PersonalOwner, Kept: true}); err != nil {
 		return err
 	}
 	tx.record(Change{At: at, By: w.By, Project: name, What: Deleted, Before: ptr(cur)})
@@ -823,6 +861,9 @@ func (s *Store) Tombstone(tenantName, name string) (Tombstone, bool) {
 // declaration that changes nothing writes nothing and keeps the version.
 // Parents come first: a project whose parent is not there yet is refused.
 func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, at time.Time) (Project, error) {
+	if p.PersonalOwner != "" {
+		return Project{}, fmt.Errorf("%w: personal ownership is server managed", ErrInvalid)
+	}
 	p = p.clone()
 	owns = slices.Clone(owns)
 	slices.Sort(owns)
@@ -836,6 +877,9 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 	defer s.mu.Unlock()
 	tx := s.begin(tenantName)
 	cur, ok := current(tx.t, p.Name)
+	if ok && cur.PersonalOwner != "" {
+		return Project{}, fmt.Errorf("%w: the platform file cannot manage a personal project", ErrInvalid)
+	}
 	if !ok {
 		if have, taken := tx.t.lookup(p.Name); taken {
 			return Project{}, fmt.Errorf("%w: %q", ErrExists, have.Name)

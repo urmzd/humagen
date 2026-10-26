@@ -4,9 +4,10 @@ package audit
 import (
 	"container/heap"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -47,6 +48,8 @@ const (
 // Scope is workspace, project, personal or agent. An omitted scope is inferred
 // from Subject, Agent and Project, in that order, else workspace.
 type Change struct {
+	Route    string            `json:"route,omitempty"`
+	Rule     string            `json:"rule,omitempty"`
 	Action   string            `json:"action"`
 	Resource string            `json:"resource"`
 	ID       string            `json:"resource_id"`
@@ -87,6 +90,7 @@ type Store struct {
 }
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
+var opaqueIDPattern = regexp.MustCompile(`^a_[0-9a-f]{32}$`)
 var secrets = regexp.MustCompile(`(?i)(bearer\s+[^\s]+|(?:sk-ant-|sk-|ghp_|gho_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,}|(?:[?&](?:token|api_key|key|secret|password)=)[^&\s]+|://[^\s/@:]+:[^\s/@]+@)`)
 
 func safeFields(fields map[string]string) (map[string]string, error) {
@@ -125,7 +129,7 @@ func clean(change Change) (Change, error) {
 	if !namePattern.MatchString(change.Action) || !namePattern.MatchString(change.Resource) || change.ID == "" {
 		return Change{}, ErrInvalid
 	}
-	for _, value := range []string{change.ID, change.Project, change.Thread, change.Subject, change.Agent} {
+	for _, value := range []string{change.ID, change.Project, change.Thread, change.Subject, change.Agent, change.Route, change.Rule} {
 		if len(value) > 512 || !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
 			return Change{}, ErrInvalid
 		}
@@ -203,11 +207,13 @@ func Open(st state.Store) (*Store, error) {
 			return nil, ErrCapacity
 		}
 		s.rows[row.Tenant][r.ID] = r
-		seq, err := strconv.ParseUint(strings.TrimPrefix(r.ID, "a"), 10, 64)
-		if err != nil {
-			return nil, ErrInvalid
+		if !opaqueIDPattern.MatchString(r.ID) {
+			seq, err := strconv.ParseUint(strings.TrimPrefix(r.ID, "a"), 10, 64)
+			if err != nil {
+				return nil, ErrInvalid
+			}
+			s.next[row.Tenant] = max(s.next[row.Tenant], seq)
 		}
-		s.next[row.Tenant] = max(s.next[row.Tenant], seq)
 	}
 	return s, nil
 }
@@ -238,7 +244,16 @@ func (s *Store) Begin(tenant, actor string, change Change, at time.Time) (Attemp
 	if seq == 0 {
 		return Attempt{}, ErrCapacity
 	}
-	id := fmt.Sprintf("a%020d", seq)
+	// Public IDs must not reveal the number of hidden personal records. The
+	// internal counter remains durable for legacy replay and never leaves here.
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return Attempt{}, err
+	}
+	id := "a_" + hex.EncodeToString(nonce[:])
+	if _, exists := s.rows[tenant][id]; exists {
+		return Attempt{}, ErrConflict
+	}
 	r := Record{Change: checked, ID: id, Actor: actor, At: at.UTC(), Outcome: Pending}
 	raw, _ := json.Marshal(r)
 	counter, _ := json.Marshal(seq)

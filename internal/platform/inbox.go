@@ -92,7 +92,7 @@ func reads(k inbox.Kind) auth.Permission {
 		return auth.ProjectsRead
 	case inbox.KindMemory:
 		return auth.AgentsRead
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention, inbox.KindOperation:
 		return auth.RunsRead
 	case inbox.KindArtifact:
 		return auth.ArtifactsRead
@@ -111,7 +111,7 @@ func writes(k inbox.Kind) auth.Permission {
 		return auth.ProjectsRead
 	case inbox.KindMemory:
 		return auth.AgentsWrite
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention, inbox.KindOperation:
 		return auth.RunsWrite
 	case inbox.KindArtifact:
 		return auth.ArtifactsWrite
@@ -124,6 +124,8 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 	switch {
 	case t == inbox.PartSource && action == ActRetry:
 		return auth.KnowledgeWrite, true
+	case t == inbox.PartOperation && action == ActAcknowledge:
+		return auth.RunsWrite, true
 	case t == inbox.PartAlert && action == ActAcknowledge:
 		return auth.AlertsWrite, true
 	case t == inbox.PartFailure && (action == ActRetry || action == ActAcknowledge):
@@ -152,16 +154,17 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 }
 
 var offered = map[inbox.PartType][]string{
-	inbox.PartSource:   {ActRetry},
-	inbox.PartAlert:    {ActAcknowledge},
-	inbox.PartFailure:  {ActRetry, ActAcknowledge},
-	inbox.PartMemory:   {ActKeep, ActDiscard},
-	inbox.PartBudget:   {ActRaiseLimit, ActAcknowledge},
-	inbox.PartApproval: {ActApprove, ActDeny},
-	inbox.PartChoice:   {ActChoose},
-	inbox.PartReply:    {ActReply},
-	inbox.PartMention:  {ActReply, ActDone},
-	inbox.PartDraft:    {ActPublish, ActDiscard},
+	inbox.PartAlert:     {ActAcknowledge},
+	inbox.PartSource:    {ActRetry},
+	inbox.PartOperation: {ActAcknowledge},
+	inbox.PartFailure:   {ActRetry, ActAcknowledge},
+	inbox.PartMemory:    {ActKeep, ActDiscard},
+	inbox.PartBudget:    {ActRaiseLimit, ActAcknowledge},
+	inbox.PartApproval:  {ActApprove, ActDeny},
+	inbox.PartChoice:    {ActChoose},
+	inbox.PartReply:     {ActReply},
+	inbox.PartMention:   {ActReply, ActDone},
+	inbox.PartDraft:     {ActPublish, ActDiscard},
 }
 
 // allows reports whether who may take an action on a part, and if not, why.
@@ -210,6 +213,9 @@ func (p *Platform) mayRetryIn(tree *projects.Tree, who auth.Principal, runID str
 	if err != nil {
 		return err
 	}
+	if p.RunPlace(who.Tenant, run).Project != run.Project {
+		return fmt.Errorf("%w: historical runs cannot replay after publication; post a new message in this conversation", threads.ErrInvalid)
+	}
 	project := projects.NameOf(run.Project)
 	if project == projects.Root || !tree.Has(project) {
 		return nil
@@ -235,6 +241,14 @@ func (p *Platform) seenBy(tree *projects.Tree, names Names, m inbox.Message, who
 	if id != "" {
 		if th, err := p.ThreadRecord(who.Tenant, id); err == nil && p.Seer(who).Place(Place{Project: th.Project, Thread: id}) {
 			m.Source.ThreadTitle = p.threadTitle(who.Tenant, th)
+			m.Source.Project = th.Project
+			for i := range m.Parts {
+				if m.Parts[i].Mention != nil {
+					mention := *m.Parts[i].Mention
+					mention.Project, mention.Channel = th.Project, th.Channel
+					m.Parts[i].Mention = &mention
+				}
+			}
 		}
 	}
 	for i := range m.Parts {
@@ -315,6 +329,7 @@ func readerOf(who auth.Principal) inbox.Reader {
 // announcements at the next read.
 func (p *Platform) inboxReader(tree *projects.Tree, who auth.Principal) inbox.Reader {
 	r := readerOf(who)
+	r.ProjectOf = p.inboxProject(who.Tenant)
 	reader := ReaderOf(who)
 	muted := p.Prefs.Get(who.Tenant, who.Subject).Muted
 	for _, name := range tree.Memberships(reader) {
@@ -329,6 +344,7 @@ func (p *Platform) inboxReader(tree *projects.Tree, who auth.Principal) inbox.Re
 func (p *Platform) inboxQuery(tree *projects.Tree, who auth.Principal, q inbox.Query) inbox.Query {
 	r := p.inboxReader(tree, who)
 	q.Reader, q.Roles, q.ReaderProjects, q.ReaderOwns, q.Now = r.Subject, r.Roles, r.Projects, r.Owns, p.now()
+	q.ProjectOf = r.ProjectOf
 	q.Visible = func(k inbox.Kind) bool { return who.Can(reads(k)) }
 	q.Sees = p.Seer(who).Message
 	return q

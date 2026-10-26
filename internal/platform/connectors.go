@@ -643,6 +643,9 @@ func (p *Platform) clientOf(tenant, runID string) string {
 // its tenant, the client that raised it, and where it lives, so its first
 // event reaches only those who may read it.
 type admitted struct {
+	person         string
+	operationMeta  map[string]string
+	actor          envelope.Actor
 	tenant, client string
 	place          Place
 }

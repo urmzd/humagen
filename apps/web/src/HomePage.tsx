@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { ago, RowButton, Section, textAction } from "./ui.tsx";
 
 /** Before the first message, the prompt is the page. Chat owns its controls and submission. */
-export function HomePage({ greeting, canRun, hasAgents, below, children }: {
+export function HomePage({ greeting, canRun, hasAgents, banner, below, children }: {
+  banner?: HomeAnnouncement;
   greeting: string;
   canRun: boolean;
   hasAgents: boolean;
@@ -14,6 +15,7 @@ export function HomePage({ greeting, canRun, hasAgents, below, children }: {
 }) {
   return (
     <section aria-label="New conversation" className="aui-scroll humagen-fade flex min-h-0 flex-1 flex-col justify-center overflow-y-auto py-8">
+      {banner && <AnnouncementBanner announcement={banner} />}
       <h1 className="humagen-display px-6 pb-6 text-center text-[2rem] font-semibold leading-tight text-aui-fg">{greeting}</h1>
       {!canRun ? (
         <p className="px-6 text-center text-aui-sm text-aui-muted">You do not have permission to start conversations in this workspace.</p>
@@ -37,7 +39,7 @@ export type Loaded<T> = { state: "loading" } | { state: "failed" } | { state: "r
  * one box. A box left out is one the person may not read. Nothing here moves:
  * it waits on the person.
  */
-export function HomeBoxes({ notifications, updates, canStart = true, onOpen, onInbox, onUpdate, onUpdates }: {
+export function HomeBoxes({ notifications, updates, onOpen, onInbox, onUpdate, onUpdates }: {
   /** Whether the person can start a conversation above, which the welcome tells them to. */
   canStart?: boolean;
   notifications?: Loaded<HomeModel["notifications"]>;
@@ -56,15 +58,8 @@ export function HomeBoxes({ notifications, updates, canStart = true, onOpen, onI
   const marked = news.some((u) => u.unread);
   const ready = (l?: Loaded<unknown>) => l === undefined || l.state === "ready";
   const column = "mx-auto w-full max-w-4xl px-4 pt-8";
-  if (ready(notifications) && ready(updates) && total === 0 && news.length === 0) {
-    return (
-      <div className={column}>
-        <Section box title={c.welcome.title}>
-          <p className="max-w-[62ch] text-aui-sm text-aui-muted">{canStart ? c.welcome.text : c.welcome.quiet}</p>
-        </Section>
-      </div>
-    );
-  }
+  if (ready(notifications) && ready(updates) && total === 0 && news.length === 0) return null;
+
   const quiet = "px-2 text-aui-sm text-aui-muted";
   const state = (l: Loaded<unknown>, failed: string, empty: string, shown: number) =>
     l.state === "loading" ? (
@@ -94,7 +89,7 @@ export function HomeBoxes({ notifications, updates, canStart = true, onOpen, onI
                         <span className="font-medium">{n.from}</span> {n.summary}
                       </>
                     }
-                    detail={[n.severity ? c.urgency[n.severity] : null, n.at ? ago(n.at) : null].filter(Boolean).join(" · ") || undefined}
+                    detail={[n.severity ? c.urgency[n.severity] : null, n.at ? ago(n.at) : null].filter(Boolean).join(" ") || undefined}
                   />
                 </li>
               ))}
@@ -122,7 +117,7 @@ export function HomeBoxes({ notifications, updates, canStart = true, onOpen, onI
                         <span className={u.unread ? "font-medium" : undefined}>{u.subject}</span>
                       </>
                     }
-                    detail={[copy.announcements.postedIn(u.projectTitle), u.at ? ago(u.at) : null].filter(Boolean).join(" · ")}
+                    detail={[copy.announcements.postedIn(u.projectTitle), u.at ? ago(u.at) : null].filter(Boolean).join(" ")}
                   />
                 </li>
               ))}
@@ -132,4 +127,30 @@ export function HomeBoxes({ notifications, updates, canStart = true, onOpen, onI
       )}
     </div>
   );
+}
+
+/** A retained inbox announcement with that reader's own read/hide actions. */
+export interface HomeAnnouncement {
+  id: string;
+  source: string;
+  title: string;
+  text: string;
+  unread: boolean;
+  busy?: boolean;
+  onRead: () => void;
+  onHide: () => void;
+  onOpen?: () => void;
+}
+export function AnnouncementBanner({ announcement: a }: { announcement: HomeAnnouncement }) {
+  const c = defaultCopy.home.banner;
+  return <section aria-label={c.label} className="mx-auto mb-8 w-[calc(100%_-_2rem)] max-w-3xl border-l-2 border-aui-fg/30 bg-aui-muted/5 px-4 py-3 text-aui-sm">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted"><span>{a.source}</span>{a.unread && <span>{defaultCopy.mailbox.unread}</span>}</div>
+    <p className="mt-1 font-medium text-aui-fg">{a.title}</p>
+    <p className="mt-1 line-clamp-3 max-w-[70ch] whitespace-pre-wrap text-aui-muted">{a.text}</p>
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+      {a.onOpen && <button type="button" className={textAction} onClick={a.onOpen}>{c.open}</button>}
+      {a.unread && <button type="button" className={textAction} disabled={a.busy} onClick={a.onRead}>{c.markRead}</button>}
+      <button type="button" className={textAction} disabled={a.busy} onClick={a.onHide}>{c.hide}</button>
+    </div>
+  </section>;
 }

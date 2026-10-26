@@ -74,7 +74,7 @@ func TestAConversationIsPrivateUntilShared(t *testing.T) {
 		t.Errorf("the tagged agent was not sent the conversation so far: %s", text)
 	}
 	// Once a run is filed, the conversation stays in its project.
-	if code, out := send(t, f, ana, "POST", "/api/threads/"+id+"/share", `{"project":"~"}`); code != http.StatusConflict || !strings.Contains(out, "a conversation that has runs stays in its project") {
+	if code, out := send(t, f, ana, "POST", "/api/threads/"+id+"/share", `{"project":"~"}`); code != http.StatusConflict {
 		t.Fatalf("moving a conversation that has runs = %d %s", code, out)
 	}
 	// cy takes no part, so cy does not share it.

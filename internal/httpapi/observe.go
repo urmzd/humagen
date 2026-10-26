@@ -121,6 +121,7 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 	entries := s.P.Journal.Query(journal.Query{
 		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
+		ProjectEvent: func(e envelope.Event) envelope.Event { return s.P.ShownEvent(who, e) },
 	})
 	// An event of a run the caller may not read is left out, as is one of
 	// an agent that lives in a project they cannot see.
@@ -151,7 +152,7 @@ func (s *Server) trace(w http.ResponseWriter, r *http.Request, who auth.Principa
 	for i, run := range tree {
 		ids[i] = run.ID
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": tree, "spans": orEmpty(s.P.Journal.Trace(who.Tenant, ids))})
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRuns(who.Tenant, tree), "spans": orEmpty(s.P.ShownSpans(who, s.P.Journal.Trace(who.Tenant, ids)))})
 }
 
 // runEvents returns one run's events as they were published, oldest first, for
@@ -164,6 +165,9 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	events := s.P.Journal.Events(who.Tenant, []string{run.ID})
+	for i, event := range events {
+		events[i] = s.P.ShownEvent(who, event)
+	}
 	ok(w, http.StatusOK, map[string]any{"events": shownEvents(s.P.Names(who.Tenant), events), "complete": complete(events)})
 }
 
@@ -209,7 +213,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 	out := make([]entry, 0, len(tree))
 	seer := s.P.Seer(who)
 	for _, run := range tree {
-		e := entry{Run: run, State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
+		e := entry{Run: s.P.ShownRun(who.Tenant, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
 		if run.Stopping {
 			e.State = "stopping"
 		}
@@ -228,6 +232,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		held := s.P.Journal.Events(who.Tenant, []string{run.ID})
 		e.Complete = complete(held)
 		for _, ev := range held {
+			ev = s.P.ShownEvent(who, ev)
 			item := event{Seq: ev.Seq, At: ev.At, Kind: ev.Kind}
 			if json.Valid(ev.Payload) {
 				item.Body = ev.Payload

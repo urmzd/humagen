@@ -25,7 +25,12 @@
       "owner": "root",
       "plan_item": "1.2",
       "task": "T002",
-      "status": "pending_native_verification"
+      "status": "verified",
+      "evidence": [
+        "PR #75",
+        "scripts/screens/run.ts: agent-status-badges, phone and desktop at enlarged text; both labels failed before the fix",
+        "make screens: 162 captures passed"
+      ]
     },
     {
       "id": "REQ-003",
@@ -38,7 +43,12 @@
       "owner": "workspace_outcomes",
       "plan_item": "1.3",
       "task": "T003",
-      "status": "pending_native_verification"
+      "status": "verified",
+      "evidence": [
+        "PR #75",
+        "apps/web/src/room.dom.test.tsx: human and agent replies keep Copy and Reply in the same footer",
+        "Local existing conversation: Reply prepared linked draft without submitting"
+      ]
     },
     {
       "id": "REQ-004",
@@ -64,7 +74,12 @@
       "owner": "root",
       "plan_item": "1.5",
       "task": "T005",
-      "status": "pending_native_verification"
+      "status": "verified",
+      "evidence": [
+        "pkg/agentcolors/store_test.go: stable persisted assignment, concurrent uniqueness, kept builtin rename hue",
+        "scripts/screens/run.ts: humagen-builtins phone/desktop",
+        "Full Go race suite with Postgres/S3: 39 passed packages, zero skipped tests"
+      ]
     },
     {
       "id": "REQ-006",
@@ -77,7 +92,12 @@
       "owner": "library_personal",
       "plan_item": "1.6",
       "task": "T006",
-      "status": "pending_native_verification"
+      "status": "verified",
+      "evidence": [
+        "pkg/audit/audit_test.go: restart, failed writes, visibility filtering, retention, snapshot sanitization",
+        "internal/platform/audit_test.go: principal attribution and inbox retention",
+        "go test -race ./... with Postgres and S3 fixtures passed"
+      ]
     },
     {
       "id": "REQ-007",
@@ -265,7 +285,12 @@
       "owner": "workspace_outcomes",
       "plan_item": "3.7",
       "task": "T020",
-      "status": "pending_native_verification"
+      "status": "verified",
+      "evidence": [
+        "PR #75",
+        "apps/web/src/room.dom.test.tsx: Stop Turn reports a request and waits for the ledger",
+        "pnpm test:server: in-flight stop acknowledged then ledger confirmed"
+      ]
     },
     {
       "id": "REQ-021",
@@ -759,7 +784,12 @@
       "owner": "workspace_outcomes",
       "plan_item": "7.8",
       "task": "T057",
-      "status": "pending_native_verification"
+      "status": "verified",
+      "evidence": [
+        "PR #75",
+        "apps/web/src/room.dom.test.tsx: recorded instant and accessible timestamp",
+        "make screens: conversation-message-time phone and desktop passed"
+      ]
     },
     {
       "id": "REQ-058",

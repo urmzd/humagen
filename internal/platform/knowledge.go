@@ -72,11 +72,15 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if err != nil {
 		return req, err
 	}
-	req = withSources(req)
-	project, person := "", ""
-	if run, e := p.Runs.Get(req.Tenant, req.RunID); e == nil {
-		project, person = run.Project, personOf(run.Actor)
+	if err := p.CheckAssignmentSourceHealth(req); err != nil {
+		return req, err
 	}
+	req, err = p.resolveOperations(req)
+	if err != nil {
+		return req, err
+	}
+	req = withSources(req)
+	project, person := p.operationPlace(req)
 	req, err = p.withSourceGrounding(req, project, person)
 	if err != nil {
 		return req, err

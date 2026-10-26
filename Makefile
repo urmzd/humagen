@@ -102,6 +102,7 @@ client:
 # Build, typecheck and test the client package.
 client-check:
 	pnpm install --frozen-lockfile
+	pnpm welcome-copy:check
 	pnpm --filter @humagen/client typecheck
 	pnpm --filter @humagen/client test
 

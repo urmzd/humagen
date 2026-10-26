@@ -43,9 +43,7 @@ func (p *Platform) turnLayers(tenant string, tree *projects.Tree, chain []projec
 			out = append(out, ContextLayer{Kind: "channel", From: project, Text: text, Budget: projects.MaxPurpose, Sent: true, Unit: "characters", Used: utf8.RuneCountInString(c.Purpose)})
 		}
 	}
-	if text := projects.ExpertsLine(tree.ExpertTopics(project)); text != "" {
-		out = append(out, ContextLayer{Kind: "experts", From: project, Text: text, Sent: true, Unit: "items", Budget: projects.MaxExpertTopics, Used: len(tree.ExpertTopics(project))})
-	}
+
 	out = append(out, p.noteLayers(tenant, chain, workspace)...)
 	if text := p.Memory.Prompt(tenant, agent); text != "" {
 		out = append(out, ContextLayer{Kind: "agent_notes", From: agent, Text: text, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, agent), Sent: true, Unit: "characters"})
@@ -88,16 +86,12 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		system.PreviewOmitted = system.Used - 32000
 	}
 	out.Layers = append(out.Layers, system)
-	allVisible := true
-	for _, pr := range chain {
-		allVisible = allVisible && seer.Project(pr.Name)
-	}
 	for _, l := range p.turnLayers(who.Tenant, tree, chain, project, channel, agent) {
 		if l.Kind == "agent_notes" {
 			if !seer.Agent(l.From) {
 				continue
 			}
-		} else if !seer.Project(l.From) || l.Kind == "experts" && !allVisible {
+		} else if !seer.Project(l.From) {
 			continue
 		}
 		out.Layers = append(out.Layers, l)

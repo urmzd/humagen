@@ -68,6 +68,7 @@ const (
 	KindSource        Kind = "source"
 	KindAlert         Kind = "alert"
 	KindFailure       Kind = "failure"
+	KindOperation     Kind = "operation"
 	KindMemory        Kind = "memory"
 	KindBudget        Kind = "budget"
 	KindApproval      Kind = "approval"
@@ -109,12 +110,13 @@ const (
 type PartType string
 
 const (
-	PartSource  PartType = "source"
-	PartText    PartType = "text"
-	PartAlert   PartType = "alert"
-	PartFailure PartType = "failure"
-	PartMemory  PartType = "memory"
-	PartBudget  PartType = "budget"
+	PartSource    PartType = "source"
+	PartText      PartType = "text"
+	PartOperation PartType = "operation"
+	PartAlert     PartType = "alert"
+	PartFailure   PartType = "failure"
+	PartMemory    PartType = "memory"
+	PartBudget    PartType = "budget"
 	// PartApproval, PartChoice and PartReply are a question a run is parked
 	// on: approve or deny a tool call, choose one of some options, or reply
 	// in words. Each carries the question in Question.
@@ -360,6 +362,13 @@ type SourcePart struct {
 }
 
 // Part is one piece of a message.
+// OperationPart identifies durable work needing a person without asserting a run failure.
+type OperationPart struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
 type Part struct {
 	Source *SourcePart `json:"source,omitempty"`
 	ID     string      `json:"id"`
@@ -370,11 +379,12 @@ type Part struct {
 	Actions []string `json:"actions"`
 	Outcome *Outcome `json:"outcome,omitempty"`
 
-	Text    string       `json:"text,omitempty"`
-	Alert   *AlertPart   `json:"alert,omitempty"`
-	Failure *FailurePart `json:"failure,omitempty"`
-	Memory  *MemoryPart  `json:"memory,omitempty"`
-	Budget  *BudgetPart  `json:"budget,omitempty"`
+	Operation *OperationPart `json:"operation,omitempty"`
+	Text      string         `json:"text,omitempty"`
+	Alert     *AlertPart     `json:"alert,omitempty"`
+	Failure   *FailurePart   `json:"failure,omitempty"`
+	Memory    *MemoryPart    `json:"memory,omitempty"`
+	Budget    *BudgetPart    `json:"budget,omitempty"`
 	// Artifact is set on an artifact part.
 	Artifact *ArtifactPart `json:"artifact,omitempty"`
 	// Question is set on approval, choice and reply parts.
@@ -455,6 +465,10 @@ func (m Message) clone() Message {
 			mem.Notes = slices.Clone(mem.Notes)
 			p.Memory = &mem
 		}
+		if p.Operation != nil {
+			operation := *p.Operation
+			p.Operation = &operation
+		}
 		if p.Mention != nil {
 			mention := *p.Mention
 			p.Mention = &mention
@@ -481,6 +495,8 @@ type Reader struct {
 	// Owns are where an "owners:<name>" audience entry reaches the reader:
 	// the projects they own, as the platform reads them from the tree.
 	Owns []string
+	// ProjectOf resolves current conversation placement for audience checks.
+	ProjectOf func(Source) string
 }
 
 // audienceProject starts an audience entry that names a project.
@@ -502,6 +518,20 @@ func OwnersAudience(project string) string { return audienceOwners + project }
 // kind at all is the caller's to decide. A project entry reaches only a
 // reader with a subject.
 func (m Message) For(r Reader) bool {
+	if r.ProjectOf != nil {
+		project := r.ProjectOf(m.Source)
+		if project != m.Source.Project {
+			m.Audience = slices.Clone(m.Audience)
+			for i, a := range m.Audience {
+				if a == ProjectAudience(m.Source.Project) {
+					m.Audience[i] = ProjectAudience(project)
+				}
+				if a == OwnersAudience(m.Source.Project) {
+					m.Audience[i] = OwnersAudience(project)
+				}
+			}
+		}
+	}
 	if m.To != "" && m.To != r.Subject {
 		return false
 	}
@@ -1280,10 +1310,11 @@ type Query struct {
 	// the project and thread it lives in. Nil means all. It reads only the
 	// message's kind, addressing and Source's run, project, thread and
 	// agent: Count asks it once for all the open messages alike in those.
-	Sees   func(Message) bool
-	Now    time.Time
-	Limit  int
-	Before string
+	ProjectOf func(Source) string
+	Sees      func(Message) bool
+	Now       time.Time
+	Limit     int
+	Before    string
 }
 
 // All is the State that matches every message.
@@ -1297,7 +1328,7 @@ type filter struct {
 }
 
 func (q Query) filter() filter {
-	f := filter{Query: q, reader: Reader{Subject: q.Reader, Roles: q.Roles, Projects: q.ReaderProjects, Owns: q.ReaderOwns}}
+	f := filter{Query: q, reader: Reader{Subject: q.Reader, Roles: q.Roles, Projects: q.ReaderProjects, Owns: q.ReaderOwns, ProjectOf: q.ProjectOf}}
 	if len(q.Projects) > 0 {
 		f.projects = make(map[string]bool, len(q.Projects))
 		for _, p := range q.Projects {
@@ -1324,7 +1355,11 @@ func (q filter) admits(m *Message) bool {
 }
 
 func (t *tenant) match(m *Message, q filter) bool {
-	if q.projects != nil && !q.projects[m.Source.Project] {
+	project := m.Source.Project
+	if q.ProjectOf != nil {
+		project = q.ProjectOf(m.Source)
+	}
+	if q.projects != nil && !q.projects[project] {
 		return false
 	}
 	if !q.admits(m) {
@@ -1459,7 +1494,13 @@ func (s *Store) Count(tenantName string, q Query) Counts {
 // counters and confinement as Count. It never includes descendant projects.
 func (s *Store) CountProject(tenantName, project string, q Query) Counts {
 	sees := q.Sees
-	q.Sees = func(m Message) bool { return m.Source.Project == project && (sees == nil || sees(m)) }
+	q.Sees = func(m Message) bool {
+		current := m.Source.Project
+		if q.ProjectOf != nil {
+			current = q.ProjectOf(m.Source)
+		}
+		return current == project && (sees == nil || sees(m))
+	}
 	return s.Count(tenantName, q)
 }
 

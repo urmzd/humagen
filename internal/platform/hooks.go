@@ -12,6 +12,7 @@ import (
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -53,6 +54,9 @@ const memoryPrompt = "Below is one exchange between a person and the agent %q. "
 
 // ended is called exactly once for every run that ends.
 func (p *Platform) ended(ctx context.Context, run runs.Run) {
+	if err := p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {
+		p.log.Error("platform: operation outcome could not be kept", "error", err)
+	}
 	p.settleUsage(ctx, run)
 	p.raise(run)
 	// A question nobody answered is not waiting any more.
@@ -217,7 +221,7 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 	// whatever spelling the settings hold.
 	agent = rev.Spec.Name
 	tree := p.Projects.Tree(turn.Tenant)
-	if home, homed := tree.Home(agent); homed && !onChain(tree, turn.Project, home) {
+	if home, homed := tree.Home(agent); homed && home != projects.Root && !onChain(tree, turn.Project, home) {
 		return
 	}
 	_, err = p.Invoke(ctx, envelope.Tag{

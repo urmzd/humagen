@@ -154,6 +154,32 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 			}
 		}
 	}
+	return p.EnsureAgentHomes(ctx, tenant)
+}
+
+// EnsureAgentHomes upgrades absent legacy homes without changing enable rules.
+// Registry pagination bounds each read and existing explicit homes are preserved.
+func (p *Platform) EnsureAgentHomes(ctx context.Context, tenant string) error {
+	page := registry.Page{Size: 100}
+	for {
+		rows, next, err := p.Agents.List(ctx, tenant, page)
+		if err != nil {
+			return err
+		}
+		names := make([]string, len(rows))
+		for i, row := range rows {
+			names[i] = row.Spec.Name
+		}
+		if err := p.Projects.EnsureCompanyHomes(tenant, names, p.now()); err != nil {
+			return err
+		}
+
+		if next == "" {
+			break
+		}
+		page.Token = next
+	}
+
 	return nil
 }
 
@@ -178,4 +204,29 @@ func (p *Platform) checkBuiltinOwner(ctx context.Context, tenant string, have ag
 		return fmt.Errorf("platform: built-in %s conflicts with an existing agent; preserve and rename that agent before upgrading", have.Spec.Name)
 	}
 	return nil
+}
+
+// CurrentAgentNames is a current-choice projection, never a stored migration.
+// Compatibility builtin handles remain available for pinned historical work.
+func CurrentAgentNames(names []string) []string {
+	if names == nil {
+		return nil
+	}
+	out := []string{}
+	seen := map[string]bool{}
+	for _, name := range names {
+		if legacy.IsBuiltinAgent(name) {
+			continue
+		}
+		name = agentspec.NormalizeName(name)
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func (p *Platform) CurrentAgentHomes(tenant, project string) []string {
+	return CurrentAgentNames(p.ProjectTree(tenant).Homes(project))
 }

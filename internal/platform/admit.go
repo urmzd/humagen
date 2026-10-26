@@ -38,12 +38,18 @@ func (e *Denied) Error() string { return "platform: " + e.Decision.Reason }
 // refused by the strictest of their limits, so nothing below a project escapes
 // the project's limit.
 func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project string, within []string, client string) error {
+	if err := p.operationAdmissionTag(tag); err != nil {
+		return err
+	}
 	if tag.Origin == runs.OriginSystem {
 		return nil
 	}
 	// The agent must be available where the run is filed, before any limit
 	// is judged or anything counted.
 	if err := p.admitAgent(tag, project); err != nil {
+		return err
+	}
+	if err := p.admitAssignment(tag); err != nil {
 		return err
 	}
 	now := p.now()

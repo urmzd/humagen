@@ -686,6 +686,10 @@ func (s *Seer) Turns(th threads.Thread, turns []ThreadTurn) []ThreadTurn {
 	shown := s.threadAgents(th)
 	out := make([]ThreadTurn, len(turns))
 	for i, t := range turns {
+		if t.Run != nil {
+			run := s.p.ShownRun(s.who.Tenant, *t.Run)
+			t.Run = &run
+		}
 		if t.Message != nil {
 			m := *t.Message
 			m.Mentions = mentions(m.Mentions, shown)
