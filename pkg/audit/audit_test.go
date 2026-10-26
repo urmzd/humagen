@@ -1,7 +1,10 @@
 package audit
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"regexp"
 	"testing"
 	"time"
 
@@ -71,7 +74,7 @@ func TestAuditWriteFailuresLeaveAttemptPending(t *testing.T) {
 	}
 }
 
-func TestRetentionKeepsMonotonicIDsAndVisibleWindow(t *testing.T) {
+func TestRetentionKeepsUniqueIDsAndVisibleWindow(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
 		s, err := Open(st)
@@ -100,11 +103,82 @@ func TestRetentionKeepsMonotonicIDsAndVisibleWindow(t *testing.T) {
 			t.Fatal(err)
 		}
 		next, err := s.Begin("acme", "ada", Change{Action: "source.create", Resource: "source", ID: "next"}, now.Add(2*time.Second))
-		if err != nil || next.ID <= first.ID {
+		if err != nil || next.ID == first.ID {
 			t.Fatalf("reused audit id: %+v %v", next, err)
 		}
 		if _, err := s.List("acme", Query{From: now, To: now.Add(MaxWindow + time.Second)}, nil); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("unbounded window: %v", err)
+		}
+	})
+}
+
+func TestPublicAuditIDsDoNotExposeHiddenRecordSequence(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		for _, subject := range []string{"reader", "hidden-owner", "reader"} {
+			_, err := s.Begin("acme", subject, Change{Action: "memory.forget", Resource: "memory", ID: "note", Subject: subject}, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		rows, err := s.List("acme", Query{From: now.Add(-time.Second), To: now.Add(time.Hour)}, func(r Record) bool { return r.Subject == "reader" })
+		if err != nil || len(rows) != 2 {
+			t.Fatalf("visible rows: %d %v", len(rows), err)
+		}
+		opaque := regexp.MustCompile(`^a_[0-9a-f]{32}$`)
+		for _, row := range rows {
+			if !opaque.MatchString(row.ID) {
+				t.Fatalf("public ID exposes an audit sequence: %q", row.ID)
+			}
+		}
+		if rows[0].ID == rows[1].ID {
+			t.Fatal("audit IDs reused")
+		}
+		replay, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		again, err := replay.List("acme", Query{From: now.Add(-time.Second), To: now.Add(time.Hour)}, func(r Record) bool { return r.Subject == "reader" })
+		if err != nil || len(again) != 2 || again[0].ID != rows[0].ID || again[1].ID != rows[1].ID {
+			t.Fatal("opaque identity or ordering changed after restart")
+		}
+	})
+}
+
+func TestLegacyAuditRecordsRemainReadableWithOpaqueNewIDs(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		now := time.Now().UTC()
+		legacy := Record{ID: "a00000000000000000007", Actor: "ada", At: now, Outcome: Pending, Change: Change{Action: "source.create", Resource: "source", ID: "legacy"}}
+		raw, err := json.Marshal(legacy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Write(context.Background(), namespace, state.Put("acme", legacy.ID, raw)); err != nil {
+			t.Fatal(err)
+		}
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Finish("acme", legacy.ID, nil, now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Begin("acme", "ada", Change{Action: "source.create", Resource: "source", ID: "new"}, now.Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		replay, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := replay.List("acme", Query{From: now.Add(-time.Second), To: now.Add(time.Hour)}, nil)
+		if err != nil || len(rows) != 2 || rows[1].ID != legacy.ID || rows[1].Outcome != Succeeded {
+			t.Fatalf("legacy replay: %+v %v", rows, err)
 		}
 	})
 }
