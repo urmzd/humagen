@@ -1113,6 +1113,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.settled(acme, called.str("id"))
 	c.settled(acme, lead.str("id"))
+	handoff := c.call(acme, "GET", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), "", http.StatusOK)
+	handoffBody := fmt.Sprintf(`{"version":%v,"state":"result","owner":"svc-acme","blocker":"","due_at":"2999-01-01T00:00:00Z"}`, handoff.field("version"))
+	c.call(acme, "PUT", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), handoffBody, http.StatusOK)
+	c.call(acme, "PUT", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), handoffBody, http.StatusConflict)
+	c.call(acme, "GET", "/api/agent-roster", "/api/agent-roster?names=helper,missing", "", http.StatusOK)
+	c.call(acme, "GET", "/api/agent-roster", "/api/agent-roster", "", http.StatusBadRequest)
 
 	// Another workspace's run is not there, whatever is asked of it.
 	for _, op := range []struct{ method, template, suffix string }{
@@ -1905,6 +1911,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	real := map[string]map[string]string{
 		"/api/projects/{name}/action-policy": {"name": "Launch"},
+		"/api/handoffs/{id}":                 {"id": called.str("id")},
 		"/api/assignments/{id}":              {"id": "contract-assignment"},
 		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
 		"/api/agents/{name}/memory/{id}":     {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},

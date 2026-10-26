@@ -2083,7 +2083,7 @@ paths:
         - name: kind
           in: query
           description: Only messages of this kind. An unknown kind matches nothing.
-          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source]}
+          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source, operation]}
         - name: unread
           in: query
           description: Only `true` narrows to messages the caller has not read.
@@ -4330,7 +4330,7 @@ paths:
           description: Only messages of these kinds. Repeat it for several.
           schema:
             type: array
-            items: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source]}
+            items: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source, operation]}
           style: form
           explode: true
         - name: children
@@ -5484,6 +5484,36 @@ paths:
         '500':
           "$ref": "#/components/responses/ServerError"
 
+  /api/handoffs/{id}: {"get":{"operationId":"getHandoff","tags":["agents"],"summary":"Read a visible handoff contract","x-permission":"runs:read","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"The visible handoff contract.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HandoffContract"}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"500":{"$ref":"#/components/responses/ServerError"}}},"put":{"operationId":"updateHandoff","tags":["agents"],"summary":"Assign responsibility or record a handoff decision","x-permission":"runs:write","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"The visible handoff contract.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HandoffContract"}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"500":{"$ref":"#/components/responses/ServerError"},"400":{"$ref":"#/components/responses/BadRequest"},"409":{"$ref":"#/components/responses/Conflict"},"413":{"$ref":"#/components/responses/TooLarge"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/HandoffUpdate"}}}}}}
+
+  /api/agent-roster:
+    get:
+      operationId: getAgentRoster
+      tags: [agents]
+      summary: Read controls and visible recent state for named agents
+      x-permission: agents:read
+      parameters:
+        - name: names
+          in: query
+          required: true
+          description: At most 100 exact comma-separated names. Missing and hidden agents are omitted.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Current controls and reader-visible work from the last 31 days.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [controls, window_days]
+                properties:
+                  controls: {type: object, additionalProperties: {$ref: "#/components/schemas/AgentControl"}}
+                  window_days: {type: integer, const: 31}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
 components:
   securitySchemes:
     bearerToken:
@@ -5668,6 +5698,25 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    InboxOperationPart:
+      description: A durable assignment or handoff needing a person, without asserting that its run failed.
+      type: object
+      additionalProperties: false
+      required: [kind, id, reason]
+      properties:
+        kind: {type: string, enum: [assignment, handoff]}
+        id: {type: string}
+        reason: {type: string}
+    HandoffUpdate:
+      type: object
+      additionalProperties: false
+      required: [version, state, owner, blocker, due_at]
+      properties:
+        version: {type: integer, minimum: 1}
+        state: {type: string, enum: [accepted, blocked, needs_person, result]}
+        owner: {type: string}
+        blocker: {type: string, maxLength: 4000}
+        due_at: {type: string, format: date-time}
     HandoffTerms:
       type: object
       additionalProperties: false
@@ -5679,6 +5728,12 @@ components:
     AgentControl:
       type: object
       properties:
+        state: {type: string, enum: [ready, working, waiting_on_people, watching, paused, failed]}
+        effective_paused: {type: boolean}
+        manager_name: {type: string}
+        last_run: {type: string}
+        last_run_at: {type: string, format: date-time}
+        last_run_status: {$ref: "#/components/schemas/RunStatus"}
         agent:
           type: string
         paused:
@@ -5797,6 +5852,11 @@ components:
     Assignment:
       type: object
       properties:
+        owner_name: {type: string}
+        source_version: {type: integer, format: int64, minimum: 0}
+        tag_id: {type: string}
+        trigger: {type: string, enum: [manual, cron, source_change]}
+        source: {type: string}
         id:
           type: string
         agent:
@@ -5860,6 +5920,8 @@ components:
     AssignmentInput:
       type: object
       properties:
+        trigger: {type: string, enum: [manual, cron, source_change]}
+        source: {type: string}
         id:
           type: string
         agent:
@@ -5991,6 +6053,8 @@ components:
     AgentNetworkEdge:
       type: object
       properties:
+        working: {type: integer, minimum: 0}
+        waiting_seconds: {type: integer, format: int64, minimum: 0}
         from:
           type: string
         to:
@@ -8537,7 +8601,7 @@ components:
         of that project and of every project below it, or an agent's post
         held as a draft for the project's owners.
       type: string
-      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source]
+      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, source, operation]
     InboxState:
       type: string
       enum: [open, resolved, dismissed, snoozed]
@@ -8892,7 +8956,7 @@ components:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft, mention, source]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft, mention, source, operation]
         state:
           type: string
           enum: [open, resolved, info]
@@ -8918,6 +8982,7 @@ components:
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
         draft: {$ref: "#/components/schemas/InboxDraftPart"}
         mention: {$ref: "#/components/schemas/InboxMentionPart"}
+        operation: {$ref: "#/components/schemas/InboxOperationPart"}
     InboxMentionPart:
       description: A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which the thread's default does not answer (one that tags anyone takes a member of the thread's project); `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's.
       type: object

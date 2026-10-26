@@ -16,6 +16,8 @@ function inputOf(a: Assignment): AssignmentInput {
     done_when: a.done_when,
     due_at: a.due_at,
     cron: a.cron,
+    trigger: a.trigger,
+    source: a.source,
     state: a.state,
     blocker: a.blocker,
     version: a.version,
@@ -23,6 +25,8 @@ function inputOf(a: Assignment): AssignmentInput {
 }
 
 export function Assignments({
+  selectedId,
+  sources = [],
   agents,
   projects,
   subject,
@@ -30,6 +34,8 @@ export function Assignments({
   onRun,
   onConversation,
 }: {
+  selectedId?: string;
+  sources?: { name: string; label: string }[];
   agents: string[];
   projects: { name: string; title: string }[];
   subject: string;
@@ -46,14 +52,16 @@ export function Assignments({
   const [agent, setAgent] = useState("");
   const [project, setProject] = useState("");
   const [cron, setCron] = useState("");
+  const [trigger, setTrigger] = useState<"manual" | "cron" | "source_change">("manual");
+  const [source, setSource] = useState("");
   const [due, setDue] = useState("");
   const refresh = useCallback(async () => {
     try {
-      setItems(await api.assignments());
+      setItems(selectedId ? [await api.assignment(selectedId)] : await api.assignments());
     } catch (e) {
       setProblem(e instanceof Error ? e.message : words.loadFailed);
     }
-  }, []);
+  }, [selectedId]);
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
@@ -81,7 +89,9 @@ export function Assignments({
         owner: subject,
         goal,
         done_when: done,
-        cron,
+        cron: trigger === "cron" ? cron : undefined,
+        trigger,
+        source: trigger === "source_change" ? source : undefined,
         due_at: due ? new Date(due).toISOString() : undefined,
         state: "requested",
         version: 0,
@@ -166,14 +176,49 @@ export function Assignments({
               onChange={(e) => setDue(e.target.value)}
             />
           </Label>
-          <Label text={words.cron}>
-            <input
+          <Label text={words.trigger}>
+            <select
               className={field}
-              maxLength={128}
-              value={cron}
-              onChange={(e) => setCron(e.target.value)}
-            />
+              value={trigger}
+              onChange={(e) => setTrigger(e.target.value as typeof trigger)}
+            >
+              <option value="manual">{words.onDemand}</option>
+              <option value="cron">{words.onSchedule}</option>
+              {sources.length > 0 && <option value="source_change">{words.onSourceChange}</option>}
+            </select>
           </Label>
+          {trigger === "cron" && (
+            <>
+              {" "}
+              <Label text={words.cron}>
+                <input
+                  required
+                  className={field}
+                  maxLength={128}
+                  value={cron}
+                  onChange={(e) => setCron(e.target.value)}
+                />
+              </Label>
+            </>
+          )}
+          {trigger === "source_change" && (
+            <Label text={words.source}>
+              <select
+                className={field}
+                required
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              >
+                <option value="">{words.none}</option>
+                {sources.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </Label>
+          )}
+
           <button className={primary} type="submit" disabled={busy}>
             {words.create}
           </button>
@@ -197,7 +242,7 @@ export function Assignments({
               <dl className="flex flex-wrap gap-x-5 gap-y-2 text-aui-xs text-aui-muted">
                 <div>
                   <dt className="inline">{words.owner}: </dt>
-                  <dd className="inline">{a.owner}</dd>
+                  <dd className="inline">{a.owner_name || words.none}</dd>
                 </div>
                 <div>
                   <dt className="inline">{words.project}: </dt>
@@ -209,6 +254,12 @@ export function Assignments({
                     <dd className="inline">
                       <time dateTime={a.due_at}>{new Date(a.due_at).toLocaleString()}</time>
                     </dd>
+                  </div>
+                )}
+                {a.trigger === "source_change" && (
+                  <div>
+                    <dt className="inline">{words.onSourceChange}</dt>
+                    {a.source && <dd className="inline">: {a.source}</dd>}
                   </div>
                 )}
                 {a.cron && (
@@ -243,7 +294,7 @@ export function Assignments({
                           {a.state === "blocked" ? words.retry : words.run}
                         </button>
                       )}
-                      {a.cron && a.state !== "watching" && (
+                      {(a.cron || a.trigger === "source_change") && a.state !== "watching" && (
                         <button
                           type="button"
                           disabled={busy}

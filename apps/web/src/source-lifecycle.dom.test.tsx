@@ -28,10 +28,11 @@ const source: Source = {
     ],
   },
 };
-let net: ReturnType<typeof stubFetch>;
+let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
   cleanup();
-  net.restore();
+  net?.restore();
+  net = undefined;
 });
 
 test("saving a source reference does not claim verified provider access", async () => {
@@ -54,7 +55,7 @@ test("saving a source reference does not claim verified provider access", async 
   assert.ok(screen.getByText("Needs attention"));
   assert.equal(screen.queryByText("In sync"), null);
   assert.equal(
-    net.seen.some((request) => request.path.endsWith("/sync")),
+    net!.seen.some((request) => request.path.endsWith("/sync")),
     false,
   );
 });

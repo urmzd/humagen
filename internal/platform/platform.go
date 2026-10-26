@@ -219,14 +219,18 @@ type Platform struct {
 	Threads  *threads.Store
 	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
-	operationContexts sync.Map
-	CallPolicies      *callpolicy.Store
-	Operations        *operations.Store
-	Usage             *usage.Ledger
-	Inbox             *inbox.Store
-	ReadAudit         *readaudit.Store
-	Audit             *audit.Store
-	Artifacts         *artifacts.Index
+	operationContexts      sync.Map
+	agentTestGates         sync.Map
+	assignmentSources      sync.Map
+	assignmentSourceCursor sync.Map
+	CallPolicies           *callpolicy.Store
+	Operations             *operations.Store
+	Usage                  *usage.Ledger
+	Inbox                  *inbox.Store
+	ReadAudit              *readaudit.Store
+	Audit                  *audit.Store
+	Artifacts              *artifacts.Index
+
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
 	// Credentials is each person's own credentials for person-scoped tool
@@ -543,7 +547,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	}
 	// Accepting publishes the run's first event before the run is recorded,
 	// and delivering that event needs to know which client raised it.
-	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, actor: tag.Actor, place: p.placeAdmitted(tag, edge, runID, project)})
+	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, actor: tag.Actor, person: p.operationTagPerson(tag, edge), operationMeta: operationMetaOf(tag.Meta), place: p.placeAdmitted(tag, edge, runID, project)})
 	defer p.admitting.Delete(runID)
 	if err := p.deliver.Register(runID, tag.Routes()); err != nil {
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -593,7 +597,7 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	if tag.Origin != runs.OriginAPI || edge.Parent != "" {
 		delete(meta, runs.MetaSkills)
 	}
-	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
+	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual || tag.Origin == runs.OriginAssignment) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
 		tag.Text = p.contextOf(tag.Tenant, project, tag.Agent, tag.Text)
 	}
@@ -736,7 +740,7 @@ func (p *Platform) callerOf(tenant, runID string) (runs.Run, error) {
 // reserved reports whether an origin is one only the platform may use.
 func reserved(origin string) bool {
 	switch origin {
-	case call.Origin, runs.OriginAPI, runs.OriginSystem, runs.OriginManual, OriginEval:
+	case call.Origin, runs.OriginAPI, runs.OriginSystem, runs.OriginManual, runs.OriginAssignment, OriginEval:
 		return true
 	}
 	return false
@@ -756,7 +760,7 @@ const flushEvery = 250 * time.Millisecond
 // fallback for when there is none: a run that exhausts its retries is failed in
 // the ledger with nothing further published.
 func (p *Platform) reconcile(ctx context.Context) {
-	p.settleOperations()
+	p.settleOperations(ctx)
 	for _, id := range p.Runs.Active() {
 		p.settleFromLedger(ctx, id)
 	}

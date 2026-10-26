@@ -32,12 +32,14 @@ import type {
   EvalSuite,
   FindHelpResponse,
   GetAgentHuesResponse,
+  GetAgentRosterResponse,
   GetInboxMessageResponse,
   GetProjectAgentHuesResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
   GetUsageResponse,
   HandoffContract,
+  HandoffUpdate,
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
@@ -2129,7 +2131,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -2151,7 +2153,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -4015,7 +4017,7 @@ receipts (`deliveries`), and nobody else any, so a Slack app catches
 up here on the announcements it may have missed. `next` is the cursor
 for the page after this one, or null at the end.
  */
-  async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
+  async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
     let path = "/api/projects/{name}/inbox";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     const _q = new URLSearchParams();
@@ -4031,7 +4033,7 @@ for the page after this one, or null at the end.
     });
   }
 
-  async getProjectInboxRaw(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<GetProjectInboxResponse>> {
+  async getProjectInboxRaw(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement" | "source" | "operation")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<GetProjectInboxResponse>> {
     let path = "/api/projects/{name}/inbox";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     const _q = new URLSearchParams();
@@ -4798,6 +4800,67 @@ owns cannot be changed here and answers 409.
   async getAgentNetworkRaw(options?: RequestOptions): Promise<ApiResponse<AgentNetwork>> {
     const path = "/api/agent-network";
     return this.rawRequest<AgentNetwork>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Read a visible handoff contract */
+  async getHandoff(id: string, options?: RequestOptions): Promise<HandoffContract> {
+    let path = "/api/handoffs/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<HandoffContract>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getHandoffRaw(id: string, options?: RequestOptions): Promise<ApiResponse<HandoffContract>> {
+    let path = "/api/handoffs/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<HandoffContract>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Assign responsibility or record a handoff decision */
+  async updateHandoff(id: string, body: HandoffUpdate, options?: RequestOptions): Promise<HandoffContract> {
+    let path = "/api/handoffs/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<HandoffContract>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateHandoffRaw(id: string, body: HandoffUpdate, options?: RequestOptions): Promise<ApiResponse<HandoffContract>> {
+    let path = "/api/handoffs/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<HandoffContract>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read controls and visible recent state for named agents */
+  async getAgentRoster(names: string, options?: RequestOptions): Promise<GetAgentRosterResponse> {
+    let path = "/api/agent-roster";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GetAgentRosterResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentRosterRaw(names: string, options?: RequestOptions): Promise<ApiResponse<GetAgentRosterResponse>> {
+    let path = "/api/agent-roster";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GetAgentRosterResponse>("GET", path, {
       ...options,
     });
   }

@@ -80,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /auth/callback", s.Authn.handleCallback)
 	mux.HandleFunc("POST /auth/logout", s.Authn.handleLogout)
 
+	mux.HandleFunc("GET /api/agent-roster", s.authed(auth.AgentsRead, s.agentRoster))
 	mux.HandleFunc("GET /api/agent-controls", s.authed(auth.AgentsRead, s.getOperationControl))
 	mux.HandleFunc("PUT /api/agent-controls", s.authed(auth.AgentsWrite, s.putOperationControl))
 	mux.HandleFunc("GET /api/agents/{name}/control", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getOperationControl))))
@@ -97,6 +98,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/assignments/{id}", s.authed(auth.RunsRead, s.getAssignment))
 	mux.HandleFunc("PUT /api/assignments/{id}", s.authed(auth.RunsWrite, s.putAssignment))
 	mux.HandleFunc("POST /api/assignments/{id}/run", s.authed(auth.RunsWrite, s.runAssignment))
+	mux.HandleFunc("GET /api/handoffs/{id}", s.authed(auth.RunsRead, s.getHandoff))
+	mux.HandleFunc("PUT /api/handoffs/{id}", s.authed(auth.RunsWrite, s.putHandoff))
 	mux.HandleFunc("GET /api/handoffs", s.authed(auth.RunsRead, s.listHandoffs))
 	mux.HandleFunc("GET /api/agent-network", s.authed(auth.AgentsRead, s.agentNetwork))
 	mux.HandleFunc("GET /api/me", s.authed("", s.me))

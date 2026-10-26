@@ -1,4 +1,5 @@
-import { ActionId, canAct, type Resolution } from "@humagen/core";
+import {defaultCopy} from "@humagen/components";
+ import { ActionId, canAct, type Resolution } from "@humagen/core";
 import { DownloadIcon, FileIcon } from "@humagen/render-web";
 import type { PartRenderer } from "@humagen/web";
 import { useState } from "react";
@@ -46,6 +47,11 @@ const putAway = (message: PlatformMessage) => Boolean(message.dismissedAt || mes
 /** The renderers the console registers with the mailbox. `onOpen` opens what a part links to. */
 export function platformParts(onOpen: (source: Source) => void): Record<string, PartRenderer> {
   return {
+    operation: ({message,part,onAction})=>{
+      if(part.type!=="custom"||part.name!=="operation")return null;
+      const data=part.data as {kind:"assignment"|"handoff";id:string;reason:string};const words=defaultCopy.operations;
+      return <div className="flex flex-col gap-3" data-testid="part-operation"><p className="text-aui-sm">{data.reason}</p><div className="flex flex-wrap gap-4"><button type="button" className={link} onClick={()=>onAction({id:data.kind==="assignment"?ActionId.openAssignment:ActionId.openHandoff,payload:{turnId:message.id,target:data.id}})}>{data.kind==="assignment"?words.openAssignment:words.openHandoff}</button>{!part.resolution&&canAct(part,ActionId.acknowledge)&&<button type="button" onClick={()=>onAction({id:ActionId.acknowledge,payload:{turnId:message.id,target:part.id}})}>{words.acknowledge}</button>}</div>{part.resolution&&<Record resolution={part.resolution}/>}</div>;
+    },
     alert: ({ message, part, onAction }) => {
       if (part.type !== "alert") return null;
       const mail = message as PlatformMessage;

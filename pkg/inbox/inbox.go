@@ -68,6 +68,7 @@ const (
 	KindSource        Kind = "source"
 	KindAlert         Kind = "alert"
 	KindFailure       Kind = "failure"
+	KindOperation     Kind = "operation"
 	KindMemory        Kind = "memory"
 	KindBudget        Kind = "budget"
 	KindApproval      Kind = "approval"
@@ -109,12 +110,13 @@ const (
 type PartType string
 
 const (
-	PartSource  PartType = "source"
-	PartText    PartType = "text"
-	PartAlert   PartType = "alert"
-	PartFailure PartType = "failure"
-	PartMemory  PartType = "memory"
-	PartBudget  PartType = "budget"
+	PartSource    PartType = "source"
+	PartText      PartType = "text"
+	PartOperation PartType = "operation"
+	PartAlert     PartType = "alert"
+	PartFailure   PartType = "failure"
+	PartMemory    PartType = "memory"
+	PartBudget    PartType = "budget"
 	// PartApproval, PartChoice and PartReply are a question a run is parked
 	// on: approve or deny a tool call, choose one of some options, or reply
 	// in words. Each carries the question in Question.
@@ -360,6 +362,13 @@ type SourcePart struct {
 }
 
 // Part is one piece of a message.
+// OperationPart identifies durable work needing a person without asserting a run failure.
+type OperationPart struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
 type Part struct {
 	Source *SourcePart `json:"source,omitempty"`
 	ID     string      `json:"id"`
@@ -370,11 +379,12 @@ type Part struct {
 	Actions []string `json:"actions"`
 	Outcome *Outcome `json:"outcome,omitempty"`
 
-	Text    string       `json:"text,omitempty"`
-	Alert   *AlertPart   `json:"alert,omitempty"`
-	Failure *FailurePart `json:"failure,omitempty"`
-	Memory  *MemoryPart  `json:"memory,omitempty"`
-	Budget  *BudgetPart  `json:"budget,omitempty"`
+	Operation *OperationPart `json:"operation,omitempty"`
+	Text      string         `json:"text,omitempty"`
+	Alert     *AlertPart     `json:"alert,omitempty"`
+	Failure   *FailurePart   `json:"failure,omitempty"`
+	Memory    *MemoryPart    `json:"memory,omitempty"`
+	Budget    *BudgetPart    `json:"budget,omitempty"`
 	// Artifact is set on an artifact part.
 	Artifact *ArtifactPart `json:"artifact,omitempty"`
 	// Question is set on approval, choice and reply parts.
@@ -454,6 +464,10 @@ func (m Message) clone() Message {
 			mem := *p.Memory
 			mem.Notes = slices.Clone(mem.Notes)
 			p.Memory = &mem
+		}
+		if p.Operation != nil {
+			operation := *p.Operation
+			p.Operation = &operation
 		}
 		if p.Mention != nil {
 			mention := *p.Mention
