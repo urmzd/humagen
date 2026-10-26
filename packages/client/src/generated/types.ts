@@ -525,6 +525,14 @@ not selected. Absent when none is selected.
   updated_at: string;
 }
 
+export interface ProjectTemplate {
+  name: string;
+  title: string;
+  description: string;
+  kind: ProjectKind;
+  initiative: boolean;
+}
+
 export interface ProjectForkOperation {
   id: string;
   source: string;
@@ -1107,6 +1115,9 @@ a path), which has no title, parent or account: show the workspace's
 name for it. It reads as version 0 until it is first changed.
  */
 export interface Project {
+  template?: string;
+  /** An initiative coordinates child projects. Its agents cannot run directly in descendants. */
+  initiative?: boolean;
   fork?: ProjectFork;
   /** Immutable human subject for a server-provisioned personal project. */
   personal_owner?: string;
@@ -1204,6 +1215,8 @@ export interface ProjectDetail {
 
 /** A new project. `kind` defaults to `team` and `parent` to the top level. */
 export interface ProjectInput {
+  /** A template from listProjectTemplates, applied atomically with channel and skill configuration. Omitted starts blank. */
+  template?: string;
   /** The identity, never changed. Letters, digits, spaces, dashes and underscores, starting with a letter or digit. */
   name: string;
   title?: string;
@@ -3052,6 +3065,10 @@ export interface ListRunEventsResponse {
 export interface ListThreadsResponse {
   threads: ThreadSummary[];
   next: string | null;
+}
+
+export interface ListProjectTemplatesResponse {
+  templates: ProjectTemplate[];
 }
 
 export interface ForkProjectBody {

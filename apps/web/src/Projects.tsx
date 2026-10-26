@@ -11,6 +11,7 @@ import {
   type ProjectKind,
   type ProjectKindSpec,
   type ProjectView,
+  type ProjectTemplate,
   type Revision,
   type ScheduleView,
   type ThreadSummary,
@@ -157,6 +158,7 @@ function ProjectRow({
           <span className="block truncate text-aui-sm font-medium text-aui-fg">{title}</span>
           <span className="block truncate text-aui-xs text-aui-muted">{about}</span>
         </span>
+        {project.initiative && <span className="text-aui-2xs text-aui-muted">{defaultCopy.projectTemplates.initiative}</span>}
         {project.row_agents.length > 0 && (
           <span className="flex max-w-28 flex-wrap items-center gap-1.5">
             {project.row_agents.map((name) => <span key={name} role="img" aria-label={name} title={name}><AgentMark name={name} size={14} /></span>)}
@@ -308,6 +310,9 @@ export function NewProject({
   onCreated: (project: ProjectView) => void;
   onCancel: () => void;
 }) {
+  const [template, setTemplate] = useState("");
+  const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
+  useEffect(() => { let active = true; api.projectTemplates().then((items) => { if (active) setTemplates(items); }).catch(() => {}); return () => { active = false; }; }, []);
   const [title, setTitle] = useState("");
   const [name, setName] = useState("");
   const [named, setNamed] = useState(false);
@@ -337,6 +342,7 @@ export function NewProject({
     api
       .createProject({
         name: chosen,
+        ...(template ? { template } : {}),
         ...(shownTitle && shownTitle !== chosen ? { title: shownTitle } : {}),
         ...(description.trim() ? { description: description.trim() } : {}),
         kind,
@@ -353,6 +359,8 @@ export function NewProject({
       <h2 className="text-aui-sm font-medium text-aui-fg">
         {fixed ? `${words.form.heading} ${words.within([titleOf(fixed)])}` : words.form.heading}
       </h2>
+      <Label text={defaultCopy.projectTemplates.start}><select aria-label={defaultCopy.projectTemplates.start} className={field} value={template} disabled={saving} onChange={(event) => { const name = event.target.value; setTemplate(name); const picked = templates.find((item) => item.name === name); if (picked) setWant(picked.kind); }}><option value="">{defaultCopy.projectTemplates.blank}</option>{templates.filter((item) => kinds.includes(item.kind)).map((item) => <option key={item.name} value={item.name}>{item.title}</option>)}</select></Label>
+      {template && <p className="text-aui-xs text-aui-muted">{templates.find((item) => item.name === template)?.description} {defaultCopy.projectTemplates.hint}</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Label text={words.form.title} hint={words.form.titleHint}>
           <input
@@ -396,7 +404,7 @@ export function NewProject({
                 ...roomy.map((p) => ({
                   value: p.name,
                   label: titleOf(p),
-                  hint: [kindWord(p.kind, own), above(p).length > 0 ? words.within(above(p)) : null].filter(Boolean).join(" · "),
+                  hint: [p.initiative ? defaultCopy.projectTemplates.underInitiative : kindWord(p.kind, own), above(p).length > 0 ? words.within(above(p)) : null].filter(Boolean).join(" · "),
                 })),
               ]}
               onChange={setParentName}
@@ -423,12 +431,13 @@ export function NewProject({
           <input className={field} value={customer} maxLength={120} disabled={saving} onChange={(e) => setCustomer(e.target.value)} />
         </Label>
       )}
+      {template && templates.find((item) => item.name === template)?.kind !== kind && <Problem message={defaultCopy.projectTemplates.parentMismatch} />}
       <Problem message={problem} />
       <div className="flex justify-end gap-2">
         <button type="button" className={button} disabled={saving} onClick={onCancel}>
           {words.cancel}
         </button>
-        <button type="submit" className={primary} disabled={saving || !shownName.trim()}>
+        <button type="submit" className={primary} disabled={saving || !shownName.trim() || Boolean(template && templates.find((item) => item.name === template)?.kind !== kind)}>
           {saving ? words.creating : words.createProject}
         </button>
       </div>
@@ -1370,7 +1379,7 @@ export function ProjectPage({
         />
       }
     >
-      {p.fork?.ready && <p className="text-aui-xs text-aui-muted">{defaultCopy.projectFork.ready}{p.fork.source && <>: <Go to={projectHref(p.fork.source)} onGo={() => onOpen(p.fork?.source || "")} className="text-aui-accent underline">{p.fork.source}</Go></>}</p>}
+      {p.fork?.ready && <p className="text-aui-xs text-aui-muted">{p.fork.source ? defaultCopy.projectFork.origin : defaultCopy.projectFork.originHidden}{p.fork.source && <> <Go to={projectHref(p.fork.source)} onGo={() => onOpen(p.fork?.source || "")} className="text-aui-accent underline">{p.fork.source}</Go></>}</p>}
       <Problem message={problem} />
       {deleting && (
         <Confirm

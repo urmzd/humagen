@@ -6,6 +6,7 @@ import type { Thread } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { BringBackResult, ForkContext, ForkConversation } from "./ForkConversation.tsx";
 import { ConversationAccess } from "./ConversationAccess.tsx";
+import { NewProject } from "./Projects.tsx";
 import { ForkProject } from "./ForkProject.tsx";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 
@@ -89,4 +90,20 @@ test("project fork copies only selected confirmed memory and does not navigate b
  assert.equal(bodies.length,2);
  assert.deepEqual(bodies[0],bodies[1]);
  assert.deepEqual((bodies[0] as {memory:string[]}).memory,["n1"]);
+});
+
+
+test("project creation chooses a native template and can live under an initiative",async()=>{
+ let posted:unknown;
+ net=stubFetch({
+  "GET /api/project-templates":()=>({templates:[{name:"delivery",title:"Delivery Project",description:"Plan delivery",kind:"team",initiative:false}]}),
+  "POST /api/projects":(body)=>{posted=body;return {name:"Launch"};},
+ });
+ render(<NewProject places={[]} parent={{name:"Strategy",kind:"team",depth:1}} canGovern={false} onCreated={()=>{}} onCancel={()=>{}}/>);
+ await screen.findByRole("option",{name:"Delivery Project"});
+ fireEvent.change(screen.getByLabelText(defaultCopy.projectTemplates.start),{target:{value:"delivery"}});
+ fireEvent.change(screen.getByLabelText(new RegExp(`^${defaultCopy.projects.form.title}`)),{target:{value:"Launch"}});
+ fireEvent.click(screen.getByRole("button",{name:defaultCopy.projects.createProject}));
+ await waitFor(()=>assert.ok(posted));
+ assert.deepEqual(posted,{name:"Launch",template:"delivery",kind:"team",parent:"Strategy"});
 });

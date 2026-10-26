@@ -1513,6 +1513,29 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/project-templates:
+    get:
+      operationId: listProjectTemplates
+      tags: [projects]
+      summary: List bounded project templates supplied by the server
+      x-permission: projects:read
+      responses:
+        "200":
+          description: File-defined templates, containing no credentials, memory or live integrations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [templates]
+                properties:
+                  templates:
+                    type: array
+                    maxItems: 16
+                    items: {$ref: "#/components/schemas/ProjectTemplate"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/projects/{name}/fork:
     post:
       operationId: forkProject
@@ -5651,6 +5674,16 @@ components:
           description: When anything last happened in it.
           type: string
           format: date-time
+    ProjectTemplate:
+      type: object
+      additionalProperties: false
+      required: [name, title, description, kind, initiative]
+      properties:
+        name: {type: string}
+        title: {type: string}
+        description: {type: string}
+        kind: {$ref: "#/components/schemas/ProjectKind"}
+        initiative: {type: boolean}
     ProjectForkOperation:
       type: object
       additionalProperties: false
@@ -6490,6 +6523,10 @@ components:
       type: object
       required: [name, kind, experts, members, agents, version, created_at, updated_at]
       properties:
+        template: {type: string}
+        initiative:
+          description: An initiative coordinates child projects. Its agents cannot run directly in descendants.
+          type: boolean
         fork:
           type: object
           additionalProperties: false
@@ -6708,6 +6745,9 @@ components:
       type: object
       required: [name]
       properties:
+        template:
+          description: A template from listProjectTemplates, applied atomically with channel and skill configuration. Omitted starts blank.
+          type: string
         name:
           description: The identity, never changed. Letters, digits, spaces, dashes and underscores, starting with a letter or digit.
           type: string

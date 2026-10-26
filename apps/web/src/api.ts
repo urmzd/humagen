@@ -9,6 +9,7 @@ import type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectTemplate,
   ProjectKnowledge,
   ProjectLimitInput,
   ProjectMembers,
@@ -40,6 +41,7 @@ export type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectTemplate,
   ProjectKind,
   ProjectKindSpec,
   ProjectKnowledge,
@@ -759,6 +761,7 @@ export const api = {
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
   /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
+  projectTemplates: () => call<{ templates: ProjectTemplate[] }>("GET", "/api/project-templates").then((result) => result.templates),
   forkProject: (source: string, input: { name: string; parent?: string; title?: string; memory?: string[]; sources?: string[] }) => call<ProjectForkOperation>("POST", `/api/projects/${projectPath(source)}/fork`, input),
   projectFork: (name: string) => call<ProjectForkOperation>("GET", `/api/project-forks/${encodeURIComponent(name)}`),
   findProjects: (q: string) => call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${new URLSearchParams({ q, limit: "20" })}`).then((page) => page.projects),

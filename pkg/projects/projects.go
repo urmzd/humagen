@@ -216,6 +216,8 @@ type Project struct {
 	// tell an agent to use (Tree.Skills).
 	Skills []Skill `json:"skills,omitempty"`
 
+	Template   string `json:"template,omitempty"`
+	Initiative bool   `json:"initiative,omitempty"`
 	// Fork records lineage and gates unpublished multi-store copies.
 	Fork *ForkOrigin `json:"fork,omitempty"`
 	// Managed is ManagedFile when the platform file declares the project.
@@ -334,6 +336,9 @@ var validField = map[string]bool{
 // Whether its kind is one the workspace defines, and whether an account fits
 // that kind, depend on the root, so the tree checks them (kindRules).
 func (p Project) validate() error {
+	if p.Template != "" && !validKindName(Kind(p.Template)) || p.Initiative && p.Kind != Team {
+		return fmt.Errorf("%w: invalid template or initiative configuration", ErrInvalid)
+	}
 	if p.Fork != nil && (p.Fork.Operation == "" || p.Fork.By == "" || p.Fork.At.IsZero() || p.Fork.Source == p.Name || !ValidName(p.Fork.Source)) {
 		return fmt.Errorf("%w: invalid project fork lineage", ErrInvalid)
 	}

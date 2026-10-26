@@ -540,7 +540,7 @@ func (s *Store) Create(tenantName string, p Project, w Writer, at time.Time) (Pr
 // create is Create, and Upsert's way in for a new project. creator owns a
 // project that lists no members. checked holds its agents to the tree; the
 // platform file is checked as a whole instead. The caller holds the lock.
-func (s *Store) create(tenantName string, p Project, w Writer, at time.Time, creator string, checked bool) (Project, error) {
+func (s *Store) create(tenantName string, p Project, w Writer, at time.Time, creator string, checked bool, channels ...Channel) (Project, error) {
 	tx := s.begin(tenantName)
 	tree := tx.t.tree()
 	if p.Members == nil {
@@ -580,6 +580,23 @@ func (s *Store) create(tenantName string, p Project, w Writer, at time.Time, cre
 		tx.delete(keyTombstone + strings.ToLower(p.Name))
 	}
 	tx.record(Change{At: at, By: w.By, Project: p.Name, What: Created, Note: note, After: ptr(p)})
+	seenChannels := map[string]bool{}
+	if len(channels) > MaxChannels {
+		return Project{}, ErrLimit
+	}
+	for _, channel := range channels {
+		channel.Project = p.Name
+		if err := channel.validate(); err != nil {
+			return Project{}, err
+		}
+		if seenChannels[channel.Name] || channel.Slack != nil {
+			return Project{}, ErrInvalid
+		}
+		seenChannels[channel.Name] = true
+		channel.Version, channel.CreatedBy, channel.CreatedAt, channel.UpdatedBy, channel.UpdatedAt = 1, w.By, at, w.By, at
+		tx.putChannel(channel)
+		tx.record(Change{At: at, By: w.By, Project: p.Name, What: ChannelChanged, Channel: &ChannelChange{After: chanPtr(channel)}})
+	}
 	if err := tx.commit(); err != nil {
 		return Project{}, err
 	}
@@ -644,6 +661,8 @@ func (s *Store) update(tenantName, name string, version int, w Writer, at time.T
 	}
 	next.Agents = next.Agents.canonical()
 	switch {
+	case next.Template != cur.Template || next.Initiative != cur.Initiative:
+		return Project{}, fmt.Errorf("%w: template origin is immutable", ErrInvalid)
 	case !sameForkOrigin(next.Fork, cur.Fork):
 		return Project{}, fmt.Errorf("%w: fork lineage and publication are changed by the fork workflow", ErrInvalid)
 	case next.PersonalOwner != cur.PersonalOwner:

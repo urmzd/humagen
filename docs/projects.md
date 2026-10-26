@@ -2173,3 +2173,19 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   user, so the agent's name and color go in the message. In a channel, a
   person must mention the app before the agent's handle. Code channels and
   per-agent bot users keep working through `client.Bots`.
+
+
+### Templates and initiatives
+
+The project creation form starts blank or uses a file-defined template. The
+built-in catalog is `pkg/projects/templates.json`; applications embedding the
+platform can replace it through `Config.ProjectTemplates`. Templates contain
+instructions, channels and skills. The project and its channels are written in
+one transaction, without memory, credentials, agents or live integrations.
+
+The Initiative template marks a team project as a coordination parent. Child
+projects use the same role and tighten-only policy inheritance as the rest of
+the tree. An initiative's own agents cannot execute directly inside a child.
+Cross-project handoff placement remains an open design question: the current
+call path keeps its root's project, budget accounting and context, and no second
+execution path is introduced.

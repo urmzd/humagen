@@ -81,6 +81,8 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
+	ProjectTemplates []projects.Template
 	// Backends are where everything the platform keeps is kept. The zero
 	// value is in memory, lost with the process. OpenPostgres fills it from
 	// one database.
@@ -310,6 +312,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.ProjectTemplates == nil {
+		cfg.ProjectTemplates = projects.DefaultTemplates()
+	}
+	if err := projects.ValidateTemplates(cfg.ProjectTemplates); err != nil {
+		return nil, err
+	}
 	log := cfg.Log
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)

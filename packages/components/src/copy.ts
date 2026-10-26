@@ -66,7 +66,18 @@ export const defaultCopy = {
       "Anyone who can read this project can read this conversation. Removing a participant does not remove their project access.",
     forkHint: "Readers also need access to every source conversation in this fork's lineage.",
   },
+  projectTemplates: {
+    parentMismatch: "This template does not fit the selected project type or parent.",
+    start: "Start From",
+    blank: "Blank Project",
+    initiative: "Initiative",
+    underInitiative: "Under Initiative",
+    hint: "Templates create channel and skill configuration together. Memory, credentials and integrations are never included.",
+    failed: "Templates could not be loaded.",
+  },
   projectFork: {
+    origin: "Forked from",
+    originHidden: "Forked project",
     title: "Fork Project",
     name: "New project name",
     titleField: "Project title",

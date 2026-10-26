@@ -57,6 +57,7 @@ import type {
   ListPoliciesResponse,
   ListPolicyHistoryResponse,
   ListProjectHistoryResponse,
+  ListProjectTemplatesResponse,
   ListProjectsResponse,
   ListReachableAgentsResponse,
   ListReadAuditResponse,
@@ -1633,6 +1634,21 @@ here too (429).
     return this.rawRequest<ThreadPosted>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** List bounded project templates supplied by the server */
+  async listProjectTemplates(options?: RequestOptions): Promise<ListProjectTemplatesResponse> {
+    const path = "/api/project-templates";
+    return this.request<ListProjectTemplatesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listProjectTemplatesRaw(options?: RequestOptions): Promise<ApiResponse<ListProjectTemplatesResponse>> {
+    const path = "/api/project-templates";
+    return this.rawRequest<ListProjectTemplatesResponse>("GET", path, {
       ...options,
     });
   }

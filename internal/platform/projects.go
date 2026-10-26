@@ -39,6 +39,7 @@ func projectDeleted(project string) error {
 // ProjectInput is what a person gives to create a project. Kind defaults to
 // team and Parent to the root; "~" names the root too.
 type ProjectInput struct {
+	Template     string                `json:"template,omitempty"`
 	Name         string                `json:"name"`
 	Title        string                `json:"title,omitempty"`
 	Description  string                `json:"description,omitempty"`
@@ -100,11 +101,20 @@ func (p *Platform) GetProject(tenant, name string) (projects.Project, error) {
 // CreateProject adds a project to a tenant. The name's check and the insert
 // are one step in the store, so two people cannot both create one name.
 func (p *Platform) CreateProject(_ context.Context, tenant string, w projects.Writer, in ProjectInput) (projects.Project, error) {
-	return p.Projects.Create(tenant, projects.Project{
+	record := projects.Project{
 		Name: strings.TrimSpace(in.Name), Title: strings.TrimSpace(in.Title), Description: in.Description,
 		Kind: in.Kind, Parent: projects.NameOf(in.Parent), Account: in.Account, Instructions: in.Instructions,
 		Members: slices.Clone(in.Members),
-	}, w, p.now())
+	}
+	if in.Template != "" {
+		for _, template := range p.cfg.ProjectTemplates {
+			if template.Name == in.Template {
+				return p.Projects.CreateTemplate(tenant, record, template, w, p.now())
+			}
+		}
+		return projects.Project{}, fmt.Errorf("%w: unknown project template", projects.ErrInvalid)
+	}
+	return p.Projects.Create(tenant, record, w, p.now())
 }
 
 // UpdateProject replaces what a person may change on a project. The root and

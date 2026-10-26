@@ -1587,6 +1587,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatal("governance-only private read was not in the audit")
 	}
 
+	templates := c.call(ana, "GET", "/api/project-templates", "/api/project-templates", "", http.StatusOK)
+	if len(sliceOf(templates.field("templates"))) != 3 {
+		t.Fatalf("template catalog: %s", templates.raw)
+	}
+	createdInitiative := c.call(ana, "POST", "/api/projects", "/api/projects", `{"name":"Strategy","template":"initiative"}`, http.StatusCreated)
+	if createdInitiative.field("initiative") != true || createdInitiative.str("template") != "initiative" {
+		t.Fatalf("initiative marker missing: %s", createdInitiative.raw)
+	}
+	c.call(ana, "POST", "/api/projects", "/api/projects", `{"name":"UnknownTemplate","template":"ghost"}`, http.StatusBadRequest)
 	copiedProject := c.call(ana, "POST", "/api/projects/{name}/fork", "/api/projects/Field/fork", `{"name":"Forked"}`, http.StatusAccepted)
 	if copiedProject.str("state") != "ready" {
 		t.Fatalf("project fork did not publish: %s", copiedProject.raw)

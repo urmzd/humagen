@@ -323,6 +323,16 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids),
     { name: "projects", path: "/projects" },
+    {
+      name: "project-template",
+      path: "/projects",
+      act: async (page) => {
+        await page.getByRole("button", { name: "New Project", exact: true }).click();
+        await page.getByLabel("Start From", { exact: true }).selectOption("initiative");
+      },
+    },
+    { name: "project-initiative", path: "/projects/Strategy/overview" },
+    { name: "project-fork-ready", path: "/projects/Launch%20Copy/overview" },
     ...[
       "inbox",
       "overview",
@@ -843,7 +853,14 @@ async function seedChats(
     mode: "all",
   });
   await answered(routed);
-  const fork = await call<{ id: string }>("POST", `/api/threads/${mine.thread.id}/fork`, { through: "m-1", title: "Launch alternative", agents: ["helper"], sources: [] });
+  await call("POST", "/api/projects", { name: "Strategy", template: "initiative" });
+  await call("POST", "/api/projects/Launch/fork", { name: "Launch Copy", sources: [] });
+  const fork = await call<{ id: string }>("POST", `/api/threads/${mine.thread.id}/fork`, {
+    through: "m-1",
+    title: "Launch alternative",
+    agents: ["helper"],
+    sources: [],
+  });
   return {
     forkChat: fork.id,
     privateChat: mine.thread.id,
