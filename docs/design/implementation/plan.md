@@ -206,7 +206,8 @@ Existing packages retain their ownership. New domain records belong in their nam
 | DES-003 | Native persisted fork | 6.1, 6.2 | conversation_actions | Fork lineage and isolation regressions |
 | DES-004 | Recorded full message times | 7.8 | workspace_outcomes | Human/agent tooltip interaction and layout checks |
 | DES-005 | Discoverable honest implementation record | 1.1 | root | This plan and architecture status |
-| DES-006 | Badge containment | 1.2 | root | Dark enlarged-text browser regression |
+| DES-006 | Independent sidebar scrolling | 7.11, 7.12 | workspace_outcomes | Existing Chromium wheel regression retained |
+| DES-007 | Badge containment | 1.2 | root | Dark enlarged-text browser regression |
 
 ## Completion rule
 
