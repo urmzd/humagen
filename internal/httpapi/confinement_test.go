@@ -18,9 +18,12 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
 )
 
@@ -50,6 +53,8 @@ const marker = "zqx"
 
 // hidden is what one workspace holds that an outsider must not see.
 type hidden struct {
+	notificationID                                                string
+	librarySkill                                                  string
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	personalNote                                                  string
@@ -152,6 +157,12 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		t.Fatal(err)
 	}
 	h.personalNote = personal.ID
+	skill, err := f.p.SkillLibrary.Draft("acme", "svc-acme", library.Scope{Kind: "project", Project: h.project}, library.Definition{Skill: projects.Skill{Name: "hidden-skill", Description: "Skill " + marker, Instructions: "Instructions " + marker}, Tools: []string{}}, 0, nil, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.librarySkill = skill.ID
+
 	must("PUT", "/api/agents/"+h.agent+"/call-policy", `{"callers":"anyone","approval":"never"}`, http.StatusOK)
 
 	run := must("POST", "/api/runs", `{"agent":"`+h.agent+`","text":"Run `+marker+`.","project":"`+h.project+`"}`, http.StatusAccepted)
@@ -309,6 +320,14 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	if h.message == "" {
 		t.Fatalf("the hidden agent raised no inbox message: %v", page)
 	}
+	policy := prefs.DefaultPersonal()
+	policy.Notifications["alert"] = prefs.Immediate
+	candidate := notifications.Candidate{Message: h.message, Kind: "alert", Stamp: time.Now()}
+	deliveries, err := f.p.Notifications.Reconcile("acme", "notification-owner", "", []notifications.Candidate{candidate}, policy, time.Now(), time.Now().Add(-time.Hour), func(string) (notifications.Candidate, bool) { return candidate, true })
+	if err != nil || len(deliveries) != 1 {
+		t.Fatalf("notification fixture: %+v %v", deliveries, err)
+	}
+	h.notificationID = deliveries[0].ID
 	return h
 }
 
@@ -489,8 +508,16 @@ func (h hidden) value(path, param string) (string, bool) {
 		case prefix("/api/evals/"):
 			return h.eval, true
 		}
+	case "version":
+		if prefix("/api/library/skills/") {
+			return "1", true
+		}
 	case "id":
 		switch {
+		case prefix("/api/library/skills/"):
+			return h.librarySkill, true
+		case prefix("/api/me/notifications/"):
+			return h.notificationID, true
 		case prefix("/api/me/memory/"):
 			return h.personalNote, true
 		case prefix("/api/agents/{name}/memory/"):

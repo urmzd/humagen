@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -47,7 +48,11 @@ func (s *Server) listAudit(w http.ResponseWriter, r *http.Request, who auth.Prin
 	}
 	rows, err := s.P.AuditRecords(who, audit.Query{From: from, To: to, Limit: limit})
 	if err != nil {
-		fail(w, 400, "audit window must be at most 31 days")
+		if errors.Is(err, audit.ErrInvalid) {
+			fail(w, 400, "audit window must be at most 31 days")
+		} else {
+			s.problem(w, err)
+		}
 		return
 	}
 	ok(w, http.StatusOK, map[string]any{"records": rows})

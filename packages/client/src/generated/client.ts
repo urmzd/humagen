@@ -27,10 +27,12 @@ import type {
   CreateCallRequest,
   CreateKnowledgeSourceBody,
   CreateRunRequest,
+  DraftLibrarySkillBody,
   EvalRun,
   EvalSuite,
   GetAgentHuesResponse,
   GetInboxMessageResponse,
+  GetLibrarySkillResponse,
   GetProjectAgentHuesResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
@@ -42,6 +44,7 @@ import type {
   KnowledgeDocument,
   KnowledgeSource,
   KnowledgeVariant,
+  LibrarySkill,
   ListAgentRevisionsResponse,
   ListAgentsResponse,
   ListAlertRulesResponse,
@@ -57,7 +60,9 @@ import type {
   ListInboxResponse,
   ListKnowledgeDocumentsResponse,
   ListKnowledgeSourcesResponse,
+  ListLibrarySkillsResponse,
   ListMentionsResponse,
+  ListNativeNotificationsResponse,
   ListPendingMemoryResponse,
   ListPeopleResponse,
   ListPoliciesResponse,
@@ -98,6 +103,7 @@ import type {
   ProjectSkillsInput,
   ProjectUpdate,
   ProjectView,
+  PromoteLibrarySkillBody,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -118,6 +124,7 @@ import type {
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
+  TestLibrarySkillBody,
   Thread,
   ThreadInput,
   ThreadMessageInput,
@@ -458,6 +465,164 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** A bounded authenticated delivery worker discovers at most 500 current inbox references, releases immediate or hourly digest deliveries outside quiet hours, and rechecks every item with the current identity. It never changes authoritative inbox history. */
+  async listNativeNotifications(options?: RequestOptions): Promise<ListNativeNotificationsResponse> {
+    const path = "/api/me/notifications";
+    return this.request<ListNativeNotificationsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listNativeNotificationsRaw(options?: RequestOptions): Promise<ApiResponse<ListNativeNotificationsResponse>> {
+    const path = "/api/me/notifications";
+    return this.rawRequest<ListNativeNotificationsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Dismiss your own visible native notification */
+  async acknowledgeNativeNotification(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/me/notifications/{id}/ack";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      ...options,
+    });
+  }
+
+  async acknowledgeNativeNotificationRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/me/notifications/{id}/ack";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** List the latest skill revisions in a visible scope */
+  async listLibrarySkills(scope?: "workspace" | "project" | "personal", project?: string, options?: RequestOptions): Promise<ListLibrarySkillsResponse> {
+    let path = "/api/library/skills";
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListLibrarySkillsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listLibrarySkillsRaw(scope?: "workspace" | "project" | "personal", project?: string, options?: RequestOptions): Promise<ApiResponse<ListLibrarySkillsResponse>> {
+    let path = "/api/library/skills";
+    const _q = new URLSearchParams();
+    if (scope !== undefined && scope !== null) _q.set("scope", String(scope));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListLibrarySkillsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Create an immutable skill draft revision */
+  async draftLibrarySkill(body: DraftLibrarySkillBody, options?: RequestOptions): Promise<LibrarySkill> {
+    const path = "/api/library/skills";
+    return this.request<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async draftLibrarySkillRaw(body: DraftLibrarySkillBody, options?: RequestOptions): Promise<ApiResponse<LibrarySkill>> {
+    const path = "/api/library/skills";
+    return this.rawRequest<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Read visible immutable skill revisions */
+  async getLibrarySkill(id: string, options?: RequestOptions): Promise<GetLibrarySkillResponse> {
+    let path = "/api/library/skills/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<GetLibrarySkillResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getLibrarySkillRaw(id: string, options?: RequestOptions): Promise<ApiResponse<GetLibrarySkillResponse>> {
+    let path = "/api/library/skills/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<GetLibrarySkillResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Run the exact revision with every permitted action requiring approval */
+  async testLibrarySkill(id: string, version: number, body: TestLibrarySkillBody, options?: RequestOptions): Promise<Run> {
+    let path = "/api/library/skills/{id}/versions/{version}/test";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.request<Run>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async testLibrarySkillRaw(id: string, version: number, body: TestLibrarySkillBody, options?: RequestOptions): Promise<ApiResponse<Run>> {
+    let path = "/api/library/skills/{id}/versions/{version}/test";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.rawRequest<Run>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Publish a successfully tested immutable revision */
+  async publishLibrarySkill(id: string, version: number, options?: RequestOptions): Promise<LibrarySkill> {
+    let path = "/api/library/skills/{id}/versions/{version}/publish";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.request<LibrarySkill>("POST", path, {
+      ...options,
+    });
+  }
+
+  async publishLibrarySkillRaw(id: string, version: number, options?: RequestOptions): Promise<ApiResponse<LibrarySkill>> {
+    let path = "/api/library/skills/{id}/versions/{version}/publish";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.rawRequest<LibrarySkill>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Copy a published revision into a new scoped draft */
+  async promoteLibrarySkill(id: string, version: number, body: PromoteLibrarySkillBody, options?: RequestOptions): Promise<LibrarySkill> {
+    let path = "/api/library/skills/{id}/versions/{version}/promote";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.request<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteLibrarySkillRaw(id: string, version: number, body: PromoteLibrarySkillBody, options?: RequestOptions): Promise<ApiResponse<LibrarySkill>> {
+    let path = "/api/library/skills/{id}/versions/{version}/promote";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{version}", encodeURIComponent(String(version)));
+    return this.rawRequest<LibrarySkill>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
   }
 
   /** Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone. */

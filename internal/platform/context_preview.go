@@ -133,7 +133,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		out.Layers = append(out.Layers, layer)
 	}
 	names := []string{}
-	for _, s := range tree.Skills(project) {
+	for _, s := range p.AvailableSkills(who.Tenant, project, humanSubject(who)) {
 		if seer.Project(s.From) {
 			names = append(names, s.Name)
 		}

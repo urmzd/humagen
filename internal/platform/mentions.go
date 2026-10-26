@@ -116,7 +116,7 @@ func (p *Platform) MentionItems(who auth.Principal, project, kind, prefix string
 			add(MentionItem{Name: topic})
 		}
 	case threads.ResolvesSkills:
-		for _, s := range tree.Skills(name) {
+		for _, s := range p.AvailableSkills(who.Tenant, name, humanSubject(who)) {
 			add(MentionItem{Name: s.Name, Description: s.Description})
 		}
 	case threads.ResolvesRole:
