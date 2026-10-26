@@ -536,7 +536,7 @@ func (p *Platform) planProjectArchive(ctx context.Context, who auth.Principal, i
 		through = source.Fork.Through
 		history = slices.Clone(source.Fork.Context)
 	} else {
-		history, err = p.forkHistory(ctx, who, source, through)
+		history, err = p.forkHistory(ctx, who, source, through, destination)
 		if err != nil {
 			return projectforks.ArchiveCopy{}, err
 		}

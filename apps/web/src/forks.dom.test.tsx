@@ -8,6 +8,7 @@ import { BringBackResult, ForkContext, ForkConversation } from "./ForkConversati
 import { ConversationAccess } from "./ConversationAccess.tsx";
 import { NewProject } from "./Projects.tsx";
 import { ForkProject } from "./ForkProject.tsx";
+import { ProjectRollup } from "./ProjectRollup.tsx";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 
 const at="2026-10-20T12:00:00Z";
@@ -123,4 +124,14 @@ test("global discovery navigates real agent and conversation results using bound
  assert.equal(seen.at(-1)?.get("limit"),"20");
  assert.equal(seen.at(-1)?.get("kinds"),"conversation");
  assert.ok(net.seen.every((request)=>request.path.startsWith("/api/discovery?")));
+});
+
+test("initiative rollup opens original child work and never invents progress",async()=>{
+ net=stubFetch({"GET /api/projects/Strategy/rollup":()=>({project:"Strategy",since:at,projects:[{name:"Launch",title:"Launch Plan",parent:"Strategy",active:1,conversations:3,unread:2,needs:1,runs_30_days:9}],notes:[{id:"n1",project:"Launch",text:"Confirmed delivery risk",kind:"risk"}],needs:[{id:"i1",project:"Launch",subject:"Approve launch",kind:"approval"}],more_projects:false,more_notes:false,more_needs:false})});
+ render(<ProjectRollup project="Strategy"/>);
+ assert.ok(await screen.findByText("Confirmed delivery risk"));
+ assert.equal(screen.getByRole("link",{name:"Launch Plan"}).getAttribute("href"),"/projects/Launch/overview");
+ assert.equal(screen.getByRole("link",{name:"Review: Launch"}).getAttribute("href"),"/projects/Launch?message=i1");
+ assert.ok(screen.getByText("Runs in 30 Days"));
+ assert.equal(screen.queryByRole("progressbar"),null);
 });

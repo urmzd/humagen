@@ -149,3 +149,51 @@ func TestForkPreservesTheChosenMessageBranchUsingTheLiveContextPath(t *testing.T
 		t.Fatalf("fork copied a sibling branch: %+v", fork.Fork.Context)
 	}
 }
+
+func TestZeroRunForkRequiresReviewedSummaryBeforePublication(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	first := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "retained private text", PostOnly: true})
+	fork, err := p.ForkThread(t.Context(), operator, first.Thread.ID, platform.ForkInput{Through: first.Message.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := p.PreviewPlacement(t.Context(), operator, fork.ID, "Field", "general")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !preview.SummaryRequired || preview.Runs != 0 {
+		t.Fatalf("zero-run retained context was publishable: %+v", preview)
+	}
+}
+
+func TestDynamicallyPrivateResultsCannotBeCopiedByForkOrBringBack(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	first := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "seed", PostOnly: true})
+	fork, err := p.ForkThread(t.Context(), operator, first.Thread.ID, platform.ForkInput{Through: first.Message.ID, Agents: []string{"helper"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err := p.Agents.Get(t.Context(), tenant, "helper", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "r22222222222222222222222222222222"
+	if err := p.Runs.Record(id, envelope.Tag{ID: "dynamic-private", Tenant: tenant, Agent: "helper", Origin: "api", Text: "private request", At: time.Now(), Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: fork.ID}}, rev.Rev); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.MarkPrivateContext(tenant, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := p.Runs.End(id, runs.Completed, "private result", "", time.Now()); !ok {
+		t.Fatal("not completed")
+	}
+	r, _ := p.Runs.Get(tenant, id)
+	if _, err := p.ForkThread(t.Context(), operator, fork.ID, platform.ForkInput{Through: r.ID}); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("private context snapshot: %v", err)
+	}
+	if _, err := p.BringBackResult(t.Context(), operator, fork.ID, platform.BringBackInput{Run: r.ID}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("private context bring-back: %v", err)
+	}
+}

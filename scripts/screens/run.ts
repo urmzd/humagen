@@ -1023,7 +1023,14 @@ async function seedChats(
     visibility: "private",
   });
   await answered(shared);
-  await call("POST", `/api/threads/${shared.thread.id}/share`, { channel: "general" });
+  const sharedPreview = await call<{ token: string }>(
+    "GET",
+    `/api/threads/${shared.thread.id}/placement?project=Launch&channel=general`,
+  );
+  await call("POST", `/api/threads/${shared.thread.id}/share`, {
+    channel: "general",
+    placement_token: sharedPreview.token,
+  });
   const routed = await call<Posted>("POST", "/api/threads", {
     project: "Launch",
     text: "What should we check before the launch?",
@@ -1033,6 +1040,16 @@ async function seedChats(
   });
   await answered(routed);
   await call("POST", "/api/projects", { name: "Strategy", template: "initiative" });
+  await call("POST", "/api/projects", {
+    name: "Strategy-Launch",
+    parent: "Strategy",
+    template: "delivery",
+    title: "Launch Readiness",
+  });
+  await call("POST", "/api/projects/Strategy-Launch/memory", {
+    text: "Launch remains gated on the security review.",
+    kind: "risk",
+  });
   await call("POST", "/api/projects/Launch/fork", { name: "Launch Copy", sources: [] });
   const fork = await call<{ id: string }>("POST", `/api/threads/${mine.thread.id}/fork`, {
     through: "m-1",

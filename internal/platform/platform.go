@@ -383,6 +383,10 @@ func New(cfg Config) (*Platform, error) {
 		return nil, err
 	}
 
+	if err := p.RegisterPublicationGuard(forkPublicationGuard{p}); err != nil {
+		return nil, err
+	}
+
 	if p.broker == nil {
 		p.broker = bus.NewMemory()
 	}

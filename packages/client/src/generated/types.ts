@@ -792,6 +792,17 @@ not selected. Absent when none is selected.
   updated_at: string;
 }
 
+export interface ProjectRollup {
+  project: string;
+  since: string;
+  more_projects: boolean;
+  more_notes: boolean;
+  more_needs: boolean;
+  projects: ProjectRollupProjectsItem[];
+  notes: ProjectRollupNotesItem[];
+  needs: ProjectRollupNeedsItem[];
+}
+
 export interface DiscoveryItem {
   kind: "project" | "agent" | "conversation";
   id: string;
@@ -3328,6 +3339,31 @@ export interface AgentSetupPlanAssignment {
 export interface PreparedCallInputMessagesItem {
   role: "user" | "assistant";
   text: string;
+}
+
+export interface ProjectRollupProjectsItem {
+  name: string;
+  title: string;
+  parent: string;
+  active: number;
+  conversations: number;
+  unread: number;
+  needs: number;
+  runs_30_days: number;
+}
+
+export interface ProjectRollupNotesItem {
+  id: string;
+  project: string;
+  text: string;
+  kind: "decision" | "risk";
+}
+
+export interface ProjectRollupNeedsItem {
+  id: string;
+  project: string;
+  subject: string;
+  kind: string;
 }
 
 export interface ThreadForkContextItem {
