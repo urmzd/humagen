@@ -18,6 +18,16 @@ import { AgentMark, AgentTint, button, cause, elapsed, Empty, isEnded, SkeletonR
 /** One turn of the conversation and everything it called: the runs, and what each did. */
 export type Tree = { root: string; runs: Run[]; spans: Span[] };
 
+export type ActivityFilter = "all" | "handoffs" | "tools" | "decisions";
+export interface ActivityControls {
+  filter?: ActivityFilter;
+  showTools?: boolean;
+  onFilterChange?: (filter: ActivityFilter) => void;
+  onShowToolsChange?: (showTools: boolean) => void;
+  /** Typed decisions supplied by a host with access to recorded outcomes. */
+  isDecision?: (run: Run) => boolean;
+}
+
 const live = (r: Run) => !isEnded(r);
 
 /** How a run came to be, as a tag on its row and as a sentence in its detail. */
@@ -187,7 +197,12 @@ export function ActivityPanel({
   onSelect,
   onClose,
   onJump,
-}: {
+  filter: controlledFilter,
+  showTools: controlledShowTools,
+  onFilterChange,
+  onShowToolsChange,
+  isDecision,
+}: ActivityControls & {
   /** The conversation's limits and usage. A selected run then shows what it draws on. */
   limits?: Limits;
   /** The panel is closing: it slides back out before it is removed. See `Presence` in ui.tsx. */
@@ -201,6 +216,13 @@ export function ActivityPanel({
   /** Scroll the conversation to the turn a run belongs to. */
   onJump?: (turnId: string) => void;
 }) {
+  const [localFilter, setLocalFilter] = useState<ActivityFilter>("all");
+  const [localShowTools, setLocalShowTools] = useState(true);
+  const filter = controlledFilter ?? localFilter;
+  const showTools = controlledShowTools ?? localShowTools;
+  const copy = defaultCopy.activityControls;
+  const changeFilter = (value: ActivityFilter) => { setLocalFilter(value); onFilterChange?.(value); };
+  const toggleTools = () => { setLocalShowTools(!showTools); onShowToolsChange?.(!showTools); };
   const runs = useMemo(() => new Map(trees.flatMap((t) => t.runs.map((r) => [r.id, r] as const))), [trees]);
   const nth = useMemo(() => ordinals(trees), [trees]);
   const toolsBy = useMemo(() => {
@@ -217,6 +239,16 @@ export function ActivityPanel({
   const active = trees.filter((t) => t.runs.some(live)).reverse();
   const done = trees.filter((t) => !t.runs.some(live)).reverse();
 
+  const matches = (entry: Run) => {
+    switch (filter) {
+      case "handoffs": return entry.mode === "handoff" || entry.mode === "delegate";
+      case "tools": return (toolsBy.get(entry.id)?.length ?? 0) > 0;
+      case "decisions": return Boolean(entry.question) || entry.assistance === "needed" || Boolean(isDecision?.(entry));
+      default: return true;
+    }
+  };
+  const filtered = (group: Tree[]) => group.map((entry) => ({ ...entry, runs: entry.runs.filter(matches) })).filter((entry) => entry.runs.length > 0);
+  const matched = all.filter(matches);
   const section = (title: string, group: Tree[]) =>
     group.length > 0 && (
       <section data-testid={`activity-${title.toLowerCase()}`} className="flex flex-col">
@@ -237,7 +269,7 @@ export function ActivityPanel({
 
   const trail = run ? trailOf(runs, run.id) : [];
   const turn = trail[0];
-  const called = run ? all.filter((r) => r.parent === run.id).sort((a, b) => a.created_at.localeCompare(b.created_at)) : [];
+  const called = run ? all.filter((r) => r.parent === run.id && matches(r)).sort((a, b) => a.created_at.localeCompare(b.created_at)) : [];
   const tools = run ? (toolsBy.get(run.id) ?? []) : [];
 
   return (
@@ -250,6 +282,18 @@ export function ActivityPanel({
                 .filter(Boolean)
                 .join(", ")}
         </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-[var(--humagen-rule)] border-b px-3 py-2">
+          <div role="group" aria-label={copy.filters} className="flex flex-wrap gap-1">
+            {(["all", "handoffs", "tools", "decisions"] as const).map((value) => (
+              <button key={value} type="button" aria-pressed={filter === value} onClick={() => changeFilter(value)} className={`min-h-9 rounded-aui-sm px-2 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent ${filter === value ? "bg-aui-hover font-medium text-aui-fg" : "text-aui-muted hover:text-aui-fg"}`}>
+                {copy[value]}
+              </button>
+            ))}
+          </div>
+          <button type="button" aria-pressed={showTools} onClick={toggleTools} className="min-h-9 rounded-aui-sm px-2 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+            {showTools ? copy.hideTools : copy.showTools}
+          </button>
+        </div>
 
       {run ? (
         <div key={run.id} className="humagen-fade aui-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
@@ -312,7 +356,7 @@ export function ActivityPanel({
 
           <RunUsageSummary run={run} />
 
-          {tools.length > 0 && (
+          {showTools && tools.length > 0 && (
             <section className="flex flex-col gap-1" data-testid="activity-tools">
               <h4 className="text-aui-xs text-aui-muted">Tools it used</h4>
               <ul className="divide-y divide-[var(--humagen-rule)] border-[var(--humagen-rule)] border-y">
@@ -360,10 +404,12 @@ export function ActivityPanel({
                 <Empty title="Nothing has run yet">Each answer, and every agent and tool it calls, is listed here once the conversation starts.</Empty>
               )}
             </div>
+          ) : matched.length === 0 ? (
+            <div className="px-4" role="status"><Empty title={copy.noMatches}>{copy.noMatchesBody}</Empty></div>
           ) : (
             <>
-              {section("Running", active)}
-              {section("Done", done)}
+              {section("Running", filtered(active))}
+              {section("Done", filtered(done))}
             </>
           )}
         </div>
@@ -387,7 +433,12 @@ export function Activity({
   onClose,
   onJump,
   onFocus,
-}: {
+  filter,
+  showTools,
+  onFilterChange,
+  onShowToolsChange,
+  isDecision,
+}: ActivityControls & {
   limits?: Limits;
   leaving?: boolean;
   turns: Run[];
@@ -441,5 +492,5 @@ export function Activity({
     return () => window.removeEventListener("keydown", onKey);
   }, [selected, onClose, onFocus]);
 
-  return <ActivityPanel trees={trees} selected={selected} loading={loading} leaving={leaving} limits={limits} onSelect={select} onClose={onClose} onJump={onJump} />;
+  return <ActivityPanel trees={trees} selected={selected} loading={loading} leaving={leaving} limits={limits} onSelect={select} onClose={onClose} onJump={onJump} filter={filter} showTools={showTools} onFilterChange={onFilterChange} onShowToolsChange={onShowToolsChange} isDecision={isDecision} />;
 }

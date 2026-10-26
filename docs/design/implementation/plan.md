@@ -29,6 +29,7 @@ Use the existing Go/React stack and style-brand shared web reference, repo copy.
 | Sources and integrations | codex/source-lifecycle | source_lifecycle |
 | Library and personal layer | codex/library-personal | library_personal |
 | Conversation interactions | codex/conversation-actions | conversation_actions |
+| Usage and Activity | codex/workspace-observability | root |
 | Outcomes and integrated workspace | codex/workspace-outcomes | workspace_outcomes |
 
 Branches are integrated through no-ff merges, never rebase/reset/force-push. Each PR targets its immediate parent; root publishes after integrating the lower layer. Shared API/navigation changes are reconciled and verified before promotion.
