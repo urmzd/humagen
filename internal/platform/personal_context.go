@@ -2,6 +2,8 @@ package platform
 
 import (
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/pkg/operations"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"strings"
 	"unicode/utf8"
@@ -66,4 +68,31 @@ func (p *Platform) recordContextUse(tag envelope.Tag, project string) {
 			p.log.Warn("platform: memory use could not be recorded", "error", err)
 		}
 	}
+}
+
+// turnContext applies the effective read policy before any remembered content
+// reaches a model. Ask is an explicit tool approval path, never an automatic read.
+func (p *Platform) turnContext(tenant, project, channel, agent, subject, body string, meta map[string]string) string {
+	decision := p.ActionDecision(tenant, project, agent, subject, operations.ReadContext)
+	withheld := decision == operations.Ask || decision == operations.Never || meta[operations.MetaForceAsk] == "true"
+	if !withheld {
+		return p.personalContext(tenant, project, subject, p.contextIn(tenant, project, channel, agent, body), meta)
+	}
+	tree := p.Projects.Tree(tenant)
+	chain := tree.Chain(project)
+	if chain == nil {
+		chain = []projects.Project{{Name: project}, tree.Root()}
+	}
+	layers := []ContextLayer{}
+	for _, layer := range p.turnLayers(tenant, tree, chain, project, channel, agent) {
+		if layer.Kind != "agent_notes" && layer.Kind != "notes" && layer.Kind != "project_notes" && layer.Kind != "ancestor_notes" {
+			layers = append(layers, layer)
+		}
+	}
+	for _, layer := range p.personalLayers(tenant, project, subject) {
+		if layer.Kind == "personal_briefing" {
+			layers = append(layers, layer)
+		}
+	}
+	return renderTurnLayers(layers, body)
 }

@@ -370,6 +370,11 @@ export interface AuditRecord {
 
 /** One thing an agent or a project remembers. */
 export interface Note {
+  /** Current authorized source link, absent when the source is no longer visible. */
+  source_url?: string;
+  source_name?: string;
+  edited_by?: string;
+  edited_at?: string;
   kind?: "fact" | "decision" | "preference" | "person" | "risk";
   expires_at?: string;
   uses?: number;
@@ -394,7 +399,7 @@ export interface NoteList {
 export interface NoteInput {
   text: string;
   kind?: "fact" | "decision" | "preference" | "person" | "risk";
-  expires_at?: string;
+  expires_at?: string | null;
 }
 
 export interface NoteSelection {

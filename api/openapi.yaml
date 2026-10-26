@@ -131,7 +131,7 @@ paths:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
-        '204': {description: Notification projection acknowledged, inbox unchanged}
+        '204': {description: 'Notification projection acknowledged, inbox unchanged'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -300,6 +300,8 @@ paths:
       description: Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone.
       x-permission: projects:govern
       parameters:
+        - {name: actor, in: query, schema: {type: string, maxLength: 512}}
+        - {name: resource, in: query, schema: {type: string, maxLength: 64}}
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: to, in: query, schema: {type: string, format: date-time}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
@@ -973,6 +975,29 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/memory/{id}:
+    put:
+      operationId: editAgentMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: agents:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
     delete:
       operationId: removeAgentMemory
       tags: [agents]
@@ -1043,6 +1068,28 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
   /api/me/memory/{id}:
+    put:
+      operationId: editPersonalMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
     delete:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
@@ -3923,6 +3970,29 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/memory/{id}:
+    put:
+      operationId: editProjectMemory
+      tags: [agents]
+      summary: Correct a visible memory while retaining its provenance
+      x-permission: projects:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoteInput'}
+      responses:
+        '200':
+          description: Corrected memory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Note'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
     delete:
       operationId: removeProjectMemory
       tags: [projects]
@@ -6570,6 +6640,12 @@ components:
       type: object
       required: [id, text, source, status, at]
       properties:
+        source_url:
+          description: Current authorized source link, absent when the source is no longer visible.
+          type: string
+        source_name: {type: string}
+        edited_by: {type: string}
+        edited_at: {type: string, format: date-time}
         kind: {type: string, enum: [fact, decision, preference, person, risk]}
         expires_at: {type: string, format: date-time}
         uses: {type: integer, minimum: 0}
@@ -6601,7 +6677,7 @@ components:
       properties:
         text: {type: string}
         kind: {type: string, enum: [fact, decision, preference, person, risk]}
-        expires_at: {type: string, format: date-time}
+        expires_at: {type: [string, "null"], format: date-time}
     NoteSelection:
       type: object
       required: [ids]

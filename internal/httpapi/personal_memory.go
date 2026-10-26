@@ -15,7 +15,7 @@ func (s *Server) listPersonalMemory(w http.ResponseWriter, r *http.Request, who 
 		fail(w, 403, "personal memory requires a person")
 		return
 	}
-	ok(w, 200, map[string]any{"notes": orEmpty(s.P.Memory.List(who.Tenant, owner))})
+	ok(w, 200, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
 }
 func (s *Server) addPersonalMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	owner := memory.PersonalOwner(who.Subject)
@@ -43,7 +43,7 @@ func (s *Server) addPersonalMemory(w http.ResponseWriter, r *http.Request, who a
 		s.problem(w, err)
 		return
 	}
-	ok(w, 201, note)
+	ok(w, 201, s.viewNoteAs(who, note))
 }
 func (s *Server) forgetPersonalMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	owner := memory.PersonalOwner(who.Subject)

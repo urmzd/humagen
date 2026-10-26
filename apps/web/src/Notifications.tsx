@@ -83,7 +83,7 @@ export function NotificationPanel() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-aui-sm font-medium">
                     {row.mode === "digest" ? copy.digest : copy.immediate}
-                    {row.items.length > 1 ? ` · ${copy.items(row.items.length)}` : ""}
+                    {row.items.length > 1 ? ` ${copy.items(row.items.length)}` : ""}
                   </span>
                   <button
                     type="button"

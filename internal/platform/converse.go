@@ -410,7 +410,7 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: t.ID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.personalContext(tenant, th.Project, t.Actor.User, p.contextIn(tenant, th.Project, th.Channel, agent, body), meta), Actor: t.Actor, Meta: meta,
+		Text: p.turnContext(tenant, th.Project, th.Channel, agent, t.Actor.User, body, meta), Actor: t.Actor, Meta: meta,
 	})
 }
 
