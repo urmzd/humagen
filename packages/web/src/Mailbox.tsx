@@ -24,6 +24,7 @@ import {
   BrainIcon,
   buttonClass,
   CheckCircleIcon,
+  ChevronRightIcon,
   ClockIcon,
   EyeIcon,
   FileIcon,
@@ -224,25 +225,22 @@ function TemplateMark({ message, size = "sm" }: { message: InboxMessage; size?: 
   );
 }
 
-/** The template's name and the severity, in words: "Alert · Urgent". */
+/** The template's name and severity remain separate readable fields. */
 function TemplateTag({ message }: { message: InboxMessage }) {
   const copy = defaultCopy;
   const severity = message.severity ? copy.severity[message.severity] : undefined;
   return (
     <span
       data-aui="kind"
-      className="inline-flex w-fit shrink-0 items-center gap-1 whitespace-nowrap rounded-aui-sm bg-aui-subtle px-1.5 py-px text-aui-2xs text-aui-muted"
+      className="inline-flex w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-aui-sm bg-aui-subtle px-2 py-0.5 text-aui-2xs text-aui-muted"
     >
       <span>{message.tag ?? copy.template[messageTemplate(message)]}</span>
       {severity && (
-        <>
-          <span aria-hidden="true">·</span>
-          <span
-            className={`font-medium ${(message.severity && SEVERITY_TINT[message.severity]) || ""}`}
-          >
-            {severity}
-          </span>
-        </>
+        <span
+          className={`font-medium ${(message.severity && SEVERITY_TINT[message.severity]) || ""}`}
+        >
+          {severity}
+        </span>
       )}
     </span>
   );
@@ -252,7 +250,7 @@ function TemplateTag({ message }: { message: InboxMessage }) {
 const OWN_BOX = new Set<MessagePart["type"]>(["failure"]);
 
 /** A small text button for the reading pane's header. Words, not a box of icons. */
-const headerButton = `${buttonClass("ghost")} h-7 px-2`;
+const headerButton = `${buttonClass("ghost")} min-h-10 px-2.5`;
 
 /**
  * The inbox as a mailbox: a list of messages and a reading pane that shows the
@@ -622,13 +620,13 @@ function ReadingPane({
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
       {/* On a narrow pane the controls wrap under Back rather than run off the edge. */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1 pt-2 pb-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 py-3">
         <button type="button" onClick={onBack} className={`${headerButton} -ml-2 @2xl:hidden`}>
-          <span aria-hidden="true">←</span>
+          <ChevronRightIcon size={16} className="rotate-180" />
           {copy.mailbox.back}
         </button>
         {(open || hidden || actions) && (
-          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
             {open && (
               <>
                 <button
@@ -637,18 +635,18 @@ function ReadingPane({
                   title={copy.mailbox.snoozeTitle}
                   className={headerButton}
                 >
-                  <ClockIcon size={14} />
+                  <ClockIcon size={16} />
                   {copy.mailbox.snooze}
                 </button>
                 <button type="button" onClick={onDismiss} className={headerButton}>
-                  <XIcon size={14} />
+                  <XIcon size={16} />
                   {hideLabel(message)}
                 </button>
               </>
             )}
             {hidden && (
               <button type="button" onClick={onUnhide} className={headerButton}>
-                <EyeIcon size={14} />
+                <EyeIcon size={16} />
                 {copy.announcements.showForMe}
               </button>
             )}
@@ -657,16 +655,16 @@ function ReadingPane({
         )}
       </div>
       <div className="aui-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-4">
-        <header className="flex min-w-0 flex-col gap-3 pb-4">
+        <header className="flex min-w-0 flex-col gap-4 pb-6">
           <h3 className="break-words font-semibold text-[1.25rem] text-aui-fg leading-snug">
             {message.subject}
           </h3>
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
             <TemplateMark message={message} size="lg" />
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="flex min-w-0 items-center gap-1.5">
                 {renderSender?.(message.from)}
-                <span className="truncate font-medium text-aui-fg text-aui-sm">
+                <span className="min-w-0 break-words font-medium text-aui-fg text-aui-sm">
                   {message.from.name}
                 </span>
               </span>
@@ -674,14 +672,14 @@ function ReadingPane({
             </div>
             <time
               dateTime={message.at}
-              className="shrink-0 self-start pt-0.5 text-aui-muted text-aui-xs tabular-nums"
+              className="basis-full pt-1 pl-12 text-aui-muted text-aui-xs tabular-nums @md:basis-auto @md:pl-0"
             >
               {fullWhen(message.at)}
             </time>
           </div>
         </header>
         <WebSurface onAction={onAction}>
-          <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-w-0 flex-col gap-5">
             {message.parts.map((part) => {
               const render = renderers[part.type === "custom" ? part.name : part.type];
               // Prose is the body; anything to act on or open is a card of its own,
@@ -695,8 +693,8 @@ function ReadingPane({
                   aria-label={copy.partKind[part.type]}
                   className={
                     card
-                      ? "min-w-0 overflow-hidden rounded-aui-lg border border-aui-border bg-aui-surface p-4"
-                      : "min-w-0 max-w-[68ch] break-words"
+                      ? "aui-stack min-w-0 overflow-hidden rounded-aui-lg border border-aui-border bg-aui-surface p-4 sm:p-5"
+                      : "aui-stack min-w-0 max-w-[68ch] break-words"
                   }
                 >
                   {render ? (

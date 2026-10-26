@@ -604,6 +604,26 @@ test("MailboxView: the platform draws the alert, with its rule and what this rea
   assert.match(out, /Agent oncall/);
 });
 
+test("MailboxView: an alert with recovery keeps diagnostic text behind a closed disclosure", () => {
+  const alert = mailOf("m-alert");
+  const failure = mailOf("m-failure").parts.find((part) => part.type === "failure");
+  assert.ok(failure);
+  const out = mailbox(alert.id, [{ ...alert, parts: [...alert.parts, failure] }]);
+  const details = out.match(/<details\b([^>]*)>([\s\S]*?)<\/details>/);
+  assert.ok(details, "long diagnostic text should not crowd out the available recovery");
+  assert.doesNotMatch(details[1] ?? "", /\bopen(?:=|\s|$)/);
+  assert.match(details[2] ?? "", /<summary[^>]*>Technical Details<\/summary>/);
+  assert.match(details[2] ?? "", /The provider returned 529 for each failed run\./);
+  assert.match(out, />Retry</, "the explicit recovery remains available without opening details");
+  assert.doesNotMatch(mailbox(alert.id), /<details/, "standalone alert bodies remain readable");
+});
+
+test("MailboxView: severity and failure recovery use spacing rather than decorative dot separators", () => {
+  for (const id of ["m-alert", "m-failure"]) {
+    assert.doesNotMatch(mailbox(id), /<span[^>]*aria-hidden[^>]*>·<\/span>/);
+  }
+});
+
 test("MailboxView: the platform draws a reached limit with the meter and a way to raise it", () => {
   const out = mailbox("m-budget");
   assert.match(out, /data-testid="part-budget"/);

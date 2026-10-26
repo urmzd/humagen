@@ -549,6 +549,38 @@ function screens(ids: Ids, call: Call): Screen[] {
       },
     },
     { name: "inbox", path: "/inbox" },
+    ...[false, true].map(
+      (expanded): Screen => ({
+        name: expanded ? "inbox-alert-recovery-details" : "inbox-alert-recovery",
+        path: "/inbox",
+        act: async (page) => {
+          const inbox = await call<{ messages: { id: string; parts: { type: string }[] }[] }>(
+            "GET",
+            "/api/inbox?limit=50&state=open",
+          );
+          const message = inbox.messages.find(
+            (item) =>
+              item.parts.some((part) => part.type === "alert") &&
+              item.parts.some((part) => part.type === "failure"),
+          );
+          assert.ok(message, "The seeded failed run must have its real alert and recovery parts");
+          await page.goto(
+            new URL(`/inbox?message=${encodeURIComponent(message.id)}`, page.url()).href,
+          );
+          const details = page.getByTestId("part-alert").locator("details");
+          await details.locator("summary").waitFor();
+          assert.equal(await details.getAttribute("open"), null);
+          const recovery = page.locator('[data-aui-part="failure"]');
+          await recovery.waitFor();
+          assert.equal(
+            await recovery.evaluate((element) => element.classList.contains("aui-stack")),
+            true,
+          );
+          await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
+          if (expanded) await details.locator("summary").click();
+        },
+      }),
+    ),
     { name: "schedules", path: "/schedules" },
     { name: "schedule", path: `/schedules/${ids.schedule}` },
     { name: "monitor", path: "/monitor" },

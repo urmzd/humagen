@@ -249,15 +249,10 @@ function Context({ items }: PrimitiveProps["Context"]) {
   return (
     <p
       data-aui="context"
-      className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-aui-2xs text-aui-muted [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-aui-fg [&_strong]:font-medium [&_strong]:text-aui-fg"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-aui-2xs text-aui-muted [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-aui-fg [&_strong]:font-medium [&_strong]:text-aui-fg"
     >
-      {shown.map((t, i) => (
+      {shown.map((t) => (
         <span key={t} className="inline-flex min-w-0 items-center gap-1.5">
-          {i > 0 && (
-            <span aria-hidden className="opacity-50">
-              ·
-            </span>
-          )}
           <span className="min-w-0">
             <ContextItem text={t} />
           </span>
@@ -294,20 +289,17 @@ function Callout({ tone, title, text }: PrimitiveProps["Callout"]) {
       data-aui="callout"
       data-tone={tone}
       role={tone === "bad" ? "alert" : "status"}
-      className="flex gap-2 rounded-aui border border-[var(--aui-callout-border)] bg-[var(--aui-callout-bg)] px-2.5 py-1.5 text-aui-sm"
+      className="flex min-w-0 items-start gap-3 rounded-aui border border-[var(--aui-callout-border)] bg-[var(--aui-callout-bg)] p-3 text-aui-sm"
     >
       <span className={`mt-0.5 ${toneText[tone]}`}>{toneIcon[tone]}</span>
-      <p className="min-w-0 flex-1 text-aui-muted [&_a]:underline [&_code]:font-aui-mono [&_code]:text-[0.85em]">
-        <span className="font-medium text-aui-fg">{title ?? toneLabel[tone]}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1 text-aui-muted [&_a]:underline [&_code]:font-aui-mono [&_code]:text-[0.85em]">
+        <p className="font-medium text-aui-fg">{title ?? toneLabel[tone]}</p>
         {text && (
-          <>
-            <span aria-hidden className="mx-1.5 opacity-50">
-              ·
-            </span>
+          <p className="max-w-[68ch] break-words leading-relaxed">
             <Inline text={text} />
-          </>
+          </p>
         )}
-      </p>
+      </div>
     </div>
   );
 }

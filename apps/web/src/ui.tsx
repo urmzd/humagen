@@ -1,6 +1,6 @@
 import { builtinAgentKey } from "./legacy.ts";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
-import { BanIcon, CheckIcon, ChevronDownIcon, ShieldIcon, Tooltip, XIcon } from "@humagen/render-web";
+import { BanIcon, CheckIcon, ChevronDownIcon, SearchIcon, ShieldIcon, Tooltip, XIcon } from "@humagen/render-web";
 import { defaultCopy } from "@humagen/components";
 import { AgentOrb, type OrbState } from "@humagen/web";
 import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -1075,26 +1075,7 @@ export function Popover({
   );
 }
 
-export function SearchIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      aria-hidden="true"
-      focusable="false"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
-}
+export { SearchIcon } from "@humagen/render-web";
 
 /** A search box that filters what is on the page as a person types. */
 export function SearchField({

@@ -303,3 +303,17 @@ The picker names the action Find an Agent or Project and shows matches in the
 same panel. Selection keeps the current draft and uploads, and sends nothing.
 The new-conversation picker owns this action; an existing conversation retains
 its project. Home has no separate discovery link below the composer.
+
+
+## Action icons and failure spacing
+
+Use the existing inline Lucide-style geometry for action and navigation icons.
+Reply uses a returning arrow, Fork uses branching, and skill and memory actions
+use a wrench and bookmark. Keep visible labels on less frequent actions. Shared
+footer icons use 16px geometry with 44px coarse-pointer targets.
+
+Inbox recovery reads as distinct sections: sender and time, alert context,
+actionable failure, and related objects. Companion runtime diagnostics start
+collapsed. The failure callout, actions and reference form one shared stack;
+metadata and related-object names wrap instead of truncating into ambiguous
+chips. No notification or pending-person indicator animates.
