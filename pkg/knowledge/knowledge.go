@@ -338,6 +338,18 @@ func (s *Store) Documents(tenant, name string) ([]Document, error) {
 
 // Add cuts a document into passages and stores it.
 func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Document, error) {
+	return s.add(tenant, name, title, uri, text, by, at, nil, false)
+}
+
+// AddForScope inserts only while the source retains the exact expected public
+// configuration. A nil expectation requires a legacy manual workspace source.
+// The guard and insertion hold one lock, so a concurrent Configure cannot
+// broaden the audience or replace the source authority between them.
+func (s *Store) AddForScope(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig) (Document, error) {
+	return s.add(tenant, name, title, uri, text, by, at, expected, true)
+}
+
+func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig, guard bool) (Document, error) {
 	title, text = strings.TrimSpace(title), strings.TrimSpace(text)
 	switch {
 	case title == "":
@@ -357,11 +369,26 @@ func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Do
 	if err != nil {
 		return Document{}, err
 	}
+	if guard {
+		if expected == nil {
+			if src.Lifecycle != nil {
+				return Document{}, fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
+			}
+		} else if src.Lifecycle == nil || src.Lifecycle.SourceConfig != *expected || src.Lifecycle.Mode != Indexed || src.Lifecycle.Provider != "manual" {
+			return Document{}, fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
+		}
+	}
 	texts := split(text)
 	added := passagesOf(doc, texts)
 	doc.Passages = len(added)
 	seq := s.seq + 1
-	meta := src.Source
+	meta := cloneSource(src.Source)
+	if meta.Lifecycle != nil && meta.Lifecycle.Provider == "manual" && meta.Lifecycle.Mode == Indexed {
+		stamp := at
+		meta.Lifecycle.Status = Available
+		meta.Lifecycle.LastGoodAt = &stamp
+		meta.Lifecycle.Cause = ""
+	}
 	meta.Documents, meta.Passages, meta.UpdatedAt = len(src.docs)+1, len(src.passages)+len(added), at
 	b := s.kept.Batch()
 	b.Put(tenant, textKey(name, seq), stored{Passages: texts})
@@ -374,7 +401,7 @@ func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Do
 	src.seqs[doc.ID] = seq
 	src.passages = append(src.passages, added...)
 	src.docs = append(src.docs, doc)
-	src.Documents, src.Passages, src.UpdatedAt = len(src.docs), len(src.passages), at
+	src.Source = meta
 	return *doc, nil
 }
 
