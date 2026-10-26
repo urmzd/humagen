@@ -330,6 +330,7 @@ export const defaultCopy = {
     promotionHint:
       "The destination can read the copied instructions. Promotion creates a draft that must be tested before publication.",
     testRun: "Open Test Conversation",
+    testUses: "Agents That Tested This Version",
     refresh: "Refresh",
     provenance: "Promoted From",
     readOnly: "You may read this scope. Its owners manage revisions.",

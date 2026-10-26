@@ -51,6 +51,7 @@ export function SkillsLibrary() {
   const [agent, setAgent] = useState("");
   const [request, setRequest] = useState("");
   const [testThread, setTestThread] = useState("");
+  const [testUses, setTestUses] = useState<{ id: string; thread: string; agent: string }[]>([]);
   const [testProject, setTestProject] = useState("");
   const [destination, setDestination] = useState<LibraryScope>({ kind: "project", project: "" });
   const [problem, setProblem] = useState<string | null>(null);
@@ -121,6 +122,33 @@ export function SkillsLibrary() {
       live = false;
     };
   }, [scope.kind, scope.project]);
+
+  useEffect(() => {
+    let live = true;
+    setTestUses([]);
+    if (selected)
+      void Promise.allSettled(selected.tests.slice(0, 10).map((id) => api.run(id))).then(
+        (results) => {
+          if (live)
+            setTestUses(
+              results.flatMap((result) =>
+                result.status === "fulfilled" && result.value.thread
+                  ? [
+                      {
+                        id: result.value.id,
+                        thread: result.value.thread,
+                        agent: result.value.agent,
+                      },
+                    ]
+                  : [],
+              ),
+            );
+        },
+      );
+    return () => {
+      live = false;
+    };
+  }, [selected]);
   const inspect = async (id: string) => {
     setBusy(true);
     setProblem(null);
@@ -455,6 +483,30 @@ export function SkillsLibrary() {
                   )}
                 </div>
               </form>
+
+              {testUses.length > 0 && (
+                <section className={`${card} space-y-3 p-4`}>
+                  <h2 className="font-medium">{copy.testUses}</h2>
+                  <ul className="space-y-2">
+                    {testUses.map((run) => (
+                      <li key={run.id} className="flex flex-wrap gap-4">
+                        <a
+                          className="inline-flex min-h-11 items-center text-aui-accent"
+                          href={`/agents/${encodeURIComponent(run.agent)}`}
+                        >
+                          {run.agent}
+                        </a>
+                        <a
+                          className="inline-flex min-h-11 items-center text-aui-accent"
+                          href={`/conversations/${encodeURIComponent(run.thread)}`}
+                        >
+                          {copy.testRun}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {selected.from && (
                 <p className="break-words text-aui-sm text-aui-muted">
                   {copy.provenance}: {selected.from.name}, {copy.version} {selected.from.version}

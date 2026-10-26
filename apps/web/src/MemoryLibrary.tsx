@@ -11,8 +11,13 @@ const localDate = (value: string) => {
 };
 export function MemoryLibrary() {
   const copy = defaultCopy.memoryLibrary;
-  const [scope, setScope] = useState<Scope>("personal");
-  const [owner, setOwner] = useState("");
+  const [scope, setScope] = useState<Scope>(() => {
+    const value = new URLSearchParams(window.location.search).get("scope");
+    return value === "workspace" || value === "project" || value === "agent" ? value : "personal";
+  });
+  const [owner, setOwner] = useState(
+    () => new URLSearchParams(window.location.search).get("owner") ?? "",
+  );
   const [projects, setProjects] = useState<ProjectView[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);
   const [homes, setHomes] = useState<Record<string, string>>({});
