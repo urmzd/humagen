@@ -14,7 +14,7 @@ import {
   useState,
 } from "react";
 import { useGroup } from "./form";
-import { AlertTriangleIcon, ChevronDownIcon } from "./icons";
+import { AlertTriangleIcon, ChevronDownIcon, EllipsisIcon } from "./icons";
 import { SuppressContext } from "./meta";
 
 export const ActionContext = createContext<ActionHandler>(() => {});
@@ -453,13 +453,7 @@ export function Menu({ label, items }: PrimitiveProps["Menu"]) {
           }
         }}
       >
-        {split ? (
-          <ChevronDownIcon size={13} />
-        ) : (
-          <span aria-hidden className="text-aui-base leading-none">
-            ⋯
-          </span>
-        )}
+        {split ? <ChevronDownIcon size={13} /> : <EllipsisIcon size={16} />}
       </button>
       {open && (
         <div

@@ -256,6 +256,94 @@ export const SettingsIcon = icon(
   "SettingsIcon",
 );
 
+/** Shared navigation and action glyphs use the same grid and stroke. */
+export const BellIcon = icon(
+  <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />,
+  "BellIcon",
+);
+export const SearchIcon = icon(
+  <>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-4-4" />
+  </>,
+  "SearchIcon",
+);
+export const ReplyIcon = icon(<path d="m9 17-5-5 5-5M4 12h10a6 6 0 0 1 6 6" />, "ReplyIcon");
+export const ForkIcon = icon(
+  <>
+    <circle cx="6" cy="4" r="2" />
+    <circle cx="18" cy="4" r="2" />
+    <circle cx="12" cy="20" r="2" />
+    <path d="M6 6v3a6 6 0 0 0 6 6m6-9v3a6 6 0 0 1-6 6v3" />
+  </>,
+  "ForkIcon",
+);
+export const BringBackIcon = icon(
+  <path d="m9 10-5 5 5 5M4 15h10a6 6 0 0 0 0-12" />,
+  "BringBackIcon",
+);
+export const RedirectIcon = icon(<path d="m15 4 5 5-5 5M20 9H9a5 5 0 0 0-5 5v6" />, "RedirectIcon");
+export const WrenchIcon = icon(
+  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-8 8l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 8-8l-3.8 3.8Z" />,
+  "WrenchIcon",
+);
+export const BookmarkIcon = icon(
+  <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />,
+  "BookmarkIcon",
+);
+export const DatabaseIcon = icon(
+  <>
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0" />
+  </>,
+  "DatabaseIcon",
+);
+export const PlugIcon = icon(
+  <path d="M12 22v-5M8 3v5M16 3v5M5 8h14M7 8v4a5 5 0 0 0 10 0V8" />,
+  "PlugIcon",
+);
+export const NetworkIcon = icon(
+  <>
+    <rect x="9" y="2" width="6" height="6" rx="1" />
+    <rect x="2" y="16" width="6" height="6" rx="1" />
+    <rect x="16" y="16" width="6" height="6" rx="1" />
+    <path d="M12 8v4M5 16v-4h14v4" />
+  </>,
+  "NetworkIcon",
+);
+export const ClipboardListIcon = icon(
+  <>
+    <rect x="8" y="2" width="8" height="4" rx="1" />
+    <path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2M10 11h6M10 16h6M7 11h.01M7 16h.01" />
+  </>,
+  "ClipboardListIcon",
+);
+export const SlidersIcon = icon(
+  <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />,
+  "SlidersIcon",
+);
+export const ScrollTextIcon = icon(
+  <path d="M8 21h12a2 2 0 0 0 2-2v-3H10v3a2 2 0 0 1-4 0V5a2 2 0 0 0-4 0v3h4M4 3h14a2 2 0 0 1 2 2v11M10 7h6M10 11h6" />,
+  "ScrollTextIcon",
+);
+export const PinIcon = icon(<path d="M16 9V3H8v6l-3 3v2h14v-2l-3-3M12 14v8M6 3h12" />, "PinIcon");
+export const LogOutIcon = icon(
+  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
+  "LogOutIcon",
+);
+export const InboxIcon = icon(
+  <path d="M4 4h16l2 10v6H2v-6L4 4ZM2 14h6l2 3h4l2-3h6" />,
+  "InboxIcon",
+);
+export const EllipsisIcon = icon(
+  <>
+    <circle cx="5" cy="12" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
+  </>,
+  "EllipsisIcon",
+);
+
 /**
  * In-progress ring. The SVG box itself rotates, so the ring spins in place
  * around the center of a square box instead of orbiting a text baseline.

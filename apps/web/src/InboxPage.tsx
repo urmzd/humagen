@@ -132,17 +132,17 @@ export function MailboxView({
           <Stroke agent={edge.agent} state={edge.state} testId="mail-frame" className="flex min-h-0 min-w-0 flex-1 flex-col pl-4">
             {children}
             {sources.length > 0 && (
-              <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-[var(--humagen-rule)] border-t pt-3 pb-1">
-                <span className="text-aui-2xs font-medium tracking-wider text-aui-muted uppercase">About</span>
+              <div className="mt-5 flex shrink-0 flex-col gap-2 border-[var(--humagen-rule)] border-t pt-4 pb-3">
+                <h4 className="text-aui-xs font-medium text-aui-muted">{defaultCopy.mailbox.about}</h4>
                 <ul className="flex min-w-0 flex-wrap gap-1.5" aria-label="About">
                   {sources.map((s) => (
                     <li key={`${s.kind}:${s.id}`} className="min-w-0">
                       <button
                         type="button"
                         onClick={() => onOpen(s)}
-                        className="inline-flex h-6 max-w-56 items-center gap-1 truncate rounded-full border border-aui-border px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+                        className="inline-flex min-h-10 max-w-full items-center gap-1 rounded-aui border border-aui-border px-3 py-2 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
                       >
-                        <span className="truncate">{s.label}</span>
+                        <span className="min-w-0 break-words">{s.label}</span>
                       </button>
                     </li>
                   ))}

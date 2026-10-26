@@ -1,7 +1,7 @@
 import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
-import { WebSurface } from "@humagen/render-web";
+import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, MessageActionRow, messageTextActionButton, Thread as ThreadList, useQueue } from "@humagen/web";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { actedFor, citationOf, turnOf, type Run } from "./adapter.ts";
@@ -618,13 +618,13 @@ export function ThreadRoom({
             t.announcement ? (
               <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
             ) : t.message ? (
-              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} actions={posts&&forkActions?.onFork?<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.message!.id)}>{defaultCopy.forking.fromHere}</button>:undefined} onReply={posts ? () => setSeed({ text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `, mode: "prepend" }) : undefined} />
+              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} actions={posts&&forkActions?.onFork?<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.message!.id)}><ForkIcon size={16} />{defaultCopy.forking.fromHere}</button>:undefined} onReply={posts ? () => setSeed({ text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `, mode: "prepend" }) : undefined} />
             ) : t.run ? (
               <AnswerView
                 key={t.run.id}
                 run={t.run}
                 canStop={posts}
-                actions={!th.read_only&&t.run.status==="completed"?<><OutcomeActions run={t.run} canWrite={canLearn}/>{posts&&forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.run!.id)}>{defaultCopy.forking.fromHere}</button>}{posts&&th.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(t.run!.id)}>{defaultCopy.forking.bringBack}</button>}</>:undefined}
+                actions={!th.read_only&&t.run.status==="completed"?<><OutcomeActions run={t.run} canWrite={canLearn}/>{posts&&forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.run!.id)}><ForkIcon size={16} />{defaultCopy.forking.fromHere}</button>}{posts&&th.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(t.run!.id)}><BringBackIcon size={16} />{defaultCopy.forking.bringBack}</button>}</>:undefined}
                 routed={routedOf(t.run)}
                 onAsk={posts ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" }) : undefined}
                 onReply={posts ? () => setSeed({ text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `, mode: "prepend" }) : undefined}

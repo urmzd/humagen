@@ -62,9 +62,9 @@ export function CopyButton({
         onClick={copy}
         aria-label={label}
         title={label}
-        className={`inline-flex h-6 items-center gap-1 rounded-aui-sm px-1.5 text-aui-xs transition-colors focus-visible:outline-2 focus-visible:outline-aui-accent ${colors}`}
+        className={`inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui-sm text-aui-xs transition-colors focus-visible:outline-2 focus-visible:outline-aui-accent ${colors}`}
       >
-        <CopyIcon size={13} />
+        <CopyIcon size={16} />
       </button>
       {/* Always in the tree so the announcement is heard; out of flow so nothing shifts. */}
       <output className={`pointer-events-none absolute z-10 ${place}`}>

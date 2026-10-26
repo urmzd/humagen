@@ -76,7 +76,7 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
       // Snoozing is the whole message's, so it is in the reading pane's header, not here.
       const critical = alert.status === "down" || message.severity === "bad";
       return (
-        <div data-testid="part-alert" className="flex flex-col gap-2">
+        <div data-testid="part-alert" className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h4 className="text-aui-base font-medium text-aui-fg">{alert.title}</h4>
             <span className="inline-flex items-center gap-1.5 text-aui-xs text-aui-muted">
@@ -84,7 +84,12 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
               {critical ? "Critical" : "Warning"}
             </span>
           </div>
-          {alert.body && <p className="max-w-[68ch] text-aui-sm text-aui-muted">{alert.body}</p>}
+          {alert.body && (message.parts.some((item) => item.type === "failure") ? (
+            <details className="min-w-0">
+              <summary className="min-h-10 cursor-pointer py-2 text-aui-sm text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">{defaultCopy.mailbox.technicalDetails}</summary>
+              <p className="mt-2 max-w-[68ch] break-words text-aui-sm leading-relaxed text-aui-muted">{alert.body}</p>
+            </details>
+          ) : <p className="max-w-[68ch] break-words text-aui-sm leading-relaxed text-aui-muted">{alert.body}</p>)}
           {alert.service && (
             <p className="text-aui-xs text-aui-muted">
               Raised by the rule{" "}

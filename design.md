@@ -26,6 +26,7 @@ govern implementation, including shared presentation and agent identity.
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
+| DES-009 | Use consistent action icons and readable inbox recovery groups | Implemented; semantic shared icons, touch targets, collapsed companion diagnostics and native recovery captures |
 | DES-008 | Agent/project discovery belongs in the new-conversation picker | Implemented; search and selection preserve drafts/files and cannot submit work |
 
 ### DES-001: Working integrations
@@ -216,3 +217,18 @@ The composer DOM regressions cover search, selection, attachment preservation,
 explicit submission, empty-draft seeding and keyboard focus. The native
 `workspace-find-help` and `workspace-find-help-selection` screen states exercise
 matching and selection without creating a conversation.
+
+
+### DES-009: Action vocabulary and inbox recovery
+
+Message actions use the shared 24px-grid icon set, with a reply arrow for Reply
+and semantic glyphs beside Fork, Bring Back, skill, memory and Redirect labels.
+Footer icons share a 16px size and coarse-pointer targets are at least 44px.
+Existing callbacks, action names and keyboard behavior are preserved.
+
+An inbox failure groups its callout, recovery actions and reference using the
+shared stack layout. Alert diagnostics that accompany an actionable failure
+sit under Technical Details; standalone alert bodies remain visible. Titles,
+metadata and About links wrap with separate spacing for each section. Render
+regressions cover the failing layout and native `inbox-alert-recovery` states
+capture collapsed and expanded diagnostics on phone and desktop.

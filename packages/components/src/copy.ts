@@ -1403,6 +1403,7 @@ export const defaultCopy = {
     about: "About",
     messages: "Messages",
     reading: "Message",
+    technicalDetails: "Technical Details",
     unread: "Unread",
     readOnly: "Nothing to decide. Dismiss it when you're done.",
     noRenderer: (name: string) => `This message has a ${name} part that this surface can't show.`,
