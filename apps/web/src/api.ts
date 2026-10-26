@@ -1,11 +1,7 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
   SkillUsage,
-  AgentSkillDefaults,
-  AgentSkillDefaultsUpdate,
-  KnowledgeLifecycle,
   SourceDependencies,
-  KnowledgeSourceConfig,
   Note as GeneratedNote,
   NoteInput,
   PersonalPreferences,
@@ -14,6 +10,10 @@ import type {
   LibrarySkill,
   LibraryScope,
   LibrarySkillDefinition,
+  AgentSkillDefaults,
+  AgentSkillDefaultsUpdate,
+  KnowledgeLifecycle,
+  KnowledgeSourceConfig,
   ProjectContext,
   AgentHome,
   Person,
@@ -23,6 +23,8 @@ import type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectTemplate,
+  ProjectRollup,
   ProjectKnowledge,
   ProjectLimitInput,
   ProjectMembers,
@@ -55,6 +57,8 @@ export type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectTemplate,
+  ProjectRollup,
   ProjectKind,
   ProjectKindSpec,
   ProjectKnowledge,
@@ -677,6 +681,8 @@ export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, 
 import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
+  projectRollup: (name: string) => call<ProjectRollup>("GET", `${projectAt(name)}/rollup`),
+
   agentControl: (agent = "") => call<AgentControl>("GET", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls"),
   saveAgentControl: (agent: string, input: AgentControlInput) => call<AgentControl>("PUT", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls", input),
   actionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name = "") => call<ActionPolicy>("GET", operationPolicyPath(scope, name)),
@@ -821,6 +827,16 @@ export const api = {
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
   /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
+  discover: (q: string, options: { limit?: number; kinds?: string[]; project?: string } = {}) => {
+    const query = new URLSearchParams({ q, limit: String(options.limit ?? 20) });
+    if (options.kinds?.length) query.set("kinds", options.kinds.join(","));
+    if (options.project !== undefined) query.set("project", options.project === "" ? "~" : options.project);
+    return call<{ items: DiscoveryItem[] }>("GET", `/api/discovery?${query}`).then((result) => result.items);
+  },
+  projectTemplates: () => call<{ templates: ProjectTemplate[] }>("GET", "/api/project-templates").then((result) => result.templates),
+  forkProject: (source: string, input: { name: string; parent?: string; title?: string; memory?: string[]; sources?: string[]; archive_conversations?: boolean }) => call<ProjectForkOperation>("POST", `/api/projects/${projectPath(source)}/fork`, input),
+  projectFork: (name: string) => call<ProjectForkOperation>("GET", `/api/project-forks/${encodeURIComponent(name)}`),
+  findProjects: (q: string) => call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${new URLSearchParams({ q, limit: "20" })}`).then((page) => page.projects),
   projects: async () => {
     // Read a page at a time, at most the 500 a workspace holds.
     const all: ProjectView[] = [];
@@ -1139,6 +1155,11 @@ export interface Thread {
   /** The agents an untagged message goes to, from the + menu, and how: the best fit of them, or every one. */
   agents?: string[];
   mode?: "best_fit" | "all";
+  read_only?: boolean;
+  fork?: {
+    source_thread: string; through: string; by: string; at: string; sources?: string[];
+    context: { kind: "person" | "agent" | "system"; by: string; name?: string; text: string; at: string }[];
+  };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -1288,6 +1309,9 @@ const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
 
 /** Channels, experts and shared threads: where people and agents work together. */
 export const coworking = {
+  fork: (id: string, input: { through: string; title?: string; agents?: string[]; mode?: "best_fit" | "all"; sources?: string[] }) => call<Thread>("POST", `${threadPath(id)}/fork`, input),
+  bringBack: (id: string, input: { run: string; text?: string }) => call<ThreadMessage>("POST", `${threadPath(id)}/bring-back`, input),
+  participants: (id: string, input: { version: number; add?: { kind: "person" | "agent"; name: string }[]; remove?: string[] }) => call<Thread>("PUT", `${threadPath(id)}/participants`, input),
   channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (project: string, c: { name: string; title?: string; purpose?: string; default?: string }) =>
     call<Channel>("POST", `${projectAt(project)}/channels`, c),
@@ -1369,6 +1393,12 @@ export const coworking = {
 };
 
 export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };
+
+export interface ProjectForkOperation {
+ id: string; source: string; destination: string; state: "preparing" | "failed" | "ready"; error?: string; projects: number; agents: number; memory: number; archives: number;
+}
+
+export interface DiscoveryItem { kind: "project" | "agent" | "conversation"; id: string; title: string; project?: string; channel?: string; hue?: number }
 
 function operationPolicyPath(scope: "workspace" | "agent" | "project" | "personal", name: string) {
   if (scope === "personal") return "/api/me/action-policy";

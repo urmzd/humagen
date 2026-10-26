@@ -20,7 +20,7 @@ govern implementation, including shared presentation and agent identity.
 | --- | --- | --- |
 | DES-001 | Integration controls use the existing system and report real results | Slack/GitHub configuration form implemented; automated checks pass; live delivery pending |
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
-| DES-003 | Reveal the message Fork action on hover and keyboard focus | Board interaction checked in Chromium; native conversation-fork API pending |
+| DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
 | OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions, inherited policy provenance, effective pause, typed contract inputs and reviewed deadlines. Native reminders survive restart on the same confined inbox item. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
@@ -131,8 +131,10 @@ govern implementation, including shared presentation and agent identity.
 The approved implementation pass covers supported Slack and GitHub workspace
 connection controls through the existing clients API, removal of separator dots
 in the boards and touched console metadata, accessible native human-message
-timestamps, and Fork hover/focus behavior in the board. Native conversation
-forking remains pending because its backend operation is not implemented.
+timestamps, and Fork hover/focus behavior in the board. Native conversation forking now has a persisted operation, bounded passive history,
+source-chain confinement, selected sources applied to real turns, and an explicit
+bring-back action that posts without executing tags or tools. Shared message action
+wiring remains tracked separately.
 Creating a configured client is not evidence that external credentials work or
 that a live Slack or GitHub delivery has succeeded.
 For GitHub default-agent routing, configure the app's own bot login so native

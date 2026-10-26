@@ -1,0 +1,40 @@
+[
+  {
+    "name": "delivery",
+    "title": "Delivery Project",
+    "description": "Plan work, record decisions and track delivery.",
+    "kind": "team",
+    "initiative": false,
+    "instructions": "Keep plans, decisions and delivery updates in the project's channels. Ask for approval before external actions.",
+    "channels": [
+      {"name":"general","purpose":"Project updates and coordination"},
+      {"name":"planning","purpose":"Plan work and track dependencies"},
+      {"name":"decisions","purpose":"Record decisions and approvals"}
+    ],
+    "skills": [{"name":"status-review","description":"Summarize current delivery status","instructions":"Summarize completed work, current blockers, decisions needed and next steps. State missing evidence explicitly."}]
+  },
+  {
+    "name": "initiative",
+    "title": "Initiative",
+    "description": "Coordinate a group of projects with confined rollups.",
+    "kind": "team",
+    "initiative": true,
+    "instructions": "Coordinate child projects and summarize their visible status, risks and decisions. Do not execute work directly inside a child project. Cross-project execution requires an explicitly supported and authorized handoff.",
+    "channels": [
+      {"name":"general","purpose":"Initiative coordination and rollups"},
+      {"name":"decisions","purpose":"Cross-project decisions and dependencies"}
+    ]
+  },
+  {
+    "name": "account",
+    "title": "Customer Account",
+    "description": "Keep customer context, plans and renewal work together.",
+    "kind": "account",
+    "initiative": false,
+    "instructions": "Keep customer information inside this account. Separate confirmed facts from proposals and require approval before communicating externally.",
+    "channels": [
+      {"name":"general","purpose":"Account coordination"},
+      {"name":"renewals","purpose":"Renewal planning and confirmed commitments"}
+    ]
+  }
+]

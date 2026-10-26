@@ -250,6 +250,7 @@ func (t *Tree) Available(project string) Availability {
 			}
 		}
 	}
+	out.Names = slices.DeleteFunc(out.Names, func(agent string) bool { return !t.IsAvailable(project, agent) })
 	slices.Sort(out.Names)
 	return out
 }
@@ -307,6 +308,11 @@ func Widens(was, next []string) bool {
 // the agent exists; the registry does. Auto is no agent, so it is never
 // available itself: a caller resolves it to one first.
 func (t *Tree) IsAvailable(project, agent string) bool {
+	if home, ok := t.homes[agent]; ok && home != project {
+		if pr, known := t.Get(home); known && pr.Initiative {
+			return false
+		}
+	}
 	if !ValidAgent(agent) {
 		return false
 	}

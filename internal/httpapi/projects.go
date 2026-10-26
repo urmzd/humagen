@@ -35,6 +35,7 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{name}", s.authed(auth.ProjectsRead, s.seenProject(s.getProject)))
 	mux.HandleFunc("PUT /api/projects/{name}", s.authed(auth.ProjectsWrite, s.seenProject(s.updateProject)))
 	mux.HandleFunc("DELETE /api/projects/{name}", s.authed(auth.ProjectsWrite, s.seenProject(s.deleteProject)))
+	mux.HandleFunc("GET /api/projects/{name}/rollup", s.authed(auth.ProjectsRead, s.seenProject(s.projectRollup)))
 	mux.HandleFunc("GET /api/projects/{name}/history", s.authed(auth.ProjectsRead, s.seenProject(s.projectHistory)))
 	mux.HandleFunc("GET /api/projects/{name}/memory", s.authed(auth.ProjectsRead, s.seenProject(s.projectMemory)))
 	mux.HandleFunc("POST /api/projects/{name}/memory", s.authed(auth.ProjectsWrite, s.seenProject(s.addProjectMemory)))
@@ -203,6 +204,7 @@ func actionsOf(f projectFacts, p projects.Project) []string {
 // out every agent that lives in a project the caller may not read, and its
 // knowledge sources are shown only to a caller who may read knowledge.
 func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
+	p = f.seer.ProjectForkOrigin(p)
 	chain := f.tree.Chain(p.Name)
 	p.Agents = f.seer.ProjectAgents(p.Agents)
 	p.Knowledge = f.seer.Sources(p.Knowledge)
@@ -697,4 +699,13 @@ func (s *Server) getProjectContext(w http.ResponseWriter, r *http.Request, who a
 		return
 	}
 	ok(w, http.StatusOK, got)
+}
+
+func (s *Server) projectRollup(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	result, err := s.P.RollupProject(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, result)
 }

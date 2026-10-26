@@ -292,3 +292,7 @@ func countTurns(turns []Turn) int {
 	}
 	return n
 }
+
+// PassiveReply is the same terminal reply text the live fenced transcript uses.
+// It contains no executable questions, approvals or tool state.
+func PassiveReply(run runs.Run) string { return reply(run) }

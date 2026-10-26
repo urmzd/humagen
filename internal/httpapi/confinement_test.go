@@ -54,9 +54,9 @@ const marker = "zqx"
 
 // hidden is what one workspace holds that an outsider must not see.
 type hidden struct {
-	handoff                                                       string
 	notificationID                                                string
 	librarySkill                                                  string
+	handoff                                                       string
 	sourceRule                                                    string
 	sourceSuggestion                                              string
 	project, agent, schedule, rule, source, eval, client, variant string
@@ -515,7 +515,7 @@ func (h hidden) value(path, param string) (string, bool) {
 		switch {
 		case prefix("/api/agents/"):
 			return h.agent, true
-		case prefix("/api/projects/"):
+		case prefix("/api/projects/"), prefix("/api/project-forks/"):
 			return h.project, true
 		case prefix("/api/schedules/"):
 			return h.schedule, true

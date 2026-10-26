@@ -71,6 +71,7 @@ interface Ids {
   schedule: string;
   /** Conversations the chat states open: a private one answered, a shared one, and one its selected agents answered. */
   privateChat: string;
+  forkChat: string;
   sharedChat: string;
   routedChat: string;
 }
@@ -140,6 +141,8 @@ function chats(ids: Ids): Screen[] {
         await page.getByText("Origin: drive://launch/supplier-eta", { exact: true }).waitFor();
       },
     },
+    { name: "conversation-fork-context", path: `/conversations/${ids.forkChat}/context` },
+    { name: "conversation-fork-people", path: `/conversations/${ids.forkChat}/people` },
     { name: "conversation-people", path: `/conversations/${ids.privateChat}/people` },
     {
       name: "conversation-activity",
@@ -234,7 +237,7 @@ function chats(ids: Ids): Screen[] {
         await plus(page).click();
         const menu = page.getByRole("dialog", { name: "Add to this conversation" });
         await menu.getByRole("button", { name: /Choose a project/ }).click();
-        await menu.getByRole("button", { name: /^Launch/ }).click();
+        await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
         await menu.getByRole("radio", { name: "#deals" }).click();
       },
     },
@@ -322,6 +325,16 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids),
     { name: "projects", path: "/projects" },
+    {
+      name: "project-template",
+      path: "/projects",
+      act: async (page) => {
+        await page.getByRole("button", { name: "New Project", exact: true }).click();
+        await page.getByLabel("Start From", { exact: true }).selectOption("initiative");
+      },
+    },
+    { name: "project-initiative", path: "/projects/Strategy/overview" },
+    { name: "project-fork-ready", path: "/projects/Launch%20Copy/overview" },
     ...[
       "inbox",
       "overview",
@@ -836,6 +849,7 @@ const ids0: Ids = {
   artifact: "",
   schedule: "",
   privateChat: "",
+  forkChat: "",
   sharedChat: "",
   routedChat: "",
 };
@@ -852,7 +866,7 @@ interface Posted {
  */
 async function seedChats(
   call: Call,
-): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat">> {
+): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat" | "forkChat">> {
   // No token is supplied: this exercises a real denied credential lookup,
   // without calling Drive or simulating a successful external connection.
   await call("POST", "/api/knowledge", {
@@ -978,7 +992,26 @@ async function seedChats(
     mode: "all",
   });
   await answered(routed);
+  await call("POST", "/api/projects", { name: "Strategy", template: "initiative" });
+  await call("POST", "/api/projects", {
+    name: "Strategy-Launch",
+    parent: "Strategy",
+    template: "delivery",
+    title: "Launch Readiness",
+  });
+  await call("POST", "/api/projects/Strategy-Launch/memory", {
+    text: "Launch remains gated on the security review.",
+    kind: "risk",
+  });
+  await call("POST", "/api/projects/Launch/fork", { name: "Launch Copy", sources: [] });
+  const fork = await call<{ id: string }>("POST", `/api/threads/${mine.thread.id}/fork`, {
+    through: "m-1",
+    title: "Launch alternative",
+    agents: ["helper"],
+    sources: [],
+  });
   return {
+    forkChat: fork.id,
     privateChat: mine.thread.id,
     sharedChat: shared.thread.id,
     routedChat: routed.thread.id,

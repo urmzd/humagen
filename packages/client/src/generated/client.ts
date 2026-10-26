@@ -19,6 +19,7 @@ import type {
   Assignment,
   AssignmentInput,
   AttachKnowledgeSourceBody,
+  BringBackThreadResultBody,
   CallPolicy,
   CallPolicyInput,
   ChannelInput,
@@ -34,10 +35,13 @@ import type {
   CreateKnowledgeSourceBody,
   CreateRunRequest,
   DecideSourceLinkSuggestionBody,
+  DiscoverWorkspaceResponse,
   DraftLibrarySkillBody,
   EvalRun,
   EvalSuite,
   FindHelpResponse,
+  ForkProjectBody,
+  ForkThreadBody,
   GetAgentHuesResponse,
   GetAgentRosterResponse,
   GetInboxMessageResponse,
@@ -83,6 +87,7 @@ import type {
   ListPoliciesResponse,
   ListPolicyHistoryResponse,
   ListProjectHistoryResponse,
+  ListProjectTemplatesResponse,
   ListProjectsResponse,
   ListReachableAgentsResponse,
   ListReadAuditResponse,
@@ -110,6 +115,7 @@ import type {
   ProjectContext,
   ProjectDetail,
   ProjectExperts,
+  ProjectForkOperation,
   ProjectInput,
   ProjectKnowledge,
   ProjectKnowledgeInput,
@@ -117,6 +123,7 @@ import type {
   ProjectMembers,
   ProjectMembersInput,
   ProjectMove,
+  ProjectRollup,
   ProjectSkills,
   ProjectSkillsInput,
   ProjectUpdate,
@@ -155,6 +162,7 @@ import type {
   TestLibrarySkillBody,
   Thread,
   ThreadInput,
+  ThreadMessage,
   ThreadMessageInput,
   ThreadPage,
   ThreadParticipantsUpdate,
@@ -2122,6 +2130,147 @@ here too (429).
     let path = "/api/threads/{id}/messages";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<ThreadPosted>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Only readable current project placements contribute. Confirmed unexpired typed decisions and risks are projected without private provenance. Rows are capped at 100 projects, 100 notes and 50 needs. Runs are counted over the preceding 30 days and require runs:read. No child work is executed by an initiative. */
+  async getProjectRollup(name: string, options?: RequestOptions): Promise<ProjectRollup> {
+    let path = "/api/projects/{name}/rollup";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectRollup>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectRollupRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectRollup>> {
+    let path = "/api/projects/{name}/rollup";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectRollup>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly. */
+  async discoverWorkspace(q?: string, limit?: number, kinds?: string, project?: string, options?: RequestOptions): Promise<DiscoverWorkspaceResponse> {
+    let path = "/api/discovery";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (kinds !== undefined && kinds !== null) _q.set("kinds", String(kinds));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<DiscoverWorkspaceResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async discoverWorkspaceRaw(q?: string, limit?: number, kinds?: string, project?: string, options?: RequestOptions): Promise<ApiResponse<DiscoverWorkspaceResponse>> {
+    let path = "/api/discovery";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (kinds !== undefined && kinds !== null) _q.set("kinds", String(kinds));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<DiscoverWorkspaceResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** List bounded project templates supplied by the server */
+  async listProjectTemplates(options?: RequestOptions): Promise<ListProjectTemplatesResponse> {
+    const path = "/api/project-templates";
+    return this.request<ListProjectTemplatesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listProjectTemplatesRaw(options?: RequestOptions): Promise<ApiResponse<ListProjectTemplatesResponse>> {
+    const path = "/api/project-templates";
+    return this.rawRequest<ListProjectTemplatesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Copies at most 20 visible projects and 20 agents. New projects stay invisible and cannot run until all selected configuration is copied and one durable publication gate opens. Copies no conversations, schedules or approvals. Select confirmed memory explicitly. Live bindings are detached and copied integration rules stay disabled. Repeating the same source, destination and parent resumes the creator's saved operation. */
+  async forkProject(name: string, body: ForkProjectBody, options?: RequestOptions): Promise<ProjectForkOperation> {
+    let path = "/api/projects/{name}/fork";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectForkOperation>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async forkProjectRaw(name: string, body: ForkProjectBody, options?: RequestOptions): Promise<ApiResponse<ProjectForkOperation>> {
+    let path = "/api/projects/{name}/fork";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectForkOperation>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Only the exact human creator can read a workflow, including before its staged resources become visible. Source access remains required to resume a copy. Another creator's operation answers like a missing one. */
+  async getProjectFork(name: string, options?: RequestOptions): Promise<ProjectForkOperation> {
+    let path = "/api/project-forks/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectForkOperation>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectForkRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectForkOperation>> {
+    let path = "/api/project-forks/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectForkOperation>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Copies bounded passive context through a message or completed run. No action, approval or run is copied. The fork stays in the source project. Every read still requires access to its source chain. */
+  async forkThread(id: string, body: ForkThreadBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/fork";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async forkThreadRaw(id: string, body: ForkThreadBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/fork";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The caller explicitly posts a completed result as their own passive message. Requires posting access to the parent and read access to both conversations. Tags are plain text, not routing or notification instructions. */
+  async bringBackThreadResult(id: string, body: BringBackThreadResultBody, options?: RequestOptions): Promise<ThreadMessage> {
+    let path = "/api/threads/{id}/bring-back";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async bringBackThreadResultRaw(id: string, body: BringBackThreadResultBody, options?: RequestOptions): Promise<ApiResponse<ThreadMessage>> {
+    let path = "/api/threads/{id}/bring-back";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadMessage>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
