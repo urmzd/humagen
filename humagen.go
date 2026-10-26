@@ -38,6 +38,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/spec"
 )
 
@@ -75,6 +76,20 @@ func WithModelProvider(name string, fn agentrt.ProviderFunc) Option {
 			o.Ext.Providers = map[string]agentrt.ProviderFunc{}
 		}
 		o.Ext.Providers[name] = fn
+	}
+}
+
+// WithSourceProvider registers an external source importer by its configured name.
+// Implementations receive only the current reader's explicitly connected credential.
+func WithSourceProvider(name string, provider knowledge.Provider) Option {
+	return func(o *app.Options) {
+		if !knowledge.ValidName(name) || provider == nil {
+			return
+		}
+		if o.Ext.SourceProviders == nil {
+			o.Ext.SourceProviders = map[string]knowledge.Provider{}
+		}
+		o.Ext.SourceProviders[name] = provider
 	}
 }
 

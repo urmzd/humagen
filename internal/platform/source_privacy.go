@@ -42,7 +42,20 @@ func (p *Platform) SourceVisible(who auth.Principal, name string) bool {
 	if err != nil {
 		return false
 	}
-	return src.Lifecycle == nil || src.Lifecycle.Project == "" || p.Sees(who, Place{Project: src.Lifecycle.Project})
+	return p.sourceRecordVisible(who, src)
+}
+
+func (p *Platform) sourceRecordVisible(who auth.Principal, src knowledge.Source) bool {
+	return who.Can(auth.KnowledgeRead) && (src.Lifecycle == nil || src.Lifecycle.Project == "" || p.Sees(who, Place{Project: src.Lifecycle.Project}))
+}
+
+// SourceAs authorizes the exact immutable record returned to the reader.
+func (p *Platform) SourceAs(who auth.Principal, name string) (knowledge.Source, error) {
+	src, err := p.Knowledge.Get(who.Tenant, name)
+	if err != nil || !p.sourceRecordVisible(who, src) {
+		return knowledge.Source{}, knowledge.ErrNotFound
+	}
+	return src, nil
 }
 
 func (p *Platform) runtimeSourceAllowed(tenant, name, project string) bool {

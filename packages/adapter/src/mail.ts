@@ -9,6 +9,7 @@
  * session cookie, or a machine's bearer token. When either side changes, this
  * file is what changes.
  */
+
 import {
   ActionId,
   type ArtifactKind,
@@ -26,10 +27,15 @@ import {
   type Tone,
   type UiAction,
 } from "@humagen/core";
+import { defaultCopy } from "../../components/src/copy.ts";
 import { interruptOf, settledFromOutcome, type WireQuestion } from "./question.ts";
 
 /** Something a message is about, which the console can open. */
-export type Source = { kind: "run" | "thread" | "rule" | "agent" | "project" | "artifact"; id: string; label: string };
+export type Source = {
+  kind: "run" | "thread" | "rule" | "agent" | "project" | "artifact";
+  id: string;
+  label: string;
+};
 
 /** A mailbox message, plus what only the platform knows about it. */
 export type PlatformMessage = InboxMessage & {
@@ -53,6 +59,7 @@ export const kinds: { id: string; label: string }[] = [
   { id: "approval", label: "Approvals" },
   { id: "clarification", label: "Questions" },
   { id: "alert", label: "Alerts" },
+  { id: "source", label: "Sources" },
   { id: "failure", label: "Failed runs" },
   { id: "memory", label: "Memory" },
   { id: "budget", label: "Limits" },
@@ -80,10 +87,25 @@ const templateOf: Record<string, TemplateId> = {
   announcement: "announcement",
 };
 
-const artifactKinds: ArtifactKind[] = ["document", "spreadsheet", "presentation", "image", "pdf", "html", "code", "data", "archive"];
+const artifactKinds: ArtifactKind[] = [
+  "document",
+  "spreadsheet",
+  "presentation",
+  "image",
+  "pdf",
+  "html",
+  "code",
+  "data",
+  "archive",
+];
 
 export type LimitKind = "runs" | "concurrent" | "spend" | "lease" | "tokens";
-export type Limits = { max_runs?: number; max_concurrent?: number; spend_limit?: number; max_tokens?: number };
+export type Limits = {
+  max_runs?: number;
+  max_concurrent?: number;
+  spend_limit?: number;
+  max_tokens?: number;
+};
 export type BudgetData = {
   scope: { kind: string; name?: string };
   which: LimitKind;
@@ -99,13 +121,20 @@ export type BudgetData = {
 /** Which of a refusal's limits is the one that was reached, and its value. */
 export function reached(data: BudgetData): { field: keyof Limits; value: number } {
   const field =
-    data.which === "spend" ? "spend_limit" : data.which === "concurrent" ? "max_concurrent" : data.which === "tokens" ? "max_tokens" : "max_runs";
+    data.which === "spend"
+      ? "spend_limit"
+      : data.which === "concurrent"
+        ? "max_concurrent"
+        : data.which === "tokens"
+          ? "max_tokens"
+          : "max_runs";
   return { field, value: data.current[field] ?? 0 };
 }
 
 /** A scope in words: "Project Launch", "Agent oncall", "The workspace". */
 export function scopeName(scope: { kind: string; name?: string }): string {
-  if (scope.kind === "tenant" || !scope.name) return scope.kind === "tenant" ? "The workspace" : scope.kind;
+  if (scope.kind === "tenant" || !scope.name)
+    return scope.kind === "tenant" ? "The workspace" : scope.kind;
   return `${scope.kind[0]?.toUpperCase()}${scope.kind.slice(1)} ${scope.name}`;
 }
 
@@ -123,7 +152,13 @@ const obj = (v: unknown): Wire => (v && typeof v === "object" ? (v as Wire) : {}
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 const sourceKinds = ["run", "thread", "rule", "agent", "project"] as const;
-const sourceWord: Record<(typeof sourceKinds)[number], string> = { run: "Run", thread: "Conversation", rule: "Rule", agent: "Agent", project: "Project" };
+const sourceWord: Record<(typeof sourceKinds)[number], string> = {
+  run: "Run",
+  thread: "Conversation",
+  rule: "Rule",
+  agent: "Agent",
+  project: "Project",
+};
 const tone: Record<string, Tone> = { critical: "bad", warning: "warn", info: "info" };
 
 /**
@@ -158,9 +193,16 @@ function budgetOf(raw: unknown): BudgetData {
 
 /** The unit a limit is counted in. Spend is shown as dollars, so its micro-USD are divided down. */
 export const unitOf = (which: LimitKind) =>
-  which === "spend" ? "usd" : which === "concurrent" ? "runs at once" : which === "tokens" ? "tokens" : "runs";
+  which === "spend"
+    ? "usd"
+    : which === "concurrent"
+      ? "runs at once"
+      : which === "tokens"
+        ? "tokens"
+        : "runs";
 const inUnit = (which: LimitKind, value: number) => (which === "spend" ? value / 1_000_000 : value);
-const fromUnit = (which: LimitKind, value: number) => (which === "spend" ? Math.round(value * 1_000_000) : Math.floor(value));
+const fromUnit = (which: LimitKind, value: number) =>
+  which === "spend" ? Math.round(value * 1_000_000) : Math.floor(value);
 
 /**
  * Who decided a part, as a person reads it: what the platform calls them
@@ -182,9 +224,35 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
     .map((a) => actionIds[str(a)])
     .filter((a): a is ActionId => a !== undefined);
   const resolution: { resolution?: Resolution } = out.action
-    ? { resolution: { outcome: str(out.action), by: decidedBy(out), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
+    ? {
+        resolution: {
+          outcome: str(out.action),
+          by: decidedBy(out),
+          at: str(out.at),
+          ...(str(out.note) ? { detail: str(out.note) } : {}),
+        },
+      }
     : {};
   switch (p.type) {
+    case "source": {
+      const source = obj(p.source);
+      return {
+        id,
+        type: "failure",
+        failure: {
+          kind: "internal",
+          message: defaultCopy.sourceLifecycle.attention(
+            str(source.name),
+            defaultCopy.sourceLifecycle.cause[
+              str(source.cause) as keyof typeof defaultCopy.sourceLifecycle.cause
+            ] ?? defaultCopy.sourceLifecycle.failed,
+          ),
+          retryable: true,
+        },
+        allowed,
+        ...resolution,
+      };
+    }
     case "text":
       return { id, type: "text", text: str(p.text) };
     case "alert": {
@@ -210,7 +278,12 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
       return {
         id,
         type: "failure",
-        failure: { kind: "internal", message: str(f.error) || "The run failed without saying why.", reference: str(f.run) || undefined, retryable: f.retryable === true },
+        failure: {
+          kind: "internal",
+          message: str(f.error) || "The run failed without saying why.",
+          reference: str(f.run) || undefined,
+          retryable: f.retryable === true,
+        },
         allowed,
         ...resolution,
       };
@@ -245,7 +318,10 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
     case "draft": {
       const d = obj(p.draft);
       // "discard" names the memory part's action too; on a draft it drops the draft.
-      const draftActions: Record<string, ActionId> = { publish: ActionId.publishDraft, discard: ActionId.discardDraft };
+      const draftActions: Record<string, ActionId> = {
+        publish: ActionId.publishDraft,
+        discard: ActionId.discardDraft,
+      };
       const drafts = list(p.actions)
         .map((a) => draftActions[str(a)])
         .filter((a): a is ActionId => a !== undefined);
@@ -279,7 +355,9 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
           ...(typeof a.size === "number" ? { sizeBytes: a.size } : {}),
           ...(typeof a.version === "number" ? { version: a.version } : {}),
           ...(str(a.description) ? { description: str(a.description) } : {}),
-          ...(fileId ? { downloadUrl: `/api/artifacts/${encodeURIComponent(fileId)}/content` } : {}),
+          ...(fileId
+            ? { downloadUrl: `/api/artifacts/${encodeURIComponent(fileId)}/content` }
+            : {}),
         },
         allowed,
       };
@@ -315,13 +393,22 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
           prompt: question.prompt,
           allowed,
           ...(settled
-            ? { resolution: { outcome: settled.action === "reply" ? "replied" : settled.action, by: settled.by && settled.by !== "system" ? settled.by : "", at: settled.at, ...(settled.note ? { detail: settled.note } : {}) } }
+            ? {
+                resolution: {
+                  outcome: settled.action === "reply" ? "replied" : settled.action,
+                  by: settled.by && settled.by !== "system" ? settled.by : "",
+                  at: settled.at,
+                  ...(settled.note ? { detail: settled.note } : {}),
+                },
+              }
             : {}),
         };
       }
       const card = interruptOf(question, settled);
       if (!card) return null;
-      return card.type === "approval" ? { id, type: "approval", approval: card, allowed } : { id, type: "choice", clarification: card, allowed };
+      return card.type === "approval"
+        ? { id, type: "approval", approval: card, allowed }
+        : { id, type: "choice", clarification: card, allowed };
     }
     case "mention": {
       // A message in a shared thread that tags the reader is one to reply
@@ -333,7 +420,14 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
         prompt: str(mn.excerpt),
         allowed,
         ...(out.action
-          ? { resolution: { outcome: str(out.action) === "reply" ? "replied" : str(out.action), by: decidedBy(out), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
+          ? {
+              resolution: {
+                outcome: str(out.action) === "reply" ? "replied" : str(out.action),
+                by: decidedBy(out),
+                at: str(out.at),
+                ...(str(out.note) ? { detail: str(out.note) } : {}),
+              },
+            }
           : {}),
       };
     }
@@ -383,12 +477,23 @@ export function fromServer(raw: unknown): PlatformMessage {
     id: str(m.id),
     subject: str(m.subject),
     // A person is shown by what the platform calls them, never by subject.
-    from: { kind: (str(from.kind) || "system") as InboxMessage["from"]["kind"], name: str(from.display) || str(from.name) },
+    from: {
+      kind: (str(from.kind) || "system") as InboxMessage["from"]["kind"],
+      name: str(from.display) || str(from.name),
+    },
     sender: str(from.name),
     at,
     unread: m.unread === true,
     severity: tone[str(m.severity)] ?? "neutral",
-    ...(first ? { source: { kind: first.kind as "run" | "rule" | "project", id: first.id, label: first.label } } : {}),
+    ...(first
+      ? {
+          source: {
+            kind: first.kind as "run" | "rule" | "project",
+            id: first.id,
+            label: first.label,
+          },
+        }
+      : {}),
     parts: list(m.parts)
       .map((p) => partFrom(p, at, updated))
       .filter((p): p is MessagePart => p !== null),
@@ -429,16 +534,29 @@ export function toRequest(message: PlatformMessage, action: UiAction): Request |
   if (id === ActionId.dismiss) return { call: "dismiss" };
   if (id === ActionId.unhide) return message.hidden ? { call: "unhide" } : null;
   // The shared failure card names its part by the failure's kind, which partMatches knows.
-  const part = message.parts.find((p) => partTarget(p) === payload.target) ?? message.parts.find((p) => partMatches(p, payload.target));
+  const part =
+    message.parts.find((p) => partTarget(p) === payload.target) ??
+    message.parts.find((p) => partMatches(p, payload.target));
   // Snoozing puts the whole message away until a time. It is never a part's own action.
-  if (id === ActionId.snooze) return { call: "snooze", until: payload.option || new Date(Date.now() + 24 * HOUR).toISOString() };
+  if (id === ActionId.snooze)
+    return {
+      call: "snooze",
+      until: payload.option || new Date(Date.now() + 24 * HOUR).toISOString(),
+    };
   if (!part) return null;
-  const resolve = (name: string, values?: Record<string, unknown>): Request => ({ call: "resolve", partId: part.id, action: name, values });
+  const resolve = (name: string, values?: Record<string, unknown>): Request => ({
+    call: "resolve",
+    partId: part.id,
+    action: name,
+    values,
+  });
   if (part.type === "budget" && id === ActionId.raiseBudget) {
     const data = message.budgets[part.id];
     if (!data || !payload.option) return null;
     // The new limit arrives in the meter's unit, and goes to the platform in its own.
-    return resolve("raise_limit", { limits: { [reached(data).field]: fromUnit(data.which, Number(payload.option)) } });
+    return resolve("raise_limit", {
+      limits: { [reached(data).field]: fromUnit(data.which, Number(payload.option)) },
+    });
   }
   switch (id) {
     case ActionId.acknowledge:
@@ -460,7 +578,9 @@ export function toRequest(message: PlatformMessage, action: UiAction): Request |
     case ActionId.deny:
       return part.type === "approval" ? resolve("deny") : null;
     case ActionId.clarify:
-      return part.type === "choice" && payload.option ? resolve("choose", { choice: payload.option }) : null;
+      return part.type === "choice" && payload.option
+        ? resolve("choose", { choice: payload.option })
+        : null;
     default:
       return null;
   }
@@ -522,8 +642,18 @@ export function mailTransport(http: Http): Transport {
       if (q.kind) params.set("kind", q.kind);
       if (q.news) params.set("news", "true");
       if (q.needs) params.set("needs", "true");
-      const page = await http<{ messages: unknown[]; next: string | null; open: number; unread: number }>("GET", `/api/inbox?${params}`);
-      return { messages: (page.messages ?? []).map(fromServer), next: page.next ?? null, open: page.open ?? 0, unread: page.unread ?? 0 };
+      const page = await http<{
+        messages: unknown[];
+        next: string | null;
+        open: number;
+        unread: number;
+      }>("GET", `/api/inbox?${params}`);
+      return {
+        messages: (page.messages ?? []).map(fromServer),
+        next: page.next ?? null,
+        open: page.open ?? 0,
+        unread: page.unread ?? 0,
+      };
     },
     get: async (id) => fromServer((await http<{ message: unknown }>("GET", at(id))).message),
     send: async (message, r) => {
@@ -531,15 +661,22 @@ export function mailTransport(http: Http): Transport {
       if (r.call === "read") return fromServer(await http("POST", `${to}/read`, { read: true }));
       if (r.call === "dismiss") return fromServer(await http("POST", `${to}/dismiss`, {}));
       if (r.call === "unhide") return fromServer(await http("POST", `${to}/unhide`, {}));
-      if (r.call === "snooze") return fromServer(await http("POST", `${to}/snooze`, { until: r.until }));
+      if (r.call === "snooze")
+        return fromServer(await http("POST", `${to}/snooze`, { until: r.until }));
       // What a part needs to be resolved travels beside the action: ids to keep, new limits, a note.
-      return fromServer(await http("POST", `${to}/parts/${encodeURIComponent(r.partId)}/resolve`, { action: r.action, ...r.values }));
+      return fromServer(
+        await http("POST", `${to}/parts/${encodeURIComponent(r.partId)}/resolve`, {
+          action: r.action,
+          ...r.values,
+        }),
+      );
     },
   };
 }
 
 /** A project's address in a route: `~` is the workspace. */
-const projectAt = (project: string) => `/api/projects/${project === "" || project === "~" ? "~" : encodeURIComponent(project)}`;
+const projectAt = (project: string) =>
+  `/api/projects/${project === "" || project === "~" ? "~" : encodeURIComponent(project)}`;
 
 /** The project a message is filed in, "" for the workspace: where it is announced, and withdrawn. */
 export function projectOf(message: PlatformMessage): string {
@@ -562,19 +699,31 @@ export function projectTransport(http: Http, project: string, children = false):
     ...inbox,
     get: async (id) => {
       const m = await inbox.get(id);
-      if (projectOf(m) !== name) throw new MailError(404, "That message is not in this project's inbox.");
+      if (projectOf(m) !== name)
+        throw new MailError(404, "That message is not in this project's inbox.");
       return m;
     },
     list: async (q) => {
-      const params = new URLSearchParams({ limit: String(q.limit), state: q.state === "open" || q.state === undefined ? "open" : "all" });
+      const params = new URLSearchParams({
+        limit: String(q.limit),
+        state: q.state === "open" || q.state === undefined ? "open" : "all",
+      });
       if (children) params.set("children", "true");
       if (q.before) params.set("before", q.before);
       if (q.kind) params.set("kind", q.kind);
-      const page = await http<{ messages: unknown[]; next: string | null }>("GET", `${projectAt(project)}/inbox?${params}`);
+      const page = await http<{ messages: unknown[]; next: string | null }>(
+        "GET",
+        `${projectAt(project)}/inbox?${params}`,
+      );
       let messages = (page.messages ?? []).map(fromServer);
       if (q.state === "resolved") messages = messages.filter((m) => messageState(m) !== "open");
       const open = messages.filter((m) => messageState(m) === "open");
-      return { messages, next: page.next ?? null, open: open.length, unread: open.filter((m) => m.unread).length };
+      return {
+        messages,
+        next: page.next ?? null,
+        open: open.length,
+        unread: open.filter((m) => m.unread).length,
+      };
     },
   };
 }
@@ -628,25 +777,36 @@ export function updatesOf(
  * in #renewals"), so the summary is what follows that name, and the whole
  * subject when it does not start with it. `url` is where one opens.
  */
-export function notificationsOf(messages: PlatformMessage[], url?: (id: string) => string | undefined): HomeNotification[] {
-  return messages
-    // A published announcement is news, not something to do. A draft is
-    // kind announcement too, but waits on its owners, so it stays here.
-    .filter((m) => !isNews(m) && messageState(m) === "open")
-    .map((m) => {
-      const name = m.from.name;
-      const summary = name && m.subject.startsWith(`${name} `) ? m.subject.slice(name.length + 1) : m.subject;
-      const at = url?.(m.id);
-      // Only what is above normal is said: it changes what a person does first.
-      const severity = m.severity === "bad" ? ("critical" as const) : m.severity === "warn" ? ("warning" as const) : undefined;
-      return {
-        kind: "inbox" as const,
-        id: m.id,
-        from: name,
-        summary,
-        at: m.at,
-        ...(severity ? { severity } : {}),
-        ...(at ? { url: at } : {}),
-      };
-    });
+export function notificationsOf(
+  messages: PlatformMessage[],
+  url?: (id: string) => string | undefined,
+): HomeNotification[] {
+  return (
+    messages
+      // A published announcement is news, not something to do. A draft is
+      // kind announcement too, but waits on its owners, so it stays here.
+      .filter((m) => !isNews(m) && messageState(m) === "open")
+      .map((m) => {
+        const name = m.from.name;
+        const summary =
+          name && m.subject.startsWith(`${name} `) ? m.subject.slice(name.length + 1) : m.subject;
+        const at = url?.(m.id);
+        // Only what is above normal is said: it changes what a person does first.
+        const severity =
+          m.severity === "bad"
+            ? ("critical" as const)
+            : m.severity === "warn"
+              ? ("warning" as const)
+              : undefined;
+        return {
+          kind: "inbox" as const,
+          id: m.id,
+          from: name,
+          summary,
+          at: m.at,
+          ...(severity ? { severity } : {}),
+          ...(at ? { url: at } : {}),
+        };
+      })
+  );
 }

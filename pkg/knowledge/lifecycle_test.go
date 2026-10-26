@@ -167,3 +167,31 @@ func TestInterruptedIndexingRetainsCopyAndCanRetry(t *testing.T) {
 		}
 	})
 }
+
+func TestAuthorizedSourceSnapshotCannotRaceConfiguration(t *testing.T) {
+	s := NewStore()
+	_, _ = s.Create("acme", "docs", "", "ana", now)
+	first := SourceConfig{Mode: Indexed, Provider: "drive", Origin: "folder1", Owner: "ana", Project: "First", StopAfterSeconds: 86400}
+	if _, err := s.ConfigureIfCurrent("acme", "docs", first, now, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.BeginSyncIfCurrent("acme", "docs", now, nil); !errors.Is(err, ErrExists) {
+		t.Fatalf("legacy snapshot admitted after configure: %v", err)
+	}
+	second := first
+	second.Origin = "folder2"
+	second.Project = "Second"
+	if _, err := s.ConfigureIfCurrent("acme", "docs", second, now, &first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.BeginSyncIfCurrent("acme", "docs", now, &first); !errors.Is(err, ErrExists) {
+		t.Fatalf("old scope import admitted: %v", err)
+	}
+	if _, err := s.ConfigureIfCurrent("acme", "docs", first, now, &first); !errors.Is(err, ErrExists) {
+		t.Fatalf("old scope overwritten: %v", err)
+	}
+	src, _ := s.Get("acme", "docs")
+	if src.Lifecycle.SourceConfig != second || len(src.Lifecycle.Attempts) != 0 {
+		t.Fatal("denied operation changed source", src.Lifecycle)
+	}
+}

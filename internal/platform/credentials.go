@@ -227,6 +227,10 @@ func (p *Platform) ownStarts(tenant, subject string) []string {
 // are checked here as well as when the credential was given, so one the
 // workspace no longer allows is not used, however it was kept.
 func (p *Platform) personCredential(_ context.Context, tenant string, prov toolprovider.Provider, actor envelope.Actor) (mcptools.PersonCredential, error) {
+	// Native source consent is not consent to an MCP endpoint.
+	if strings.HasPrefix(prov.Name, "hsrc-") {
+		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
+	}
 	person := actor.User
 	if actor.Bot || person == "" {
 		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
@@ -339,7 +343,7 @@ func (p *Platform) toolCredential(ctx context.Context, who auth.Principal, prov 
 // personScoped returns a provider of the caller's workspace that takes each
 // person's own credential.
 func (p *Platform) personScoped(ctx context.Context, tenant, name string) (toolprovider.Provider, error) {
-	if !toolprovider.ValidName(name) {
+	if !toolprovider.ValidName(name) || strings.HasPrefix(name, "hsrc-") {
 		return toolprovider.Provider{}, fmt.Errorf("%w: no tool provider %q", ErrProviderNotFound, name)
 	}
 	prov, err := p.ToolProviders.GetProvider(ctx, tenant, name)

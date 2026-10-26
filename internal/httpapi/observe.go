@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/journal"
+	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -45,16 +46,21 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/evals/{name}/run", s.authed(auth.EvalsWrite, s.seenSuite(s.runSuite)))
 	mux.HandleFunc("GET /api/evals/{name}/runs", s.authed(auth.EvalsRead, s.seenSuite(s.suiteRuns)))
 
+	mux.HandleFunc("GET /api/knowledge/{name}/dependencies", s.authed(auth.KnowledgeRead, s.seenSource(s.sourceDependencies)))
 	mux.HandleFunc("GET /api/knowledge", s.authed(auth.KnowledgeRead, s.listSources))
 	mux.HandleFunc("POST /api/knowledge", s.authed(auth.KnowledgeWrite, s.createSource))
 	mux.HandleFunc("GET /api/knowledge/search", s.authed(auth.KnowledgeRead, s.searchKnowledge))
-	mux.HandleFunc("DELETE /api/knowledge/{name}", s.authed(auth.KnowledgeWrite, s.deleteSource))
-	mux.HandleFunc("GET /api/knowledge/{name}/documents", s.authed(auth.KnowledgeRead, s.listDocuments))
-	mux.HandleFunc("POST /api/knowledge/{name}/documents", s.authed(auth.KnowledgeWrite, s.addDocument))
-	mux.HandleFunc("DELETE /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.removeDocument))
-	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.excludeDocument))
-	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.saveVariant))
-	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.deleteVariant))
+	mux.HandleFunc("DELETE /api/knowledge/{name}", s.authed(auth.KnowledgeWrite, s.seenSource(s.deleteSource)))
+	mux.HandleFunc("GET /api/knowledge/{name}/documents", s.authed(auth.KnowledgeRead, s.seenSource(s.listDocuments)))
+	mux.HandleFunc("POST /api/knowledge/{name}/documents", s.authed(auth.KnowledgeWrite, s.seenSource(s.addDocument)))
+	mux.HandleFunc("DELETE /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.removeDocument)))
+	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.excludeDocument)))
+	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.seenSource(s.saveVariant)))
+	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.seenSource(s.deleteVariant)))
+	mux.HandleFunc("PUT /api/knowledge/{name}/configuration", s.authed(auth.KnowledgeWrite, s.seenSource(s.configureSource)))
+	mux.HandleFunc("PUT /api/knowledge/{name}/credential", s.authed(auth.KnowledgeRead, s.seenSource(s.connectSource)))
+	mux.HandleFunc("POST /api/knowledge/{name}/sync", s.authed(auth.KnowledgeWrite, s.seenSource(s.syncSource)))
+
 }
 
 // window reads ?window= as a duration ending now. It defaults to an hour.
@@ -401,7 +407,7 @@ func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 func (s *Server) listSources(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"sources": s.P.Knowledge.List(who.Tenant)})
+	ok(w, http.StatusOK, map[string]any{"sources": s.P.SourcesAs(who)})
 }
 
 func (s *Server) createSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -506,12 +512,12 @@ func (s *Server) searchKnowledge(w http.ResponseWriter, r *http.Request, who aut
 	if raw := q.Get("source"); raw != "" {
 		names = strings.Split(raw, ",")
 	}
-	hits, err := s.P.Knowledge.Search(who.Tenant, names, q.Get("q"), 0, q.Get("variant"))
+	result, err := s.P.SearchSourcesDetailed(r.Context(), who, names, q.Get("q"), q.Get("variant"))
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"hits": hits})
+	ok(w, http.StatusOK, result)
 }
 
 // suiteView is a suite with its most recent runs, newest first. Results are
@@ -572,6 +578,10 @@ func (s *Server) putSuite(replace bool) handler {
 				_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
 			}
 		case evals.Knowledge:
+			if !s.P.SourceVisible(who, suite.Subject) {
+				s.problem(w, knowledge.ErrNotFound)
+				return
+			}
 			_, err = s.P.Knowledge.Documents(who.Tenant, suite.Subject)
 		}
 		if err != nil {
@@ -623,4 +633,61 @@ func (s *Server) suiteRuns(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(runs)})
+}
+
+func (s *Server) seenSource(next func(http.ResponseWriter, *http.Request, auth.Principal)) func(http.ResponseWriter, *http.Request, auth.Principal) {
+	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		if !s.P.SourceVisible(who, r.PathValue("name")) {
+			s.problem(w, knowledge.ErrNotFound)
+			return
+		}
+		next(w, r, who)
+	}
+}
+func (s *Server) configureSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body knowledge.SourceConfig
+	if !decode(w, r, &body) {
+		return
+	}
+	src, err := s.P.ConfigureSource(who, r.PathValue("name"), body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, src)
+}
+func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Ref string `json:"ref"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if err := s.P.ConnectSource(who, r.PathValue("name"), body.Ref); err != nil {
+		s.problem(w, err)
+		return
+	}
+	src, err := s.P.SourceAs(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, src)
+}
+func (s *Server) syncSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	src, err := s.P.SyncSource(r.Context(), who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, src)
+}
+
+func (s *Server) sourceDependencies(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.SourceDependenciesAs(r.Context(), who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
 }

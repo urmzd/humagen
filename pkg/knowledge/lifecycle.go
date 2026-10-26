@@ -126,6 +126,15 @@ func (s *Store) Get(tenant, name string) (Source, error) {
 
 // Configure replaces public metadata. An active import cannot change identity.
 func (s *Store) Configure(tenant, name string, cfg SourceConfig, at time.Time) (Source, error) {
+	return s.configure(tenant, name, cfg, at, nil, false)
+}
+
+// ConfigureIfCurrent checks the exact authorized connection snapshot under the
+// source lock. Nil expects a legacy source without lifecycle configuration.
+func (s *Store) ConfigureIfCurrent(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig) (Source, error) {
+	return s.configure(tenant, name, cfg, at, expected, true)
+}
+func (s *Store) configure(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig, guard bool) (Source, error) {
 	if cfg.Mode != "indexed" && cfg.Mode != "live" && cfg.Mode != "hybrid" {
 		return Source{}, fmt.Errorf("%w: source mode", ErrInvalid)
 	}
@@ -149,6 +158,9 @@ func (s *Store) Configure(tenant, name string, cfg SourceConfig, at time.Time) (
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return Source{}, err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return Source{}, fmt.Errorf("%w: source configuration changed", ErrExists)
 	}
 	lc := lifecycle(src.Source)
 	if active(lc) != "" {
@@ -182,11 +194,22 @@ func active(lc *Lifecycle) string {
 
 // BeginSync durably records an attempt before making an external request.
 func (s *Store) BeginSync(tenant, name string, at time.Time) (string, error) {
+	return s.beginSync(tenant, name, at, nil, false)
+}
+
+// BeginSyncIfCurrent binds an import to the exact authorized source identity.
+func (s *Store) BeginSyncIfCurrent(tenant, name string, at time.Time, expected *SourceConfig) (string, error) {
+	return s.beginSync(tenant, name, at, expected, true)
+}
+func (s *Store) beginSync(tenant, name string, at time.Time, expected *SourceConfig, guard bool) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return "", err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return "", fmt.Errorf("%w: source configuration changed", ErrExists)
 	}
 	lc := lifecycle(src.Source)
 	if active(lc) != "" {
@@ -357,4 +380,11 @@ func (s *Store) IndexSync(tenant, name, id string, at time.Time) error {
 	}
 	src.Source = next
 	return nil
+}
+
+func sameConfiguration(src Source, expected *SourceConfig) bool {
+	if expected == nil {
+		return src.Lifecycle == nil
+	}
+	return src.Lifecycle != nil && src.Lifecycle.SourceConfig == *expected
 }
