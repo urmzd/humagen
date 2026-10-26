@@ -76,6 +76,13 @@ export const defaultCopy = {
   },
   conversation: {
     settings: "Conversation Settings",
+    messageActions: "Message actions",
+    copyMessage: "Copy message",
+    copyAnswer: "Copy answer",
+    stopTurn: "Stop Turn",
+    stoppingTurn: "Stopping…",
+    stopPending: "Stop requested. Waiting for the recorded turn to end.",
+    stopDelayed: "The turn has not ended yet. Check its activity or try Stop Turn again.",
     activity: "Activity",
     context: "Context",
     people: "People & Access",

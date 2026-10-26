@@ -5,7 +5,9 @@ import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import { actedFor, type Run } from "./adapter.ts";
+import { useRunStop } from "./RunStop.tsx";
+import { MessageTime } from "./MessageTime.tsx";
+import { actedFor, turnOf, type Run } from "./adapter.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
@@ -93,7 +95,7 @@ export function notAskable(run: Run, me: string, siblings: Run[]): string {
 }
 
 function TurnView({
-  run,
+  run: originalRun,
   me,
   siblings,
   live,
@@ -101,8 +103,10 @@ function TurnView({
   onSwitch,
   onAsk,
   onReply,
+  canStop = false,
 }: {
   run: Run;
+  canStop?: boolean;
   /** The reader's subject. */
   me: string;
   siblings: Run[];
@@ -114,26 +118,14 @@ function TurnView({
   onAsk?: () => void;
   onReply?: () => void;
 }) {
+  const { run, control } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(live ? run : undefined);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
   const refused = notAskable(run, me, siblings);
   const drawn = useMemo(
     () =>
-      turn ?? {
-        id: run.id,
-        agent: { name: run.agent },
-        status: run.status === "completed" ? ("done" as const) : run.status === "failed" ? ("failed" as const) : ("working" as const),
-        text: run.answer ?? "",
-        tasks: [],
-        citations: [],
-        interrupts: [],
-        notices: [],
-        failure:
-          run.status === "failed"
-            ? { kind: "internal" as const, message: cause(run.error) || "The run failed.", reference: run.id }
-            : undefined,
-      },
+      turn ? { ...turn, ...(run.status === "stopped" ? { status: "stopped" as const } : {}) } : turnOf(run),
     [turn, run],
   );
   // Neither Retry nor Regenerate is offered on a turn the reader may not ask
@@ -157,7 +149,7 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} />
+        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -687,6 +679,7 @@ export function Chat({
             <TurnView
               key={run.id}
               run={run}
+              canStop={canRun}
               me={me}
               ask={asks[run.id]}
               siblings={siblingsOf(turns, run)}

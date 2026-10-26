@@ -8,12 +8,10 @@ import {
 import { ActionId, formatTokens, formatUsd, type Turn, type Usage } from "@humagen/core";
 import {
   ActionContext,
-  CopyButton,
   FeedbackPromptContext,
   GaugeIcon,
   type ItemActions,
   ItemActionsContext,
-  MessageIcon,
   Rating,
   RefreshIcon,
   RequestBubble,
@@ -23,9 +21,10 @@ import {
   TurnMetaContext,
   useVerbSequence,
 } from "@humagen/render-web";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";
+import { MessageActionRow } from "./MessageActionRow";
 import { Reasoning } from "./Reasoning";
 
 function seconds(ms?: number) {
@@ -165,7 +164,9 @@ function MessageActions({
   rate,
   regenerate,
   onReply,
+  actions,
 }: {
+  actions?: ReactNode;
   turn: Turn;
   copy: Copy;
   rate: boolean;
@@ -177,20 +178,13 @@ function MessageActions({
   const text = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
   const hostCopy = text ? (itemActions?.({ kind: "answer", turn }) ?? null) : null;
   return (
-    <div role="toolbar" aria-label="Message actions" className="-ml-1.5 flex items-center gap-0.5">
-      {/* One copy control, never two: the host's replaces the built-in when it draws one. */}
-      {text && (hostCopy ?? <CopyButton text={text} label="Copy answer" note="above" />)}
-      {onReply && (
-        <button
-          type="button"
-          className={actionBtn}
-          aria-label={copy.conversation.reply}
-          title={copy.conversation.reply}
-          onClick={onReply}
-        >
-          <MessageIcon size={13} />
-        </button>
-      )}
+    <MessageActionRow
+      text={text}
+      copy={copy}
+      copyLabel={copy.conversation.copyAnswer}
+      copyControl={hostCopy}
+      onReply={onReply}
+    >
       {regenerate && (
         <button
           type="button"
@@ -214,7 +208,8 @@ function MessageActions({
         />
       )}
       {turn.usage && <UsageChip usage={turn.usage} />}
-    </div>
+      {actions}
+    </MessageActionRow>
   );
 }
 
@@ -234,6 +229,8 @@ export function AgentMessage({
   capabilities,
   onAskAgent,
   onReply,
+  timestamp,
+  actions,
 }: {
   turn: Turn;
   copy?: Copy;
@@ -255,12 +252,15 @@ export function AgentMessage({
    * `regenerate: false` Regenerate.
    */
   capabilities?: TurnCapabilities;
+  timestamp?: ReactNode;
+  actions?: ReactNode;
   onAskAgent?: () => void;
   onReply?: () => void;
 }) {
   const inherited = useContext(ItemActionsContext);
   const statusLine = `**${turn.agent.name}** · ${copy.status[turn.status]}`;
   const final = turn.status === "done";
+  const settledTurn = final || turn.status === "failed" || turn.status === "stopped";
   const suppressed = useMemo(() => {
     const set = new Set([statusLine]);
     if (final) set.add("block:feedback");
@@ -314,6 +314,7 @@ export function AgentMessage({
               </>
             )}
           </span>
+          {timestamp && <span className="text-aui-xs text-aui-muted">{timestamp}</span>}
           {/* Announce state changes, not every streamed token. */}
           <output className="sr-only">{copy.status[turn.status]}</output>
         </header>
@@ -322,22 +323,23 @@ export function AgentMessage({
           <TurnMetaContext.Provider value={turn}>
             <SuppressContext.Provider value={suppressed}>
               <div className="aui-stack">
-                <WorkSummary turn={turn} copy={copy} />
                 <TurnView turn={turn} copy={copy} capabilities={capabilities} hideTasks />
+                <WorkSummary turn={turn} copy={copy} />
                 {turn.status === "stopped" && turn.stop && (
                   <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />
                 )}
               </div>
             </SuppressContext.Provider>
           </TurnMetaContext.Provider>
-          {final && (
+          {(settledTurn || actions) && (
             <FeedbackPromptContext.Provider value={feedbackPrompt}>
               <MessageActions
                 turn={turn}
                 copy={copy}
-                rate={capabilities?.feedback !== false}
-                regenerate={capabilities?.regenerate !== false}
-                onReply={onReply}
+                rate={final && capabilities?.feedback !== false}
+                regenerate={final && capabilities?.regenerate !== false}
+                onReply={settledTurn ? onReply : undefined}
+                actions={actions}
               />
             </FeedbackPromptContext.Provider>
           )}
