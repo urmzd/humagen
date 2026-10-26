@@ -257,6 +257,12 @@ func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) 
 		return keeps, nil
 	}
 	th, err := p.Threads.Get(person.Tenant, at.Thread)
+	if err == nil && th.Fork != nil && !p.SeesThread(person, at.Thread) {
+		return false, threads.ErrNotFound
+	}
+	if err == nil && th.ReadOnly {
+		return false, fmt.Errorf("%w: this conversation is a read-only archive", ErrForbidden)
+	}
 	if err != nil || th.Visibility != threads.Private || takesPart(th, person.Subject) {
 		return keeps, nil
 	}
@@ -992,6 +998,9 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 			keeps = false
 		}
 		th = cur
+	}
+	if th.Fork != nil && !p.SeesThread(poster, th.ID) {
+		return Posted{}, threads.ErrNotFound
 	}
 	def, unavailable := p.defaultOf(tenant, th, sees)
 	// A person posting in the console, as themselves, runs only the agents

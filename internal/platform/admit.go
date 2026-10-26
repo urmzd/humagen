@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -40,6 +41,16 @@ func (e *Denied) Error() string { return "platform: " + e.Decision.Reason }
 func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project string, within []string, client string) error {
 	if err := p.operationAdmissionTag(tag); err != nil {
 		return err
+	}
+	if th, err := p.Threads.Get(tag.Tenant, tag.Meta[runs.MetaThread]); err == nil && th.ReadOnly {
+		return ErrForbidden
+	}
+	tree := p.Projects.Tree(tag.Tenant)
+	if tree.PendingFork(project) {
+		return projects.ErrNotFound
+	}
+	if home, ok := tree.Home(tag.Agent); ok && tree.PendingFork(home) {
+		return projects.ErrNotFound
 	}
 	if tag.Origin == runs.OriginSystem {
 		return nil

@@ -2167,3 +2167,41 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   user, so the agent's name and color go in the message. In a channel, a
   person must mention the app before the agent's handle. Code channels and
   per-agent bot users keep working through `client.Bots`.
+
+
+### Templates and initiatives
+
+The project creation form starts blank or uses a file-defined template. The
+built-in catalog is `pkg/projects/templates.json`; applications embedding the
+platform can replace it through `Config.ProjectTemplates`. Templates contain
+instructions, channels and skills. The project and its channels are written in
+one transaction, without memory, credentials, agents or live integrations.
+
+The Initiative template marks a team project as a coordination parent. Child
+projects use the same role and tighten-only policy inheritance as the rest of
+the tree. An initiative's own agents cannot execute directly inside a child.
+Cross-project handoff placement remains an open design question: the current
+call path keeps its root's project, budget accounting and context, and no second
+execution path is introduced.
+
+
+### Forks and archives
+
+A project fork captures an immutable bounded plan before copying. Destination
+projects, agent home reservations, channels, selected approved memory and
+integration rules stay hidden and cannot run until the project store publishes
+the entire prepared subtree in one write. A failed copy remains private and
+retryable after restart. Rules are copied disabled from the captured snapshot;
+credentials, live bindings, schedules and pending actions are not copied.
+
+Conversation archives are an explicit opt-in, at most 20 readable conversations.
+They retain immutable text, not tool state, attachments or file capabilities,
+and accept neither messages nor agent runs. Every archive read still requires
+access to its original conversation. Personal live-source results cannot be
+copied through forks or bring-back. Copied confirmed memory retains only selected
+text, kind and expiry; it is newly reviewed by the copying person, with no
+original private run, thread or artifact capability.
+
+Workspace discovery returns at most 50 readable destinations per query, with
+separate project, agent and conversation read permissions. Searches enforce
+query and scan bounds on the server and return no hidden-object counts.

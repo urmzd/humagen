@@ -72,6 +72,7 @@ import (
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -86,6 +87,8 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
+	ProjectTemplates []projects.Template
 	// Backends are where everything the platform keeps is kept. The zero
 	// value is in memory, lost with the process. OpenPostgres fills it from
 	// one database.
@@ -216,7 +219,8 @@ type Platform struct {
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
-	Projects *projects.Store
+	Projects     *projects.Store
+	ProjectForks *projectforks.Store
 	// People is each tenant's directory of people.
 	People *people.Store
 	// Threads is each tenant's shared threads: their records and the
@@ -327,6 +331,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.ProjectTemplates == nil {
+		cfg.ProjectTemplates = projects.DefaultTemplates()
+	}
+	if err := projects.ValidateTemplates(cfg.ProjectTemplates); err != nil {
+		return nil, err
+	}
 	log := cfg.Log
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -610,6 +620,16 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	delete(meta, runs.MetaSourcesV0)
 	if len(sources) > 0 {
 		meta[runs.MetaSources] = strings.Join(sources, ",")
+	}
+	delete(meta, metaForkSources)
+	if edge.Parent != "" {
+		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
+			if names, ok := root.Tag().Meta[metaForkSources]; ok {
+				meta[metaForkSources] = names
+			}
+		}
+	} else if names := p.forkSourceSelection(tag.Tenant, tag.Meta[runs.MetaThread]); names != nil {
+		meta[metaForkSources] = strings.Join(*names, ",")
 	}
 	// Only the platform pins skills, on a person's message (answerMessage):
 	// any other tag that carries the key is not believed.

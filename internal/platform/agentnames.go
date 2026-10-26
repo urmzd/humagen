@@ -274,7 +274,7 @@ func (s *Seer) AgentsView(v ProjectAgents) ProjectAgents {
 func (s *Seer) Change(c projects.Change) projects.Change {
 	for _, pr := range []**projects.Project{&c.Before, &c.After} {
 		if *pr != nil {
-			shown := **pr
+			shown := s.ProjectForkOrigin(**pr)
 			shown.Agents = s.ProjectAgents(shown.Agents)
 			shown.Knowledge = s.Sources(shown.Knowledge)
 			shown.Skills = projects.BriefSkills(shown.Skills)
@@ -608,6 +608,15 @@ func (s *Seer) threadAgents(th threads.Thread) func(string) bool {
 // agent left out of its participants unless it answered there. One that
 // answered is named by its runs, which the reader reads.
 func (s *Seer) Thread(th threads.Thread) threads.Thread {
+	if th.Fork != nil && th.Fork.Sources != nil {
+		f := *th.Fork
+		names := slices.DeleteFunc(slices.Clone(*f.Sources), func(name string) bool { return !s.p.SourceVisible(s.who, name) })
+		if names == nil {
+			names = []string{}
+		}
+		f.Sources = &names
+		th.Fork = &f
+	}
 	shown := s.participantShown(th)
 	if th.Default != "" && !s.threadAgents(th)(th.Default) {
 		th.Default = ""
@@ -783,4 +792,20 @@ func (p *Platform) ReviseBy(ctx context.Context, who auth.Principal, spec agents
 		}
 		return rev, err
 	}
+}
+
+// ProjectForkOrigin omits lineage identities when the source project is hidden.
+func (s *Seer) ProjectForkOrigin(pr projects.Project) projects.Project {
+	if pr.Fork == nil {
+		return pr
+	}
+	origin := *pr.Fork
+	if !s.Project(origin.Source) {
+		origin.Source = ""
+		origin.By = ""
+	} else {
+		origin.By = s.p.Names(s.who.Tenant).Key(origin.By)
+	}
+	pr.Fork = &origin
+	return pr
 }

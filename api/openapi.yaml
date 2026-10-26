@@ -1932,6 +1932,195 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/discovery:
+    get:
+      operationId: discoverWorkspace
+      tags: [projects]
+      summary: Search readable projects, agents and conversations within server bounds
+      description: Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly.
+      x-permission: authenticated
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+        - {name: kinds, in: query, schema: {type: string}, description: "Comma-separated project, agent and conversation kinds. Omitted includes all permitted kinds."}
+        - {name: project, in: query, schema: {type: string}, description: An optional project scope. For agents this selects only agents available there; for conversations this selects their current project.}
+      responses:
+        "200":
+          description: At most limit readable navigation destinations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 50
+                    items: {$ref: "#/components/schemas/DiscoveryItem"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/project-templates:
+    get:
+      operationId: listProjectTemplates
+      tags: [projects]
+      summary: List bounded project templates supplied by the server
+      x-permission: projects:read
+      responses:
+        "200":
+          description: File-defined templates, containing no credentials, memory or live integrations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [templates]
+                properties:
+                  templates:
+                    type: array
+                    maxItems: 16
+                    items: {$ref: "#/components/schemas/ProjectTemplate"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/projects/{name}/fork:
+    post:
+      operationId: forkProject
+      tags: [projects]
+      summary: Copy bounded project structure and configuration through a hidden staging workflow
+      description: Copies at most 20 visible projects and 20 agents. New projects stay invisible and cannot run until all selected configuration is copied and one durable publication gate opens. Copies no conversations, schedules or approvals. Select confirmed memory explicitly. Live bindings are detached and copied integration rules stay disabled. Repeating the same source, destination and parent resumes the creator's saved operation.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                archive_conversations:
+                  description: Explicitly copy at most 20 readable conversations as immutable text archives. Every archive read continues to require source access. Archives cannot accept messages or runs.
+                  type: boolean
+                name: {type: string, maxLength: 63}
+                parent: {type: string}
+                title: {type: string, maxLength: 80}
+                memory: {type: array, maxItems: 100, items: {type: string}}
+                sources: {type: array, maxItems: 16, items: {type: string}}
+      responses:
+        "202":
+          description: The saved workflow, ready or stopped safely before publication.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectForkOperation"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/project-forks/{name}:
+    get:
+      operationId: getProjectFork
+      tags: [projects]
+      summary: Read your own saved project fork workflow
+      description: Only the exact human creator can read a workflow, including before its staged resources become visible. Source access remains required to resume a copy. Another creator's operation answers like a missing one.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The creator's saved workflow.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectForkOperation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/threads/{id}/fork:
+    post:
+      operationId: forkThread
+      tags: [threads]
+      summary: Start a private fork at a saved turn
+      description: Copies bounded passive context through a message or completed run. No action, approval or run is copied. The fork stays in the source project. Every read still requires access to its source chain.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [through]
+              additionalProperties: false
+              properties:
+                through: {type: string}
+                sources:
+                  description: Omitted inherits sources; an empty list sends none. Selected names require knowledge read access and stay fixed for this fork.
+                  type: array
+                  maxItems: 16
+                  items: {type: string}
+                title: {type: string, maxLength: 200}
+                agents: {type: array, maxItems: 5, items: {type: string}}
+                mode: {$ref: "#/components/schemas/ThreadMode"}
+      responses:
+        "201":
+          description: The saved private fork.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/threads/{id}/bring-back:
+    post:
+      operationId: bringBackThreadResult
+      tags: [threads]
+      summary: Post a completed fork result to its parent without executing actions
+      description: The caller explicitly posts a completed result as their own passive message. Requires posting access to the parent and read access to both conversations. Tags are plain text, not routing or notification instructions.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [run]
+              additionalProperties: false
+              properties:
+                run: {type: string}
+                text: {type: string, maxLength: 8000}
+      responses:
+        "201":
+          description: The explicit parent message.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ThreadMessage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/threads/{id}/participants:
     put:
       operationId: updateThreadParticipants
@@ -7379,6 +7568,9 @@ components:
       type: object
       required: [id, project, channel, visibility, participants, version, created_by, created_at, updated_at]
       properties:
+        read_only:
+          description: A saved project-fork archive. Its passive history is immutable and it accepts no messages or runs.
+          type: boolean
         moves:
           description: Number of committed placement changes, without former audience identities.
           type: integer
@@ -7413,6 +7605,7 @@ components:
           items: {type: string}
         mode: {$ref: "#/components/schemas/ThreadMode"}
         surface: {$ref: "#/components/schemas/ThreadSurface"}
+        fork: {$ref: "#/components/schemas/ThreadFork"}
         announcement:
           description: The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it.
           type: string
@@ -7427,6 +7620,68 @@ components:
           description: When anything last happened in it.
           type: string
           format: date-time
+    DiscoveryItem:
+      type: object
+      additionalProperties: false
+      required: [kind, id, title]
+      properties:
+        kind: {type: string, enum: [project, agent, conversation]}
+        id: {type: string}
+        title: {type: string, maxLength: 200}
+        project: {type: string}
+        channel: {type: string}
+        hue: {type: number, minimum: 0, maximum: 360}
+    ProjectTemplate:
+      type: object
+      additionalProperties: false
+      required: [name, title, description, kind, initiative]
+      properties:
+        name: {type: string}
+        title: {type: string}
+        description: {type: string}
+        kind: {$ref: "#/components/schemas/ProjectKind"}
+        initiative: {type: boolean}
+    ProjectForkOperation:
+      type: object
+      additionalProperties: false
+      required: [id, source, destination, state, projects, agents, memory, archives]
+      properties:
+        id: {type: string}
+        source: {type: string}
+        destination: {type: string}
+        state: {type: string, enum: [preparing, failed, ready]}
+        error: {type: string}
+        projects: {type: integer, minimum: 1, maximum: 20}
+        agents: {type: integer, minimum: 0, maximum: 20}
+        memory: {type: integer, minimum: 0, maximum: 100}
+        archives: {type: integer, minimum: 0, maximum: 20}
+    ThreadFork:
+      description: Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals.
+      type: object
+      additionalProperties: false
+      required: [source_thread, through, by, at, context]
+      properties:
+        sources:
+          type: array
+          maxItems: 16
+          items: {type: string}
+        source_thread: {type: string}
+        through: {type: string}
+        by: {type: string}
+        at: {type: string, format: date-time}
+        context:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, by, text, at]
+            properties:
+              kind: {type: string, enum: [person, agent, system]}
+              by: {type: string}
+              name: {type: string}
+              text: {type: string}
+              at: {type: string, format: date-time}
     ThreadMention:
       description: One tag in a message, and what it came to.
       type: object
@@ -8258,6 +8513,20 @@ components:
       type: object
       required: [name, kind, experts, members, agents, version, created_at, updated_at]
       properties:
+        template: {type: string}
+        initiative:
+          description: An initiative coordinates child projects. Its agents cannot run directly in descendants.
+          type: boolean
+        fork:
+          type: object
+          additionalProperties: false
+          required: [operation, by, at, ready]
+          properties:
+            operation: {type: string}
+            source: {type: string}
+            by: {type: string}
+            at: {type: string, format: date-time}
+            ready: {type: boolean}
         personal_owner:
           description: Immutable human subject for a server-provisioned personal project.
           type: string
@@ -8466,6 +8735,9 @@ components:
       type: object
       required: [name]
       properties:
+        template:
+          description: A template from listProjectTemplates, applied atomically with channel and skill configuration. Omitted starts blank.
+          type: string
         name:
           description: The identity, never changed. Letters, digits, spaces, dashes and underscores, starting with a letter or digit.
           type: string

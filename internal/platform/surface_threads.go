@@ -250,9 +250,9 @@ func (p *Platform) seedOf(tenant string, th threads.Thread) (threads.Announcemen
 // it was started from one.
 func (p *Platform) seedTurns(tenant string, th threads.Thread) []threads.Turn {
 	if a, ok := p.seedOf(tenant, th); ok {
-		return []threads.Turn{threads.AnnouncementTurn(a)}
+		return append(forkSeed(th), threads.AnnouncementTurn(a))
 	}
-	return nil
+	return forkSeed(th)
 }
 
 // surfaceOfPost checks a message posted with its surface into a thread: the

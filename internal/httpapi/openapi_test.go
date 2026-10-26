@@ -1700,6 +1700,36 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(ana, "GET", placementRoute, "/api/threads/"+activeID+"/placement?project=Field&channel=renewals", "", http.StatusConflict)
 
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?q=Field&limit=5", "", http.StatusOK)
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?limit=51", "", http.StatusBadRequest)
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?kinds=unknown", "", http.StatusBadRequest)
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?project=UnknownProject", "", http.StatusNotFound)
+	templates := c.call(ana, "GET", "/api/project-templates", "/api/project-templates", "", http.StatusOK)
+	if len(sliceOf(templates.field("templates"))) != 3 {
+		t.Fatalf("template catalog: %s", templates.raw)
+	}
+	createdInitiative := c.call(ana, "POST", "/api/projects", "/api/projects", `{"name":"Strategy","template":"initiative"}`, http.StatusCreated)
+	if createdInitiative.field("initiative") != true || createdInitiative.str("template") != "initiative" {
+		t.Fatalf("initiative marker missing: %s", createdInitiative.raw)
+	}
+	c.call(ana, "POST", "/api/projects", "/api/projects", `{"name":"UnknownTemplate","template":"ghost"}`, http.StatusBadRequest)
+	copiedProject := c.call(ana, "POST", "/api/projects/{name}/fork", "/api/projects/Field/fork", `{"name":"Forked"}`, http.StatusAccepted)
+	if copiedProject.str("state") != "ready" {
+		t.Fatalf("project fork did not publish: %s", copiedProject.raw)
+	}
+	c.call(ana, "GET", "/api/project-forks/{name}", "/api/project-forks/Forked", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/project-forks/{name}", "/api/project-forks/Forked", "", http.StatusNotFound)
+	c.call(ana, "POST", "/api/projects/{name}/fork", "/api/projects/Field/fork", `{"name":"Launch"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/projects/{name}/fork", "/api/projects/Field/fork", `{"name":""}`, http.StatusBadRequest)
+	forkPath := "/api/threads/" + obj(draft.field("thread"))["id"].(string) + "/fork"
+	forked := c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-1","title":"Alternative"}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-999"}`, http.StatusNotFound)
+	c.call(ana, "POST", "/api/threads/{id}/bring-back", "/api/threads/"+forked.str("id")+"/bring-back", `{"run":"r00000000000000000000000000000000"}`, http.StatusNotFound)
+	forkAnswer := c.call(ana, "POST", "/api/threads/{id}/messages", "/api/threads/"+forked.str("id")+"/messages", `{"text":"@helper alternative"}`, http.StatusCreated)
+	forkRun := obj(sliceOf(forkAnswer.field("runs"))[0])["id"].(string)
+	c.settled(ana, forkRun)
+	c.call(ana, "POST", "/api/threads/{id}/bring-back", "/api/threads/"+forked.str("id")+"/bring-back", `{"run":"`+forkRun+`","text":"Alternative result"}`, http.StatusCreated)
+
 	share, draftPath := "/api/threads/{id}/share", "/api/threads/"+obj(draft.field("thread"))["id"].(string)+"/share"
 	c.call(ana, "POST", share, draftPath, `{"add":["nobody"]}`, http.StatusBadRequest)
 	sharedDraft := c.call(ana, "POST", share, draftPath, `{"channel":"renewals"}`, http.StatusOK)
@@ -2034,6 +2064,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/configuration": {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
+		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
 		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
@@ -2053,6 +2084,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 		"/api/threads/{id}/share":       {"id": tid},
 		"/api/threads/{id}/publication": {"id": draftID},
+		"/api/threads/{id}/fork":        {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
 	}
 	valid := map[string]string{
 		"/api/agent-setups/{name}/test":         `{"text":"Setup check"}`,
@@ -2060,7 +2092,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/artifacts/{id}/promote-knowledge": `{"version":1,"source":"accepted-native","accepted":true}`,
 		"/api/runs/{id}/feedback":               `{"rating":"up"}`,
 		"/api/agents/{name}":                    revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
-		"/api/clients/{id}": `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
+		"/api/projects/{name}/fork": `{"name":"ForkedGhost"}`,
+		"/api/clients/{id}":         `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
@@ -2075,6 +2108,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
 		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
+		"/api/threads/{id}/fork": `{"through":"m-1"}`, "/api/threads/{id}/bring-back": `{"run":"r00000000000000000000000000000000"}`,
 		"/api/threads/{id}/share":      `{}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
@@ -2179,6 +2213,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 var unexercised = map[string]string{
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
 	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
+	"POST /api/projects/{name}/fork 429":             "bounded private operation-plan capacity, covered by projectforks store tests",
+	"POST /api/threads/{id}/fork 429":                "bounded workspace or project thread cap, covered by thread store tests",
+	"POST /api/threads/{id}/bring-back 429":          "bounded per-person posting rate and thread message cap, covered by platform and thread store tests",
 	// A workspace holds at most 1,000 call policies, one per agent. Making
 	// that many agents here would only test a counter, which
 	// pkg/callpolicy's tests do.

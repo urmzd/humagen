@@ -19,6 +19,7 @@ import type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectTemplate,
   ProjectKnowledge,
   ProjectLimitInput,
   ProjectMembers,
@@ -51,6 +52,7 @@ export type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectTemplate,
   ProjectKind,
   ProjectKindSpec,
   ProjectKnowledge,
@@ -797,6 +799,16 @@ export const api = {
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
   /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
+  discover: (q: string, options: { limit?: number; kinds?: string[]; project?: string } = {}) => {
+    const query = new URLSearchParams({ q, limit: String(options.limit ?? 20) });
+    if (options.kinds?.length) query.set("kinds", options.kinds.join(","));
+    if (options.project !== undefined) query.set("project", options.project === "" ? "~" : options.project);
+    return call<{ items: DiscoveryItem[] }>("GET", `/api/discovery?${query}`).then((result) => result.items);
+  },
+  projectTemplates: () => call<{ templates: ProjectTemplate[] }>("GET", "/api/project-templates").then((result) => result.templates),
+  forkProject: (source: string, input: { name: string; parent?: string; title?: string; memory?: string[]; sources?: string[]; archive_conversations?: boolean }) => call<ProjectForkOperation>("POST", `/api/projects/${projectPath(source)}/fork`, input),
+  projectFork: (name: string) => call<ProjectForkOperation>("GET", `/api/project-forks/${encodeURIComponent(name)}`),
+  findProjects: (q: string) => call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${new URLSearchParams({ q, limit: "20" })}`).then((page) => page.projects),
   projects: async () => {
     // Read a page at a time, at most the 500 a workspace holds.
     const all: ProjectView[] = [];
@@ -1098,6 +1110,11 @@ export interface Thread {
   /** The agents an untagged message goes to, from the + menu, and how: the best fit of them, or every one. */
   agents?: string[];
   mode?: "best_fit" | "all";
+  read_only?: boolean;
+  fork?: {
+    source_thread: string; through: string; by: string; at: string; sources?: string[];
+    context: { kind: "person" | "agent" | "system"; by: string; name?: string; text: string; at: string }[];
+  };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -1247,6 +1264,9 @@ const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
 
 /** Channels, experts and shared threads: where people and agents work together. */
 export const coworking = {
+  fork: (id: string, input: { through: string; title?: string; agents?: string[]; mode?: "best_fit" | "all"; sources?: string[] }) => call<Thread>("POST", `${threadPath(id)}/fork`, input),
+  bringBack: (id: string, input: { run: string; text?: string }) => call<ThreadMessage>("POST", `${threadPath(id)}/bring-back`, input),
+  participants: (id: string, input: { version: number; add?: { kind: "person" | "agent"; name: string }[]; remove?: string[] }) => call<Thread>("PUT", `${threadPath(id)}/participants`, input),
   channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (project: string, c: { name: string; title?: string; purpose?: string; default?: string }) =>
     call<Channel>("POST", `${projectAt(project)}/channels`, c),
@@ -1336,3 +1356,9 @@ function operationPolicyPath(scope: "workspace" | "agent" | "project" | "persona
   if (scope === "workspace") return "/api/action-policy";
   return `/api/${scope === "agent" ? "agents" : "projects"}/${encodeURIComponent(name || "~")}/action-policy`;
 }
+
+export interface ProjectForkOperation {
+ id: string; source: string; destination: string; state: "preparing" | "failed" | "ready"; error?: string; projects: number; agents: number; memory: number; archives: number;
+}
+
+export interface DiscoveryItem { kind: "project" | "agent" | "conversation"; id: string; title: string; project?: string; channel?: string; hue?: number }

@@ -749,6 +749,8 @@ visibility and an optional default agent. Its turns are its people's
 messages and its agents' runs.
  */
 export interface Thread {
+  /** A saved project-fork archive. Its passive history is immutable and it accepts no messages or runs. */
+  read_only?: boolean;
   /** Number of committed placement changes, without former audience identities. */
   moves?: number;
   /** `th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it. */
@@ -771,6 +773,7 @@ not selected. Absent when none is selected.
   agents?: string[];
   mode?: ThreadMode;
   surface?: ThreadSurface;
+  fork?: ThreadFork;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
@@ -780,6 +783,45 @@ not selected. Absent when none is selected.
   created_at: string;
   /** When anything last happened in it. */
   updated_at: string;
+}
+
+export interface DiscoveryItem {
+  kind: "project" | "agent" | "conversation";
+  id: string;
+  title: string;
+  project?: string;
+  channel?: string;
+  hue?: number;
+}
+
+export interface ProjectTemplate {
+  name: string;
+  title: string;
+  description: string;
+  kind: ProjectKind;
+  initiative: boolean;
+}
+
+export interface ProjectForkOperation {
+  id: string;
+  source: string;
+  destination: string;
+  state: "preparing" | "failed" | "ready";
+  error?: string;
+  projects: number;
+  agents: number;
+  memory: number;
+  archives: number;
+}
+
+/** Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals. */
+export interface ThreadFork {
+  sources?: string[];
+  source_thread: string;
+  through: string;
+  by: string;
+  at: string;
+  context: ThreadForkContextItem[];
 }
 
 /** One tag in a message, and what it came to. */
@@ -1366,6 +1408,10 @@ a path), which has no title, parent or account: show the workspace's
 name for it. It reads as version 0 until it is first changed.
  */
 export interface Project {
+  template?: string;
+  /** An initiative coordinates child projects. Its agents cannot run directly in descendants. */
+  initiative?: boolean;
+  fork?: ProjectFork;
   /** Immutable human subject for a server-provisioned personal project. */
   personal_owner?: string;
   name: string;
@@ -1462,6 +1508,8 @@ export interface ProjectDetail {
 
 /** A new project. `kind` defaults to `team` and `parent` to the top level. */
 export interface ProjectInput {
+  /** A template from listProjectTemplates, applied atomically with channel and skill configuration. Omitted starts blank. */
+  template?: string;
   /** The identity, never changed. Letters, digits, spaces, dashes and underscores, starting with a letter or digit. */
   name: string;
   title?: string;
@@ -3257,6 +3305,22 @@ export interface PreparedCallInputMessagesItem {
   text: string;
 }
 
+export interface ThreadForkContextItem {
+  kind: "person" | "agent" | "system";
+  by: string;
+  name?: string;
+  text: string;
+  at: string;
+}
+
+export interface ProjectFork {
+  operation: string;
+  source?: string;
+  by: string;
+  at: string;
+  ready: boolean;
+}
+
 export interface ProjectChangeChannel {
   before?: Channel;
   after?: Channel;
@@ -3407,6 +3471,36 @@ export interface ListRunEventsResponse {
 export interface ListThreadsResponse {
   threads: ThreadSummary[];
   next: string | null;
+}
+
+export interface DiscoverWorkspaceResponse {
+  items: DiscoveryItem[];
+}
+
+export interface ListProjectTemplatesResponse {
+  templates: ProjectTemplate[];
+}
+
+export interface ForkProjectBody {
+  archive_conversations?: boolean;
+  name: string;
+  parent?: string;
+  title?: string;
+  memory?: string[];
+  sources?: string[];
+}
+
+export interface ForkThreadBody {
+  through: string;
+  sources?: string[];
+  title?: string;
+  agents?: string[];
+  mode?: ThreadMode;
+}
+
+export interface BringBackThreadResultBody {
+  run: string;
+  text?: string;
 }
 
 export interface PublishThreadSummaryBody {

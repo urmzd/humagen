@@ -344,6 +344,9 @@ func step(p Project, above Access, r Reader, top bool) Access {
 // below it. projects:govern is owner everywhere. A project the tree does not
 // hold, or a reader with no subject, has no role.
 func (t *Tree) Resolve(name string, r Reader) Access {
+	if t.PendingFork(name) {
+		return Access{}
+	}
 	chain := t.Chain(name)
 	if chain == nil || r.Subject == "" || (r.Machine && chain[0].PersonalOwner != "") {
 		return Access{}
@@ -430,11 +433,14 @@ func (t *Tree) Roles(r Reader) map[string]Access {
 		if r.Subject != "" {
 			a = step(n.p, access[n.p.Parent], r, name == Root)
 		}
+		if t.PendingFork(name) {
+			a = Access{}
+		}
 		access[name] = a
 	}
 	if r.Govern && r.Subject != "" {
 		for name, a := range access {
-			if a.Role != Owner && (!r.Machine || t.nodes[name].p.PersonalOwner == "") {
+			if !t.PendingFork(name) && a.Role != Owner && (!r.Machine || t.nodes[name].p.PersonalOwner == "") {
 				access[name] = Access{Role: Owner, From: Root, Via: ViaGovern}
 			}
 		}
