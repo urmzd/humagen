@@ -238,6 +238,7 @@ func (p *Platform) settleOperations(ctx context.Context) {
 	// Reservations survive a crash; only a ledger-backed terminal run changes
 	// them. The bounded store caps this recovery scan.
 	for _, tenant := range p.Operations.Tenants() {
+		p.reconcileOperationAttention(tenant)
 		p.pollSourceAssignments(ctx, tenant)
 		if notices, err := p.Operations.Due(tenant, p.now()); err != nil {
 			p.log.Error("platform: operation deadlines could not be kept", "error", err)

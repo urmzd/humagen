@@ -28,6 +28,10 @@ messages, call agents and other actions. MCP read groups are read context;
 write groups conservatively apply both other-actions and external-message
 rules. A provider's tool name is not evidence that an action is read-only.
 The catalog preserves rich results and person-scoped credential behavior.
+Before a person-scoped tool executes, the run durably records that private
+context may enter its result. A failed marker write aborts execution. Raw
+publication of that call tree requires a reviewed summary, including after
+restart or when a helper result is opened on its own.
 MCP discovery uses the exact run actor, with a session bounded by that run's
 execution, and never borrows another actor or a process credential.
 

@@ -84,6 +84,11 @@ func signature(m *Message) string {
 	field(m.Source.Thread)
 	field(m.Source.Agent)
 	for _, part := range scopeParts(m) {
+		if part.Operation != nil {
+			field("operation")
+			field(part.Operation.Kind)
+			field(part.Operation.ID)
+		}
 		if part.Memory != nil {
 			field("memory")
 			field(part.Memory.Owner)
@@ -300,6 +305,8 @@ func scopeParts(m *Message) []Part {
 	var out []Part
 	for _, p := range m.Parts {
 		switch {
+		case p.Operation != nil:
+			out = append(out, Part{Operation: &OperationPart{Kind: p.Operation.Kind, ID: p.Operation.ID}})
 		case p.Question != nil:
 			out = append(out, Part{Question: &QuestionPart{Run: p.Question.Run}})
 		case p.Memory != nil:

@@ -263,6 +263,9 @@ func (t *operationTool) check(ctx context.Context) error {
 			return fmt.Errorf("%w: a person must approve this action", operations.ErrDenied)
 		}
 	}
+	if t.ActsForPerson() {
+		return t.p.MarkPrivateContext(t.req.Tenant, t.req.RunID)
+	}
 	return nil
 }
 func (t *operationTool) Execute(ctx context.Context, args map[string]any) (string, error) {
@@ -278,7 +281,7 @@ func (t *operationTool) ExecuteRich(ctx context.Context, args map[string]any) (s
 	if rich, ok := t.Tool.(saigetypes.RichTool); ok {
 		return rich.ExecuteRich(context.WithValue(ctx, operationRequestKey{}, t.req), args)
 	}
-	out, err := t.Tool.Execute(ctx, args)
+	out, err := t.Tool.Execute(context.WithValue(ctx, operationRequestKey{}, t.req), args)
 	return saigetypes.TextResult(out), err
 }
 
