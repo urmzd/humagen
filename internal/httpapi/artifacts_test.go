@@ -396,3 +396,48 @@ func TestNativePDFExportReadsTheExactConfinedVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeOfficePDFExportPermissionsAndVersions(t *testing.T) {
+	for _, tc := range []struct{ name, original, revised, oldText, newText string }{
+		{"plan.xlsx", `{"rows":[["Status","Pending"]]}`, `{"rows":[["Status","Approved"]]}`, "Pending", "Approved"},
+		{"plan.pptx", `{"slides":[{"title":"Launch","body":["Pending"]}]}`, `{"slides":[{"title":"Launch","body":["Approved"]}]}`, "Pending", "Approved"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			reader := f.machine(t, "acme", "humagen:artifacts:read")
+			none := f.machine(t, "acme")
+			foreign := f.machine(t, "other", "humagen:artifacts:read")
+			publish := func(content string) string {
+				data, err := nativefiles.Encode(tc.name, content)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := f.p.PutFile("acme", "office-export", tc.name, string(data)); err != nil {
+					t.Fatal(err)
+				}
+				a, err := f.p.Publish(t.Context(), platform.Publication{Tenant: "acme", Thread: "office-export", Agent: "helper", Path: tc.name})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return a.ID
+			}
+			old, newID := publish(tc.original), publish(tc.revised)
+			for _, c := range []struct{ id, want, absent string }{{old, tc.oldText, tc.newText}, {newID, tc.newText, tc.oldText}} {
+				path := "/api/artifacts/" + c.id + "/pdf"
+				res, body := f.raw(t, path, reader)
+				if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "application/pdf" || !strings.HasPrefix(body, "%PDF-") || !strings.Contains(body, c.want) || strings.Contains(body, c.absent) {
+					t.Fatalf("export %s: %d %q", c.id, res.StatusCode, body)
+				}
+				if res.Header.Get("Cache-Control") != "private, no-store" {
+					t.Fatal("export cache is not private")
+				}
+				if res, _ := f.raw(t, path, none); res.StatusCode != http.StatusForbidden {
+					t.Fatalf("unprivileged export = %d", res.StatusCode)
+				}
+				if res, _ := f.raw(t, path, foreign); res.StatusCode != http.StatusNotFound {
+					t.Fatalf("foreign export = %d", res.StatusCode)
+				}
+			}
+		})
+	}
+}
