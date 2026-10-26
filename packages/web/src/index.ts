@@ -6,6 +6,7 @@ export * from "./HumagenMark";
 export * from "./Inbox";
 export * from "./Inspector";
 export * from "./Mailbox";
+export * from "./MessageActionRow";
 export * from "./PromptInput";
 export * from "./QueueStrip";
 export * from "./Reasoning";

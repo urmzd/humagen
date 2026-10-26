@@ -1,0 +1,696 @@
+{
+  "metadata": {
+    "source_plan": "docs/design/implementation/plan.md",
+    "target_tasks": "docs/design/implementation/plan.md"
+  },
+  "summary": {
+    "total_plan_items": 64,
+    "covered_plan_items": 64,
+    "total_tasks_generated": 64,
+    "orphan_tasks": 0
+  },
+  "phases": [
+    {
+      "phase_id": "1",
+      "phase_name": "Foundation and review",
+      "items": [
+        {
+          "item_id": "1.1",
+          "description": "Complete requirement traceability and native verification",
+          "tasks": [
+            {
+              "task_id": "T001",
+              "description": "Complete requirement traceability and native verification"
+            }
+          ]
+        },
+        {
+          "item_id": "1.2",
+          "description": "Badge outlines contain labels at narrow widths and enlarged text",
+          "tasks": [
+            {
+              "task_id": "T002",
+              "description": "Badge outlines contain labels at narrow widths and enlarged text"
+            }
+          ]
+        },
+        {
+          "item_id": "1.3",
+          "description": "Copy and Reply share one consistent accessible action row",
+          "tasks": [
+            {
+              "task_id": "T003",
+              "description": "Copy and Reply share one consistent accessible action row"
+            }
+          ]
+        },
+        {
+          "item_id": "1.4",
+          "description": "Prototype controls become real authenticated state transitions",
+          "tasks": [
+            {
+              "task_id": "T004",
+              "description": "Prototype controls become real authenticated state transitions"
+            }
+          ]
+        },
+        {
+          "item_id": "1.5",
+          "description": "Preserve agent identity, stable colors and compatibility history",
+          "tasks": [
+            {
+              "task_id": "T005",
+              "description": "Preserve agent identity, stable colors and compatibility history"
+            }
+          ]
+        },
+        {
+          "item_id": "1.6",
+          "description": "Durable bounded safe audit attempts underpin domain mutations",
+          "tasks": [
+            {
+              "task_id": "T006",
+              "description": "Durable bounded safe audit attempts underpin domain mutations"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "2",
+      "phase_name": "Company and authoritative placement",
+      "items": [
+        {
+          "item_id": "2.1",
+          "description": "Company is the root and every agent has an explicit home",
+          "tasks": [
+            {
+              "task_id": "T007",
+              "description": "Company is the root and every agent has an explicit home"
+            }
+          ]
+        },
+        {
+          "item_id": "2.2",
+          "description": "Idempotent durable personal project provisioning for human members",
+          "tasks": [
+            {
+              "task_id": "T008",
+              "description": "Idempotent durable personal project provisioning for human members"
+            }
+          ]
+        },
+        {
+          "item_id": "2.3",
+          "description": "Exact-owner personal read/write confinement, governance recorded",
+          "tasks": [
+            {
+              "task_id": "T009",
+              "description": "Exact-owner personal read/write confinement, governance recorded"
+            }
+          ]
+        },
+        {
+          "item_id": "2.4",
+          "description": "Versioned current placement separate from immutable accounting",
+          "tasks": [
+            {
+              "task_id": "T010",
+              "description": "Versioned current placement separate from immutable accounting"
+            }
+          ]
+        },
+        {
+          "item_id": "2.5",
+          "description": "Publish completed private work with audience preview and race safety",
+          "tasks": [
+            {
+              "task_id": "T011",
+              "description": "Publish completed private work with audience preview and race safety"
+            }
+          ]
+        },
+        {
+          "item_id": "2.6",
+          "description": "One retained announcement banner above the greeting",
+          "tasks": [
+            {
+              "task_id": "T012",
+              "description": "One retained announcement banner above the greeting"
+            }
+          ]
+        },
+        {
+          "item_id": "2.7",
+          "description": "Permission-filtered Find Help and safe retirement of new SME routing",
+          "tasks": [
+            {
+              "task_id": "T013",
+              "description": "Permission-filtered Find Help and safe retirement of new SME routing"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "3",
+      "phase_name": "Delegation and agent operations",
+      "items": [
+        {
+          "item_id": "3.1",
+          "description": "Durable assignment goal, owner, completion criteria and outcomes",
+          "tasks": [
+            {
+              "task_id": "T014",
+              "description": "Durable assignment goal, owner, completion criteria and outcomes"
+            }
+          ]
+        },
+        {
+          "item_id": "3.2",
+          "description": "Standing work and triggers reuse scheduler, Invoke and pkg/call",
+          "tasks": [
+            {
+              "task_id": "T015",
+              "description": "Standing work and triggers reuse scheduler, Invoke and pkg/call"
+            }
+          ]
+        },
+        {
+          "item_id": "3.3",
+          "description": "Inherited tighten-only Allow, Ask, Never action policy",
+          "tasks": [
+            {
+              "task_id": "T016",
+              "description": "Inherited tighten-only Allow, Ask, Never action policy"
+            }
+          ]
+        },
+        {
+          "item_id": "3.4",
+          "description": "Named managers, escalation, reminders, budgets and stop rules",
+          "tasks": [
+            {
+              "task_id": "T017",
+              "description": "Named managers, escalation, reminders, budgets and stop rules"
+            }
+          ]
+        },
+        {
+          "item_id": "3.5",
+          "description": "Typed handoff contracts, deadlines, states, cycles and hop limits",
+          "tasks": [
+            {
+              "task_id": "T018",
+              "description": "Typed handoff contracts, deadlines, states, cycles and hop limits"
+            }
+          ]
+        },
+        {
+          "item_id": "3.6",
+          "description": "Pause agent, pause all and enforce control at every admission path",
+          "tasks": [
+            {
+              "task_id": "T019",
+              "description": "Pause agent, pause all and enforce control at every admission path"
+            }
+          ]
+        },
+        {
+          "item_id": "3.7",
+          "description": "Real console Stop control follows terminal ledger state",
+          "tasks": [
+            {
+              "task_id": "T020",
+              "description": "Real console Stop control follows terminal ledger state"
+            }
+          ]
+        },
+        {
+          "item_id": "3.8",
+          "description": "Bounded Agent Network volumes, waiting time and blocked work",
+          "tasks": [
+            {
+              "task_id": "T021",
+              "description": "Bounded Agent Network volumes, waiting time and blocked work"
+            }
+          ]
+        },
+        {
+          "item_id": "3.9",
+          "description": "Needs you deduplicates one cause and records its owner",
+          "tasks": [
+            {
+              "task_id": "T022",
+              "description": "Needs you deduplicates one cause and records its owner"
+            }
+          ]
+        },
+        {
+          "item_id": "3.10",
+          "description": "Roster exposes working, waiting, watching, paused, failed and last run",
+          "tasks": [
+            {
+              "task_id": "T023",
+              "description": "Roster exposes working, waiting, watching, paused, failed and last run"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "4",
+      "phase_name": "Sources and integrations",
+      "items": [
+        {
+          "item_id": "4.1",
+          "description": "Source origin, owner, access mode and freshness are real and visible",
+          "tasks": [
+            {
+              "task_id": "T024",
+              "description": "Source origin, owner, access mode and freshness are real and visible"
+            }
+          ]
+        },
+        {
+          "item_id": "4.2",
+          "description": "Durable source lifecycle, bounded attempts and last good copy",
+          "tasks": [
+            {
+              "task_id": "T025",
+              "description": "Durable source lifecycle, bounded attempts and last good copy"
+            }
+          ]
+        },
+        {
+          "item_id": "4.3",
+          "description": "Stale failures raise one cause and pause dependent work by stop rule",
+          "tasks": [
+            {
+              "task_id": "T026",
+              "description": "Stale failures raise one cause and pause dependent work by stop rule"
+            }
+          ]
+        },
+        {
+          "item_id": "4.4",
+          "description": "Indexed, live and hybrid honor the reader on every request",
+          "tasks": [
+            {
+              "task_id": "T027",
+              "description": "Indexed, live and hybrid honor the reader on every request"
+            }
+          ]
+        },
+        {
+          "item_id": "4.5",
+          "description": "Source dependency graph answers Used by without hidden names/counts",
+          "tasks": [
+            {
+              "task_id": "T028",
+              "description": "Source dependency graph answers Used by without hidden names/counts"
+            }
+          ]
+        },
+        {
+          "item_id": "4.6",
+          "description": "GitHub resources link to projects with explicit people mapping",
+          "tasks": [
+            {
+              "task_id": "T029",
+              "description": "GitHub resources link to projects with explicit people mapping"
+            }
+          ]
+        },
+        {
+          "item_id": "4.7",
+          "description": "Slack binding directions and guest approval boundaries",
+          "tasks": [
+            {
+              "task_id": "T030",
+              "description": "Slack binding directions and guest approval boundaries"
+            }
+          ]
+        },
+        {
+          "item_id": "4.8",
+          "description": "Drive and Notion provider paths use real API boundaries and references",
+          "tasks": [
+            {
+              "task_id": "T031",
+              "description": "Drive and Notion provider paths use real API boundaries and references"
+            }
+          ]
+        },
+        {
+          "item_id": "4.9",
+          "description": "Connect Resources Links Access Events Actions report real state",
+          "tasks": [
+            {
+              "task_id": "T032",
+              "description": "Connect Resources Links Access Events Actions report real state"
+            }
+          ]
+        },
+        {
+          "item_id": "4.10",
+          "description": "Suggest, auto-link and off rules are bounded, previewable and auditable",
+          "tasks": [
+            {
+              "task_id": "T033",
+              "description": "Suggest, auto-link and off rules are bounded, previewable and auditable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "5",
+      "phase_name": "Library, personal settings and audit",
+      "items": [
+        {
+          "item_id": "5.1",
+          "description": "Versioned scoped skill drafts, tests, publish and promotion",
+          "tasks": [
+            {
+              "task_id": "T034",
+              "description": "Versioned scoped skill drafts, tests, publish and promotion"
+            }
+          ]
+        },
+        {
+          "item_id": "5.2",
+          "description": "Skill and new-agent dry runs force actions to Ask",
+          "tasks": [
+            {
+              "task_id": "T035",
+              "description": "Skill and new-agent dry runs force actions to Ask"
+            }
+          ]
+        },
+        {
+          "item_id": "5.3",
+          "description": "Memory scope, kind, provenance, review, expiry, usage and audited forget",
+          "tasks": [
+            {
+              "task_id": "T036",
+              "description": "Memory scope, kind, provenance, review, expiry, usage and audited forget"
+            }
+          ]
+        },
+        {
+          "item_id": "5.4",
+          "description": "Personal memory stays out of projects without explicit permission",
+          "tasks": [
+            {
+              "task_id": "T037",
+              "description": "Personal memory stays out of projects without explicit permission"
+            }
+          ]
+        },
+        {
+          "item_id": "5.5",
+          "description": "Personal profile and briefing style are persisted and used",
+          "tasks": [
+            {
+              "task_id": "T038",
+              "description": "Personal profile and briefing style are persisted and used"
+            }
+          ]
+        },
+        {
+          "item_id": "5.6",
+          "description": "Notification kind, digest and quiet-hour settings drive dispatch",
+          "tasks": [
+            {
+              "task_id": "T039",
+              "description": "Notification kind, digest and quiet-hour settings drive dispatch"
+            }
+          ]
+        },
+        {
+          "item_id": "5.7",
+          "description": "Personal agents expose ownership, pause and project promotion",
+          "tasks": [
+            {
+              "task_id": "T040",
+              "description": "Personal agents expose ownership, pause and project promotion"
+            }
+          ]
+        },
+        {
+          "item_id": "5.8",
+          "description": "Connected accounts expose actual scopes, use and disconnect",
+          "tasks": [
+            {
+              "task_id": "T041",
+              "description": "Connected accounts expose actual scopes, use and disconnect"
+            }
+          ]
+        },
+        {
+          "item_id": "5.9",
+          "description": "Cross-domain audit view is bounded, confined, durable and retained",
+          "tasks": [
+            {
+              "task_id": "T042",
+              "description": "Cross-domain audit view is bounded, confined, durable and retained"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "6",
+      "phase_name": "Conversation and project interaction",
+      "items": [
+        {
+          "item_id": "6.1",
+          "description": "Saved fork from message preserves bounded read-only history and lineage",
+          "tasks": [
+            {
+              "task_id": "T043",
+              "description": "Saved fork from message preserves bounded read-only history and lineage"
+            }
+          ]
+        },
+        {
+          "item_id": "6.2",
+          "description": "Bring back result posts a reviewed result and never executes pending actions",
+          "tasks": [
+            {
+              "task_id": "T044",
+              "description": "Bring back result posts a reviewed result and never executes pending actions"
+            }
+          ]
+        },
+        {
+          "item_id": "6.3",
+          "description": "Project fork copies chosen structure/config safely, rules disabled",
+          "tasks": [
+            {
+              "task_id": "T045",
+              "description": "Project fork copies chosen structure/config safely, rules disabled"
+            }
+          ]
+        },
+        {
+          "item_id": "6.4",
+          "description": "People shows actual audience, roles, removal and safe invitations",
+          "tasks": [
+            {
+              "task_id": "T046",
+              "description": "People shows actual audience, roles, removal and safe invitations"
+            }
+          ]
+        },
+        {
+          "item_id": "6.5",
+          "description": "Quick switcher returns bounded readable destinations only",
+          "tasks": [
+            {
+              "task_id": "T047",
+              "description": "Quick switcher returns bounded readable destinations only"
+            }
+          ]
+        },
+        {
+          "item_id": "6.6",
+          "description": "Initiatives roll up status, risks, decisions, usage and needs safely",
+          "tasks": [
+            {
+              "task_id": "T048",
+              "description": "Initiatives roll up status, risks, decisions, usage and needs safely"
+            }
+          ]
+        },
+        {
+          "item_id": "6.7",
+          "description": "Create project blank, template, fork or under initiative",
+          "tasks": [
+            {
+              "task_id": "T049",
+              "description": "Create project blank, template, fork or under initiative"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "7",
+      "phase_name": "Outcomes, native deliverables and full workspace presentation",
+      "items": [
+        {
+          "item_id": "7.1",
+          "description": "Outcomes lead with recommendation, decisions, deliverables and next action",
+          "tasks": [
+            {
+              "task_id": "T050",
+              "description": "Outcomes lead with recommendation, decisions, deliverables and next action"
+            }
+          ]
+        },
+        {
+          "item_id": "7.2",
+          "description": "Redirect records revised intent separately from approval",
+          "tasks": [
+            {
+              "task_id": "T051",
+              "description": "Redirect records revised intent separately from approval"
+            }
+          ]
+        },
+        {
+          "item_id": "7.3",
+          "description": "Completed work collapses; blocked work exposes result/input/output on demand",
+          "tasks": [
+            {
+              "task_id": "T052",
+              "description": "Completed work collapses; blocked work exposes result/input/output on demand"
+            }
+          ]
+        },
+        {
+          "item_id": "7.4",
+          "description": "Versioned native previews keep real bytes, provenance and parser bounds",
+          "tasks": [
+            {
+              "task_id": "T053",
+              "description": "Versioned native previews keep real bytes, provenance and parser bounds"
+            }
+          ]
+        },
+        {
+          "item_id": "7.5",
+          "description": "Native deliverables are real editable files, not prototype exports",
+          "tasks": [
+            {
+              "task_id": "T054",
+              "description": "Native deliverables are real editable files, not prototype exports"
+            }
+          ]
+        },
+        {
+          "item_id": "7.6",
+          "description": "Revision requests retain immutable version/slide context and unsent draft",
+          "tasks": [
+            {
+              "task_id": "T055",
+              "description": "Revision requests retain immutable version/slide context and unsent draft"
+            }
+          ]
+        },
+        {
+          "item_id": "7.7",
+          "description": "Accepted outputs promote to knowledge/reviewed memory with audience checks",
+          "tasks": [
+            {
+              "task_id": "T056",
+              "description": "Accepted outputs promote to knowledge/reviewed memory with audience checks"
+            }
+          ]
+        },
+        {
+          "item_id": "7.8",
+          "description": "Agent and human timestamps use recorded instants, hover/focus/tap and timezone",
+          "tasks": [
+            {
+              "task_id": "T057",
+              "description": "Agent and human timestamps use recorded instants, hover/focus/tap and timezone"
+            }
+          ]
+        },
+        {
+          "item_id": "7.9",
+          "description": "Composer is compact, mobile safe, textual and permission aware",
+          "tasks": [
+            {
+              "task_id": "T058",
+              "description": "Composer is compact, mobile safe, textual and permission aware"
+            }
+          ]
+        },
+        {
+          "item_id": "7.10",
+          "description": "Projects Library Operations You navigation exposes working routed pages",
+          "tasks": [
+            {
+              "task_id": "T059",
+              "description": "Projects Library Operations You navigation exposes working routed pages"
+            }
+          ]
+        },
+        {
+          "item_id": "7.11",
+          "description": "Phone/tablet/desktop, dark mode, keyboard and touch complete all journeys",
+          "tasks": [
+            {
+              "task_id": "T060",
+              "description": "Phone/tablet/desktop, dark mode, keyboard and touch complete all journeys"
+            }
+          ]
+        },
+        {
+          "item_id": "7.12",
+          "description": "Saved-turn citations retain provenance and truthful indexed/live labels",
+          "tasks": [
+            {
+              "task_id": "T061",
+              "description": "Saved-turn citations retain provenance and truthful indexed/live labels"
+            }
+          ]
+        },
+        {
+          "item_id": "7.13",
+          "description": "Presentation, notes, versions and downloads preserve immutable selection",
+          "tasks": [
+            {
+              "task_id": "T062",
+              "description": "Presentation, notes, versions and downloads preserve immutable selection"
+            }
+          ]
+        },
+        {
+          "item_id": "7.14",
+          "description": "Identity, scope chips and punctuation follow repo accessibility/copy rules",
+          "tasks": [
+            {
+              "task_id": "T063",
+              "description": "Identity, scope chips and punctuation follow repo accessibility/copy rules"
+            }
+          ]
+        },
+        {
+          "item_id": "7.15",
+          "description": "Every shipped capability has automated and honest live validation evidence",
+          "tasks": [
+            {
+              "task_id": "T064",
+              "description": "Every shipped capability has automated and honest live validation evidence"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

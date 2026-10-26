@@ -34,6 +34,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
+import { sidebarScroll } from "./sidebar-scroll.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -310,10 +311,14 @@ function chats(ids: Ids): Screen[] {
 }
 
 /** Every main screen: each page, and each tab of the pages that have them, and the chat's states. */
-function screens(ids: Ids): Screen[] {
+function screens(ids: Ids, call: Call): Screen[] {
+  type AgentSelection = { version: number; enable?: string[]; allow?: string[]; default?: string };
+  let badgeDefault: AgentSelection | undefined;
+  let badgePage: Page | undefined;
   let releasePending: (() => Promise<void>) | undefined;
   const list: Screen[] = [
     { name: "home", path: "/" },
+    { name: "sidebar-scroll", path: "/settings/profile", act: sidebarScroll },
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids),
     { name: "projects", path: "/projects" },
@@ -365,6 +370,62 @@ function screens(ids: Ids): Screen[] {
     { name: "source-configuration", path: "/context/source-attention", act: async(page)=>{await page.getByText("Configure Source",{exact:true}).click();} },
     { name: "source-reference-denied", path: "/context/source-attention", act: async(page)=>{await page.getByRole("textbox",{name:"Your credential reference",exact:true}).fill("op://Screens/not-allowed/token");await page.getByRole("button",{name:"Save Reference",exact:true}).click();await page.getByText(/that reference cannot be used/).waitFor();} },
     { name: "agents", path: "/agents" },
+    {
+      name: "agent-status-badges",
+      path: "/agents",
+      act: async (page) => {
+        badgePage = page;
+        badgeDefault = await call<AgentSelection>("GET", "/api/projects/~/agents");
+        const { version, enable, allow } = badgeDefault;
+        await call("PUT", "/api/projects/~/agents", {
+          version,
+          enable,
+          allow,
+          default: "humagen-analyst",
+        });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.emulateMedia({ colorScheme: "dark" });
+        const agent = page.getByRole("button", { name: /^humagen-analyst Workspace Default/ });
+        await agent.waitFor();
+        const badges = agent.locator("span.rounded-full");
+        assert.equal(await badges.count(), 2, "The default built-in has both status badges");
+        // Enlarged text must remain inside the badge outline, too.
+        await badges.evaluateAll((items) => {
+          for (const item of items) {
+            (item as HTMLElement).style.fontSize = "20px";
+            (item as HTMLElement).style.lineHeight = "28px";
+          }
+        });
+        const escaped = await badges.evaluateAll((items) =>
+          items.flatMap((item) => {
+            const box = item.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(item);
+            const text = range.getBoundingClientRect();
+            return text.top < box.top - 1 ||
+              text.bottom > box.bottom + 1 ||
+              text.left < box.left - 1 ||
+              text.right > box.right + 1
+              ? [item.textContent]
+              : [];
+          }),
+        );
+        assert.deepEqual(escaped, [], "Status text must fit within each badge outline");
+      },
+      after: async () => {
+        if (badgeDefault) {
+          const { version } = await call<AgentSelection>("GET", "/api/projects/~/agents");
+          const { enable, allow, default: fallback } = badgeDefault;
+          await call("PUT", "/api/projects/~/agents", {
+            version,
+            enable,
+            allow,
+            default: fallback,
+          });
+        }
+        await badgePage?.emulateMedia({ colorScheme: "light" });
+      },
+    },
     {
       name: "humagen-builtins",
       path: "/agents",
@@ -1061,7 +1122,10 @@ async function main(): Promise<void> {
   if (showcase && only.length)
     throw new Error("SCREENS_SHOWCASE requires every screen; unset SCREENS_ONLY.");
   // A mistyped name would otherwise capture nothing and pass.
-  const unknown = only.filter((n) => n !== "home-new" && !screens(ids0).some((s) => s.name === n));
+  const names = screens(ids0, async () => {
+    throw new Error("Screen discovery cannot call the API.");
+  }).map((screen) => screen.name);
+  const unknown = only.filter((n) => n !== "home-new" && !names.includes(n));
   if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
   // Only a folder this script wrote, or a new one, is cleared.
   if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, "report.json"))) {
@@ -1189,7 +1253,7 @@ async function main(): Promise<void> {
       schedule: "weekly-summary",
       ...(await seedChats(call)),
     };
-    results.push(...(await capture(browser, base, screens(ids))));
+    results.push(...(await capture(browser, base, screens(ids, call))));
 
     report(results);
     if (showcase && results.every((r) => r.problems.length === 0)) {
