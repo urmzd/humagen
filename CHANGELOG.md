@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.26.2 (2026-10-26)
+
+### Bug Fixes
+
+- rename built-in agents and restore conversation links (#71) ([a17548a](https://github.com/urmzd/humagen/commit/a17548a89ec617ae90e4501f64eb6764c777da1a))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.26.1...v0.26.2)
+
+
 ## 0.26.1 (2026-10-26)
 
 ### Bug Fixes
