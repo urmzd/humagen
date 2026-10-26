@@ -99,6 +99,17 @@ export function workspaceScreens(call: Call): Screen[] {
       await page.getByRole("button", { name: "Request Changes", exact: true }).click();
       const composer = page.locator('form[aria-label="Message"] textarea');
       await composer.waitFor();
+      // The existing composer stays mounted while its requested revision seed
+      // is applied in a React effect. Wait for that exact immutable capability.
+      await page.waitForFunction(
+        (expected) =>
+          (
+            document.querySelector(
+              'form[aria-label="Message"] textarea',
+            ) as HTMLTextAreaElement | null
+          )?.value.includes(expected),
+        `artifact:${file.id}@1`,
+      );
       const draft = await composer.inputValue();
       assert.ok(draft.includes(`artifact:${file.id}@1`));
       await composer.fill(
