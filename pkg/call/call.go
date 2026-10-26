@@ -153,7 +153,24 @@ type State struct {
 }
 
 // Request is one agent asking for another.
+// Contract is the explicit goal, completion condition and deadline of helper work.
+type Contract struct {
+	Goal     string    `json:"goal"`
+	DoneWhen string    `json:"done_when"`
+	DueAt    time.Time `json:"due_at"`
+}
+
+func (c Contract) Validate() error {
+	if strings.TrimSpace(c.Goal) == "" || len(c.Goal) > 8000 || strings.TrimSpace(c.DoneWhen) == "" || len(c.DoneWhen) > 4000 || c.DueAt.IsZero() {
+		return fmt.Errorf("%w: a contract needs a bounded goal, done_when and due_at", ErrInvalid)
+	}
+	return nil
+}
+
+// Request is the input and lifecycle of one helper invocation.
 type Request struct {
+	Contract *Contract
+
 	// Key identifies the call within the caller's run, typically the tool
 	// call id. It makes the child's id deterministic, so a replayed turn
 	// joins the run it already started instead of starting a second one.
@@ -181,6 +198,11 @@ func New(parent envelope.Tag, req Request, st State, lim Limits, at time.Time) (
 		return envelope.Tag{}, fmt.Errorf("%w: call has mode %q", ErrInvalid, req.Mode)
 	case req.Lease < 0:
 		return envelope.Tag{}, fmt.Errorf("%w: call has a negative lease", ErrInvalid)
+	}
+	if req.Contract != nil {
+		if err := req.Contract.Validate(); err != nil {
+			return envelope.Tag{}, err
+		}
 	}
 	if req.Input != nil {
 		if req.Text != "" {

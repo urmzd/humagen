@@ -41,6 +41,7 @@ func callParameters(targets []string) saigetypes.ParameterSchema {
 	}}
 	return saigetypes.ParameterSchema{Type: "object", Required: []string{"agent", "messages", "response_format"}, Properties: map[string]saigetypes.PropertyDef{
 		"agent":    agentProperty(targets),
+		"contract": {Type: "object", Required: []string{"goal", "done_when", "due_at"}, Description: "The helper's goal, completion condition and RFC3339 deadline. Without explicit terms the input and response format supply bounded default terms.", Properties: map[string]saigetypes.PropertyDef{"goal": str("Concrete goal"), "done_when": str("Observable completion condition"), "due_at": str("RFC3339 deadline")}},
 		"messages": {Type: "array", Items: &message, Description: "Ordered input, including examples and selected context. Nothing is inherited from your conversation. End with a user message. References are resolved and frozen before the helper starts."},
 		"response_format": {Type: "object", Required: []string{"type"}, Description: "Closed union: text accepts only max_chars (default 16000); summary accepts only max_words (default 200); json_schema requires schema. The harness generates the return instruction and validates the result.", Properties: map[string]saigetypes.PropertyDef{
 			"type": {Type: "string", Enum: []string{"text", "summary", "json_schema"}}, "max_chars": {Type: "integer"}, "max_words": {Type: "integer"}, "schema": {Type: "object", Description: "JSON Schema checked by saige; unsupported keywords are rejected"},
@@ -72,6 +73,7 @@ func (p *Platform) callAgentTool(parent runtime.Request, report func(payload.Act
 			}
 			var wire struct {
 				Agent    string          `json:"agent"`
+				Contract *call.Contract  `json:"contract,omitempty"`
 				Messages []call.Message  `json:"messages"`
 				Format   json.RawMessage `json:"response_format"`
 				Mode     call.Mode       `json:"mode,omitempty"`
@@ -103,7 +105,7 @@ func (p *Platform) callAgentTool(parent runtime.Request, report func(payload.Act
 			if info, ok := saigetypes.ToolCallInfoFromContext(ctx); ok && info.ID != "" {
 				key = info.ID
 			}
-			req := call.Request{Key: key, Agent: wire.Agent, Input: &input, Mode: wire.Mode, Lease: wire.Lease}
+			req := call.Request{Contract: wire.Contract, Key: key, Agent: wire.Agent, Input: &input, Mode: wire.Mode, Lease: wire.Lease}
 			// A call the callee's policy holds runs only when a person
 			// approved this very tool call. The runtime asked them (see
 			// Approval); the note says what they decided.

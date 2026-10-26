@@ -72,6 +72,10 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if err != nil {
 		return req, err
 	}
+	req, err = p.resolveOperations(req)
+	if err != nil {
+		return req, err
+	}
 	return withSkills(withSources(req))
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
 
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
@@ -268,7 +269,11 @@ func (p *Platform) MarkSetup(tenant, by string) (Settings, error) {
 
 // Turn is one message a person sends.
 type Turn struct {
-	ID string
+	// ForceAsk tightens every action to require a recorded approval. It grants no tools.
+	ForceAsk bool
+	// AssignmentID pins a durable assignment reservation to this ordinary turn.
+	AssignmentID string
+	ID           string
 	// Agent is who should answer: an agent, Auto for @auto, or "" for the
 	// default the conversation's place inherits.
 	Agent string
@@ -386,6 +391,12 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		meta[runs.MetaPicked] = who.Picked
 	}
 
+	if t.AssignmentID != "" {
+		meta[metaAssignment] = t.AssignmentID
+	}
+	if t.ForceAsk {
+		meta[operations.MetaForceAsk] = "true"
+	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: t.ID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
 		Text: p.personalContext(tenant, th.Project, t.Actor.User, p.contextIn(tenant, th.Project, th.Channel, agent, body)), Actor: t.Actor, Meta: meta,
