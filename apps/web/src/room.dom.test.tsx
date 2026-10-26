@@ -1675,3 +1675,27 @@ test("a read-only conversation archive presents saved context and exposes no com
  assert.ok(!screen.queryByRole("button",{name:words.share}));
  assert.equal(net.seen.some(request=>request.method!=="GET"),false);
 });
+
+test("multiple replies by the same agent each retain one accessible Copy and Reply footer", async () => {
+  const followup = {
+    kind: "message",
+    message: { ...page.turns[0]!.message!, id: "m-2", text: "Who owns the next step?" },
+  } as ThreadTurn;
+  const secondRun = {
+    kind: "run",
+    run: { ...page.turns[1]!.run!, id: "r2", message: "m-2", prev: "m-2", answer: "Ana owns the next step." },
+  } as ThreadTurn;
+  room({"GET /api/runs/r2/events":()=>({events:[]})}, {...page,turns:[...page.turns,followup,secondRun]});
+  const agents = await screen.findAllByRole("article",{name:"helper message"});
+  assert.equal(agents.length,2);
+  const humans=screen.getAllByRole("article",{name:"Message from Ana"});
+  assert.equal(humans.length,2);
+  for(const message of [...humans,...agents]) {
+    const actions=within(message).getAllByRole("toolbar",{name:defaultCopy.conversation.messageActions});
+    assert.equal(actions.length,1);
+    assert.equal(within(actions[0]!).getAllByRole("button",{name:/^Copy (message|answer)/}).length,1);
+    assert.equal(within(actions[0]!).getAllByRole("button",{name:"Reply"}).length,1);
+  }
+  fireEvent.click(within(agents[1]!).getByRole("button",{name:"Reply"}));
+  await waitFor(()=>assert.ok((document.querySelector('form[aria-label="Message"] textarea') as HTMLTextAreaElement | null)?.value.includes("activity/r2")));
+});
