@@ -155,6 +155,11 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 		if run, err := p.Runs.Get(who.Tenant, a.RunID); err == nil {
 			return run, nil
 		}
+		if a.Trigger == operations.SourceTrigger && a.TagID != "" && a.RunID == runtime.RunID(who.Tenant, a.TagID) {
+			// The source cursor and exact trigger identity were committed together.
+			// Retry that invocation, never reinterpret it as a new console turn.
+			return p.Invoke(ctx, envelope.Tag{ID: a.TagID, Tenant: who.Tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Text: a.Goal + "\nDone when: " + a.DoneWhen, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}})
+		}
 		// The stored reservation is authoritative after a crash between reserve
 		// and admission. Recover the tag identity from its deterministic run ID.
 		tagID = "assignment-" + assignmentSchedule(who.Tenant, id) + "-" + strconv.Itoa(a.Version-1)
@@ -247,7 +252,13 @@ func (p *Platform) settleOperations(ctx context.Context) {
 				p.operationEscalation(tenant, n.Kind, n.ID, n.Project, n.Thread, n.Run, n.Agent, n.Owner, n.Reason)
 			}
 		}
-		for _, a := range p.Operations.Assignments(tenant, operations.MaxResults, func(a operations.Assignment) bool { return a.State == operations.InProgress }) {
+		after := ""
+		if v, ok := p.assignmentSettlementCursor.Load(tenant); ok {
+			after = v.(string)
+		}
+		pending, next := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool { return a.State == operations.InProgress })
+		p.assignmentSettlementCursor.Store(tenant, next)
+		for _, a := range pending {
 			run, err := p.Runs.Get(tenant, a.RunID)
 			if err == nil && run.Status.Terminal() {
 				if err := p.Operations.Settle(tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {

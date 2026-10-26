@@ -3,14 +3,17 @@ package platform
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 
+	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/operations"
+	"github.com/urmzd/humagen/pkg/runs"
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
 
@@ -169,5 +172,37 @@ func TestAdmissionKeepsTighteningBeforeRunRecordExists(t *testing.T) {
 	}
 	if got := p.operationDecision(req, operations.WriteFiles); got != operations.Never {
 		t.Fatal("admission lost policy identity")
+	}
+}
+
+func TestAssignmentRecoveryAdvancesPastFullPageOfUnfinishedRuns(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+	at := time.Now()
+	last := ""
+	for i := 0; i <= operations.MaxResults; i++ {
+		id := fmt.Sprintf("work-%03d", i)
+		a, err := p.Operations.SetAssignment("t", operations.Assignment{ID: id, Agent: "a", Owner: "owner", Goal: "Review work", DoneWhen: "Report saved", State: operations.Requested}, 0, "owner", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Operations.Reserve("t", id, id, a.Version, at); err != nil {
+			t.Fatal(err)
+		}
+		last = id
+	}
+	tag := envelope.Tag{ID: last, Tenant: "t", Agent: "a", Origin: runs.OriginAPI, Text: "work", At: at}
+	if err := p.Runs.Record(last, tag, 1); err != nil {
+		t.Fatal(err)
+	}
+	p.Runs.End(last, runs.Completed, "done", "", at)
+	p.settleOperations(t.Context())
+	p.settleOperations(t.Context())
+	a, _ := p.Operations.Assignment("t", last)
+	if a.State != operations.Result {
+		t.Fatal("a full page of unfinished reservations starved completed work")
 	}
 }

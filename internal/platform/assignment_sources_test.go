@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -96,5 +97,56 @@ func TestSourceChangeAssignmentsUseExistingRuntimeAndKeepCursorAfterRestart(t *t
 		if runs := p2.Runs.List(tenant, 10); len(runs) != 2 {
 			t.Fatalf("unchanged source made duplicate runs: %d", len(runs))
 		}
+	})
+}
+
+func TestSourceChangeReservationRecoversExactTriggerAfterRestart(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b platform.Backends, again func() platform.Backends) {
+		p, stop := running(t, b)
+		versions := &sourceVersions{version: 1, fresh: true}
+		if err := p.RegisterAssignmentSources(versions); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Knowledge.Create(tenant, "feed", "Feed", "owner", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "watcher", Model: "offline", Provider: "offline", SystemPrompt: "Review retained changes.", Sources: []agentspec.Source{{Name: "feed", URI: "knowledge://feed"}}}, "owner"); err != nil {
+			t.Fatal(err)
+		}
+		who := auth.Principal{Tenant: tenant, Subject: "owner", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+		a, err := p.SetAssignment(t.Context(), who, operations.Assignment{ID: "recover-feed", Agent: "watcher", Owner: "owner", Goal: "Review retained changes", DoneWhen: "Report saved", State: operations.Requested, Trigger: operations.SourceTrigger, Source: "feed"}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.State = operations.Watching
+		a, err = p.SetAssignment(t.Context(), who, a, a.Version)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stop()
+		// Simulate the durable reserve having committed, followed by a crash before
+		// the existing Invoke path accepted its exact source-change trigger.
+		tagID := "source-recovery-event"
+		runID := runtime.RunID(tenant, tagID)
+		if _, err := p.Operations.ReserveSource(tenant, a.ID, runID, tagID, a.Version, 2, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		versions.set(2, true)
+		p2, stop2 := running(t, again())
+		defer stop2()
+		if err := p2.RegisterAssignmentSources(versions); err != nil {
+			t.Fatal(err)
+		}
+		run, err := p2.RunAssignment(t.Context(), who, a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.ID != runID || run.Origin != "assignment" {
+			t.Fatalf("reservation changed trigger identity: %+v", run)
+		}
+		sourceAwait(t, func() bool {
+			got, _ := p2.Operations.Assignment(tenant, a.ID)
+			return got.State == operations.Watching && got.SourceVersion == 2 && got.RunID == runID
+		})
 	})
 }
