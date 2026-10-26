@@ -5931,7 +5931,7 @@ components:
           description: Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements.
           type: string
         personal_project:
-          description: The signed-in human's private project address, absent for machines.
+          description: The signed-in human's canonical private project name, directly usable in project routes and thread creation, absent for machines.
           type: string
         first_admin:
           description: The caller is an admin in a workspace nobody has set up yet.

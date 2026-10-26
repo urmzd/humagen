@@ -245,7 +245,7 @@ func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) 
 			s.problem(w, err)
 			return
 		}
-		out["personal_project"] = "~" + personal.Name
+		out["personal_project"] = personal.Name
 		if who.Can(auth.ProjectsRead) {
 			welcome, err := s.P.PostWelcome(who.Tenant)
 			if err != nil {

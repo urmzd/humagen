@@ -199,7 +199,7 @@ export interface Me {
   permissions: Permission[] | null;
   /** Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements. */
   welcome_announcement?: string;
-  /** The signed-in human's private project address, absent for machines. */
+  /** The signed-in human's canonical private project name, directly usable in project routes and thread creation, absent for machines. */
   personal_project?: string;
   /** The caller is an admin in a workspace nobody has set up yet. */
   first_admin: boolean;
