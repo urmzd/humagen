@@ -350,11 +350,11 @@ export function Sidebar({
     {open && <button type="button" tabIndex={-1} aria-label="Dismiss navigation" onClick={onToggle} className="fixed inset-0 z-40 bg-black/40 md:hidden" />}
     <aside
       aria-label="Navigation"
-      className={`humagen-glass-bar flex shrink-0 flex-col border-[var(--humagen-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
+      className={`humagen-glass-bar flex h-full min-h-0 shrink-0 flex-col border-[var(--humagen-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
         open ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]" : "w-12 max-md:hidden"
       }`}
     >
-      <div className={`flex h-12 items-center ${open ? "justify-between pr-2 pl-3.5" : "justify-center"}`}>
+      <div className={`flex h-12 shrink-0 items-center ${open ? "justify-between pr-2 pl-3.5" : "justify-center"}`}>
         {open && <span className="humagen-display flex min-w-0 items-center gap-2 truncate text-aui-base font-semibold text-aui-fg"><HumagenMark size={23} />humagen</span>}
         <button
           type="button"
@@ -368,7 +368,7 @@ export function Sidebar({
       </div>
 
       {/* Everything between the top row and the account scrolls as one, so a short window never squeezes the lists into a sliver. */}
-      <div className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+      <div className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
       <nav aria-label="Sections" className={`flex shrink-0 flex-col ${open ? "px-2" : "items-center"}`}>
         <ul className={`flex flex-col gap-0.5 ${open ? "" : "items-center"}`}>
           {entries
@@ -509,7 +509,7 @@ export function Sidebar({
       </div>
 
       {!live && open && <p className="px-4 pb-2 text-aui-2xs text-aui-muted">Reconnecting. What you see may be out of date.</p>}
-      <div className={`flex items-center gap-1 border-aui-border border-t p-1.5 ${open ? "" : "flex-col"}`}>
+      <div className={`flex shrink-0 items-center gap-1 border-aui-border border-t p-1.5 ${open ? "" : "flex-col"}`}>
         <button
           type="button"
           onClick={() => go({ page: "settings", section: "profile" })}
