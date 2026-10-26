@@ -185,6 +185,6 @@ The containment assertion reproduces the reported failure before the fix.
 - `pkg/memory`, `internal/httpapi/personal_memory.go`: private personal owner namespace,
   reviewed kind/provenance, expiry at composition, immediate audited forget and persisted use counts.
 - `pkg/prefs/personal.go`: persisted briefing, notification delivery policy, midnight/DST quiet
-  hours and privacy choices. Provider dispatch is an explicit integration boundary.
+  hours and privacy choices. Native delivery is implemented in `pkg/notifications` and the authenticated console worker, with restart/dedupe, current-reader confinement, hourly digests, quiet hours and projection-only acknowledgements. Email remains unavailable.
 - `apps/web/src/Audit.tsx`, `MemoryLibrary.tsx`, `PersonalPreferences.tsx`: standalone views for
-  shared navigation integration. Broader versioned skill workflows remain in progress.
+  shared navigation integration. Versioned skill draft/test/publish/promotion workflows use real configured agents and the existing pinned runtime, with explicit tool intersections and forced Ask on tests.

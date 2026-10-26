@@ -6,6 +6,10 @@ import type {
   NoteInput,
   PersonalPreferences,
   AuditRecord,
+  NativeNotification,
+  LibrarySkill,
+  LibraryScope,
+  LibrarySkillDefinition,
   ProjectContext,
   AgentHome,
   Person,
@@ -531,6 +535,7 @@ export interface ToolCredential {
   kind?: "reference" | "value";
   ref?: string;
   updated_at?: string;
+ last_used_at?: string;
 }
 
 /** The tools that act as you, and what this workspace lets people give for them. */
@@ -653,6 +658,14 @@ export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, 
 import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
+  notifications: () => call<{notifications:NativeNotification[]}>("GET","/api/me/notifications").then(r=>r.notifications??[]),
+  acknowledgeNotification: (id:string) => call<void>("POST",`/api/me/notifications/${encodeURIComponent(id)}/ack`),
+  librarySkills: (scope: LibraryScope) => call<{skills:LibrarySkill[]}>("GET", `/api/library/skills?${new URLSearchParams({scope:scope.kind,...(scope.project?{project:scope.project}:{})})}`).then(r=>r.skills),
+  librarySkill: (id:string) => call<{revisions:LibrarySkill[]}>("GET", `/api/library/skills/${encodeURIComponent(id)}`).then(r=>r.revisions),
+  draftSkill: (scope:LibraryScope, definition:LibrarySkillDefinition, version:number) => call<LibrarySkill>("POST", "/api/library/skills",{scope,definition,version}),
+  testSkill: (id:string, version:number, agent:string, project:string, text:string) => call<Run>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/test`,{agent,project,text}),
+  publishSkill: (id:string,version:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/publish`),
+  promoteSkill: (id:string,version:number,scope:LibraryScope,expected:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/promote`,{scope,version:expected}),
   personalMemory: () => call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then(r => r.notes),
   rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
   approvePersonal: (ids:string[]) => call<{approved:number}>("POST","/api/me/memory/approve",{ids}),

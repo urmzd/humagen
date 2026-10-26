@@ -337,6 +337,48 @@ export interface Choice {
   matched?: string[];
 }
 
+export interface NativeNotificationItem {
+  inbox: string;
+  kind: InboxKind;
+  subject: string;
+  project?: string;
+  thread?: string;
+  at: string;
+}
+
+export interface NativeNotification {
+  id: string;
+  mode: "immediate" | "digest";
+  at: string;
+  items: NativeNotificationItem[];
+}
+
+export interface LibraryScope {
+  kind: "workspace" | "project" | "personal";
+  project?: string;
+  /** Present only for the caller's personal scope. Derived from identity when omitted on input. */
+  subject?: string;
+}
+
+export interface LibrarySkillDefinition {
+  name: string;
+  description: string;
+  instructions?: string;
+  argument_hint?: string;
+  inputs?: string;
+  outputs?: string;
+  /** Exact permitted tools, intersected with the agent's grants. Empty permits no tools. */
+  tools: string[];
+}
+
+export interface LibraryProvenance {
+  scope: LibraryScope;
+  name: string;
+  version: number;
+}
+
+export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance };
+
 export interface AuditRecord {
   id: string;
   actor: string;
@@ -359,7 +401,7 @@ export interface AuditRecord {
 
 /** One thing an agent or a project remembers. */
 export interface Note {
-  kind?: "fact" | "decision" | "preference" | "person";
+  kind?: "fact" | "decision" | "preference" | "person" | "risk";
   expires_at?: string;
   uses?: number;
   last_used_at?: string;
@@ -382,7 +424,7 @@ export interface NoteList {
 
 export interface NoteInput {
   text: string;
-  kind?: "fact" | "decision" | "preference" | "person";
+  kind?: "fact" | "decision" | "preference" | "person" | "risk";
   expires_at?: string;
 }
 
@@ -433,6 +475,8 @@ export interface ToolCredential {
   /** The reference, when the credential is one. It names where the secret is kept, never the secret. */
   ref?: string;
   updated_at?: string;
+  /** Last time an agent resolved this credential for the provider. Absent until first use. */
+  last_used_at?: string;
 }
 
 /** How a credential is held. A `reference` is a name, and only the name is stored; a `value` is the secret itself, stored in the secrets store client secrets are kept in. */
@@ -3244,6 +3288,35 @@ export interface ClientViewCredentials {
 export interface ManifestUsage {
   metered: boolean;
   total: Usage;
+}
+
+export interface ListNativeNotificationsResponse {
+  notifications: NativeNotification[];
+}
+
+export interface ListLibrarySkillsResponse {
+  skills: LibrarySkill[];
+}
+
+export interface DraftLibrarySkillBody {
+  scope: LibraryScope;
+  definition: LibrarySkillDefinition;
+  version: number;
+}
+
+export interface GetLibrarySkillResponse {
+  revisions: LibrarySkill[];
+}
+
+export interface TestLibrarySkillBody {
+  agent: string;
+  project: string;
+  text: string;
+}
+
+export interface PromoteLibrarySkillBody {
+  scope: LibraryScope;
+  version: number;
 }
 
 export interface ListAuditResponse {

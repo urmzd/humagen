@@ -78,8 +78,9 @@ type Credential struct {
 	Kind     Kind   `json:"kind"`
 	// Ref is the reference, for a Reference. It names where the secret is,
 	// which the person who gave it may see.
-	Ref       string    `json:"ref,omitempty"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Ref        string    `json:"ref,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	LastUsedAt time.Time `json:"last_used_at,omitzero"`
 }
 
 // Input writes one credential: a reference or a value, exactly one. It is
@@ -323,4 +324,31 @@ func (s *Store) Delete(tenant, subject, provider string) error {
 	}
 	delete(mine, provider)
 	return s.forget(tenant, owner(subject), provider)
+}
+
+// MarkUsed records credential resolution by an agent before exposing it to a
+// provider. It never reads or copies the secret, and fails closed on durability.
+func (s *Store) MarkUsed(tenant, subject, provider string, at time.Time) error {
+	if err := checkWho(tenant, subject, provider); err != nil {
+		return err
+	}
+	if at.IsZero() {
+		return ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mine := s.by[[2]string{tenant, subject}]
+	held, ok := mine[provider]
+	if !ok {
+		return ErrNotFound
+	}
+	if !held.LastUsedAt.IsZero() && !at.After(held.LastUsedAt) {
+		return nil
+	}
+	held.LastUsedAt = at.UTC()
+	if err := s.kept.Put(tenant, key(subject, provider), held); err != nil {
+		return err
+	}
+	mine[provider] = held
+	return nil
 }

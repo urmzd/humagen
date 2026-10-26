@@ -121,7 +121,7 @@ func TestAProjectsRolesHoldInItsChannelsExpertsAndThreads(t *testing.T) {
 // What a thread's runs teach a project is kept unasked, when the workspace
 // chose that, only when the person who posted could keep it themselves, as
 // for a turn through POST /api/runs.
-func TestWhatAThreadTeachesAProjectIsKeptUnaskedOnlyForItsOwners(t *testing.T) {
+func TestWhatAThreadTeachesAProjectAlwaysNeedsHumanReview(t *testing.T) {
 	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
 	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
@@ -150,8 +150,8 @@ func TestWhatAThreadTeachesAProjectIsKeptUnaskedOnlyForItsOwners(t *testing.T) {
 
 	want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"shared","text":"@lead plan the launch"}`, http.StatusCreated)
 	for _, s := range taught("Field") {
-		if s != string(memory.Approved) {
-			t.Fatalf("an owner's message left Field's notes %v", taught("Field"))
+		if s != string(memory.Pending) {
+			t.Fatalf("project memory bypassed review %v", taught("Field"))
 		}
 	}
 	want(t, f, bo, "POST", "/api/threads", `{"project":"Ops","visibility":"shared","text":"@lead plan the launch"}`, http.StatusCreated)

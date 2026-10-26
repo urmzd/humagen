@@ -50,11 +50,13 @@ import (
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
+	"github.com/urmzd/humagen/pkg/auditrefs"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
@@ -65,6 +67,7 @@ import (
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -196,18 +199,20 @@ type Platform struct {
 	log *slog.Logger
 	now func() time.Time
 
-	Agents       registry.Store
-	Runs         *runs.Index
-	Schedules    *Schedules
-	Journal      *journal.Journal
-	Alerts       *alerts.Engine
-	Knowledge    *knowledge.Store
-	SourceLinks  *sourcelinks.Store
-	Evals        *evals.Store
-	Feedback     *feedback.Store
-	Prefs        *prefs.Store
-	Memory       *memory.Store
-	SkillLibrary *library.Store
+	Agents        registry.Store
+	Runs          *runs.Index
+	Schedules     *Schedules
+	Journal       *journal.Journal
+	Alerts        *alerts.Engine
+	Knowledge     *knowledge.Store
+	SourceLinks   *sourcelinks.Store
+	Evals         *evals.Store
+	Feedback      *feedback.Store
+	Prefs         *prefs.Store
+	Memory        *memory.Store
+	SkillLibrary  *library.Store
+	Notifications *notifications.Store
+	ContextFlags  *contextflags.Store
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
@@ -232,6 +237,7 @@ type Platform struct {
 	Audit                  *audit.Store
 	Artifacts              *artifacts.Index
 
+	AuditReferences *auditrefs.Store
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
 	// Credentials is each person's own credentials for person-scoped tool
@@ -546,6 +552,12 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
+	if tag.Meta["_humagen.context.personal_memory"] == "true" {
+		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
+			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+			return runs.Run{}, err
+		}
+	}
 	// Accepting publishes the run's first event before the run is recorded,
 	// and delivering that event needs to know which client raised it.
 	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, actor: tag.Actor, person: p.operationTagPerson(tag, edge), operationMeta: operationMetaOf(tag.Meta), place: p.placeAdmitted(tag, edge, runID, project)})
@@ -566,6 +578,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if err := p.Runs.Record(acc.RunID, tag, acc.Rev); err != nil {
 		return runs.Run{}, err
 	}
+	p.recordContextUse(tag, project)
 	// Who asked, by every name they go by now: a mapping removed later does
 	// not let them approve their own calls.
 	p.Runs.PinRequesters(acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
@@ -583,6 +596,11 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	tag.Actor = p.namedActor(tag.Tenant, tag.Actor)
 	meta := make(map[string]string, len(tag.Meta)+3)
 	maps.Copy(meta, tag.Meta)
+	if edge.Parent != "" {
+		if parent, err := p.Runs.Get(tag.Tenant, edge.Parent); err == nil && parent.Tag().Meta["_humagen.context.personal_memory"] == "true" {
+			meta["_humagen.context.personal_memory"] = "true"
+		}
+	}
 	delete(meta, runs.MetaWithin)
 	if len(within) > 0 {
 		meta[runs.MetaWithin] = strings.Join(within, ",")
@@ -600,7 +618,7 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	}
 	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual || tag.Origin == runs.OriginAssignment) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
-		tag.Text = p.contextOf(tag.Tenant, project, tag.Agent, tag.Text)
+		tag.Text = p.personalContext(tag.Tenant, project, personOf(tag.Actor), p.contextOf(tag.Tenant, project, tag.Agent, tag.Text), meta)
 	}
 	tag.Meta = meta
 	return tag

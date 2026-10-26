@@ -99,6 +99,199 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/me/notifications:
+    get:
+      operationId: listNativeNotifications
+      tags: [preferences]
+      summary: Deliver visible native notifications under your current preferences
+      description: A bounded authenticated delivery worker discovers at most 500 current inbox references, releases immediate or hourly digest deliveries outside quiet hours, and rechecks every item with the current identity. It never changes authoritative inbox history.
+      x-permission: runs:read
+      responses:
+        '200':
+          description: At most 50 unacknowledged visible deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notifications]
+                properties:
+                  notifications:
+                    type: array
+                    maxItems: 50
+                    items: {$ref: '#/components/schemas/NativeNotification'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/TooMany'}
+  /api/me/notifications/{id}/ack:
+    post:
+      operationId: acknowledgeNativeNotification
+      tags: [preferences]
+      summary: Dismiss your own visible native notification
+      x-permission: runs:read
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '204': {description: Notification projection acknowledged, inbox unchanged}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/library/skills:
+    get:
+      operationId: listLibrarySkills
+      tags: [projects]
+      summary: List the latest skill revisions in a visible scope
+      x-permission: projects:read
+      parameters:
+        - {name: scope, in: query, schema: {type: string, enum: [workspace, project, personal], default: workspace}}
+        - {name: project, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: Bounded scoped skill library
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [skills]
+                properties:
+                  skills:
+                    type: array
+                    maxItems: 32
+                    items: {$ref: '#/components/schemas/LibrarySkill'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      operationId: draftLibrarySkill
+      tags: [projects]
+      summary: Create an immutable skill draft revision
+      x-permission: projects:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, definition, version]
+              properties:
+                scope: {$ref: '#/components/schemas/LibraryScope'}
+                definition: {$ref: '#/components/schemas/LibrarySkillDefinition'}
+                version: {type: integer, minimum: 0}
+      responses:
+        '201':
+          description: New immutable draft
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LibrarySkill'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/library/skills/{id}:
+    get:
+      operationId: getLibrarySkill
+      tags: [projects]
+      summary: Read visible immutable skill revisions
+      x-permission: projects:read
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: At most 32 immutable revisions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revisions]
+                properties:
+                  revisions:
+                    type: array
+                    maxItems: 32
+                    items: {$ref: '#/components/schemas/LibrarySkill'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/library/skills/{id}/versions/{version}/test:
+    post:
+      operationId: testLibrarySkill
+      tags: [projects]
+      summary: Run the exact revision with every permitted action requiring approval
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent, project, text]
+              properties:
+                agent: {type: string}
+                project: {type: string}
+                text: {type: string, minLength: 1, maxLength: 32000}
+      responses:
+        '202':
+          description: Skill test result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Run'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/library/skills/{id}/versions/{version}/publish:
+    post:
+      operationId: publishLibrarySkill
+      tags: [projects]
+      summary: Publish a successfully tested immutable revision
+      x-permission: projects:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+      responses:
+        '200':
+          description: Skill publish result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LibrarySkill'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/library/skills/{id}/versions/{version}/promote:
+    post:
+      operationId: promoteLibrarySkill
+      tags: [projects]
+      summary: Copy a published revision into a new scoped draft
+      x-permission: projects:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: version, in: path, required: true, schema: {type: integer, minimum: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, version]
+              properties:
+                scope: {$ref: '#/components/schemas/LibraryScope'}
+                version: {type: integer, minimum: 0}
+      responses:
+        '201':
+          description: Skill promote result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LibrarySkill'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
   /api/audit:
     get:
       operationId: listAudit
@@ -6556,6 +6749,76 @@ components:
           type: array
           items: {type: string}
 
+    NativeNotificationItem:
+      type: object
+      required: [inbox, kind, subject, at]
+      properties:
+        inbox: {type: string}
+        kind: {$ref: '#/components/schemas/InboxKind'}
+        subject: {type: string}
+        project: {type: string}
+        thread: {type: string}
+        at: {type: string, format: date-time}
+    NativeNotification:
+      type: object
+      required: [id, mode, at, items]
+      properties:
+        id: {type: string}
+        mode: {type: string, enum: [immediate, digest]}
+        at: {type: string, format: date-time}
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/NativeNotificationItem'}
+    LibraryScope:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [workspace, project, personal]}
+        project: {type: string}
+        subject:
+          description: Present only for the caller's personal scope. Derived from identity when omitted on input.
+          type: string
+    LibrarySkillDefinition:
+      type: object
+      required: [name, description, tools]
+      properties:
+        name: {type: string, maxLength: 64}
+        description: {type: string, maxLength: 1024}
+        instructions: {type: string, maxLength: 8000}
+        argument_hint: {type: string, maxLength: 100}
+        inputs: {type: string, maxLength: 4000}
+        outputs: {type: string, maxLength: 4000}
+        tools:
+          description: Exact permitted tools, intersected with the agent's grants. Empty permits no tools.
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 128}
+    LibraryProvenance:
+      type: object
+      required: [scope, name, version]
+      properties:
+        scope: {$ref: '#/components/schemas/LibraryScope'}
+        name: {type: string}
+        version: {type: integer, minimum: 1}
+    LibrarySkill:
+      allOf:
+        - {$ref: '#/components/schemas/LibrarySkillDefinition'}
+        - type: object
+          required: [id, scope, version, by, at, tests]
+          properties:
+            id: {type: string}
+            scope: {$ref: '#/components/schemas/LibraryScope'}
+            version: {type: integer, minimum: 1}
+            by: {type: string}
+            at: {type: string, format: date-time}
+            published_at: {type: string, format: date-time}
+            published_by: {type: string}
+            tests:
+              type: array
+              maxItems: 10
+              items: {type: string}
+            from: {$ref: '#/components/schemas/LibraryProvenance'}
     AuditRecord:
       type: object
       required: [id, actor, at, outcome, action, resource, resource_id, scope]
@@ -6582,7 +6845,7 @@ components:
       type: object
       required: [id, text, source, status, at]
       properties:
-        kind: {type: string, enum: [fact, decision, preference, person]}
+        kind: {type: string, enum: [fact, decision, preference, person, risk]}
         expires_at: {type: string, format: date-time}
         uses: {type: integer, minimum: 0}
         last_used_at: {type: string, format: date-time}
@@ -6612,7 +6875,7 @@ components:
       required: [text]
       properties:
         text: {type: string}
-        kind: {type: string, enum: [fact, decision, preference, person]}
+        kind: {type: string, enum: [fact, decision, preference, person, risk]}
         expires_at: {type: string, format: date-time}
     NoteSelection:
       type: object
@@ -6688,6 +6951,10 @@ components:
           description: The reference, when the credential is one. It names where the secret is kept, never the secret.
           type: string
         updated_at: {type: string, format: date-time}
+        last_used_at:
+          description: Last time an agent resolved this credential for the provider. Absent until first use.
+          type: string
+          format: date-time
     CredentialKind:
       description: How a credential is held. A `reference` is a name, and only the name is stored; a `value` is the secret itself, stored in the secrets store client secrets are kept in.
       type: string
