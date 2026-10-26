@@ -155,8 +155,8 @@ func (s *Store) Configure(tenant, name string, cfg SourceConfig, at time.Time) (
 		return Source{}, fmt.Errorf("%w: refresh in progress", ErrExists)
 	}
 	// Changing origin/provider cannot retain a copy from a different authority.
-	if src.Documents > 0 && (cfg.Provider != lc.Provider || cfg.Origin != lc.Origin || cfg.Project != lc.Project) {
-		return Source{}, fmt.Errorf("%w: create a new source for a different origin or project", ErrInvalid)
+	if src.Documents > 0 && (cfg.Provider != lc.Provider || cfg.Origin != lc.Origin || cfg.Project != lc.Project || cfg.Owner != lc.Owner) {
+		return Source{}, fmt.Errorf("%w: create a new source for a different origin, owner or project", ErrInvalid)
 	}
 	lc.SourceConfig = cfg
 	next := cloneSource(src.Source)
@@ -261,7 +261,7 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 	seen := map[string]bool{}
 	for _, d := range docs {
 		bytes += len(d.Text)
-		if strings.TrimSpace(d.Title) == "" || strings.TrimSpace(d.Text) == "" || len(d.Title) > 4096 || len(d.URI) > 4096 || bytes > MaxImportBytes || len(d.ID) > 256 || seen[d.ID] {
+		if strings.TrimSpace(d.Title) == "" || strings.TrimSpace(d.Text) == "" || len(d.Title) > 4096 || len(d.URI) > 4096 || bytes > MaxImportBytes || d.ID == "" || len(d.ID) > 256 || seen[d.ID] {
 			return Source{}, fmt.Errorf("%w: imported document", ErrInvalid)
 		}
 		seen[d.ID] = true
@@ -283,12 +283,9 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 		b.Delete(tenant, textKey(name, seq))
 	}
 	seq := s.seq
-	for i, d := range docs {
+	for _, d := range docs {
 		seq++
 		documentID := d.ID
-		if documentID == "" {
-			documentID = fmt.Sprintf("%s-%d", id, i)
-		}
 		texts := split(d.Text)
 		doc := &Document{ID: documentID, Title: strings.TrimSpace(d.Title), URI: d.URI, Bytes: len(d.Text), Passages: len(texts), AddedBy: by, AddedAt: at}
 		next.docs = append(next.docs, doc)
