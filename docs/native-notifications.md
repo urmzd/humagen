@@ -1,7 +1,17 @@
 # Native console notifications
 
-The notification panel is a delivery projection of a person's authoritative inbox.
-Dismissing a notification does not read, resolve or remove its inbox message.
+Notifications is a top-level console destination at `/notifications`, reached
+through the bell in navigation, including the collapsed rail. Its live badge
+counts delivered notifications, separate from the operational Needs You count.
+The page is a delivery projection of a person's authoritative inbox. Dismissing
+a notification does not read, resolve or remove its inbox message.
+
+One console-level poll keeps the badge and page in sync while navigation is
+closed or another page is open. Only authenticated humans with `runs:read`
+load it. Reader changes and revoked access clear the projection; stale read
+responses cannot restore a dismissed delivery. Loading, empty and failed
+reads have distinct states, with retry on failure. `/you/notifications` holds
+delivery preferences and links from the page stay within the console.
 
 Each event kind has Immediately, Digest or Off. A new person defaults to Off.
 Immediate updates appear on the next authenticated console poll, every five

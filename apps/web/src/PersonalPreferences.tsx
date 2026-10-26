@@ -2,7 +2,6 @@ import { defaultCopy } from "@humagen/components";
 import type { PersonalPreferences as Personal } from "../../../packages/client/src/generated/types.ts";
 import { useEffect, useState } from "react";
 import { api, ApiError, type Preferences } from "./api.ts";
-import { NotificationPanel } from "./Notifications.tsx";
 import { PersonalAgents } from "./PersonalAgents.tsx";
 import { card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
 
@@ -135,7 +134,6 @@ export function PersonalPreferences({
               {section === "notifications" && (
                 <>
                   <p className="text-aui-muted">{defaultCopy.notifications.description}</p>
-                  <NotificationPanel />
                   <p className="text-aui-muted">{emailAvailable?copy.emailDescription:copy.deliveryUnavailable}</p>
                   <label className="flex min-h-11 items-center gap-3">
                     <input type="checkbox" checked={value.email??false} disabled={!emailAvailable&&!value.email} onChange={event=>setValue({...value,email:event.target.checked})} aria-describedby="email-unavailable" />

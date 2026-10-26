@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
-import { NotificationPanel } from "./Notifications.tsx";
+import { NotificationsPage, useNotifications } from "./Notifications.tsx";
 import { Audit } from "./Audit.tsx";
 import { AgentControls } from "./AgentControls.tsx";
 import { ActionPolicies } from "./ActionPolicies.tsx";
@@ -145,6 +145,8 @@ function useAppearance(prefs: Preferences | null) {
 function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const can = useCallback((p: string) => me.permissions.includes(p), [me]);
   const [route, go] = useRoute();
+  const canNotify = can("runs:read") && me.principal.kind === "user";
+  const notificationDelivery = useNotifications(canNotify, JSON.stringify([me.principal.tenant, me.principal.subject]));
   const [searchOpen,setSearchOpen]=useState(false);
   useEffect(()=>{
     const search=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"&&!event.altKey&&!event.isComposing){event.preventDefault();setSearchOpen(current=>!current)}};
@@ -437,13 +439,14 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         inboxCount={inboxCounts.open}
         live={live}
         onSearch={()=>{setSearchOpen(true);if(window.innerWidth<768)setOpen(false)}}
-        notifications={can("runs:read")&&me.principal.kind==="user"?<NotificationPanel/>:undefined}
+        notificationCount={canNotify ? notificationDelivery.rows.length : undefined}
         onSignOut={() => api.logout().then(onSignedOut).catch(onSignedOut)}
       />
       {searchOpen&&<QuickSwitcher onClose={()=>setSearchOpen(false)} onGo={(next)=>{setSearchOpen(false);navigate(next)}}/>}
       <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
       {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
+        {route.page==="notifications"&&(canNotify?<NotificationsPage notifications={notificationDelivery} onGo={navigate}/>:<Page title={defaultCopy.notifications.title}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="library"&&<WorkspaceTabs label={defaultCopy.navigation.library} items={(["sources","skills","memory"] as const).filter(section=>can(section==="sources"?"knowledge:read":"projects:read")).map(section=>({label:defaultCopy.navigation[section],route:{page:"library",section}}))} current={href(route)} onGo={go}/>}
         {route.page==="library"&&route.section==="skills"&&(can("projects:read")?<SkillsLibrary key={href(route)} onLocationChange={location=>go({page:"library",section:"skills",...location})}/>:<Page title={defaultCopy.navigation.skills}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="library"&&route.section==="memory"&&(can("projects:read")?<MemoryLibrary key={href(route)} onLocationChange={location=>go({page:"library",section:"memory",...location})}/>:<Page title={defaultCopy.navigation.memory}><Problem message={defaultCopy.noPermission}/></Page>)}

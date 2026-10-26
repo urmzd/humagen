@@ -51,6 +51,7 @@ test("every route survives a round trip through its address", () => {
     { page: "inbox", kind: "alert" },
     { page: "inbox", alert: "a1" },
     { page: "inbox" },
+    { page: "notifications" },
     { page: "inbox", message: "m1" },
     { page: "context" },
     { page: "context", source: "handbook", tab: "documents" },
@@ -265,4 +266,13 @@ test("conversation Instructions context is addressable and reloadable", () => {
   const route = {page:"conversation",id:"saved thread",panel:"context",contextTab:"instructions"} as const;
   assert.equal(href(route),"/conversations/saved%20thread/context/instructions");
   assert.deepEqual(parse(href(route)),route);
+});
+
+
+test("delivered notifications have a top-level address distinct from delivery preferences", () => {
+  assert.equal(href({ page: "notifications" }), "/notifications");
+  assert.deepEqual(at("/notifications"), { page: "notifications" });
+  assert.equal(documentTitle({ page: "notifications" }), "Notifications · Humagen");
+  assert.equal(href({ page: "you", section: "notifications" }), "/you/notifications");
+  assert.deepEqual(at("/you/notifications"), { page: "you", section: "notifications" });
 });
