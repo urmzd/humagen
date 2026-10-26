@@ -19,6 +19,7 @@ import { askedOf, copyFor } from "./asks.ts";
 import { useCompletion } from "./completion.ts";
 import { useThreadSelection } from "./selection.ts";
 import { HomePage, type HomeAnnouncement } from "./HomePage.tsx";
+import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { emptySelection, MAX_SELECTED, PlusMenu, withAgent, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
 import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
 import { rememberSaid } from "./conflicts.ts";
@@ -286,7 +287,7 @@ export function Chat({
   /** Quiet lines under the prompt on Home: what needs the person, and what is new. */
   home?: ReactNode;
   banner?:HomeAnnouncement;
-  findHelp?:ReactNode;
+  findHelp?: (description: string) => Promise<HelpSuggestion[]>;
   personalProject?:string;
   threadId: string | null;
   /** The reader's subject: Retry asks a turn again as them, so only on a turn that acted for them. */
@@ -600,6 +601,11 @@ export function Chat({
                     kinds={root?.kinds}
                     canCreateProject={canCreateProject}
                     onProjectCreated={onProjectCreated}
+                    finder={findHelp ? <FindHelp initialDescription={draft} onSearch={findHelp} canChoose={canRun} onChoose={(match, description) => {
+                      select({ ...selection, project: match.project, channel: "general", agents: [match.agent], mode: "best_fit" });
+                      if (!draft.trim()) setSeed({ text: description });
+                      close();
+                    }} /> : undefined}
                   />
                 ),
                 chips: <SelectionChips personalProject={personalProject} selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectFixed={selection.project===personalProject} />,
@@ -658,7 +664,7 @@ export function Chat({
 
   if (!threadId || path.length === 0) {
     return (
-      <HomePage banner={banner} greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={<>{findHelp}{home}</>}>
+      <HomePage banner={banner} greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
         {composer}
         {/*
           Suggestions sit with the chat bar, as quiet text under it, until

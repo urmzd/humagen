@@ -1,10 +1,10 @@
 import { defaultCopy } from "@humagen/components";
 import { CheckIcon, FileIcon, FolderIcon, MessageIcon, XIcon } from "@humagen/render-web";
-import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { coworking, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { ProjectChoices } from "./ProjectPicker.tsx";
 import { above, titleOf } from "./projects.ts";
-import { AgentMark, SearchField } from "./ui.tsx";
+import { AgentMark, SearchField, SearchIcon } from "./ui.tsx";
 
 const words = defaultCopy.chat;
 
@@ -73,6 +73,7 @@ export function PlusMenu({
   onProjectCreated,
   projectFixed,
   personalProject,
+  finder,
 }: {
   /** The agents that may answer where the conversation lives. Null while they load. */
   agents: { name: string; description?: string }[] | null;
@@ -85,6 +86,8 @@ export function PlusMenu({
   /** The project tree, or null while it loads. Left out, the menu offers no project. */
   projects?: ProjectView[] | null;
   personalProject?:string;
+  /** Contextual discovery offered only before a conversation starts. */
+  finder?: ReactNode;
   kinds?: ProjectKindSpec[];
   canCreateProject?: boolean;
   onProjectCreated?: (p: ProjectView) => void;
@@ -93,6 +96,18 @@ export function PlusMenu({
 }) {
   const [query, setQuery] = useState("");
   const [choosing, setChoosing] = useState(false);
+  const [finding, setFinding] = useState(false);
+  const finderButton = useRef<HTMLButtonElement>(null);
+  const found = useRef(false);
+  useEffect(() => {
+    if (finding) {
+      found.current = true;
+      panel.current?.querySelector<HTMLInputElement>("[data-plus-discovery] input")?.focus();
+    } else if (found.current) {
+      found.current = false;
+      finderButton.current?.focus();
+    }
+  }, [finding]);
   // Back from choosing a project, focus returns to the project's button, so
   // the arrow keys and Escape keep working in the menu.
   const projectButton = useRef<HTMLButtonElement>(null);
@@ -159,10 +174,11 @@ export function PlusMenu({
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
+      if (finding) return setFinding(false);
       if (choosing) return setChoosing(false);
       return onClose();
     }
-    if (choosing) return;
+    if (choosing || finding) return;
     const items = [...(panel.current?.querySelectorAll<HTMLElement>(ITEM) ?? [])];
     const at = items.indexOf(document.activeElement as HTMLElement);
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -204,7 +220,12 @@ export function PlusMenu({
       style={{ maxHeight: place.max }}
       className={`absolute left-0 z-30 flex w-full max-w-sm flex-col overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1" : "top-full mt-1"}`}
     >
-      {choosing && projects !== undefined ? (
+      {finding && finder ? (
+        <div data-plus-discovery>
+          <button type="button" className={row} onClick={() => setFinding(false)}>{defaultCopy.home.findHelp.back}</button>
+          {finder}
+        </div>
+      ) : choosing && projects !== undefined ? (
         <ProjectChoices
           projects={projects}
           kinds={kinds}
@@ -220,6 +241,10 @@ export function PlusMenu({
             <FileIcon size={16} className="text-aui-muted" />
             {words.attach}
           </button>
+          {finder && !projectFixed && <button type="button" ref={finderButton} data-plus-item="action" className={row} onClick={() => setFinding(true)}>
+            <SearchIcon size={16} />
+            {defaultCopy.home.findHelp.title}
+          </button>}
           <div className="my-1 h-px bg-aui-border" />
           <p className="px-2.5 pt-1 text-aui-xs font-medium text-aui-muted">{words.agents}</p>
           <div className="p-1">

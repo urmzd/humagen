@@ -42,7 +42,6 @@ import { YourConnections } from "./Connections.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { InboxPage } from "./InboxPage.tsx";
-import { FindHelp } from "./FindHelp.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { Monitor } from "./Monitor.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
@@ -503,7 +502,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             greeting={greeting(shownName)}
             personalProject={me.personal_project}
             banner={banner}
-            findHelp={can("projects:read") ? <FindHelp canChoose={can("runs:write")} onSearch={api.findHelp} onChoose={(suggestion,description)=>go({page:"new",project:suggestion.project,agent:suggestion.agent,ask:description})} onOpen={openProject}/> : undefined}
+            findHelp={can("projects:read") ? api.findHelp : undefined}
             home={
               <>
               <Problem message={welcomeProblem}/>

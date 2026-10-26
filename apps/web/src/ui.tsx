@@ -1075,7 +1075,7 @@ export function Popover({
   );
 }
 
-function SearchIcon({ size = 14 }: { size?: number }) {
+export function SearchIcon({ size = 14 }: { size?: number }) {
   return (
     <svg
       aria-hidden="true"

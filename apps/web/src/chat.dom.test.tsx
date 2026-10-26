@@ -678,12 +678,13 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
     "PUT /api/threads/t1": (body) => ({ ...record, version: 1, agents: (body as { agents: string[] }).agents }),
   });
   render(
-    <Chat threadId="t1" me="ana" summary={undefined} tick={0} agents={agents} homes={homes} projects={[]} canRun canCreateProject={false} greeting="" onThread={() => {}} onChanged={() => {}} onProjectCreated={() => {}} />,
+    <Chat threadId="t1" me="ana" summary={undefined} tick={0} agents={agents} homes={homes} projects={[]} canRun canCreateProject={false} findHelp={async () => { throw new Error("existing conversations never search outside their project"); }} greeting="" onThread={() => {}} onChanged={() => {}} onProjectCreated={() => {}} />,
   );
   await screen.findByPlaceholderText(defaultCopy.threads.message);
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const menu = await screen.findByRole("dialog", { name: chat.menu });
   assert.ok(within(menu).getByText(defaultCopy.threads.shareProjectFixed));
+  assert.equal(within(menu).queryByRole("button", { name: defaultCopy.home.findHelp.title }), null, "an existing conversation cannot offer global discovery");
   fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
   await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
   assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 0, title: "", visibility: "shared", default: "", agents: ["helper"], mode: "best_fit" });
@@ -708,4 +709,92 @@ test("a late personal-home address never becomes visible while project titles lo
  assert.ok(!within(selected).queryByRole("button",{name:defaultCopy.chat.removeProject(defaultCopy.projects.personalTitle)}));
  mounted.rerender(<Chat {...props} personalProject={personal} projects={[]}/>);
  assert.ok(within(selected).getByText(defaultCopy.projects.personalTitle));
+});
+
+test("the composer opens discovery in its picker and preserves the draft and attachments when choosing a match", async () => {
+  const c = defaultCopy.home.findHelp;
+  const queries: string[] = [];
+  const { opened } = openChat(workspace("lead"), {
+    projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
+    findHelp: async (query) => {
+      queries.push(query);
+      return [{ project: "Globex", title: "Globex renewal", agent: "globex-helper", reason: "Matches the renewal work" }];
+    },
+  });
+  fireEvent.change(box(), { target: { value: "Keep my detailed request." } });
+  const picker = document.querySelector<HTMLInputElement>('input[type="file"]');
+  assert.ok(picker);
+  fireEvent.change(picker, { target: { files: [new File(["Renewal evidence"], "evidence.txt", { type: "text/plain" })] } });
+  await screen.findByRole("list", { name: "Attached files" });
+  assert.equal(screen.queryByRole("region", { name: c.title }), null, "discovery is absent from the resting Home page");
+  assert.equal(screen.queryByRole("button", { name: c.title }), null);
+
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: c.title }));
+  const query = await within(menu).findByRole("textbox", { name: c.label });
+  assert.equal((query as HTMLInputElement).value, "Keep my detailed request.");
+  assert.equal(menu.querySelector("form"), null, "search must not nest a form inside the message form");
+  fireEvent.change(query, { target: { value: "renewal" } });
+  fireEvent.keyDown(query, { key: "Enter" });
+  await within(menu).findByText("Globex renewal");
+  assert.deepEqual(queries, ["renewal"]);
+  assert.equal(box().value, "Keep my detailed request.");
+  assert.ok(!net?.seen.some((request) => request.method === "POST"), "search never sends the conversation");
+  fireEvent.click(within(menu).getByRole("button", { name: c.choose }));
+  await waitFor(() => {
+    assert.ok(net?.seen.some((request) => request.path === "/api/projects/Globex/agents"));
+    assert.ok(chips().includes("globex-helper"), JSON.stringify(chips()));
+    assert.ok(chips().some((chip) => chip.includes("Globex")), JSON.stringify(chips()));
+  });
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  assert.equal(box().value, "Keep my detailed request.");
+  assert.ok(within(screen.getByRole("list", { name: "Attached files" })).getByText("evidence.txt"));
+  assert.equal(document.activeElement, box());
+  assert.ok(!net?.seen.some((request) => request.method === "POST"), "choosing prepares work without starting it");
+
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find((request) => request.method === "POST" && request.path === "/api/threads")?.body as { project: string; channel: string; agents: string[]; text: string };
+  assert.equal(started.project, "Globex");
+  assert.equal(started.channel, "general");
+  assert.deepEqual(started.agents, ["globex-helper"]);
+  assert.equal(started.text, "Keep my detailed request.\n\nAttached file: evidence.txt\n```\nRenewal evidence\n```");
+});
+
+test("discovery seeds an empty composer only after an explicit match choice", async () => {
+  const c = defaultCopy.home.findHelp;
+  openChat(workspace("lead"), {
+    projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
+    findHelp: async () => [{ project: "Globex", title: "Globex renewal", agent: "globex-helper", reason: "Matches your work" }],
+  });
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: c.title }));
+  fireEvent.change(await within(menu).findByRole("textbox", { name: c.label }), { target: { value: "Plan a customer renewal" } });
+  fireEvent.click(within(menu).getByRole("button", { name: c.search }));
+  await within(menu).findByText("Globex renewal");
+  assert.equal(box().value, "", "search alone does not change the draft");
+  fireEvent.click(within(menu).getByRole("button", { name: c.choose }));
+  await waitFor(() => assert.equal(box().value, "Plan a customer renewal"));
+  assert.ok(chips().includes("globex-helper"), JSON.stringify(chips()));
+  assert.ok(!net?.seen.some((request) => request.method === "POST"));
+});
+
+test("Escape returns from discovery to its picker trigger before closing the picker", async () => {
+  const c = defaultCopy.home.findHelp;
+  openChat(workspace("lead"), { findHelp: async () => [] });
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: c.title }));
+  const query = await within(menu).findByRole("textbox", { name: c.label });
+  await waitFor(() => assert.equal(document.activeElement, query));
+  fireEvent.keyDown(query, { key: "Escape" });
+  assert.ok(screen.getByRole("dialog", { name: chat.menu }));
+  assert.equal(within(menu).queryByRole("textbox", { name: c.label }), null);
+  const trigger = within(menu).getByRole("button", { name: c.title });
+  await waitFor(() => assert.equal(document.activeElement, trigger));
+  fireEvent.keyDown(trigger, { key: "Escape" });
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  assert.equal(document.activeElement, box());
 });
