@@ -16,6 +16,7 @@
  * for primitives and approval; requires all screens). SCREENS_VIEWPORTS can
  * override sizes with comma-separated WIDTHxHEIGHT values; SCREENS_COLOR_SCHEME
  * accepts light (default) or dark for explicit responsive/theme acceptance.
+ * SCREENS_SHOWCASE_ONLY=1 exports from an existing complete passing report.
  */
 
 import assert from "node:assert/strict";
@@ -48,7 +49,8 @@ const repo = resolve(here, "../..");
 const bin = resolve(process.env.HUMAGEN_BIN ?? join(repo, "bin/humagen"));
 const web = resolve(process.env.HUMAGEN_WEB ?? join(repo, "apps/web/dist"));
 const out = resolve(process.env.SCREENS_OUT ?? join(repo, ".screens"));
-const showcase = process.env.SCREENS_SHOWCASE === "1";
+const showcaseOnly = process.env.SCREENS_SHOWCASE_ONLY === "1";
+const showcase = process.env.SCREENS_SHOWCASE === "1" || showcaseOnly;
 const only = (process.env.SCREENS_ONLY ?? "").split(",").filter(Boolean);
 
 interface Viewport {
@@ -1445,10 +1447,13 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
     analytics: "usage-chart",
     home: "home",
     onboarding: "agent-setup-role",
-    runs: "task",
-    "ui-agent-turn": "chat-private",
+    runs: "conversation-native-deliverable",
+    "ui-agent-turn": "conversation-outcome-redirect",
   })) {
-    copyFileSync(join(out, "desktop", `${screen}.png`), join(target, `${name}.png`));
+    const full = join(out, "desktop", `${screen}.full.png`);
+    const image =
+      name === "runs" && existsSync(full) ? full : join(out, "desktop", `${screen}.png`);
+    copyFileSync(image, join(target, `${name}.png`));
   }
   // The gallery is deliberately outside the production build. Serve its
   // existing fixtures with Vite, alongside the same isolated seeded server.
@@ -1515,6 +1520,7 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
     await fixtureHues();
     await page.evaluate(() => document.fonts.ready);
     await page.getByRole("heading", { name: "Console primitives" }).waitFor();
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       path: join(target, "primitives.png"),
       fullPage: true,
@@ -1541,9 +1547,11 @@ async function main(): Promise<void> {
       `${out} is not empty and holds no report.json, so it is not cleared. Set SCREENS_OUT to another folder.`,
     );
   }
-  rmSync(out, { recursive: true, force: true });
-  mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, "report.json"), "[]\n");
+  if (!showcaseOnly) {
+    rmSync(out, { recursive: true, force: true });
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, "report.json"), "[]\n");
+  }
   const executablePath = chromiumPath();
   const { base, proc, dir, closeModel } = await startHumagen(await freePort());
   let browser: Browser | undefined;
@@ -1556,6 +1564,15 @@ async function main(): Promise<void> {
     if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
     browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
     const call = api(base);
+    if (showcaseOnly) {
+      const recorded = JSON.parse(readFileSync(join(out, "report.json"), "utf8")) as Result[];
+      assert.ok(
+        recorded.length > 0 && recorded.every((item) => item.problems.length === 0),
+        "Showcase-only export requires a completed passing screen report",
+      );
+      await exportShowcase(browser, base);
+      return;
+    }
     const results: Result[] = [];
 
     // A person with nothing waiting and nothing new: Home's welcome. The

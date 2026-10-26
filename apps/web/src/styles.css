@@ -518,3 +518,10 @@ button.humagen-tick:focus-visible {
     transition: none;
   }
 }
+
+/* The standalone gallery flows as a document rather than a console scroll pane. */
+html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
