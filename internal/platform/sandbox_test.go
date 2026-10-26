@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -400,7 +401,7 @@ func TestBuiltinWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	back, _ := p.Agents.Get(ctx, tenant, platform.BuiltinWriter, 0)
-	if back.Rev != 3 || back.Spec.SystemPrompt == drifted.SystemPrompt || len(back.Spec.Tools) != 4 {
+	if back.Rev != 3 || back.Spec.SystemPrompt == drifted.SystemPrompt || len(back.Spec.Tools) != 5 {
 		t.Fatalf("after drifting the built-in is rev %d with %d tools", back.Rev, len(back.Spec.Tools))
 	}
 }
@@ -495,5 +496,54 @@ func TestPublishingTellsTheInbox(t *testing.T) {
 	}
 	if open = p.Inbox.OpenOf(tenant, inbox.KindArtifact); len(open) != 0 {
 		t.Fatalf("after deleting, open = %+v", open)
+	}
+}
+
+func TestNativeDocumentsPublishAsEditableOfficeAndKeepPriorVersions(t *testing.T) {
+	p := start(t, call.Limits{})
+	run, req := turn(t, p, "native-files", "")
+	for _, ext := range []string{"docx", "pptx", "xlsx"} {
+		name := "plan." + ext
+		content := `{"title":"Original","paragraphs":["The original plan"],"slides":[{"title":"Original","body":["The plan"],"notes":"Explain the evidence","sources":["https://example.test/evidence"]}],"rows":[["Status","Original"]]}`
+		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": name, "format": "native", "content": content}); err != nil {
+			t.Fatal(err)
+		}
+		published, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if published.Version != 1 || !strings.Contains(published.Mime, "openxmlformats") || published.Kind == artifacts.Archive {
+			t.Fatalf("not native: %+v", published)
+		}
+		read, err := use(t, p, req, platform.ToolFileRead, map[string]any{"path": name})
+		if err != nil || !strings.Contains(read, "Explain the evidence") {
+			t.Fatalf("native revision source = %q,%v", read, err)
+		}
+		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": name, "format": "native", "content": strings.ReplaceAll(content, "Original", "Revised")}); err != nil {
+			t.Fatal(err)
+		}
+		newer, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Thread: run.Thread, Run: run.ID, Agent: "lead", Path: name})
+		if err != nil || newer.Version != 2 || newer.ID == published.ID || newer.SHA256 == published.SHA256 {
+			t.Fatalf("new immutable version = %+v,%v", newer, err)
+		}
+		immutable, err := use(t, p, req, platform.ToolFileRead, map[string]any{"path": fmt.Sprintf("artifact:%s@%d", published.ID, published.Version)})
+		if err != nil || !strings.Contains(immutable, "Original") || strings.Contains(immutable, "Revised") {
+			t.Fatalf("immutable source = %q,%v", immutable, err)
+		}
+		_, otherReq := turn(t, p, "other-native-"+ext, "")
+		for _, reader := range []runtime.Request{otherReq, req} {
+			version := published.Version
+			if reader.RunID == req.RunID {
+				version++
+			}
+			_, err := use(t, p, reader, platform.ToolFileRead, map[string]any{"path": fmt.Sprintf("artifact:%s@%d", published.ID, version)})
+			if !errors.Is(err, platform.ErrSandbox) {
+				t.Fatalf("wrong thread/version read = %v", err)
+			}
+		}
+		kept, err := p.Artifacts.Get(tenant, published.ID)
+		if err != nil || kept.SHA256 != published.SHA256 || kept.Version != 1 {
+			t.Fatalf("old version changed: %+v,%v", kept, err)
+		}
 	}
 }

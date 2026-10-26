@@ -55,9 +55,9 @@ afterEach(() => {
   net = undefined;
 });
 
-function room(routes: Record<string, (body: unknown) => unknown> = {}) {
+function room(routes: Record<string, (body: unknown) => unknown> = {}, initial: ThreadPage = page) {
   net = stubFetch({
-    "GET /api/threads/th-0123456789abcdef": () => page,
+    "GET /api/threads/th-0123456789abcdef": () => initial,
     "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
     "GET /api/people": () => ({ people: [{ subject: "00u-dana", name: "Dana Scully", handle: "dana", roles: [], picture: null }], next: null }),
     "GET /api/runs/r1/events": () => ({ events: [] }),
@@ -68,7 +68,7 @@ function room(routes: Record<string, (body: unknown) => unknown> = {}) {
     <ThreadRoom
       id="th-0123456789abcdef"
       me="ana"
-      initial={page}
+      initial={initial}
       tick={0}
       agents={[helper]}
       projects={tree}
@@ -1568,4 +1568,19 @@ test("Stop Turn reports a request and waits for the ledger, rather than inventin
   terminal = true;
   await waitFor(() => assert.equal(screen.getByLabelText("Recorded status").textContent, "stopped"), { timeout: 2000 });
   assert.equal(screen.queryByText(defaultCopy.conversation.stopPending), null);
+});
+
+test("recorded outcomes lead with recommendations and Redirect prepares human intent without executing it", async () => {
+  const initial: ThreadPage = {...page,turns:page.turns.map(turn => turn.run ? {...turn,run:{...turn.run,outcome:{kind:"recommendation",summary:"Renew the agreement.",decisions:["Keep the current term"],next_action:"Confirm the owner"},citations:[{id:"[1]",title:"Agreement",url:"https://example.test/agreement",snippet:"The source passage"}]}} : turn)};
+  room({},initial);
+  const message=await screen.findByRole("article",{name:"helper message"});
+  assert.ok(within(message).getByText("Recommendation"));
+  assert.ok(within(message).getByText("Keep the current term"));
+  assert.ok(within(message).getByText("Confirm the owner"));
+  fireEvent.click(within(message).getByRole("button",{name:"Redirect"}));
+  const composer=screen.getByPlaceholderText(words.channel("renewals")) as HTMLTextAreaElement;
+  assert.ok(composer.value.includes("@helper redirecting [this outcome]"));
+  assert.ok(composer.value.endsWith("Please change direction: "));
+  assert.equal(net?.seen.filter(call=>call.method==="POST").length,0);
+
 });

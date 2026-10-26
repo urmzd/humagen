@@ -23,6 +23,12 @@ export const defaultCopy = {
     messageActions: "Message actions",
     copyMessage: "Copy message",
     copyAnswer: "Copy answer",
+    outcomeKind: { recommendation: "Recommendation", decision: "Decision", update: "Result" },
+    outcomeDecisions: "Decisions",
+    outcomeNext: "Next Action",
+    redirect: "Redirect",
+    redirectPrompt: (agent: string, link: string) =>
+      `@${agent} redirecting [this outcome](${link}). Please change direction: `,
     stopTurn: "Stop Turn",
     stoppingTurn: "Stopping…",
     stopPending: "Stop requested. Waiting for the recorded turn to end.",
@@ -47,6 +53,12 @@ export const defaultCopy = {
     sourcePassages: (count: number) => `${count} ${count === 1 ? "passage" : "passages"} indexed`,
     sourceExcluded: "Excluded from search",
     more: "Show More",
+    artifactPDF: "Download PDF",
+    artifactPDFBusy: "Preparing PDF…",
+    artifactPDFFailed:
+      "The PDF could not be prepared. Download the original to retain the full content.",
+    artifactReadSource: (id: string, version: number) =>
+      ` Read the immutable source with file_read path artifact:${id}@${version}.`,
     artifactNoMatch: "No deliverables match this type.",
     sourceDocs: (count: number) => `${count} ${count === 1 ? "document" : "documents"}`,
     peopleEmpty: "No participants are recorded yet.",

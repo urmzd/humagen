@@ -306,12 +306,12 @@ export function PlusMenu({
   );
 }
 
-const chip = "inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-aui-border pr-1 pl-2 text-aui-xs text-aui-fg";
+const chip = "inline-flex min-h-7 max-w-full min-w-0 items-center gap-1.5 pr-1 text-aui-xs text-aui-muted";
 const remove =
-  "inline-flex size-6 shrink-0 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "inline-flex size-6 shrink-0 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
 
 /**
- * What the + menu selected, as chips in the chat bar's bottom row: each
+ * What the + menu selected, as text controls below the composer: each
  * agent with its color, the project with its path (and channel when not
  * general), each removable. With two agents or more, a text control says
  * how an untagged message is routed: Best Fit or All of Them.

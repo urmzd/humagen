@@ -2349,6 +2349,27 @@ the file's SHA-256.
     });
   }
 
+  /** Renders the retained native revision model of this exact artifact.
+Supports up to 100 pages using Windows-1252 text. Unsupported characters
+and overfull slides are refused, never silently replaced or cut.
+Does not publish a new version or run an agent.
+ */
+  async exportArtifactPdf(id: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/api/artifacts/{id}/pdf";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async exportArtifactPdfRaw(id: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/api/artifacts/{id}/pdf";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
   /** Report what the workspace has published against its storage limit */
   async getStorage(options?: RequestOptions): Promise<StorageUsage> {
     const path = "/api/storage";

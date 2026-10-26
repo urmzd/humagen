@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"github.com/urmzd/humagen/pkg/nativefiles"
 	"mime"
 	"net/http"
+	"path"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -16,6 +19,7 @@ func (s *Server) artifactRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/artifacts/{id}", s.authed(auth.ArtifactsRead, s.seenArtifact(s.getArtifact)))
 	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactVersions)))
 	mux.HandleFunc("GET /api/artifacts/{id}/content", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactContent)))
+	mux.HandleFunc("GET /api/artifacts/{id}/pdf", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactPDF)))
 	mux.HandleFunc("DELETE /api/artifacts/{id}", s.authed(auth.ArtifactsWrite, s.seenArtifact(s.deleteArtifact)))
 	mux.HandleFunc("GET /api/storage", s.authed(auth.ArtifactsRead, s.storage))
 }
@@ -134,4 +138,29 @@ func (s *Server) storage(w http.ResponseWriter, _ *http.Request, who auth.Princi
 		"by_project": orEmpty(slices.DeleteFunc(u.ByProject, func(sh artifacts.Share) bool { return !seer.Project(sh.Name) })),
 		"by_agent":   orEmpty(slices.DeleteFunc(u.ByAgent, func(sh artifacts.Share) bool { return !seer.Agent(sh.Name) })),
 	})
+}
+
+// artifactPDF exports only the exact read-confined saved version.
+func (s *Server) artifactPDF(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	artifact, bytes, err := s.P.OpenArtifact(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	pdf, err := nativefiles.ExportPDF(artifact.Title, bytes)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	name := strings.TrimSuffix(artifact.Title, path.Ext(artifact.Title)) + ".pdf"
+	header := w.Header()
+	header.Set("Content-Type", "application/pdf")
+	header.Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	header.Set("Cross-Origin-Resource-Policy", "same-origin")
+	header.Set("Cache-Control", "private, no-store")
+	header.Set("Content-Length", strconv.Itoa(len(pdf)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(pdf)
 }

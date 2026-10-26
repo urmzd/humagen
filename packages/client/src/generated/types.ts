@@ -272,6 +272,22 @@ export interface RunFeedback {
   updated_at: string;
 }
 
+/** Agent-authored result framing. It never records approval or external execution. */
+export interface RunOutcome {
+  kind: "recommendation" | "decision" | "update";
+  summary: string;
+  decisions?: string[];
+  next_action?: string;
+}
+
+/** A bounded evidence passage retained on the run independently of journal retention. */
+export interface RunCitation {
+  id: string;
+  title: string;
+  url?: string;
+  snippet?: string;
+}
+
 /** One run and its place in the call tree and in its conversation. */
 export interface Run {
   /** The run's id, `r` and 32 hex digits, derived from the workspace and the trigger's id. */
@@ -353,6 +369,8 @@ partial answer, what the agent had said when it stopped, which may
 be empty. It is never the whole answer when `status` is `stopped`.
  */
   answer?: string;
+  outcome?: RunOutcome;
+  citations?: RunCitation[];
   error?: string;
   /** What a parked run is waiting for. */
   reason?: string;

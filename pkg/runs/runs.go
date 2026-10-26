@@ -310,8 +310,10 @@ type Run struct {
 	// Answer is the final text of a completed run. On a stopped run it is the
 	// partial answer: what the agent had said when it stopped, which people
 	// may already have read. It is never the whole answer, and Status says so.
-	Answer string `json:"answer,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Answer    string     `json:"answer,omitempty"`
+	Outcome   *Outcome   `json:"outcome,omitempty"`
+	Citations []Citation `json:"citations,omitempty"`
+	Error     string     `json:"error,omitempty"`
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`
@@ -503,6 +505,9 @@ func (x *Index) Called(runID string, lease int64) {
 // caller can react to an ending exactly once. Other kinds, and events for runs
 // this index never recorded, change nothing.
 func (x *Index) Observe(e envelope.Event) (Run, bool) {
+	if e.Kind == envelope.KindCitation || e.Kind == envelope.KindActionTaken {
+		return x.observeDetail(e), false
+	}
 	if e.Kind.Family() != "lifecycle" {
 		return Run{}, false
 	}

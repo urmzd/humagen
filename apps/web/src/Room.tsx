@@ -294,12 +294,12 @@ function retryInRoom(run: Run, me: string): string {
 function AnswerView({
   run: originalRun,
   me,
-  live,
   ask,
   refused,
   routed,
   onAsk,
   onReply,
+  onRedirect,
   canStop = false,
 }: {
   run: Run;
@@ -312,12 +312,13 @@ function AnswerView({
   routed?: string;
   onAsk?: () => void;
   onReply?: () => void;
+  onRedirect?: () => void;
 }) {
   const { run, control } = useRunStop(originalRun, canStop);
-  const turn = useRunTurn(live ? run : undefined);
+  const turn = useRunTurn(run);
   const drawn = useMemo(
     () =>
-      turn ? { ...turn, ...(run.status === "stopped" ? { status: "stopped" as const } : {}) } : turnOf(run),
+      turn ?? turnOf(run),
     [turn, run],
   );
   const shown = useMemo(() => {
@@ -333,7 +334,7 @@ function AnswerView({
       {/* The answer names its agent; why @auto chose it is said above it. */}
       {(routed || run.picked) && <p className="pl-11 text-aui-xs text-aui-muted">{[routed, run.picked].filter(Boolean).join(". ")}</p>}
       <AgentTint name={run.agent}>
-        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} />
+        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
       </AgentTint>
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
@@ -605,6 +606,7 @@ export function ThreadRoom({
                 routed={routedOf(t.run)}
                 onAsk={posts ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" }) : undefined}
                 onReply={posts ? () => setSeed({ text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `, mode: "prepend" }) : undefined}
+                onRedirect={posts ? () => setSeed({ text: defaultCopy.conversation.redirectPrompt(t.run!.agent,href({page:"conversation",id,panel:"activity",run:t.run!.id})), mode:"prepend" }) : undefined}
                 me={me}
                 ask={t.ask}
                 refused={refusals[t.run.id]}

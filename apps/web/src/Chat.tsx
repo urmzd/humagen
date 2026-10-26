@@ -98,11 +98,11 @@ function TurnView({
   run: originalRun,
   me,
   siblings,
-  live,
   ask,
   onSwitch,
   onAsk,
   onReply,
+  onRedirect,
   canStop = false,
 }: {
   run: Run;
@@ -117,15 +117,16 @@ function TurnView({
   onSwitch: (id: string) => void;
   onAsk?: () => void;
   onReply?: () => void;
+  onRedirect?: () => void;
 }) {
   const { run, control } = useRunStop(originalRun, canStop);
-  const turn = useRunTurn(live ? run : undefined);
+  const turn = useRunTurn(run);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
   const refused = notAskable(run, me, siblings);
   const drawn = useMemo(
     () =>
-      turn ? { ...turn, ...(run.status === "stopped" ? { status: "stopped" as const } : {}) } : turnOf(run),
+      turn ?? turnOf(run),
     [turn, run],
   );
   // Neither Retry nor Regenerate is offered on a turn the reader may not ask
@@ -149,7 +150,7 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} />
+        <AgentMessage actions={control} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -687,6 +688,7 @@ export function Chat({
               onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
               onAsk={canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined}
               onReply={canRun ? () => setSeed({ text: `@${run.agent} following up on [this answer](${href({ page: "conversation", id: threadId, panel: "activity", run: run.id })}): `, mode: "prepend" }) : undefined}
+              onRedirect={canRun ? () => setSeed({text:defaultCopy.conversation.redirectPrompt(run.agent,href({page:"conversation",id:threadId,panel:"activity",run:run.id})),mode:"prepend"}) : undefined}
             />
           ))}
         </Thread>

@@ -656,7 +656,27 @@ export function TurnView({
       {settled.map((i) => (
         <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
       ))}
-      {!streamed && turn.text && (
+      {turn.outcome && (
+        <>
+          <Header text={copy.conversation.outcomeKind[turn.outcome.kind]} />
+          <Markdown text={linkCitations(turn.outcome.summary, turn.citations)} />
+          {!!turn.outcome.decisions?.length && (
+            <>
+              <Header text={copy.conversation.outcomeDecisions} />
+              <Markdown
+                text={turn.outcome.decisions.map((decision) => `- ${decision}`).join("\n")}
+              />
+            </>
+          )}
+          {turn.outcome.nextAction && (
+            <>
+              <Header text={copy.conversation.outcomeNext} />
+              <Markdown text={turn.outcome.nextAction} />
+            </>
+          )}
+        </>
+      )}
+      {!streamed && turn.text && turn.text.trim() !== turn.outcome?.summary.trim() && (
         <Markdown
           text={linkCitations(turn.text, turn.citations)}
           streaming={turn.status === "working" && !turn.detached}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { follow, settled } from "./fold.ts";
-import type { BusEvent, Run } from "./run.ts";
+import { turnOf, type BusEvent, type Run } from "./run.ts";
 
 const run = (over: Partial<Run> = {}): Run => ({
   id: "r1",
@@ -93,4 +93,12 @@ test("the conversation link survives streaming and settling for a run in an exis
   f.apply(ev("lifecycle.accepted"));
   assert.equal(f.turn.sessionUrl, "https://humagen.test/conversations/thread%2Fone");
   assert.equal(f.settle({ ...record, status: "completed", answer: "Done" }).sessionUrl, f.turn.sessionUrl);
+});
+
+test("record-loaded outcomes and evidence survive without journal events", () => {
+  const record = run({status:"completed",answer:"Renew it. [[1]]",outcome:{kind:"recommendation",summary:"Renew the agreement.",decisions:["Keep current terms"],next_action:"Confirm the owner"},citations:[{id:"[1]",title:"Agreement",url:"https://example.test/agreement",snippet:"The source passage"}]});
+  const turn=turnOf(record);
+  assert.equal(turn.outcome?.nextAction,"Confirm the owner");
+  assert.equal(turn.citations[0]?.title,"Agreement");
+  assert.equal(turn.citations[0]?.snippet,"The source passage");
 });

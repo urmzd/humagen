@@ -137,6 +137,8 @@ export interface Run {
   /** The run has its answer and is waiting for runs attached to it. */
   finishing?: boolean;
   answer?: string;
+  outcome?: {kind: "recommendation" | "decision" | "update"; summary: string; decisions?: string[]; next_action?: string};
+  citations?: {id:string;title:string;url?:string;snippet?:string}[];
   error?: string;
   reason?: string;
   created_at: string;
@@ -382,6 +384,8 @@ export function adapter(
         ];
       }
       case "action.taken": {
+        const action = body<{name?: string; data?: Run["outcome"]}>(e);
+        if (action.name === "record_outcome" && action.data) return [{type:"outcome.updated",outcome:{kind:action.data.kind,summary:action.data.summary,decisions:action.data.decisions,nextAction:action.data.next_action}}];
         const p = body<Published>(e);
         const called = p.data as unknown as { run?: string; agent?: string; lifecycle?: string; tool_call_id?: string } | undefined;
         if (p.name && called?.run && (delegateOf(p.name) || p.name === HAND_ON || p.name === CALL_AGENT)) {
@@ -547,7 +551,8 @@ export function turnOf(run: Run): Turn {
     status,
     text: run.answer ?? "",
     tasks: [],
-    citations: [],
+    citations: run.citations ?? [],
+    ...(run.outcome ? {outcome:{kind:run.outcome.kind,summary:run.outcome.summary,decisions:run.outcome.decisions,nextAction:run.outcome.next_action}} : {}),
     // The record says what a parked run waits on, for a reader who missed
     // the event that raised it.
     interrupts: (() => {

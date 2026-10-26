@@ -49,6 +49,7 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
@@ -1721,6 +1722,20 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("the download is %q as %q", file.raw, file.header.Get("Content-Type"))
 	}
 	c.call(globex, "GET", "/api/artifacts/{id}/content", artifactPath+"/content", "", http.StatusNotFound)
+	native, err := nativefiles.Encode("brief.docx", `{"paragraphs":["An actual native brief."]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.p.PutFile("acme", first.str("thread"), "brief.docx", string(native)); err != nil {
+		t.Fatal(err)
+	}
+	nativeArtifact, err := f.p.Publish(t.Context(), platform.Publication{Tenant: "acme", Thread: first.str("thread"), Run: first.str("id"), Agent: "helper", Project: "Launch", Path: "brief.docx"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(acme, "GET", "/api/artifacts/{id}/pdf", "/api/artifacts/"+nativeArtifact.ID+"/pdf", "", http.StatusOK)
+	c.call(acme, "GET", "/api/artifacts/{id}/pdf", artifactPath+"/pdf", "", http.StatusBadRequest)
+	c.call(globex, "GET", "/api/artifacts/{id}/pdf", artifactPath+"/pdf", "", http.StatusNotFound)
 
 	// The busy workspace, read end to end, then taken apart.
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=24h&bucket=1h", "", http.StatusOK)
@@ -1790,7 +1805,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}": {"id": mid}, "/api/inbox/{id}/read": {"id": mid}, "/api/inbox/{id}/dismiss": {"id": mid},
 		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid}, "/api/inbox/{id}/unhide": {"id": mid},
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
-		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
+		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/artifacts/{id}/pdf": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},

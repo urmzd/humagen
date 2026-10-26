@@ -2380,6 +2380,32 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/artifacts/{id}/pdf:
+    get:
+      operationId: exportArtifactPDF
+      tags: [artifacts]
+      summary: Export an immutable native deliverable version as PDF
+      description: |
+        Renders the retained native revision model of this exact artifact.
+        Supports up to 100 pages using Windows-1252 text. Unsupported characters
+        and overfull slides are refused, never silently replaced or cut.
+        Does not publish a new version or run an agent.
+      x-permission: artifacts:read
+      parameters:
+        - {$ref: "#/components/parameters/ArtifactID"}
+      responses:
+        "200":
+          description: Real PDF bytes generated from this immutable version.
+          headers:
+            Content-Disposition: {schema: {type: string}}
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/storage:
     get:
       operationId: getStorage
@@ -5108,6 +5134,25 @@ components:
         reason: {type: string}
         comment: {type: string}
         updated_at: {type: string, format: date-time}
+    RunOutcome:
+      description: Agent-authored result framing. It never records approval or external execution.
+      type: object
+      required: [kind, summary]
+      additionalProperties: false
+      properties:
+        kind: {type: string, enum: [recommendation, decision, update]}
+        summary: {type: string, minLength: 1, maxLength: 4000}
+        decisions: {type: array, maxItems: 20, items: {type: string, maxLength: 1000}}
+        next_action: {type: string, maxLength: 2000}
+    RunCitation:
+      description: A bounded evidence passage retained on the run independently of journal retention.
+      type: object
+      required: [id, title]
+      properties:
+        id: {type: string, maxLength: 128}
+        title: {type: string, maxLength: 500}
+        url: {type: string, maxLength: 2048}
+        snippet: {type: string, maxLength: 8000}
     Run:
       description: One run and its place in the call tree and in its conversation.
       type: object
@@ -5226,6 +5271,11 @@ components:
             partial answer, what the agent had said when it stopped, which may
             be empty. It is never the whole answer when `status` is `stopped`.
           type: string
+        outcome: {$ref: "#/components/schemas/RunOutcome"}
+        citations:
+          type: array
+          maxItems: 64
+          items: {$ref: "#/components/schemas/RunCitation"}
         error: {type: string}
         reason:
           description: What a parked run is waiting for.

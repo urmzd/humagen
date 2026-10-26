@@ -122,3 +122,38 @@ The next system work builds on these interactions:
 This allows agents to continue delegated work between human messages and
 return when a decision is needed, with usable results and their evidence
 kept in the project.
+
+
+## Authored outcomes and native deliverables
+
+An agent granted `record_outcome` can retain a recommendation, decision or
+update, its decisions, and its next action on the run. These fields describe
+its result. They grant no approval and are never evidence that an external
+action ran. Tool results, calls and the run ledger retain that responsibility.
+The shared surface shows the result before expandable work. Redirect prepares
+an editable message to the same agent; submitting that message uses the normal
+conversation call path. Pending questions and action approvals remain separate.
+
+Citations are retained on the run, up to 64 passages with bounded labels,
+titles, addresses and excerpts. Reading a completed run therefore retains its
+evidence after older journal events expire. The run's normal read rule applies.
+
+`file_write` with `format: native` accepts a complete JSON revision model:
+`title`, `paragraphs`, `slides` (title, body, notes and sources), `rows`, and
+`sources`. It creates editable DOCX, PPTX or XLSX files, or a real PDF, in the
+existing conversation sandbox. It does not publish them. `publish_artifact`
+keeps the ordinary immutable version, hash, provenance and storage limits.
+Native Office files retain their revision model, and `file_read` returns it
+for precise revisions. `artifact:<id>@<version>` reads only that exact saved
+version in the authoritative run's current conversation. A different tenant,
+conversation or version answers the same refusal. Scratch-file replacement
+never changes published bytes.
+
+The workbench's PDF download renders this exact saved native model through
+`GET /api/artifacts/{id}/pdf`, behind `artifacts:read` and the artifact read
+rule. It creates no new version and runs no agent. PDF uses Windows-1252 text
+and up to 100 pages; unsupported characters and overfull slides are refused
+rather than cut or replaced. The original Office download retains Unicode.
+Independent validation opened, edited and re-saved generated documents with
+python-docx, presentations with python-pptx (including notes), and spreadsheets
+with openpyxl. PDF tests use the independent dslipak reader.

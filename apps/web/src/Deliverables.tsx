@@ -17,8 +17,25 @@ export function revisionPrompt(file: Stored, slide?: number): string {
     panel: "deliverables",
     artifact: file.id,
   });
-  return `@${file.agent} please revise [this artifact, v${file.version}${slide ? `, slide ${slide}` : ""}](${target}): `;
+  return `@${file.agent} please revise [this artifact, v${file.version}${slide ? `, slide ${slide}` : ""}](${target}).${words.artifactReadSource(file.id,file.version)} Requested changes: `;
 }
+function ExportPDF({file}:{file:Stored}) {
+  const [busy,setBusy]=useState(false);
+  const [problem,setProblem]=useState("");
+  if (!file.mime.includes("openxmlformats")) return null;
+  const download=async()=>{
+    setBusy(true);setProblem("");
+    try {
+      const response=await fetch(`/api/artifacts/${encodeURIComponent(file.id)}/pdf`,{credentials:"same-origin"});
+      if (!response.ok) {const body=await response.json().catch(()=>null);throw new Error(body?.error || words.artifactPDFFailed)}
+      const url=URL.createObjectURL(await response.blob());
+      const link=document.createElement("a");link.href=url;link.download=file.title.replace(/\.[^.]+$/,"")+".pdf";document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch(error) {setProblem(error instanceof Error ? error.message : words.artifactPDFFailed)}
+    finally {setBusy(false)}
+  };
+  return <div className="flex flex-col gap-2"><button type="button" className={`${button} self-start`} disabled={busy} onClick={download}>{busy?words.artifactPDFBusy:words.artifactPDF}</button>{problem && <p role="alert" className="text-aui-xs text-aui-bad">{problem}</p>}</div>;
+}
+
 async function get<T>(path: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(path, { signal, credentials: "same-origin" });
   if (!response.ok) throw new Error(words.artifactFailed);
@@ -468,6 +485,7 @@ export function Deliverables({
               >
                 Download Original
               </a>
+              <ExportPDF key={file.id} file={file} />
               <div className="flex gap-4 border-aui-border border-b" aria-label="Artifact views">
                 {(["preview", "versions", "provenance"] as const).map((value) => (
                   <button

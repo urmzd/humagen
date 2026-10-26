@@ -235,6 +235,7 @@ test("the workbench opens an older saved version and sends that exact version fo
     false,
   );
   assert.match(revisionPrompt(previous, 3), /v1, slide 3/);
+  assert.match(revisionPrompt(previous, 3), /file_read path artifact:art-1@1/);
   assert.match(revisionPrompt(previous, 3), /\/conversations\/thread-1\/deliverables\/art-1/);
 });
 
@@ -349,4 +350,21 @@ test("project context shows the document's origin and actual import time", async
   const date = document.querySelector("time");
   assert.equal(date?.getAttribute("datetime"), "2026-10-23T09:42:00Z");
   assert.equal(screen.queryByText("Live"), null);
+});
+
+test("PDF export uses the selected immutable version and a refusal keeps the original available", async () => {
+  const native={...saved,title:"Launch brief.docx",mime:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"};
+  net=stubFetch({
+    "GET /api/artifacts":()=>({artifacts:[native],next:null}),
+    "GET /api/artifacts/art-2":()=>native,
+    "GET /api/artifacts/art-2/versions":()=>({versions:[native]}),
+    "GET /api/artifacts/art-2/content":()=>new Response("not a valid Office preview"),
+    "GET /api/artifacts/art-2/pdf":()=>new Response(JSON.stringify({error:"This file has no native revision model to export."}),{status:400}),
+  });
+  render(<Deliverables thread="thread-1" view={{panel:"deliverables",artifact:"art-2"}} onView={()=>{}} onClose={()=>{}} />);
+  fireEvent.click(await screen.findByRole("button",{name:words.artifactPDF}));
+  assert.ok(await screen.findByText("This file has no native revision model to export."));
+  assert.equal(screen.getByRole("link",{name:"Download Original"}).getAttribute("href"),"/api/artifacts/art-2/content");
+  assert.ok(net.seen.some(request=>request.path==="/api/artifacts/art-2/pdf"));
+  assert.ok(!net.seen.some(request=>request.method==="POST"));
 });

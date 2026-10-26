@@ -374,7 +374,16 @@ export interface Agent {
 }
 
 /** One agent response, from first event to final state. */
+/** Authored result framing. Tool/call records alone establish execution. */
+export interface Outcome {
+  kind: "recommendation" | "decision" | "update";
+  summary: string;
+  decisions?: string[];
+  nextAction?: string;
+}
+
 export interface Turn {
+  outcome?: Outcome;
   id: string;
   agent: Agent;
   status: TurnStatus;

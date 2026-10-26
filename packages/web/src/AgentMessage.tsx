@@ -165,8 +165,10 @@ function MessageActions({
   regenerate,
   onReply,
   actions,
+  onRedirect,
 }: {
   actions?: ReactNode;
+  onRedirect?: () => void;
   turn: Turn;
   copy: Copy;
   rate: boolean;
@@ -185,6 +187,15 @@ function MessageActions({
       copyControl={hostCopy}
       onReply={onReply}
     >
+      {turn.outcome && onRedirect && (
+        <button
+          type="button"
+          className="min-h-7 rounded-aui px-2 text-aui-xs text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+          onClick={onRedirect}
+        >
+          {copy.conversation.redirect}
+        </button>
+      )}
       {regenerate && (
         <button
           type="button"
@@ -231,6 +242,7 @@ export function AgentMessage({
   onReply,
   timestamp,
   actions,
+  onRedirect,
 }: {
   turn: Turn;
   copy?: Copy;
@@ -254,6 +266,7 @@ export function AgentMessage({
   capabilities?: TurnCapabilities;
   timestamp?: ReactNode;
   actions?: ReactNode;
+  onRedirect?: () => void;
   onAskAgent?: () => void;
   onReply?: () => void;
 }) {
@@ -291,18 +304,20 @@ export function AgentMessage({
     >
       <AgentAvatar agent={turn.agent} state={turn.detached ? "idle" : turnOrbState(turn)} />
       <div className="flex min-w-0 flex-col gap-2">
-        <header className="flex h-7 min-w-0 items-center gap-2 text-aui-sm">
+        <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
           {onAskAgent ? (
             <button
               type="button"
-              className="min-h-6 rounded-aui font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="min-h-6 max-w-full break-words rounded-aui text-left font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
               aria-label={copy.conversation.askAgent(turn.agent.name)}
               onClick={onAskAgent}
             >
               {turn.agent.name}
             </button>
           ) : (
-            <span className="font-semibold text-aui-fg">{turn.agent.name}</span>
+            <span className="max-w-full break-words font-semibold text-aui-fg">
+              {turn.agent.name}
+            </span>
           )}
           <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
             {activity ? (
@@ -340,6 +355,7 @@ export function AgentMessage({
                 regenerate={final && capabilities?.regenerate !== false}
                 onReply={settledTurn ? onReply : undefined}
                 actions={actions}
+                onRedirect={final ? onRedirect : undefined}
               />
             </FeedbackPromptContext.Provider>
           )}
