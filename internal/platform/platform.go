@@ -64,6 +64,7 @@ import (
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
@@ -214,12 +215,21 @@ type Platform struct {
 	Threads  *threads.Store
 	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
-	CallPolicies *callpolicy.Store
-	Usage        *usage.Ledger
-	Inbox        *inbox.Store
-	ReadAudit    *readaudit.Store
-	Audit        *audit.Store
-	Artifacts    *artifacts.Index
+	operationContexts          sync.Map
+	agentTestGates             sync.Map
+	assignmentSources          sync.Map
+	assignmentSourceCursor     sync.Map
+	assignmentSettlementCursor sync.Map
+	operationReminderCursor    sync.Map
+	operationScheduleCursor    sync.Map
+	CallPolicies               *callpolicy.Store
+	Operations                 *operations.Store
+	Usage                      *usage.Ledger
+	Inbox                      *inbox.Store
+	ReadAudit                  *readaudit.Store
+	Audit                      *audit.Store
+	Artifacts                  *artifacts.Index
+
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
 	// Credentials is each person's own credentials for person-scoped tool
@@ -461,8 +471,8 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	tools := tool.NewRegistry()
 	plane := controlplane.NewMemory(inproc.NewFactory(tools, ws), metrics.Nop())
 	exec, err := runtime.NewSandbox(plane, tools, registry.NewSpecs(p.Agents),
-		runtime.WithCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools))),
-		runtime.WithToolGroupSource(groups),
+		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
+
 		runtime.WithDelegator(p.attach),
 		// An agent's declared sources ground its turns, searched in the
 		// run's tenant.
@@ -477,7 +487,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext}, nil
 }
 
 // reroute registers the routes of every run the index holds that has not
@@ -536,7 +546,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	}
 	// Accepting publishes the run's first event before the run is recorded,
 	// and delivering that event needs to know which client raised it.
-	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, place: p.placeAdmitted(tag, edge, runID, project)})
+	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, actor: tag.Actor, person: p.operationTagPerson(tag, edge), operationMeta: operationMetaOf(tag.Meta), place: p.placeAdmitted(tag, edge, runID, project)})
 	defer p.admitting.Delete(runID)
 	if err := p.deliver.Register(runID, tag.Routes()); err != nil {
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -586,7 +596,7 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	if tag.Origin != runs.OriginAPI || edge.Parent != "" {
 		delete(meta, runs.MetaSkills)
 	}
-	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
+	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual || tag.Origin == runs.OriginAssignment) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
 		tag.Text = p.contextOf(tag.Tenant, project, tag.Agent, tag.Text)
 	}
@@ -637,6 +647,9 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}
+	if err := p.checkOperationCall(ctx, parent, req); err != nil {
+		return runs.Run{}, err
+	}
 	// The callee agrees too: its call policy must admit the caller.
 	if err := p.admitCall(ctx, tenant, parent.Agent, req.Agent); err != nil {
 		return runs.Run{}, err
@@ -655,7 +668,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 			if grant && compare.Lease == 0 {
 				compare.Lease = existing.Lease
 			}
-			if !sameCallInput(existing, compare, *input) {
+			if !sameCallInput(existing, compare, *input) || !p.sameHandoffTerms(existing, req.Contract) {
 				return runs.Run{}, fmt.Errorf("%w: call key already identifies a different call", call.ErrInvalid)
 			}
 			return existing, nil
@@ -692,7 +705,16 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err := freezeInput(tag.Meta, prepared); err != nil {
 		return runs.Run{}, err
 	}
+	if parent.Tag().Meta[operations.MetaForceAsk] == "true" {
+		tag.Meta[operations.MetaForceAsk] = "true"
+	}
+	if allowed, ok := parent.Tag().Meta[operations.MetaTools]; ok {
+		tag.Meta[operations.MetaTools] = allowed
+	}
 	tag.Text = prepared.Messages[len(prepared.Messages)-1].Text
+	if _, err := p.recordHandoff(parent, req, tag, prepared); err != nil {
+		return runs.Run{}, err
+	}
 	child, err := p.Invoke(ctx, tag)
 	if err != nil {
 		return runs.Run{}, err
@@ -717,7 +739,7 @@ func (p *Platform) callerOf(tenant, runID string) (runs.Run, error) {
 // reserved reports whether an origin is one only the platform may use.
 func reserved(origin string) bool {
 	switch origin {
-	case call.Origin, runs.OriginAPI, runs.OriginSystem, runs.OriginManual, OriginEval:
+	case call.Origin, runs.OriginAPI, runs.OriginSystem, runs.OriginManual, runs.OriginAssignment, OriginEval:
 		return true
 	}
 	return false
@@ -737,6 +759,9 @@ const flushEvery = 250 * time.Millisecond
 // fallback for when there is none: a run that exhausts its retries is failed in
 // the ledger with nothing further published.
 func (p *Platform) reconcile(ctx context.Context) {
+	p.reconcileOperationReminders(ctx)
+	p.settleOperations(ctx)
+	p.syncAssignmentSchedules()
 	for _, id := range p.Runs.Active() {
 		p.settleFromLedger(ctx, id)
 	}

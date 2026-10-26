@@ -89,7 +89,7 @@ func reads(k inbox.Kind) auth.Permission {
 		return auth.ProjectsRead
 	case inbox.KindMemory:
 		return auth.AgentsRead
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention, inbox.KindOperation:
 		return auth.RunsRead
 	case inbox.KindArtifact:
 		return auth.ArtifactsRead
@@ -106,7 +106,7 @@ func writes(k inbox.Kind) auth.Permission {
 		return auth.ProjectsRead
 	case inbox.KindMemory:
 		return auth.AgentsWrite
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention, inbox.KindOperation:
 		return auth.RunsWrite
 	case inbox.KindArtifact:
 		return auth.ArtifactsWrite
@@ -117,6 +117,8 @@ func writes(k inbox.Kind) auth.Permission {
 // needs is the right an action on a part takes.
 func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 	switch {
+	case t == inbox.PartOperation && action == ActAcknowledge:
+		return auth.RunsWrite, true
 	case t == inbox.PartAlert && action == ActAcknowledge:
 		return auth.AlertsWrite, true
 	case t == inbox.PartFailure && (action == ActRetry || action == ActAcknowledge):
@@ -145,15 +147,16 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 }
 
 var offered = map[inbox.PartType][]string{
-	inbox.PartAlert:    {ActAcknowledge},
-	inbox.PartFailure:  {ActRetry, ActAcknowledge},
-	inbox.PartMemory:   {ActKeep, ActDiscard},
-	inbox.PartBudget:   {ActRaiseLimit, ActAcknowledge},
-	inbox.PartApproval: {ActApprove, ActDeny},
-	inbox.PartChoice:   {ActChoose},
-	inbox.PartReply:    {ActReply},
-	inbox.PartMention:  {ActReply, ActDone},
-	inbox.PartDraft:    {ActPublish, ActDiscard},
+	inbox.PartAlert:     {ActAcknowledge},
+	inbox.PartOperation: {ActAcknowledge},
+	inbox.PartFailure:   {ActRetry, ActAcknowledge},
+	inbox.PartMemory:    {ActKeep, ActDiscard},
+	inbox.PartBudget:    {ActRaiseLimit, ActAcknowledge},
+	inbox.PartApproval:  {ActApprove, ActDeny},
+	inbox.PartChoice:    {ActChoose},
+	inbox.PartReply:     {ActReply},
+	inbox.PartMention:   {ActReply, ActDone},
+	inbox.PartDraft:     {ActPublish, ActDiscard},
 }
 
 // allows reports whether who may take an action on a part, and if not, why.

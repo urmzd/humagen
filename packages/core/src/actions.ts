@@ -35,6 +35,8 @@ export const ActionId = {
   report: "aui.report",
   /** Open a delegated run. `turnId` is the turn it was called from; `target` the child run id. */
   openRun: "aui.run.open",
+  openAssignment: "aui.assignment.open",
+  openHandoff: "aui.handoff.open",
   // Mailbox parts (see mailbox.ts). `turnId` carries the message id, `target` the part id.
   read: "aui.inbox.read",
   reply: "aui.inbox.reply",

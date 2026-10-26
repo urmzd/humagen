@@ -1105,6 +1105,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.settled(acme, called.str("id"))
 	c.settled(acme, lead.str("id"))
+	handoff := c.call(acme, "GET", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), "", http.StatusOK)
+	handoffBody := fmt.Sprintf(`{"version":%v,"state":"result","owner":"svc-acme","blocker":"","due_at":"2999-01-01T00:00:00Z"}`, handoff.field("version"))
+	c.call(acme, "PUT", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), handoffBody, http.StatusOK)
+	c.call(acme, "PUT", "/api/handoffs/{id}", "/api/handoffs/"+called.str("id"), handoffBody, http.StatusConflict)
+	c.call(acme, "GET", "/api/agent-roster", "/api/agent-roster?names=helper,missing", "", http.StatusOK)
+	c.call(acme, "GET", "/api/agent-roster", "/api/agent-roster", "", http.StatusBadRequest)
 
 	// Another workspace's run is not there, whatever is asked of it.
 	for _, op := range []struct{ method, template, suffix string }{
@@ -1789,6 +1795,43 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.callFromLiveRun(acme, `{"key":"k429","agent":"helper","text":"hi","mode":"delegate"}`, http.StatusTooManyRequests)
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
 
+	// Durable agent operations use the same contract and admission path.
+	for _, path := range []string{"/api/agent-controls", "/api/agents/helper/control"} {
+		template := path
+		if path != "/api/agent-controls" {
+			template = "/api/agents/{name}/control"
+		}
+		c.call(acme, "GET", template, path, "", http.StatusOK)
+		c.call(acme, "PUT", template, path, `{"paused":false,"version":0}`, http.StatusOK)
+		c.call(acme, "PUT", template, path, `{"paused":false,"version":0}`, http.StatusConflict)
+	}
+	for _, pair := range [][2]string{{"/api/action-policy", "/api/action-policy"}, {"/api/agents/{name}/action-policy", "/api/agents/helper/action-policy"}, {"/api/projects/{name}/action-policy", "/api/projects/Launch/action-policy"}, {"/api/me/action-policy", "/api/me/action-policy"}} {
+		c.call(acme, "GET", pair[0], pair[1], "", http.StatusOK)
+		c.call(acme, "PUT", pair[0], pair[1], `{"rules":{},"version":0}`, http.StatusOK)
+		c.call(acme, "PUT", pair[0], pair[1], `{"rules":{},"version":0}`, http.StatusConflict)
+	}
+	assignmentBody := `{"id":"contract-assignment","agent":"helper","project":"","owner":"svc-acme","goal":"Inspect queue","done_when":"Report items","state":"requested","version":0}`
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", assignmentBody, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", assignmentBody, http.StatusConflict)
+	c.call(acme, "POST", "/api/assignments", "/api/assignments", strings.Replace(assignmentBody, `"helper"`, `"ghost"`, 1), http.StatusNotFound)
+	c.call(acme, "GET", "/api/assignments", "/api/assignments?limit=201", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/handoffs", "/api/handoffs?limit=201", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/assignments/{id}", "/api/assignments/contract-assignment", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/assignments/{id}", "/api/assignments/contract-assignment", strings.Replace(assignmentBody, `"version":0`, `"version":1`, 1), http.StatusOK)
+	c.call(acme, "PUT", "/api/assignments/{id}", "/api/assignments/contract-assignment", assignmentBody, http.StatusConflict)
+	c.call(acme, "PUT", "/api/agents/{name}/control", "/api/agents/helper/control", `{"paused":true,"version":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusConflict)
+	c.call(acme, "PUT", "/api/agents/{name}/control", "/api/agents/helper/control", `{"paused":false,"version":2}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"agent","name":"helper"},"period":"day","max_runs":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusTooManyRequests)
+	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","spend_limit":1}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusPaymentRequired)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":1000000}`, http.StatusOK)
+	c.call(acme, "POST", "/api/assignments/{id}/run", "/api/assignments/contract-assignment/run", "", http.StatusOK)
+	c.call(acme, "GET", "/api/handoffs", "/api/handoffs", "", http.StatusOK)
+	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
+
 	// Two rules hold for every route that takes something: another
 	// workspace's object is not found, and a body with a field the route
 	// does not know is refused. Both are asked of every operation the spec
@@ -1797,7 +1840,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully", "channel": "general",
 	}
 	real := map[string]map[string]string{
-		"/api/agents/{name}/memory/{id}": {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
+		"/api/projects/{name}/action-policy": {"name": "Launch"},
+		"/api/handoffs/{id}":                 {"id": called.str("id")},
+		"/api/assignments/{id}":              {"id": "contract-assignment"},
+		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
+		"/api/agents/{name}/memory/{id}":     {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
 		"/api/clients/{id}": {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},

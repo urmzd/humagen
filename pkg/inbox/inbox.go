@@ -67,6 +67,7 @@ type Kind string
 const (
 	KindAlert         Kind = "alert"
 	KindFailure       Kind = "failure"
+	KindOperation     Kind = "operation"
 	KindMemory        Kind = "memory"
 	KindBudget        Kind = "budget"
 	KindApproval      Kind = "approval"
@@ -108,11 +109,12 @@ const (
 type PartType string
 
 const (
-	PartText    PartType = "text"
-	PartAlert   PartType = "alert"
-	PartFailure PartType = "failure"
-	PartMemory  PartType = "memory"
-	PartBudget  PartType = "budget"
+	PartText      PartType = "text"
+	PartOperation PartType = "operation"
+	PartAlert     PartType = "alert"
+	PartFailure   PartType = "failure"
+	PartMemory    PartType = "memory"
+	PartBudget    PartType = "budget"
 	// PartApproval, PartChoice and PartReply are a question a run is parked
 	// on: approve or deny a tool call, choose one of some options, or reply
 	// in words. Each carries the question in Question.
@@ -351,6 +353,13 @@ type Outcome struct {
 }
 
 // Part is one piece of a message.
+// OperationPart identifies durable work needing a person without asserting a run failure.
+type OperationPart struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
+}
+
 type Part struct {
 	ID    string    `json:"id"`
 	Type  PartType  `json:"type"`
@@ -360,11 +369,12 @@ type Part struct {
 	Actions []string `json:"actions"`
 	Outcome *Outcome `json:"outcome,omitempty"`
 
-	Text    string       `json:"text,omitempty"`
-	Alert   *AlertPart   `json:"alert,omitempty"`
-	Failure *FailurePart `json:"failure,omitempty"`
-	Memory  *MemoryPart  `json:"memory,omitempty"`
-	Budget  *BudgetPart  `json:"budget,omitempty"`
+	Operation *OperationPart `json:"operation,omitempty"`
+	Text      string         `json:"text,omitempty"`
+	Alert     *AlertPart     `json:"alert,omitempty"`
+	Failure   *FailurePart   `json:"failure,omitempty"`
+	Memory    *MemoryPart    `json:"memory,omitempty"`
+	Budget    *BudgetPart    `json:"budget,omitempty"`
 	// Artifact is set on an artifact part.
 	Artifact *ArtifactPart `json:"artifact,omitempty"`
 	// Question is set on approval, choice and reply parts.
@@ -377,7 +387,8 @@ type Part struct {
 
 // Message is one thing in the inbox.
 type Message struct {
-	ID string `json:"id"`
+	reminded bool
+	ID       string `json:"id"`
 	// Key names what the message is about, so the same thing is not raised
 	// twice. It is not shown.
 	Key    string `json:"-"`
@@ -440,6 +451,10 @@ func (m Message) clone() Message {
 			mem := *p.Memory
 			mem.Notes = slices.Clone(mem.Notes)
 			p.Memory = &mem
+		}
+		if p.Operation != nil {
+			operation := *p.Operation
+			p.Operation = &operation
 		}
 		if p.Mention != nil {
 			mention := *p.Mention
@@ -539,6 +554,7 @@ type What string
 
 const (
 	Raised      What = "raised"
+	Reminded    What = "reminded"
 	MarkRead    What = "read"
 	MarkUnread  What = "unread"
 	DidResolve  What = "resolved"
@@ -841,6 +857,14 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		return m, t.hideFor(m, c)
 	}
 	switch c.What {
+	case Reminded:
+		if m.reminded || m.Broadcast || m.State == Resolved || m.State == Dismissed || c.At.Before(m.UpdatedAt) || (m.State == Snoozed && c.At.Before(m.SnoozedUntil)) {
+			return m, false
+		}
+		t.leave(m)
+		delete(t.read, m.ID)
+		m.State, m.SnoozedUntil, m.reminded = Open, time.Time{}, true
+		t.join(m)
 	case MarkRead, MarkUnread:
 		was := t.read[m.ID][c.By]
 		if was == (c.What == MarkRead) {

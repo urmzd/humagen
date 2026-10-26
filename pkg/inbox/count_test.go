@@ -372,3 +372,23 @@ func TestACountAsksOnceForMessagesAlike(t *testing.T) {
 		t.Fatalf("counts %+v, asking %d times", c, asked)
 	}
 }
+
+func TestOperationCountsUseTheExactContractScope(t *testing.T) {
+	s := NewStore()
+	for _, id := range []string{"public", "private"} {
+		if _, _, err := s.RaiseOnce("t", "operation:"+id, Message{Kind: KindOperation, Subject: "Needs a person", From: From{Kind: "system", Name: "Humagen"}, Source: Source{Run: "same-parent"}, Parts: []Part{{Type: PartOperation, Operation: &OperationPart{Kind: "handoff", ID: id, Reason: "Review"}}}}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := s.Count("t", Query{Reader: "reader", Sees: func(m Message) bool {
+		for _, part := range m.Parts {
+			if part.Operation != nil {
+				return part.Operation.ID == "public"
+			}
+		}
+		return false
+	}})
+	if count.Open != 1 || count.Unread != 1 {
+		t.Fatalf("count merged hidden contract scope: %+v", count)
+	}
+}

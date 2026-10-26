@@ -54,6 +54,9 @@ const memoryPrompt = "Below is one exchange between a person and the agent %q. "
 
 // ended is called exactly once for every run that ends.
 func (p *Platform) ended(ctx context.Context, run runs.Run) {
+	if err := p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {
+		p.log.Error("platform: operation outcome could not be kept", "error", err)
+	}
 	p.settleUsage(ctx, run)
 	p.raise(run)
 	// A question nobody answered is not waiting any more.

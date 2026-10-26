@@ -37,6 +37,9 @@ var ErrNotFound = errors.New("runs: not found")
 // OriginManual marks a schedule fired by a person rather than by the clock.
 const OriginManual = "manual"
 
+// OriginAssignment is retained source-change work raised by the platform.
+const OriginAssignment = "assignment"
+
 // OriginSystem marks a run the platform raised for its own housekeeping, such
 // as naming a conversation. Nothing outside the platform can raise one.
 const OriginSystem = "system"
@@ -464,7 +467,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	// The agent is sent the conversation so far, or a schedule's text with
 	// its project's context. What was actually asked is kept apart, and is
 	// what the record shows. The platform writes it for these origins.
-	if v := tag.Meta[MetaAsk]; v != "" && (tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual) {
+	if v := tag.Meta[MetaAsk]; v != "" && (tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual || tag.Origin == OriginAssignment) {
 		text = v
 	}
 	if top, ok := x.runs[root]; ok && parent != "" && top.Tenant == tag.Tenant {

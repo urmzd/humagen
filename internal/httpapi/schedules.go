@@ -167,6 +167,10 @@ func (s *Server) filedBy(w http.ResponseWriter, who auth.Principal, sc cron.Sche
 		s.problem(w, err)
 		return false
 	}
+	if platform.AssignmentSchedule(sc) {
+		fail(w, http.StatusForbidden, "Manage this schedule through its assignment.")
+		return false
+	}
 	return true
 }
 

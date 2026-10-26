@@ -1962,7 +1962,7 @@ paths:
         - name: kind
           in: query
           description: Only messages of this kind. An unknown kind matches nothing.
-          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement]}
+          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, operation]}
         - name: unread
           in: query
           description: Only `true` narrows to messages the caller has not read.
@@ -4040,7 +4040,7 @@ paths:
           description: Only messages of these kinds. Repeat it for several.
           schema:
             type: array
-            items: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement]}
+            items: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, operation]}
           style: form
           explode: true
         - name: children
@@ -4581,6 +4581,653 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  "/api/agent-controls":
+    get:
+      operationId: getWorkspaceControl
+      tags:
+      - agents
+      summary: Get workspace control
+      x-permission: agents:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AgentControl"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+    put:
+      operationId: putWorkspaceControl
+      tags:
+      - agents
+      summary: Put workspace control
+      x-permission: agents:write
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AgentControl"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/AgentControlInput"
+  "/api/agents/{name}/control":
+    get:
+      operationId: getAgentControl
+      tags:
+      - agents
+      summary: Get agent control
+      x-permission: agents:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AgentControl"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: putAgentControl
+      tags:
+      - agents
+      summary: Put agent control
+      x-permission: agents:write
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AgentControl"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/AgentControlInput"
+  "/api/action-policy":
+    get:
+      operationId: getWorkspaceActionPolicy
+      tags:
+      - agents
+      summary: Get workspace action policy
+      x-permission: agents:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ActionPolicy"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+    put:
+      operationId: putWorkspaceActionPolicy
+      tags:
+      - agents
+      summary: Put workspace action policy
+      x-permission: agents:write
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ActionPolicy"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ActionPolicyInput"
+  "/api/agents/{name}/action-policy":
+    get:
+      operationId: getAgentActionPolicy
+      tags:
+      - agents
+      summary: Get agent action policy
+      x-permission: agents:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ActionPolicy"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: putAgentActionPolicy
+      tags:
+      - agents
+      summary: Put agent action policy
+      x-permission: agents:write
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ActionPolicy"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ActionPolicyInput"
+  "/api/projects/{name}/action-policy":
+    get:
+      operationId: getProjectActionPolicy
+      tags:
+      - agents
+      summary: Get project action policy
+      x-permission: projects:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ActionPolicy"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: putProjectActionPolicy
+      tags:
+      - agents
+      summary: Put project action policy
+      x-permission: projects:write
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ActionPolicy"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ActionPolicyInput"
+  "/api/me/action-policy":
+    get:
+      operationId: getPersonalActionPolicy
+      tags:
+      - agents
+      summary: Get personal action policy
+      x-permission: authenticated
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ActionPolicy"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+    put:
+      operationId: putPersonalActionPolicy
+      tags:
+      - agents
+      summary: Put personal action policy
+      x-permission: authenticated
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ActionPolicy"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ActionPolicyInput"
+  "/api/assignments":
+    get:
+      operationId: listAssignments
+      tags:
+      - agents
+      summary: List assignments
+      x-permission: runs:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/Assignment"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+      parameters:
+      - name: agent
+        in: query
+        description: Filter before the bound. Hidden and missing agents both return an empty list.
+        schema: {type: string, maxLength: 256}
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 200
+    post:
+      operationId: createAssignment
+      tags:
+      - agents
+      summary: Create assignment
+      x-permission: runs:write
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Assignment"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/AssignmentInput"
+  "/api/assignments/{id}":
+    get:
+      operationId: getAssignment
+      tags:
+      - agents
+      summary: Get assignment
+      x-permission: runs:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Assignment"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: updateAssignment
+      tags:
+      - agents
+      summary: Update assignment
+      x-permission: runs:write
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Assignment"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '413':
+          "$ref": "#/components/responses/TooLarge"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/AssignmentInput"
+  "/api/assignments/{id}/run":
+    post:
+      operationId: runAssignment
+      tags:
+      - agents
+      summary: Run assignment
+      x-permission: runs:write
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Run"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+        '409':
+          description: Version conflict, paused agent or invalid transition.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorBody"
+        '402':
+          description: A run admission limit refused the assignment.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Refusal"
+        '429':
+          description: A run admission limit refused the assignment.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Refusal"
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  "/api/handoffs":
+    get:
+      operationId: listHandoffs
+      tags:
+      - agents
+      summary: List handoffs
+      x-permission: runs:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/HandoffContract"
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 200
+  "/api/agent-network":
+    get:
+      operationId: getAgentNetwork
+      tags:
+      - agents
+      summary: Get agent network
+      x-permission: agents:read
+      responses:
+        '200':
+          description: The recorded resource.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AgentNetwork"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
+
+  /api/handoffs/{id}: {"get":{"operationId":"getHandoff","tags":["agents"],"summary":"Read a visible handoff contract","x-permission":"runs:read","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"The visible handoff contract.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HandoffContract"}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"500":{"$ref":"#/components/responses/ServerError"}}},"put":{"operationId":"updateHandoff","tags":["agents"],"summary":"Assign responsibility or record a handoff decision","x-permission":"runs:write","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"The visible handoff contract.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HandoffContract"}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"500":{"$ref":"#/components/responses/ServerError"},"400":{"$ref":"#/components/responses/BadRequest"},"409":{"$ref":"#/components/responses/Conflict"},"413":{"$ref":"#/components/responses/TooLarge"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/HandoffUpdate"}}}}}}
+
+  /api/agent-roster:
+    get:
+      operationId: getAgentRoster
+      tags: [agents]
+      summary: Read controls and visible recent state for named agents
+      x-permission: agents:read
+      parameters:
+        - name: names
+          in: query
+          required: true
+          description: At most 100 exact comma-separated names. Missing and hidden agents are omitted.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Current controls and reader-visible work from the last 31 days.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [controls, window_days]
+                properties:
+                  controls: {type: object, additionalProperties: {$ref: "#/components/schemas/AgentControl"}}
+                  window_days: {type: integer, const: 31}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
 components:
   securitySchemes:
     bearerToken:
@@ -4765,6 +5412,430 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    InboxOperationPart:
+      description: A durable assignment or handoff needing a person, without asserting that its run failed.
+      type: object
+      additionalProperties: false
+      required: [kind, id, reason]
+      properties:
+        kind: {type: string, enum: [assignment, handoff]}
+        id: {type: string}
+        reason: {type: string}
+    HandoffUpdate:
+      type: object
+      additionalProperties: false
+      required: [version, state, owner, blocker, due_at]
+      properties:
+        version: {type: integer, minimum: 1}
+        state: {type: string, enum: [accepted, blocked, needs_person, result]}
+        owner: {type: string}
+        blocker: {type: string, maxLength: 4000}
+        due_at: {type: string, format: date-time}
+    HandoffTerms:
+      type: object
+      additionalProperties: false
+      required: [goal, done_when, due_at]
+      properties:
+        goal: {type: string, minLength: 1, maxLength: 8000}
+        done_when: {type: string, minLength: 1, maxLength: 4000}
+        due_at: {type: string, format: date-time}
+    AgentControl:
+      type: object
+      properties:
+        state: {type: string, enum: [ready, working, waiting_on_people, watching, paused, failed]}
+        effective_paused: {type: boolean}
+        pause_reason: {type: string, enum: [workspace, agent, setup]}
+        effective_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800}
+        effective_blocked_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800}
+        manager_name: {type: string}
+        last_run: {type: string}
+        last_run_at: {type: string, format: date-time}
+        last_run_status: {$ref: "#/components/schemas/RunStatus"}
+        agent:
+          type: string
+        paused:
+          type: boolean
+        manager:
+          type: string
+        stop_rules:
+          type: string
+        reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800, description: "Unanswered-question reminder delay; 0 disables, omitted defaults to four hours."}
+        blocked_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800, description: "Blocked-work reminder delay; 0 disables, omitted defaults to two hours."}
+        version:
+          type: integer
+          minimum: 0
+        updated_by:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - paused
+      - version
+      - updated_by
+      - updated_at
+      additionalProperties: false
+    AgentControlInput:
+      type: object
+      properties:
+        paused:
+          type: boolean
+        manager:
+          type: string
+        stop_rules:
+          type: string
+        reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800, description: "Unanswered-question reminder delay; 0 disables, omitted defaults to four hours."}
+        blocked_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800, description: "Blocked-work reminder delay; 0 disables, omitted defaults to two hours."}
+        version:
+          type: integer
+          minimum: 0
+      required:
+      - paused
+      - version
+      additionalProperties: false
+    ActionPolicy:
+      type: object
+      properties:
+        scope:
+          type: object
+          properties:
+            kind:
+              type: string
+              enum:
+              - workspace
+              - project
+              - agent
+              - personal
+            name:
+              type: string
+          required:
+          - kind
+          additionalProperties: false
+        rules:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+            - allow
+            - ask
+            - never
+          propertyNames:
+            type: string
+            enum:
+            - read_context
+            - write_files
+            - publish_artifacts
+            - external_messages
+            - call_agents
+            - other
+        effective:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              level: {type: string, enum: [allow, ask, never]}
+              inherited: {type: string, enum: [allow, ask, never]}
+              locked: {type: boolean}
+              sources:
+                type: array
+                maxItems: 64
+                items:
+                  type: object
+                  properties:
+                    kind: {type: string, enum: [workspace, project, agent, personal, inherited]}
+                    name: {type: string}
+                    label: {type: string}
+                    level: {type: string, enum: [allow, ask, never]}
+                  required: [kind, label, level]
+                  additionalProperties: false
+            required: [locked, sources]
+            additionalProperties: false
+        version:
+          type: integer
+          minimum: 0
+        updated_by:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - scope
+      - rules
+      - version
+      - updated_by
+      - updated_at
+      additionalProperties: false
+    ActionPolicyInput:
+      type: object
+      properties:
+        rules:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+            - allow
+            - ask
+            - never
+          propertyNames:
+            type: string
+            enum:
+            - read_context
+            - write_files
+            - publish_artifacts
+            - external_messages
+            - call_agents
+            - other
+        version:
+          type: integer
+          minimum: 0
+      required:
+      - rules
+      - version
+      additionalProperties: false
+    Assignment:
+      type: object
+      properties:
+        owner_name: {type: string}
+        source_version: {type: integer, format: int64, minimum: 0}
+        tag_id: {type: string}
+        trigger: {type: string, enum: [manual, cron, source_change]}
+        source: {type: string}
+        id:
+          type: string
+        agent:
+          type: string
+        project:
+          type: string
+        thread:
+          type: string
+        owner:
+          type: string
+        goal:
+          type: string
+        done_when:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        deadline_missed: {type: boolean}
+        schedule:
+          type: string
+        cron:
+          type: string
+        state:
+          type: string
+          enum:
+          - requested
+          - accepted
+          - in_progress
+          - watching
+          - result
+          - blocked
+          - needs_person
+          - cancelled
+        blocker:
+          type: string
+        run_id:
+          type: string
+        run_status: {$ref: "#/components/schemas/RunStatus"}
+        version:
+          type: integer
+          minimum: 0
+        updated_by:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - agent
+      - project
+      - owner
+      - goal
+      - done_when
+      - state
+      - version
+      - updated_by
+      - created_at
+      - updated_at
+      additionalProperties: false
+    AssignmentInput:
+      type: object
+      properties:
+        trigger: {type: string, enum: [manual, cron, source_change]}
+        source: {type: string}
+        id:
+          type: string
+        agent:
+          type: string
+        project:
+          type: string
+        thread:
+          type: string
+        owner:
+          type: string
+        goal:
+          type: string
+        done_when:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        cron:
+          type: string
+        state:
+          type: string
+          enum:
+          - requested
+          - accepted
+          - in_progress
+          - watching
+          - result
+          - blocked
+          - needs_person
+          - cancelled
+        blocker:
+          type: string
+        version:
+          type: integer
+          minimum: 0
+      required:
+      - id
+      - agent
+      - project
+      - owner
+      - goal
+      - done_when
+      - state
+      - version
+      additionalProperties: false
+    HandoffContract:
+      type: object
+      properties:
+        id:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        project:
+          type: string
+        thread:
+          type: string
+        owner:
+          type: string
+        owner_name:
+          type: string
+        goal:
+          type: string
+        done_when:
+          type: string
+        inputs:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum:
+                - run
+                - artifact
+                - thread
+                - text
+              reference:
+                type: string
+            required:
+            - type
+            - reference
+            additionalProperties: false
+        chain:
+          type: array
+          items:
+            type: string
+          maxItems: 4
+        due_at:
+          type: string
+          format: date-time
+        deadline_missed: {type: boolean}
+        state:
+          type: string
+          enum:
+          - requested
+          - accepted
+          - in_progress
+          - watching
+          - result
+          - blocked
+          - needs_person
+          - cancelled
+        blocker:
+          type: string
+        run_id:
+          type: string
+        version:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - from
+      - to
+      - project
+      - goal
+      - done_when
+      - inputs
+      - chain
+      - state
+      - version
+      - created_at
+      - updated_at
+      additionalProperties: false
+    AgentNetworkEdge:
+      type: object
+      properties:
+        working: {type: integer, minimum: 0}
+        waiting_seconds: {type: integer, format: int64, minimum: 0}
+        from:
+          type: string
+        to:
+          type: string
+        handoffs:
+          type: integer
+          minimum: 0
+        blocked:
+          type: integer
+          minimum: 0
+        waiting:
+          type: integer
+          minimum: 0
+      required:
+      - from
+      - to
+      - handoffs
+      - blocked
+      - waiting
+      additionalProperties: false
+    AgentNetwork:
+      type: object
+      properties:
+        edges:
+          type: array
+          items:
+            "$ref": "#/components/schemas/AgentNetworkEdge"
+        truncated:
+          type: boolean
+      required:
+      - edges
+      - truncated
+      additionalProperties: false
     ErrorBody:
       description: What every failure answers with.
       type: object
@@ -5463,6 +6534,7 @@ components:
       type: object
       required: [key, agent, mode]
       properties:
+        contract: {$ref: "#/components/schemas/HandoffTerms"}
         key:
           description: Identifies the call within the caller's run. The same key joins the child it already started.
           type: string
@@ -7209,7 +8281,7 @@ components:
         of that project and of every project below it, or an agent's post
         held as a draft for the project's owners.
       type: string
-      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement]
+      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement, operation]
     InboxState:
       type: string
       enum: [open, resolved, dismissed, snoozed]
@@ -7563,7 +8635,7 @@ components:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft, mention]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft, mention, operation]
         state:
           type: string
           enum: [open, resolved, info]
@@ -7583,6 +8655,7 @@ components:
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
         draft: {$ref: "#/components/schemas/InboxDraftPart"}
         mention: {$ref: "#/components/schemas/InboxMentionPart"}
+        operation: {$ref: "#/components/schemas/InboxOperationPart"}
     InboxMentionPart:
       description: A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which the thread's default does not answer (one that tags anyone takes a member of the thread's project); `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's.
       type: object
@@ -7647,7 +8720,7 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden, reminded]
         part: {type: string}
         action: {type: string}
         note: {type: string}
