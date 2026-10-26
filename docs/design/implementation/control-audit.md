@@ -2,23 +2,20 @@
 
 This inventory covers each interactive element in all 27 checked-in HTML references, including repeated navigation and reference-only controls. It is a traceability record, not a claim that untested controls have passed acceptance. `control-audit.json` retains source/control identity, the original label, implementation paths and outstanding status for every entry.
 
-The canonical host is checkpoint `1974d93`. The integrated console suite passes 514 tests without skips; API contract/private and outsider confinement sweeps pass. Those tests do not replace phone/desktop capture or full journey acceptance of every control.
+The integrated host checkpoint is `6eb0f0e`. Its console suite passes 553 tests without skips. Trusted citation, native output, setup, email and API contract/private-thread checks pass against memory and Postgres. The published-skill wizard and native DOCX workflow have also passed real Claude browser checks, recorded in `checkpoints/local-browser-validation.md`. These checks do not replace phone/desktop capture or primary-journey acceptance of every control.
 
 | Status | Controls |
 | --- | ---: |
-| integration_validation_pending | 240 |
+| integration_validation_pending | 249 |
 | implemented | 161 |
 | reference | 74 |
-| source_followup_pending | 3 |
-| operations_followup_pending | 1 |
-| implementation_pending | 5 |
 
-Concrete remaining acceptance work:
+All previously identified implementation follow-ups are now in the integrated tree: verified source suggestions, connection capabilities and Slack direction, effective action policies and pause causes, durable reminders, named handoffs, native SMTP delivery and exact published default skills. Their individual regression evidence is listed beside the corresponding controls in the JSON inventory. Integrated visual acceptance is still pending.
 
-- Source suggestions and Library integration capabilities/Slack direction need their final lower checkpoints and mounted browser journeys.
-- Effective policy inheritance/provenance, effective pause causes, reminders and handoff input/owner detail are under the Operations follow-up.
-- The email delivery toggle has no native email transport implementation. Native console notifications alone do not satisfy it.
-- The prototype dependency-map link is an authored deliverable next to the launch plan. Its acceptance uses the actual native deliverable workflow, without an invented graph system.
-- Agent setup saves one inactive starter assignment. Multiple starters require a separate durable replacement/activation design; the existing Assignments page supports additional real assignments after activation.
-- Initiative progress uses actual confined records. The prototype's sample milestone fractions are not an implemented milestone system.
-- All current integration-validation entries still need final phone/desktop states and primary-journey checks. The eight showcase images must be refreshed from that final reproducible seed.
+Remaining acceptance work:
+
+- Activate the workspace, Library, Usage and email screen helpers in the final seed. Capture every new route and primary control state at phone and desktop sizes, including permission failures, pending approvals and version conflicts.
+- Verify all 249 integrated controls against those captures and actual route/API journeys before marking them accepted. Preserve explicit unknown citation freshness for legacy records and empty reader projections after access revocation.
+- Re-capture all eight showcase images from the reproducible final seed. The previous images predate the full navigation and workspace implementation.
+
+The prototype dependency-map link represents an authored deliverable beside a plan and is backed by the native editable-file workflow. Its sample milestone fractions are reference data. Agent setup saves one inactive starter assignment, then offers the actual agent-filtered Assignments route for additional assignments after activation.

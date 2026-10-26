@@ -2488,33 +2488,45 @@
     "source": "docs/design/humagen-control-plane/boards/Integrations.html",
     "control": 21,
     "label": "Turn into a rule",
-    "status": "source_followup_pending",
-    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted verified source suggestions; Link/Ignore use displayed version, Turn Into Rule opens a separate unsaved Suggest draft",
     "files": [
       "apps/web/src/Integrations.tsx",
       "apps/web/src/SourceLifecycle.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/integrations.dom.test.tsx",
+      "internal/platform/source_suggestions.go"
     ]
   },
   {
     "source": "docs/design/humagen-control-plane/boards/Integrations.html",
     "control": 22,
     "label": "Ignore",
-    "status": "source_followup_pending",
-    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted verified source suggestions; Link/Ignore use displayed version, Turn Into Rule opens a separate unsaved Suggest draft",
     "files": [
       "apps/web/src/Integrations.tsx",
       "apps/web/src/SourceLifecycle.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/integrations.dom.test.tsx",
+      "internal/platform/source_suggestions.go"
     ]
   },
   {
     "source": "docs/design/humagen-control-plane/boards/Integrations.html",
     "control": 23,
     "label": "Link",
-    "status": "source_followup_pending",
-    "implementation": "Canonical six-tab integration record, connected source resources/settings and durable link rules",
+    "status": "integration_validation_pending",
+    "implementation": "Persisted verified source suggestions; Link/Ignore use displayed version, Turn Into Rule opens a separate unsaved Suggest draft",
     "files": [
       "apps/web/src/Integrations.tsx",
       "apps/web/src/SourceLifecycle.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/integrations.dom.test.tsx",
+      "internal/platform/source_suggestions.go"
     ]
   },
   {
@@ -3826,10 +3838,14 @@
     "source": "docs/design/humagen-control-plane/boards/Policies.html",
     "control": 14,
     "label": "Edit workspace policy",
-    "status": "operations_followup_pending",
-    "implementation": "Scope-specific persisted rules; effective inherited restrictions and provenance supplied by Operations follow-up",
+    "status": "integration_validation_pending",
+    "implementation": "Scope-authorized persisted action policies with effective inherited restrictions, provenance and locked Never rules",
     "files": [
       "apps/web/src/ActionPolicies.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/operations.dom.test.tsx",
+      "internal/platform/action_policy_view.go"
     ]
   },
   {
@@ -4504,40 +4520,56 @@
     "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
     "control": 1,
     "label": "\u2190 Integrations",
-    "status": "implementation_pending",
-    "implementation": "Library capability/bridge follow-up: durable delivery direction and approval/action inventory",
+    "status": "integration_validation_pending",
+    "implementation": "Native inbox approvals, canonical Humagen links, versioned installation event/action allow-lists and persisted Slack channel direction",
     "files": [
       "apps/web/src/Integrations.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/integrations.dom.test.tsx",
+      "internal/platform/bridge_delivery_test.go"
     ]
   },
   {
     "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
     "control": 2,
     "label": "{{ approveLabel }}",
-    "status": "implementation_pending",
-    "implementation": "Library capability/bridge follow-up: durable delivery direction and approval/action inventory",
+    "status": "integration_validation_pending",
+    "implementation": "Native inbox approvals, canonical Humagen links, versioned installation event/action allow-lists and persisted Slack channel direction",
     "files": [
       "apps/web/src/Integrations.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/integrations.dom.test.tsx",
+      "internal/platform/bridge_delivery_test.go"
     ]
   },
   {
     "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
     "control": 3,
     "label": "Open in Humagen",
-    "status": "implementation_pending",
-    "implementation": "Library capability/bridge follow-up: durable delivery direction and approval/action inventory",
+    "status": "integration_validation_pending",
+    "implementation": "Native inbox approvals, canonical Humagen links, versioned installation event/action allow-lists and persisted Slack channel direction",
     "files": [
       "apps/web/src/Integrations.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/integrations.dom.test.tsx",
+      "internal/platform/bridge_delivery_test.go"
     ]
   },
   {
     "source": "docs/design/humagen-control-plane/boards/SlackBridge.html",
     "control": 4,
     "label": "{{ d.name }} {{ d.desc }}",
-    "status": "implementation_pending",
-    "implementation": "Library capability/bridge follow-up: durable delivery direction and approval/action inventory",
+    "status": "integration_validation_pending",
+    "implementation": "Native inbox approvals, canonical Humagen links, versioned installation event/action allow-lists and persisted Slack channel direction",
     "files": [
       "apps/web/src/Integrations.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/integrations.dom.test.tsx",
+      "internal/platform/bridge_delivery_test.go"
     ]
   },
   {
@@ -5022,12 +5054,17 @@
     "source": "docs/design/humagen-control-plane/boards/UserSettings.html",
     "control": 21,
     "label": "Also send by email",
-    "status": "implementation_pending",
-    "implementation": "Native delivery is implemented. No email transport is configured or validated; do not imply email delivery succeeds.",
+    "status": "integration_validation_pending",
+    "implementation": "Explicit opt-in email preferences, configured tenant/subject recipient mapping, durable current-consent reconciliation and bounded native SMTP/TLS delivery",
     "files": [
       "apps/web/src/PersonalPreferences.tsx",
       "apps/web/src/PersonalAgents.tsx",
       "apps/web/src/Connections.tsx"
+    ],
+    "evidence": [
+      "apps/web/src/email-preferences.dom.test.tsx",
+      "pkg/notifications/email_test.go",
+      "internal/platform/email_notifications_test.go"
     ]
   },
   {
