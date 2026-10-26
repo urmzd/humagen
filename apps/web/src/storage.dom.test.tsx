@@ -91,3 +91,19 @@ test("over its limit, the page says agents cannot publish", async () => {
   page(memoryStorage(sampleFiles(), sampleUse({ limit_bytes: 1_000 })));
   assert.match((await screen.findByRole("alert")).textContent ?? "", /over its limit/);
 });
+
+test("a selected artifact keeps Open in Workspace, Download and Close available together", async () => {
+  const opened:Stored[]=[];
+  render(<Storage signal={0} agents={[]} projects={[]} canDelete onOpenRun={noop} onOpenThread={noop} onOpenArtifact={file=>opened.push(file)} via={memoryStorage()} />);
+  fireEvent.click(await screen.findByText("launch-plan.md"));
+  const detail=await screen.findByTestId("stored-detail");
+  const actions=detail.querySelector("header");
+  assert.ok(actions);
+  fireEvent.click(inside(actions).getByRole("button",{name:"Open in Workspace"}));
+  assert.equal(opened.length,1);
+  assert.equal(opened[0]?.title,"launch-plan.md");
+  assert.ok(inside(actions).getByRole("link",{name:"Download"}).getAttribute("href")?.includes(opened[0]!.id));
+  fireEvent.click(inside(actions).getByRole("button",{name:"Close"}));
+  await waitFor(()=>assert.ok(!screen.queryByTestId("stored-detail")));
+  assert.ok(screen.getByText("launch-plan.md"));
+});

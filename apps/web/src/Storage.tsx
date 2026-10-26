@@ -101,7 +101,7 @@ export function StoredDetail({
             <time dateTime={file.created_at}>{ago(file.created_at)}</time>
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           {onOpenArtifact && <button type="button" className={button} onClick={() => onOpenArtifact(file)}>Open in Workspace</button>}
           <a className={primary} href={contentUrl(file.id)} download={file.title}>
             Download
