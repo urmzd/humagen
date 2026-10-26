@@ -46,7 +46,7 @@ test("saving a source reference does not claim verified provider access", async 
     },
   });
   render(<SourceLifecycle source={source} canWrite={true} onChanged={() => changed++} />);
-  await screen.findByText("No visible declarations in this directory window");
+  await screen.findByText("No visible declarations or recorded uses in this window");
   fireEvent.change(screen.getByLabelText("Your credential reference"), {
     target: { value: "op://People/ana/drive" },
   });
@@ -110,7 +110,38 @@ test("an available manual source does not claim its retained documents are missi
     "GET /api/knowledge/runbooks/dependencies": () => ({ agents: [], projects: [] }),
   });
   render(<SourceLifecycle source={{ ...source, lifecycle: undefined }} canWrite={false} onChanged={() => undefined} />);
-  await screen.findByText("No visible declarations in this directory window");
+  await screen.findByText("No visible declarations or recorded uses in this window");
   assert.equal(screen.queryByText("No successful copy yet") === null, true);
   assert.ok(screen.getByText("Manually added documents; no external refresh"));
+});
+
+test("Used By links recorded conversations and publishing runs without inventing skill or memory dependencies", async () => {
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/dependencies": () => ({
+      agents: [], projects: [],
+      conversations: [{ id: "th-visible", title: "Launch planning", relation: "retrieved_in" }],
+      deliverables: [{ id: "art-visible", title: "Launch brief.md", relation: "published_by_retrieving_run" }],
+      unsupported: ["skills", "memory"],
+    }),
+  });
+  render(<SourceLifecycle source={source} canWrite={false} onChanged={() => undefined} />);
+  assert.equal((await screen.findByRole("link", { name: "Conversations: Launch planning" })).getAttribute("href"), "/conversations/th-visible");
+  assert.equal(screen.getByRole("link", { name: "Deliverables: Launch brief.md" }).getAttribute("href"), "/artifacts/art-visible");
+  assert.ok(screen.getByText("Published by a run that retrieved this source. Content dependency is not inferred."));
+  assert.ok(screen.getByText(/Skill-to-source relationships are not recorded/));
+  assert.ok(screen.getByText(/Memory-to-source relationships are not recorded/));
+});
+
+test("Used By renders authoritative adapter skill and memory links with origin-run details omitted", async () => {
+  net = stubFetch({
+    "GET /api/knowledge/runbooks/dependencies": () => ({
+      agents: [], projects: [], conversations: [], deliverables: [], unsupported: [],
+      skills: [{ id: "skill", title: "Release Review", relation: "recorded_origin_run", path: "/library/skills/skill" }],
+      memory: [{ id: "memory", title: "Supplier note", relation: "recorded_origin_run", path: "/projects/Launch/context" }],
+    }),
+  });
+  render(<SourceLifecycle source={source} canWrite={false} onChanged={() => undefined} />);
+  assert.equal((await screen.findByRole("link", { name: "Skills: Release Review" })).getAttribute("href"), "/library/skills/skill");
+  assert.equal(screen.getByRole("link", { name: "Memory: Supplier note" }).getAttribute("href"), "/projects/Launch/context");
+  assert.equal(screen.queryByText(/Skill-to-source relationships are not recorded/) === null, true);
 });

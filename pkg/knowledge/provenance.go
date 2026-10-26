@@ -237,3 +237,33 @@ func equalEvidence(a, b CitationEvidence) bool {
 	b.CopyAt = nil
 	return reflect.DeepEqual(a, b)
 }
+
+// RunReferences returns only accepted query-time relationships. Visibility is
+// checked before the limit, so hidden retrievals consume no public slots.
+// Both the retained run set and per-run evidence are bounded by this store.
+func (s *EvidenceStore) RunReferences(tenant, source string, limit int, keep func(string, CitationEvidence) bool) []string {
+	out := []string{}
+	if s == nil || limit <= 0 {
+		return out
+	}
+	limit = min(limit, 200)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ids := make([]string, 0, len(s.by[tenant]))
+	for id := range s.by[tenant] {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		for _, proof := range s.by[tenant][id].Citations {
+			if proof.Source == source && keep != nil && keep(id, cloneEvidence(proof)) {
+				out = append(out, id)
+				break
+			}
+		}
+		if len(out) == limit {
+			break
+		}
+	}
+	return out
+}

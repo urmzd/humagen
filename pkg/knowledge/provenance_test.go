@@ -79,3 +79,23 @@ func TestEvidenceRejectsFalseLiveFreshnessAndBounds(t *testing.T) {
 		t.Fatal("run evidence unbounded", err)
 	}
 }
+
+func TestSourceRunReferencesFilterHiddenBeforeBound(t *testing.T) {
+	s := NewEvidenceStore()
+	entry := CitationEvidence{Source: "docs", DocumentID: "doc", Text: "actual", Mode: Indexed}
+	for _, id := range []string{"a-hidden", "b-hidden", "z-visible"} {
+		if _, err := s.RecordQuery("tenant", id, "rag:1", []CitationEvidence{entry}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refs := s.RunReferences("tenant", "docs", 1, func(id string, _ CitationEvidence) bool { return id == "z-visible" })
+	if len(refs) != 1 || refs[0] != "z-visible" {
+		t.Fatal("hidden references consumed public bound", refs)
+	}
+	if len(s.RunReferences("other", "docs", 50, func(string, CitationEvidence) bool { return true })) != 0 {
+		t.Fatal("cross tenant relationships exposed")
+	}
+	if len(s.RunReferences("tenant", "docs", 50, nil)) != 0 {
+		t.Fatal("missing visibility accepted")
+	}
+}

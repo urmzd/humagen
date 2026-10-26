@@ -4,6 +4,7 @@ import type {
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
   KnowledgeLifecycle,
+  SourceDependencies,
   KnowledgeSourceConfig,
   Note as GeneratedNote,
   NoteInput,
@@ -37,6 +38,7 @@ import type { BusEvent, Run } from "./adapter.ts";
 // The project tree's shapes are the generated client's own, from
 // api/openapi.yaml, so this file cannot drift from the contract on them.
 export type {
+  SourceDependencies,
   ProjectContext,
   ContextLayer,
   AgentHome,
@@ -957,7 +959,7 @@ export const api = {
   saveClientCapabilities:(id:string,input:ClientCapabilityInput)=>call<ClientCapabilities>("PUT",`/api/clients/${encodeURIComponent(id)}/capabilities`,input),
   setSlackDirection:(project:string,channel:Channel,direction:BridgeDirection)=>call<Channel>("PUT",`${projectAt(project)}/channels/${encodeURIComponent(channel.name)}`,{version:channel.version,title:channel.title??"",purpose:channel.purpose??"",default:channel.default??"",slack:{...channel.slack,direction}}),
   clientBindings:(id:string)=>call<ListClientBindingsResponse>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(result=>result.bindings),
-  sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
+  sourceDependencies: (name: string) => call<SourceDependencies>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
   configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
   connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
   syncSource: (name: string) => call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),

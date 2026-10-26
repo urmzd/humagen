@@ -247,7 +247,24 @@ export const defaultCopy = {
     dependents: "What relies on this source",
     agents: "Agents",
     projects: "Projects",
-    noDependents: "No visible declarations in this directory window",
+    noDependents: "No visible declarations or recorded uses in this window",
+    conversations: "Conversations",
+    untitledConversation: "Untitled Conversation",
+    deliverables: "Deliverables",
+    skills: "Skills",
+    memory: "Memory",
+    relations: {
+      retrieved_in: "This conversation retrieved this source.",
+      recorded_origin_run: "Recorded origin: a run that retrieved this source.",
+      published_by_retrieving_run:
+        "Published by a run that retrieved this source. Content dependency is not inferred.",
+    },
+    unsupported: {
+      skills:
+        "Skill-to-source relationships are not recorded; instruction text is not treated as a dependency.",
+      memory:
+        "Memory-to-source relationships are not recorded by this source index; note text is not treated as a dependency.",
+    },
     dependencyFailed: "Source dependencies could not be loaded.",
     providers: { manual: "Manual", drive: "Google Drive", notion: "Notion" },
     grounding:
@@ -449,6 +466,8 @@ export const defaultCopy = {
     context: "Context",
     people: "People & Access",
     deliverables: "Deliverables",
+    skills: "Skills",
+    memory: "Memory",
     project: "Project",
     projectAction: "Project and sharing",
     private: "Private",
