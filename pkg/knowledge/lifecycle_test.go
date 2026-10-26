@@ -100,3 +100,98 @@ func TestSyncCompletionCannotReplaceNewerOrInvalidSnapshot(t *testing.T) {
 		t.Fatal(docs)
 	}
 }
+
+func TestRefreshCannotReattributeOrAcceptUnstableDocumentIDs(t *testing.T) {
+	s := NewStore()
+	_, _ = s.Create("acme", "docs", "", "ana", now)
+	cfg := SourceConfig{Mode: Indexed, Provider: "drive", Origin: "folder1", Owner: "ana"}
+	if _, err := s.Configure("acme", "docs", cfg, now); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := s.BeginSync("acme", "docs", now)
+	if _, err := s.CompleteSync("acme", "docs", id, []ImportDocument{{ID: "stable", Title: "Good", Text: "trusted text"}}, "ana", now); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Owner = "bob"
+	if _, err := s.Configure("acme", "docs", cfg, now); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("retained owner changed: %v", err)
+	}
+	src, _ := s.Get("acme", "docs")
+	if src.Lifecycle.Owner != "ana" {
+		t.Fatal("retained copy reattributed")
+	}
+	id, _ = s.BeginSync("acme", "docs", now)
+	if _, err := s.CompleteSync("acme", "docs", id, []ImportDocument{{Title: "No ID", Text: "new text"}}, "ana", now); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unstable ID accepted: %v", err)
+	}
+	docs, _ := s.Documents("acme", "docs")
+	if len(docs) != 1 || docs[0].ID != "stable" {
+		t.Fatal("invalid snapshot changed good copy")
+	}
+}
+
+func TestInterruptedIndexingRetainsCopyAndCanRetry(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = s.Create("acme", "docs", "", "ana", now)
+		_, _ = s.Add("acme", "docs", "Good", "", "trusted copy", "ana", now)
+		id, err := s.BeginSync("acme", "docs", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.IndexSync("acme", "docs", id, now); err != nil {
+			t.Fatal(err)
+		}
+		src, _ := s.Get("acme", "docs")
+		if src.Lifecycle.Status != Indexing {
+			t.Fatal(src.Lifecycle.Status)
+		}
+		again, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src, _ = again.Get("acme", "docs")
+		if src.Lifecycle.Status != NeedsAttention || src.Lifecycle.Cause != Interrupted {
+			t.Fatal(src.Lifecycle)
+		}
+		hits, err := again.Search("acme", []string{"docs"}, "trusted", 6, "")
+		if err != nil || len(hits) != 1 {
+			t.Fatalf("lost retained copy: %+v %v", hits, err)
+		}
+		if _, err := again.BeginSync("acme", "docs", now); err != nil {
+			t.Fatal("interrupted attempt prevented retry", err)
+		}
+	})
+}
+
+func TestAuthorizedSourceSnapshotCannotRaceConfiguration(t *testing.T) {
+	s := NewStore()
+	_, _ = s.Create("acme", "docs", "", "ana", now)
+	first := SourceConfig{Mode: Indexed, Provider: "drive", Origin: "folder1", Owner: "ana", Project: "First", StopAfterSeconds: 86400}
+	if _, err := s.ConfigureIfCurrent("acme", "docs", first, now, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.BeginSyncIfCurrent("acme", "docs", now, nil); !errors.Is(err, ErrExists) {
+		t.Fatalf("legacy snapshot admitted after configure: %v", err)
+	}
+	second := first
+	second.Origin = "folder2"
+	second.Project = "Second"
+	if _, err := s.ConfigureIfCurrent("acme", "docs", second, now, &first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.BeginSyncIfCurrent("acme", "docs", now, &first); !errors.Is(err, ErrExists) {
+		t.Fatalf("old scope import admitted: %v", err)
+	}
+	if _, err := s.ConfigureIfCurrent("acme", "docs", first, now, &first); !errors.Is(err, ErrExists) {
+		t.Fatalf("old scope overwritten: %v", err)
+	}
+	src, _ := s.Get("acme", "docs")
+	if src.Lifecycle.SourceConfig != second || len(src.Lifecycle.Attempts) != 0 {
+		t.Fatal("denied operation changed source", src.Lifecycle)
+	}
+}

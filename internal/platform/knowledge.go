@@ -72,7 +72,17 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if err != nil {
 		return req, err
 	}
-	return withSkills(withSources(req))
+	req = withSources(req)
+	project, person := "", ""
+	if run, e := p.Runs.Get(req.Tenant, req.RunID); e == nil {
+		project, person = run.Project, personOf(run.Actor)
+	}
+	spec := req.Revision.Spec
+	spec.Sources = slices.DeleteFunc(slices.Clone(spec.Sources), func(src agentrt.Source) bool {
+		return !p.runtimeReaderSourceAllowed(req.Tenant, src.Name, project, person)
+	})
+	req.Revision.Spec = spec
+	return withSkills(req)
 }
 
 // withSources adds the knowledge sources a run's tag was pinned with to its
@@ -179,7 +189,11 @@ func (p *Platform) ProjectKnowledgeAs(who auth.Principal, project string) (Proje
 		out.Knowledge = []string{}
 	}
 	if seer.Knowledge() {
-		out.Given = append(out.Given, tree.Knowledge(name)...)
+		for _, given := range tree.Knowledge(name) {
+			if p.SourceVisible(who, given.Name) {
+				out.Given = append(out.Given, given)
+			}
+		}
 	}
 	return out, nil
 }
@@ -245,5 +259,11 @@ func (s *Seer) Sources(names []string) []string {
 	if !s.Knowledge() {
 		return nil
 	}
-	return slices.Clone(names)
+	out := []string{}
+	for _, name := range names {
+		if s.p.SourceVisible(s.who, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }

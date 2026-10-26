@@ -126,6 +126,15 @@ func (s *Store) Get(tenant, name string) (Source, error) {
 
 // Configure replaces public metadata. An active import cannot change identity.
 func (s *Store) Configure(tenant, name string, cfg SourceConfig, at time.Time) (Source, error) {
+	return s.configure(tenant, name, cfg, at, nil, false)
+}
+
+// ConfigureIfCurrent checks the exact authorized connection snapshot under the
+// source lock. Nil expects a legacy source without lifecycle configuration.
+func (s *Store) ConfigureIfCurrent(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig) (Source, error) {
+	return s.configure(tenant, name, cfg, at, expected, true)
+}
+func (s *Store) configure(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig, guard bool) (Source, error) {
 	if cfg.Mode != "indexed" && cfg.Mode != "live" && cfg.Mode != "hybrid" {
 		return Source{}, fmt.Errorf("%w: source mode", ErrInvalid)
 	}
@@ -150,13 +159,16 @@ func (s *Store) Configure(tenant, name string, cfg SourceConfig, at time.Time) (
 	if err != nil {
 		return Source{}, err
 	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return Source{}, fmt.Errorf("%w: source configuration changed", ErrExists)
+	}
 	lc := lifecycle(src.Source)
 	if active(lc) != "" {
 		return Source{}, fmt.Errorf("%w: refresh in progress", ErrExists)
 	}
 	// Changing origin/provider cannot retain a copy from a different authority.
-	if src.Documents > 0 && (cfg.Provider != lc.Provider || cfg.Origin != lc.Origin || cfg.Project != lc.Project) {
-		return Source{}, fmt.Errorf("%w: create a new source for a different origin or project", ErrInvalid)
+	if src.Documents > 0 && (cfg.Provider != lc.Provider || cfg.Origin != lc.Origin || cfg.Project != lc.Project || cfg.Owner != lc.Owner) {
+		return Source{}, fmt.Errorf("%w: create a new source for a different origin, owner or project", ErrInvalid)
 	}
 	lc.SourceConfig = cfg
 	next := cloneSource(src.Source)
@@ -182,11 +194,22 @@ func active(lc *Lifecycle) string {
 
 // BeginSync durably records an attempt before making an external request.
 func (s *Store) BeginSync(tenant, name string, at time.Time) (string, error) {
+	return s.beginSync(tenant, name, at, nil, false)
+}
+
+// BeginSyncIfCurrent binds an import to the exact authorized source identity.
+func (s *Store) BeginSyncIfCurrent(tenant, name string, at time.Time, expected *SourceConfig) (string, error) {
+	return s.beginSync(tenant, name, at, expected, true)
+}
+func (s *Store) beginSync(tenant, name string, at time.Time, expected *SourceConfig, guard bool) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return "", err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return "", fmt.Errorf("%w: source configuration changed", ErrExists)
 	}
 	lc := lifecycle(src.Source)
 	if active(lc) != "" {
@@ -261,7 +284,7 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 	seen := map[string]bool{}
 	for _, d := range docs {
 		bytes += len(d.Text)
-		if strings.TrimSpace(d.Title) == "" || strings.TrimSpace(d.Text) == "" || len(d.Title) > 4096 || len(d.URI) > 4096 || bytes > MaxImportBytes || len(d.ID) > 256 || seen[d.ID] {
+		if strings.TrimSpace(d.Title) == "" || strings.TrimSpace(d.Text) == "" || len(d.Title) > 4096 || len(d.URI) > 4096 || bytes > MaxImportBytes || d.ID == "" || len(d.ID) > 256 || seen[d.ID] {
 			return Source{}, fmt.Errorf("%w: imported document", ErrInvalid)
 		}
 		seen[d.ID] = true
@@ -283,12 +306,9 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 		b.Delete(tenant, textKey(name, seq))
 	}
 	seq := s.seq
-	for i, d := range docs {
+	for _, d := range docs {
 		seq++
 		documentID := d.ID
-		if documentID == "" {
-			documentID = fmt.Sprintf("%s-%d", id, i)
-		}
 		texts := split(d.Text)
 		doc := &Document{ID: documentID, Title: strings.TrimSpace(d.Title), URI: d.URI, Bytes: len(d.Text), Passages: len(texts), AddedBy: by, AddedAt: at}
 		next.docs = append(next.docs, doc)
@@ -335,4 +355,36 @@ func (src Source) HardStale(at time.Time) bool {
 		since = *lc.LastGoodAt
 	}
 	return at.Sub(since) >= time.Duration(lc.StopAfterSeconds)*time.Second
+}
+
+// IndexSync records that provider fetching completed and local indexing begins.
+// It never replaces or marks the retained documents successful.
+func (s *Store) IndexSync(tenant, name, id string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	src, err := s.get(tenant, name)
+	if err != nil {
+		return err
+	}
+	lc := lifecycle(src.Source)
+	if active(lc) != id || id == "" {
+		return fmt.Errorf("%w: inactive attempt", ErrInvalid)
+	}
+	lc.Status = Indexing
+	lc.Attempts[len(lc.Attempts)-1].Status = string(Indexing)
+	next := cloneSource(src.Source)
+	next.Lifecycle = lc
+	next.UpdatedAt = at
+	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &next}); err != nil {
+		return err
+	}
+	src.Source = next
+	return nil
+}
+
+func sameConfiguration(src Source, expected *SourceConfig) bool {
+	if expected == nil {
+		return src.Lifecycle == nil
+	}
+	return src.Lifecycle != nil && src.Lifecycle.SourceConfig == *expected
 }

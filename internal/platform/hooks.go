@@ -186,6 +186,9 @@ func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 // then is not kept.
 func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools []string, since time.Time) bool {
 	for _, grant := range tools {
+		if grant == ToolSourceSearch {
+			return true
+		}
 		// As fiber expands a grant: anything else is not a provider's.
 		parsed, ok, err := agentspec.ParseMCPGrant(grant)
 		if !ok || err != nil || !toolprovider.ValidName(parsed.Provider) {

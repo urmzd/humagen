@@ -15,12 +15,14 @@ import (
 	"github.com/urmzd/fiber/pkg/mcptools"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/pkg/knowledge"
 )
 
 // Extensions is what a program built on humagen adds to the platform without
 // forking it: model providers, tool sources and MCP tool providers. The zero
 // value adds nothing. The humagen package fills it from options and a spec file.
 type Extensions struct {
+	SourceProviders map[string]knowledge.Provider
 	// Providers are model providers by name. A spec whose provider is the
 	// name runs on what the function builds, and a built-in of the same name
 	// is replaced.
@@ -52,9 +54,10 @@ func (e Extensions) ProviderNames() []string { return slices.Sorted(maps.Keys(e.
 // rather than an override, so a file cannot silently replace an option.
 func (e Extensions) Merge(o Extensions) (Extensions, error) {
 	out := Extensions{
-		Providers: maps.Clone(e.Providers),
-		Catalogs:  slices.Concat(e.Catalogs, o.Catalogs),
-		ToolStore: e.ToolStore, Resolver: e.Resolver,
+		Providers:       maps.Clone(e.Providers),
+		SourceProviders: maps.Clone(e.SourceProviders),
+		Catalogs:        slices.Concat(e.Catalogs, o.Catalogs),
+		ToolStore:       e.ToolStore, Resolver: e.Resolver,
 	}
 	if out.Providers == nil {
 		out.Providers = map[string]agentrt.ProviderFunc{}
@@ -65,6 +68,16 @@ func (e Extensions) Merge(o Extensions) (Extensions, error) {
 		}
 		out.Providers[name] = fn
 	}
+	if out.SourceProviders == nil {
+		out.SourceProviders = map[string]knowledge.Provider{}
+	}
+	for name, provider := range o.SourceProviders {
+		if _, dup := out.SourceProviders[name]; dup {
+			return Extensions{}, fmt.Errorf("platform: source provider %q is declared twice", name)
+		}
+		out.SourceProviders[name] = provider
+	}
+
 	seen := map[string]bool{}
 	for _, s := range slices.Concat(e.ToolProviders, o.ToolProviders) {
 		key := s.Provider.Tenant + "/" + s.Provider.Name

@@ -43,8 +43,12 @@ govern implementation, including shared presentation and agent identity.
   working capabilities.
 - Source lifecycle foundation: bounded durable refresh attempts, last-good
   copies, typed failures, stale stop rules and publication access predicates
-  are implemented. Native provider, lifecycle API and presentation work is
-  still under verification.
+  are implemented. Native Drive/Notion boundaries, personal reference resolution,
+  scoped lifecycle APIs, source dependency views and connection controls are
+  implemented. Automated transport tests, memory/Postgres replay, HTTP contract
+  tests, three DOM states and eight phone/desktop source-state captures pass.
+  Live provider accounts and resource-rule configuration/application remain
+  pending. See [sources](docs/sources.md) for supported formats and limits.
 - Acceptance: exercise each newly wired control through its real host/API
   boundary, including a saved success, a visible failure, and denied access.
   Distinguish automated or simulated API checks from a live external-service

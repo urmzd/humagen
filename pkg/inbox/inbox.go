@@ -65,6 +65,7 @@ var (
 type Kind string
 
 const (
+	KindSource        Kind = "source"
 	KindAlert         Kind = "alert"
 	KindFailure       Kind = "failure"
 	KindMemory        Kind = "memory"
@@ -108,6 +109,7 @@ const (
 type PartType string
 
 const (
+	PartSource  PartType = "source"
 	PartText    PartType = "text"
 	PartAlert   PartType = "alert"
 	PartFailure PartType = "failure"
@@ -158,12 +160,13 @@ type From struct {
 
 // Source links a message to what it is about.
 type Source struct {
-	Alert   string `json:"alert,omitempty"`
-	Rule    string `json:"rule,omitempty"`
-	Run     string `json:"run,omitempty"`
-	Thread  string `json:"thread,omitempty"`
-	Agent   string `json:"agent,omitempty"`
-	Project string `json:"project,omitempty"`
+	Knowledge string `json:"knowledge,omitempty"`
+	Alert     string `json:"alert,omitempty"`
+	Rule      string `json:"rule,omitempty"`
+	Run       string `json:"run,omitempty"`
+	Thread    string `json:"thread,omitempty"`
+	Agent     string `json:"agent,omitempty"`
+	Project   string `json:"project,omitempty"`
 	// Target is the agent a question's tool call would call, when the
 	// question is about calling one: the callee whose queue it is in.
 	Target string `json:"target,omitempty"`
@@ -350,11 +353,18 @@ type Outcome struct {
 	Note   string `json:"note,omitempty"`
 }
 
+// SourcePart is a source failure requiring an authorized refresh.
+type SourcePart struct {
+	Name  string `json:"name"`
+	Cause string `json:"cause"`
+}
+
 // Part is one piece of a message.
 type Part struct {
-	ID    string    `json:"id"`
-	Type  PartType  `json:"type"`
-	State PartState `json:"state"`
+	Source *SourcePart `json:"source,omitempty"`
+	ID     string      `json:"id"`
+	Type   PartType    `json:"type"`
+	State  PartState   `json:"state"`
 	// Actions is what the reader may do with the part. The store leaves it
 	// empty: it depends on who is reading.
 	Actions []string `json:"actions"`
@@ -423,6 +433,10 @@ func (m Message) clone() Message {
 	m.Parts = slices.Clone(m.Parts)
 	for i := range m.Parts {
 		p := &m.Parts[i]
+		if p.Source != nil {
+			source := *p.Source
+			p.Source = &source
+		}
 		if p.Outcome != nil {
 			o := *p.Outcome
 			p.Outcome = &o
