@@ -9,7 +9,15 @@ const localDate = (value: string) => {
   const date = new Date(value);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
-export function MemoryLibrary() {
+export interface MemoryLibraryLocation {
+  scope: Scope;
+  owner?: string;
+}
+export function MemoryLibrary({
+  onLocationChange,
+}: {
+  onLocationChange?: (location: MemoryLibraryLocation) => void;
+} = {}) {
   const copy = defaultCopy.memoryLibrary;
   const [scope, setScope] = useState<Scope>(() => {
     const value = new URLSearchParams(window.location.search).get("scope");
@@ -210,8 +218,10 @@ export function MemoryLibrary() {
             className={`${field} mt-2`}
             value={scope}
             onChange={(event) => {
-              setScope(event.target.value as Scope);
+              const next = event.target.value as Scope;
+              setScope(next);
               setOwner("");
+              onLocationChange?.({ scope: next });
             }}
           >
             {(["personal", "workspace", "project", "agent"] as const).map((value) => (
@@ -227,7 +237,10 @@ export function MemoryLibrary() {
             <select
               className={`${field} mt-2 max-w-full`}
               value={owner}
-              onChange={(event) => setOwner(event.target.value)}
+              onChange={(event) => {
+                setOwner(event.target.value);
+                onLocationChange?.({ scope, owner: event.target.value });
+              }}
             >
               <option value="">{copy.emptyScope}</option>
               {scope === "project"
@@ -375,6 +388,7 @@ export function MemoryLibrary() {
                             {copy.destination}
                             <select
                               className={`${field} mt-2 block max-w-full`}
+                              aria-label={copy.destination}
                               value={destination}
                               onChange={(event) => setDestination(event.target.value)}
                             >

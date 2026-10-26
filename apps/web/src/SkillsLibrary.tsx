@@ -27,7 +27,16 @@ function definitionOf(row: LibrarySkill): LibrarySkillDefinition {
     argument_hint: row.argument_hint ?? "",
   };
 }
-export function SkillsLibrary() {
+export interface SkillsLibraryLocation {
+  scope: "personal" | "workspace" | "project";
+  project?: string;
+  skill?: string;
+}
+export function SkillsLibrary({
+  onLocationChange,
+}: {
+  onLocationChange?: (location: SkillsLibraryLocation) => void;
+} = {}) {
   const copy = defaultCopy.skillsLibrary;
   const [scope, setScope] = useState<LibraryScope>(() => {
     const query = new URLSearchParams(window.location.search);
@@ -38,6 +47,7 @@ export function SkillsLibrary() {
         ? { kind, project: query.get("project") ?? "" }
         : { kind: "personal" };
   });
+  const [requestedSkill] = useState(() => new URLSearchParams(window.location.search).get("skill"));
   const [skills, setSkills] = useState<LibrarySkill[] | null>(null);
   const [history, setHistory] = useState<LibrarySkill[]>([]);
   const [selected, setSelected] = useState<LibrarySkill | null>(null);
@@ -96,8 +106,8 @@ export function SkillsLibrary() {
       .then((rows) => {
         if (live) {
           setSkills(rows);
-          const requested = new URLSearchParams(window.location.search).get("skill");
-          if (requested && rows.some((row) => row.id === requested)) void inspect(requested);
+          if (requestedSkill && rows.some((row) => row.id === requestedSkill))
+            void inspect(requestedSkill, false);
         }
       })
       .catch((error) => {
@@ -149,7 +159,7 @@ export function SkillsLibrary() {
       live = false;
     };
   }, [selected]);
-  const inspect = async (id: string) => {
+  const inspect = async (id: string, sync = true) => {
     setBusy(true);
     setProblem(null);
     try {
@@ -161,6 +171,7 @@ export function SkillsLibrary() {
         setDefinition(definitionOf(row));
         setTestThread("");
         setTestProject(row.scope.kind === "personal" ? personal : (row.scope.project ?? ""));
+        if (sync) onLocationChange?.({ scope: scope.kind, project: scope.project, skill: row.id });
       }
     } catch (error) {
       failed(error);
@@ -176,6 +187,7 @@ export function SkillsLibrary() {
       setSkills(await api.librarySkills(scope));
       setHistory(await api.librarySkill(row.id));
       setSelected(row);
+      onLocationChange?.({ scope: scope.kind, project: scope.project, skill: row.id });
     } catch (error) {
       failed(error);
     } finally {
@@ -226,6 +238,7 @@ export function SkillsLibrary() {
       const version = target.find((row) => row.name === selected.name)?.version ?? 0;
       await api.promoteSkill(selected.id, selected.version, destination, version);
       setScope(destination);
+      onLocationChange?.({ scope: destination.kind, project: destination.project });
     } catch (error) {
       failed(error);
     } finally {
@@ -275,7 +288,10 @@ export function SkillsLibrary() {
   );
   return (
     <Page title={copy.title} lede={copy.description}>
-      {scopeControl(scope, setScope)}
+      {scopeControl(scope, (next) => {
+        setScope(next);
+        onLocationChange?.({ scope: next.kind, project: next.project });
+      })}
       {problem && <Problem message={problem} />}
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
         <aside className="min-w-0">
@@ -329,7 +345,7 @@ export function SkillsLibrary() {
               <label>
                 {copy.version}
                 <select
-                  className="ml-2 min-h-11 bg-aui-bg"
+                  className={`${field} mt-2 block max-w-full`}
                   value={selected.version}
                   onChange={(e) => {
                     const row = history.find((value) => value.version === Number(e.target.value));

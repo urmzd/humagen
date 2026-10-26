@@ -166,7 +166,7 @@ export function Audit() {
               </div>
               <p>{row.resource_id}</p>
               <p className="text-aui-sm text-aui-muted">
-                {row.actor} · {row.scope}
+                {row.actor}, {row.scope}
                 {row.project ? ` / ${row.project}` : ""}
               </p>
               {row.route && (

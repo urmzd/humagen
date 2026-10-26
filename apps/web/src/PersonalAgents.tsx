@@ -120,6 +120,7 @@ export function PersonalAgents() {
                   <select
                     className={`${field} mt-2 max-w-full`}
                     disabled={!canWrite || busy || review === row.spec.name}
+                    aria-label={copy.project}
                     value={destination[row.spec.name] ?? ""}
                     onChange={(event) =>
                       setDestination({ ...destination, [row.spec.name]: event.target.value })
