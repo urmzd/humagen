@@ -41,6 +41,8 @@ test("every route survives a round trip through its address", () => {
     { page: "project", name: "", tab: "people" },
     { page: "project", name: "Globex", tab: "limits" },
     { page: "project", name: "Globex", tab: "history" },
+    { page: "operations", section: "integrations", selected: "drive/account", tab: "resources" },
+    { page: "operations", section: "context", selected: "source name" },
     { page: "schedules" },
     { page: "schedules", name: "nightly" },
     { page: "new", agent: "humagen-analyst", ask: "How did runs go today?" },

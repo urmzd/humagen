@@ -16,6 +16,7 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
+agentOperations:{title:"Agent Operations",loading:"Reading operational state",failed:"Operational state could not be read. Retry to refresh it.",manager:(name:string)=>`Manager: ${name}`,lastRun:"Open Last Run",states:{ready:"Ready",working:"Working",waiting_on_people:"Waiting on People",watching:"Watching",paused:"Paused",failed:"Needs Attention"}},
   agentSetup: {
     title: "New Agent",
     lede: "Review its role, context and actions, then test the inactive draft before activation.",
@@ -1357,6 +1358,7 @@ export const defaultCopy = {
   report: "Report Issue",
   retryIn: (seconds: number) =>
     `Try again in ${seconds < 90 ? `${seconds}s` : `${Math.round(seconds / 60)} min`}.`,
+  credentialUnavailable: "The model credential is unavailable. Ask your workspace operator to check the provider configuration, then retry.",
   reference: (ref: string) => `Reference: ${ref}`,
   failure: {
     auth_required: (service = "A connected app") => `${service} needs a reconnect`,

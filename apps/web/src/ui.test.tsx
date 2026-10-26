@@ -1451,3 +1451,12 @@ test("operation notices use canonical links on every mailbox host", () => {
     assert.ok(out.includes(`href="${route}${encodeURIComponent(id)}"`), `${kind} must navigate without an inbox mutation dispatcher`);
   }
 });
+
+
+test("credential failures give an actionable answer and reference without exposing configuration paths",()=>{
+ const turn:Turn={...emptyTurn("r-credential",{name:"helper"}),status:"failed",failure:{kind:"internal",message:"anchor: max attempts: resolve op://Private/provider/api_key: credential unavailable",reference:"r-credential"}};
+ const markup=html(<WebSurface><AgentMessage turn={turn}/></WebSurface>);
+ assert.match(markup,/The model credential is unavailable/);
+ assert.match(markup,/r-credential/);
+ assert.doesNotMatch(markup,/op:\/\/|max attempts|Private\/provider/);
+});

@@ -113,7 +113,7 @@ export function Agents({
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="humagen-display truncate text-aui-lg font-semibold text-aui-fg">{name}</span>
                         {name === workspaceDefault && <Chip>{defaultCopy.workspaceDefault}</Chip>}
-                        {homes[name] && <Chip>{defaultCopy.agentPlace.livesIn(homes[name])}</Chip>}
+                        {homes[name] && <Chip>{defaultCopy.agentPlace.livesIn(homes[name]==="~"?defaultCopy.projects.companyName:homes[name])}</Chip>}
                         {builtin.includes(name) && <Chip>Built in, read only</Chip>}
                       </span>
                       <span className="line-clamp-1 text-aui-sm text-aui-muted">

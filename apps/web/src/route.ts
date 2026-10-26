@@ -63,7 +63,7 @@ export type LibrarySection = "sources" | "skills" | "memory";
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
   | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string}
-  | {page:"operations";section:"context"|"integrations"}
+  | {page:"operations";section:"context"|"integrations";selected?:string;tab?:"connect"|"resources"|"links"|"access"|"events"|"actions"}
   | {page:"assignments";id?:string;agent?:string}
   | {page:"agent-network";handoff?:string}
   | {page:"agent-control";agent?:string}
@@ -148,7 +148,7 @@ export function href(r: Route): string {
     case "library": {
       const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);return `/library/${r.section}${q.size?`?${q}`:""}`;
     }
-    case "operations":return `/operations/${r.section}`;
+    case "operations":return `/operations/${r.section}${r.selected?`/${enc(r.selected)}${r.section==="integrations"&&r.tab&&r.tab!=="connect"?`/${r.tab}`:""}`:""}`;
     case "assignments":return `${r.id?`/assignments/${enc(r.id)}`:"/assignments"}${r.agent?`?agent=${enc(r.agent)}`:""}`;
     case "agent-network":return r.handoff?`/agent-network/handoffs/${enc(r.handoff)}`:"/agent-network";
     case "agent-control":return r.agent?`/agents/${enc(r.agent)}/control`:"/agent-controls";
@@ -299,7 +299,7 @@ function read(pathname: string, search: string): Route {
         return {page:"usage",days:days===7||days===30?days:14,day:validDay?day:undefined,display:q.get("display")==="table"?"table":"chart"};
       }
       if(a==="policies")return {page:"action-policy",scope:oneOf(b,["workspace","agent","project","personal"] as const),name:parts[3]};
-      return {page:"operations",section:a==="integrations"?"integrations":"context"};
+      return {page:"operations",section:a==="integrations"?"integrations":"context",selected:b,tab:a==="integrations"&&b?oneOf(c,["connect","resources","links","access","events","actions"] as const):undefined};
     case "assignments":return {page:"assignments",id:a,agent:q.get("agent")||undefined};
     case "agent-network":return {page:"agent-network",handoff:a==="handoffs"?b:undefined};
     case "agent-controls":return {page:"agent-control"};

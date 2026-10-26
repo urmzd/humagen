@@ -1,3 +1,4 @@
+import { after } from "node:test";
 import { createServer } from "vite";
 
 /**
@@ -17,7 +18,10 @@ export async function loadTests(files: string[]): Promise<void> {
   });
   try {
     for (const file of files) await server.ssrLoadModule(file);
-  } finally {
+  } catch (error) {
     await server.close();
+    throw error;
   }
+  // Lazy preview modules are imported while tests run, after registration.
+  after(() => server.close());
 }

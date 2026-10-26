@@ -400,6 +400,13 @@ export function failureTitle(failure: Failure, copy: Copy = defaultCopy): string
   return capitalize(copy.failure[failure.kind](failure.service));
 }
 
+/** Keep credential configuration paths in authorized run details, not the answer body. */
+function failureMessage(failure: Failure, copy: Copy): string {
+  return /(?:op:\/\/|1password|credential|api[_ -]?key|secret reference)/i.test(failure.message) && failure.kind === "internal"
+    ? copy.credentialUnavailable
+    : failure.message;
+}
+
 /**
  * A failed run, by who can fix it: the user (reconnect), time (retry later),
  * or us (report). Severity is in the words, recovery is a button, never a dead end.
@@ -415,7 +422,7 @@ export function FailureAlert({
   /** Offer Report Issue. False when the host has nowhere to send a report. */
   report?: boolean;
 } & WithCopy) {
-  const lines = [failure.message];
+  const lines = [failureMessage(failure, copy)];
   if (failure.retryAfterSeconds) lines.push(copy.retryIn(failure.retryAfterSeconds));
   const payload = { turnId, target: failure.kind };
   const actions =
@@ -583,7 +590,7 @@ export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy): string {
       : copy.inputNeeded(pending.question);
   }
   if (turn.status === "failed" && turn.failure) {
-    return `${failureTitle(turn.failure, copy)}: ${turn.failure.message}`;
+    return `${failureTitle(turn.failure, copy)}: ${failureMessage(turn.failure, copy)}`;
   }
   if (turn.status === "stopped") return copy.stopped;
   const answer = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();

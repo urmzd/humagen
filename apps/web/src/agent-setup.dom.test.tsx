@@ -29,3 +29,13 @@ test("setup keeps the personal home selected before project hydration and saves 
  await screen.findByRole("button",{name:defaultCopy.agentSetup.test});
  assert.ok((screen.getByRole("button",{name:defaultCopy.agentSetup.activate}) as HTMLButtonElement).disabled);
 });
+
+test("People Share opens the host audience review instead of bypassing publication preflight",async()=>{
+ const {ConversationAccess}=await import("./ConversationAccess.tsx");
+ let opened=0;
+ net=stubFetch({"GET /api/me":()=>({principal:{subject:"ada"},handle:"ada",permissions:["runs:write"]}),"GET /api/projects/Launch":()=>({project:{access:{role:"owner"}}})});
+ render(<ConversationAccess thread={{id:"thread-1",project:"Launch",channel:"general",title:"Reviewed work",visibility:"private",participants:[{kind:"person",name:"ada",owner:true,at:"2026-10-01T00:00:00Z"}],created_by:"ada",created_at:"2026-10-01T00:00:00Z",updated_at:"2026-10-01T00:00:00Z",version:1}} onShare={()=>opened++}/>);
+ fireEvent.click(await screen.findByRole("button",{name:defaultCopy.conversationAccess.share}));
+ assert.equal(opened,1);
+ assert.ok(net.seen.every(request=>request.method==="GET"));
+});

@@ -326,7 +326,7 @@ export function Sidebar({
     {to:{page:"agent-network"},label:nav.network,icon:<PeopleIcon/>,show:can("runs:read"),active:here("agent-network"),group:"operations"},
     {to:{page:"assignments"},label:nav.assignments,icon:<CheckIcon/>,show:can("runs:read"),active:here("assignments"),group:"operations"},
     {to:{page:"operations",section:"context"},label:nav.context,icon:<LayersIcon/>,show:can("knowledge:read"),active:route.page==="operations"&&route.section==="context",group:"operations"},
-    {to:{page:"operations",section:"integrations"},label:nav.integrations,icon:<BoxIcon/>,show:can("clients:read"),active:route.page==="operations"&&route.section==="integrations",group:"operations"},
+    {to:{page:"operations",section:"integrations"},label:nav.integrations,icon:<BoxIcon/>,show:can("clients:read")||can("knowledge:read"),active:route.page==="operations"&&route.section==="integrations",group:"operations"},
     {to:{page:"action-policy"},label:nav.policies,icon:<CheckIcon/>,show:can("agents:read"),active:here("action-policy"),group:"operations"},
     {to:{page:"agent-control"},label:nav.controls,icon:<BotIcon/>,show:can("agents:read"),active:here("agent-control"),group:"operations"},
     {to:{page:"schedules"},label:nav.schedules,icon:<ClockIcon/>,show:can("schedules:read"),active:here("schedules"),group:"operations"},

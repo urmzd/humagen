@@ -13,7 +13,10 @@ import { AgentNetwork } from "./AgentNetwork.tsx";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 import { ForkProject } from "./ForkProject.tsx";
 import { Usage,defaultUsageView } from "./Usage.tsx";
+import { Integrations } from "./Integrations.tsx";
+import { ContextHealth } from "./ContextHealth.tsx";
 import { AgentSetupWizard } from "./AgentSetup.tsx";
+import { AgentOperations } from "./AgentOperations.tsx";
 import { AgentDetail } from "./AgentDetail.tsx";
 import { Agents } from "./Agents.tsx";
 import {
@@ -438,15 +441,16 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
         {route.page==="library"&&<WorkspaceTabs label={defaultCopy.navigation.library} items={(["sources","skills","memory"] as const).filter(section=>can(section==="sources"?"knowledge:read":"projects:read")).map(section=>({label:defaultCopy.navigation[section],route:{page:"library",section}}))} current={href(route)} onGo={go}/>}
-        {route.page==="library"&&route.section==="skills"&&(can("projects:read")?<SkillsLibrary/>:<Page title={defaultCopy.navigation.skills}><Problem message={defaultCopy.noPermission}/></Page>)}
-        {route.page==="library"&&route.section==="memory"&&(can("projects:read")?<MemoryLibrary/>:<Page title={defaultCopy.navigation.memory}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="library"&&route.section==="skills"&&(can("projects:read")?<SkillsLibrary key={href(route)} onLocationChange={location=>go({page:"library",section:"skills",...location})}/>:<Page title={defaultCopy.navigation.skills}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="library"&&route.section==="memory"&&(can("projects:read")?<MemoryLibrary key={href(route)} onLocationChange={location=>go({page:"library",section:"memory",...location})}/>:<Page title={defaultCopy.navigation.memory}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="assignments"&&(can("runs:read")?<Assignments selectedId={route.id} agents={agents.map(agent=>agent.spec.name)} sources={sources.map(source=>({name:source.name,label:source.name}))} projects={[{name:"",title:workspaceName},...(projects??[]).filter(project=>project.name!=="").map(project=>({name:project.name,title:project.title||project.name}))]} subject={me.principal.subject} canWrite={can("runs:write")} onRun={openRun} onConversation={openThread}/>:<Page title={defaultCopy.navigation.assignments}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="agent-network"&&(can("runs:read")?<AgentNetwork selectedId={route.handoff} canWrite={can("runs:write")} onAgent={openAgent} onRun={openRun}/>:<Page title={defaultCopy.navigation.network}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="agent-control"&&(can("agents:read")?<AgentControls key={route.agent??"workspace"} agent={route.agent} canWrite={can("agents:write")} onChanged={loadAgents}/>:<Page title={defaultCopy.navigation.controls}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="action-policy"&&((route.scope==="personal"||can(route.scope==="project"?"projects:read":"agents:read"))?<ActionPolicies key={`${route.scope}:${route.name}`} scope={route.scope} name={route.name} canWrite={route.scope==="personal"||can(route.scope==="project"?"projects:write":"agents:write")}/>:<Page title={defaultCopy.navigation.policies}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="audit"&&(can("projects:govern")?<Audit/>:<Page title={defaultCopy.navigation.audit}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="usage"&&(can("runs:read")?<Usage agents={agents.map(agent=>agent.spec.name)} tick={tick} onOpenRun={openRun} onOpenAgent={openAgent} view={{days:route.days??defaultUsageView.days,day:route.day,display:route.display??defaultUsageView.display}} onViewChange={view=>go({page:"usage",...view},{replace:true})}/>:<Page title={defaultCopy.navigation.usage}><Problem message={defaultCopy.noPermission}/></Page>)}
-        {route.page==="operations"&&route.section==="integrations"&&(can("clients:read")?<Settings me={me} prefs={prefs} prefsRead={prefsRead} workspace={workspace} agents={agents} canAdmin={can("clients:write")} section="connections" onSection={openSettings} explain="clients:read" onExplain={permission=>go({page:"settings",section:"access",permission})} onPrefs={setPrefs} onWorkspace={setWorkspace} projects={projectNames} onOpenProjects={()=>go({page:"projects"})} onOpenWorkspace={()=>openProject("")} onConnections={()=>go({page:"you",section:"connections"})} onOpenWorkspaceAgents={()=>go({page:"project",name:"",tab:"agents"})}/>:<Page title={defaultCopy.navigation.integrations}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="operations"&&route.section==="integrations"&&((can("clients:read")||can("knowledge:read"))?<Integrations selected={route.selected} tab={route.tab} onSelect={(selected,tab)=>go({page:"operations",section:"integrations",selected,tab})} canWrite={can("clients:write")} canKnowledgeWrite={can("knowledge:write")} onOpenSource={source=>go({page:"context",source})} onOpenProject={openProject}/>:<Page title={defaultCopy.navigation.integrations}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="operations"&&route.section==="context"&&(can("knowledge:read")?<ContextHealth selected={route.selected} onSelect={selected=>go({page:"operations",section:"context",selected})} canWrite={can("knowledge:write")} onOpenSource={source=>go({page:"context",source})} onOpenAgent={openAgent} onOpenProject={openProject}/>:<Page title={defaultCopy.sourceOperations.health}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="you"&&<><WorkspaceTabs label={defaultCopy.navigation.you} items={(["profile","notifications","agents","connections","privacy"] as const).map(section=>({label:defaultCopy.navigation[section==="agents"?"personalAgents":section],route:{page:"you",section}}))} current={href(route)} onGo={go}/>{route.section==="connections"?<YourConnections open={route.provider} onOpen={provider=>go({page:"you",section:"connections",provider},{replace:true})} canConnect={can(CONNECT_PERMISSION)} onWhy={()=>go({page:"settings",section:"access",permission:CONNECT_PERMISSION})}/>:<PersonalPreferences key={route.section} section={route.section} onSaved={setPrefs}/>}</>}
 
         {(page === "new" || page === "conversation") && (
@@ -636,7 +640,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpen={openSource}
           />
         )}
-        {(route.page === "context" || (route.page==="library"&&route.section==="sources") || (route.page==="operations"&&route.section==="context")) && (
+        {(route.page === "context" || (route.page==="library"&&route.section==="sources")) && (
           <Knowledge
             sources={sources}
             agents={agents}
@@ -671,6 +675,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             <Missing what="agent" name={route.name} onBack={() => go({ page: "agents" })} />
           ) : (
             <AgentDetail
+              operations={route.name?<AgentOperations onRun={openRun} name={route.name} canReadRuns={can("runs:read")} canWrite={can("agents:write")}/>:undefined}
               key={route.name ?? "new"}
               revision={editing}
               tab={route.tab}

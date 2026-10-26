@@ -134,6 +134,8 @@ function Sources({ project }: { project: string }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let current = true;
+    setData(undefined);
+    setFailed(false);
     Promise.all([coworking.knowledge(project), api.sources()])
       .then(([links, sources]) => {
         if (current) setData({ links, sources });
@@ -147,24 +149,29 @@ function Sources({ project }: { project: string }) {
   }, [project]);
   if (failed) return <Problem message={words.sourcesFailed} />;
   if (!data) return <SkeletonRows count={3} />;
+  // Only render sources returned by both reader-confined responses.
+  const sources = data.links.given.flatMap((link) => {
+    const source = data.sources.find((item) => item.name === link.name);
+    return source ? [source] : [];
+  });
   return (
     <div className="flex flex-col gap-4">
       <p className="text-aui-xs text-aui-muted">{words.contextHint}</p>
-      {data.links.given.length === 0 && (
+      {sources.length === 0 && (
         <p className="text-aui-sm text-aui-muted">{words.sourcesEmpty}</p>
       )}
-      {data.links.given.map((link) => (
-        <SourceCard
-          key={link.name}
-          name={link.name}
-          source={data.sources.find((source) => source.name === link.name)}
-        />
-      ))}
+      {sources.map((source) => <SourceCard key={source.name} source={source} />)}
     </div>
   );
 }
 
-function SourceCard({ name, source }: { name: string; source?: Source }) {
+function SourceCard({ source }: { source: Source }) {
+  const name = source.name;
+  const lifecycle = source.lifecycle;
+  const labels = defaultCopy.sourceLifecycle;
+  const mode = lifecycle?.mode ?? "indexed";
+  const status = lifecycle?.status ?? (source.passages > 0 ? "available" : "connected");
+  const lastGood = lifecycle?.last_good_at ?? (!lifecycle && source.passages > 0 ? source.updated_at : undefined);
   const [docs, setDocs] = useState<Doc[]>();
   const [visible, setVisible] = useState(20);
   const [failed, setFailed] = useState(false);
@@ -182,11 +189,19 @@ function SourceCard({ name, source }: { name: string; source?: Source }) {
       <summary className="cursor-pointer text-aui-sm font-medium">
         {name}
         <span className="mt-1 flex flex-wrap gap-x-3 text-aui-xs font-normal text-aui-muted">
-          <span>{words.sourceMode}</span><span>{words.sourceUpdates}</span>
-          {source && <span>{words.sourceDocs(source.documents)}</span>}
+          <span>{labels.modes[mode]}</span>
+          <span>{labels.status[status]}</span>
+          <span>{words.sourceDocs(source.documents)}</span>
         </span>
       </summary>
-      {source?.description && (
+      <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-aui-xs">
+        <dt className="text-aui-muted">{defaultCopy.memoryLibrary.scope}</dt><dd className="break-words">{lifecycle?.project || defaultCopy.skillsLibrary.workspace}</dd>
+        {lifecycle?.owner && <><dt className="text-aui-muted">{labels.owner}</dt><dd className="break-words">{lifecycle.owner}</dd></>}
+        {lifecycle?.origin && <><dt className="text-aui-muted">{words.sourceOrigin}</dt><dd className="break-all">{lifecycle.provider}: {lifecycle.origin}</dd></>}
+        {mode !== "live" && <><dt className="text-aui-muted">{labels.lastGood}</dt><dd>{lastGood ? <time dateTime={lastGood}>{new Date(lastGood).toLocaleString()}</time> : labels.noCopy}</dd></>}
+      </dl>
+      {lifecycle?.cause && <p className="mt-2 text-aui-xs text-aui-muted">{labels.cause[lifecycle.cause]}</p>}
+      {source.description && (
         <p className="mt-3 text-aui-xs text-aui-muted">{source.description}</p>
       )}
       {failed ? (
