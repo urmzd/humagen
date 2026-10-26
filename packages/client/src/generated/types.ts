@@ -2372,6 +2372,31 @@ export interface KnowledgeSource {
   updated_at: string;
 }
 
+export interface SourceLinkRuleInput {
+  provider: "github" | "slack" | "drive" | "notion";
+  attribute: string;
+  pattern: string;
+  project: string;
+  channel?: string;
+  mode?: "suggest" | "auto_link" | "off";
+}
+
+export type SourceLinkRule = SourceLinkRuleInput & { id: string; copied_from?: string };
+
+export interface SourceLinkResource {
+  provider: "github" | "slack" | "drive" | "notion";
+  id: string;
+  candidate?: SourceLinkRuleInput;
+  attributes: Record<string, string[]>;
+}
+
+export interface SourceLinkMatch {
+  project: string;
+  channel?: string;
+  mode: "suggest";
+  rules: string[];
+}
+
 export interface KnowledgeSourceConfig {
   mode: "indexed" | "live" | "hybrid";
   provider: string;
@@ -3303,6 +3328,10 @@ export interface CreateKnowledgeSourceBody {
 export interface KnowledgeSourceDependenciesResponse {
   agents: string[];
   projects: string[];
+}
+
+export interface PreviewSourceLinkRulesResponse {
+  matches: SourceLinkMatch[];
 }
 
 export interface ConnectKnowledgeSourceBody {

@@ -88,6 +88,7 @@ import type {
   Policy,
   PolicyInput,
   Preferences,
+  PreviewSourceLinkRulesResponse,
   ProjectAgentsInput,
   ProjectAgentsView,
   ProjectContext,
@@ -122,6 +123,9 @@ import type {
   SetKnowledgeDocumentExcludedBody,
   Settings,
   SnoozeInboxMessageBody,
+  SourceLinkResource,
+  SourceLinkRule,
+  SourceLinkRuleInput,
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
@@ -2765,6 +2769,97 @@ in a project takes a member of that project (403).
     let path = "/api/knowledge/{name}/dependencies";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<KnowledgeSourceDependenciesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** listSourceLinkRules */
+  async listSourceLinkRules(options?: RequestOptions): Promise<SourceLinkRule[]> {
+    const path = "/api/source-link-rules";
+    return this.request<SourceLinkRule[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSourceLinkRulesRaw(options?: RequestOptions): Promise<ApiResponse<SourceLinkRule[]>> {
+    const path = "/api/source-link-rules";
+    return this.rawRequest<SourceLinkRule[]>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** createSourceLinkRule */
+  async createSourceLinkRule(body: SourceLinkRuleInput, options?: RequestOptions): Promise<SourceLinkRule> {
+    const path = "/api/source-link-rules";
+    return this.request<SourceLinkRule>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createSourceLinkRuleRaw(body: SourceLinkRuleInput, options?: RequestOptions): Promise<ApiResponse<SourceLinkRule>> {
+    const path = "/api/source-link-rules";
+    return this.rawRequest<SourceLinkRule>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** updateSourceLinkRule */
+  async updateSourceLinkRule(id: string, body: SourceLinkRuleInput, options?: RequestOptions): Promise<SourceLinkRule> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SourceLinkRule>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateSourceLinkRuleRaw(id: string, body: SourceLinkRuleInput, options?: RequestOptions): Promise<ApiResponse<SourceLinkRule>> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SourceLinkRule>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** deleteSourceLinkRule */
+  async deleteSourceLinkRule(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteSourceLinkRuleRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/source-link-rules/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** previewSourceLinkRules */
+  async previewSourceLinkRules(body: SourceLinkResource, options?: RequestOptions): Promise<PreviewSourceLinkRulesResponse> {
+    const path = "/api/source-link-rules/preview";
+    return this.request<PreviewSourceLinkRulesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async previewSourceLinkRulesRaw(body: SourceLinkResource, options?: RequestOptions): Promise<ApiResponse<PreviewSourceLinkRulesResponse>> {
+    const path = "/api/source-link-rules/preview";
+    return this.rawRequest<PreviewSourceLinkRulesResponse>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

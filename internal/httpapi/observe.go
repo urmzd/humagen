@@ -29,6 +29,7 @@ import (
 const maxWindow = 30 * 24 * time.Hour
 
 func (s *Server) observeRoutes(mux *http.ServeMux) {
+	s.sourceRuleRoutes(mux)
 	mux.HandleFunc("GET /api/analytics", s.authed(auth.RunsRead, s.analytics))
 	mux.HandleFunc("GET /api/journal", s.authed(auth.RunsRead, s.journal))
 	mux.HandleFunc("GET /api/runs/{id}/trace", s.authed(auth.RunsRead, s.seenRun(s.trace)))

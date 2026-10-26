@@ -1,0 +1,72 @@
+package platform_test
+
+import (
+	"encoding/json"
+	"errors"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestSourceRulesConfinePreviewAndRetainDisabledForkRules(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: open(t)}})
+		for _, name := range []string{"Visible", "Hidden"} {
+			owner := "owner"
+			if name == "Hidden" {
+				owner = "peer"
+			}
+			_, err := p.Projects.Create(tenant, projects.Project{Name: name, Members: []projects.Entry{{Who: owner, Role: projects.Owner}}}, projects.Writer{By: owner, Govern: true}, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		who := auth.Principal{Tenant: tenant, Subject: "owner", Kind: auth.Machine, Scopes: []auth.Permission{auth.ClientsRead, auth.ClientsWrite}}
+		rule, err := p.SaveSourceRule(who, "", sourcelinks.Rule{Provider: "github", Attribute: "repository", Pattern: "urmzd/humagen", Project: "Visible", Mode: sourcelinks.Auto})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.SaveSourceRule(who, "", sourcelinks.Rule{Provider: "github", Attribute: "repository", Pattern: "secret", Project: "Hidden"}); !errors.Is(err, projects.ErrNotFound) {
+			t.Fatalf("hidden write: %v", err)
+		}
+		hidden := sourcelinks.Rule{ID: "secret-rule", Provider: "github", Attribute: "repository", Pattern: "urmzd/humagen", Project: "Hidden", Mode: sourcelinks.Auto}
+		_, _ = p.SourceLinks.Put(tenant, hidden)
+		resource := sourcelinks.Resource{Provider: "github", ID: "repo", Attributes: map[string][]string{"repository": {"urmzd/humagen"}}}
+		before, err := p.PreviewSourceRules(who, resource)
+		if err != nil || len(before) != 1 || before[0].Mode != sourcelinks.Suggest {
+			t.Fatalf("preview %+v %v", before, err)
+		}
+		if len(p.SourceRulesAs(who)) != 1 {
+			t.Fatal("hidden rule listed")
+		}
+		if err := p.DeleteSourceRule(who, hidden.ID); !errors.Is(err, sourcelinks.ErrNotFound) {
+			t.Fatal("hidden delete differs from missing", err)
+		}
+		if err := p.SourceLinks.Delete(tenant, hidden.ID); err != nil {
+			t.Fatal(err)
+		}
+		after, _ := p.PreviewSourceRules(who, resource)
+		a, _ := json.Marshal(before)
+		b, _ := json.Marshal(after)
+		if string(a) != string(b) || strings.Contains(string(a), "Hidden") {
+			t.Fatal("hidden competition changed preview")
+		}
+		if err := p.RestoreSourceLinkRulesDisabled(tenant, "Visible", "fork1", []sourcelinks.Rule{rule}); err != nil {
+			t.Fatal(err)
+		}
+		for _, copy := range p.SourceLinks.List(tenant) {
+			if copy.CopiedFrom != "" {
+				copy.Mode = sourcelinks.Auto
+				if _, err := p.SaveSourceRule(who, copy.ID, copy); !errors.Is(err, sourcelinks.ErrInvalid) {
+					t.Fatal("fork rule activated", err)
+				}
+			}
+		}
+	})
+}

@@ -47,6 +47,7 @@ import (
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 )
 
 // maxBody bounds every request body. Nothing this API accepts is large.
@@ -972,6 +973,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, sourcelinks.ErrInvalid):
+		fail(w, http.StatusBadRequest, "invalid source link rule")
+	case errors.Is(err, sourcelinks.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, sourcelinks.ErrConflict):
+		fail(w, http.StatusConflict, "source link rule changed; reload")
+	case errors.Is(err, sourcelinks.ErrLimit):
+		fail(w, http.StatusTooManyRequests, "source link rule limit reached")
 	case errors.Is(err, operations.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, operations.ErrNotFound):

@@ -54,6 +54,7 @@ import (
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -1421,6 +1422,21 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(acme, "POST", "/api/alerts/{id}/ack", "/api/alerts/nope/ack", "", http.StatusNotFound)
 
+	link := c.call(acme, "POST", "/api/source-link-rules", "/api/source-link-rules", `{"provider":"github","attribute":"repository","pattern":"urmzd/humagen","project":"~","mode":"auto_link"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/source-link-rules", "/api/source-link-rules", "", http.StatusOK)
+	c.call(acme, "POST", "/api/source-link-rules/preview", "/api/source-link-rules/preview", `{"provider":"github","id":"resource","attributes":{"repository":["urmzd/humagen"]}}`, http.StatusOK)
+	c.call(acme, "POST", "/api/source-link-rules/preview", "/api/source-link-rules/preview", `{"provider":"github","id":"","attributes":{}}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/source-link-rules", "/api/source-link-rules", `{"provider":"github","attribute":"repository","pattern":"x","project":"missing"}`, http.StatusNotFound)
+	c.call(acme, "POST", "/api/source-link-rules", "/api/source-link-rules", `{"provider":"github","attribute":"unsupported","pattern":"x","project":"~"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/source-link-rules/{id}", "/api/source-link-rules/"+link.str("id"), `{"provider":"github","attribute":"repository","pattern":"urmzd/humagen","project":"~","mode":"off"}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/source-link-rules/{id}", "/api/source-link-rules/"+link.str("id"), `{"provider":"github","attribute":"unsupported","pattern":"x","project":"~"}`, http.StatusBadRequest)
+	for i := 0; i < sourcelinks.MaxRules-1; i++ {
+		if _, err := f.p.SourceLinks.Put("acme", sourcelinks.Rule{ID: fmt.Sprintf("contract-rule-%d", i), Provider: "github", Attribute: "repository", Pattern: "other", Project: "~", Mode: sourcelinks.Off}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.call(acme, "POST", "/api/source-link-rules", "/api/source-link-rules", `{"provider":"github","attribute":"repository","pattern":"x","project":"~"}`, http.StatusTooManyRequests)
+	c.call(acme, "DELETE", "/api/source-link-rules/{id}", "/api/source-link-rules/contract-rule-0", "", http.StatusNoContent)
 	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"remote"}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusOK)
@@ -1868,6 +1884,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	real := map[string]map[string]string{
 		"/api/projects/{name}/action-policy": {"name": "Launch"},
+		"/api/source-link-rules/{id}":        {"id": link.str("id")},
 		"/api/handoffs/{id}":                 {"id": called.str("id")},
 		"/api/assignments/{id}":              {"id": "contract-assignment"},
 		"/api/assignments/{id}/run":          {"id": "contract-assignment"},
@@ -2018,6 +2035,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"POST /api/source-link-rules 409":        "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
+	"PUT /api/source-link-rules/{id} 409":    "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
+	"DELETE /api/source-link-rules/{id} 409": "concurrent rule change is rejected by store snapshot test",
+
 	"POST /api/knowledge/{name}/documents 409": "source scope can change between authorization and insertion; atomic rejection is exercised by pkg/knowledge promotion and scope tests",
 	// A workspace holds at most 1,000 call policies, one per agent. Making
 	// that many agents here would only test a counter, which

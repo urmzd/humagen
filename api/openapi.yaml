@@ -2853,6 +2853,108 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/source-link-rules:
+    get:
+      operationId: listSourceLinkRules
+      tags: [clients]
+      summary: listSourceLinkRules
+      x-permission: clients:read
+      responses:
+        "200":
+          description: Bounded visible source-link configuration. Previews never apply links.
+          content:
+            application/json:
+              schema: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/SourceLinkRule"}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    post:
+      operationId: createSourceLinkRule
+      tags: [clients]
+      summary: createSourceLinkRule
+      x-permission: clients:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SourceLinkRuleInput"}
+      responses:
+        "200":
+          description: Bounded visible source-link configuration. Previews never apply links.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SourceLinkRule"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/source-link-rules/{id}:
+    put:
+      operationId: updateSourceLinkRule
+      tags: [clients]
+      summary: updateSourceLinkRule
+      x-permission: clients:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SourceLinkRuleInput"}
+      responses:
+        "200":
+          description: Bounded visible source-link configuration. Previews never apply links.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SourceLinkRule"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteSourceLinkRule
+      tags: [clients]
+      summary: deleteSourceLinkRule
+      x-permission: clients:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "204":
+          description: Deleted.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/source-link-rules/preview:
+    post:
+      operationId: previewSourceLinkRules
+      tags: [clients]
+      summary: previewSourceLinkRules
+      x-permission: clients:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SourceLinkResource"}
+      responses:
+        "200":
+          description: Bounded visible source-link configuration. Previews never apply links.
+          content:
+            application/json:
+              schema: {type: object, required: [matches], properties: {matches: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/SourceLinkMatch"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge/{name}/configuration:
     put:
       parameters:
@@ -9250,6 +9352,46 @@ components:
           items: {$ref: "#/components/schemas/KnowledgeVariant"}
         created_by: {type: string}
         updated_at: {type: string, format: date-time}
+    SourceLinkRuleInput:
+      type: object
+      required: [provider, attribute, pattern, project]
+      properties:
+        provider: {type: string, enum: [github, slack, drive, notion]}
+        attribute: {type: string, maxLength: 64}
+        pattern: {type: string, minLength: 1, maxLength: 256}
+        project: {type: string, minLength: 1, maxLength: 64}
+        channel: {type: string, maxLength: 40}
+        mode: {type: string, enum: [suggest, auto_link, off], default: suggest}
+    SourceLinkRule:
+      allOf:
+        - {$ref: "#/components/schemas/SourceLinkRuleInput"}
+        - type: object
+          required: [id, mode]
+          properties:
+            id: {type: string}
+            copied_from: {type: string}
+    SourceLinkResource:
+      type: object
+      required: [provider, id, attributes]
+      properties:
+        provider: {type: string, enum: [github, slack, drive, notion]}
+        id: {type: string, minLength: 1, maxLength: 256}
+        candidate: {$ref: "#/components/schemas/SourceLinkRuleInput"}
+        attributes:
+          type: object
+          maxProperties: 8
+          additionalProperties:
+            type: array
+            maxItems: 50
+            items: {type: string, maxLength: 512}
+    SourceLinkMatch:
+      type: object
+      required: [project, mode, rules]
+      properties:
+        project: {type: string}
+        channel: {type: string}
+        mode: {type: string, enum: [suggest]}
+        rules: {type: array, maxItems: 200, items: {type: string}}
     KnowledgeSourceConfig:
       type: object
       required: [mode, provider]
