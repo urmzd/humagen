@@ -220,11 +220,11 @@ function ReferenceChip({ reference }: { reference: string }) {
         setCopied(true);
       }}
       aria-label={copied ? "Reference copied" : `Copy reference ${reference}`}
-      className="inline-flex h-5 items-center gap-1 rounded-aui-sm border border-aui-border px-1.5 font-aui-mono text-aui-2xs transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+      className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-aui-sm border border-aui-border px-2.5 py-2 font-aui-mono text-aui-2xs transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
     >
       <span className="font-aui-sans text-aui-muted">Ref</span>
-      {reference}
-      {copied ? <CheckIcon size={11} className="text-aui-ok" /> : <CopyIcon size={11} />}
+      <span className="min-w-0 break-all text-left">{reference}</span>
+      {copied ? <CheckIcon size={14} className="text-aui-ok" /> : <CopyIcon size={14} />}
       <span aria-live="polite" className="sr-only">
         {copied ? "Copied" : ""}
       </span>
