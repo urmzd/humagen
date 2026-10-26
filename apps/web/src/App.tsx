@@ -40,7 +40,7 @@ import { HomeBoxes, type Loaded } from "./HomePage.tsx";
 import { usePreferences } from "./preferences.ts";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
 import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
-import { type AgentTab, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
+import { type AgentTab, documentTitle, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
@@ -134,6 +134,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // counter that tells the page to look again, and a message to open first.
   const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
   const [inboxTick, setInboxTick] = useState(0);
+  useEffect(() => {
+    document.title = documentTitle(route, inboxCounts.unread);
+  }, [route, inboxCounts.unread]);
   // The project tree, null until it is read, and the workspace's own view, which heads it.
   const [projects, setProjects] = useState<ProjectView[] | null>(null);
   const [root, setRoot] = useState<ProjectView | null>(null);
