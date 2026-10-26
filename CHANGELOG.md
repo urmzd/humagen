@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.26.0 (2026-10-26)
+
+### Features
+
+- **web**: connect Slack and GitHub and refine conversation UI ([a4db3bc](https://github.com/urmzd/humagen/commit/a4db3bc51b73e38c35407cf4b5401bef4c3bf6e6))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.25.1...v0.26.0)
+
+
 ## 0.25.1 (2026-10-25)
 
 ### Bug Fixes
