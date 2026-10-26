@@ -197,3 +197,30 @@ test("memory correction retains scope and never resubmits source provenance", as
   await screen.findByText("Ship on Wednesday");
   assert.equal(net.seen.filter((request) => request.method === "PUT").length, 1);
 });
+
+test("memory promotion selects an existing note and never copies private provenance", async () => {
+  const note = {
+    id: "m-private",
+    text: "Review quarterly goals",
+    source: "consolidated",
+    status: "approved",
+    kind: "decision",
+    by: "private-run",
+    at: "2026-10-26T12:00:00Z",
+  };
+  net = stubFetch({
+    "GET /api/me": () => ({ ...me, permissions: [...me.permissions, "projects:write"] }),
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/me/memory": () => ({ notes: [note] }),
+    "POST /api/memory/promote": (body) => {
+      assert.deepEqual(body, { scope: "personal", owner: "", id: "m-private", destination: "~" });
+      return { ...note, id: "m-new", status: "pending", source: "person", by: "ada" };
+    },
+  });
+  render(<MemoryLibrary />);
+  await screen.findByText(note.text);
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.memoryLibrary.promote }));
+  await screen.findByText(defaultCopy.memoryLibrary.promotionSaved);
+  assert.equal(net.seen.filter((r) => r.method === "POST").length, 1);
+});

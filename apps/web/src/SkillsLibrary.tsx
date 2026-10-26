@@ -29,7 +29,15 @@ function definitionOf(row: LibrarySkill): LibrarySkillDefinition {
 }
 export function SkillsLibrary() {
   const copy = defaultCopy.skillsLibrary;
-  const [scope, setScope] = useState<LibraryScope>({ kind: "personal" });
+  const [scope, setScope] = useState<LibraryScope>(() => {
+    const query = new URLSearchParams(window.location.search);
+    const kind = query.get("scope");
+    return kind === "workspace"
+      ? { kind }
+      : kind === "project"
+        ? { kind, project: query.get("project") ?? "" }
+        : { kind: "personal" };
+  });
   const [skills, setSkills] = useState<LibrarySkill[] | null>(null);
   const [history, setHistory] = useState<LibrarySkill[]>([]);
   const [selected, setSelected] = useState<LibrarySkill | null>(null);
@@ -85,7 +93,11 @@ export function SkillsLibrary() {
     api
       .librarySkills(scope)
       .then((rows) => {
-        if (live) setSkills(rows);
+        if (live) {
+          setSkills(rows);
+          const requested = new URLSearchParams(window.location.search).get("skill");
+          if (requested && rows.some((row) => row.id === requested)) void inspect(requested);
+        }
       })
       .catch((error) => {
         if (live) failed(error);
@@ -301,7 +313,7 @@ export function SkillsLibrary() {
                 >
                   {history.map((row) => (
                     <option key={row.version} value={row.version}>
-                      {row.version} · {row.published_at ? copy.published : copy.draft}
+                      {row.version}, {row.published_at ? copy.published : copy.draft}
                     </option>
                   ))}
                 </select>
@@ -379,7 +391,7 @@ export function SkillsLibrary() {
                 <label className="block">
                   {copy.agent}
                   <select
-                    className={`${field} ml-2`}
+                    className={`${field} mt-2 block max-w-full`}
                     value={agent}
                     onChange={(e) => setAgent(e.target.value)}
                   >
@@ -394,7 +406,7 @@ export function SkillsLibrary() {
                   <label className="block">
                     {copy.project}
                     <select
-                      className={`${field} ml-2 max-w-full`}
+                      className={`${field} mt-2 block max-w-full`}
                       value={testProject}
                       onChange={(e) => setTestProject(e.target.value)}
                     >
@@ -445,7 +457,7 @@ export function SkillsLibrary() {
               </form>
               {selected.from && (
                 <p className="break-words text-aui-sm text-aui-muted">
-                  {copy.provenance}: {selected.from.name} · {copy.version} {selected.from.version}
+                  {copy.provenance}: {selected.from.name}, {copy.version} {selected.from.version}
                 </p>
               )}
               <section className={`${card} space-y-4 p-4`}>

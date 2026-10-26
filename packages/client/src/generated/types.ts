@@ -3241,6 +3241,13 @@ export interface ManifestUsage {
   total: Usage;
 }
 
+export interface PromoteMemoryBody {
+  scope: "personal" | "workspace" | "project" | "agent";
+  owner?: string;
+  id: string;
+  destination: string;
+}
+
 export interface ListNativeNotificationsResponse {
   notifications: NativeNotification[];
 }

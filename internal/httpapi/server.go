@@ -135,6 +135,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/me/memory/approve", s.authed(auth.RunsWrite, s.approvePersonalMemory))
 	mux.HandleFunc("POST /api/me/memory", s.authed(auth.RunsWrite, s.addPersonalMemory))
 	mux.HandleFunc("DELETE /api/me/memory/{id}", s.authed(auth.RunsWrite, s.forgetPersonalMemory))
+	mux.HandleFunc("POST /api/memory/promote", s.authed(auth.ProjectsWrite, s.promoteMemory))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))

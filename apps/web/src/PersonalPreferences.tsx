@@ -181,7 +181,7 @@ export function PersonalPreferences({
                           {label}
                           <input
                             type="time"
-                            className={`${field} ml-2`}
+                            className={`${field} mt-2 block max-w-full`}
                             value={value[key]}
                             onChange={(event) => setValue({ ...value, [key]: event.target.value })}
                           />
@@ -190,7 +190,7 @@ export function PersonalPreferences({
                       <label>
                         {copy.timezone}
                         <input
-                          className={`${field} ml-2 max-w-full`}
+                          className={`${field} mt-2 block max-w-full`}
                           value={value.timezone}
                           onChange={(event) => setValue({ ...value, timezone: event.target.value })}
                         />

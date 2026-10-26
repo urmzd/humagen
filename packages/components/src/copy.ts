@@ -396,6 +396,12 @@ export const defaultCopy = {
     },
   },
   memoryLibrary: {
+    promote: "Propose to Project",
+    destination: "Destination Project",
+    promotionReview:
+      "The selected text, kind and expiry will be shared with this project. Its owners must confirm the new suggestion. Original private provenance stays private.",
+    promotionSaved: "Suggested to the project. Its owners will review it.",
+
     search: "Search Memory",
     scope: "Scope",
     workspace: "Workspace",

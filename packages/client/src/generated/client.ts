@@ -112,6 +112,7 @@ import type {
   ProjectView,
   PublishThreadSummaryBody,
   PromoteLibrarySkillBody,
+  PromoteMemoryBody,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -473,6 +474,25 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** Copies only the selected approved unexpired text, kind and expiry. The new note is pending and attributed to the copier. Private original provenance is never copied. */
+  async promoteMemory(body: PromoteMemoryBody, options?: RequestOptions): Promise<Note> {
+    const path = "/api/memory/promote";
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async promoteMemoryRaw(body: PromoteMemoryBody, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    const path = "/api/memory/promote";
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
   }
 
   /** A bounded authenticated delivery worker discovers at most 500 current inbox references, releases immediate or hourly digest deliveries outside quiet hours, and rechecks every item with the current identity. It never changes authoritative inbox history. */
