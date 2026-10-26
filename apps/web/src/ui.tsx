@@ -77,8 +77,8 @@ export function Status({ status }: { status: Run["status"] }) {
 
 export function Chip({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex h-5 items-center rounded-full border border-aui-border px-2 text-aui-2xs text-aui-muted">
-      {children}
+    <span className="inline-flex min-h-5 max-w-full shrink-0 items-center rounded-full border border-aui-border px-2 py-0.5 text-aui-2xs text-aui-muted">
+      <span className="min-w-0 truncate">{children}</span>
     </span>
   );
 }
