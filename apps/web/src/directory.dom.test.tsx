@@ -33,7 +33,7 @@ afterEach(() => {
 const dana: Person = { subject: "okta|dana", name: "Dana Scully", handle: "dana-scully", roles: ["operator"], picture: "/api/people/dana-scully/photo?v=2" };
 const fox: Person = { subject: "okta|fox", handle: "fox", roles: [], picture: null };
 
-function openDirectory(tab: DirectoryTab, can = ["people:read", "agents:read", "projects:read"], projects = tree, kinds: ProjectKindSpec[] = []) {
+function openDirectory(tab: DirectoryTab, can = ["people:read", "agents:read", "projects:read"], projects = tree, kinds: ProjectKindSpec[] = [], agentHomes: Record<string, string> = homes) {
   net = stubFetch({ "GET /api/people": () => ({ people: [dana, fox], next: null }) });
   const opened: string[] = [];
   render(
@@ -42,7 +42,7 @@ function openDirectory(tab: DirectoryTab, can = ["people:read", "agents:read", "
       onTab={() => {}}
       can={(p) => can.includes(p)}
       agents={agents}
-      homes={homes}
+      homes={agentHomes}
       enabledIn={enabledIn}
       projects={projects}
       kinds={kinds}
@@ -71,9 +71,18 @@ test("the Directory's agents: where each lives or that it is a platform agent, a
   const { opened } = openDirectory("agents");
   assert.ok(screen.getByText("@globex-helper"));
   assert.ok(screen.getByText("Globex"));
-  assert.equal(screen.getAllByText(/Platform agent · Enabled everywhere/).length, 2);
+  assert.equal(screen.getAllByText(/Company agent.*Enabled everywhere/).length, 2);
   fireEvent.click(screen.getByText("@lead"));
   assert.deepEqual(opened, ["agent:lead"]);
+});
+
+test("Company home links use the workspace name, canonical route and a touch target", () => {
+  const { opened } = openDirectory("agents", undefined, tree, [], { lead: "~" });
+  const link = screen.getByRole("link", { name: "Acme" });
+  assert.equal(link.getAttribute("href"), "/projects/~/agents");
+  assert.match(link.className, /min-h-\[44px\]/);
+  fireEvent.click(link);
+  assert.deepEqual(opened, ["project:"]);
 });
 
 test("the Directory's projects: the tree in words, with the agents that live in each", () => {

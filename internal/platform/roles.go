@@ -283,7 +283,14 @@ func (p *Platform) ownerAbove(who auth.Principal, name string) ([]string, error)
 // other member's is a proposal: it waits, and the project's owners are asked
 // in the inbox to keep or discard it. So is an owner's note on the workspace
 // or a company project without projects:govern.
-func (p *Platform) AddProjectNote(who auth.Principal, name, text string) (memory.Note, error) {
+func (p *Platform) AddProjectNote(who auth.Principal, name, text string, metadata ...memory.Details) (memory.Note, error) {
+	details := memory.Details{}
+	if len(metadata) > 1 {
+		return memory.Note{}, memory.ErrInvalid
+	}
+	if len(metadata) == 1 {
+		details = metadata[0]
+	}
 	name = projects.NameOf(name)
 	pr, _, err := p.ProjectRole(who, name, projects.Member)
 	if err != nil {
@@ -294,9 +301,9 @@ func (p *Platform) AddProjectNote(who auth.Principal, name, text string) (memory
 	// owner without it proposes, as a member does.
 	owner := memory.ProjectOwner(name)
 	if p.MayChangeNotes(who, name) == nil {
-		return p.Memory.Add(who.Tenant, owner, text, memory.Person, memory.Approved, who.Subject, p.now())
+		return p.Memory.AddDetailed(who.Tenant, owner, text, memory.Person, memory.Approved, who.Subject, p.now(), details)
 	}
-	note, err := p.Memory.Add(who.Tenant, owner, text, memory.Person, memory.Pending, who.Subject, p.now())
+	note, err := p.Memory.AddDetailed(who.Tenant, owner, text, memory.Person, memory.Pending, who.Subject, p.now(), details)
 	if err != nil {
 		return memory.Note{}, err
 	}
@@ -329,6 +336,12 @@ func memoryProject(part inbox.Part) (string, bool) {
 // see is projects.ErrNotFound.
 func (p *Platform) MayFileIn(who auth.Principal, project string) error {
 	project = projects.NameOf(project)
+	if pr, ok := p.Projects.Tree(who.Tenant).Get(project); ok && pr.PersonalOwner != "" && (who.Kind != auth.User || pr.PersonalOwner != who.Subject) {
+		if !p.Seer(who).Project(project) {
+			return projects.ErrNotFound
+		}
+		return ErrForbidden
+	}
 	if project == projects.Root {
 		return nil
 	}
@@ -342,7 +355,7 @@ func (p *Platform) MayFileIn(who auth.Principal, project string) error {
 // more than the route's permission.
 func (p *Platform) MayTry(who auth.Principal, agent string) error {
 	home, homed := p.Projects.Tree(who.Tenant).Home(agentspec.NormalizeName(agent))
-	if !homed {
+	if !homed || home == projects.Root {
 		return nil
 	}
 	return p.MayFileIn(who, home)
@@ -390,7 +403,7 @@ func (p *Platform) ownsHome(tree *projects.Tree, who auth.Principal, agent strin
 	// registry and every store resolve a name to, so a name in another
 	// case or with spaces around it is the same agent here too.
 	home, homed := tree.Home(agentspec.NormalizeName(agent))
-	if !homed {
+	if !homed || home == projects.Root {
 		return nil
 	}
 	_, _, err := p.projectRole(tree, who, home, projects.Owner)

@@ -394,7 +394,7 @@ func TestAutoPicksAmongTheAgentsAvailableInTheProject(t *testing.T) {
 // Experts are found along the chain, the nearest project that lists one for
 // the topic first. Tagging them notifies each; a topic nobody answers for is
 // refused.
-func TestExpertsAreFoundAlongTheChainAndNotifiedWhenTagged(t *testing.T) {
+func TestRetiredExpertTagsNeitherNotifyNorInjectPrompts(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Globex", operator)
@@ -414,30 +414,30 @@ func TestExpertsAreFoundAlongTheChainAndNotifiedWhenTagged(t *testing.T) {
 	if got.Rule != threads.RulePeople || len(got.Runs) != 0 {
 		t.Fatalf("tagging experts started %+v", got)
 	}
-	if !slices.Equal(got.Notified, []string{"vic", "role:oncall"}) {
+	if len(got.Notified) != 0 {
 		t.Fatalf("notified %v", got.Notified)
 	}
-	if len(got.Refused) != 1 || got.Refused[0].Name != "legal" {
+	if len(got.Refused) != 3 || !strings.Contains(got.Refused[0].Refused, "Find Help") {
 		t.Fatalf("refused %+v", got.Refused)
 	}
-	oncall, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "role:oncall"))
-	if !ok || !sees(p, pat, oncall.ID) || sees(p, grace, oncall.ID) {
-		t.Fatalf("the experts named by a role are not the ones sent it: %+v", oncall)
+	if _, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "role:oncall")); ok {
+		t.Fatal("retired routing created an inbox mention")
 	}
+
 	// Every turn in the project is told which topics have experts.
 	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-1", Agent: "lead", Text: "hi", Project: "Globex"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := r.Tag().Text; !strings.Contains(text, "Experts here: billing, security. Ask one with ask_person, asked_of sme:<topic>.") {
-		t.Fatalf("the experts line was not sent:\n%s", text)
+	if text := r.Tag().Text; strings.Contains(text, "Experts here:") || strings.Contains(text, "asked_of sme:") {
+		t.Fatalf("retired routing was injected:\n%s", text)
 	}
 }
 
 // The experts of a topic can be many, so one message notifies at most
 // MaxNotified of them, and a tag it can reach nobody for is refused, saying
 // so.
-func TestAMessageNotifiesAtMostMaxNotifiedPeople(t *testing.T) {
+func TestRetiredRoutingDoesNotExpandLegacyExpertLists(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Globex", operator)
@@ -454,10 +454,10 @@ func TestAMessageNotifiesAtMostMaxNotifiedPeople(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: "@sme:billing and @sme:legal"})
-	if len(got.Notified) != platform.MaxNotified || got.Notified[0] != "expert-00" {
+	if len(got.Notified) != 0 {
 		t.Fatalf("notified %d: %v", len(got.Notified), got.Notified)
 	}
-	if len(got.Refused) != 1 || got.Refused[0].Name != "legal" || !strings.Contains(got.Refused[0].Refused, "at most") {
+	if len(got.Refused) != 2 || !strings.Contains(got.Refused[0].Refused, "Find Help") {
 		t.Fatalf("refused %+v", got.Refused)
 	}
 	if _, sent := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "late")); sent {

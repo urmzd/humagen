@@ -33,3 +33,22 @@ func TestPinnedSourcesReachTheRevisionUnderEitherKey(t *testing.T) {
 		}
 	}
 }
+
+func TestAForkSourceSelectionNarrowsAgentAndInheritedSources(t *testing.T) {
+	for _, selection := range []string{"", "guide"} {
+		req := runtime.Request{Meta: map[string]string{metaForkSources: selection, runs.MetaSources: selection}, Revision: agentrt.Revision{Spec: agentrt.Spec{Sources: []agentrt.Source{{Name: "secret", URI: "knowledge://secret"}, {Name: "guide", URI: "knowledge://guide"}}}}}
+		got := withSources(req)
+		if selection == "" && len(got.Revision.Spec.Sources) != 0 {
+			t.Fatalf("empty selection kept agent sources: %+v", got.Revision.Spec.Sources)
+		}
+		if selection == "guide" && (len(got.Revision.Spec.Sources) != 1 || got.Revision.Spec.Sources[0].Name != "guide") {
+			t.Fatalf("selection did not confine sources: %+v", got.Revision.Spec.Sources)
+		}
+		if _, ok := got.Meta[metaForkSources]; ok {
+			t.Fatal("private source selection reached model metadata")
+		}
+		if len(req.Revision.Spec.Sources) != 2 {
+			t.Fatal("changed pinned agent revision")
+		}
+	}
+}

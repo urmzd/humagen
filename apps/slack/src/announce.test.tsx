@@ -709,11 +709,12 @@ test("a mapped person's reply that mentions the app under an announcement is the
     ],
   );
   assert.deepEqual([...w.humagen.seeded.values()], ["m-news"]);
-  // The answer streams under the announcement's post.
-  assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, post);
+  // A bridge carries the settled outcome, never Activity or draft text.
+  assert.equal(w.slack.of("chat.startStream").length, 0);
   w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "A trip in May." });
   await settle();
   await w.app.idle();
+  assert.equal(w.slack.of("chat.postMessage").at(-1)?.thread_ts, post);
 
   // A later reply finds the same thread.
   await w.app.handle(replyTo(post, "@lead and the dates?", "1800000300.000100"));

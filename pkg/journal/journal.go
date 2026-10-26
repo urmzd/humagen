@@ -210,9 +210,13 @@ func (j *Journal) Events(tenant string, runIDs []string) []envelope.Event {
 // Query selects events. Tenant is required. Every other field narrows, and an
 // empty field matches everything.
 type Query struct {
-	Tenant string
-	Agent  string
-	RunID  string
+	// Visible confines events before text matching and the result bound.
+	Visible func(envelope.Event) bool
+	// ProjectEvent supplies an operational event view before text matching.
+	ProjectEvent func(envelope.Event) envelope.Event
+	Tenant       string
+	Agent        string
+	RunID        string
 	// Kind is an exact kind ("delta.tool.call") or a family ("lifecycle").
 	Kind   string
 	Origin string
@@ -271,6 +275,12 @@ func (j *Journal) Query(q Query) []Entry {
 			return
 		case !q.Until.IsZero() && e.At.After(q.Until):
 			return
+		}
+		if q.Visible != nil && !q.Visible(e) {
+			return
+		}
+		if q.ProjectEvent != nil {
+			e = q.ProjectEvent(e)
 		}
 		entry := entryOf(e)
 		if needle != "" && !strings.Contains(strings.ToLower(entry.Detail), needle) {

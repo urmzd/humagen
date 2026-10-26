@@ -23,6 +23,7 @@ package memory
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"slices"
@@ -71,14 +72,38 @@ const (
 	Person Source = "person"
 	// Consolidated is a note the memory agent wrote after a turn.
 	Consolidated Source = "consolidated"
+	Artifact     Source = "artifact"
 )
+
+type Kind string
+
+const (
+	Fact       Kind = "fact"
+	Risk       Kind = "risk"
+	Decision   Kind = "decision"
+	Preference Kind = "preference"
+	PersonKind Kind = "person"
+)
+
+// Details are reviewable metadata. Empty kind means fact for old notes.
+type Details struct {
+	Kind      Kind      `json:"kind,omitempty"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
+}
 
 // Note is one thing an agent remembers.
 type Note struct {
-	ID     string `json:"id"`
-	Text   string `json:"text"`
-	Source Source `json:"source"`
-	Status Status `json:"status"`
+	EditedBy   string    `json:"edited_by,omitempty"`
+	EditedAt   time.Time `json:"edited_at,omitzero"`
+	Uses       uint64    `json:"uses,omitempty"`
+	LastUsedAt time.Time `json:"last_used_at,omitzero"`
+	Details
+	ReviewedBy string    `json:"reviewed_by,omitempty"`
+	ReviewedAt time.Time `json:"reviewed_at,omitzero"`
+	ID         string    `json:"id"`
+	Text       string    `json:"text"`
+	Source     Source    `json:"source"`
+	Status     Status    `json:"status"`
 	// By is the person who wrote it, or the run it was drawn from.
 	By string    `json:"by,omitempty"`
 	At time.Time `json:"at"`
@@ -175,6 +200,19 @@ func clean(text string) (string, error) {
 // never pushed out by an automatic one. When the pending list is full, the
 // oldest proposal is dropped.
 func (s *Store) Add(tenant, agent, text string, source Source, status Status, by string, at time.Time) (Note, error) {
+	return s.AddDetailed(tenant, agent, text, source, status, by, at, Details{})
+}
+
+func (s *Store) AddDetailed(tenant, agent, text string, source Source, status Status, by string, at time.Time, details Details) (Note, error) {
+	if details.Kind == "" {
+		details.Kind = Fact
+	}
+	if details.Kind != Risk && details.Kind != Fact && details.Kind != Decision && details.Kind != Preference && details.Kind != PersonKind {
+		return Note{}, ErrInvalid
+	}
+	if !details.ExpiresAt.IsZero() && !details.ExpiresAt.After(at) {
+		return Note{}, ErrInvalid
+	}
 	text, err := clean(text)
 	if err != nil {
 		return Note{}, err
@@ -193,7 +231,11 @@ func (s *Store) Add(tenant, agent, text string, source Source, status Status, by
 		return Note{}, err
 	}
 	next := s.next + 1
-	note := Note{ID: "m" + strconv.Itoa(next), Text: text, Source: source, Status: status, By: by, At: at}
+	note := Note{Details: details, ID: "m_" + rand.Text(), Text: text, Source: source, Status: status, By: by, At: at}
+	if status == Approved {
+		note.ReviewedBy = by
+		note.ReviewedAt = at
+	}
 	if err := s.set(tenant, agent, append(notes, note), next); err != nil {
 		return Note{}, err
 	}
@@ -231,7 +273,13 @@ func makeRoom(notes []Note, status Status) ([]Note, error) {
 
 // Approve turns the named proposals into memories. Ids that are not pending
 // proposals of this agent are ignored. It returns how many were approved.
-func (s *Store) Approve(tenant, agent string, ids []string) (int, error) {
+func (s *Store) Approve(tenant, agent string, ids []string, reviews ...Review) (int, error) {
+	if len(reviews) > 1 || len(ids) > MaxNotes+MaxPending {
+		return 0, ErrInvalid
+	}
+	if len(reviews) == 1 && (reviews[0].By == "" || reviews[0].At.IsZero()) {
+		return 0, ErrInvalid
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	notes := s.by[key(tenant, agent)]
@@ -249,6 +297,10 @@ func (s *Store) Approve(tenant, agent string, ids []string) (int, error) {
 			break
 		}
 		note.Status = Approved
+		if len(reviews) == 1 {
+			note.ReviewedBy = reviews[0].By
+			note.ReviewedAt = reviews[0].At
+		}
 		notes = append(rest, note)
 		approved++
 	}
@@ -337,10 +389,15 @@ func OwnerProject(owner string) (string, bool) { return strings.CutPrefix(owner,
 
 // PromptAs renders an owner's approved notes under a heading, or "" for none.
 func (s *Store) PromptAs(tenant, owner, heading string) string {
+	return s.PromptAt(tenant, owner, heading, time.Now())
+}
+
+// PromptAt excludes expired notes at the turn clock, including after replay.
+func (s *Store) PromptAt(tenant, owner, heading string, at time.Time) string {
 	var b strings.Builder
 	for _, n := range s.List(tenant, owner) {
 		// A proposal nobody has approved is not a memory yet.
-		if n.Status != Approved {
+		if n.Status != Approved || !n.ExpiresAt.IsZero() && !n.ExpiresAt.After(at) {
 			continue
 		}
 		if b.Len() == 0 {
@@ -350,4 +407,86 @@ func (s *Store) PromptAs(tenant, owner, heading string) string {
 		b.WriteString(n.Text)
 	}
 	return b.String()
+}
+
+// PersonalOwner is private to one human subject, never an agent or project name.
+func PersonalOwner(subject string) string     { return "person:" + subject }
+func OwnerPerson(owner string) (string, bool) { return strings.CutPrefix(owner, "person:") }
+
+// UsedRendered records only approved, unexpired notes actually present in the
+// composed turn. A preview never calls this method.
+func (s *Store) UsedRendered(tenant, owner, text string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	notes := slices.Clone(s.by[key(tenant, owner)])
+	changed := false
+	for i, n := range notes {
+		if n.Status == Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(at)) && strings.Contains(text, "\n- "+n.Text) {
+			notes[i].Uses++
+			notes[i].LastUsedAt = at
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return s.set(tenant, owner, notes, s.next)
+}
+
+// Review identifies a human decision without replacing original provenance.
+type Review struct {
+	By string
+	At time.Time
+}
+
+// Edit corrects text without replacing original provenance or admitting an
+// unreviewed proposal. A human correction of an approved note is reviewed.
+func (s *Store) Edit(tenant, owner, id, text, by string, at time.Time, details *Details) (Note, error) {
+	text, err := clean(text)
+	if err != nil {
+		return Note{}, err
+	}
+	if by == "" || at.IsZero() {
+		return Note{}, ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	notes := slices.Clone(s.by[key(tenant, owner)])
+	index := slices.IndexFunc(notes, func(note Note) bool { return note.ID == id })
+	if index < 0 {
+		return Note{}, ErrNotFound
+	}
+	note := notes[index]
+	if details != nil {
+		if details.Kind == "" {
+			details.Kind = note.Kind
+		}
+		if details.Kind == "" {
+			details.Kind = Fact
+		}
+		if details.Kind != Fact && details.Kind != Decision && details.Kind != Preference && details.Kind != PersonKind && details.Kind != Risk {
+			return Note{}, ErrInvalid
+		}
+		if !details.ExpiresAt.IsZero() && !details.ExpiresAt.After(at) && !details.ExpiresAt.Equal(note.ExpiresAt) {
+			return Note{}, ErrInvalid
+		}
+		note.Details = *details
+	}
+	for _, other := range notes {
+		if other.ID != id && strings.EqualFold(other.Text, text) {
+			return Note{}, ErrInvalid
+		}
+	}
+	note.Text = text
+	note.EditedBy = by
+	note.EditedAt = at
+	if note.Status == Approved {
+		note.ReviewedBy = by
+		note.ReviewedAt = at
+	}
+	notes[index] = note
+	if err := s.set(tenant, owner, notes, s.next); err != nil {
+		return Note{}, err
+	}
+	return note, nil
 }

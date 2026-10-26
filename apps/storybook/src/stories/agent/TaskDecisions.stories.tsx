@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components";
 import { ActionId, type TaskStatus, type UiAction } from "@humagen/core";
 import { Plan, Task } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -31,12 +32,14 @@ function Gated({ onAction }: ActionArgs) {
     <Canvas onAction={handle}>
       <Plan title="Rolling back payments-api">
         <Task
+          sourceLabels={defaultCopy.citation}
           id={ID.checked}
           title="Checked recent deploys"
           status="complete"
           output="3 deploys today"
         />
         <Task
+          sourceLabels={defaultCopy.citation}
           id={ID.gated}
           title="Roll back payments-api to #4811"
           status={status}
@@ -66,7 +69,12 @@ function Gated({ onAction }: ActionArgs) {
               : undefined
           }
         />
-        <Task id={ID.next} title="Post incident summary" status="pending" />
+        <Task
+          sourceLabels={defaultCopy.citation}
+          id={ID.next}
+          title="Post incident summary"
+          status="pending"
+        />
       </Plan>
     </Canvas>
   );

@@ -15,21 +15,28 @@ import (
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
+	"github.com/urmzd/humagen/pkg/auditrefs"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/notifications"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -123,17 +130,33 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("journal", err)
 	p.Alerts, err = alerts.Open(st)
 	keep("alerts", err)
+	p.SourceLinks, err = sourcelinks.Open(st)
+	keep("source link rules", err)
+	p.SourceSuggestions, err = sourcelinks.OpenSuggestions(st)
+	keep("source link suggestions", err)
 	p.Knowledge, err = knowledge.Open(st)
 	keep("knowledge", err)
+	p.SourceEvidence, err = knowledge.OpenEvidenceStore(st)
+	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(st)
 	keep("evals", err)
 	p.Feedback, err = feedback.Open(st)
 	keep("feedback", err)
 	p.Prefs, err = prefs.Open(st)
 	keep("prefs", err)
+	p.ContextFlags, err = contextflags.Open(st)
+	keep("private context flags", err)
+	p.Notifications, err = notifications.Open(st)
+	keep("native notifications", err)
+	p.AgentSkillDefaults, err = library.OpenDefaults(st)
+	keep("agent skill defaults", err)
+	p.SkillLibrary, err = library.Open(st)
+	keep("skill library", err)
 	p.Memory, err = memory.Open(st)
 	keep("memory", err)
 	// A deleted name is forgotten only once nothing is filed under it.
+	p.ProjectForks, err = projectforks.Open(st)
+	keep("project forks", err)
 	p.Projects, err = projects.Open(st, projects.WithFiled(p.filedUnder))
 	keep("projects", err)
 	// An agent's name is a handle no person is given.
@@ -143,10 +166,17 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("threads", err)
 	p.Policies, err = policy.Open(st)
 	keep("policies", err)
+	p.Operations, err = operations.Open(st)
+	keep("operations", err)
+	if err == nil {
+		keep("operation publication guard", p.RegisterPublicationGuard(p))
+	}
 	p.CallPolicies, err = callpolicy.Open(st)
 	keep("call policies", err)
 	p.Usage, err = usage.Open(st)
 	keep("usage", err)
+	p.AuditReferences, err = auditrefs.Open(st)
+	keep("audit references", err)
 	p.Audit, err = audit.Open(st)
 	keep("audit", err)
 	p.ReadAudit, err = readaudit.Open(st)

@@ -12,9 +12,13 @@ import (
 func TestContextPreviewUsesTurnLayersAndConfinesReads(t *testing.T) {
 	f := newFixture(t)
 	owner := f.machine(t, "acme", append(operator, "humagen:agents:write")...)
+	// Source declarations are capabilities: create it first and configure as a
+	// knowledge reader, then exercise preview reads without that permission.
+	sourceEditor := f.machine(t, "acme", everything...)
+	want(t, f, sourceEditor, "POST", "/api/knowledge", `{"name":"source-canary"}`, http.StatusCreated)
 	spec := strings.Replace(helperSpec, `"name":"helper"`, `"name":"helper","sources":[{"name":"source-canary","uri":"knowledge://source-canary"}]`, 1)
 	spec = strings.Replace(spec, "Help.", strings.Repeat("é", 32001), 1)
-	want(t, f, owner, "POST", "/api/agents", spec, http.StatusCreated)
+	want(t, f, sourceEditor, "POST", "/api/agents", spec, http.StatusCreated)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Field","instructions":"FOLLOW-FIELD","members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusCreated)
 	out := want(t, f, owner, "GET", "/api/projects/Field/context?agent=helper", "", http.StatusOK)
 	layers := out["layers"].([]any)

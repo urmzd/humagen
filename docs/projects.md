@@ -19,7 +19,7 @@ here is a second system. Each piece is built on what Humagen or fiber already ha
 | Scheduled agents (recaps) | fiber's cron trigger through Humagen's schedules, filed in the project |
 | Project inbox and announcements | `pkg/inbox`, read by `Source.Project`. An announcement is a message kind, not a store |
 | Shared threads | Humagen's conversations (threads, branches, any agent on any turn), plus human messages that start no run |
-| Experts (SMEs) | `ask_person`, inbox questions and their addressing |
+| Find Help | Read-confined project and available-agent discovery; legacy explicit human questions keep their recorded addressing |
 | Context | fiber's pinned system prompt (the agent's instructions), `pkg/memory` (agent and project notes), instructions on the project record, and the knowledge sources the project chain names, through fiber's knowledge hook |
 
 Decisions:
@@ -330,7 +330,7 @@ One grammar, parsed by the platform for every surface (`pkg/threads`):
 | `@<agent>` | that agent answers. It must be available in the thread's project |
 | `@auto` | the built-in router picks the agent (see [Agents in projects](#agents-in-projects)) |
 | `@<handle>` | that person is notified: their inbox, and Slack when a client maps them |
-| `@sme` or `@sme:<topic>` | the project's experts (for that topic) are notified |
+| `@sme` or `@sme:<topic>` | retired; no run or notification is created, and the person is directed to Find Help |
 | `$<skill>` or `@skill:<skill>` | the agents the message starts are told to use that skill (see [Skills](#skills)) |
 | `@<kind>:<name>` | an item of a mention kind the workspace declares, resolved as the kind says (see [Mention kinds](#mention-kinds)) |
 | `<@U…>` (Slack only) | the Slack person, mapped to a subject through the client's `slack.people` |
@@ -399,35 +399,26 @@ poster's, and another person's request in the thread is acted on with the
 poster's credential only when the poster's own words ask for it. A failed
 answer is retried only by the poster, from their inbox.
 
-### Experts
+### Find Help and legacy expert metadata
 
-A project lists experts: a person (subject) or `role:<name>`, with up to 8
-topics. Experts are found along the chain: the nearest project that has an
-expert for the topic answers for it, then its ancestors, up to the root.
+Find Help suggests at most eight readable projects and readable agents available
+there, using the person's description of work. It grants no access, starts no
+run and does not publish an existing private conversation. Choosing a result is
+explicit. Personal projects of other people and hidden projects/agents do not
+contribute names, scores, reasons or counts.
 
-- **A person tags experts** with `@sme:<topic>`: each is notified. In a
-  private thread, which only its participants read, only the experts taking
-  part are told: an expert named as a person is not invited, and a role is
-  told nothing. The tag then says plainly that the others were not told,
-  without naming them.
-- **An agent asks an expert** with `ask_person` and `asked_of: "sme:<topic>"`
-  (or `"sme"`). The run parks on the question as today. `addressOf` resolves
-  the hint to the experts of the run's project chain, intersected with the
-  spec's `answerers` when it names them. An empty intersection falls back to
-  `answerers`, as `audienceOf` does today. If there is no expert at all, the
-  question goes to the project's owners. An expert's reply, from the inbox,
-  the run, the thread or Slack, is `runtime.Answer` and resumes the run.
-- Addressing routes; it does not admit. Who may answer stays fiber's check
-  against `answerers` (`mayAnswer`), unchanged.
-- **Except in a run that uses a person's own credential.** A run that acts
-  for a person and is granted a tool that takes each person's own
-  credential asks that person alone its replies and choices (`maySteer`), so
-  a question it asks of the experts goes to that person, and an expert's
-  answer is refused: it would reach that person's tools with their
-  credential.
-- The project layer of every turn lists the topics with experts ("Experts
-  here: billing, security. Ask one with ask_person, asked_of sme:<topic>"), at
-  most 16 topics.
+New `@sme` and custom expert-routing tags are refused with an actionable Find
+Help message. They never expand stored expert lists or notify people. Expert
+mention completion and the expert line in real turn composition and context
+preview are removed together. Configuration check and startup warn about
+retained `experts` and expert-resolving mention kinds. The compatibility expert
+metadata endpoint is deprecated; it does not restore routing.
+
+Stored expert metadata and historical messages remain readable under their
+original confinement. Explicit human mentions, `ask_person`, approvals and
+existing questions continue through their recorded recipients and answerer
+rules. The question addressing compatibility path is retained so a parked
+question is not stranded by this migration.
 
 ### Skills
 
@@ -476,17 +467,16 @@ project's own instructions are.
 
 ### Mention kinds
 
-`@<kind>:<name>` generalizes `@sme:<topic>`: each kind completes from its own
-list and resolves on the server. Two are built in, `sme` (experts) and
-`skill` (skills, so `@skill:review` is `$review`); a workspace declares more
+`@<kind>:<name>` completes from its own list and resolves on the server.
+The built-in kind is `skill` (`@skill:review` is `$review`); a workspace declares more
 in its Platform document (`workspace.mention_kinds`, at most 16, the file's
 alone), each resolving to one of:
 
 | `resolves` | `@<kind>:<name>` is | Completes from |
 |---|---|---|
-| `experts` | `@sme:<name>`: the experts of that topic are notified | the topics the chain has experts for |
+| `experts` | retired metadata only; new routing is refused | none |
 | `skills` | `$<name>` | the skills the chain offers |
-| `role` | everyone holding the policy role `<name>` is notified, in one shared mention. In a private thread, which its holders cannot read, the tag is refused, saying so | the roles the chain names in its members and experts |
+| `role` | everyone holding the policy role `<name>` is notified, in one shared mention. In a private thread, which its holders cannot read, the tag is refused, saying so | the roles the chain names in its members |
 | `people` | `@<name>`: that person, by handle | the directory, with `people:read` |
 
 A kind declared under an agent's or a person's name takes an item: `@ignite`
@@ -502,7 +492,7 @@ An agent's turn is given, in this order:
 | # | Layer | Source | Bound |
 |---|---|---|---|
 | 0 | The skills the message names, each under its name, after a line that ranks them below the agent's instructions | the pinned `_warp.skills` | 8,000 characters each, at most 4 named and a client's command |
-| 1 | Project instructions, root first, then each project down to the thread's, then the channel's purpose and the experts line | `Project.Instructions`, `Channel.Purpose` | 4,000 characters per project, 8,000 in all; the farthest ancestors are dropped first, with "(instructions of Acme not sent)" |
+| 1 | Project instructions, root first, then each project down to the thread's, then the channel's purpose | `Project.Instructions`, `Channel.Purpose` | 4,000 characters per project, 8,000 in all; the farthest ancestors are dropped first, with "(instructions of Acme not sent)" |
 | 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `project:` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
 | 3 | The agent's instructions | the pinned revision's `AgentSpec.SystemPrompt`, which fiber sends as the system message | fiber's |
 | 4 | The agent's memory | `pkg/memory` owner `<agent>` | as today |
@@ -868,20 +858,19 @@ key it is, left out of the directory, and subjects are never searched.
 
 ### Platform agents and project agents
 
-- **A platform agent** belongs to the workspace (no home). It is available in
+- **A Company agent** has an explicit root home. It is available in
   a project when the project or an ancestor enables it. Every existing agent,
-  and the built-ins `humagen-writer`, `humagen-analyst` and `humagen-builder`, is a
-  platform agent.
+  and the built-ins `humagen-writer`, `humagen-analyst` and `humagen-builder`, has a Company home.
 - **A project agent** lives in one project (its home): it is available there
   and in every descendant, and nowhere else. `*` never reaches it, and it is
-  not available at the root, so a projectless conversation cannot reach it.
+  not available at the root, so a conversation in Company cannot reach it.
 
 Both relations are kept on Humagen's records (the project's `Agents`, and an
 agent-to-home index in `pkg/projects`). fiber's `AgentSpec` is unchanged.
 
 ```
 offered(P)   = ∪ over Q in Chain(P) of (Q.Enable ∪ Homes(Q))
-               "*" in Q.Enable = every agent with no home
+               "*" in Q.Enable = every agent whose home is Company
 allowed(P)   = ∩ over Q in Chain(P) with Q.Allow set, of Q.Allow   (none set: no narrowing)
 available(P) = offered(P) ∩ allowed(P)
 ```
@@ -1305,6 +1294,11 @@ existing groups as `mux.HandleFunc("METHOD /path", s.authed(auth.X, h))`. In
 `x-permission`, declared path params, inline query enums (the oag 0.20.6
 `$ref` bug) and the shared responses. Bodies keep `DisallowUnknownFields` and
 the 1 MiB cap, and field caps are mirrored as `maxLength` and `maxItems`.
+Project history also uses opaque project-scoped `seq` identifiers and cursors.
+The tenant-global sequence remains internal, so gaps never reveal another
+person's project activity. The HMAC key is persisted atomically with history
+and survives replay. Old numeric/base64 history cursors must be refreshed.
+
 Lists use opaque `before`/`next` cursors ending in `next: null`; a bad cursor
 is 400; an empty list is `[]`. Then run `make client`, `make client-check`
 and `make spec-lint`, and update the hand-written `apps/web/src/api.ts`
@@ -2173,3 +2167,55 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   user, so the agent's name and color go in the message. In a channel, a
   person must mention the app before the agent's handle. Code channels and
   per-agent bot users keep working through `client.Bots`.
+
+
+### Templates and initiatives
+
+The project creation form starts blank or uses a file-defined template. The
+built-in catalog is `pkg/projects/templates.json`; applications embedding the
+platform can replace it through `Config.ProjectTemplates`. Templates contain
+instructions, channels and skills. The project and its channels are written in
+one transaction, without memory, credentials, agents or live integrations.
+
+The Initiative template marks a team project as a coordination parent. Child
+projects use the same role and tighten-only policy inheritance as the rest of
+the tree. An initiative's own agents cannot execute directly inside a child.
+Cross-project handoff placement remains an open design question: the current
+call path keeps its root's project, budget accounting and context, and no second
+execution path is introduced.
+
+
+### Forks and archives
+
+A project fork captures an immutable bounded plan before copying. Destination
+projects, agent home reservations, channels, selected approved memory and
+integration rules stay hidden and cannot run until the project store publishes
+the entire prepared subtree in one write. A failed copy remains private and
+retryable after restart. Rules are copied disabled from the captured snapshot;
+credentials, live bindings, schedules and pending actions are not copied.
+
+Conversation archives are an explicit opt-in, at most 20 readable conversations.
+They retain immutable text, not tool state, attachments or file capabilities,
+and accept neither messages nor agent runs. Every archive read still requires
+access to its original conversation. Personal live-source results cannot be
+copied through forks or bring-back. Copied confirmed memory retains only selected
+text, kind and expiry; it is newly reviewed by the copying person, with no
+original private run, thread or artifact capability.
+
+Workspace discovery returns at most 50 readable destinations per query, with
+separate project, agent and conversation read permissions. Searches enforce
+query and scan bounds on the server and return no hidden-object counts.
+
+### Initiative rollups
+
+`GET /api/projects/{name}/rollup` returns at most 100 readable descendant rows,
+100 approved unexpired decision/risk notes, and 50 inbox needs for the reader.
+Rows report current-placement conversation/activity counters, the reader's
+unread and actionable inbox counters, and runs started during the preceding
+30 days. Run counts require `runs:read`. Hidden projects, conversations and
+source chains contribute no names or counts. More flags describe only readable
+items beyond these caps. Notes omit original author/run/artifact provenance.
+The initiative Overview links each item to its original project for review.
+Progress and risks are never guessed from conversation text. Initiative agents
+coordinate at their own level; cross-project handoff remains the explicit open
+question in the control-plane spec and is denied by the existing call path.

@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,4 +57,35 @@ func TestProjectRowsCountOnlyTheReadersVisibleUnreadUpdates(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestCompanyRowsOfferOnlyCurrentBuiltinNames(t *testing.T) {
+	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"})
+	token := f.machine(t, "acme", everything...)
+	want(t, f, token, "GET", "/api/agents", "", http.StatusOK)
+	row := want(t, f, token, "GET", "/api/projects/~", "", http.StatusOK)["project"].(map[string]any)
+	for _, item := range row["row_agents"].([]any) {
+		if strings.HasPrefix(item.(string), "warp-") {
+			t.Fatalf("compatibility alias offered in Company marks: %v", row["row_agents"])
+		}
+	}
+	if got := len(row["row_agents"].([]any)); got != 3 {
+		t.Fatalf("duplicate or missing Company builtin marks: %v", row["row_agents"])
+	}
+	choices := want(t, f, token, "GET", "/api/projects/~/agents", "", http.StatusOK)
+	raw, _ := json.Marshal(map[string]any{"homes": choices["homes"], "offers": choices["offers"], "available": choices["available"]})
+	if strings.Contains(string(raw), "warp-") {
+		t.Fatalf("compatibility aliases offered as current agents: %s", raw)
+	}
+	if home, ok := f.p.ProjectTree("acme").Home("warp-analyst"); !ok || home != "" {
+		t.Fatal("current-choice filtering changed stored alias home")
+	}
+	found := want(t, f, token, "GET", "/api/find-help?q=runs", "", http.StatusOK)
+	if len(found["suggestions"].([]any)) == 0 {
+		t.Fatal("finder returned no visible builtin candidate")
+	}
+	raw, _ = json.Marshal(found)
+	if strings.Contains(string(raw), "warp-") {
+		t.Fatalf("finder offered legacy alias: %s", raw)
+	}
 }

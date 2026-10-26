@@ -19,8 +19,9 @@ export const EVERYONE = "*";
 export function availableOf(all: string[], view: Pick<ProjectAgentsView, "available"> | null, homes: Record<string, string>): string[] {
   if (!view) return all;
   const names = new Set(view.available.names);
-  // With "*", every agent with no home, and the project agents on the chain the platform listed.
-  return all.filter((a) => names.has(a) || (view.available.all && !homes[a]));
+  // Company homes remain platform-wide. Scoped homes are offered only when
+  // the server names them on this project's available chain.
+  return all.filter((a) => names.has(a) || (view.available.all && nameOfAddress(homes[a] ?? "") === ""));
 }
 
 /** "~" in an answer is the workspace, "" here. */

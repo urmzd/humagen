@@ -76,6 +76,17 @@ func (p *Platform) surfaceHost(who auth.Principal, ref SurfaceRef, as *ActAs) (c
 	if as == nil || as.Client != c.ID {
 		return clients.Client{}, fmt.Errorf("%w: a surface's message is posted for a person of its client (act_as)", threads.ErrInvalid)
 	}
+
+	event := "app_mention"
+	if directMessage(ref.Channel) {
+		event = "message"
+	}
+	if !c.AllowsEvent(event) {
+		return clients.Client{}, auth.ErrForbidden
+	}
+	if direction, bound := p.bridgeDirection(c, ref.Channel); bound && !direction.AllowsInbound() {
+		return clients.Client{}, auth.ErrForbidden
+	}
 	return c, nil
 }
 
@@ -91,6 +102,11 @@ type filing struct {
 func (p *Platform) filedAt(tenant string, c clients.Client, channel string) (filing, error) {
 	if ch, bound := p.Projects.BoundTo(tenant, c.ID, channel); bound {
 		return filing{project: ch.Project, channel: ch.Name, vis: threads.Shared, bound: true}, nil
+	}
+	if resource, ok := slackResource(channel); ok {
+		if project, target, linked := p.linkedClientResource(c, resource); linked {
+			return filing{project: project, channel: target, vis: threads.Shared, bound: true}, nil
+		}
 	}
 	h := c.HomeOf()
 	vis := threads.Shared
@@ -140,6 +156,17 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	if err != nil {
 		return Posted{}, err
 	}
+	if !c.AllowsEvent("app_mention") && !c.AllowsEvent("message") {
+		return Posted{}, auth.ErrForbidden
+	}
+	if direction, bound := p.bridgeDirection(c, ref.Channel); bound {
+		if !direction.AllowsInbound() {
+			return Posted{}, auth.ErrForbidden
+		}
+		if !direction.AllowsOutcomes() {
+			in.PostOnly = true
+		}
+	}
 	if in.Project != "" || in.Channel != "" || in.Visibility != "" || in.Default != "" {
 		return Posted{}, ErrSurfacePlace
 	}
@@ -150,6 +177,11 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	post := MessageInput{Text: in.Text, PostOnly: in.PostOnly, ActAs: in.ActAs, Surface: &ref}
 	if th, ok := p.Threads.BySurface(who.Tenant, sf); ok {
 		return p.PostMessage(ctx, who, th.ID, post)
+	}
+	if resource, ok := slackResource(ref.Channel); ok {
+		if err := p.observeClientResource(c, resource); err != nil {
+			return Posted{}, err
+		}
 	}
 	at, err := p.filedAt(who.Tenant, c, ref.Channel)
 	if err != nil {
@@ -250,9 +282,9 @@ func (p *Platform) seedOf(tenant string, th threads.Thread) (threads.Announcemen
 // it was started from one.
 func (p *Platform) seedTurns(tenant string, th threads.Thread) []threads.Turn {
 	if a, ok := p.seedOf(tenant, th); ok {
-		return []threads.Turn{threads.AnnouncementTurn(a)}
+		return append(forkSeed(th), threads.AnnouncementTurn(a))
 	}
-	return nil
+	return forkSeed(th)
 }
 
 // surfaceOfPost checks a message posted with its surface into a thread: the

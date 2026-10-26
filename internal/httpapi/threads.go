@@ -24,10 +24,14 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.seenProject(s.archiveChannel)))
 	mux.HandleFunc("GET /api/projects/{name}/experts", s.authed(auth.ProjectsRead, s.seenProject(s.getExperts)))
 	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.seenProject(s.putExperts)))
+	mux.HandleFunc("POST /api/threads/{id}/fork", s.authed(auth.RunsWrite, s.seenThread(s.forkThread)))
+	mux.HandleFunc("POST /api/threads/{id}/bring-back", s.authed(auth.RunsWrite, s.seenThread(s.bringBackResult)))
 	mux.HandleFunc("POST /api/threads", s.authed(auth.RunsWrite, s.startThread))
 	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.seenThread(s.postMessage)))
 	mux.HandleFunc("PUT /api/threads/{id}/participants", s.authed(auth.RunsWrite, s.seenThread(s.putParticipants)))
+	mux.HandleFunc("GET /api/threads/{id}/placement", s.authed(auth.ProjectsRead, s.seenThread(s.previewPlacement)))
+	mux.HandleFunc("POST /api/threads/{id}/publication", s.authed(auth.RunsWrite, s.seenThread(s.publishSummary)))
 	mux.HandleFunc("POST /api/threads/{id}/share", s.authed(auth.RunsWrite, s.seenThread(s.shareThread)))
 }
 
@@ -145,6 +149,8 @@ func (s *Server) getExperts(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 func (s *Server) putExperts(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	w.Header().Set("Deprecation", "true")
+	w.Header().Set("Warning", `299 Humagen "Expert routing is retired; use Find Help"`)
 	var in platform.Experts
 	if !decode(w, r, &in) {
 		return
@@ -317,4 +323,39 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	return true
+}
+
+func (s *Server) previewPlacement(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if _, err := s.P.ThreadRecord(who.Tenant, r.PathValue("id")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	project := r.URL.Query().Get("project")
+	if project == "" {
+		fail(w, http.StatusBadRequest, "project is required; ~ names Company")
+		return
+	}
+	preview, err := s.P.PreviewPlacement(r.Context(), who, r.PathValue("id"), project, r.URL.Query().Get("channel"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, preview)
+}
+
+func (s *Server) publishSummary(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if _, err := s.P.ThreadRecord(who.Tenant, r.PathValue("id")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	var in platform.SummaryPublication
+	if !decode(w, r, &in) {
+		return
+	}
+	th, err := s.P.PublishSummary(r.Context(), who, r.PathValue("id"), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, s.P.Seer(who).Thread(s.P.ShowThread(who.Tenant, th)))
 }

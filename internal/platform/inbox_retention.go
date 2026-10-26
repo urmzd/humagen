@@ -25,6 +25,14 @@ func (p *Platform) inboxRetention(tenant string) time.Duration {
 // again at the next pass. A pass stops between workspaces once ctx is done.
 func (p *Platform) retainInbox(ctx context.Context) {
 	now := p.now()
+	for _, tenant := range p.Notifications.Tenants() {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := p.Notifications.Retain(tenant, now.Add(-p.inboxRetention(tenant))); err != nil {
+			p.log.Error("platform: notification retention failed", "error", err)
+		}
+	}
 	for _, tenant := range p.Audit.Tenants() {
 		if ctx.Err() != nil {
 			return

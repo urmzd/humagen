@@ -248,3 +248,71 @@ test("a stopped event ends the turn as stopped, confirmed", () => {
     { type: "stop.updated", stop: "confirmed" },
   ]);
 });
+
+test("trusted citation mode and retained-copy freshness survive the UI adapter", () => {
+  const [event] = adapter()(
+    ev("delta.citation", {
+      label: "[1]",
+      index: 1,
+      text: "Recorded passage",
+      source: { document_title: "Runbook", source_uri: "https://example.com/runbook" },
+      mode: "indexed",
+      copy_at: "2026-10-20T12:00:00Z",
+      refresh_failed: true,
+    }),
+  );
+  assert.equal(event?.type, "citation.added");
+  if (event?.type !== "citation.added") return;
+  assert.deepEqual(
+    {
+      mode: event.citation.mode,
+      copyAt: event.citation.copyAt,
+      refreshFailed: event.citation.refreshFailed,
+    },
+    { mode: "indexed", copyAt: "2026-10-20T12:00:00Z", refreshFailed: true },
+  );
+});
+
+test("legacy and malformed citation facts remain explicitly unproven", () => {
+  for (const fields of [
+    {},
+    { mode: "hybrid", copy_at: "2026-10-20T12:00:00Z", refresh_failed: true },
+    {
+      source: {
+        document_title: "Claims a live source",
+        mode: "live",
+        copy_at: "2026-10-20T12:00:00Z",
+      },
+    },
+  ]) {
+    const [event] = adapter()(
+      ev("delta.citation", {
+        label: "[1]",
+        index: 1,
+        text: "Passage",
+        source: { document_title: "Source" },
+        ...fields,
+      }),
+    );
+    assert.equal(event?.type, "citation.added");
+    if (event?.type !== "citation.added") continue;
+    assert.equal(event.citation.mode, undefined);
+    assert.equal(event.citation.copyAt, undefined);
+    assert.equal(event.citation.refreshFailed, undefined);
+  }
+  const [event] = adapter()(
+    ev("delta.citation", {
+      label: "[1]",
+      index: 1,
+      text: "Passage",
+      source: { document_title: "Source" },
+      mode: "live",
+      copy_at: "today",
+      refresh_failed: "true",
+    }),
+  );
+  if (event?.type !== "citation.added") return;
+  assert.equal(event.citation.mode, "live");
+  assert.equal(event.citation.copyAt, undefined);
+  assert.equal(event.citation.refreshFailed, undefined);
+});

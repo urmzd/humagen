@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -272,7 +274,7 @@ func (s *Seer) AgentsView(v ProjectAgents) ProjectAgents {
 func (s *Seer) Change(c projects.Change) projects.Change {
 	for _, pr := range []**projects.Project{&c.Before, &c.After} {
 		if *pr != nil {
-			shown := **pr
+			shown := s.ProjectForkOrigin(**pr)
 			shown.Agents = s.ProjectAgents(shown.Agents)
 			shown.Knowledge = s.Sources(shown.Knowledge)
 			shown.Skills = projects.BriefSkills(shown.Skills)
@@ -381,7 +383,14 @@ const tagTool = "tag_"
 // out, its hash is the hash of what is shown, so it confirms no guess at what
 // is not.
 func (s *Seer) Revision(rev agentspec.Revision) agentspec.Revision {
-	return revisionShown(rev, s.Agent)
+	rev = revisionShown(rev, s.Agent)
+	sources := slices.DeleteFunc(slices.Clone(rev.Spec.Sources), func(src agentspec.Source) bool { return !s.p.SourceVisible(s.who, src.Name) })
+	if len(sources) != len(rev.Spec.Sources) {
+		rev = rev.Clone()
+		rev.Spec.Sources = sources
+		rev.Hash = rev.Spec.Hash()
+	}
+	return rev
 }
 
 // revisionShown is a revision with every agent that shown does not keep left
@@ -436,6 +445,24 @@ func (s *Seer) Revisions(revs []agentspec.Revision) []agentspec.Revision {
 // wrote none, unless the spec written names approvers or self_approval of
 // its own. The spec as kept is validated again.
 func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *agentspec.Revision, spec agentspec.AgentSpec) (agentspec.AgentSpec, error) {
+	// An editor can retain unread references already present, but cannot probe
+	// or newly grant a source they cannot read.
+	sources := slices.Clone(spec.Sources)
+	for _, src := range sources {
+		previously := old != nil && slices.ContainsFunc(old.Spec.Sources, func(prior agentspec.Source) bool { return reflect.DeepEqual(prior, src) })
+		if !previously && !p.SourceVisible(who, src.Name) {
+			return agentspec.AgentSpec{}, knowledge.ErrNotFound
+		}
+	}
+	if old != nil {
+		for _, src := range old.Spec.Sources {
+			if !p.SourceVisible(who, src.Name) && !slices.ContainsFunc(sources, func(candidate agentspec.Source) bool { return reflect.DeepEqual(candidate, src) }) {
+				sources = append(sources, src)
+			}
+		}
+	}
+	spec.Sources = sources
+
 	seer := p.Seer(who)
 	shown := map[string]bool{}
 	var hidden []string
@@ -581,6 +608,15 @@ func (s *Seer) threadAgents(th threads.Thread) func(string) bool {
 // agent left out of its participants unless it answered there. One that
 // answered is named by its runs, which the reader reads.
 func (s *Seer) Thread(th threads.Thread) threads.Thread {
+	if th.Fork != nil && th.Fork.Sources != nil {
+		f := *th.Fork
+		names := slices.DeleteFunc(slices.Clone(*f.Sources), func(name string) bool { return !s.p.SourceVisible(s.who, name) })
+		if names == nil {
+			names = []string{}
+		}
+		f.Sources = &names
+		th.Fork = &f
+	}
 	shown := s.participantShown(th)
 	if th.Default != "" && !s.threadAgents(th)(th.Default) {
 		th.Default = ""
@@ -659,6 +695,10 @@ func (s *Seer) Turns(th threads.Thread, turns []ThreadTurn) []ThreadTurn {
 	shown := s.threadAgents(th)
 	out := make([]ThreadTurn, len(turns))
 	for i, t := range turns {
+		if t.Run != nil {
+			run := s.p.ShownRunAs(s.who, *t.Run)
+			t.Run = &run
+		}
 		if t.Message != nil {
 			m := *t.Message
 			m.Mentions = mentions(m.Mentions, shown)
@@ -728,6 +768,8 @@ const maxMerges = 3
 // expectedRev 0, which takes whatever is latest, the spec is merged again
 // with the newer one.
 func (p *Platform) ReviseBy(ctx context.Context, who auth.Principal, spec agentspec.AgentSpec, expectedRev int) (agentspec.Revision, error) {
+	p.skillDefaultsMu.Lock()
+	defer p.skillDefaultsMu.Unlock()
 	for merges := 0; ; merges++ {
 		old, err := p.Agents.Get(ctx, who.Tenant, spec.Name, 0)
 		if err != nil {
@@ -747,4 +789,20 @@ func (p *Platform) ReviseBy(ctx context.Context, who auth.Principal, spec agents
 		}
 		return rev, err
 	}
+}
+
+// ProjectForkOrigin omits lineage identities when the source project is hidden.
+func (s *Seer) ProjectForkOrigin(pr projects.Project) projects.Project {
+	if pr.Fork == nil {
+		return pr
+	}
+	origin := *pr.Fork
+	if !s.Project(origin.Source) {
+		origin.Source = ""
+		origin.By = ""
+	} else {
+		origin.By = s.p.Names(s.who.Tenant).Key(origin.By)
+	}
+	pr.Fork = &origin
+	return pr
 }

@@ -1,6 +1,6 @@
 # Company, personal work and finding help
 
-Prepared design, not implemented. This follows the workspace direction given
+Implementation in progress. This follows the workspace direction given
 on 2026-10-22. The current behavior remains described in [Projects](projects.md)
 and the [architecture status table](architecture.md#status).
 
@@ -173,3 +173,62 @@ regressions that fail first, updates the architecture status in its PR, and
 passes the requested CI checks with the Postgres variant and screen captures.
 This document prepares the work; it does not change the current runtime or
 claim that completed conversations can already move between projects.
+
+## Implementation evidence
+
+Company homes are explicit stored root records. Missing legacy homes migrate
+idempotently in registry pages without changing enable or allow rules.
+`GET /api/me` provisions a human's personal project and returns its address;
+provisioning errors are returned, never replaced with Company. The project
+store retains a random identity and immutable `personal_owner`, serializes
+concurrent provisioning, and restores the association on memory and Postgres
+replay. Machines receive no personal project.
+
+Personal ownership narrows inherited Company ownership before role resolution.
+Membership widening, reparenting, deletion, subprojects, file adoption and Slack
+bindings are refused. Invitations and notification routing cannot add another
+human to that private audience. Completed ordinary work can be published after an explicit versioned audience
+preview. Private connected-source history requires a reviewed summary path; raw
+publication is refused. The run index retains its original accounting, while
+operational lists, counts, files, inbox addressing, manifests and live event
+streams resolve the conversation's current placement. Publication attempts are
+recorded under the source's private scope and placement/history commit in the
+same thread-store write. Historical runs cannot replay old private inputs
+after publication; the person posts a fresh turn in the destination instead.
+
+Reviewed summary publication creates a separate shared conversation containing
+only the exact text the participating owner reviewed. It copies no private
+thread link, run, source, citation, file, operation contract or capability. A
+content-and-audience token prevents stale consent and makes retries idempotent.
+The original conversation and all accounting remain private.
+
+The welcome copy is generated from `packages/components/src/copy.ts` by
+`pnpm welcome-copy`; `pnpm welcome-copy:check` checks freshness. `GET /api/me`
+returns its retained announcement ID, so Home selects the actual Company
+welcome and uses existing per-reader read/hide state. The banner component
+precedes the greeting and empty Home boxes no longer duplicate it. Host wiring
+and reproducible phone/desktop captures are validated in the upper UI layer.
+
+Find Help scores only readable projects and readable agents available there,
+returns at most eight suggestions, and neither starts work nor changes an
+existing conversation's placement. The component requires explicit selection
+and shows actual request failures. New expert-routing tags and cached completion choices are retired, and the
+expert prompt layer is removed from real turns and context preview together.
+Legacy explicit human questions retain their recorded recipients. Config
+check/startup diagnostics direct operators to Find Help.
+
+Publication consent now holds the project store's snapshot read guard across
+the thread commit, serializing destination membership/channel writes. A
+barrier-controlled race regression covers memory and Postgres. Preview tokens
+bind source/destination chains and the complete destination channel record.
+
+Private context classification covers durable personal-note markers, retained
+source audiences, person-scoped MCP grants and optional registered subsystem
+guards, including conversations with no runs. A person-scoped tool must call
+`MarkPrivateContext` before executing. Its write-through run bit survives
+Flush/replay and never changes the accepted tag or appears in run JSON.
+
+Project history identifiers/cursors are project-scoped opaque HMACs; external
+readers never receive the tenant-global sequence. Company rows and current
+agent choices hide compatibility builtin aliases without rewriting stored
+homes or historical revisions.

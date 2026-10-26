@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/pick"
@@ -99,6 +101,7 @@ type MessageInput struct {
 // ThreadUpdate changes a thread's title, visibility, default and routing,
 // as a whole.
 type ThreadUpdate struct {
+	PlacementToken string `json:"placement_token,omitempty"`
 	// Version is the one read. A conversation with no record reads 0.
 	Version    int                `json:"version"`
 	Title      string             `json:"title"`
@@ -233,6 +236,9 @@ func (p *Platform) MayPost(person auth.Principal, at Place) error {
 // unasked: only when the poster could keep it themselves.
 func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) (keeps bool, err error) {
 	project := projects.NameOf(at.Project)
+	if pr, ok := p.Projects.Tree(person.Tenant).Get(project); ok && pr.PersonalOwner != "" && (person.Kind != auth.User || pr.PersonalOwner != person.Subject) {
+		return false, ErrForbidden
+	}
 	switch {
 	case project == projects.Root && need == projects.Member:
 	case !p.HasProject(person.Tenant, project):
@@ -251,6 +257,12 @@ func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) 
 		return keeps, nil
 	}
 	th, err := p.Threads.Get(person.Tenant, at.Thread)
+	if err == nil && th.Fork != nil && !p.SeesThread(person, at.Thread) {
+		return false, threads.ErrNotFound
+	}
+	if err == nil && th.ReadOnly {
+		return false, fmt.Errorf("%w: this conversation is a read-only archive", ErrForbidden)
+	}
 	if err != nil || th.Visibility != threads.Private || takesPart(th, person.Subject) {
 		return keeps, nil
 	}
@@ -276,7 +288,7 @@ func (p *Platform) changesThread(who auth.Principal, th threads.Thread) error {
 // MayFollow holds the person a turn is posted by to what adding it after a
 // run takes: posting where the run lives (MayPost).
 func (p *Platform) MayFollow(person auth.Principal, prev runs.Run) error {
-	return p.MayPost(person, placeOfRun(prev))
+	return p.MayPost(person, p.RunPlace(person.Tenant, prev))
 }
 
 // mayChangeThread holds a caller to what changing a thread's visibility,
@@ -355,6 +367,7 @@ type tagLookup struct {
 	// chain offers.
 	tree    *projects.Tree
 	project string
+	person  string
 }
 
 // Skill reports whether a skill goes by name on the chain of the project
@@ -363,7 +376,7 @@ func (l tagLookup) Skill(name string) bool {
 	if l.tree == nil {
 		return false
 	}
-	_, _, ok := l.tree.Skill(l.project, name)
+	_, ok := l.p.librarySkill(l.tenant, l.project, l.person, name)
 	return ok
 }
 
@@ -415,11 +428,8 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 		case threads.Agent:
 			m.Refused = p.tagRefusal(tenant, project, m.Name)
 		case threads.SME:
-			if who, _ := tree.ExpertsFor(project, m.Name); len(who) == 0 && m.Name == "" {
-				m.Refused = "nobody here is listed as an expert"
-			} else if len(who) == 0 {
-				m.Refused = fmt.Sprintf("nobody here is listed as an expert on %s", m.Name)
-			}
+			m.Refused = "This routing tag is retired. Use Find Help to choose a project and an agent."
+
 		}
 	}
 	return out
@@ -739,7 +749,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project, person: humanSubject(person)})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -806,6 +816,12 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
+	if on != nil {
+		if direction, bound := p.bridgeDirection(on.client, on.ref.Channel); bound && !direction.AllowsOutcomes() {
+			in.PostOnly = true
+		}
+	}
+
 	prev, err := p.prevOf(who.Tenant, th, in.After)
 	if err != nil {
 		return Posted{}, err
@@ -820,7 +836,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		surfaceID, slack = on.ref.message(), nil
 	}
 	sees := p.Seer(person).Agent
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project, person: humanSubject(person)})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -989,6 +1005,9 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		}
 		th = cur
 	}
+	if th.Fork != nil && !p.SeesThread(poster, th.ID) {
+		return Posted{}, threads.ErrNotFound
+	}
 	def, unavailable := p.defaultOf(tenant, th, sees)
 	// A person posting in the console, as themselves, runs only the agents
 	// they tag: no default answers them. A client's surface keeps its
@@ -1151,7 +1170,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	if routed != "" {
 		meta[runs.MetaRouted] = routed
 	}
-	skills := p.skillsOfMessage(tenant, th, m, via)
+	skills := p.skillsOfMessage(tenant, th, m, via, actor.User)
 	pinSkills(meta, skills)
 	if agent == Auto && len(among) > 0 {
 		who, err := p.bestFit(ctx, tenant, th.Project, pickText(m.Text, skills), among, sees)
@@ -1171,6 +1190,9 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		agent = who.Agent
 		meta[runs.MetaPicked] = who.Picked
 	}
+	if existing, err := p.Runs.Get(tenant, runtime.RunID(tenant, tagID)); err == nil {
+		return existing, nil
+	}
 	cfg := p.Settings(tenant)
 	body := m.Text
 	if cfg.History == HistoryRecent {
@@ -1178,7 +1200,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: tagID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.contextIn(tenant, th.Project, th.Channel, agent, body), Attachments: m.Attachments, Actor: actor, Meta: meta,
+		Text: p.turnContext(tenant, th.Project, th.Channel, agent, actor.User, body, meta), Attachments: m.Attachments, Actor: actor, Meta: meta,
 	})
 }
 
@@ -1417,6 +1439,9 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 // ("role:<name>") only in a shared thread, since a private one is read by
 // its participants and a role is none.
 func (p *Platform) mayBeTold(tenant string, tree *projects.Tree, th threads.Thread, who string) bool {
+	if pr, ok := tree.Get(th.Project); ok && pr.PersonalOwner != "" {
+		return who == pr.PersonalOwner
+	}
 	if strings.HasPrefix(who, projects.RolePrefix) {
 		return th.Visibility != threads.Private
 	}
@@ -1529,6 +1554,9 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	mu := p.moves.of(who.Tenant, id)
 	mu.Lock()
 	defer mu.Unlock()
+	p.admission.Lock()
+	defer p.admission.Unlock()
+	snapshot := p.ProjectTree(who.Tenant)
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
@@ -1583,6 +1611,19 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 			return threads.Thread{}, ErrStaysInChannel
 		}
 	}
+	if th.Visibility == threads.Private && in.Visibility == threads.Shared {
+		preview, err := p.previewPlacement(ctx, who, th, project, channel)
+		if err != nil {
+			return threads.Thread{}, err
+		}
+		if preview.SummaryRequired {
+			return threads.Thread{}, fmt.Errorf("%w: private context requires a reviewed summary copy", threads.ErrInvalid)
+		}
+		if preview.Runs > 0 && (in.PlacementToken == "" || in.PlacementToken != preview.Token) {
+			return threads.Thread{}, fmt.Errorf("%w: review the current publication preview", threads.ErrVersion)
+		}
+	}
+
 	if err := p.checkDefault(ctx, who.Tenant, project, in.Default, seer.Agent); err != nil {
 		return threads.Thread{}, err
 	}
@@ -1604,19 +1645,21 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
-	return p.Threads.UpdateMoving(who.Tenant, id, th.Version, p.now(), func(t *threads.Thread) error {
-		t.Title, t.Visibility = strings.TrimSpace(in.Title), cmp.Or(in.Visibility, t.Visibility)
-		if !keepsDefault {
-			t.Default = in.Default
-		}
-		if t.Project != project && t.Default != "" && t.Default != Auto && p.tagRefusal(who.Tenant, project, t.Default) != "" {
-			// A default kept, hidden from the caller, that cannot answer
-			// where it goes is cleared, naming nothing.
-			t.Default = ""
-		}
-		t.Project, t.Channel = project, channel
-		t.Agents, t.Mode = routed, mode
-		return nil
+	return p.guardedThreadWrite(who.Tenant, snapshot, project, channel, func() (threads.Thread, error) {
+		return p.Threads.UpdateMovingAs(who.Tenant, id, th.Version, who.Subject, p.now(), func(t *threads.Thread) error {
+			t.Title, t.Visibility = strings.TrimSpace(in.Title), cmp.Or(in.Visibility, t.Visibility)
+			if !keepsDefault {
+				t.Default = in.Default
+			}
+			if t.Project != project && t.Default != "" && t.Default != Auto && p.tagRefusal(who.Tenant, project, t.Default) != "" {
+				// A default kept, hidden from the caller, that cannot answer
+				// where it goes is cleared, naming nothing.
+				t.Default = ""
+			}
+			t.Project, t.Channel = project, channel
+			t.Agents, t.Mode = routed, mode
+			return nil
+		})
 	})
 }
 
@@ -1628,6 +1671,11 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 // directory. People are named by handle, as a thread shows them, and kept by
 // subject.
 func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id string, in ParticipantsUpdate) (threads.Thread, error) {
+	mu := p.moves.of(who.Tenant, id)
+	mu.Lock()
+	defer mu.Unlock()
+	p.admission.Lock()
+	defer p.admission.Unlock()
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
@@ -1663,6 +1711,12 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, a.Name)
 			}
 			a.Name = subject
+			if subject != who.Subject && !takesPart(th, subject) && th.Visibility == threads.Private && p.threadNeedsSummary(ctx, who.Tenant, th.ID, th.Project) {
+				return threads.Thread{}, fmt.Errorf("%w: private sources require a reviewed summary before adding people", threads.ErrInvalid)
+			}
+			if pr, ok := p.Projects.Tree(who.Tenant).Get(th.Project); ok && pr.PersonalOwner != "" && pr.PersonalOwner != subject {
+				return threads.Thread{}, fmt.Errorf("%w: publish a conversation to a shared project before adding people", threads.ErrInvalid)
+			}
 		}
 		add[i] = a
 	}
@@ -1705,6 +1759,7 @@ var (
 // ThreadShare shares a conversation: the project and channel it is shared
 // in, and people to add to it by handle.
 type ThreadShare struct {
+	PlacementToken string `json:"placement_token,omitempty"`
 	// Project is where it is shared: "" keeps the thread's own, "~" is the
 	// workspace.
 	Project string `json:"project,omitempty"`
@@ -1776,6 +1831,9 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 	mu := p.moves.of(who.Tenant, id)
 	mu.Lock()
 	defer mu.Unlock()
+	p.admission.Lock()
+	defer p.admission.Unlock()
+	snapshot := p.ProjectTree(who.Tenant)
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return Shared{}, err
@@ -1824,6 +1882,19 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 		}
 		add = append(add, threads.Participant{Kind: threads.Person, Name: subject})
 	}
+	if moves || th.Visibility == threads.Private {
+		preview, err := p.previewPlacement(ctx, who, th, project, channel)
+		if err != nil {
+			return Shared{}, err
+		}
+		if preview.SummaryRequired {
+			return Shared{}, fmt.Errorf("%w: private context requires a reviewed summary copy before publication", threads.ErrInvalid)
+		}
+		if preview.Runs > 0 && (in.PlacementToken == "" || in.PlacementToken != preview.Token) {
+			return Shared{}, fmt.Errorf("%w: review and confirm the current publication preview", threads.ErrVersion)
+		}
+	}
+
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return Shared{}, err
 	}
@@ -1843,15 +1914,25 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 	}
 	shown := p.Seer(who).participantShownNow(th)
 	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
+	var attempt *AuditAttempt
 	if moves {
-		if _, err := p.Runs.Conversation(who.Tenant, id); err == nil {
-			if project != th.Project {
-				return Shared{}, ErrStaysInProject
-			}
-			return Shared{}, ErrStaysInChannel
+		change := audit.Change{Route: "POST /api/threads/{id}/share", Rule: "runs:write; participating owner; destination membership", Action: "publish", Resource: "conversation", ID: th.ID, Scope: "project", Project: th.Project, Thread: th.ID, Before: map[string]string{"project": th.Project, "channel": th.Channel, "visibility": string(th.Visibility)}, After: map[string]string{"project": project, "channel": channel, "visibility": "shared"}}
+		if source, ok := tree.Get(th.Project); ok && source.PersonalOwner != "" {
+			change.Scope, change.Subject = "personal", source.PersonalOwner
+		}
+		attempt, err = p.BeginAudit(who, change)
+		if err != nil {
+			return Shared{}, err
 		}
 	}
-	stored, err := p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, agents, mode, add, counted, who.Subject, p.now())
+	stored, err := p.guardedThreadWrite(who.Tenant, snapshot, project, channel, func() (threads.Thread, error) {
+		return p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, agents, mode, add, counted, who.Subject, p.now())
+	})
+	if attempt != nil {
+		if auditErr := attempt.Finish(err); auditErr != nil {
+			p.log.Error("platform: publication audit completion pending", "audit", attempt.ID(), "error", auditErr)
+		}
+	}
 	if err != nil {
 		return Shared{}, err
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 )
 
@@ -43,11 +44,9 @@ func (p *Platform) turnLayers(tenant string, tree *projects.Tree, chain []projec
 			out = append(out, ContextLayer{Kind: "channel", From: project, Text: text, Budget: projects.MaxPurpose, Sent: true, Unit: "characters", Used: utf8.RuneCountInString(c.Purpose)})
 		}
 	}
-	if text := projects.ExpertsLine(tree.ExpertTopics(project)); text != "" {
-		out = append(out, ContextLayer{Kind: "experts", From: project, Text: text, Sent: true, Unit: "items", Budget: projects.MaxExpertTopics, Used: len(tree.ExpertTopics(project))})
-	}
+
 	out = append(out, p.noteLayers(tenant, chain, workspace)...)
-	if text := p.Memory.Prompt(tenant, agent); text != "" {
+	if text := p.Memory.PromptAt(tenant, agent, "What you remember from earlier conversations:", p.now()); text != "" {
 		out = append(out, ContextLayer{Kind: "agent_notes", From: agent, Text: text, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, agent), Sent: true, Unit: "characters"})
 	}
 	return out
@@ -88,30 +87,42 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		system.PreviewOmitted = system.Used - 32000
 	}
 	out.Layers = append(out.Layers, system)
-	allVisible := true
-	for _, pr := range chain {
-		allVisible = allVisible && seer.Project(pr.Name)
-	}
 	for _, l := range p.turnLayers(who.Tenant, tree, chain, project, channel, agent) {
 		if l.Kind == "agent_notes" {
 			if !seer.Agent(l.From) {
 				continue
 			}
-		} else if !seer.Project(l.From) || l.Kind == "experts" && !allVisible {
+		} else if !seer.Project(l.From) {
 			continue
 		}
 		out.Layers = append(out.Layers, l)
 	}
+	out.Layers = append(out.Layers, p.personalLayers(who.Tenant, project, who.Subject)...)
+	decision := p.ActionDecision(who.Tenant, project, agent, humanSubject(who), operations.ReadContext)
+	if decision == operations.Ask || decision == operations.Never {
+		for i := range out.Layers {
+			l := &out.Layers[i]
+			if l.Kind == "agent_notes" || l.Kind == "project_notes" || l.Kind == "ancestor_notes" || l.Kind == "personal_notes" {
+				l.Sent = false
+				l.Omitted += l.Used
+				l.Used = 0
+				l.Text = ""
+			}
+		}
+	}
+
 	if seer.Knowledge() {
 		agentNames := []string{}
 		for _, src := range rev.Spec.Sources {
-			agentNames = append(agentNames, src.Name)
+			if p.SourceVisible(who, src.Name) {
+				agentNames = append(agentNames, src.Name)
+			}
 		}
 		out.Layers = append(out.Layers, nameLayer("agent_knowledge", agent, agentNames, 0))
 		names := []string{}
 		// Tree.Knowledge is the same bounded selection sourcesFor pins.
-		for _, src := range tree.Knowledge(project) {
-			if seer.Project(src.From) && !slices.Contains(agentNames, src.Name) {
+		for _, src := range p.knowledgeAtPlace(who.Tenant, project, channel) {
+			if seer.Project(src.From) && p.SourceVisible(who, src.Name) && !slices.Contains(agentNames, src.Name) {
 				names = append(names, src.Name)
 			}
 		}
@@ -123,7 +134,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 				continue
 			}
 			for _, name := range pr.Knowledge {
-				if !slices.Contains(seen, name) {
+				if p.SourceVisible(who, name) && !slices.Contains(seen, name) {
 					layer.Omitted++
 					seen = append(seen, name)
 				}
@@ -131,8 +142,11 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		}
 		out.Layers = append(out.Layers, layer)
 	}
+	if defaults := p.defaultSkillPreview(ctx, who, project, agent); defaults != nil {
+		out.Layers = append(out.Layers, *defaults)
+	}
 	names := []string{}
-	for _, s := range tree.Skills(project) {
+	for _, s := range p.AvailableSkills(who.Tenant, project, humanSubject(who)) {
 		if seer.Project(s.From) {
 			names = append(names, s.Name)
 		}
@@ -158,7 +172,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 func (p *Platform) noteCharacters(tenant, owner string) int {
 	used := 0
 	for _, n := range p.Memory.List(tenant, owner) {
-		if n.Status == memory.Approved {
+		if n.Status == memory.Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(p.now())) {
 			used += utf8.RuneCountInString(n.Text)
 		}
 	}

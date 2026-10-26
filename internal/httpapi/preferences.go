@@ -40,12 +40,21 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 		// Muted replaces the projects whose announcements stay out of the
 		// person's own inbox when present. They stay in each project's
 		// inbox, and the workspace is never muted.
-		Muted *[]string `json:"muted"`
+		Muted    *[]string       `json:"muted"`
+		Personal *prefs.Personal `json:"personal"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
 	// Everything is checked before anything is saved.
+	if body.Personal != nil {
+		clean, err := prefs.CleanPersonal(*body.Personal)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		body.Personal = &clean
+	}
 	var pinned, muted []string
 	if body.Pinned != nil {
 		var err error
@@ -67,9 +76,13 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 			}
 		}
 	}
+	var personal []prefs.Personal
+	if body.Personal != nil {
+		personal = append(personal, *body.Personal)
+	}
 	next, err := s.P.Prefs.Set(who.Tenant, who.Subject, prefs.Preferences{
 		DisplayName: body.DisplayName, Theme: body.Theme, Accent: body.Accent,
-	})
+	}, personal...)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -86,6 +99,7 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 			return
 		}
 	}
+
 	if body.Onboarded {
 		if next, err = s.P.Prefs.MarkOnboarded(who.Tenant, who.Subject, time.Now()); err != nil {
 			s.problem(w, err)

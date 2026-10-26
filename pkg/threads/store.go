@@ -24,8 +24,9 @@ const namespace = "threads"
 // Key prefixes within the namespace: "t:<thread>" a thread's record and
 // "m:<thread>:<seq>" its messages. A thread's id holds no ":".
 const (
-	keyThread  = "t:"
-	keyMessage = "m:"
+	keyThread    = "t:"
+	keyMessage   = "m:"
+	keyPlacement = "p:"
 )
 
 func threadKey(id string) string { return keyThread + id }
@@ -111,6 +112,7 @@ func Open(st state.Store) (*Store, error) {
 	s := NewStore()
 	s.kept = state.NewTable[json.RawMessage](st, namespace)
 	var msgs []loaded
+	var moves []loadedPlacement
 	err := s.kept.Load(func(tenantName, key string, raw json.RawMessage) error {
 		switch {
 		case strings.HasPrefix(key, keyThread):
@@ -129,6 +131,15 @@ func Open(st state.Store) (*Store, error) {
 				return fmt.Errorf("%w: %q and %q are one surface's thread", ErrInvalid, tn.surfaces[rec.Surface.key()], rec.ID)
 			}
 			tn.hold(&thread{rec: rec, surfaces: map[string]int{}})
+		case strings.HasPrefix(key, keyPlacement):
+			var change PlacementChange
+			if err := json.Unmarshal(raw, &change); err != nil {
+				return err
+			}
+			if key != placementKey(change.Thread, change.Version) || !ValidID(change.Thread) || change.Version < 1 || change.Version > MaxMoves {
+				return fmt.Errorf("%w: invalid placement history", ErrInvalid)
+			}
+			moves = append(moves, loadedPlacement{tenantName, change})
 		case strings.HasPrefix(key, keyMessage):
 			var m Message
 			if err := json.Unmarshal(raw, &m); err != nil {
@@ -151,6 +162,38 @@ func Open(st state.Store) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("threads: load: %w", err)
 	}
+	histories := map[string]map[int]PlacementChange{}
+	for _, move := range moves {
+		th := s.of(move.tenant).threads[move.change.Thread]
+		if th == nil || move.change.Version > th.rec.Moves {
+			return nil, fmt.Errorf("%w: orphan placement history", ErrInvalid)
+		}
+		key := move.tenant + "\x00" + move.change.Thread
+		if histories[key] == nil {
+			histories[key] = map[int]PlacementChange{}
+		}
+		histories[key][move.change.Version] = move.change
+	}
+	for tenantName, tn := range s.tenants {
+		for id, th := range tn.threads {
+			history := histories[tenantName+"\x00"+id]
+			if th.rec.Moves < 0 || th.rec.Moves > MaxMoves || len(history) != th.rec.Moves {
+				return nil, fmt.Errorf("%w: incomplete placement history", ErrInvalid)
+			}
+			var last PlacementChange
+			for n := 1; n <= th.rec.Moves; n++ {
+				next, ok := history[n]
+				if !ok || n > 1 && (next.FromProject != last.Project || next.FromChannel != last.Channel) {
+					return nil, fmt.Errorf("%w: broken placement chain", ErrInvalid)
+				}
+				last = next
+			}
+			if th.rec.Moves > 0 && (last.Project != th.rec.Project || last.Channel != th.rec.Channel) {
+				return nil, fmt.Errorf("%w: placement does not match history", ErrInvalid)
+			}
+		}
+	}
+
 	// A message's key sorts after its thread's others, so each thread's
 	// messages come in order; a gap is a lost message, and is refused.
 	for _, l := range msgs {
@@ -350,6 +393,9 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 // Start writes a new thread and its first message in one write. The person
 // who posts the message starts the thread.
 func (s *Store) Start(tenantName string, t Thread, m Message, at time.Time) (Thread, Message, error) {
+	if t.ReadOnly {
+		return Thread{}, Message{}, fmt.Errorf("%w: an archive accepts no messages", ErrInvalid)
+	}
 	if t.CreatedBy == "" {
 		t.CreatedBy = m.By
 	}
@@ -414,6 +460,9 @@ func (s *Store) Post(tenantName, id string, m Message, at time.Time) (Message, b
 	th, err := s.writable(tenantName, id)
 	if err != nil {
 		return Message{}, false, err
+	}
+	if th.rec.ReadOnly {
+		return Message{}, false, fmt.Errorf("%w: an archive accepts no messages", ErrInvalid)
 	}
 	if i, ok := th.surfaces[m.SurfaceID]; ok && m.SurfaceID != "" {
 		return th.msgs[i].clone(), false, nil
@@ -521,6 +570,14 @@ func (s *Store) Join(tenantName, id string, ps []Participant, at time.Time) (Thr
 // rewrite writes a thread's new record. The caller holds the lock.
 func (s *Store) rewrite(tenantName string, th *thread, rec Thread, at time.Time) (Thread, error) {
 	b := s.batch()
+	if rec.Project != th.rec.Project || rec.Channel != th.rec.Channel {
+		if th.rec.Moves >= MaxMoves {
+			return Thread{}, fmt.Errorf("%w: conversation placement history is full", ErrLimit)
+		}
+		rec.Moves = th.rec.Moves + 1
+		b.put(tenantName, placementKey(rec.ID, rec.Moves), PlacementChange{By: rec.movedBy, Thread: rec.ID, Version: rec.Moves, FromProject: th.rec.Project, FromChannel: th.rec.Channel, Project: rec.Project, Channel: rec.Channel, At: at})
+	}
+	rec.movedBy = ""
 	b.put(tenantName, threadKey(rec.ID), rec)
 	if err := b.commit(); err != nil {
 		return Thread{}, err
@@ -564,7 +621,11 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 	moves := next.Project != cur.Project || next.Channel != cur.Channel
 	tn := s.of(tenantName)
 	switch {
-	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement:
+	case next.ReadOnly != cur.ReadOnly:
+		return Thread{}, fmt.Errorf("%w: archive status is immutable", ErrInvalid)
+	case next.Moves != cur.Moves:
+		return Thread{}, fmt.Errorf("%w: placement history is server managed", ErrInvalid)
+	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 	case moves && (!moving || cur.Visibility != Private || next.Visibility != Private || cur.Surface != nil || cur.Announcement != ""):
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started; a private conversation moves, and Share moves one as it shares it", ErrInvalid)
@@ -727,6 +788,7 @@ func (s *Store) Share(tenantName, id string, version int, project, channel, def 
 		return cur.clone(), nil
 	}
 	next.Version, next.UpdatedAt = cur.Version+1, at
+	next.movedBy = by
 	stored, err := s.rewrite(tenantName, th, next, at)
 	if err != nil {
 		return Thread{}, err

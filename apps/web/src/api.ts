@@ -2,6 +2,18 @@ import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
   AnalyticsGroup,
   AnalyticsBucket,
+  Note as GeneratedNote,
+  NoteInput,
+  PersonalPreferences,
+  AuditRecord,
+  NativeNotification,
+  LibrarySkill,
+  LibraryScope,
+  LibrarySkillDefinition,
+  AgentSkillDefaults,
+  AgentSkillDefaultsUpdate,
+  KnowledgeLifecycle,
+  KnowledgeSourceConfig,
   ProjectContext,
   AgentHome,
   Person,
@@ -11,6 +23,8 @@ import type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectTemplate,
+  ProjectRollup,
   ProjectKnowledge,
   ProjectLimitInput,
   ProjectMembers,
@@ -42,6 +56,8 @@ export type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectTemplate,
+  ProjectRollup,
   ProjectKind,
   ProjectKindSpec,
   ProjectKnowledge,
@@ -78,6 +94,7 @@ export interface Principal {
 }
 
 export interface Me {
+ personal_project?: string;
   principal: Principal;
   permissions: string[];
   /** The caller is an admin in a workspace nobody has set up yet. */
@@ -290,7 +307,24 @@ export interface Alert {
   acked_at?: string;
 }
 
+import type {KnowledgeResource, SourceLinkRule as GeneratedSourceLinkRule, SourceLinkResource, SourceLinkMatch,ListKnowledgeResourcesResponse,SourceLinkSuggestion as GeneratedSourceLinkSuggestion,ListSourceLinkSuggestionsResponse,DecideSourceLinkSuggestionBody,KnowledgeAttachment,ListKnowledgeAttachmentsResponse} from "../../../packages/client/src/generated/types.ts";
+export type SourceResource=KnowledgeResource;
+export type SourceConfiguration=KnowledgeSourceConfig;
+export type SourceLinkRule=GeneratedSourceLinkRule;
+export type SourceRuleResource=SourceLinkResource;
+export type SourceRuleMatch=SourceLinkMatch;
+
+export type SourceLinkSuggestion=GeneratedSourceLinkSuggestion;
+
+export type SourceAttachment=KnowledgeAttachment;
+
+import type { InstallationCapabilities,ClientCapabilityPolicy,PutClientCapabilitiesBodyPart2,SlackBinding,ListClientBindingsResponse } from "../../../packages/client/src/generated/types.ts";
+export type BridgeDirection=NonNullable<SlackBinding["direction"]>;
+export type ClientCapabilities=InstallationCapabilities;
+export type ClientCapabilityInput=ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2;
+
 export interface Source {
+  lifecycle?: KnowledgeLifecycle;
   name: string;
   description?: string;
   documents: number;
@@ -313,6 +347,7 @@ export interface Doc {
 }
 
 export interface Hit {
+  mode?: "indexed" | "live";
   source: string;
   document_id: string;
   title: string;
@@ -486,17 +521,7 @@ export interface PolicyChange {
   after?: Policy;
 }
 
-export interface Note {
-  id: string;
-  text: string;
-  source: "person" | "consolidated";
-  /** Pending notes are proposals: not used until a person approves them. */
-  status: "approved" | "pending";
-  by?: string;
-  /** What the person who wrote it is called. Shown in place of `by`, the subject. */
-  by_name?: string;
-  at: string;
-}
+export type Note = GeneratedNote;
 
 /**
  * A tool that acts as you: an MCP provider reached with each person's own
@@ -514,6 +539,7 @@ export interface ToolCredential {
   kind?: "reference" | "value";
   ref?: string;
   updated_at?: string;
+ last_used_at?: string;
 }
 
 /** The tools that act as you, and what this workspace lets people give for them. */
@@ -529,6 +555,7 @@ export interface ToolCredentials {
 export type ToolCredentialInput = { ref: string } | { value: string };
 
 export interface Preferences {
+  personal?: PersonalPreferences;
   display_name: string;
   theme: "system" | "light" | "dark";
   accent: string;
@@ -631,7 +658,44 @@ export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
   return edit;
 }
 
+export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
+import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
+
 export const api = {
+  projectRollup: (name: string) => call<ProjectRollup>("GET", `${projectAt(name)}/rollup`),
+
+  agentControl: (agent = "") => call<AgentControl>("GET", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls"),
+  saveAgentControl: (agent: string, input: AgentControlInput) => call<AgentControl>("PUT", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls", input),
+  actionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name = "") => call<ActionPolicy>("GET", operationPolicyPath(scope, name)),
+  saveActionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name: string, input: ActionPolicyInput) => call<ActionPolicy>("PUT", operationPolicyPath(scope, name), input),
+  assignment: (id:string) => call<Assignment>("GET",`/api/assignments/${encodeURIComponent(id)}`),
+  agentRoster:(names:string[]) => call<{controls:Record<string,AgentControl>;window_days:number}>("GET",`/api/agent-roster?${new URLSearchParams({names:names.join(",")})}`).then(r=>r.controls),
+  assignments: (agent?: string) => call<Assignment[]>("GET", `/api/assignments?${new URLSearchParams({limit:"200", ...(agent ? {agent} : {})})}`),
+  saveAssignment: (input: AssignmentInput) => call<Assignment>(input.version === 0 ? "POST" : "PUT", input.version === 0 ? "/api/assignments" : `/api/assignments/${encodeURIComponent(input.id)}`, input),
+  runAssignment: (id: string) => call<Run>("POST", `/api/assignments/${encodeURIComponent(id)}/run`),
+  handoff: (id:string) => call<HandoffContract>("GET",`/api/handoffs/${encodeURIComponent(id)}`),
+  saveHandoff: (id:string,input:import("../../../packages/client/src/generated/types.ts").HandoffUpdate) => call<HandoffContract>("PUT",`/api/handoffs/${encodeURIComponent(id)}`,input),
+  handoffs: () => call<HandoffContract[]>("GET", "/api/handoffs?limit=200"),
+  agentNetwork: () => call<AgentNetwork>("GET", "/api/agent-network"),
+ editPersonalMemory:(id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/me/memory/${encodeURIComponent(id)}`,input),
+ editProjectMemory:(project:string,id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/projects/${projectPath(project)}/memory/${encodeURIComponent(id)}`,input),
+ editAgentMemory:(agent:string,id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`,input),
+  notifications: () => call<{notifications:NativeNotification[]}>("GET","/api/me/notifications").then(r=>r.notifications??[]),
+  acknowledgeNotification: (id:string) => call<void>("POST",`/api/me/notifications/${encodeURIComponent(id)}/ack`),
+  agentSkillDefaults: (agent:string) => call<AgentSkillDefaults>("GET",`/api/agents/${encodeURIComponent(agent)}/skills`),
+  setAgentSkillDefaults: (agent:string,input:AgentSkillDefaultsUpdate) => call<AgentSkillDefaults>("PUT",`/api/agents/${encodeURIComponent(agent)}/skills`,input),
+  librarySkills: (scope: LibraryScope) => call<{skills:LibrarySkill[]}>("GET", `/api/library/skills?${new URLSearchParams({scope:scope.kind,...(scope.project?{project:scope.project}:{})})}`).then(r=>r.skills),
+  librarySkill: (id:string) => call<{revisions:LibrarySkill[]}>("GET", `/api/library/skills/${encodeURIComponent(id)}`).then(r=>r.revisions),
+  draftSkill: (scope:LibraryScope, definition:LibrarySkillDefinition, version:number) => call<LibrarySkill>("POST", "/api/library/skills",{scope,definition,version}),
+  testSkill: (id:string, version:number, agent:string, project:string, text:string) => call<Run>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/test`,{agent,project,text}),
+  publishSkill: (id:string,version:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/publish`),
+  promoteSkill: (id:string,version:number,scope:LibraryScope,expected:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/promote`,{scope,version:expected}),
+  promoteMemory: (scope:"personal"|"workspace"|"project"|"agent", owner:string, id:string, destination:string) => call<GeneratedNote>("POST","/api/memory/promote",{scope,owner,id,destination}),
+  personalMemory: () => call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then(r => r.notes),
+  rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
+  approvePersonal: (ids:string[]) => call<{approved:number}>("POST","/api/me/memory/approve",{ids}),
+  forgetPersonal: (id: string) => call<void>("DELETE", `/api/me/memory/${encodeURIComponent(id)}`),
+  audit: (filters:Record<string,string>={}) => call<{ records: AuditRecord[] }>("GET", `/api/audit?${new URLSearchParams(filters)}`).then(r => r.records),
  readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
@@ -694,8 +758,8 @@ export const api = {
 
   memory: (agent: string) =>
     call<{ notes: Note[] }>("GET", `/api/agents/${encodeURIComponent(agent)}/memory`).then((r) => r.notes),
-  addMemory: (agent: string, text: string) =>
-    call<Note>("POST", `/api/agents/${encodeURIComponent(agent)}/memory`, { text }),
+  addMemory: (agent: string, text: string,details:Partial<NoteInput>={}) =>
+    call<Note>("POST", `/api/agents/${encodeURIComponent(agent)}/memory`, { ...details,text }),
   approveMemory: (agent: string, ids: string[]) =>
     call<{ approved: number }>("POST", `/api/agents/${encodeURIComponent(agent)}/memory/approve`, { ids }),
   pendingMemory: () => call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
@@ -743,6 +807,16 @@ export const api = {
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
   /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
+  discover: (q: string, options: { limit?: number; kinds?: string[]; project?: string } = {}) => {
+    const query = new URLSearchParams({ q, limit: String(options.limit ?? 20) });
+    if (options.kinds?.length) query.set("kinds", options.kinds.join(","));
+    if (options.project !== undefined) query.set("project", options.project === "" ? "~" : options.project);
+    return call<{ items: DiscoveryItem[] }>("GET", `/api/discovery?${query}`).then((result) => result.items);
+  },
+  projectTemplates: () => call<{ templates: ProjectTemplate[] }>("GET", "/api/project-templates").then((result) => result.templates),
+  forkProject: (source: string, input: { name: string; parent?: string; title?: string; memory?: string[]; sources?: string[]; archive_conversations?: boolean }) => call<ProjectForkOperation>("POST", `/api/projects/${projectPath(source)}/fork`, input),
+  projectFork: (name: string) => call<ProjectForkOperation>("GET", `/api/project-forks/${encodeURIComponent(name)}`),
+  findProjects: (q: string) => call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${new URLSearchParams({ q, limit: "20" })}`).then((page) => page.projects),
   projects: async () => {
     // Read a page at a time, at most the 500 a workspace holds.
     const all: ProjectView[] = [];
@@ -802,8 +876,8 @@ export const api = {
     call<void>("DELETE", `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then((r) => r.notes),
-  addProjectMemory: (project: string, text: string) =>
-    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { text }),
+  addProjectMemory: (project: string, text: string,details:Partial<NoteInput>={}) =>
+    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { ...details,text }),
   approveProjectMemory: (project: string, ids: string[]) =>
     call<{ approved: number }>("POST", `/api/projects/${projectPath(project)}/memory/approve`, { ids }),
   removeProjectMemory: (project: string, id: string) =>
@@ -812,7 +886,7 @@ export const api = {
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[] }) =>
+  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[]; personal?: PersonalPreferences }) =>
     call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.
@@ -869,7 +943,28 @@ export const api = {
   deleteAlertRule: (name: string) => call<void>("DELETE", `/api/alert-rules/${encodeURIComponent(name)}`),
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
-  createSource: (name: string, description: string) => call<Source>("POST", "/api/knowledge", { name, description }),
+  createSource: (name: string, description: string, configuration?:SourceConfiguration) => call<Source>("POST", "/api/knowledge", { name, description,...(configuration?{configuration}:{}) }),
+  sourceAttachments:(name:string)=>call<ListKnowledgeAttachmentsResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/attachments`).then(result=>result.attachments),
+  detachSource:(name:string,target:SourceAttachment)=>call<void>("DELETE",`/api/knowledge/${encodeURIComponent(name)}/attachment?${new URLSearchParams({project:target.project||"~",...(target.channel?{channel:target.channel}:{})})}`),
+  attachSource:(name:string,target:{project:string;channel?:string})=>call<SourceAttachment>("PUT",`/api/knowledge/${encodeURIComponent(name)}/attachment`,target),
+  sourceResources: (name:string) => call<ListKnowledgeResourcesResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/resources`),
+  snapshotSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/snapshot`),
+  replaceSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/replace`),
+  sourceSyncSettings: (name:string,input:{every_seconds:number;stop_after_seconds:number}) => call<Source>("PUT",`/api/knowledge/${encodeURIComponent(name)}/sync-settings`,input),
+  sourceLinkRules: () => call<SourceLinkRule[]>("GET","/api/source-link-rules"),
+  saveSourceLinkRule: (rule:SourceLinkRule,creating=false) => { const {id,copied_from,...input}=rule; return call<SourceLinkRule>(creating?"POST":"PUT",creating?"/api/source-link-rules":`/api/source-link-rules/${encodeURIComponent(id)}`,input); },
+  deleteSourceLinkRule: (id:string) => call<void>("DELETE",`/api/source-link-rules/${encodeURIComponent(id)}`),
+  previewSourceLinkRules: (resource:SourceRuleResource) => call<{matches:SourceRuleMatch[]}>("POST","/api/source-link-rules/preview",resource),
+  sourceLinkSuggestions:(client?:string,knowledge?:string,state:SourceLinkSuggestion["state"]="suggested")=>call<ListSourceLinkSuggestionsResponse>("GET",`/api/source-link-suggestions?${new URLSearchParams({state,limit:"200",...(client?{client}:{}),...(knowledge?{knowledge}:{})})}`).then(result=>result.suggestions),
+  decideSourceLink:(id:string,action:DecideSourceLinkSuggestionBody["action"],version:number)=>call<SourceLinkSuggestion>("POST",`/api/source-link-suggestions/${encodeURIComponent(id)}/decision`,{action,version}),
+  clientCapabilities:(id:string)=>call<ClientCapabilities>("GET",`/api/clients/${encodeURIComponent(id)}/capabilities`),
+  saveClientCapabilities:(id:string,input:ClientCapabilityInput)=>call<ClientCapabilities>("PUT",`/api/clients/${encodeURIComponent(id)}/capabilities`,input),
+  setSlackDirection:(project:string,channel:Channel,direction:BridgeDirection)=>call<Channel>("PUT",`${projectAt(project)}/channels/${encodeURIComponent(channel.name)}`,{version:channel.version,title:channel.title??"",purpose:channel.purpose??"",default:channel.default??"",slack:{...channel.slack,direction}}),
+  clientBindings:(id:string)=>call<ListClientBindingsResponse>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(result=>result.bindings),
+  sourceDependencies: (name: string) => call<{ agents: string[]; projects: string[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
+  configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
+  connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
+  syncSource: (name: string) => call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),
   deleteSource: (name: string) => call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}`),
   documents: (name: string) =>
     call<{ documents: Doc[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/documents`).then((r) => r.documents),
@@ -883,6 +978,7 @@ export const api = {
     call<{ name: string }>("POST", `/api/knowledge/${encodeURIComponent(name)}/variants`, { name: variant }),
   deleteVariant: (name: string, variant: string) =>
     call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}/variants/${encodeURIComponent(variant)}`),
+  searchKnowledgeDetailed: (q: string, source: string, variant="") => call<{hits:Hit[];warnings?:{source:string;cause:string}[]}>("GET",`/api/knowledge/search?${new URLSearchParams(variant?{q,source,variant}:{q,source})}`),
   searchKnowledge: (q: string, source: string, variant = "") =>
     call<{ hits: Hit[] }>(
       "GET",
@@ -1045,6 +1141,11 @@ export interface Thread {
   /** The agents an untagged message goes to, from the + menu, and how: the best fit of them, or every one. */
   agents?: string[];
   mode?: "best_fit" | "all";
+  read_only?: boolean;
+  fork?: {
+    source_thread: string; through: string; by: string; at: string; sources?: string[];
+    context: { kind: "person" | "agent" | "system"; by: string; name?: string; text: string; at: string }[];
+  };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -1148,7 +1249,7 @@ export interface Channel {
   purpose?: string;
   default?: string;
   /** The Slack channel it is bound to: a Slack thread there is a shared thread here. */
-  slack?: { client: string; channel: string };
+  slack?: { client: string; channel: string; direction?:BridgeDirection };
   archived?: boolean;
   managed?: string;
   version: number;
@@ -1194,6 +1295,9 @@ const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
 
 /** Channels, experts and shared threads: where people and agents work together. */
 export const coworking = {
+  fork: (id: string, input: { through: string; title?: string; agents?: string[]; mode?: "best_fit" | "all"; sources?: string[] }) => call<Thread>("POST", `${threadPath(id)}/fork`, input),
+  bringBack: (id: string, input: { run: string; text?: string }) => call<ThreadMessage>("POST", `${threadPath(id)}/bring-back`, input),
+  participants: (id: string, input: { version: number; add?: { kind: "person" | "agent"; name: string }[]; remove?: string[] }) => call<Thread>("PUT", `${threadPath(id)}/participants`, input),
   channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (project: string, c: { name: string; title?: string; purpose?: string; default?: string }) =>
     call<Channel>("POST", `${projectAt(project)}/channels`, c),
@@ -1275,3 +1379,15 @@ export const coworking = {
 };
 
 export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };
+
+export interface ProjectForkOperation {
+ id: string; source: string; destination: string; state: "preparing" | "failed" | "ready"; error?: string; projects: number; agents: number; memory: number; archives: number;
+}
+
+export interface DiscoveryItem { kind: "project" | "agent" | "conversation"; id: string; title: string; project?: string; channel?: string; hue?: number }
+
+function operationPolicyPath(scope: "workspace" | "agent" | "project" | "personal", name: string) {
+  if (scope === "personal") return "/api/me/action-policy";
+  if (scope === "workspace") return "/api/action-policy";
+  return `/api/${scope === "agent" ? "agents" : "projects"}/${encodeURIComponent(name || "~")}/action-policy`;
+}

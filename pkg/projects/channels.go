@@ -65,17 +65,42 @@ type Channel struct {
 
 // SlackBinding is a Slack channel a channel is bound to: the Slack client's
 // id here, and the Slack channel's id there.
+type BridgeDirection string
+
+const (
+	BridgeTwoWay   BridgeDirection = "two_way"
+	BridgeInbound  BridgeDirection = "inbound"
+	BridgeOutcomes BridgeDirection = "outcomes"
+)
+
+func (d BridgeDirection) Effective() BridgeDirection {
+	if d == "" {
+		return BridgeTwoWay
+	}
+	return d
+}
+func (d BridgeDirection) AllowsInbound() bool {
+	return d.Effective() == BridgeTwoWay || d == BridgeInbound
+}
+func (d BridgeDirection) AllowsOutcomes() bool {
+	return d.Effective() == BridgeTwoWay || d == BridgeOutcomes
+}
+
+// An omitted direction preserves an existing explicit binding's two-way
+// behavior. A missing binding never grants either direction.
 type SlackBinding struct {
-	Client  string `json:"client"`
-	Channel string `json:"channel"`
+	Direction BridgeDirection `json:"direction,omitempty"`
+	Client    string          `json:"client"`
+	Channel   string          `json:"channel"`
 }
 
 // Binding is one Slack channel a client is bound to, and the channel it is
 // bound to here.
 type Binding struct {
-	SlackChannel string `json:"slack_channel"`
-	Project      string `json:"project"`
-	Channel      string `json:"channel"`
+	Direction    BridgeDirection `json:"direction"`
+	SlackChannel string          `json:"slack_channel"`
+	Project      string          `json:"project"`
+	Channel      string          `json:"channel"`
 	// BoundAt is when the Slack channel was bound to this channel. What was
 	// announced before then never reached it, and a catch-up does not post
 	// it now.
@@ -143,6 +168,8 @@ func (c Channel) validate() error {
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
 	case c.Name == General && c.Archived:
 		return fmt.Errorf("%w: #%s cannot be archived", ErrInvalid, General)
+	case c.Slack != nil && c.Slack.Direction.Effective() != BridgeTwoWay && c.Slack.Direction != BridgeInbound && c.Slack.Direction != BridgeOutcomes:
+		return fmt.Errorf("%w: a Slack direction is two_way, inbound or outcomes", ErrInvalid)
 	case c.Slack != nil && !validClient.MatchString(c.Slack.Client):
 		return fmt.Errorf("%w: a Slack binding names a client by its id", ErrInvalid)
 	case c.Slack != nil && !validSlackChannel.MatchString(c.Slack.Channel):
@@ -161,8 +188,11 @@ func sameChannel(a, b Channel) bool {
 		sameBinding(a.Slack, b.Slack)
 }
 
+func (a SlackBinding) Equal(b SlackBinding) bool {
+	return a.Client == b.Client && a.Channel == b.Channel && a.Direction.Effective() == b.Direction.Effective()
+}
 func sameBinding(a, b *SlackBinding) bool {
-	return a == nil && b == nil || a != nil && b != nil && *a == *b
+	return a == nil && b == nil || a != nil && b != nil && a.Equal(*b)
 }
 
 // checkBinding holds a channel's Slack binding to the rest of the tenant:
@@ -171,6 +201,9 @@ func sameBinding(a, b *SlackBinding) bool {
 func (t *tenant) checkBinding(c Channel) error {
 	if c.Slack == nil {
 		return nil
+	}
+	if t.projects[c.Project].PersonalOwner != "" {
+		return fmt.Errorf("%w: personal projects cannot bind Slack channels", ErrInvalid)
 	}
 	n := 0
 	for key, o := range t.channels {
@@ -200,7 +233,7 @@ func (s *Store) Bindings(tenantName, client string) []Binding {
 	}
 	for _, c := range t.channels {
 		if c.Slack != nil && c.Slack.Client == client {
-			out = append(out, Binding{SlackChannel: c.Slack.Channel, Project: c.Project, Channel: c.Name, BoundAt: boundAt(c, c, c.UpdatedAt)})
+			out = append(out, Binding{Direction: c.Slack.Direction.Effective(), SlackChannel: c.Slack.Channel, Project: c.Project, Channel: c.Name, BoundAt: boundAt(c, c, c.UpdatedAt)})
 		}
 	}
 	slices.SortFunc(out, func(a, b Binding) int { return strings.Compare(a.SlackChannel, b.SlackChannel) })
@@ -220,13 +253,20 @@ func (s *Store) BoundTo(tenantName, client, slackChannel string) (Channel, bool)
 	}
 	for _, c := range t.channels {
 		if c.Slack != nil && c.Slack.Client == client && c.Slack.Channel == slackChannel {
-			return c, true
+			return cloneChannel(c), true
 		}
 	}
 	return Channel{}, false
 }
 
-func chanPtr(c Channel) *Channel { return &c }
+func cloneChannel(c Channel) Channel {
+	if c.Slack != nil {
+		binding := *c.Slack
+		c.Slack = &binding
+	}
+	return c
+}
+func chanPtr(c Channel) *Channel { c = cloneChannel(c); return &c }
 
 // loadChannel reads a channel's record.
 func (t *tenant) loadChannel(key string, raw json.RawMessage) error {
@@ -266,10 +306,10 @@ func (t *tenant) channelsOf(project string) []Channel {
 	if !ok {
 		general = virtualGeneral(project)
 	}
-	out = append(out, general)
+	out = append(out, cloneChannel(general))
 	for _, c := range t.channels {
 		if c.Project == project && c.Name != General {
-			out = append(out, c)
+			out = append(out, cloneChannel(c))
 		}
 	}
 	slices.SortFunc(out[1:], func(a, b Channel) int { return strings.Compare(a.Name, b.Name) })
@@ -280,7 +320,7 @@ func (t *tenant) channelsOf(project string) []Channel {
 // virtual until it is written.
 func (t *tenant) channel(project, name string) (Channel, bool) {
 	if c, ok := t.channels[channelKey(project, name)]; ok {
-		return c, true
+		return cloneChannel(c), true
 	}
 	if name == General {
 		return virtualGeneral(project), true
@@ -347,13 +387,14 @@ func (s *Store) Channel(tenantName, project, name string) (Channel, error) {
 	if !ok {
 		return Channel{}, fmt.Errorf("%w: #%s in %s", ErrNotFound, name, display(project))
 	}
-	return c, nil
+	return cloneChannel(c), nil
 }
 
 // CreateChannel adds a channel to a project. Its name must be free in the
 // project, archived channels included, and general is always taken. A project
 // keeps at most MaxChannels.
 func (s *Store) CreateChannel(tenantName string, c Channel, w Writer, at time.Time) (Channel, error) {
+	c = cloneChannel(c)
 	c.Archived, c.Managed = false, ""
 	if err := c.validate(); err != nil {
 		return Channel{}, err
@@ -391,7 +432,7 @@ func (s *Store) createChannel(tenantName string, c Channel, w Writer, at time.Ti
 	if err := tx.commit(); err != nil {
 		return Channel{}, err
 	}
-	return c, nil
+	return cloneChannel(c), nil
 }
 
 // UpdateChannel changes a channel's title, purpose, default or Slack binding. fn edits a
@@ -421,7 +462,7 @@ func (s *Store) UpdateChannel(tenantName, project, name string, version int, w W
 	if cur.Archived {
 		return Channel{}, fmt.Errorf("%w: #%s is archived", ErrInvalid, name)
 	}
-	next := cur
+	next := cloneChannel(cur)
 	if err := fn(&next); err != nil {
 		return Channel{}, err
 	}
@@ -543,5 +584,5 @@ func (s *Store) replaceChannel(tx *write, cur, next Channel, by string, at time.
 	if err := tx.commit(); err != nil {
 		return Channel{}, err
 	}
-	return next, nil
+	return cloneChannel(next), nil
 }

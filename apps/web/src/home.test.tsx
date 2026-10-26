@@ -69,7 +69,7 @@ test("Needs you is a box of the five newest things waiting on the person, from w
 test("an item above normal says so in words before when it came, and a normal one says nothing more", () => {
   const urgent = { ...need("m-1", 5, "any-run-fails", "triage failed"), severity: "critical" as const };
   const html = boxes({ notifications: ready({ items: [urgent, need("m-2", 10)], inbox: { total: 2 } }) });
-  assert.match(html, /triage failed<\/span><span[^>]*>Urgent · [^<]+</);
+  assert.match(html, /triage failed<\/span><span[^>]*>Urgent [^<]+</);
   assert.match(html, /report-m-2\.md<\/span><span[^>]*>(?!Urgent|Warning)[^<]+</);
 });
 
@@ -79,7 +79,7 @@ test("What's new lists announcements as rows, unread first and marked in words, 
     updates: ready([update("a-1", "Holiday", "Acme", false, 5), update("a-2", "Field offsite", "Field engineering", true, 60)]),
   });
   assert.match(html, />See All</);
-  assert.match(html, /Unread: <\/span><span class="font-medium">Field offsite<\/span>.*Posted in Field engineering · .*Holiday<\/span>.*Posted in Acme · /);
+  assert.match(html, /Unread: <\/span><span class="font-medium">Field offsite<\/span>.*Posted in Field engineering .*Holiday<\/span>.*Posted in Acme /);
   assert.equal([...html.matchAll(/class="sr-only">Unread/g)].length, 1);
   // Read and unread headlines start in the same column.
   assert.equal([...html.matchAll(/class="flex w-2 shrink-0/g)].length, 2);
@@ -93,10 +93,10 @@ test("a box with nothing in it says so in words, rather than vanishing", () => {
   assert.match(quiet, /Nothing new from your projects/);
 });
 
-test("a new person with nothing waiting and nothing new gets one box that says what Home is for", () => {
+test("empty Home boxes do not duplicate the retained announcement banner", () => {
   const html = boxes({ notifications: ready({ items: [], inbox: { total: 0 } }), updates: ready([]) });
-  assert.deepEqual(headings(html), ["Welcome"]);
-  assert.match(html, /When an agent needs you/);
+  assert.deepEqual(headings(html), []);
+  assert.equal(html, "");
   assert.doesNotMatch(html, /Nothing needs you|Open Inbox/);
 });
 
@@ -129,4 +129,11 @@ test("on a phone a row keeps to its column: the headline truncates and what is u
     assert.ok(cls.includes("w-full") && cls.includes("min-w-0") && cls.includes("min-h-11"), cls.join(" "));
   }
   assert.ok(html.includes('<span class="flex min-w-0 flex-1 flex-col"><span class="min-w-0 truncate text-aui-sm text-aui-fg">'));
+});
+
+test("retained Company announcement sits above the greeting and uses one page heading", () => {
+ const html = renderToStaticMarkup(<HomePage greeting="Good afternoon, Developer" canRun hasAgents banner={{id:"m-welcome",source:"Company",title:"Welcome to Humagen",text:"Retained copy",unread:true,onRead:noop,onHide:noop}}>{prompt}</HomePage>);
+ assert.ok(html.indexOf("Company announcement") < html.indexOf("Good afternoon, Developer"));
+ assert.equal([...html.matchAll(/<h1/g)].length,1);
+ assert.match(html,/Mark as Read/); assert.match(html,/Hide for Me/); assert.doesNotMatch(html,/role="alert"|animate/);
 });

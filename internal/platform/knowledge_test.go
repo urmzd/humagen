@@ -305,8 +305,12 @@ func TestNamingAProjectsKnowledgeTakesKnowledgeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	kept, err := p.SetProjectKnowledge(reader, "Field", w, platform.KnowledgeInput{Version: got.Version, Knowledge: []string{"playbook", "pricing"}})
-	if err != nil || !slices.Equal(kept.Knowledge, []string{"playbook", "pricing"}) {
+	if err != nil || !slices.Equal(kept.Knowledge, []string{"pricing"}) {
 		t.Fatalf("an edit keeping a deleted source = %+v, %v", kept, err)
+	}
+	storedProject, _ := p.Projects.Get(tenant, "Field")
+	if !slices.Equal(storedProject.Knowledge, []string{"playbook", "pricing"}) {
+		t.Fatal("projection removed a retained dangling association")
 	}
 	if _, err := p.CreateProject(ctx, tenant, w, platform.ProjectInput{Name: "East"}); err != nil {
 		t.Fatal(err)

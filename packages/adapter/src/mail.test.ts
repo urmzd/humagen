@@ -325,3 +325,38 @@ test("what a question is about names its conversation by what it is called, and 
   );
   for (const s of [...m.about, ...unnamed.about]) assert.ok(!/\b(r[0-9a-f]{8,}|th-[0-9a-f]+)\b/.test(s.label), s.label);
 });
+
+test("operation attention opens durable work and never claims a successful run failed", () => {
+  const message = fromServer({
+    id: "attention",
+    kind: "operation",
+    subject: "Agent work needs a person",
+    from: { kind: "system", name: "Humagen" },
+    at: "2026-10-25T12:00:00Z",
+    updated_at: "2026-10-25T12:00:00Z",
+    state: "open",
+    unread: true,
+    severity: "warning",
+    source: { run: "completed-run", project: "Field" },
+    parts: [
+      {
+        id: "blocker",
+        type: "operation",
+        state: "open",
+        actions: ["acknowledge"],
+        operation: { kind: "assignment", id: "work", reason: "The deadline passed." },
+      },
+    ],
+  });
+  assert.equal(message.template, "note");
+  assert.equal(message.parts[0]?.type, "custom");
+  assert.equal(
+    message.parts.some((p) => p.type === "failure"),
+    false,
+  );
+  const part = message.parts[0];
+  if (!part || part.type !== "custom") throw new Error("missing operation part");
+  assert.equal(part.resolvable, true);
+  assert.deepEqual(part.data, { kind: "assignment", id: "work", reason: "The deadline passed." });
+  assert.ok(!part.allowed?.includes(ActionId.retry));
+});

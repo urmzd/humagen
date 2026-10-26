@@ -79,6 +79,8 @@ type Attempt struct {
 	ID string `json:"id"`
 }
 type Query struct {
+	Actor    string
+	Resource string
 	From, To time.Time
 	Limit    int
 }
@@ -313,6 +315,9 @@ func (s *Store) Record(tenant, actor string, change Change, at time.Time) error 
 // List filters before choosing the newest rows, so hidden records affect neither
 // returned counts nor which visible rows fit in the bounded result.
 func (s *Store) List(tenant string, q Query, visible func(Record) bool) ([]Record, error) {
+	if len(q.Actor) > 512 || !utf8.ValidString(q.Actor) || strings.ContainsRune(q.Actor, 0) || q.Resource != "" && !namePattern.MatchString(q.Resource) {
+		return nil, ErrInvalid
+	}
 	if q.From.IsZero() || !q.From.Before(q.To) || q.To.Sub(q.From) > MaxWindow {
 		return nil, ErrInvalid
 	}
@@ -328,7 +333,7 @@ func (s *Store) List(tenant string, q Query, visible func(Record) bool) ([]Recor
 	s.mu.Unlock()
 	found := recordHeap{}
 	for _, r := range rows {
-		if r.At.Before(q.From) || !r.At.Before(q.To) || visible != nil && !visible(clone(r)) {
+		if q.Actor != "" && r.Actor != q.Actor || q.Resource != "" && r.Resource != q.Resource || r.At.Before(q.From) || !r.At.Before(q.To) || visible != nil && !visible(clone(r)) {
 			continue
 		}
 		if len(found) < limit {
@@ -394,3 +399,7 @@ func (s *Store) Retain(tenant string, cut time.Time) error {
 		}
 	}
 }
+
+// RedactedSnapshot adapts a legacy explicit snapshot through the same bounds
+// and credential redaction as newly recorded changes.
+func RedactedSnapshot(fields map[string]string) (map[string]string, error) { return safeFields(fields) }

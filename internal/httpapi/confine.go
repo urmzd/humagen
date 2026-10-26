@@ -3,7 +3,6 @@ package httpapi
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -140,35 +139,18 @@ type inboxNotice struct {
 	For *platform.ActAs `json:"for,omitempty"`
 }
 
-// gateRefresh is how long an event stream trusts what it decided about a
-// run's readability before it asks again.
-const gateRefresh = 30 * time.Second
-
-// runGate decides, for one event stream, whether its reader may read the run
-// an event belongs to, remembering the answer for each run. It forgets every
-// answer each gateRefresh, and holds at most gateMax of them.
+// runGate rechecks the current audience for every event in a subscription.
 type runGate struct {
-	p       *platform.Platform
-	who     auth.Principal
-	seer    *platform.Seer
-	at      time.Time
-	verdict map[string]bool
+	p   *platform.Platform
+	who auth.Principal
 }
-
-const gateMax = 4096
 
 func newRunGate(p *platform.Platform, who auth.Principal) *runGate {
 	return &runGate{p: p, who: who}
 }
 
 func (g *runGate) seen(run string) bool {
-	if g.seer == nil || time.Since(g.at) > gateRefresh || len(g.verdict) >= gateMax {
-		g.seer, g.at, g.verdict = g.p.Seer(g.who), time.Now(), map[string]bool{}
-	}
-	v, known := g.verdict[run]
-	if !known {
-		v = g.seer.RunID(run)
-		g.verdict[run] = v
-	}
-	return v
+	// Placement and private participants can change during a subscription. An
+	// earlier verdict must never authorize an event after that audience changes.
+	return g.p.Seer(g.who).RunID(run)
 }

@@ -46,7 +46,7 @@ func TestASlackChannelIsBoundToOneChannel(t *testing.T) {
 	if c, ok := s.BoundTo("acme", "slack-acme", "C0123"); !ok || c.Name != "renewals" || c.Project != "Field" {
 		t.Fatalf("C0123 is bound to %+v, %v", c, ok)
 	}
-	if got := s.Bindings("acme", "slack-acme"); !reflect.DeepEqual(got, []projects.Binding{{SlackChannel: "C0123", Project: "Field", Channel: "renewals", BoundAt: t0}}) {
+	if got := s.Bindings("acme", "slack-acme"); !reflect.DeepEqual(got, []projects.Binding{{Direction: projects.BridgeTwoWay, SlackChannel: "C0123", Project: "Field", Channel: "renewals", BoundAt: t0}}) {
 		t.Fatalf("slack-acme's bindings = %+v", got)
 	}
 	if _, err := s.ArchiveChannel("acme", "Field", "renewals", ada, t0); err != nil {

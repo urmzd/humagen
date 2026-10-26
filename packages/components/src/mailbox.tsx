@@ -244,7 +244,9 @@ export function MessagePartView({
         />
       );
     case "reference":
-      return <Sources items={part.citations} />;
+      return (
+        <Sources items={part.citations} labels={copy.citation} scope={`${message.id}:${part.id}`} />
+      );
     case "artifact":
       return <AttachmentView attachment={part.artifact} />;
     case "draft": {

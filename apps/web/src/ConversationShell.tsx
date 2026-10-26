@@ -16,6 +16,8 @@ import {
   type Source,
   type Thread,
 } from "./api.ts";
+import { ConversationAccess } from "./ConversationAccess.tsx";
+import { ForkContext } from "./ForkConversation.tsx";
 import type { ConversationPanel } from "./route.ts";
 import { AgentMark, Page, Popover, Problem, SkeletonRows } from "./ui.tsx";
 
@@ -246,32 +248,9 @@ export function ConversationInfo({
   return (
     <Inspector open title={words[panel]} onClose={onClose}>
       {panel === "context" ? (
-        <Sources project={thread.project} />
-      ) : (
-        <div className="flex flex-col gap-4">
-          <p className="text-aui-xs text-aui-muted">
-            {thread.visibility === "private" ? words.private : `${words.shared} in ${project}`}
-          </p>
-          <ul className="flex flex-col divide-aui-border divide-y">
-            {thread.participants.map((person) => (
-              <li
-                key={`${person.kind}:${person.name}`}
-                className="flex min-w-0 items-center gap-2 py-3 text-aui-sm"
-              >
-                {person.kind === "agent" && <AgentMark name={person.name} size={15} />}
-                <span className="min-w-0 flex-1 truncate">{person.name}</span>
-                <span className="inline-flex gap-x-2 text-aui-2xs text-aui-muted">
-                  <span>{person.kind}</span>
-                  {person.owner && <span>owner</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {thread.participants.length === 0 && (
-            <p className="text-aui-sm text-aui-muted">{words.peopleEmpty}</p>
-          )}
-        </div>
-      )}
+        <div className="flex flex-col gap-6"><ForkContext thread={thread} /><Sources project={thread.project} /></div>
+      ) : <ConversationAccess thread={thread} />}
+
     </Inspector>
   );
 }

@@ -50,11 +50,13 @@ import (
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
+	"github.com/urmzd/humagen/pkg/auditrefs"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
@@ -63,13 +65,18 @@ import (
 	"github.com/urmzd/humagen/pkg/integrations/slack"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/notifications"
+	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -80,6 +87,11 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
+	ProjectTemplates []projects.Template
+	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
+	AssignmentSources operations.SourceChanges
+
 	// Backends are where everything the platform keeps is kept. The zero
 	// value is in memory, lost with the process. OpenPostgres fills it from
 	// one database.
@@ -189,24 +201,34 @@ type Config struct {
 type Platform struct {
 	files filesblob.Store
 
-	cfg Config
-	log *slog.Logger
-	now func() time.Time
+	cfg       Config
+	log       *slog.Logger
+	now       func() time.Time
+	grounding sourceGrounding
 
-	Agents    registry.Store
-	Runs      *runs.Index
-	Schedules *Schedules
-	Journal   *journal.Journal
-	Alerts    *alerts.Engine
-	Knowledge *knowledge.Store
-	Evals     *evals.Store
-	Feedback  *feedback.Store
-	Prefs     *prefs.Store
-	Memory    *memory.Store
+	Agents             registry.Store
+	Runs               *runs.Index
+	Schedules          *Schedules
+	Journal            *journal.Journal
+	Alerts             *alerts.Engine
+	Knowledge          *knowledge.Store
+	SourceLinks        *sourcelinks.Store
+	SourceSuggestions  *sourcelinks.Suggestions
+	SourceEvidence     *knowledge.EvidenceStore
+	Evals              *evals.Store
+	Feedback           *feedback.Store
+	Prefs              *prefs.Store
+	Memory             *memory.Store
+	SkillLibrary       *library.Store
+	Notifications      *notifications.Store
+	ContextFlags       *contextflags.Store
+	AgentSkillDefaults *library.DefaultsStore
+	skillDefaultsMu    sync.Mutex
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
-	Projects *projects.Store
+	Projects     *projects.Store
+	ProjectForks *projectforks.Store
 	// People is each tenant's directory of people.
 	People *people.Store
 	// Threads is each tenant's shared threads: their records and the
@@ -214,12 +236,22 @@ type Platform struct {
 	Threads  *threads.Store
 	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
-	CallPolicies *callpolicy.Store
-	Usage        *usage.Ledger
-	Inbox        *inbox.Store
-	ReadAudit    *readaudit.Store
-	Audit        *audit.Store
-	Artifacts    *artifacts.Index
+	operationContexts          sync.Map
+	agentTestGates             sync.Map
+	assignmentSources          sync.Map
+	assignmentSourceCursor     sync.Map
+	assignmentSettlementCursor sync.Map
+	operationReminderCursor    sync.Map
+	operationScheduleCursor    sync.Map
+	CallPolicies               *callpolicy.Store
+	Operations                 *operations.Store
+	Usage                      *usage.Ledger
+	Inbox                      *inbox.Store
+	ReadAudit                  *readaudit.Store
+	Audit                      *audit.Store
+	Artifacts                  *artifacts.Index
+
+	AuditReferences *auditrefs.Store
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
 	// Credentials is each person's own credentials for person-scoped tool
@@ -261,7 +293,8 @@ type Platform struct {
 	// clientsMu serializes creating, updating and deleting clients.
 	clientsMu sync.Mutex
 	// admitting holds runs between admission and their record, by run id.
-	admitting sync.Map
+	admitting         sync.Map
+	publicationGuards []ConversationPublicationGuard
 	// moves serialize starting a thread's runs with moving the thread.
 	moves threadLocks
 	// afterAccept, when set, runs between a run's acceptance and its record.
@@ -308,6 +341,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.ProjectTemplates == nil {
+		cfg.ProjectTemplates = projects.DefaultTemplates()
+	}
+	if err := projects.ValidateTemplates(cfg.ProjectTemplates); err != nil {
+		return nil, err
+	}
 	log := cfg.Log
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -349,6 +388,18 @@ func New(cfg Config) (*Platform, error) {
 	p.closers = append(p.closers, files.Close)
 	// Every store is in memory, reading back what Backends.State holds.
 	if err := p.openStores(cfg); err != nil {
+		return nil, err
+	}
+
+	if err := p.RegisterPublicationGuard(forkPublicationGuard{p}); err != nil {
+		return nil, err
+	}
+
+	provider := cfg.AssignmentSources
+	if provider == nil {
+		provider = p
+	}
+	if err := p.RegisterAssignmentSources(provider); err != nil {
 		return nil, err
 	}
 
@@ -460,8 +511,8 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	tools := tool.NewRegistry()
 	plane := controlplane.NewMemory(inproc.NewFactory(tools, ws), metrics.Nop())
 	exec, err := runtime.NewSandbox(plane, tools, registry.NewSpecs(p.Agents),
-		runtime.WithCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools))),
-		runtime.WithToolGroupSource(groups),
+		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
+
 		runtime.WithDelegator(p.attach),
 		// An agent's declared sources ground its turns, searched in the
 		// run's tenant.
@@ -476,7 +527,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
 }
 
 // reroute registers the routes of every run the index holds that has not
@@ -530,12 +581,22 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 		return runs.Run{}, err
 	}
 	tag = p.pin(tag, edge, project, within, p.sourcesFor(tag, edge, project))
+	tag, err = p.pinAgentSkillDefaults(ctx, tag, edge, project)
+	if err != nil {
+		return runs.Run{}, err
+	}
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
+	if tag.Meta[MetaPersonalMemoryContext] == "true" || tag.Meta[MetaPrivateLibraryContext] == "true" {
+		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
+			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+			return runs.Run{}, err
+		}
+	}
 	// Accepting publishes the run's first event before the run is recorded,
 	// and delivering that event needs to know which client raised it.
-	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, place: p.placeAdmitted(tag, edge, runID, project)})
+	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, actor: tag.Actor, person: p.operationTagPerson(tag, edge), operationMeta: operationMetaOf(tag.Meta), place: p.placeAdmitted(tag, edge, runID, project)})
 	defer p.admitting.Delete(runID)
 	if err := p.deliver.Register(runID, tag.Routes()); err != nil {
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -553,6 +614,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if err := p.Runs.Record(acc.RunID, tag, acc.Rev); err != nil {
 		return runs.Run{}, err
 	}
+	p.recordContextUse(tag, project)
 	// Who asked, by every name they go by now: a mapping removed later does
 	// not let them approve their own calls.
 	p.Runs.PinRequesters(acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
@@ -570,6 +632,16 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	tag.Actor = p.namedActor(tag.Tenant, tag.Actor)
 	meta := make(map[string]string, len(tag.Meta)+3)
 	maps.Copy(meta, tag.Meta)
+	if edge.Parent != "" {
+
+		if parent, err := p.Runs.Get(tag.Tenant, edge.Parent); err == nil {
+			for _, key := range []string{MetaPersonalMemoryContext, MetaPrivateLibraryContext} {
+				if parent.Tag().Meta[key] == "true" {
+					meta[key] = "true"
+				}
+			}
+		}
+	}
 	delete(meta, runs.MetaWithin)
 	if len(within) > 0 {
 		meta[runs.MetaWithin] = strings.Join(within, ",")
@@ -580,14 +652,24 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	if len(sources) > 0 {
 		meta[runs.MetaSources] = strings.Join(sources, ",")
 	}
+	delete(meta, metaForkSources)
+	if edge.Parent != "" {
+		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
+			if names, ok := root.Tag().Meta[metaForkSources]; ok {
+				meta[metaForkSources] = names
+			}
+		}
+	} else if names := p.forkSourceSelection(tag.Tenant, tag.Meta[runs.MetaThread]); names != nil {
+		meta[metaForkSources] = strings.Join(*names, ",")
+	}
 	// Only the platform pins skills, on a person's message (answerMessage):
 	// any other tag that carries the key is not believed.
 	if tag.Origin != runs.OriginAPI || edge.Parent != "" {
 		delete(meta, runs.MetaSkills)
 	}
-	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
+	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual || tag.Origin == runs.OriginAssignment) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
-		tag.Text = p.contextOf(tag.Tenant, project, tag.Agent, tag.Text)
+		tag.Text = p.turnContext(tag.Tenant, project, "", tag.Agent, personOf(tag.Actor), tag.Text, meta)
 	}
 	tag.Meta = meta
 	return tag
@@ -636,6 +718,9 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}
+	if err := p.checkOperationCall(ctx, parent, req); err != nil {
+		return runs.Run{}, err
+	}
 	// The callee agrees too: its call policy must admit the caller.
 	if err := p.admitCall(ctx, tenant, parent.Agent, req.Agent); err != nil {
 		return runs.Run{}, err
@@ -654,7 +739,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 			if grant && compare.Lease == 0 {
 				compare.Lease = existing.Lease
 			}
-			if !sameCallInput(existing, compare, *input) {
+			if !sameCallInput(existing, compare, *input) || !p.sameHandoffTerms(existing, req.Contract) {
 				return runs.Run{}, fmt.Errorf("%w: call key already identifies a different call", call.ErrInvalid)
 			}
 			return existing, nil
@@ -691,7 +776,16 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err := freezeInput(tag.Meta, prepared); err != nil {
 		return runs.Run{}, err
 	}
+	if parent.Tag().Meta[operations.MetaForceAsk] == "true" {
+		tag.Meta[operations.MetaForceAsk] = "true"
+	}
+	if allowed, ok := parent.Tag().Meta[operations.MetaTools]; ok {
+		tag.Meta[operations.MetaTools] = allowed
+	}
 	tag.Text = prepared.Messages[len(prepared.Messages)-1].Text
+	if _, err := p.recordHandoff(parent, req, tag, prepared); err != nil {
+		return runs.Run{}, err
+	}
 	child, err := p.Invoke(ctx, tag)
 	if err != nil {
 		return runs.Run{}, err
@@ -716,7 +810,7 @@ func (p *Platform) callerOf(tenant, runID string) (runs.Run, error) {
 // reserved reports whether an origin is one only the platform may use.
 func reserved(origin string) bool {
 	switch origin {
-	case call.Origin, runs.OriginAPI, runs.OriginSystem, runs.OriginManual, OriginEval:
+	case call.Origin, runs.OriginAPI, runs.OriginSystem, runs.OriginManual, runs.OriginAssignment, OriginEval:
 		return true
 	}
 	return false
@@ -736,6 +830,9 @@ const flushEvery = 250 * time.Millisecond
 // fallback for when there is none: a run that exhausts its retries is failed in
 // the ledger with nothing further published.
 func (p *Platform) reconcile(ctx context.Context) {
+	p.reconcileOperationReminders(ctx)
+	p.settleOperations(ctx)
+	p.syncAssignmentSchedules()
 	for _, id := range p.Runs.Active() {
 		p.settleFromLedger(ctx, id)
 	}
@@ -801,6 +898,12 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 		return
 	}
 	p.admission.Lock()
+	if e.Kind == envelope.KindCitation {
+		metadata, _, _ := p.trustedCitation(e)
+		if err := p.Runs.RecordCitation(e, metadata); err != nil {
+			p.log.Error("citation could not be retained", "error", err)
+		}
+	}
 	run, ended := p.Runs.Observe(e)
 	if ended {
 		p.free(run)
@@ -907,6 +1010,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("source refresh", func() error { return p.refreshSources(ctx) })
 	loop("inbox retention", func() error {
 		tick := time.NewTicker(retainEvery)
 		defer tick.Stop()

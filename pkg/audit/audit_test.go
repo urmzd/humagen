@@ -206,3 +206,18 @@ func TestAuditSanitizesSnapshotsAndDoesNotRetainCallerMaps(t *testing.T) {
 		t.Fatalf("invalid identity accepted: %v", err)
 	}
 }
+
+func TestActorAndDomainFiltersRunBeforeVisibleLimit(t *testing.T) {
+	s, _ := Open(nil)
+	now := time.Now()
+	if err := s.Record("acme", "ada", Change{Action: "memory.edit", Resource: "memory", ID: "one"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record("acme", "ben", Change{Action: "skill.publish", Resource: "skill", ID: "two"}, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.List("acme", Query{From: now.Add(-time.Second), To: now.Add(time.Hour), Actor: "ada", Resource: "memory", Limit: 1}, nil)
+	if err != nil || len(rows) != 1 || rows[0].Actor != "ada" {
+		t.Fatalf("filtered limit: %+v %v", rows, err)
+	}
+}

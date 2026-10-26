@@ -106,15 +106,21 @@ func (s *Store) Add(tenant string, r Record) error {
 
 // List returns newest first within a window of at most 31 days and at most 500 rows.
 func (s *Store) List(tenant string, from, to time.Time, limit int) []Record {
+	return s.ListVisible(tenant, from, to, limit, nil)
+}
+
+// ListVisible applies confinement before selecting the bounded newest rows.
+func (s *Store) ListVisible(tenant string, from, to time.Time, limit int, visible func(Record) bool) []Record {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	rows := append([]entry(nil), s.rows[tenant]...)
+	s.mu.Unlock()
 	out := recordHeap{}
 	if !from.Before(to) || to.Sub(from) > 31*24*time.Hour {
 		return []Record{}
 	}
 	limit = min(max(limit, 1), 500)
-	for _, e := range s.rows[tenant] {
-		if !e.record.At.Before(from) && e.record.At.Before(to) {
+	for _, e := range rows {
+		if !e.record.At.Before(from) && e.record.At.Before(to) && (visible == nil || visible(e.record)) {
 			if len(out) < limit {
 				heap.Push(&out, e.record)
 			} else if e.record.At.After(out[0].At) {

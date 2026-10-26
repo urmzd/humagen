@@ -176,8 +176,10 @@ type Project struct {
 	Name string `json:"name"`
 	// Title is what people see. The root shows the workspace's name
 	// instead, so it has none.
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
+	Title string `json:"title,omitempty"`
+	// PersonalOwner is the immutable human subject whose private workspace this is.
+	PersonalOwner string `json:"personal_owner,omitempty"`
+	Description   string `json:"description,omitempty"`
 	// Kind defaults to team. The root is company.
 	Kind Kind `json:"kind"`
 	// Parent is fixed at creation. "" is the root.
@@ -214,6 +216,10 @@ type Project struct {
 	// tell an agent to use (Tree.Skills).
 	Skills []Skill `json:"skills,omitempty"`
 
+	Template   string `json:"template,omitempty"`
+	Initiative bool   `json:"initiative,omitempty"`
+	// Fork records lineage and gates unpublished multi-store copies.
+	Fork *ForkOrigin `json:"fork,omitempty"`
 	// Managed is ManagedFile when the platform file declares the project.
 	Managed string `json:"managed,omitempty"`
 	// FileOwns is the fields the platform file sets.
@@ -231,6 +237,10 @@ type Project struct {
 func (p Project) IsRoot() bool { return p.Name == Root }
 
 func (p Project) clone() Project {
+	if p.Fork != nil {
+		cp := *p.Fork
+		p.Fork = &cp
+	}
 	if p.Account != nil {
 		a := *p.Account
 		p.Account = &a
@@ -302,9 +312,10 @@ type Tombstone struct {
 	// by then, under its parent as the parent stands now (DeletedRole). A
 	// tombstone written before they were kept has neither, and what it held
 	// is read only with projects:govern.
-	Parent  string  `json:"parent,omitempty"`
-	Members []Entry `json:"members,omitempty"`
-	Kept    bool    `json:"kept,omitempty"`
+	PersonalOwner string  `json:"personal_owner,omitempty"`
+	Parent        string  `json:"parent,omitempty"`
+	Members       []Entry `json:"members,omitempty"`
+	Kept          bool    `json:"kept,omitempty"`
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)
@@ -325,8 +336,16 @@ var validField = map[string]bool{
 // Whether its kind is one the workspace defines, and whether an account fits
 // that kind, depend on the root, so the tree checks them (kindRules).
 func (p Project) validate() error {
+	if p.Template != "" && !validKindName(Kind(p.Template)) || p.Initiative && p.Kind != Team {
+		return fmt.Errorf("%w: invalid template or initiative configuration", ErrInvalid)
+	}
+	if p.Fork != nil && (p.Fork.Operation == "" || p.Fork.By == "" || p.Fork.At.IsZero() || p.Fork.Source == p.Name || !ValidName(p.Fork.Source)) {
+		return fmt.Errorf("%w: invalid project fork lineage", ErrInvalid)
+	}
 	chars := utf8.RuneCountInString
 	switch {
+	case p.PersonalOwner != "" && (p.IsRoot() || p.Parent != Root || p.Kind != Team || p.Managed != "" || p.Archived || len(p.Members) != 1 || p.Members[0] != (Entry{Who: p.PersonalOwner, Role: Owner})):
+		return fmt.Errorf("%w: a personal project has one human owner and stays under Company", ErrInvalid)
 	case p.IsRoot() && p.Kind != Company:
 		return fmt.Errorf("%w: the workspace is a company project", ErrInvalid)
 	case p.IsRoot() && (p.Title != "" || p.Parent != "" || p.Account != nil):

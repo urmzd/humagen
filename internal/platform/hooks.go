@@ -12,6 +12,7 @@ import (
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -53,6 +54,9 @@ const memoryPrompt = "Below is one exchange between a person and the agent %q. "
 
 // ended is called exactly once for every run that ends.
 func (p *Platform) ended(ctx context.Context, run runs.Run) {
+	if err := p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()); err != nil {
+		p.log.Error("platform: operation outcome could not be kept", "error", err)
+	}
 	p.settleUsage(ctx, run)
 	p.raise(run)
 	// A question nobody answered is not waiting any more.
@@ -93,6 +97,11 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 	cfg := p.Settings(run.Tenant)
 	if cfg.TitleAgent != "" && run.Prev == "" {
 		p.startHook(ctx, run, cfg.TitleAgent, hookTitle, run.Thread, fmt.Sprintf(titlePrompt, clip(run.Text, 2000)))
+	}
+	// A person's opt-in to remember how they work creates private proposals,
+	// never shared project memory. Review is still required.
+	if cfg.MemoryAgent != "" && run.Actor.User != "" && !run.Actor.Bot && p.privateThread(run.Tenant, run.Thread) && p.Prefs.Get(run.Tenant, run.Actor.User).Personal.Remember {
+		p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, memory.PersonalOwner(run.Actor.User), fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000)))
 	}
 	// What is said in a private thread is its participants' alone: nothing
 	// in it becomes a note anyone else would be sent.
@@ -185,6 +194,9 @@ func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 // then is not kept.
 func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools []string, since time.Time) bool {
 	for _, grant := range tools {
+		if grant == ToolSourceSearch {
+			return true
+		}
 		// As fiber expands a grant: anything else is not a provider's.
 		parsed, ok, err := agentspec.ParseMCPGrant(grant)
 		if !ok || err != nil || !toolprovider.ValidName(parsed.Provider) {
@@ -214,8 +226,19 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 	// whatever spelling the settings hold.
 	agent = rev.Spec.Name
 	tree := p.Projects.Tree(turn.Tenant)
-	if home, homed := tree.Home(agent); homed && !onChain(tree, turn.Project, home) {
+	if home, homed := tree.Home(agent); homed && home != projects.Root && !onChain(tree, turn.Project, home) {
 		return
+	}
+	contextMeta := map[string]string{}
+
+	for _, key := range []string{MetaPersonalMemoryContext, MetaPrivateLibraryContext} {
+		if turn.Tag().Meta[key] == "true" {
+			contextMeta[key] = "true"
+		}
+	}
+
+	if _, personal := memory.OwnerPerson(target); personal {
+		contextMeta["_humagen.context.personal_memory"] = "true"
 	}
 	_, err = p.Invoke(ctx, envelope.Tag{
 		ID:     fmt.Sprintf("sys-%s-%s", hook, turn.ID),
@@ -226,7 +249,7 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 		Actor:  envelope.Actor{ID: "system:" + hook, Display: "platform " + hook, Bot: true},
 		// The housekeeping run is sent the turn's words, so it is read
 		// where the turn is: in its project and its conversation.
-		Meta: hookMeta(hook, target, append([]map[string]string{{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}}, extra...)...),
+		Meta: hookMeta(hook, target, append([]map[string]string{{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}, contextMeta}, extra...)...),
 	})
 	if err != nil {
 		p.log.Warn("platform: housekeeping run could not start", "hook", hook, "error", err)
@@ -263,7 +286,9 @@ func (p *Platform) fileHook(run runs.Run) {
 	case hookMemory:
 		kept := 0
 		var proposed []memory.Note
-		unasked := p.Settings(run.Tenant).MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target, meta[metaKeepsNotes])
+		_, personal := memory.OwnerPerson(target)
+		_, projectMemory := memory.OwnerProject(target)
+		unasked := !personal && !projectMemory && p.Settings(run.Tenant).MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target, meta[metaKeepsNotes])
 		for _, line := range strings.Split(run.Answer, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.EqualFold(strings.Trim(line, ".-* "), "none") || kept == 3 {
@@ -290,7 +315,9 @@ func (p *Platform) fileHook(run runs.Run) {
 				p.log.Info("platform: a proposed memory was not kept", "agent", target, "reason", err)
 			}
 		}
-		p.inboxMemory(run, target, proposed)
+		if !personal {
+			p.inboxMemory(run, target, proposed)
+		}
 	}
 }
 
