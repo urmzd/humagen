@@ -609,3 +609,23 @@ func (s *Store) Tenants() []string {
 	slices.Sort(out)
 	return out
 }
+
+// BlockAssignment records a dependency or access refusal without inventing a
+// terminal run outcome. Its schedule must be paused by the composition root.
+func (s *Store) BlockAssignment(t, id, reason string, at time.Time) error {
+	if !text(reason, 4000) {
+		return ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.records[key{t, "assignment:" + id}]
+	if r.Assignment == nil {
+		return ErrNotFound
+	}
+	a := *r.Assignment
+	if a.State == Cancelled || a.State == Result {
+		return ErrConflict
+	}
+	a.State, a.Blocker, a.UpdatedAt, a.Version = Blocked, reason, at, a.Version+1
+	return s.put(t, "assignment:"+id, record{Assignment: &a})
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -36,7 +38,7 @@ func (p *Platform) ActionDecision(tenant, project, agent, person string, c opera
 func (p *Platform) AgentControl(tenant, agent string) operations.Control {
 	return p.Operations.Control(tenant, legacy.BuiltinAgent(agent))
 }
-func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operations.Control, version int) (operations.Control, error) {
+func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operations.Control, version int) (result operations.Control, resultErr error) {
 	if agent != "" {
 		if _, err := p.Agents.Get(context.Background(), who.Tenant, agent, 0); err != nil {
 			return operations.Control{}, err
@@ -53,6 +55,18 @@ func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operation
 			return operations.Control{}, fmt.Errorf("%w: manager does not exist", operations.ErrInvalid)
 		}
 	}
+	scope := "workspace"
+	id := "workspace"
+	if agent != "" {
+		scope = "agent"
+		id = agent
+	}
+	before := p.AgentControl(who.Tenant, agent)
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "agent.control", Resource: "agent_control", ID: id, Scope: scope, Agent: agent, Before: map[string]string{"paused": strconv.FormatBool(before.Paused)}, After: map[string]string{"paused": strconv.FormatBool(c.Paused)}})
+	if err != nil {
+		return operations.Control{}, err
+	}
+	defer func() { p.finishOperationsAudit(attempt, resultErr) }()
 	p.admission.Lock()
 	defer p.admission.Unlock()
 	return p.Operations.SetControl(who.Tenant, legacy.BuiltinAgent(agent), c, version, who.Subject, p.now())
@@ -188,30 +202,15 @@ func (c *operationsCatalog) ToolGroup(name string) (agentrt.ToolGroup, error) {
 			return agentrt.ToolGroup{}, err
 		}
 		if ok {
-			allowed, restricted, err := c.p.operationTools(c.req)
-			if err != nil {
-				return agentrt.ToolGroup{}, err
-			}
-			category := operations.ReadContext
-			if strings.HasSuffix(name, ":write") {
-				category = operations.Other
-			}
-			out := make([]saigetypes.Tool, 0, len(ts))
-			for _, t := range ts {
-				if restricted && !slices.Contains(allowed, t.Definition().Name) {
-					continue
-				}
-				wrapped := c.p.operationTool(c.req, t, category).(*operationTool)
-				if strings.HasSuffix(name, ":write") {
-					wrapped.extra = operations.ExternalMessages
-				}
-				out = append(out, wrapped)
-			}
-			return agentrt.ToolGroup{Name: name, Tools: out}, nil
+			return c.p.wrapOperationGroup(c.req, name, ts)
 		}
 	}
 	if g, ok := c.inner.(agentrt.ToolGroups); ok {
-		return g.ToolGroup(name)
+		group, err := g.ToolGroup(name)
+		if err != nil {
+			return group, err
+		}
+		return c.p.wrapOperationGroup(c.req, name, group.Tools)
 	}
 	return agentrt.ToolGroup{}, agentrt.ErrNoSuchToolGroup
 }
@@ -294,7 +293,7 @@ var _ agentrt.Approving = (*operationTool)(nil)
 var _ agentrt.PersonScoped = (*operationTool)(nil)
 var _ saigetypes.RichTool = (*operationTool)(nil)
 
-func (p *Platform) SetActionPolicy(who auth.Principal, scope operations.Scope, rules map[operations.Category]operations.Level, version int) (operations.Policy, error) {
+func (p *Platform) SetActionPolicy(who auth.Principal, scope operations.Scope, rules map[operations.Category]operations.Level, version int) (result operations.Policy, resultErr error) {
 	switch scope.Kind {
 	case "agent":
 		if _, err := p.Agents.Get(context.Background(), who.Tenant, scope.Name, 0); err != nil {
@@ -317,6 +316,20 @@ func (p *Platform) SetActionPolicy(who auth.Principal, scope operations.Scope, r
 	default:
 		return operations.Policy{}, operations.ErrInvalid
 	}
+	change := audit.Change{Action: "policy.action", Resource: "action_policy", ID: scope.Kind + ":" + scope.Name, Scope: scope.Kind, Before: operationPolicyFields(p.Operations.Policy(who.Tenant, scope).Rules), After: operationPolicyFields(rules)}
+	switch scope.Kind {
+	case "agent":
+		change.Agent = scope.Name
+	case "project":
+		change.Project = scope.Name
+	case "personal":
+		change.Subject = who.Subject
+	}
+	attempt, err := p.BeginAudit(who, change)
+	if err != nil {
+		return operations.Policy{}, err
+	}
+	defer func() { p.finishOperationsAudit(attempt, resultErr) }()
 	return p.Operations.SetPolicy(who.Tenant, operations.Policy{Scope: scope, Rules: rules}, version, who.Subject, p.now())
 }
 func (p *Platform) Handoffs(who auth.Principal, limit int) []operations.Handoff {
@@ -404,4 +417,27 @@ func (p *Platform) bindOperationContext(ctx context.Context, req runtime.Request
 	key := operationExecutionKey{req.Tenant, req.RunID, req.Attempt}
 	p.operationContexts.Store(key, ctx)
 	return func() { p.operationContexts.Delete(key) }
+}
+
+func (p *Platform) wrapOperationGroup(req runtime.Request, name string, ts []saigetypes.Tool) (agentrt.ToolGroup, error) {
+	allowed, restricted, err := p.operationTools(req)
+	if err != nil {
+		return agentrt.ToolGroup{}, err
+	}
+	category := operations.ReadContext
+	if strings.HasSuffix(name, ":write") {
+		category = operations.Other
+	}
+	out := make([]saigetypes.Tool, 0, len(ts))
+	for _, t := range ts {
+		if restricted && !slices.Contains(allowed, t.Definition().Name) {
+			continue
+		}
+		wrapped := p.operationTool(req, t, category).(*operationTool)
+		if strings.HasSuffix(name, ":write") {
+			wrapped.extra = operations.ExternalMessages
+		}
+		out = append(out, wrapped)
+	}
+	return agentrt.ToolGroup{Name: name, Tools: out}, nil
 }

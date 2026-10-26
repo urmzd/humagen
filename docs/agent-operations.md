@@ -48,6 +48,12 @@ deterministic identity before calling the existing conversation composer and
 between reservation and admission. An assignment in an existing conversation
 must pass the same posting rule, including private-thread participation.
 
+Standing assignments are project-scoped. Cron plus an existing conversation is
+refused, so a private conversation goal cannot be replayed into a wider room.
+Every occurrence rechecks the owner's ordinary project membership without
+borrowing a sign-in or bearer scope. Losing access pauses and blocks the work.
+Ordinary schedule mutation routes cannot bypass the assignment owner.
+
 Standing assignments create paused schedules in the existing cron store. The
 schedule activates only after the contract is durable and the assignment is
 accepted or watching. Cancel pauses the schedule before saving the state.
@@ -67,7 +73,10 @@ Every `pkg/call` invocation records a handoff contract before admission: typed
 input references, goal, done-when, deadline, chain and accountable manager.
 Callers may supply explicit `contract` terms. For old callers, the input and
 response format supply terms with a 24-hour deadline. A cycle or more than
-three hops records an escalation and refuses the child. The run ledger, not
+three hops records an escalation and refuses the child. Cross-project handoff remains the design spec's open question. Calls keep the
+existing root-project, thread, source and accounting boundary; a child agent
+unavailable there is refused without fabricating a run in another project.
+The run ledger, not
 the contract, determines whether accepted helper work succeeded.
 
 `GET /api/agent-network` derives bounded visible edges from those contracts.

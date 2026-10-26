@@ -11,8 +11,10 @@ import (
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
+	"github.com/urmzd/humagen/pkg/projects"
 
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -40,9 +42,15 @@ func (p *Platform) Assignment(who auth.Principal, id string) (operations.Assignm
 	}
 	return a, nil
 }
-func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a operations.Assignment, version int) (operations.Assignment, error) {
+func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a operations.Assignment, version int) (result operations.Assignment, resultErr error) {
 	if !p.SeesAssignment(who, a) {
 		return operations.Assignment{}, operations.ErrNotFound
+	}
+	if a.Cron != "" && a.Thread != "" {
+		return operations.Assignment{}, fmt.Errorf("%w: standing assignments cannot target an existing conversation; create project-scoped work instead", operations.ErrInvalid)
+	}
+	if a.Cron != "" && !p.standingOwner(who.Tenant, a.Project, a.Owner) {
+		return operations.Assignment{}, fmt.Errorf("%w: standing work needs an owner with current project membership", operations.ErrDenied)
 	}
 	if _, err := p.Agents.Get(ctx, who.Tenant, a.Agent, 0); err != nil {
 		return operations.Assignment{}, err
@@ -77,6 +85,11 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 			return operations.Assignment{}, fmt.Errorf("%w: create a new assignment to change its execution contract", operations.ErrInvalid)
 		}
 	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "assignment.save", Resource: "assignment", ID: a.ID, Scope: "project", Project: a.Project, Thread: a.Thread, Agent: a.Agent, Before: map[string]string{"state": string(old.State)}, After: map[string]string{"state": string(a.State), "standing": strconv.FormatBool(a.Cron != "")}})
+	if err != nil {
+		return operations.Assignment{}, err
+	}
+	defer func() { p.finishOperationsAudit(attempt, resultErr) }()
 	if a.Cron != "" {
 		a.Schedule = assignmentSchedule(who.Tenant, a.ID)
 		sc := cron.Schedule{Name: a.Schedule, Tenant: who.Tenant, Agent: a.Agent, Expression: a.Cron, Text: a.Goal + "\nDone when: " + a.DoneWhen, Meta: map[string]string{metaAssignment: a.ID, runs.MetaProject: a.Project, "created_by": who.Subject}}
@@ -107,7 +120,7 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 
 // RunAssignment reserves a deterministic run before entering the same turn path
 // used by console messages. Repeated requests join the reserved run.
-func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id string) (runs.Run, error) {
+func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id string) (result runs.Run, resultErr error) {
 	a, err := p.Assignment(who, id)
 	if err != nil {
 		return runs.Run{}, err
@@ -121,6 +134,11 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 	if err = p.operationAdmission(who.Tenant, a.Agent); err != nil {
 		return runs.Run{}, err
 	}
+	attempt, auditErr := p.BeginAudit(who, audit.Change{Action: "assignment.run", Resource: "assignment", ID: a.ID, Scope: "project", Project: a.Project, Thread: a.Thread, Agent: a.Agent, Before: map[string]string{"state": string(a.State)}, After: map[string]string{"action": "request_run"}})
+	if auditErr != nil {
+		return runs.Run{}, auditErr
+	}
+	defer func() { p.finishOperationsAudit(attempt, resultErr) }()
 	tagID := "assignment-" + assignmentSchedule(who.Tenant, id) + "-" + strconv.Itoa(a.Version)
 	if a.State == operations.InProgress {
 		if run, err := p.Runs.Get(who.Tenant, a.RunID); err == nil {
@@ -132,6 +150,10 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 	}
 	after := ""
 	if a.Thread != "" {
+		th, err := p.Threads.Get(who.Tenant, a.Thread)
+		if err != nil || th.Project != a.Project {
+			return runs.Run{}, operations.ErrConflict
+		}
 		turns, err := p.Runs.Conversation(who.Tenant, a.Thread)
 		if err != nil || len(turns) == 0 {
 			return runs.Run{}, fmt.Errorf("%w: the assigned conversation has no recorded turn", operations.ErrInvalid)
@@ -159,6 +181,17 @@ func (p *Platform) admitAssignment(tag envelope.Tag) error {
 	a, ok := p.Operations.Assignment(tag.Tenant, id)
 	if !ok {
 		return operations.ErrNotFound
+	}
+	if a.Cron != "" && (a.Thread != "" || !p.standingOwner(tag.Tenant, a.Project, a.Owner)) {
+		if a.Schedule != "" {
+			if err := p.Schedules.SetPaused(tag.Tenant, a.Schedule, true); err != nil {
+				return err
+			}
+		}
+		if err := p.Operations.BlockAssignment(tag.Tenant, a.ID, "The assignment owner or conversation no longer has the access this standing contract requires.", p.now()); err != nil {
+			return err
+		}
+		return operations.ErrDenied
 	}
 	if a.Agent != tag.Agent || a.Project != runs.ProjectOf(tag) {
 		return operations.ErrDenied
@@ -195,4 +228,16 @@ func (p *Platform) settleOperations() {
 			}
 		}
 	}
+}
+
+// AssignmentSchedule reports schedules whose only mutation surface is their
+// versioned assignment. The ordinary schedule routes may not bypass its owner.
+func AssignmentSchedule(sc cron.Schedule) bool { return sc.Meta[metaAssignment] != "" }
+
+func (p *Platform) standingOwner(tenant, project, owner string) bool {
+	// A clock has no current sign-in or bearer scope. Only current explicit
+	// policy grants and ordinary project membership may authorize its owner.
+	reader := ReaderOf(p.byPolicy(tenant, owner))
+	reader.Govern = false
+	return p.Projects.Tree(tenant).Resolve(project, reader).Role.AtLeast(projects.Member)
 }

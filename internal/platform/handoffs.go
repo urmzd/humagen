@@ -133,9 +133,10 @@ func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag envelope
 func (p *Platform) operationEscalation(tenant, id, project, thread, run, agent, owner, reason string) {
 	// The message shares the original place and uses one deterministic key.
 	// Its kind makes it Needs-you; it creates no synthetic runtime question.
-	m := inbox.Message{Kind: inbox.KindFailure, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: "Humagen"}, To: owner, Severity: inbox.Warning, Source: inbox.Source{Project: project, Thread: thread, Run: run, Agent: agent}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartText, Text: reason}}}
-	if owner == "" {
-		m.Audience = slices.Clone(fallbackApprovers)
+	m := inbox.Message{Kind: inbox.KindFailure, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: "Humagen"}, Severity: inbox.Warning, Source: inbox.Source{Project: project, Thread: thread, Run: run, Agent: agent}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartText, Text: reason}}}
+	m.Audience = slices.Clone(fallbackApprovers)
+	if owner != "" {
+		m.Audience = append(m.Audience, owner)
 	}
 	if _, _, err := p.Inbox.RaiseOnce(tenant, "operation:"+id, m, p.now()); err != nil {
 		p.log.Error("platform: operation escalation could not be kept", "error", err)
