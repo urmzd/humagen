@@ -249,6 +249,34 @@ func (s *Seer) RunID(id string) bool {
 // into another project is read where the conversation went. Who it is
 // addressed to is the inbox's to decide besides.
 func (s *Seer) Message(m inbox.Message) bool {
+	if m.Kind == inbox.KindOperation {
+		found := false
+		for _, part := range m.Parts {
+			if part.Operation == nil {
+				continue
+			}
+			found = true
+			op := part.Operation
+			switch op.Kind {
+			case "assignment":
+				a, ok := s.p.Operations.Assignment(s.who.Tenant, op.ID)
+				if !ok || !s.Project(a.Project) || !s.Place(Place{Project: a.Project, Thread: a.Thread}) || !s.Agent(a.Agent) {
+					return false
+				}
+			case "handoff":
+				h, ok := s.p.Operations.Handoff(s.who.Tenant, op.ID)
+				if !ok || !s.p.seesHandoff(s, h) {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
 	// Moving a conversation does not publish its original project settings,
 	// memory proposals, limits or drafts. Those retain their own scope.
 	for _, part := range m.Parts {

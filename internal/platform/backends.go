@@ -146,6 +146,9 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("policies", err)
 	p.Operations, err = operations.Open(st)
 	keep("operations", err)
+	if err == nil {
+		keep("operation publication guard", p.RegisterPublicationGuard(p))
+	}
 	p.CallPolicies, err = callpolicy.Open(st)
 	keep("call policies", err)
 	p.Usage, err = usage.Open(st)

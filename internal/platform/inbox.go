@@ -117,7 +117,9 @@ func writes(k inbox.Kind) auth.Permission {
 // needs is the right an action on a part takes.
 func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 	switch {
-	case (t == inbox.PartAlert || t == inbox.PartOperation) && action == ActAcknowledge:
+	case t == inbox.PartOperation && action == ActAcknowledge:
+		return auth.RunsWrite, true
+	case t == inbox.PartAlert && action == ActAcknowledge:
 		return auth.AlertsWrite, true
 	case t == inbox.PartFailure && (action == ActRetry || action == ActAcknowledge):
 		return auth.RunsWrite, true

@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/operations"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 func TestOperationsAreConfinedAndControlsPersist(t *testing.T) {
@@ -121,5 +123,33 @@ func TestStandingAssignmentPausesWhenOwnerLosesProjectAccess(t *testing.T) {
 	a, ok := f.p.Operations.Assignment("acme", "duty")
 	if !ok || a.State != operations.Blocked {
 		t.Fatalf("refusal was not recorded: %+v", a)
+	}
+}
+
+func TestOperationAttentionIsNotARunFailureAndUsesRunsPermission(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	run := want(t, f, owner, "POST", "/api/runs", `{"agent":"helper","text":"Successful work"}`, http.StatusAccepted)
+	id := run["id"].(string)
+	ended(t, f, owner, id)
+	if _, err := f.p.Operations.SetAssignment("acme", operations.Assignment{ID: "late", Agent: "helper", Owner: "reader", Goal: "Review completed work", DoneWhen: "Reviewed", State: operations.Requested}, 0, "reader", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	message, _, err := f.p.Inbox.RaiseOnce("acme", "operation:assignment:late", inbox.Message{Kind: inbox.KindOperation, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: "Humagen"}, Audience: []string{"reader"}, Source: inbox.Source{Run: id}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartOperation, Operation: &inbox.OperationPart{Kind: "assignment", ID: "late", Reason: "The deadline passed."}}}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := f.machineAs(t, "reader", "acme", "humagen:runs:read", "humagen:runs:write")
+	shown := want(t, f, reader, "GET", "/api/inbox/"+message.ID, "", http.StatusOK)
+	parts := shown["message"].(map[string]any)["parts"].([]any)
+	actions := parts[0].(map[string]any)["actions"].([]any)
+	if len(actions) != 1 || actions[0] != "acknowledge" {
+		t.Fatalf("operation attention offered run failure actions: %v", actions)
+	}
+	want(t, f, reader, "POST", "/api/inbox/"+message.ID+"/parts/"+parts[0].(map[string]any)["id"].(string)+"/resolve", `{"action":"acknowledge"}`, http.StatusOK)
+	recorded, err := f.p.Runs.Get("acme", id)
+	if err != nil || recorded.Status != runs.Completed {
+		t.Fatal("attention invented a failed run")
 	}
 }

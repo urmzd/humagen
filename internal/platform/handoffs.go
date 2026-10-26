@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -131,12 +132,34 @@ func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag envelope
 func (p *Platform) operationEscalation(tenant, kind, id, project, thread, run, agent, owner, reason string) {
 	// The message shares the original place and uses one deterministic key.
 	// Its kind makes it Needs-you; it creates no synthetic runtime question.
+	version := 0
+	switch kind {
+	case "assignment":
+		a, ok := p.Operations.Assignment(tenant, id)
+		if !ok || (a.State != operations.Blocked && a.State != operations.NeedsPerson) {
+			return
+		}
+		version = a.Version
+	case "handoff":
+		h, ok := p.Operations.Handoff(tenant, id)
+		if !ok || (h.State != operations.Blocked && h.State != operations.NeedsPerson) {
+			return
+		}
+		version = h.Version
+	default:
+		return
+	}
+	key := "operation:" + kind + ":" + id + ":" + strconv.Itoa(version)
+	if err := p.clearOperationAttention(tenant, kind, id, key); err != nil {
+		p.log.Error("platform: previous operation attention could not be settled", "error", err)
+		return
+	}
 	m := inbox.Message{Kind: inbox.KindOperation, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: "Humagen"}, Severity: inbox.Warning, Source: inbox.Source{Project: project, Thread: thread, Run: run, Agent: agent}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartOperation, Operation: &inbox.OperationPart{Kind: kind, ID: id, Reason: reason}}}}
 	m.Audience = slices.Clone(fallbackApprovers)
 	if owner != "" {
 		m.Audience = append(m.Audience, owner)
 	}
-	if _, _, err := p.Inbox.RaiseOnce(tenant, "operation:"+kind+":"+id, m, p.now()); err != nil {
+	if _, _, err := p.Inbox.RaiseOnce(tenant, key, m, p.now()); err != nil {
 		p.log.Error("platform: operation escalation could not be kept", "error", err)
 	}
 }
