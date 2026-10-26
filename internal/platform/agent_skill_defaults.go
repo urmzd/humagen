@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -109,7 +110,7 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 	if !ok {
 		return AgentSkillsView{}, library.ErrConflict
 	}
-	if err := p.MayChangeNotes(who, home); err != nil {
+	if err := p.ownsHome(tree, who, agent); err != nil {
 		return AgentSkillsView{}, err
 	}
 	refs, err = p.ValidateAgentSkills(who, home, refs)
@@ -159,13 +160,13 @@ func (p *Platform) pinAgentSkillDefaults(ctx context.Context, tag envelope.Tag, 
 	// Never believe a caller-supplied defaults marker.
 	delete(tag.Meta, metaDefaultSkills)
 	delete(tag.Meta, metaDefaultSkillRevision)
+	defaults := p.AgentSkillDefaults.Get(tag.Tenant, agentspec.NormalizeName(tag.Agent))
+	if defaults.Version == 0 || len(defaults.Skills) == 0 {
+		return tag, nil
+	}
 	rev, err := p.Agents.Get(ctx, tag.Tenant, tag.Agent, 0)
 	if err != nil {
 		return tag, err
-	}
-	defaults := p.AgentSkillDefaults.Get(tag.Tenant, rev.Spec.Name)
-	if defaults.Version == 0 || len(defaults.Skills) == 0 {
-		return tag, nil
 	}
 	if defaults.AgentRevision != rev.Rev {
 		return tag, fmt.Errorf("%w: review skills for the current agent revision", library.ErrConflict)
