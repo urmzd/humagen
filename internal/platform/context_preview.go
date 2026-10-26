@@ -47,7 +47,7 @@ func (p *Platform) turnLayers(tenant string, tree *projects.Tree, chain []projec
 		out = append(out, ContextLayer{Kind: "experts", From: project, Text: text, Sent: true, Unit: "items", Budget: projects.MaxExpertTopics, Used: len(tree.ExpertTopics(project))})
 	}
 	out = append(out, p.noteLayers(tenant, chain, workspace)...)
-	if text := p.Memory.Prompt(tenant, agent); text != "" {
+	if text := p.Memory.PromptAt(tenant, agent, "What you remember from earlier conversations:", p.now()); text != "" {
 		out = append(out, ContextLayer{Kind: "agent_notes", From: agent, Text: text, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, agent), Sent: true, Unit: "characters"})
 	}
 	return out
@@ -158,7 +158,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 func (p *Platform) noteCharacters(tenant, owner string) int {
 	used := 0
 	for _, n := range p.Memory.List(tenant, owner) {
-		if n.Status == memory.Approved {
+		if n.Status == memory.Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(p.now())) {
 			used += utf8.RuneCountInString(n.Text)
 		}
 	}

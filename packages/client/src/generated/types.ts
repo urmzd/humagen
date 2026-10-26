@@ -168,8 +168,34 @@ export interface Choice {
   matched?: string[];
 }
 
+export interface AuditRecord {
+  id: string;
+  actor: string;
+  at: string;
+  finished_at?: string;
+  route?: string;
+  rule?: string;
+  outcome: "pending" | "succeeded" | "failed";
+  action: string;
+  resource: string;
+  resource_id: string;
+  scope: "workspace" | "project" | "personal" | "agent";
+  project?: string;
+  thread?: string;
+  subject?: string;
+  agent?: string;
+  before?: Record<string, string>;
+  after?: Record<string, string>;
+}
+
 /** One thing an agent or a project remembers. */
 export interface Note {
+  kind?: "fact" | "decision" | "preference" | "person";
+  expires_at?: string;
+  uses?: number;
+  last_used_at?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
   id: string;
   text: string;
   source: "person" | "consolidated";
@@ -187,6 +213,8 @@ export interface NoteList {
 
 export interface NoteInput {
   text: string;
+  kind?: "fact" | "decision" | "preference" | "person";
+  expires_at?: string;
 }
 
 export interface NoteSelection {
@@ -1463,8 +1491,19 @@ cannot be removed (409).
 
 export type Theme = "system" | "light" | "dark";
 
+export interface PersonalPreferences {
+  briefing: string;
+  notifications: Record<string, "immediate" | "digest" | "off">;
+  quiet_start: string;
+  quiet_end: string;
+  timezone: string;
+  remember: boolean;
+  use_personal_memory_in_projects: boolean;
+}
+
 /** A person's own settings. */
 export interface Preferences {
+  personal: PersonalPreferences;
   display_name: string;
   theme: Theme;
   accent: string;
@@ -2932,6 +2971,10 @@ export interface ManifestUsage {
   total: Usage;
 }
 
+export interface ListAuditResponse {
+  records: AuditRecord[];
+}
+
 export interface ListReadAuditResponseRecordsItem {
   subject: string;
   project: string;
@@ -3095,6 +3138,7 @@ export interface SaveKnowledgeVariantBody {
 }
 
 export interface UpdatePreferencesBody {
+  personal?: PersonalPreferences;
   display_name?: string;
   theme?: Theme;
   accent?: string;

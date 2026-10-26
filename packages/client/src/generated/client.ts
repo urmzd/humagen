@@ -40,6 +40,7 @@ import type {
   ListAlertsResponse,
   ListArtifactVersionsResponse,
   ListArtifactsResponse,
+  ListAuditResponse,
   ListChannelsResponse,
   ListClientBindingsResponse,
   ListClientsResponse,
@@ -449,6 +450,33 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone. */
+  async listAudit(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListAuditResponse> {
+    let path = "/api/audit";
+    const _q = new URLSearchParams();
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListAuditResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listAuditRaw(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListAuditResponse>> {
+    let path = "/api/audit";
+    const _q = new URLSearchParams();
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListAuditResponse>("GET", path, {
+      ...options,
+    });
   }
 
   /** Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end. */
@@ -1004,6 +1032,57 @@ owner is no agent's, and answers 404.
   async removeAgentMemoryRaw(name: string, id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
     let path = "/api/agents/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Read your private memory */
+  async listPersonalMemory(options?: RequestOptions): Promise<NoteList> {
+    const path = "/api/me/memory";
+    return this.request<NoteList>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listPersonalMemoryRaw(options?: RequestOptions): Promise<ApiResponse<NoteList>> {
+    const path = "/api/me/memory";
+    return this.rawRequest<NoteList>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Remember a private note */
+  async addPersonalMemory(body: NoteInput, options?: RequestOptions): Promise<Note> {
+    const path = "/api/me/memory";
+    return this.request<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async addPersonalMemoryRaw(body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    const path = "/api/me/memory";
+    return this.rawRequest<Note>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Immediately forget a private note */
+  async forgetPersonalMemory(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/me/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async forgetPersonalMemoryRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/me/memory/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("DELETE", path, {
       ...options,
