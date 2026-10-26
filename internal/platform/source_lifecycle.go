@@ -26,7 +26,7 @@ import (
 func (p *Platform) SourcesAs(who auth.Principal) []knowledge.Source {
 	out := []knowledge.Source{}
 	for _, src := range p.Knowledge.List(who.Tenant) {
-		if p.SourceVisible(who, src.Name) {
+		if p.sourceRecordVisible(who, src) {
 			out = append(out, src)
 			if len(out) == 200 {
 				break
@@ -204,6 +204,7 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 		}
 	}
 	indexed := []string{}
+	expected := map[string]*knowledge.SourceConfig{}
 	hits := []knowledge.Hit{}
 	for _, name := range names {
 		src, err := p.SourceAs(who, name)
@@ -212,6 +213,12 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 		}
 		if src.Lifecycle == nil || src.Lifecycle.Mode != knowledge.Live {
 			indexed = append(indexed, name)
+			if src.Lifecycle != nil {
+				cfg := src.Lifecycle.SourceConfig
+				expected[name] = &cfg
+			} else {
+				expected[name] = nil
+			}
 		}
 		if src.Lifecycle == nil || src.Lifecycle.Mode == knowledge.Indexed {
 			continue
@@ -228,7 +235,7 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 	}
 
 	if len(indexed) > 0 {
-		found, err := p.Knowledge.Search(who.Tenant, indexed, query, 6, variant)
+		found, err := p.Knowledge.SearchForScopes(who.Tenant, indexed, query, 6, variant, expected)
 		if err != nil {
 			return out, err
 		}
@@ -340,7 +347,7 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 		return nil, knowledge.ProviderError{Cause: knowledge.FailureCause(err)}
 	}
 	if src.Lifecycle.Mode == knowledge.Hybrid {
-		documents, err := p.Knowledge.Documents(who.Tenant, src.Name)
+		documents, err := p.Knowledge.DocumentsForScope(who.Tenant, src.Name, &src.Lifecycle.SourceConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -367,6 +374,8 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 	hits, err := ephemeral.Search(who.Tenant, []string{src.Name}, query, 6, "")
 	for i := range hits {
 		hits[i].Mode = knowledge.Live
+		hits[i].CopyAt = nil
+		hits[i].RefreshFailed = false
 	}
 	return hits, err
 }

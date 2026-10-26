@@ -28,7 +28,10 @@ as plain text, plain text, Markdown and CSV files. Notion imports a selected
 page's text blocks and supported nested text blocks. Partial pages, unsupported
 formats or limits are failures, not successful truncated copies. Imports are
 bounded to 200 documents, 8 MiB of text and a 45 second request deadline. Notion
-walks at most 100 block lists. The last 20 attempts survive restart.
+walks at most 100 block lists. The last 20 attempts survive restart. Manual collections share the same 200
+document and 8 MiB limits. Durable content cursors retain up to 10000 source
+names, including deleted names, so recreating a name never reuses an old
+assignment revision.
 
 The console distinguishes saved configuration from verified work. Available and
 In sync follow actual retained data or successful provider reads. Importing,
@@ -37,7 +40,7 @@ Needs-you item per source and cause. Retrying it performs the real refresh and
 settles the item only after success. It never resumes an assignment by itself.
 
 Managed sources default to a 24 hour freshness stop rule. Assignment checks use
-the sources pinned at admission, not a newly edited project selection. Missing
+the sources pinned at admission, not a newly edited project selection. Missing, never-imported
 or stale required sources require repair and an explicit assignment resume.
 Manual sources do not expire. Scoped runtime grounding currently requires the
 exact connecting owner with a current subject-based project role. Durable
@@ -62,3 +65,10 @@ Resource-link rule storage and disabled project-fork snapshots are implemented.
 Rule management, resource discovery, connector application and the integration
 configuration flow remain under implementation. No successful external action
 is simulated, and no new external write action is offered.
+
+
+Source-change watchers read the resident `content_version` cursor. Successful
+changes to retained documents, provenance or curation advance it atomically.
+Unchanged refreshes, provider ordering, connection edits and failed attempts do
+not. Deletion keeps a durable tombstone cursor, and recreating a name starts
+after its history. No provider polling is used for this trigger.

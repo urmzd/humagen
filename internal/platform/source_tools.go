@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -18,11 +17,12 @@ import (
 // Reader credentials are usable only in a private conversation with that one
 // person. A live result cannot be copied into a channel with a broader audience.
 func (p *Platform) sourceTools(req runtime.Request) map[string]saigetypes.Tool {
+	allowed := p.sourceNamesForTools(req)
 	return map[string]saigetypes.Tool{ToolSourceSearch: &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{Name: ToolSourceSearch, Description: "Search a declared live or hybrid source with your current reader's own access. Available only in that reader's private conversation. Cite the source URI and say these are live results.", Parameters: schema([]string{"source", "query"}, map[string]string{"source": "One source declared by this turn", "query": "The search query, at most 1000 characters"})},
 		Fn: func(ctx context.Context, args map[string]any) (string, error) {
 			name, query := arg(args, "source"), arg(args, "query")
-			if len(query) > 1000 || !slices.ContainsFunc(req.Revision.Spec.Sources, func(src agentrt.Source) bool { return src.Name == name }) {
+			if len(query) > 1000 || !slices.Contains(allowed, name) {
 				return "", knowledge.ErrNotFound
 			}
 			run, err := p.Runs.Get(req.Tenant, req.RunID)

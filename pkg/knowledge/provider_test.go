@@ -88,3 +88,16 @@ func TestNotionNestedContentAndUnsupportedBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProviderRedactsDecodedJSONAndBoundsFailureCauses(t *testing.T) {
+	provider := HTTPProvider{Kind: "notion", Client: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"results":[{"type":"paragraph","paragraph":{"rich_text":[{"plain_text":"sensitive\u002dtoken"}]}}]}`))}, nil
+	})}}
+	docs, err := provider.Fetch(context.Background(), "page1", mcptools.NewSecret("sensitive-token"))
+	if err != nil || len(docs) != 1 || strings.Contains(docs[0].Text, "sensitive-token") || !strings.Contains(docs[0].Text, mcptools.Redacted) {
+		t.Fatalf("decoded credential echo: %+v %v", docs, err)
+	}
+	if cause := FailureCause(ProviderError{Cause: Cause("private upstream detail")}); cause != Unavailable {
+		t.Fatal("unbounded provider cause returned")
+	}
+}

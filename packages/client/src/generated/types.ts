@@ -2192,6 +2192,7 @@ export interface KnowledgeVariant {
 
 export interface KnowledgeSource {
   lifecycle?: KnowledgeLifecycle;
+  content_version?: number;
   name: string;
   description?: string;
   documents: number;
@@ -2238,6 +2239,8 @@ export interface KnowledgeDocument {
 }
 
 export interface KnowledgeHit {
+  copy_at?: string;
+  refresh_failed?: boolean;
   mode?: "indexed" | "live";
   source: string;
   document_id: string;

@@ -77,11 +77,10 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if run, e := p.Runs.Get(req.Tenant, req.RunID); e == nil {
 		project, person = run.Project, personOf(run.Actor)
 	}
-	spec := req.Revision.Spec
-	spec.Sources = slices.DeleteFunc(slices.Clone(spec.Sources), func(src agentrt.Source) bool {
-		return !p.runtimeReaderSourceAllowed(req.Tenant, src.Name, project, person)
-	})
-	req.Revision.Spec = spec
+	req, err = p.withSourceGrounding(req, project, person)
+	if err != nil {
+		return req, err
+	}
 	return withSkills(req)
 }
 
@@ -133,9 +132,16 @@ var ErrSourceInUse = errors.New("platform: knowledge source in use")
 // that a project names it, not which. A source that does not exist is not
 // found, whoever names it.
 func (p *Platform) DeleteSource(who auth.Principal, name string) error {
-	if !slices.ContainsFunc(p.Knowledge.List(who.Tenant), func(s knowledge.Source) bool { return s.Name == name }) {
-		return fmt.Errorf("%w: %q", knowledge.ErrNotFound, name)
+	snapshot, err := p.Knowledge.Get(who.Tenant, name)
+	if err != nil || (snapshot.Lifecycle != nil && snapshot.Lifecycle.Project != "" && !p.Sees(who, Place{Project: snapshot.Lifecycle.Project})) {
+		return knowledge.ErrNotFound
 	}
+	var expected *knowledge.SourceConfig
+	if snapshot.Lifecycle != nil {
+		cfg := snapshot.Lifecycle.SourceConfig
+		expected = &cfg
+	}
+
 	tree := p.Projects.Tree(who.Tenant)
 	seer := p.Seer(who)
 	var by []string
@@ -146,7 +152,7 @@ func (p *Platform) DeleteSource(who auth.Principal, name string) error {
 	}
 	switch {
 	case len(by) == 0:
-		return p.Knowledge.Delete(who.Tenant, name)
+		return p.Knowledge.DeleteForScope(who.Tenant, name, expected)
 	case !who.Can(auth.ProjectsRead):
 		return fmt.Errorf("%w: a project names %q; stop naming it there, or in the platform file, first", ErrSourceInUse, name)
 	}

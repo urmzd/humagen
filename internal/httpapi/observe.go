@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -435,7 +436,12 @@ func (s *Server) deleteSource(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	docs, err := s.P.Knowledge.Documents(who.Tenant, r.PathValue("name"))
+	src, err := s.P.SourceAs(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	docs, err := s.P.Knowledge.DocumentsForScope(who.Tenant, r.PathValue("name"), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -452,7 +458,16 @@ func (s *Server) addDocument(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if !decode(w, r, &body) {
 		return
 	}
-	doc, err := s.P.Knowledge.Add(who.Tenant, r.PathValue("name"), body.Title, body.URI, body.Text, who.Subject, time.Now())
+	src, err := s.P.SourceAs(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if src.Lifecycle != nil && (src.Lifecycle.Provider != "manual" || src.Lifecycle.Mode != knowledge.Indexed) {
+		s.problem(w, fmt.Errorf("%w: managed copies are changed by Refresh Copy", knowledge.ErrInvalid))
+		return
+	}
+	doc, err := s.P.Knowledge.AddForScope(who.Tenant, r.PathValue("name"), body.Title, body.URI, body.Text, who.Subject, time.Now(), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -461,7 +476,12 @@ func (s *Server) addDocument(w http.ResponseWriter, r *http.Request, who auth.Pr
 }
 
 func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if err := s.P.Knowledge.Remove(who.Tenant, r.PathValue("name"), r.PathValue("id"), time.Now()); err != nil {
+	src, scopeErr := s.P.SourceAs(who, r.PathValue("name"))
+	if scopeErr != nil {
+		s.problem(w, scopeErr)
+		return
+	}
+	if err := s.P.Knowledge.RemoveForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), time.Now(), sourceConfigOf(src)); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -475,7 +495,12 @@ func (s *Server) excludeDocument(w http.ResponseWriter, r *http.Request, who aut
 	if !decode(w, r, &body) {
 		return
 	}
-	doc, err := s.P.Knowledge.SetExcluded(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Excluded, time.Now())
+	src, scopeErr := s.P.SourceAs(who, r.PathValue("name"))
+	if scopeErr != nil {
+		s.problem(w, scopeErr)
+		return
+	}
+	doc, err := s.P.Knowledge.SetExcludedForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Excluded, time.Now(), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -490,7 +515,12 @@ func (s *Server) saveVariant(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if !decode(w, r, &body) {
 		return
 	}
-	v, err := s.P.Knowledge.SaveVariant(who.Tenant, r.PathValue("name"), body.Name, time.Now())
+	src, scopeErr := s.P.SourceAs(who, r.PathValue("name"))
+	if scopeErr != nil {
+		s.problem(w, scopeErr)
+		return
+	}
+	v, err := s.P.Knowledge.SaveVariantForScope(who.Tenant, r.PathValue("name"), body.Name, time.Now(), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -499,7 +529,12 @@ func (s *Server) saveVariant(w http.ResponseWriter, r *http.Request, who auth.Pr
 }
 
 func (s *Server) deleteVariant(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if err := s.P.Knowledge.DeleteVariant(who.Tenant, r.PathValue("name"), r.PathValue("variant")); err != nil {
+	src, scopeErr := s.P.SourceAs(who, r.PathValue("name"))
+	if scopeErr != nil {
+		s.problem(w, scopeErr)
+		return
+	}
+	if err := s.P.Knowledge.DeleteVariantForScope(who.Tenant, r.PathValue("name"), r.PathValue("variant"), sourceConfigOf(src)); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -690,4 +725,12 @@ func (s *Server) sourceDependencies(w http.ResponseWriter, r *http.Request, who 
 		return
 	}
 	ok(w, http.StatusOK, out)
+}
+
+func sourceConfigOf(src knowledge.Source) *knowledge.SourceConfig {
+	if src.Lifecycle == nil {
+		return nil
+	}
+	cfg := src.Lifecycle.SourceConfig
+	return &cfg
 }

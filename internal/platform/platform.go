@@ -189,9 +189,10 @@ type Config struct {
 type Platform struct {
 	files filesblob.Store
 
-	cfg Config
-	log *slog.Logger
-	now func() time.Time
+	cfg       Config
+	log       *slog.Logger
+	now       func() time.Time
+	grounding sourceGrounding
 
 	Agents      registry.Store
 	Runs        *runs.Index
@@ -476,7 +477,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, release: p.releaseSourceGrounding}, nil
 }
 
 // reroute registers the routes of every run the index holds that has not

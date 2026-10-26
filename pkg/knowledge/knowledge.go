@@ -44,11 +44,12 @@ func ValidName(name string) bool { return validName.MatchString(name) }
 
 // Source is a named collection of documents.
 type Source struct {
-	Lifecycle   *Lifecycle `json:"lifecycle,omitempty"`
-	Name        string     `json:"name"`
-	Description string     `json:"description,omitempty"`
-	Documents   int        `json:"documents"`
-	Passages    int        `json:"passages"`
+	ContentVersion uint64     `json:"content_version,omitempty"`
+	Lifecycle      *Lifecycle `json:"lifecycle,omitempty"`
+	Name           string     `json:"name"`
+	Description    string     `json:"description,omitempty"`
+	Documents      int        `json:"documents"`
+	Passages       int        `json:"passages"`
 	// Excluded is how many documents are held but left out of search.
 	Excluded int `json:"excluded"`
 	// Variants are saved views of the source: the same documents with a
@@ -84,14 +85,16 @@ type Document struct {
 
 // Hit is one passage that matched a query.
 type Hit struct {
-	Mode       Mode    `json:"mode,omitempty"`
-	Source     string  `json:"source"`
-	DocumentID string  `json:"document_id"`
-	Title      string  `json:"title"`
-	URI        string  `json:"uri,omitempty"`
-	Index      int     `json:"index"`
-	Text       string  `json:"text"`
-	Score      float64 `json:"score"`
+	CopyAt        *time.Time `json:"copy_at,omitempty"`
+	RefreshFailed bool       `json:"refresh_failed,omitempty"`
+	Mode          Mode       `json:"mode,omitempty"`
+	Source        string     `json:"source"`
+	DocumentID    string     `json:"document_id"`
+	Title         string     `json:"title"`
+	URI           string     `json:"uri,omitempty"`
+	Index         int        `json:"index"`
+	Text          string     `json:"text"`
+	Score         float64    `json:"score"`
 }
 
 type passage struct {
@@ -112,9 +115,10 @@ type source struct {
 
 // Store holds every tenant's sources. Every method is confined to one tenant.
 type Store struct {
-	mu      sync.RWMutex
-	tenants map[string]map[string]*source
-	seq     int64
+	mu       sync.RWMutex
+	tenants  map[string]map[string]*source
+	versions map[string]map[string]uint64
+	seq      int64
 	// kept is where sources and documents are written. Nil keeps them only
 	// in memory.
 	kept *state.Table[stored]
@@ -124,9 +128,10 @@ type Store struct {
 // document's passages are written once, when it is added, and its record
 // again whenever it changes.
 type stored struct {
-	Source   *Source   `json:"source,omitempty"`
-	Document *Document `json:"document,omitempty"`
-	Passages []string  `json:"passages,omitempty"`
+	Clock    *contentClock `json:"clock,omitempty"`
+	Source   *Source       `json:"source,omitempty"`
+	Document *Document     `json:"document,omitempty"`
+	Passages []string      `json:"passages,omitempty"`
 }
 
 func sourceKey(name string) string { return "source/" + name }
@@ -138,7 +143,9 @@ func textKey(name string, seq int64) string {
 }
 
 // NewStore returns an empty store in memory.
-func NewStore() *Store { return &Store{tenants: map[string]map[string]*source{}} }
+func NewStore() *Store {
+	return &Store{tenants: map[string]map[string]*source{}, versions: map[string]map[string]uint64{}}
+}
 
 // Open returns a store that keeps its sources in st, holding what st already
 // has. A nil st is NewStore.
@@ -177,6 +184,11 @@ func Open(st state.Store) (*Store, error) {
 	}
 	err := s.kept.Load(func(tenant, key string, r stored) error {
 		switch {
+		case r.Clock != nil:
+			if !ValidName(r.Clock.Name) || key != clockKey(r.Clock.Name) {
+				return ErrInvalid
+			}
+			s.rememberVersion(tenant, r.Clock.Name, r.Clock.Value)
 		case r.Source != nil:
 			if s.tenants[tenant] == nil {
 				s.tenants[tenant] = map[string]*source{}
@@ -186,6 +198,7 @@ func Open(st state.Store) (*Store, error) {
 				src.Variants = []Variant{}
 			}
 			s.tenants[tenant][src.Name] = src
+			s.rememberVersion(tenant, src.Name, src.ContentVersion)
 		case r.Document != nil:
 			if name, seq, ok := at(tenant, key, "doc"); ok {
 				d := *r.Document
@@ -276,7 +289,11 @@ func (s *Store) Create(tenant, name, description, by string, at time.Time) (Sour
 	if _, ok := s.tenants[tenant][name]; ok {
 		return Source{}, fmt.Errorf("%w: %q", ErrExists, name)
 	}
+	if _, known := s.versions[tenant][name]; !known && len(s.versions[tenant]) >= MaxSourceNames {
+		return Source{}, fmt.Errorf("%w: source name history capacity reached", ErrInvalid)
+	}
 	src := &source{Source: Source{Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}, seqs: map[string]int64{}}
+	src.ContentVersion = s.versions[tenant][name]
 	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &src.Source}); err != nil {
 		return Source{}, fmt.Errorf("knowledge: write: %w", err)
 	}
@@ -284,16 +301,30 @@ func (s *Store) Create(tenant, name, description, by string, at time.Time) (Sour
 		s.tenants[tenant] = map[string]*source{}
 	}
 	s.tenants[tenant][name] = src
+	s.rememberVersion(tenant, name, src.ContentVersion)
 	return src.Source, nil
 }
 
 // Delete removes a source and everything in it.
-func (s *Store) Delete(tenant, name string) error {
+func (s *Store) Delete(tenant, name string) error { return s.deleteWithScope(tenant, name, nil, false) }
+
+// DeleteForScope rejects a source whose authorized audience changed before the mutation.
+func (s *Store) DeleteForScope(tenant, name string, expected *SourceConfig) error {
+	return s.deleteWithScope(tenant, name, expected, true)
+}
+func (s *Store) deleteWithScope(tenant, name string, expected *SourceConfig, guard bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return ErrNotFound
+	}
+	version, versionErr := s.nextVersion(tenant, name)
+	if versionErr != nil {
+		return versionErr
 	}
 	b := s.kept.Batch()
 	b.Delete(tenant, sourceKey(name))
@@ -301,9 +332,11 @@ func (s *Store) Delete(tenant, name string) error {
 		b.Delete(tenant, docKey(name, seq))
 		b.Delete(tenant, textKey(name, seq))
 	}
+	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: version}})
 	if err := b.Commit(); err != nil {
 		return fmt.Errorf("knowledge: write: %w", err)
 	}
+	s.rememberVersion(tenant, name, version)
 	delete(s.tenants[tenant], name)
 	return nil
 }
@@ -323,11 +356,22 @@ func (s *Store) List(tenant string) []Source {
 
 // Documents returns a source's documents, newest first.
 func (s *Store) Documents(tenant, name string) ([]Document, error) {
+	return s.documents(tenant, name, nil, false)
+}
+
+// DocumentsForScope binds a public read to the exact authorized source scope.
+func (s *Store) DocumentsForScope(tenant, name string, expected *SourceConfig) ([]Document, error) {
+	return s.documents(tenant, name, expected, true)
+}
+func (s *Store) documents(tenant, name string, expected *SourceConfig, guard bool) ([]Document, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return nil, err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return nil, ErrNotFound
 	}
 	out := make([]Document, 0, len(src.docs))
 	for _, d := range slices.Backward(src.docs) {
@@ -369,6 +413,14 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	if err != nil {
 		return Document{}, err
 	}
+	totalBytes := doc.Bytes
+	for _, prior := range src.docs {
+		totalBytes += prior.Bytes
+	}
+	if len(src.docs) >= MaxImportDocuments || totalBytes > MaxImportBytes {
+		return Document{}, fmt.Errorf("%w: source document or byte limit reached", ErrInvalid)
+	}
+
 	if guard {
 		if expected == nil {
 			if src.Lifecycle != nil {
@@ -389,14 +441,21 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 		meta.Lifecycle.LastGoodAt = &stamp
 		meta.Lifecycle.Cause = ""
 	}
+	version, versionErr := s.nextVersion(tenant, name)
+	if versionErr != nil {
+		return Document{}, versionErr
+	}
+	meta.ContentVersion = version
 	meta.Documents, meta.Passages, meta.UpdatedAt = len(src.docs)+1, len(src.passages)+len(added), at
 	b := s.kept.Batch()
 	b.Put(tenant, textKey(name, seq), stored{Passages: texts})
 	b.Put(tenant, docKey(name, seq), stored{Document: doc})
 	b.Put(tenant, sourceKey(name), stored{Source: &meta})
+	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: meta.ContentVersion}})
 	if err := b.Commit(); err != nil {
 		return Document{}, fmt.Errorf("knowledge: write: %w", err)
 	}
+	s.rememberVersion(tenant, name, meta.ContentVersion)
 	s.seq = seq
 	src.seqs[doc.ID] = seq
 	src.passages = append(src.passages, added...)
@@ -407,11 +466,22 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 
 // Remove deletes one document from a source.
 func (s *Store) Remove(tenant, name, id string, at time.Time) error {
+	return s.removeWithScope(tenant, name, id, at, nil, false)
+}
+
+// RemoveForScope rejects a source whose authorized audience changed before the mutation.
+func (s *Store) RemoveForScope(tenant, name, id string, at time.Time, expected *SourceConfig) error {
+	return s.removeWithScope(tenant, name, id, at, expected, true)
+}
+func (s *Store) removeWithScope(tenant, name, id string, at time.Time, expected *SourceConfig, guard bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return ErrNotFound
 	}
 	i := slices.IndexFunc(src.docs, func(d *Document) bool { return d.ID == id })
 	if i < 0 {
@@ -426,15 +496,22 @@ func (s *Store) Remove(tenant, name, id string, at time.Time) error {
 	next := *src
 	next.docs, next.passages, next.Variants = docs, passages, variants
 	next.Documents, next.Passages, next.UpdatedAt = len(docs), len(passages), at
+	version, versionErr := s.nextVersion(tenant, name)
+	if versionErr != nil {
+		return versionErr
+	}
+	next.ContentVersion = version
 	next.recount()
 	seq := src.seqs[id]
 	b := s.kept.Batch()
 	b.Delete(tenant, docKey(name, seq))
 	b.Delete(tenant, textKey(name, seq))
 	b.Put(tenant, sourceKey(name), stored{Source: &next.Source})
+	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: next.ContentVersion}})
 	if err := b.Commit(); err != nil {
 		return fmt.Errorf("knowledge: write: %w", err)
 	}
+	s.rememberVersion(tenant, name, next.ContentVersion)
 	delete(next.seqs, id)
 	*src = next
 	return nil
@@ -452,11 +529,22 @@ func (src *source) recount() {
 // SetExcluded leaves a document out of search, or puts it back. The document
 // and its text are kept either way.
 func (s *Store) SetExcluded(tenant, name, id string, excluded bool, at time.Time) (Document, error) {
+	return s.setExcludedWithScope(tenant, name, id, excluded, at, nil, false)
+}
+
+// SetExcludedForScope rejects a source whose authorized audience changed before the mutation.
+func (s *Store) SetExcludedForScope(tenant, name, id string, excluded bool, at time.Time, expected *SourceConfig) (Document, error) {
+	return s.setExcludedWithScope(tenant, name, id, excluded, at, expected, true)
+}
+func (s *Store) setExcludedWithScope(tenant, name, id string, excluded bool, at time.Time, expected *SourceConfig, guard bool) (Document, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return Document{}, err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return Document{}, ErrNotFound
 	}
 	i := slices.IndexFunc(src.docs, func(d *Document) bool { return d.ID == id })
 	if i < 0 {
@@ -468,6 +556,11 @@ func (s *Store) SetExcluded(tenant, name, id string, excluded bool, at time.Time
 	meta.UpdatedAt = at
 	meta.Excluded = src.Excluded
 	if doc.Excluded != src.docs[i].Excluded {
+		version, versionErr := s.nextVersion(tenant, name)
+		if versionErr != nil {
+			return Document{}, versionErr
+		}
+		meta.ContentVersion = version
 		if excluded {
 			meta.Excluded++
 		} else {
@@ -477,11 +570,13 @@ func (s *Store) SetExcluded(tenant, name, id string, excluded bool, at time.Time
 	b := s.kept.Batch()
 	b.Put(tenant, docKey(name, src.seqs[id]), stored{Document: &doc})
 	b.Put(tenant, sourceKey(name), stored{Source: &meta})
+	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: meta.ContentVersion}})
 	if err := b.Commit(); err != nil {
 		return Document{}, fmt.Errorf("knowledge: write: %w", err)
 	}
+	s.rememberVersion(tenant, name, meta.ContentVersion)
 	src.docs[i].Excluded = excluded
-	src.UpdatedAt = at
+	src.Source = meta
 	src.recount()
 	return *src.docs[i], nil
 }
@@ -489,6 +584,14 @@ func (s *Store) SetExcluded(tenant, name, id string, excluded bool, at time.Time
 // SaveVariant records the documents currently left out as a named view. Saving
 // a name that exists replaces it.
 func (s *Store) SaveVariant(tenant, name, variant string, at time.Time) (Variant, error) {
+	return s.saveVariantWithScope(tenant, name, variant, at, nil, false)
+}
+
+// SaveVariantForScope rejects a source whose authorized audience changed before the mutation.
+func (s *Store) SaveVariantForScope(tenant, name, variant string, at time.Time, expected *SourceConfig) (Variant, error) {
+	return s.saveVariantWithScope(tenant, name, variant, at, expected, true)
+}
+func (s *Store) saveVariantWithScope(tenant, name, variant string, at time.Time, expected *SourceConfig, guard bool) (Variant, error) {
 	if !validName.MatchString(variant) {
 		return Variant{}, fmt.Errorf("%w: a variant name is lowercase letters, digits and dashes", ErrInvalid)
 	}
@@ -497,6 +600,9 @@ func (s *Store) SaveVariant(tenant, name, variant string, at time.Time) (Variant
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return Variant{}, err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return Variant{}, ErrNotFound
 	}
 	v := Variant{Name: variant, Excluded: []string{}}
 	for _, d := range src.docs {
@@ -525,11 +631,22 @@ func (s *Store) SaveVariant(tenant, name, variant string, at time.Time) (Variant
 
 // DeleteVariant removes a saved view. The documents are untouched.
 func (s *Store) DeleteVariant(tenant, name, variant string) error {
+	return s.deleteVariantWithScope(tenant, name, variant, nil, false)
+}
+
+// DeleteVariantForScope rejects a source whose authorized audience changed before the mutation.
+func (s *Store) DeleteVariantForScope(tenant, name, variant string, expected *SourceConfig) error {
+	return s.deleteVariantWithScope(tenant, name, variant, expected, true)
+}
+func (s *Store) deleteVariantWithScope(tenant, name, variant string, expected *SourceConfig, guard bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	src, err := s.get(tenant, name)
 	if err != nil {
 		return err
+	}
+	if guard && !sameConfiguration(src.Source, expected) {
+		return ErrNotFound
 	}
 	i := slices.IndexFunc(src.Variants, func(x Variant) bool { return x.Name == variant })
 	if i < 0 {
@@ -552,6 +669,18 @@ func (s *Store) DeleteVariant(tenant, name, variant string) error {
 // source through a saved view instead: what that view leaves out, rather than
 // what is left out now.
 func (s *Store) Search(tenant string, names []string, query string, limit int, variant string) ([]Hit, error) {
+	return s.search(tenant, names, query, limit, variant, nil, false)
+}
+
+// SearchForScopes checks every authorized source snapshot under the read lock.
+// An empty selection searches nothing, never the entire tenant.
+func (s *Store) SearchForScopes(tenant string, names []string, query string, limit int, variant string, expected map[string]*SourceConfig) ([]Hit, error) {
+	if len(names) == 0 {
+		return []Hit{}, nil
+	}
+	return s.search(tenant, names, query, limit, variant, expected, true)
+}
+func (s *Store) search(tenant string, names []string, query string, limit int, variant string, expected map[string]*SourceConfig, guard bool) ([]Hit, error) {
 	q := tokens(query)
 	if len(q) == 0 {
 		return nil, fmt.Errorf("%w: a search needs words to look for", ErrInvalid)
@@ -572,6 +701,12 @@ func (s *Store) Search(tenant string, names []string, query string, limit int, v
 		src, err := s.get(tenant, n)
 		if err != nil {
 			return nil, err
+		}
+		if guard {
+			cfg, ok := expected[n]
+			if !ok || !sameConfiguration(src.Source, cfg) {
+				return nil, ErrNotFound
+			}
 		}
 		in = append(in, src)
 	}
@@ -629,10 +764,16 @@ func (s *Store) Search(tenant string, names []string, query string, limit int, v
 				score += idf * tf * (k1 + 1) / (tf + k1*(1-b+b*float64(p.n)/avg))
 			}
 			if score > 0 {
-				hits = append(hits, Hit{
-					Source: src.Name, DocumentID: p.doc.ID, Title: p.doc.Title, URI: p.doc.URI,
-					Index: p.index, Text: p.text, Score: score,
-				})
+				hit := Hit{Source: src.Name, DocumentID: p.doc.ID, Title: p.doc.Title, URI: p.doc.URI, Index: p.index, Text: p.text, Score: score}
+				if src.Lifecycle != nil {
+					hit.Mode = Indexed
+					hit.RefreshFailed = src.Lifecycle.Status == NeedsAttention
+					if src.Lifecycle.LastGoodAt != nil {
+						at := *src.Lifecycle.LastGoodAt
+						hit.CopyAt = &at
+					}
+				}
+				hits = append(hits, hit)
 			}
 		}
 	}

@@ -229,6 +229,10 @@ function SourceDetail({
   onSuitesChanged: () => void;
   onOpenAgent?: (name: string) => void;
 }) {
+  const canAddDocuments =
+    canWrite &&
+    (!source.lifecycle ||
+      (source.lifecycle.provider === "manual" && source.lifecycle.mode === "indexed"));
   const [docs, setDocs] = useState<Doc[]>([]);
   const [draft, setDraft] = useState({ title: "", uri: "", text: "" });
   const [query, setQuery] = useState("");
@@ -442,7 +446,7 @@ function SourceDetail({
               Documents ({docs.length}
               {source.excluded > 0 ? `, ${source.excluded} excluded` : ""})
             </h3>
-            {canWrite && (
+            {canAddDocuments && (
               <div className="flex gap-2">
                 <input
                   ref={picker}
@@ -470,7 +474,7 @@ function SourceDetail({
               </div>
             )}
           </div>
-          {canWrite && pasting && (
+          {canAddDocuments && pasting && (
             <form onSubmit={add} className="flex flex-col gap-3 border-aui-border border-b pb-3">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Label text="Title">

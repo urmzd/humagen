@@ -40,9 +40,34 @@ func (p *Platform) CheckAssignmentSources(tenant string, names []string) error {
 		if err != nil || source.HardStale(p.now()) {
 			return ErrSourceStop
 		}
+		if source.Documents == 0 && (source.Lifecycle == nil || source.Lifecycle.LastGoodAt == nil) {
+			return ErrSourceStop
+		}
+		if source.Lifecycle != nil && source.Lifecycle.Provider != "manual" && source.Lifecycle.Mode != knowledge.Live && source.Lifecycle.LastGoodAt == nil {
+			return ErrSourceStop
+		}
 		if source.Lifecycle != nil && source.Lifecycle.Mode == knowledge.Live && source.Lifecycle.Status == knowledge.NeedsAttention {
 			return ErrSourceStop
 		}
 	}
 	return nil
+}
+
+// SourceChangeVersion is resident durable state for the assignment reconciler.
+// Unchanged refreshes never advance the cursor and no provider request is made.
+func (p *Platform) SourceChangeVersion(tenant, name string) (uint64, bool) {
+	source, err := p.Knowledge.Get(tenant, name)
+	if err != nil {
+		return p.Knowledge.ContentCursor(tenant, name), false
+	}
+	if source.Documents == 0 && (source.Lifecycle == nil || source.Lifecycle.LastGoodAt == nil) {
+		return source.ContentVersion, false
+	}
+	if source.Lifecycle != nil && source.Lifecycle.Provider != "manual" && source.Lifecycle.Mode != knowledge.Live && source.Lifecycle.LastGoodAt == nil {
+		return source.ContentVersion, false
+	}
+	if source.HardStale(p.now()) || (source.Lifecycle != nil && source.Lifecycle.Mode == knowledge.Live) {
+		return source.ContentVersion, false
+	}
+	return source.ContentVersion, true
 }

@@ -332,10 +332,19 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 	next.Excluded = 0
 	next.Variants = []Variant{}
 	next.UpdatedAt = at
+	if retainedDigest(next) != retainedDigest(src) {
+		version, versionErr := s.nextVersion(tenant, name)
+		if versionErr != nil {
+			return Source{}, versionErr
+		}
+		next.ContentVersion = version
+	}
 	b.Put(tenant, sourceKey(name), stored{Source: &next.Source})
+	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: next.ContentVersion}})
 	if err := b.Commit(); err != nil {
 		return Source{}, err
 	}
+	s.rememberVersion(tenant, name, next.ContentVersion)
 	s.seq = seq
 	s.tenants[tenant][name] = next
 	return cloneSource(next.Source), nil
