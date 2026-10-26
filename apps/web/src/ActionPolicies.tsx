@@ -5,6 +5,8 @@ import { field, Label, Page, Problem, primary } from "./ui.tsx";
 
 const words = defaultCopy.operations;
 type Level = "allow" | "ask" | "never";
+const rank = (level: string | undefined) =>
+  level === "never" ? 3 : level === "ask" ? 2 : level === "allow" ? 1 : 0;
 
 export function ActionPolicies({
   scope = "workspace",
@@ -65,26 +67,54 @@ export function ActionPolicies({
             void save();
           }}
         >
-          {Object.entries(words.categories).map(([category, label]) => (
-            <Label key={category} text={label}>
-              <select
-                className={field}
-                value={rules[category] ?? ""}
-                disabled={!canWrite || busy}
-                onChange={(e) => {
-                  const next = { ...rules };
-                  if (e.target.value) next[category] = e.target.value as Level;
-                  else delete next[category];
-                  setRules(next);
-                }}
-              >
-                <option value="">{words.inherited}</option>
-                <option value="allow">{words.allow}</option>
-                <option value="ask">{words.ask}</option>
-                <option value="never">{words.never}</option>
-              </select>
-            </Label>
-          ))}
+          <p className="text-aui-xs text-aui-muted">{words.policyContext}</p>
+          {Object.entries(words.categories).map(([category, label]) => {
+            const effective = policy.effective?.[category];
+            const inherited = effective?.inherited;
+            const selected =
+              rules[category] && rank(rules[category]) < rank(inherited)
+                ? inherited
+                : rules[category];
+            return (
+              <div key={category} className="flex flex-col gap-2">
+                <Label text={label}>
+                  <select
+                    className={field}
+                    value={selected ?? ""}
+                    disabled={!canWrite || busy || inherited === "never"}
+                    onChange={(e) => {
+                      const next = { ...rules };
+                      if (e.target.value) next[category] = e.target.value as Level;
+                      else delete next[category];
+                      setRules(next);
+                    }}
+                  >
+                    <option value="">{words.inherited}</option>
+                    <option value="allow" disabled={rank(inherited) > rank("allow")}>
+                      {words.allow}
+                    </option>
+                    <option value="ask" disabled={rank(inherited) > rank("ask")}>
+                      {words.ask}
+                    </option>
+                    <option value="never">{words.never}</option>
+                  </select>
+                </Label>
+                {effective?.level && (
+                  <p className="text-aui-xs text-aui-muted">
+                    {words.effective}: {words[effective.level]}
+                  </p>
+                )}
+                {effective?.locked && (
+                  <p className="text-aui-xs text-aui-muted">
+                    {words.lockedBy}:{" "}
+                    {effective.sources
+                      .map((source) => source.label || words.scopeKinds[source.kind])
+                      .join(", ")}
+                  </p>
+                )}
+              </div>
+            );
+          })}
           <button type="submit" className={primary} disabled={!canWrite || busy}>
             {busy ? words.saving : words.save}
           </button>

@@ -4430,9 +4430,10 @@ owns cannot be changed here and answers 409.
   }
 
   /** List assignments */
-  async listAssignments(limit?: number, options?: RequestOptions): Promise<Assignment[]> {
+  async listAssignments(agent?: string, limit?: number, options?: RequestOptions): Promise<Assignment[]> {
     let path = "/api/assignments";
     const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
@@ -4441,9 +4442,10 @@ owns cannot be changed here and answers 409.
     });
   }
 
-  async listAssignmentsRaw(limit?: number, options?: RequestOptions): Promise<ApiResponse<Assignment[]>> {
+  async listAssignmentsRaw(agent?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<Assignment[]>> {
     let path = "/api/assignments";
     const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;

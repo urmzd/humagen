@@ -4980,6 +4980,10 @@ paths:
         '500':
           "$ref": "#/components/responses/ServerError"
       parameters:
+      - name: agent
+        in: query
+        description: Filter before the bound. Hidden and missing agents both return an empty list.
+        schema: {type: string, maxLength: 256}
       - name: limit
         in: query
         schema:
@@ -5440,6 +5444,9 @@ components:
       properties:
         state: {type: string, enum: [ready, working, waiting_on_people, watching, paused, failed]}
         effective_paused: {type: boolean}
+        pause_reason: {type: string, enum: [workspace, agent, setup]}
+        effective_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800}
+        effective_blocked_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800}
         manager_name: {type: string}
         last_run: {type: string}
         last_run_at: {type: string, format: date-time}
@@ -5452,6 +5459,8 @@ components:
           type: string
         stop_rules:
           type: string
+        reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800, description: "Unanswered-question reminder delay; 0 disables, omitted defaults to four hours."}
+        blocked_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800, description: "Blocked-work reminder delay; 0 disables, omitted defaults to two hours."}
         version:
           type: integer
           minimum: 0
@@ -5475,6 +5484,8 @@ components:
           type: string
         stop_rules:
           type: string
+        reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800, description: "Unanswered-question reminder delay; 0 disables, omitted defaults to four hours."}
+        blocked_reminder_after_seconds: {type: integer, minimum: 0, maximum: 604800, description: "Blocked-work reminder delay; 0 disables, omitted defaults to two hours."}
         version:
           type: integer
           minimum: 0
@@ -5517,6 +5528,28 @@ components:
             - external_messages
             - call_agents
             - other
+        effective:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              level: {type: string, enum: [allow, ask, never]}
+              inherited: {type: string, enum: [allow, ask, never]}
+              locked: {type: boolean}
+              sources:
+                type: array
+                maxItems: 64
+                items:
+                  type: object
+                  properties:
+                    kind: {type: string, enum: [workspace, project, agent, personal, inherited]}
+                    name: {type: string}
+                    label: {type: string}
+                    level: {type: string, enum: [allow, ask, never]}
+                  required: [kind, label, level]
+                  additionalProperties: false
+            required: [locked, sources]
+            additionalProperties: false
         version:
           type: integer
           minimum: 0
@@ -5584,6 +5617,7 @@ components:
         due_at:
           type: string
           format: date-time
+        deadline_missed: {type: boolean}
         schedule:
           type: string
         cron:
@@ -5603,6 +5637,7 @@ components:
           type: string
         run_id:
           type: string
+        run_status: {$ref: "#/components/schemas/RunStatus"}
         version:
           type: integer
           minimum: 0
@@ -5692,6 +5727,8 @@ components:
           type: string
         owner:
           type: string
+        owner_name:
+          type: string
         goal:
           type: string
         done_when:
@@ -5722,6 +5759,7 @@ components:
         due_at:
           type: string
           format: date-time
+        deadline_missed: {type: boolean}
         state:
           type: string
           enum:
@@ -8682,7 +8720,7 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden, reminded]
         part: {type: string}
         action: {type: string}
         note: {type: string}
