@@ -1186,7 +1186,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: tagID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.personalContext(tenant, th.Project, actor.User, p.contextIn(tenant, th.Project, th.Channel, agent, body), meta), Attachments: m.Attachments, Actor: actor, Meta: meta,
+		Text: p.turnContext(tenant, th.Project, th.Channel, agent, actor.User, body, meta), Attachments: m.Attachments, Actor: actor, Meta: meta,
 	})
 }
 

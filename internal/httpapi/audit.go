@@ -46,7 +46,7 @@ func (s *Server) listAudit(w http.ResponseWriter, r *http.Request, who auth.Prin
 		}
 		limit = v
 	}
-	rows, err := s.P.AuditRecords(who, audit.Query{From: from, To: to, Limit: limit})
+	rows, err := s.P.AuditRecords(who, audit.Query{From: from, To: to, Limit: limit, Actor: r.URL.Query().Get("actor"), Resource: r.URL.Query().Get("resource")})
 	if err != nil {
 		if errors.Is(err, audit.ErrInvalid) {
 			fail(w, 400, "audit window must be at most 31 days")

@@ -656,6 +656,9 @@ export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, 
 import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
+ editPersonalMemory:(id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/me/memory/${encodeURIComponent(id)}`,input),
+ editProjectMemory:(project:string,id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/projects/${projectPath(project)}/memory/${encodeURIComponent(id)}`,input),
+ editAgentMemory:(agent:string,id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`,input),
   notifications: () => call<{notifications:NativeNotification[]}>("GET","/api/me/notifications").then(r=>r.notifications??[]),
   acknowledgeNotification: (id:string) => call<void>("POST",`/api/me/notifications/${encodeURIComponent(id)}/ack`),
   librarySkills: (scope: LibraryScope) => call<{skills:LibrarySkill[]}>("GET", `/api/library/skills?${new URLSearchParams({scope:scope.kind,...(scope.project?{project:scope.project}:{})})}`).then(r=>r.skills),
@@ -668,7 +671,7 @@ export const api = {
   rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
   approvePersonal: (ids:string[]) => call<{approved:number}>("POST","/api/me/memory/approve",{ids}),
   forgetPersonal: (id: string) => call<void>("DELETE", `/api/me/memory/${encodeURIComponent(id)}`),
-  audit: () => call<{ records: AuditRecord[] }>("GET", "/api/audit").then(r => r.records),
+  audit: (filters:Record<string,string>={}) => call<{ records: AuditRecord[] }>("GET", `/api/audit?${new URLSearchParams(filters)}`).then(r => r.records),
   agentControl: (agent = "") => call<AgentControl>("GET", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls"),
   saveAgentControl: (agent: string, input: AgentControlInput) => call<AgentControl>("PUT", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls", input),
   actionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name = "") => call<ActionPolicy>("GET", operationPolicyPath(scope, name)),
@@ -740,8 +743,8 @@ export const api = {
 
   memory: (agent: string) =>
     call<{ notes: Note[] }>("GET", `/api/agents/${encodeURIComponent(agent)}/memory`).then((r) => r.notes),
-  addMemory: (agent: string, text: string) =>
-    call<Note>("POST", `/api/agents/${encodeURIComponent(agent)}/memory`, { text }),
+  addMemory: (agent: string, text: string,details:Partial<NoteInput>={}) =>
+    call<Note>("POST", `/api/agents/${encodeURIComponent(agent)}/memory`, { ...details,text }),
   approveMemory: (agent: string, ids: string[]) =>
     call<{ approved: number }>("POST", `/api/agents/${encodeURIComponent(agent)}/memory/approve`, { ids }),
   pendingMemory: () => call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
@@ -848,8 +851,8 @@ export const api = {
     call<void>("DELETE", `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then((r) => r.notes),
-  addProjectMemory: (project: string, text: string) =>
-    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { text }),
+  addProjectMemory: (project: string, text: string,details:Partial<NoteInput>={}) =>
+    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { ...details,text }),
   approveProjectMemory: (project: string, ids: string[]) =>
     call<{ approved: number }>("POST", `/api/projects/${projectPath(project)}/memory/approve`, { ids }),
   removeProjectMemory: (project: string, id: string) =>

@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { defaultCopy } from "@humagen/components";
 import { stubFetch } from "./dom.ts";
+import { MemoryLibrary } from "./MemoryLibrary.tsx";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import { NotificationPanel } from "./Notifications.tsx";
@@ -95,12 +96,24 @@ test("personal briefing saves only writable profile fields", async () => {
       return { ...profile, ...(body as object) };
     },
   });
-  render(<PersonalPreferences section="profile" />);
+  let savedName = "";
+  render(
+    <PersonalPreferences
+      section="profile"
+      onSaved={(value) => {
+        savedName = value.display_name;
+      }}
+    />,
+  );
+  fireEvent.change(await screen.findByLabelText(defaultCopy.personalPreferences.displayName), {
+    target: { value: "Nadia" },
+  });
   fireEvent.change(await screen.findByLabelText(defaultCopy.personalPreferences.briefing), {
     target: { value: "Start with the conclusion" },
   });
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.personalPreferences.save }));
   await screen.findByRole("status");
+  assert.equal(savedName, "Nadia");
   assert.equal(
     (
       net.seen.find((request) => request.method === "PUT")?.body as {
@@ -143,4 +156,44 @@ test("dismissing a delivered notification acknowledges only its projection", asy
     net.seen.filter((request) => request.method === "POST").map((request) => request.path),
     ["/api/me/notifications/ntf-one/ack"],
   );
+});
+
+test("memory correction retains scope and never resubmits source provenance", async () => {
+  const original = {
+    id: "m-one",
+    text: "Ship on Tuesday",
+    source: "artifact",
+    status: "approved",
+    kind: "decision",
+    at: "2026-10-26T12:00:00Z",
+    source_name: "Release notes",
+    source_url: "/conversations/th-one/deliverables/art-one/provenance",
+  };
+  let current = original;
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/me/memory": () => ({ notes: [current] }),
+    "PUT /api/me/memory/m-one": (body) => {
+      const input = body as { text: string; kind: string; expires_at: null };
+      assert.deepEqual(Object.keys(input).sort(), ["expires_at", "kind", "text"]);
+      assert.equal(input.kind, "decision");
+      current = { ...original, text: input.text };
+      return current;
+    },
+  });
+  render(<MemoryLibrary />);
+  const edit = await screen.findByRole("button", { name: "Edit" });
+  fireEvent.click(edit);
+  assert.equal(
+    (screen.getByRole("link", { name: "Open Source" }) as HTMLAnchorElement).getAttribute("href"),
+    original.source_url,
+  );
+  fireEvent.change(screen.getByLabelText(defaultCopy.memoryLibrary.text), {
+    target: { value: "Ship on Wednesday" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save Correction" }));
+  await screen.findByText("Ship on Wednesday");
+  assert.equal(net.seen.filter((request) => request.method === "PUT").length, 1);
 });

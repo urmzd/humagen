@@ -6,7 +6,7 @@ import type {
 } from "../../../packages/client/src/generated/types.ts";
 import { useEffect, useState } from "react";
 import { api, type ProjectView, type Revision } from "./api.ts";
-import { card, field, pageLede, pageTitle, Problem, SkeletonRows } from "./ui.tsx";
+import { card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 const blank: LibrarySkillDefinition = {
   name: "",
@@ -234,11 +234,7 @@ export function SkillsLibrary() {
     </div>
   );
   return (
-    <section className="min-w-0 space-y-5">
-      <header>
-        <h1 className={pageTitle}>{copy.title}</h1>
-        <p className={pageLede}>{copy.description}</p>
-      </header>
+    <Page title={copy.title} lede={copy.description}>
       {scopeControl(scope, setScope)}
       {problem && <Problem message={problem} />}
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
@@ -482,6 +478,6 @@ export function SkillsLibrary() {
       >
         {copy.refresh}
       </button>
-    </section>
+    </Page>
   );
 }

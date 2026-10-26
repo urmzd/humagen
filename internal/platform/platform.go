@@ -613,7 +613,7 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	}
 	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
-		tag.Text = p.personalContext(tag.Tenant, project, personOf(tag.Actor), p.contextOf(tag.Tenant, project, tag.Agent, tag.Text), meta)
+		tag.Text = p.turnContext(tag.Tenant, project, "", tag.Agent, personOf(tag.Actor), tag.Text, meta)
 	}
 	tag.Meta = meta
 	return tag

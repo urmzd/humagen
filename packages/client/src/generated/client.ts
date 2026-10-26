@@ -629,9 +629,11 @@ export class ApiClient {
   }
 
   /** Workspace administrators read at most 500 visible, redacted change attempts in a window of at most 31 days. Personal changes remain their owner's alone. */
-  async listAudit(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListAuditResponse> {
+  async listAudit(actor?: string, resource?: string, from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListAuditResponse> {
     let path = "/api/audit";
     const _q = new URLSearchParams();
+    if (actor !== undefined && actor !== null) _q.set("actor", String(actor));
+    if (resource !== undefined && resource !== null) _q.set("resource", String(resource));
     if (from !== undefined && from !== null) _q.set("from", String(from));
     if (to !== undefined && to !== null) _q.set("to", String(to));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
@@ -642,9 +644,11 @@ export class ApiClient {
     });
   }
 
-  async listAuditRaw(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListAuditResponse>> {
+  async listAuditRaw(actor?: string, resource?: string, from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListAuditResponse>> {
     let path = "/api/audit";
     const _q = new URLSearchParams();
+    if (actor !== undefined && actor !== null) _q.set("actor", String(actor));
+    if (resource !== undefined && resource !== null) _q.set("resource", String(resource));
     if (from !== undefined && from !== null) _q.set("from", String(from));
     if (to !== undefined && to !== null) _q.set("to", String(to));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
@@ -1195,6 +1199,29 @@ owner is no agent's, and answers 404.
     });
   }
 
+  /** Correct a visible memory while retaining its provenance */
+  async editAgentMemory(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/agents/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editAgentMemoryRaw(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/agents/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** An agent that does not exist, or a note that is not its own, is 404. */
   async removeAgentMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/agents/{name}/memory/{id}";
@@ -1261,6 +1288,27 @@ owner is no agent's, and answers 404.
   async approvePersonalMemoryRaw(body: NoteSelection, options?: RequestOptions): Promise<ApiResponse<Approved>> {
     const path = "/api/me/memory/approve";
     return this.rawRequest<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Correct a visible memory while retaining its provenance */
+  async editPersonalMemory(id: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/me/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editPersonalMemoryRaw(id: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/me/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Note>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,
@@ -3596,6 +3644,29 @@ inbox to keep or discard it. A viewer is 403.
     let path = "/api/projects/{name}/memory/approve";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<Approved>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Correct a visible memory while retaining its provenance */
+  async editProjectMemory(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
+    let path = "/api/projects/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Note>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async editProjectMemoryRaw(id: string, name: string, body: NoteInput, options?: RequestOptions): Promise<ApiResponse<Note>> {
+    let path = "/api/projects/{name}/memory/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Note>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,
