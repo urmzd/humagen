@@ -756,6 +756,14 @@ export const defaultCopy = {
     agent: "Test Agent",
     request: "Test Request",
     testHint: "Tests use the exact selected version. Every permitted action requires approval.",
+    personalTestLocation: "This test runs in your personal project.",
+    testProjectUnavailable:
+      "Your personal test project is not available yet. Reload the library and try again.",
+    testAgentsLoading: "Loading agents available in the test project",
+    testAgentsUnavailable:
+      "Available test agents could not be loaded. Reload the library and try again.",
+    noTestAgents:
+      "No listed agent is available in this test project. Choose another test project or review the agent's home.",
     publish: "Publish Version",
     publishNeedsTest: "Complete a readable test for this exact revision before publishing.",
     testPending:

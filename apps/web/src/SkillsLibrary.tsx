@@ -6,7 +6,8 @@ import type {
   LibrarySkillDefinition,
   SkillUsage,
 } from "../../../packages/client/src/generated/types.ts";
-import { api, type ProjectView, type Revision } from "./api.ts";
+import { api, type ProjectAgentsView, type ProjectView, type Revision } from "./api.ts";
+import { availableOf } from "./availability.ts";
 import { AgentMark, card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 const blank: LibrarySkillDefinition = {
@@ -62,6 +63,13 @@ export function SkillsLibrary({
   const [definition, setDefinition] = useState<LibrarySkillDefinition>(blank);
   const [projects, setProjects] = useState<ProjectView[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);
+  const [homes, setHomes] = useState<Record<string, string>>({});
+  const [availableAt, setAvailableAt] = useState<{
+    project: string;
+    view: ProjectAgentsView;
+  } | null>(null);
+  const [availabilityFailed, setAvailabilityFailed] = useState(false);
+  const [canTest, setCanTest] = useState(false);
   const [personal, setPersonal] = useState("");
   const [canWrite, setCanWrite] = useState(false);
   const [scopeOwner, setScopeOwner] = useState(false);
@@ -83,14 +91,16 @@ export function SkillsLibrary({
     setProblem(error instanceof Error ? error.message : copy.failed);
   useEffect(() => {
     let live = true;
-    Promise.all([api.me(), api.projects(), api.agents()])
+    Promise.all([api.me(), api.projects(), api.agentList()])
       .then(([me, places, workers]) => {
         if (!live) return;
         setProjects(places);
-        setAgents(workers);
+        setAgents(workers.agents);
+        setHomes(workers.homes ?? {});
+        setCanTest(me.permissions.includes("runs:write"));
         setPersonal(me.personal_project?.replace(/^~/, "") ?? "");
         setCanWrite(me.permissions.includes("projects:write"));
-        if (workers[0]) setAgent(workers[0].spec.name);
+        if (workers.agents[0]) setAgent(workers.agents[0].spec.name);
       })
       .catch((error) => {
         if (live) failed(error);
@@ -245,8 +255,56 @@ export function SkillsLibrary({
       setBusy(false);
     }
   };
+  const testDestination =
+    selected?.scope.kind === "personal"
+      ? personal
+      : selected?.scope.kind === "project"
+        ? (selected.scope.project ?? "")
+        : testProject;
+  const destinationReady = !!selected && (selected.scope.kind !== "personal" || personal !== "");
+  const available =
+    destinationReady && availableAt?.project === testDestination ? availableAt.view : null;
+  const eligibleAgents = available
+    ? availableOf(
+        agents.map((row) => row.spec.name),
+        available,
+        homes,
+      )
+    : [];
+  const eligibleKey = eligibleAgents.join("\0");
+  useEffect(() => {
+    let live = true;
+    setAvailableAt(null);
+    setAvailabilityFailed(false);
+    if (destinationReady)
+      api
+        .projectAgents(testDestination)
+        .then((view) => {
+          if (live) setAvailableAt({ project: testDestination, view });
+        })
+        .catch(() => {
+          if (live) setAvailabilityFailed(true);
+        });
+    return () => {
+      live = false;
+    };
+  }, [testDestination, destinationReady]);
+  useEffect(() => {
+    if (available)
+      setAgent((current) =>
+        eligibleAgents.includes(current) ? current : (eligibleAgents[0] ?? ""),
+      );
+  }, [eligibleKey, available]);
   const test = async () => {
     if (!selected) return;
+    if (!destinationReady) {
+      setProblem(copy.testProjectUnavailable);
+      return;
+    }
+    if (!eligibleAgents.includes(agent)) {
+      setProblem(copy.noTestAgents);
+      return;
+    }
     setBusy(true);
     setProblem(null);
     try {
@@ -254,7 +312,7 @@ export function SkillsLibrary({
         selected.id,
         selected.version,
         agent,
-        testProject || "~",
+        testDestination || "~",
         request,
       );
       setTestThread(run.thread);
@@ -499,15 +557,24 @@ export function SkillsLibrary({
                   <select
                     className={`${field} mt-2 block max-w-full`}
                     value={agent}
+                    disabled={busy || !available}
                     onChange={(e) => setAgent(e.target.value)}
                   >
-                    {agents.map((row) => (
-                      <option key={row.spec.name} value={row.spec.name}>
-                        {row.spec.name}
+                    {eligibleAgents.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
                       </option>
                     ))}
                   </select>
                 </label>
+                {availabilityFailed && <Problem message={copy.testAgentsUnavailable} />}
+                {!availabilityFailed && !available && <output>{copy.testAgentsLoading}</output>}
+                {available && eligibleAgents.length === 0 && (
+                  <p className="text-aui-sm text-aui-muted">{copy.noTestAgents}</p>
+                )}
+                {selected.scope.kind === "personal" && (
+                  <p className="text-aui-sm text-aui-muted">{copy.personalTestLocation}</p>
+                )}
                 {selected.scope.kind === "workspace" && (
                   <label className="block">
                     {copy.project}
@@ -543,7 +610,7 @@ export function SkillsLibrary({
                 <div className="flex flex-wrap gap-4">
                   <button
                     type="submit"
-                    disabled={!mayWrite || busy || !agent}
+                    disabled={!mayWrite || !canTest || busy || !eligibleAgents.includes(agent)}
                     className="min-h-11 text-aui-accent disabled:opacity-50"
                   >
                     {copy.test}
