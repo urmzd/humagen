@@ -330,6 +330,9 @@ func memoryProject(part inbox.Part) (string, bool) {
 func (p *Platform) MayFileIn(who auth.Principal, project string) error {
 	project = projects.NameOf(project)
 	if pr, ok := p.Projects.Tree(who.Tenant).Get(project); ok && pr.PersonalOwner != "" && (who.Kind != auth.User || pr.PersonalOwner != who.Subject) {
+		if !p.Seer(who).Project(project) {
+			return projects.ErrNotFound
+		}
 		return ErrForbidden
 	}
 	if project == projects.Root {
