@@ -65,3 +65,20 @@ After correcting the client destination, the canonical native request tested `lo
 The complete responsive acceptance now passes 266 phone/desktop captures and 399 dark captures across 320, 768 and 1440 pixels. All eight showcase files were re-captured from the same seed and visually inspected. The standalone gallery's fixed-height clipping was corrected, and the native run image retains its complete turn heading. Full console checks after the personal-scope correction pass 574 tests with zero skips.
 
 GitHub CLI authenticates successfully as `urmzd` and confirms App 5473438 with only Issues read/write and metadata read. Installation lookup with the ordinary CLI token returns HTTP 401, requiring the App JWT. The direct approved App-key read from 1Password returned `error initializing client: response: promptError`; no credential value was returned or logged. Browser confirmation also remained pending. These results do not establish sandbox installation or new webhook delivery.
+
+## XLSX and PPTX acceptance coverage
+
+`TestNativeAgentOfficeRevisionAcceptance` scripts native agent tool calls to write, publish, read, revise and republish XLSX and PPTX files. It inspects the actual worksheet and slide XML for the requested values, checks both PDF exports, captures the original bytes before revision and compares them afterward, checks publication approval and checks cross-tenant artifact access. `TestNativeOfficePDFExportPermissionsAndVersions` exercises both versions through the HTTP PDF endpoint, including missing read permission and cross-tenant access. These are deterministic scripted-model cases, not real-model validation; the existing separate publication approval tests cover approval and denial. Run with `go test -race ./internal/platform ./internal/httpapi -run 'TestNativeAgentOfficeRevisionAcceptance|TestNativeOfficePDFExportPermissionsAndVersions|TestPublishingWaitsForApproval'`.
+
+No new live-model XLSX or PPTX execution is recorded by these tests. The earlier browser XLSX journey and real-Claude DOCX verification remain as described above; neither establishes a real-model PPTX journey or independently inspected model-authored XLSX content.
+
+To run the optional real-model case, provide a model ID and a credential reference supported by `pkg/credref`, then explicitly opt in:
+
+```sh
+export HUMAGEN_LIVE_OFFICE_TEST=1
+export HUMAGEN_LIVE_OFFICE_MODEL=your-anthropic-model-id
+export HUMAGEN_LIVE_OFFICE_KEY_REF=env:ANTHROPIC_API_KEY
+go test ./internal/platform -run '^TestLiveNativeOfficeAcceptance$' -count=1 -timeout 10m -v
+```
+
+This sends synthetic prompts to Anthropic and may incur charges. The case verifies the actual Office parts and PDF text for two published versions. Its model calls are nondeterministic; a skip is not a pass for live verification. Publication approval and original bytes captured before revision are covered by the deterministic case, not this opt-in case. No live execution was performed for this checkpoint.
