@@ -44,10 +44,11 @@ func ValidName(name string) bool { return validName.MatchString(name) }
 
 // Source is a named collection of documents.
 type Source struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Documents   int    `json:"documents"`
-	Passages    int    `json:"passages"`
+	Lifecycle   *Lifecycle `json:"lifecycle,omitempty"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	Documents   int        `json:"documents"`
+	Passages    int        `json:"passages"`
 	// Excluded is how many documents are held but left out of search.
 	Excluded int `json:"excluded"`
 	// Variants are saved views of the source: the same documents with a
@@ -83,6 +84,7 @@ type Document struct {
 
 // Hit is one passage that matched a query.
 type Hit struct {
+	Mode       Mode    `json:"mode,omitempty"`
 	Source     string  `json:"source"`
 	DocumentID string  `json:"document_id"`
 	Title      string  `json:"title"`
@@ -222,6 +224,19 @@ func Open(st state.Store) (*Store, error) {
 		src.Documents, src.Passages = len(src.docs), len(src.passages)
 		src.recount()
 	}
+	// An attempt that outlived this process did not complete. Keep its last good
+	// copy and permit an explicit retry, without inventing successful work.
+	for tenant, sources := range s.tenants {
+		for name, src := range sources {
+			if src.Lifecycle != nil {
+				if id := active(src.Lifecycle); id != "" {
+					if _, err := s.FailSync(tenant, name, id, Interrupted, time.Now().UTC()); err != nil {
+						return nil, fmt.Errorf("knowledge: recover attempt: %w", err)
+					}
+				}
+			}
+		}
+	}
 	return s, nil
 }
 
@@ -255,6 +270,9 @@ func (s *Store) Create(tenant, name, description, by string, at time.Time) (Sour
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(s.tenants[tenant]) >= 200 {
+		return Source{}, fmt.Errorf("%w: at most 200 sources", ErrInvalid)
+	}
 	if _, ok := s.tenants[tenant][name]; ok {
 		return Source{}, fmt.Errorf("%w: %q", ErrExists, name)
 	}
@@ -296,8 +314,7 @@ func (s *Store) List(tenant string) []Source {
 	defer s.mu.RUnlock()
 	out := make([]Source, 0, len(s.tenants[tenant]))
 	for _, src := range s.tenants[tenant] {
-		view := src.Source
-		view.Variants = slices.Clone(src.Variants)
+		view := cloneSource(src.Source)
 		out = append(out, view)
 	}
 	slices.SortFunc(out, func(a, b Source) int { return strings.Compare(a.Name, b.Name) })

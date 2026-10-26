@@ -42,6 +42,10 @@ govern implementation, including shared presentation and agent identity.
   Automatic resource linking, Drive, Notion, live search, and other board
   features require their own implementation evidence before being offered as
   working capabilities.
+- Source lifecycle foundation: bounded durable refresh attempts, last-good
+  copies, typed failures, stale stop rules and publication access predicates
+  are implemented. Native provider, lifecycle API and presentation work is
+  still under verification.
 - Acceptance: exercise each newly wired control through its real host/API
   boundary, including a saved success, a visible failure, and denied access.
   Distinguish automated or simulated API checks from a live external-service
