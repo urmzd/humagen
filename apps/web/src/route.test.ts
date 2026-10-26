@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { href, parse, type Route } from "./route.ts";
+import { documentTitle, href, parse, type Route } from "./route.ts";
 
 const at = (url: string) => {
   const u = new URL(url, "http://x");
@@ -210,4 +210,12 @@ test("Alerts became Monitor and Knowledge became Context, and old paths still la
 test("the read audit has a Settings address", () => {
   assert.equal(href({ page: "settings", section: "read-audit" }), "/settings/read-audit");
   assert.deepEqual(at("/settings/read-audit"), { page: "settings", section: "read-audit" });
+});
+
+test("the tab title names the place, then the product, with unread in front", () => {
+  assert.equal(documentTitle({ page: "inbox" }), "Inbox · Humagen");
+  assert.equal(documentTitle({ page: "inbox" }, 3), "(3) Inbox · Humagen");
+  assert.equal(documentTitle({ page: "agent", name: "analyst", tab: "prompt" }), "analyst · Humagen");
+  assert.equal(documentTitle({ page: "project", name: "", tab: "inbox" }), "Workspace · Humagen");
+  assert.equal(documentTitle({ page: "channel", project: "ops", channel: "launch" }), "#launch · Humagen");
 });

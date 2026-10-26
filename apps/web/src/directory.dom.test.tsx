@@ -71,7 +71,7 @@ test("the Directory's agents: where each lives or that it is a platform agent, a
   const { opened } = openDirectory("agents");
   assert.ok(screen.getByText("@globex-helper"));
   assert.ok(screen.getByText("Globex"));
-  assert.equal(screen.getAllByText(/Platform agent · Enabled everywhere/).length, 2);
+  assert.equal(screen.getAllByText(/Company agent.*Enabled everywhere/).length, 2);
   fireEvent.click(screen.getByText("@lead"));
   assert.deepEqual(opened, ["agent:lead"]);
 });

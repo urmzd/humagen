@@ -136,7 +136,7 @@ export function useCompletion(
       topics,
       { auto: defaultCopy.auto.description, experts: defaultCopy.threads.experts, kind: defaultCopy.threads.mentionKind },
       {
-        ...(kinds ? { kinds: kinds.map((k) => ({ kind: k.kind, ...(k.title ? { title: k.title } : {}) })) } : {}),
+        ...(kinds ? { kinds: kinds.map((k) => ({ kind: k.kind, resolves:k.resolves, ...(k.title ? { title: k.title } : {}) })) } : {}),
         items,
         skills: skills.map((s) => ({ name: s.name, ...(s.description ? { description: s.description } : {}) })),
       },

@@ -344,7 +344,7 @@ func (p Project) validate() error {
 	}
 	chars := utf8.RuneCountInString
 	switch {
-	case p.PersonalOwner != "" && (p.IsRoot() || p.Parent != Root || p.Kind != Team || p.Managed != "" || len(p.Members) != 1 || p.Members[0] != (Entry{Who: p.PersonalOwner, Role: Owner})):
+	case p.PersonalOwner != "" && (p.IsRoot() || p.Parent != Root || p.Kind != Team || p.Managed != "" || p.Archived || len(p.Members) != 1 || p.Members[0] != (Entry{Who: p.PersonalOwner, Role: Owner})):
 		return fmt.Errorf("%w: a personal project has one human owner and stays under Company", ErrInvalid)
 	case p.IsRoot() && p.Kind != Company:
 		return fmt.Errorf("%w: the workspace is a company project", ErrInvalid)

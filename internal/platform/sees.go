@@ -258,6 +258,24 @@ func (s *Seer) RunID(id string) bool {
 // into another project is read where the conversation went. Who it is
 // addressed to is the inbox's to decide besides.
 func (s *Seer) Message(m inbox.Message) bool {
+	// Moving a conversation does not publish its original project settings,
+	// memory proposals, limits or drafts. Those retain their own scope.
+	for _, part := range m.Parts {
+		if part.Memory != nil && !s.MemoryOwner(part.Memory.Owner) {
+			return false
+		}
+		if part.Budget != nil && part.Budget.ScopeKind == "project" && !s.Project(part.Budget.ScopeName) {
+			return false
+		}
+		if part.Draft != nil && !s.Project(part.Draft.Project) {
+			return false
+		}
+		if part.Question != nil && m.Source.Run != "" {
+			if run, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil && s.p.RunPlace(s.who.Tenant, run).Project != run.Project && !s.Project(run.Project) {
+				return false
+			}
+		}
+	}
 	if m.Source.Run != "" {
 		if r, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil {
 			return s.Run(r)

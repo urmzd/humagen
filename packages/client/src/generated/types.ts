@@ -63,6 +63,8 @@ export interface Me {
   principal: Principal;
   /** Everything the caller may do. Null, not an empty list, for a caller with no permission at all. */
   permissions: Permission[] | null;
+  /** Retained Company welcome announcement ID, absent when the caller cannot read inbox announcements. */
+  welcome_announcement?: string;
   /** The signed-in human's private project address, absent for machines. */
   personal_project?: string;
   /** The caller is an admin in a workspace nobody has set up yet. */
@@ -759,8 +761,29 @@ export interface ThreadInput {
   surface?: SurfaceRef;
 }
 
+export interface HelpSuggestion {
+  project: string;
+  title: string;
+  agent: string;
+  reason: string;
+}
+
+export interface PlacementPreview {
+  /** Raw private-source history cannot move; publish only a person-reviewed summary copy. */
+  summary_required?: boolean;
+  thread: string;
+  project: string;
+  channel: string;
+  audience: string;
+  runs: number;
+  token: string;
+  exclusions: string[];
+}
+
 /** Where a conversation is shared, and the people to add to it. */
 export interface ThreadShare {
+  /** Required to move a conversation with completed runs, from its current placement preview. */
+  placement_token?: string;
   /** The project it is shared in. Empty keeps the thread's own; `~` is the workspace. */
   project?: string;
   /** The project's channel. Empty keeps the thread's own in its own project, and is `general` in another. */
@@ -806,6 +829,8 @@ owner of its project. The selected agents and default must be able
 to answer where the thread is after the change.
  */
 export interface ThreadUpdate {
+  /** Explicit consent to publish completed private work, from its current placement preview. */
+  placement_token?: string;
   version: number;
   title?: string;
   visibility?: ThreadVisibility;
@@ -997,7 +1022,7 @@ export interface ProjectExpert {
   topics: string[];
 }
 
-/** The experts a project lists, at the project's version. */
+/** Deprecated expert metadata retained for historical human questions. New routing uses Find Help. */
 export interface ProjectExperts {
   version: number;
   experts: ProjectExpert[];
@@ -1365,7 +1390,8 @@ export interface ProjectLimitInput {
 
 /** One entry of the record of what changed on a project. */
 export interface ProjectChange {
-  seq: number;
+  /** Opaque project-scoped history identifier. It reveals no workspace-global sequence. */
+  seq: string;
   at: string;
   /** Who made the change. `migration` for projects moved out of settings. */
   by: string;
@@ -3185,6 +3211,13 @@ export interface BringBackThreadResultBody {
   text?: string;
 }
 
+export interface PublishThreadSummaryBody {
+  project: string;
+  channel?: string;
+  summary: string;
+  placement_token: string;
+}
+
 export interface ListSchedulesResponse {
   schedules: ScheduleView[];
 }
@@ -3278,6 +3311,10 @@ export interface UpdatePreferencesBody {
   onboarded?: boolean;
   pinned?: string[];
   muted?: string[];
+}
+
+export interface FindHelpResponse {
+  suggestions: HelpSuggestion[];
 }
 
 export interface ListProjectsResponse {

@@ -60,6 +60,11 @@ func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Tim
 	defer s.mu.Unlock()
 	tx := s.begin(tenantName)
 	old, had := tx.t.homes[agent]
+	if had {
+		if owner := tx.t.projects[old.Project].PersonalOwner; owner != "" && owner != w.By {
+			return fmt.Errorf("%w: only the personal owner changes this agent home", ErrForbidden)
+		}
+	}
 	if had && old.Project == project {
 		return nil
 	}
@@ -67,6 +72,9 @@ func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Tim
 		p, ok := tx.t.projects[project]
 		if !ok {
 			return fmt.Errorf("%w: %q", ErrNotFound, project)
+		}
+		if p.PersonalOwner != "" && p.PersonalOwner != w.By {
+			return fmt.Errorf("%w: only the personal owner places an agent here", ErrForbidden)
 		}
 		if p.Kind == Company && !w.Govern {
 			return fmt.Errorf("%w: an agent lives in a company project only with projects:govern", ErrForbidden)

@@ -1568,7 +1568,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/skills", "/api/skills", "", http.StatusOK)
 	c.call(acme, "GET", "/api/skills", "/api/skills?project=Nowhere", "", http.StatusNotFound)
 	got = c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field", "", http.StatusOK)
-	if k := sliceOf(got.field("kinds")); len(k) < 2 || obj(k[0])["kind"] != "sme" || obj(k[1])["kind"] != "skill" {
+	if k := sliceOf(got.field("kinds")); len(k) != 1 || obj(k[0])["kind"] != "skill" {
 		t.Errorf("the mention kinds are %s", got.raw)
 	}
 	got = c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field&kind=skill&q=rev", "", http.StatusOK)
@@ -1625,6 +1625,29 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	forkRun := obj(sliceOf(forkAnswer.field("runs"))[0])["id"].(string)
 	c.settled(ana, forkRun)
 	c.call(ana, "POST", "/api/threads/{id}/bring-back", "/api/threads/"+forked.str("id")+"/bring-back", `{"run":"`+forkRun+`","text":"Alternative result"}`, http.StatusCreated)
+
+	c.call(ana, "GET", "/api/find-help", "/api/find-help?q=renewal", "", http.StatusOK)
+	c.call(ana, "GET", "/api/find-help", "/api/find-help", "", http.StatusBadRequest)
+	placementRoute := "/api/threads/{id}/placement"
+	draftID := obj(draft.field("thread"))["id"].(string)
+	previewed := c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement?project=Field&channel=renewals", "", http.StatusOK)
+	publicationRoute := "/api/threads/{id}/publication"
+	publicationPath := "/api/threads/" + draftID + "/publication"
+	summaryPublished := c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"Reviewed summary for the project","placement_token":%q}`, previewed.str("token")), http.StatusCreated)
+	if summaryPublished.str("id") == draftID || strings.Contains(string(summaryPublished.raw), draftID) {
+		t.Fatal("summary publication copied private source linkage")
+	}
+	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"reviewed","placement_token":"stale"}`, http.StatusConflict)
+	c.call(ana, "POST", publicationRoute, publicationPath, `{"project":"Field","summary":"","placement_token":"stale"}`, http.StatusConflict)
+	c.call(ana, "POST", publicationRoute, publicationPath, fmt.Sprintf(`{"project":"Field","channel":"renewals","summary":"","placement_token":%q}`, previewed.str("token")), http.StatusBadRequest)
+	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement", "", http.StatusBadRequest)
+	activeDraft := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"preview only"}`, http.StatusCreated)
+	activeID := obj(activeDraft.field("thread"))["id"].(string)
+	activeTag := envelope.Tag{ID: "placement-active", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "active", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: activeID}, At: time.Now()}
+	if err := c.f.p.Runs.Record(runtime.RunID("acme", activeTag.ID), activeTag, 1); err != nil {
+		t.Fatal(err)
+	}
+	c.call(ana, "GET", placementRoute, "/api/threads/"+activeID+"/placement?project=Field&channel=renewals", "", http.StatusConflict)
 
 	share, draftPath := "/api/threads/{id}/share", "/api/threads/"+obj(draft.field("thread"))["id"].(string)+"/share"
 	c.call(ana, "POST", share, draftPath, `{"add":["nobody"]}`, http.StatusBadRequest)
@@ -1842,6 +1865,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 		"/api/threads/{id}/share": {"id": tid},
 		"/api/threads/{id}/fork":  {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
+		"/api/threads/{id}/publication": {"id": draftID},
 	}
 	valid := map[string]string{
 		"/api/projects/{name}/fork": `{"name":"ForkedGhost"}`,

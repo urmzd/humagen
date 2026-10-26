@@ -75,7 +75,7 @@ func (p *Platform) notAvailable(tenant string, tree *projects.Tree, project, age
 	if agent == Auto {
 		return fmt.Errorf("%w: @auto picks an agent before anything runs, so it never runs itself", ErrNotAvailable)
 	}
-	if home, ok := tree.Home(agent); ok && !onChain(tree, project, home) && everyoneIn(tree, home) {
+	if home, ok := tree.Home(agent); ok && home != projects.Root && !onChain(tree, project, home) && everyoneIn(tree, home) {
 		return fmt.Errorf("%w: %s is not available in %s; it lives in %s and is available only there and below", ErrNotAvailable, agent, where, p.whereOf(tenant, tree, home))
 	}
 	return fmt.Errorf("%w: %s is not available in %s", ErrNotAvailable, agent, where)
@@ -433,8 +433,9 @@ func (p *Platform) ProjectAgentsOf(tenant, name string) (ProjectAgents, error) {
 	}
 	out := ProjectAgents{
 		Version: pr.Version, Enable: pr.Agents.Enable, Allow: pr.Agents.Allow, Default: pr.Agents.Default,
-		Available: tree.Available(name), Homes: tree.Homes(name), Offers: []Offer{},
+		Available: tree.Available(name), Homes: CurrentAgentNames(tree.Homes(name)), Offers: []Offer{},
 	}
+	out.Available.Names = CurrentAgentNames(out.Available.Names)
 	if out.Enable == nil {
 		out.Enable = []string{}
 	}

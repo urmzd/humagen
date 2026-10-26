@@ -34,6 +34,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
+import { sidebarScroll } from "./sidebar-scroll.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
@@ -320,6 +321,7 @@ function screens(ids: Ids, call: Call): Screen[] {
   let releasePending: (() => Promise<void>) | undefined;
   const list: Screen[] = [
     { name: "home", path: "/" },
+    { name: "sidebar-scroll", path: "/settings/profile", act: sidebarScroll },
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids),
     { name: "projects", path: "/projects" },
@@ -1134,7 +1136,10 @@ async function main(): Promise<void> {
   if (showcase && only.length)
     throw new Error("SCREENS_SHOWCASE requires every screen; unset SCREENS_ONLY.");
   // A mistyped name would otherwise capture nothing and pass.
-  const unknown = only.filter((n) => n !== "home-new" && !screens(ids0).some((s) => s.name === n));
+  const names = screens(ids0, async () => {
+    throw new Error("Screen discovery cannot call the API.");
+  }).map((screen) => screen.name);
+  const unknown = only.filter((n) => n !== "home-new" && !names.includes(n));
   if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
   // Only a folder this script wrote, or a new one, is cleared.
   if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, "report.json"))) {

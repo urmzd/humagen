@@ -348,6 +348,7 @@ type Run struct {
 	// Spend changes nothing. settledUp is set once its spend has been
 	// settled into its caller, so a call that ends later climbs past it.
 	closed, settledUp bool
+	privateContext    bool
 }
 
 // Requesters returns the names pinned for the person who asked for the run.
@@ -1181,4 +1182,19 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 		return cmp.Or(b.UpdatedAt.Compare(a.UpdatedAt), strings.Compare(a.ID, b.ID))
 	})
 	return out
+}
+
+// AnyActive returns whether an unfinished run satisfies keep. The callback is
+// pure and must not call the index. This includes delegated and system work,
+// which Conversation deliberately leaves out of its human turn list.
+func (x *Index) AnyActive(tenant string, keep func(Run) bool) bool {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	for _, id := range x.order {
+		r := x.runs[id]
+		if r.Tenant == tenant && !r.Status.Terminal() && keep(*r) {
+			return true
+		}
+	}
+	return false
 }

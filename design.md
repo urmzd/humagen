@@ -23,7 +23,8 @@ govern implementation, including shared presentation and agent identity.
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
-| DES-006 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
+| DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
+| DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
 
 ### DES-001: Working integrations
 
@@ -96,6 +97,20 @@ govern implementation, including shared presentation and agent identity.
   date boundaries, and remains available without a mouse. Showing or hiding
   detail must not make the action target move away from the pointer.
 
+### DES-006: Independent sidebar scrolling
+
+- The console fills the dynamic viewport. Main content scrolls inside its own
+  column without moving the sidebar or the document.
+- Navigation and conversations scroll inside the sidebar only when that area
+  is scrolled. Reaching its boundary must not scroll the main content.
+- Keep the sidebar header and account controls visible while its lists scroll,
+  including in the phone drawer.
+- Evidence: `App.tsx`, `Sidebar.tsx`, and `styles.css` constrain the shell and
+  contain sidebar overscroll. `scripts/screens/sidebar-scroll.ts`, run through
+  the `sidebar-scroll` screen fixture, checks real wheel input, long lists,
+  fixed header/account geometry and independent content scroll in Chromium at
+  phone and desktop widths. Long content is inserted only for the layout test.
+
 ## Review and implementation evidence
 
 The approved implementation pass covers supported Slack and GitHub workspace
@@ -152,7 +167,7 @@ A Slack task card exposes Open Conversation when the host has configured
 run in an existing conversation, and remains attached throughout streaming
 and settlement. Adapter and Slack rendering regressions cover the link.
 
-### DES-006: Agent badge containment
+### DES-007: Agent badge containment
 
 Agent names and status badges wrap as whole items, and badge height follows
 its text. Long scope labels truncate within the badge without losing their

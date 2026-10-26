@@ -202,6 +202,9 @@ func (p *Platform) mayRetryIn(tree *projects.Tree, who auth.Principal, runID str
 	if err != nil {
 		return err
 	}
+	if p.RunPlace(who.Tenant, run).Project != run.Project {
+		return fmt.Errorf("%w: historical runs cannot replay after publication; post a new message in this conversation", threads.ErrInvalid)
+	}
 	project := projects.NameOf(run.Project)
 	if project == projects.Root || !tree.Has(project) {
 		return nil

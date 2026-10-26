@@ -38,11 +38,11 @@ Branches are integrated through no-ff merges, never rebase/reset/force-push. Eac
 ### Phase 1: Foundation and review
 
 - [ ] T001 [Plan:1.1] Complete requirement traceability and native verification. Implement and verify in `docs/design/implementation/plan.md`. [REQ-001]; owner root. Source: `docs/design/humagen-control-plane/gap-analysis.md`.
-- [ ] T002 [Plan:1.2] Badge outlines contain labels at narrow widths and enlarged text. Implement and verify in `apps/web/src/ui.tsx`, `apps/web/src/Agents.tsx`, `scripts/screens/run.ts`. [REQ-002]; owner root. Source: `user supplied badge screenshot`.
-- [ ] T003 [Plan:1.3] Copy and Reply share one consistent accessible action row. Implement and verify in `packages/web/src/AgentMessage.tsx`, `apps/web/src/Room.tsx`. [REQ-003]; owner workspace_outcomes. Source: `user supplied message-actions screenshot`.
+- [x] T002 [Plan:1.2] Badge outlines contain labels at narrow widths and enlarged text. Implement and verify in `apps/web/src/ui.tsx`, `apps/web/src/Agents.tsx`, `scripts/screens/run.ts`. [REQ-002]; owner root. Source: `user supplied badge screenshot`.
+- [x] T003 [Plan:1.3] Copy and Reply share one consistent accessible action row. Implement and verify in `packages/web/src/AgentMessage.tsx`, `apps/web/src/Room.tsx`. [REQ-003]; owner workspace_outcomes. Source: `user supplied message-actions screenshot`.
 - [ ] T004 [Plan:1.4] Prototype controls become real authenticated state transitions. Implement and verify in `api/openapi.yaml`, `internal/httpapi/server.go`. [REQ-004]; owner all. Source: `docs/design/humagen-workspace/README.md#try-the-interaction-loop`.
 - [ ] T005 [Plan:1.5] Preserve agent identity, stable colors and compatibility history. Implement and verify in `internal/platform/builtin.go`, `pkg/agentcolors/store.go`. [REQ-005]; owner root. Source: `AGENTS.md; design.md#built-in-handles-and-slack-conversation-navigation`.
-- [ ] T006 [Plan:1.6] Durable bounded safe audit attempts underpin domain mutations. Implement and verify in `pkg/audit`, `internal/platform/audit.go`. [REQ-006]; owner library_personal. Source: `docs/design/humagen-control-plane/spec.md#control-plane-operations`.
+- [x] T006 [Plan:1.6] Durable bounded safe audit attempts underpin domain mutations. Implement and verify in `pkg/audit`, `internal/platform/audit.go`. [REQ-006]; owner library_personal. Source: `docs/design/humagen-control-plane/spec.md#control-plane-operations`.
 
 ### Phase 2: Company and authoritative placement
 
@@ -62,7 +62,7 @@ Branches are integrated through no-ff merges, never rebase/reset/force-push. Eac
 - [ ] T017 [Plan:3.4] Named managers, escalation, reminders, budgets and stop rules. Implement and verify in `pkg/operations`, `internal/platform/hooks.go`. [REQ-017]; owner agent_operations. Source: `docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other`.
 - [ ] T018 [Plan:3.5] Typed handoff contracts, deadlines, states, cycles and hop limits. Implement and verify in `pkg/operations`, `pkg/call`, `internal/platform/handoffs.go`. [REQ-018]; owner agent_operations. Source: `docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other`.
 - [ ] T019 [Plan:3.6] Pause agent, pause all and enforce control at every admission path. Implement and verify in `pkg/operations`, `internal/platform/agents.go`, `apps/web/src/AgentControls.tsx`. [REQ-019]; owner agent_operations. Source: `docs/design/humagen-control-plane/gap-analysis.md#not-built`.
-- [ ] T020 [Plan:3.7] Real console Stop control follows terminal ledger state. Implement and verify in `apps/web/src/Room.tsx`, `packages/web/src/AgentMessage.tsx`. [REQ-020]; owner workspace_outcomes. Source: `docs/design/humagen-control-plane/gap-analysis.md#not-built`.
+- [x] T020 [Plan:3.7] Real console Stop control follows terminal ledger state. Implement and verify in `apps/web/src/Room.tsx`, `packages/web/src/AgentMessage.tsx`. [REQ-020]; owner workspace_outcomes. Source: `docs/design/humagen-control-plane/gap-analysis.md#not-built`.
 - [ ] T021 [Plan:3.8] Bounded Agent Network volumes, waiting time and blocked work. Implement and verify in `internal/platform/agent_network.go`, `apps/web/src/AgentNetwork.tsx`. [REQ-021]; owner agent_operations. Source: `docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other`.
 - [ ] T022 [Plan:3.9] Needs you deduplicates one cause and records its owner. Implement and verify in `pkg/inbox`, `internal/platform/inbox.go`. [REQ-022]; owner agent_operations. Source: `docs/design/humagen-control-plane/spec.md#control-plane-operations`.
 - [ ] T023 [Plan:3.10] Roster exposes working, waiting, watching, paused, failed and last run. Implement and verify in `apps/web/src/Agents.tsx`, `apps/web/src/AgentControls.tsx`. [REQ-023]; owner agent_operations. Source: `docs/design/humagen-control-plane/spec.md#agents-and-how-they-talk-to-each-other`.
@@ -111,7 +111,7 @@ Branches are integrated through no-ff merges, never rebase/reset/force-push. Eac
 - [ ] T054 [Plan:7.5] Native deliverables are real editable files, not prototype exports. Implement and verify in `pkg/artifacts`, `internal/platform/sandbox.go`, `apps/web/src/Deliverables.tsx`. [REQ-054]; owner workspace_outcomes. Source: `docs/design/humagen-workspace/README.md#try-the-interaction-loop`.
 - [ ] T055 [Plan:7.6] Revision requests retain immutable version/slide context and unsent draft. Implement and verify in `apps/web/src/Deliverables.tsx`, `apps/web/src/Room.tsx`. [REQ-055]; owner workspace_outcomes. Source: `docs/conversation-workspace.md#versioned-deliverables`.
 - [ ] T056 [Plan:7.7] Accepted outputs promote to knowledge/reviewed memory with audience checks. Implement and verify in `internal/platform/artifacts.go`, `pkg/knowledge`, `pkg/memory`. [REQ-056]; owner workspace_outcomes. Source: `docs/conversation-workspace.md#follow-through`.
-- [ ] T057 [Plan:7.8] Agent and human timestamps use recorded instants, hover/focus/tap and timezone. Implement and verify in `packages/web/src/AgentMessage.tsx`, `packages/adapter/src/fold.ts`, `apps/web/src/Room.tsx`. [REQ-057]; owner workspace_outcomes. Source: `design.md#des-004-date-and-time-on-hover-or-focus`.
+- [x] T057 [Plan:7.8] Agent and human timestamps use recorded instants, hover/focus/tap and timezone. Implement and verify in `packages/web/src/AgentMessage.tsx`, `packages/adapter/src/fold.ts`, `apps/web/src/Room.tsx`. [REQ-057]; owner workspace_outcomes. Source: `design.md#des-004-date-and-time-on-hover-or-focus`.
 - [ ] T058 [Plan:7.9] Composer is compact, mobile safe, textual and permission aware. Implement and verify in `apps/web/src/Chat.tsx`, `apps/web/src/Room.tsx`. [REQ-058]; owner workspace_outcomes. Source: `docs/design/humagen-control-plane/gap-analysis.md#partial`.
 - [ ] T059 [Plan:7.10] Projects Library Operations You navigation exposes working routed pages. Implement and verify in `apps/web/src/Sidebar.tsx`, `apps/web/src/App.tsx`, `apps/web/src/route.ts`. [REQ-059]; owner workspace_outcomes. Source: `docs/design/humagen-control-plane/spec.md#mental-model-and-information-architecture`.
 - [ ] T060 [Plan:7.11] Phone/tablet/desktop, dark mode, keyboard and touch complete all journeys. Implement and verify in `scripts/screens/run.ts`, `apps/web/src/styles.css`. [REQ-060]; owner workspace_outcomes. Source: `docs/design/humagen-workspace/README.md`.
@@ -206,8 +206,13 @@ Existing packages retain their ownership. New domain records belong in their nam
 | DES-003 | Native persisted fork | 6.1, 6.2 | conversation_actions | Fork lineage and isolation regressions |
 | DES-004 | Recorded full message times | 7.8 | workspace_outcomes | Human/agent tooltip interaction and layout checks |
 | DES-005 | Discoverable honest implementation record | 1.1 | root | This plan and architecture status |
-| DES-006 | Badge containment | 1.2 | root | Dark enlarged-text browser regression |
+| DES-006 | Independent sidebar scrolling | 7.11, 7.12 | workspace_outcomes | Existing Chromium wheel regression retained |
+| DES-007 | Badge containment | 1.2 | root | Dark enlarged-text browser regression |
 
 ## Completion rule
 
 Requirement mapping coverage is not implementation completeness. Root updates each evidence entry only after reviewing real code, its contract, failure/permission cases, persistence where applicable, and relevant browser state. The old gap analysis is a baseline to recheck, not a completion certificate.
+
+## Verified foundation checkpoint
+
+PR #75 contains the message action row, badge containment, recorded agent timestamps, and ledger-confirmed Stop Turn. All 162 phone/desktop layouts, workspace typechecks/tests, console build and real-server Slack tests passed. The stacked audit foundation passed golangci-lint v2, the full Go race suite with real Postgres/S3 fixtures, spec lint, generated-client no-diff and client checks. Remaining requirements stay pending until their native behavior and evidence land.

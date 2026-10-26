@@ -227,13 +227,21 @@ func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) 
 	// created_by and participants name people: their handle, or their
 	// subject when they have none and it holds no address.
 	out := map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first, "handle": s.P.Names(who.Tenant).Key(who.Subject)}
-	if who.Kind == auth.User && who.Subject != "" && who.Tenant != "" {
+	if who.Kind == auth.User && who.Subject != "" && who.Tenant != "" && len(who.Granted()) > 0 {
 		personal, err := s.P.PersonalProject(who)
 		if err != nil {
 			s.problem(w, err)
 			return
 		}
 		out["personal_project"] = "~" + personal.Name
+		if who.Can(auth.ProjectsRead) {
+			welcome, err := s.P.PostWelcome(who.Tenant)
+			if err != nil {
+				s.problem(w, err)
+				return
+			}
+			out["welcome_announcement"] = welcome.ID
+		}
 	}
 	ok(w, http.StatusOK, out)
 }
@@ -929,6 +937,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if !gate.seen(e.RunID) {
 				continue
 			}
+			e = s.P.ShownEvent(who, e)
 			// Who answered a question is called by name (shownEvent).
 			if e.Kind == envelope.KindResumed {
 				e = shownEvent(s.P.Names(who.Tenant), e)

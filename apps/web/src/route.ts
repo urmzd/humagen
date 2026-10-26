@@ -100,6 +100,33 @@ const oneOf = <T extends string>(value: string | null | undefined, allowed: read
   value && (allowed as readonly string[]).includes(value) ? (value as T) : undefined;
 const pick = <T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T => oneOf(value, allowed) ?? fallback;
 
+const PAGE_TITLES: Record<Page, string> = {
+  new: "New conversation",
+  conversation: "Conversation",
+  projects: "Projects",
+  project: "Project",
+  channel: "Channel",
+  schedules: "Schedules",
+  monitor: "Monitor",
+  inbox: "Inbox",
+  context: "Context",
+  agents: "Agents",
+  agent: "Agent",
+  artifacts: "Artifacts",
+  connections: "Connections",
+  directory: "Directory",
+  settings: "Settings",
+};
+
+/** The browser tab's title for a route: the place first, then the product, with the unread count in front. */
+export function documentTitle(r: Route, unread = 0): string {
+  let place = PAGE_TITLES[r.page];
+  if (r.page === "agent" && r.name) place = r.name;
+  else if (r.page === "project") place = r.name === "" ? "Workspace" : r.name;
+  else if (r.page === "channel") place = `#${r.channel}`;
+  return `${unread > 0 ? `(${unread}) ` : ""}${place} · Humagen`;
+}
+
 /** The address of a route, path and query. */
 export function href(r: Route): string {
   switch (r.page) {

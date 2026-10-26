@@ -575,8 +575,9 @@ func (s *Store) rewrite(tenantName string, th *thread, rec Thread, at time.Time)
 			return Thread{}, fmt.Errorf("%w: conversation placement history is full", ErrLimit)
 		}
 		rec.Moves = th.rec.Moves + 1
-		b.put(tenantName, placementKey(rec.ID, rec.Moves), PlacementChange{Thread: rec.ID, Version: rec.Moves, FromProject: th.rec.Project, FromChannel: th.rec.Channel, Project: rec.Project, Channel: rec.Channel, At: at})
+		b.put(tenantName, placementKey(rec.ID, rec.Moves), PlacementChange{By: rec.movedBy, Thread: rec.ID, Version: rec.Moves, FromProject: th.rec.Project, FromChannel: th.rec.Channel, Project: rec.Project, Channel: rec.Channel, At: at})
 	}
+	rec.movedBy = ""
 	b.put(tenantName, threadKey(rec.ID), rec)
 	if err := b.commit(); err != nil {
 		return Thread{}, err
@@ -787,6 +788,7 @@ func (s *Store) Share(tenantName, id string, version int, project, channel, def 
 		return cur.clone(), nil
 	}
 	next.Version, next.UpdatedAt = cur.Version+1, at
+	next.movedBy = by
 	stored, err := s.rewrite(tenantName, th, next, at)
 	if err != nil {
 		return Thread{}, err
