@@ -91,7 +91,7 @@ test("pinned conversations sit in their own section, ahead of the rest", () => {
   assert.doesNotMatch(none, /aria-label="Pinned"/);
   const out = sidebar({ pinned: ["t2", "gone"] });
   assert.match(out, /aria-label="Pinned"/);
-  assert.match(out, /aria-label="Manage Fix the build"/);
+  assert.match(out, /aria-label="Unpin Fix the build"/);
   // An id that is not loaded is not drawn, and nothing is listed twice.
   assert.equal(out.match(/Fix the build</g)?.length, 1);
   assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Conversations<"));

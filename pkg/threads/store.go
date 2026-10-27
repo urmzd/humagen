@@ -250,9 +250,6 @@ func (s *Store) writable(tenantName, id string) (*thread, error) {
 	if err != nil {
 		return nil, err
 	}
-	if th.rec.Archive != nil && th.rec.Archive.Deleted != nil {
-		return nil, fmt.Errorf("%w: thread %q", ErrNotFound, id)
-	}
 	return th, nil
 }
 
@@ -631,8 +628,6 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 	switch {
 	case next.ReadOnly != cur.ReadOnly:
 		return Thread{}, fmt.Errorf("%w: archive status is immutable", ErrInvalid)
-	case !sameArchive(next.Archive, cur.Archive):
-		return Thread{}, fmt.Errorf("%w: archive and deletion are changed on their own", ErrInvalid)
 	case next.Moves != cur.Moves:
 		return Thread{}, fmt.Errorf("%w: placement history is server managed", ErrInvalid)
 	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):

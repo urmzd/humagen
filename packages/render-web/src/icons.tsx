@@ -400,14 +400,6 @@ export const InboxIcon = icon(
   <path d="M4 4h16l2 10v6H2v-6L4 4ZM2 14h6l2 3h4l2-3h6" />,
   "InboxIcon",
 );
-export const ArchiveIcon = icon(
-  <path d="M3 3h18v5H3zM5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4" />,
-  "ArchiveIcon",
-);
-export const TrashIcon = icon(
-  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />,
-  "TrashIcon",
-);
 export const EllipsisIcon = icon(
   <>
     <circle cx="5" cy="12" r="1" />

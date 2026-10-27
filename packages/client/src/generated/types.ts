@@ -909,7 +909,6 @@ not selected. Absent when none is selected.
   mode?: ThreadMode;
   surface?: ThreadSurface;
   fork?: ThreadFork;
-  archive?: ThreadArchive;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
@@ -963,29 +962,6 @@ export interface ProjectForkOperation {
   agents: number;
   memory: number;
   archives: number;
-}
-
-/** Set while a conversation is archived; it joins the deletion queue at delete_after, or at once when requested. */
-export interface ThreadArchive {
-  by: string;
-  at: string;
-  delete_after: string;
-  requested?: boolean;
-  deleted?: string;
-  deleted_by?: string;
-}
-
-/** An archived conversation waiting on an admin to approve its deletion. */
-export interface Deletion {
-  id: string;
-  title: string;
-  project: string;
-  archived_by: string;
-  archived_at: string;
-  delete_after: string;
-  requested: boolean;
-  due: boolean;
-  messages: number;
 }
 
 /** Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals. */
@@ -3866,14 +3842,6 @@ export interface ForkThreadBody {
 export interface BringBackThreadResultBody {
   run: string;
   text?: string;
-}
-
-export interface ArchiveThreadBody {
-  delete_now?: boolean;
-}
-
-export interface ListDeletionsResponse {
-  deletions: Deletion[];
 }
 
 export interface PublishThreadSummaryBody {

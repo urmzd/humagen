@@ -141,9 +141,6 @@ func (p *Platform) Sees(who auth.Principal, at Place) bool { return p.Seer(who).
 // rule, the machine a client names to host its surface reads the threads on
 // that surface, wherever they are filed: the Slack thread is already its own.
 func (s *Seer) Place(at Place) bool {
-	if s.p.threadGone(s.who.Tenant, at.Thread) {
-		return false
-	}
 	if s.tree.PendingFork(s.p.CurrentPlace(s.who.Tenant, at).Project) {
 		return false
 	}

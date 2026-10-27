@@ -921,21 +921,6 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
-	// Archive, bring back, then ask to delete and approve; a second is rejected.
-	archiving := func() string {
-		started := c.call(auditAdmin, "POST", "/api/threads", "/api/threads", `{"visibility":"private","text":"Archive me.","post_only":true}`, http.StatusCreated)
-		return fmt.Sprint(obj(started.field("thread"))["id"])
-	}
-	gone := archiving()
-	c.call(auditAdmin, "POST", "/api/threads/{id}/archive", "/api/threads/"+gone+"/archive", "", http.StatusOK)
-	c.call(auditAdmin, "POST", "/api/deletions/{id}/approve", "/api/deletions/"+gone+"/approve", "", http.StatusBadRequest)
-	c.call(auditAdmin, "DELETE", "/api/threads/{id}/archive", "/api/threads/"+gone+"/archive", "", http.StatusOK)
-	c.call(auditAdmin, "POST", "/api/threads/{id}/archive", "/api/threads/"+gone+"/archive", `{"delete_now":true}`, http.StatusOK)
-	c.call(auditAdmin, "GET", "/api/deletions", "/api/deletions", "", http.StatusOK)
-	c.call(auditAdmin, "POST", "/api/deletions/{id}/approve", "/api/deletions/"+gone+"/approve", "", http.StatusNoContent)
-	kept := archiving()
-	c.call(auditAdmin, "POST", "/api/threads/{id}/archive", "/api/threads/"+kept+"/archive", `{"delete_now":true}`, http.StatusOK)
-	c.call(auditAdmin, "POST", "/api/deletions/{id}/reject", "/api/deletions/"+kept+"/reject", "", http.StatusNoContent)
 	c.call(auditAdmin, "GET", "/api/library/memory", "/api/library/memory", "", http.StatusOK)
 	c.call(auditAdmin, "GET", "/api/library/memory", "/api/library/memory?limit=0", "", http.StatusBadRequest)
 	libraryDraft := c.call(auditAdmin, "POST", "/api/library/skills", "/api/library/skills", `{"scope":{"kind":"workspace"},"version":0,"definition":{"name":"library-brief","description":"Briefing","instructions":"Be concise","tools":[]}}`, http.StatusCreated)
