@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.27.2 (2026-10-27)
+
+### Bug Fixes
+
+- **web**: make notifications a top-level destination (#91) ([fb83c58](https://github.com/urmzd/humagen/commit/fb83c5868b792ac5e7d30d4459dbe7f57dd184e2))
+- **web**: unify action icons and inbox recovery spacing (#90) ([a51a201](https://github.com/urmzd/humagen/commit/a51a201d1c499f2dc7503c16eeb480474b88b0a7))
+- **platform**: isolate project fork and conversation locks (#94) ([a1e49df](https://github.com/urmzd/humagen/commit/a1e49dfdb24dee2b72c55ca047bfddee3c77e7ce))
+
+### Misc
+
+- verify native XLSX and PPTX agent artifacts (#89) ([bd9b687](https://github.com/urmzd/humagen/commit/bd9b6872da2a28221b5f6078ec6aab0968ccf1ea))
+- **sources**: add opt-in live provider smoke tests (#87) ([393efbb](https://github.com/urmzd/humagen/commit/393efbb1388e725e739cf41533b3d52381edc57d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.27.1...v0.27.2)
+
+
 ## 0.27.1 (2026-10-26)
 
 ### Bug Fixes
