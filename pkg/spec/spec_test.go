@@ -221,3 +221,54 @@ func TestAnInboxRetentionIsDaysOrADuration(t *testing.T) {
 		t.Errorf("a workspace's retention = %v", got)
 	}
 }
+
+// Postgres first: stores on Postgres put the bus on the same database, so
+// replicas share one event stream with nothing else to run.
+func TestTheBusFollowsTheStores(t *testing.T) {
+	var mem System
+	mem.Defaults()
+	if mem.Spec.Bus.Kind != "memory" {
+		t.Fatalf("memory stores: bus = %q, want memory", mem.Spec.Bus.Kind)
+	}
+	var pg System
+	pg.Spec.Stores.Kind = "postgres"
+	pg.Defaults()
+	if pg.Spec.Bus.Kind != "postgres" {
+		t.Fatalf("postgres stores: bus = %q, want postgres", pg.Spec.Bus.Kind)
+	}
+	var pinned System
+	pinned.Spec.Stores.Kind = "postgres"
+	pinned.Spec.Bus.Kind = "memory"
+	pinned.Defaults()
+	if pinned.Spec.Bus.Kind != "memory" {
+		t.Fatalf("an explicit bus is kept: %q", pinned.Spec.Bus.Kind)
+	}
+}
+
+func TestABusTheStoresCannotCarryIsRefused(t *testing.T) {
+	sys := "api_version: humagen/v1\nkind: System\nspec:\n"
+	pgStores := "  stores: {kind: postgres, postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}}\n"
+	for name, tc := range map[string]struct{ body, want string }{
+		"the removed redis bus":       {sys + pgStores + "  bus: {kind: redis, redis: {url: {ref: env:R}}}\n", "redis bus was removed"},
+		"postgres without its stores": {sys + "  bus: {kind: postgres}\n", "set stores.kind: postgres"},
+	} {
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		writeFile(t, path, tc.body)
+		cfg, err := Load(path)
+		if err == nil {
+			err = cfg.Check(Kinds{})
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	writeFile(t, path, sys+pgStores+"  bus: {kind: postgres}\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Check(Kinds{}); err != nil {
+		t.Fatalf("postgres bus on postgres stores: %v", err)
+	}
+}

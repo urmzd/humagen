@@ -2,6 +2,7 @@ package spec
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -27,7 +28,7 @@ const (
 var Builtin = map[string][]string{
 	SlotAuth:       {"dev", "tailscale", "oidc", "mock"},
 	SlotStores:     {"memory", "postgres"},
-	SlotBus:        {"memory", "redis"},
+	SlotBus:        {"memory", "postgres"},
 	SlotBlobs:      {"disk", "memory", "s3"},
 	SlotExtensions: {},
 	SlotDeploy:     {"local", "compose", "kubernetes"},
@@ -169,7 +170,7 @@ type Mock struct {
 }
 
 // URLBlock is a backend reached at a URL kept as a secret: the postgres
-// store and the redis and postgres buses.
+// store.
 type URLBlock struct {
 	URL *Ref `json:"url"`
 }
@@ -234,9 +235,15 @@ func (s *System) Defaults() {
 	if sp.Auth.Groups.Claim == "" {
 		sp.Auth.Groups.Claim = "groups"
 	}
-	for _, slot := range []*Slot{&sp.Stores, &sp.Bus} {
-		if slot.Kind == "" {
-			slot.Kind = "memory"
+	if sp.Stores.Kind == "" {
+		sp.Stores.Kind = "memory"
+	}
+	// Postgres first: stores on Postgres put the bus there too, so replicas
+	// on one database share one stream with nothing else to run.
+	if sp.Bus.Kind == "" {
+		sp.Bus.Kind = "memory"
+		if sp.Stores.Kind == "postgres" {
+			sp.Bus.Kind = "postgres"
 		}
 	}
 	if sp.Blobs.Kind == "" {
@@ -297,6 +304,12 @@ func (s System) check(kinds Kinds) error {
 			slot Slot
 		}{SlotExtensions, e})
 	}
+	if sp.Bus.Kind == "redis" {
+		return errors.New("system: bus: the redis bus was removed; use kind: postgres, which shares the stores' database, or leave bus out")
+	}
+	if sp.Bus.Kind == "postgres" && sp.Stores.Kind != "postgres" {
+		return errors.New("system: bus: kind postgres shares the stores' database; set stores.kind: postgres")
+	}
 	for _, x := range slots {
 		if err := kinds.check(x.name, x.slot); err != nil {
 			return fmt.Errorf("system: %s: %w", x.name, err)
@@ -319,7 +332,10 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &OIDC{}, true
 	case "auth.mock":
 		return &Mock{}, true
-	case "stores.postgres", "bus.redis":
+	case "bus.postgres":
+		// The bus shares the stores' database, so it has nothing of its own.
+		return &struct{}{}, true
+	case "stores.postgres":
 		return &URLBlock{}, true
 	case "blobs.disk":
 		return &Disk{}, true

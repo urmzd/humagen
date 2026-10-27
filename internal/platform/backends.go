@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urmzd/anchor/pkg/ledger"
 	dqueue "github.com/urmzd/anchor/pkg/queue"
+	"github.com/urmzd/fiber/pkg/bus"
 	"github.com/urmzd/fiber/pkg/durable"
 	"github.com/urmzd/fiber/pkg/registry"
 
@@ -68,11 +69,15 @@ type Backends struct {
 	// or neither.
 	Ledger Ledger
 	Queue  dqueue.Queue
+	// Bus is fiber's Postgres bus on the same database: events in a table,
+	// readers woken by LISTEN/NOTIFY. Nil means none was opened; the bus is
+	// then whatever Config.Bus says.
+	Bus bus.Bus
 }
 
 // OpenPostgres puts every backend on one Postgres database: humagen's state
-// (pkg/state), fiber's agent registry, and anchor's run ledger and queue
-// (fiber's pkg/durable). Each migrates its own tables, idempotently. The
+// (pkg/state), fiber's agent registry, anchor's run ledger and queue
+// (fiber's pkg/durable), and fiber's Postgres event bus. Each migrates its own tables, idempotently. The
 // caller owns the pool and closes it after calling release.
 //
 // It is one process's database: pkg/state takes it for this process, and a
@@ -99,7 +104,11 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Agents: agents, Ledger: l, Queue: q}, st.Close, nil
+	events := bus.NewPostgres(pool)
+	if err := events.Migrate(ctx); err != nil {
+		return Backends{}, nil, err
+	}
+	return Backends{State: st, Agents: agents, Ledger: l, Queue: q, Bus: events}, st.Close, nil
 }
 
 func (b Backends) check() error {
