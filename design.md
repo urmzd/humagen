@@ -538,8 +538,10 @@ test tasks, including 637 console, 18 client, 193 Slack, 58 adapter, eight scree
 helper and 46 core tests; the full Go suite with `-race`; Go lint with zero
 issues; Biome; API lint with five existing ignored findings; and production
 and Storybook builds. Earlier focused calendar/preferences and source-access
-regressions also pass. The final native browser matrix and remote CI remain
-in progress. Live provider-account trials and merge are not claimed here.
+regressions also pass. All 74 focused native browser captures pass with zero
+layout findings across dark phone/desktop and light 320px/desktop. The complete
+CI matrix and merge status are tracked in [PR #98](https://github.com/urmzd/humagen/pull/98).
+Live provider-account trials and a production deployment are not claimed here.
 
 ```sh
 pnpm storybook
