@@ -385,7 +385,7 @@ export function Composer({
           {files.map((f) => (
             <li
               key={f.id}
-              className="inline-flex h-7 max-w-60 items-center gap-1.5 rounded-full border border-aui-border pr-1 pl-2.5 text-aui-xs text-aui-fg"
+              className="inline-flex min-h-8 pointer-coarse:min-h-11 max-w-60 items-center gap-1.5 rounded-full border border-aui-border pr-1 pl-2.5 text-aui-xs text-aui-fg"
             >
               <FileIcon size={12} className="text-aui-muted" />
               <span className="truncate">{f.name}</span>
@@ -393,7 +393,7 @@ export function Composer({
                 type="button"
                 aria-label={`Remove ${f.name}`}
                 onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
-                className="inline-flex size-5 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                className="inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
               >
                 <XIcon size={12} />
               </button>

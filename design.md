@@ -32,6 +32,7 @@ govern implementation, including shared presentation and agent identity.
 | DES-011 | Conversation drawers reflow desktop content, with a compact header and consistent controls | Implemented; shared inspector dock, mobile native dialogs and responsive browser regressions |
 | DES-012 | Workspace search is a centered modal with indexed content and native destinations | Implemented; permission-confined content indexes, API contract, replay and search interaction tests |
 | DES-013 | Project selection is directly editable before starting work; every starter suggestion remains available | Implemented; stacked project glyph, searchable drawer, draft-preserving selection and wrapping starters |
+| DES-014 | Composer context choices use named categories and scoped subpanes | Implemented; Agents, Projects and Skills preserve the draft, and channel choices stay inside their project |
 
 ### DES-001: Working integrations
 
@@ -317,3 +318,25 @@ reflow. Local captures live under `.screens/ui-cleanup` and
 `.screens/project-selection` in the cleanup worktree. No live deployment is
 claimed. This layer builds on main after PR #91 and retains the merged stack's action,
 notification, native-file, source and fork-lock changes.
+
+
+### DES-014: Hierarchical composer context
+
+The plus menu has consistent root actions for files, Agents, Projects and
+Skills. Each category opens a named pane with Back and predictable keyboard
+focus. Agent search and discovery stay in Agents. Project choices include
+Personal, Company and readable projects, with the existing project lock for
+started conversations. A lone internal General channel does not appear as a
+loose control. Real channel choices use full-width selected rows within their
+project context.
+
+Skills come from the existing project-scoped completion resolver. Choosing one
+prepends its normal skill tag to the current draft, preserving text and files,
+and sends nothing. A project change immediately withholds old skill rows and
+completion options while the new project loads; refused reads offer no skill.
+DOM and native browser states cover root categories, nested choices, keyboard
+Back/Escape, draft and file preservation, and explicit message submission.
+
+Validation: 607 console tests passed; all 292 phone/desktop screen captures
+passed, plus 15 dark captures at 320, 768 and 1440px. The eight showcase images
+were refreshed from the reproducible screen fixtures.

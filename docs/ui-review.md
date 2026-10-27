@@ -353,3 +353,17 @@ Search uses a centered native modal with readable result excerpts, filters,
 arrow-key navigation, Escape and focus return. It searches existing readable
 workspace content through the bounded server API; search never invokes an
 agent. DES-012 records indexing coverage and limits.
+
+
+## Composer context hierarchy
+
+The plus menu groups choices by what the person is adding: files, agents,
+projects or skills. Use one shared row size, semantic icon and trailing
+chevron for categories. Each pane has a clear title and Back control. Channel
+choices belong inside their project and use the same full-width selected rows;
+a single default General channel remains internal. Existing conversations keep
+their locked project.
+
+Choosing a skill uses the existing skill tag and preserves the current text and
+files. The visible list belongs to the exact loaded project, so stale results
+cannot cross a project change. Search and selection never send the message.

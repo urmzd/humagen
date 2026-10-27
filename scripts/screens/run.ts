@@ -135,6 +135,7 @@ async function submitConnection(page: Page): Promise<void> {
 async function twoAgents(page: Page): Promise<void> {
   await plus(page).click();
   const menu = page.getByRole("dialog", { name: "Add to this conversation" });
+  await menu.getByRole("button", { name: /^Agents\b/ }).click();
   await menu.getByRole("checkbox", { name: /^helper/ }).click();
   await menu.getByRole("checkbox", { name: /^lead/ }).click();
 }
@@ -537,7 +538,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       act: async (page) => {
         await plus(page).click();
         const menu = page.getByRole("dialog", { name: "Add to this conversation" });
-        await menu.getByRole("button", { name: /^(Choose a project|Personal)$/ }).click();
+        await menu.getByRole("button", { name: /^Projects\b/ }).click();
         await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
         await menu.getByRole("radio", { name: "#deals" }).click();
       },
@@ -558,6 +559,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       path: "/projects/Launch/channels/general",
       act: async (page) => {
         await twoAgents(page);
+        await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
         await page.getByRole("button", { name: "All of Them" }).waitFor();
       },
@@ -580,10 +582,121 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
     },
     { name: "chat-plus", path: "/", act: twoAgents },
     {
+      name: "composer-menu-root",
+      path: "/",
+      act: async (page) => {
+        await plus(page).click();
+        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
+        for (const name of [/^Agents\b/, /^Projects\b/, /^Skills\b/])
+          await menu.getByRole("button", { name }).waitFor();
+        assert.equal(await menu.getByRole("radio").count(), 0);
+        assert.equal(await menu.getByText("#general", { exact: true }).count(), 0);
+      },
+    },
+    {
+      name: "composer-menu-projects",
+      path: "/",
+      act: async (page) => {
+        await plus(page).click();
+        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
+        await menu.getByRole("button", { name: /^Projects\b/ }).click();
+        await menu.getByRole("button", { name: "Personal", exact: true }).waitFor();
+        assert.equal(await menu.getByText("#general", { exact: true }).count(), 0);
+      },
+    },
+    {
+      name: "composer-menu-channels",
+      path: "/?project=Launch&channel=deals",
+      act: async (page) => {
+        await plus(page).click();
+        const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
+        await menu.getByRole("button", { name: /^Projects\b/ }).click();
+        await menu.getByRole("button", { name: /^Launch(?:\s+Team)?$/ }).click();
+        const group = menu.getByRole("radiogroup", { name: "Channels in Launch", exact: true });
+        const general = group.getByRole("radio", { name: "#general", exact: true });
+        await general.waitFor();
+        await group.getByRole("radio", { name: "#deals", exact: true }).waitFor();
+        assert.equal(
+          await group
+            .getByRole("radio", { name: "#deals", exact: true })
+            .getAttribute("aria-checked"),
+          "true",
+          "Browsing channels must preserve the selected destination",
+        );
+        const geometry = await general.evaluate((element) => ({
+          width: element.getBoundingClientRect().width,
+          height: element.getBoundingClientRect().height,
+          decoration: getComputedStyle(element).textDecorationLine,
+        }));
+        const panel = await menu.boundingBox();
+        assert.ok(
+          panel && geometry.width >= panel.width * 0.8,
+          "Channel choices must use full-width rows",
+        );
+        assert.ok(geometry.height >= 44, "Channel choices must keep a comfortable target");
+        assert.equal(
+          geometry.decoration,
+          "none",
+          "The selected channel uses a check, not an underlined loose link",
+        );
+      },
+    },
+    ...[false, true].map(
+      (choose): Screen => ({
+        name: choose ? "composer-menu-skill-selection" : "composer-menu-skills",
+        path: "/?project=Launch",
+        act: async (page) => {
+          const draft = "Keep this launch draft.";
+          await bar(page).fill(draft);
+          await page.locator('form[aria-label="Message"] input[type="file"]').setInputFiles({
+            name: "brief.txt",
+            mimeType: "text/plain",
+            buffer: Buffer.from("Preserve the launch evidence."),
+          });
+          let posts = 0;
+          const requested = (request: import("playwright-core").Request) => {
+            if (request.method() === "POST" && new URL(request.url()).pathname === "/api/threads")
+              posts++;
+          };
+          page.on("request", requested);
+          try {
+            await plus(page).click();
+            const menu = page.getByRole("dialog", { name: defaultCopy.chat.menu, exact: true });
+            await menu.getByRole("button", { name: /^Skills\b/ }).click();
+            const skill = menu.getByRole("button", { name: /^launch-review\b/ });
+            await skill.waitFor();
+            const query = menu.getByLabel(defaultCopy.chat.picker.findSkill, { exact: true });
+            await query.fill("launch");
+            await query.press("ArrowLeft");
+            await menu
+              .getByRole("heading", { name: defaultCopy.navigation.skills, exact: true })
+              .waitFor();
+            await query.fill("");
+            if (choose) {
+              await skill.click();
+              await page.waitForFunction(
+                (expected) =>
+                  document.querySelector<HTMLTextAreaElement>('form[aria-label="Message"] textarea')
+                    ?.value === expected,
+                "$launch-review " + draft,
+              );
+              assert.equal(await bar(page).inputValue(), "$launch-review " + draft);
+            } else assert.equal(await bar(page).inputValue(), draft);
+            await page.getByText("brief.txt", { exact: true }).waitFor();
+            assert.equal(posts, 0, "Picking a skill must not submit the message");
+          } finally {
+            page.off("request", requested);
+          }
+        },
+      }),
+    ),
+
+    {
       name: "chat-chips",
       path: "/",
       act: async (page) => {
         await twoAgents(page);
+        await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
         await page.getByRole("button", { name: "All of Them" }).click();
       },

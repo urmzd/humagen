@@ -176,6 +176,7 @@ test("+ opens a menu where agents are checked with Space and the project with it
   fireEvent.keyDown(box(), { key: "/", ctrlKey: true });
   let menu = await screen.findByRole("dialog", { name: chat.menu });
   assert.ok(within(menu).getByRole("button", { name: chat.attach }));
+  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   const lead = await within(menu).findByRole("checkbox", { name: /^lead/ });
   // The arrows move between items; Space checks the one focused.
   lead.focus();
@@ -205,12 +206,11 @@ test("+ opens a menu where agents are checked with Space and the project with it
   // The project, then one of its channels, general first.
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   menu = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.click(within(menu).getByRole("button", { name: new RegExp(chat.chooseProject) }));
+  fireEvent.click(within(menu).getByRole("button", { name: /^Projects\b/ }));
   fireEvent.click(await within(menu).findByRole("button", { name: /Globex/ }));
-  const channels = await within(menu).findByRole("radiogroup", { name: chat.channel });
+  const channels = await within(menu).findByRole("radiogroup", { name: chat.picker.channelsIn("Globex") });
   await waitFor(() => assert.deepEqual(within(channels).getAllByRole("radio").map((r) => r.textContent), ["#general", "#deals"]));
   fireEvent.click(within(channels).getByRole("radio", { name: "#deals" }));
-  fireEvent.keyDown(menu, { key: "Escape" });
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
   assert.equal(document.activeElement, box(), "closing gives the box its focus back");
   assert.ok(chips().includes("Globex / #deals"), JSON.stringify(chips()));
@@ -219,7 +219,9 @@ test("+ opens a menu where agents are checked with Space and the project with it
   fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("helper") }));
   assert.equal(screen.queryByRole("button", { name: chat.all }), null, "one agent has nothing to route between");
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  fireEvent.click(within(await screen.findByRole("dialog", { name: chat.menu })).getByRole("checkbox", { name: /^helper/ }));
+  const again = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(again).getByRole("button", { name: /^Agents\b/ }));
+  fireEvent.click(within(again).getByRole("checkbox", { name: /^helper/ }));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
 
   fireEvent.change(box(), { target: { value: "Plan the renewal" } });
@@ -597,13 +599,13 @@ test("+ closes the menu it opened, though focus moves to it from the menu first"
   fireEvent.click(plus);
   const menu = await screen.findByRole("dialog", { name: chat.menu });
   // A press on + moves focus there from the menu's search, then clicks it.
-  fireEvent.focusOut(within(menu).getByRole("searchbox"), { relatedTarget: plus });
+  fireEvent.focusOut(within(menu).getByRole("button", { name: chat.attach }), { relatedTarget: plus });
   fireEvent.click(plus);
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
   // Focus going anywhere else closes it.
   fireEvent.click(plus);
   const again = await screen.findByRole("dialog", { name: chat.menu });
-  fireEvent.focusOut(within(again).getByRole("searchbox"), { relatedTarget: document.body });
+  fireEvent.focusOut(within(again).getByRole("button", { name: chat.attach }), { relatedTarget: document.body });
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
 });
 
@@ -622,7 +624,9 @@ test("a suggestion adds its agent as the + menu would: All of Them gives way pas
   await waitFor(() => assert.deepEqual(chips(), ["a1"]));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   for (const n of ["a2", "a3"]) fireEvent.click(await within(menu).findByRole("checkbox", { name: new RegExp(`^${n}`) }));
+  fireEvent.keyDown(menu, { key: "Escape" });
   fireEvent.keyDown(menu, { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: chat.all }));
   fireEvent.click(within(await screen.findByRole("list", { name: chat.suggestions })).getByRole("button", { name: /Write a report/ }));
@@ -632,7 +636,9 @@ test("a suggestion adds its agent as the + menu would: All of Them gives way pas
   fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("humagen-writer") }));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const full = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(full).getByRole("button", { name: /^Agents\b/ }));
   for (const n of ["a4", "a5"]) fireEvent.click(await within(full).findByRole("checkbox", { name: new RegExp(`^${n}`) }));
+  fireEvent.keyDown(full, { key: "Escape" });
   fireEvent.keyDown(full, { key: "Escape" });
   assert.deepEqual(chips().slice(0, 5), ["a1", "a2", "a3", "a4", "a5"]);
   // The suggestions come back once the box is empty again.
@@ -681,9 +687,11 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
   const menu = await screen.findByRole("dialog", { name: chat.menu });
   assert.ok(within(menu).getByText(defaultCopy.threads.shareProjectFixed));
   assert.equal(within(menu).queryByRole("button", { name: defaultCopy.home.findHelp.title }), null, "an existing conversation cannot offer global discovery");
+  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
   await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
   assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 0, title: "", visibility: "shared", default: "", agents: ["helper"], mode: "best_fit" });
+  fireEvent.keyDown(menu, { key: "Escape" });
   fireEvent.keyDown(menu, { key: "Escape" });
   await waitFor(() => assert.ok(chips().includes("helper"), JSON.stringify(chips())));
   assert.ok(screen.getByPlaceholderText(chat.placeholderOne("helper")));
@@ -727,6 +735,7 @@ test("the composer opens discovery in its picker and preserves the draft and att
 
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   fireEvent.click(within(menu).getByRole("button", { name: c.title }));
   const query = await within(menu).findByRole("textbox", { name: c.label });
   assert.equal((query as HTMLInputElement).value, "Keep my detailed request.");
@@ -766,6 +775,7 @@ test("discovery seeds an empty composer only after an explicit match choice", as
   });
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   fireEvent.click(within(menu).getByRole("button", { name: c.title }));
   fireEvent.change(await within(menu).findByRole("textbox", { name: c.label }), { target: { value: "Plan a customer renewal" } });
   fireEvent.click(within(menu).getByRole("button", { name: c.search }));
@@ -782,6 +792,7 @@ test("Escape returns from discovery to its picker trigger before closing the pic
   openChat(workspace("lead"), { findHelp: async () => [] });
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
   const menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   fireEvent.click(within(menu).getByRole("button", { name: c.title }));
   const query = await within(menu).findByRole("textbox", { name: c.label });
   await waitFor(() => assert.equal(document.activeElement, query));
@@ -791,7 +802,10 @@ test("Escape returns from discovery to its picker trigger before closing the pic
   const trigger = within(menu).getByRole("button", { name: c.title });
   await waitFor(() => assert.equal(document.activeElement, trigger));
   fireEvent.keyDown(trigger, { key: "Escape" });
-  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  const agents = within(menu).getByRole("button", { name: /^Agents\b/ });
+  await waitFor(() => assert.equal(document.activeElement, agents));
+  fireEvent.keyDown(agents, { key: "Escape" });
+  assert.equal(!!screen.queryByRole("dialog", { name: chat.menu }), false);
   assert.equal(document.activeElement, box());
 });
 
@@ -818,4 +832,26 @@ test("a starter suggestion keeps the selected project and waits for explicit sub
  await waitFor(()=>assert.equal(box().value,"Write a one-page report on "));
  assert.ok(screen.getByRole("button",{name:"Select project: Globex"}));
  assert.ok(!net?.seen.some(request=>request.method==="POST"));
+});
+
+test("choosing a project skill keeps the draft and attached file and waits for explicit Send", async () => {
+  const { opened } = openChat(workspace("lead"));
+  fireEvent.change(box(), { target: { value: "Review this launch change." } });
+  const picker = document.querySelector<HTMLInputElement>('input[type="file"]');
+  assert.ok(picker);
+  fireEvent.change(picker, { target: { files: [new File(["Launch evidence"], "launch.txt", { type: "text/plain" })] } });
+  await screen.findByRole("list", { name: "Attached files" });
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
+  fireEvent.click(await within(menu).findByRole("button", { name: /^\$?review(?:\s|$)/i }));
+  await waitFor(() => assert.equal(box().value, "$review Review this launch change."));
+  assert.equal(!!screen.queryByRole("dialog", { name: chat.menu }), false);
+  assert.ok(within(screen.getByRole("list", { name: "Attached files" })).getByText("launch.txt"));
+  assert.equal(document.activeElement === box(), true);
+  assert.equal(net?.seen.filter(request => request.method === "POST").length, 0, "choosing a skill never starts work");
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find(request => request.method === "POST" && request.path === "/api/threads")?.body as { text: string };
+  assert.equal(started.text, "$review Review this launch change.\n\nAttached file: launch.txt\n```\nLaunch evidence\n```");
 });

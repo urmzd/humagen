@@ -16,7 +16,7 @@ import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { href, type ConversationPanel, type ConversationView } from "./route.ts";
 import { ApiError, api, coworking, type ProjectView, type Revision, type Thread as ThreadRecord, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
 import { askedOf, copyFor } from "./asks.ts";
-import { useCompletion } from "./completion.ts";
+import { type Completion, useCompletion } from "./completion.ts";
 import { useThreadSelection } from "./selection.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { HomePage, type HomeAnnouncement } from "./HomePage.tsx";
@@ -232,14 +232,14 @@ function ChatBar({
   root: ProjectView | null;
   me: string;
   handle?: string;
-  plus?: (available: { name: string; description?: string }[] | null) => NonNullable<Parameters<typeof Composer>[0]["plus"]>;
+  plus?: (choices: Pick<Completion, "agents" | "skills" | "skillsFailed">) => NonNullable<Parameters<typeof Composer>[0]["plus"]>;
 }) {
   const tags = useCompletion(project, agents, homes, topicsOf(projects ?? [], root, project), me, handle);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per list read
   useEffect(() => {
     if (tags.agents) onAvailable?.(tags.agents);
   }, [tags.agents]);
-  return <Composer {...rest} tags={tags} plus={plus?.(tags.agents)} />;
+  return <Composer {...rest} tags={tags} plus={plus?.(tags)} />;
 }
 
 /**
@@ -571,11 +571,14 @@ export function Chat({
           threadId
             ? // A conversation of runs selects its agents as a room does, so a
               // follow-up goes to them; its project is fixed by its runs.
-              (available) => ({
+              ({ agents: available, skills, skillsFailed }) => ({
                 menu: (close, attach, leave) => (
                   <PlusMenu
                     onLeave={leave}
                     agents={available}
+                    skills={skills}
+                    skillsFailed={skillsFailed}
+                    onSkill={(name) => { setSeed({ text: `$${name} `, mode: "prepend" }); }}
                     selection={runs.selection}
                     onChange={runs.select}
                     onAttach={attach}
@@ -588,11 +591,14 @@ export function Chat({
                 ),
                 chips: <SelectionChips personalProject={personalProject} selection={runs.selection} projects={projects} workspace={workspaceName} onChange={runs.select} projectFixed />,
               })
-            : (available) => ({
+            : ({ agents: available, skills, skillsFailed }) => ({
                 menu: (close, attach, leave) => (
                   <PlusMenu
                     onLeave={leave}
                     agents={available}
+                    skills={skills}
+                    skillsFailed={skillsFailed}
+                    onSkill={(name) => { setSeed({ text: `$${name} `, mode: "prepend" }); }}
                     selection={selection}
                     onChange={select}
                     onAttach={attach}
