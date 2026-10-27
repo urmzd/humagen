@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.30.0 (2026-10-27)
+
+### Features
+
+- **web**: consolidate conversation archive and deletion review (#101) ([73c093c](https://github.com/urmzd/humagen/commit/73c093c772c42f5531a76c7e33939b4b012f72c0))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.29.0...v0.30.0)
+
+
 ## 0.29.0 (2026-10-27)
 
 ### Breaking
