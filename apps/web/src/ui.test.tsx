@@ -12,7 +12,7 @@ import { Schedules } from "./Schedules.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import type { Me, ScheduleView, ThreadSummary } from "./api.ts";
+import type { Me, ProjectView, ScheduleView, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { bindingWords, SessionGauge } from "./SessionGauge.tsx";
@@ -95,6 +95,16 @@ test("pinned conversations sit in their own section, ahead of the rest", () => {
   // An id that is not loaded is not drawn, and nothing is listed twice.
   assert.equal(out.match(/Fix the build</g)?.length, 1);
   assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Conversations<"));
+});
+
+test("project pins work without recent conversations and omit unreadable projects", () => {
+  const prefs = { display_name: "Ada", theme: "dark" as const, accent: "purple", has_photo: false, photo_version: 0, pinned: [], muted: [], pinned_projects: ["Launch", "hidden"] };
+  const out = sidebar({ prefs, threads: [], projects: [{ name: "Launch", title: "Spring launch" } as ProjectView], onPinProject: async () => {} });
+  assert.match(out, /aria-label="Pinned"/);
+  assert.match(out, /href="\/projects\/Launch"/);
+  assert.match(out, /aria-label="Unpin project Spring launch"/);
+  assert.doesNotMatch(out, /href="\/projects\/hidden"/);
+  assert.doesNotMatch(sidebar({ prefs, can: permission => permission === "runs:read" }), /aria-label="Pinned"/);
 });
 
 test("project selection: an empty directory offers the explicit Company home and project creation", () => {

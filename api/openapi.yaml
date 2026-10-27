@@ -4552,6 +4552,11 @@ paths:
                   type: array
                   maxItems: 50
                   items: {type: string}
+                pinned_projects:
+                  description: Replaces the pinned projects, most recently pinned first, at most 50. New pins must be readable (404 otherwise); saved unreadable shortcuts may be retained. The workspace uses `~`. Absent leaves them as they are.
+                  type: array
+                  maxItems: 50
+                  items: {type: string, maxLength: 63}
                 muted:
                   description: |
                     Replaces the projects whose announcements stay out of the
@@ -10162,7 +10167,7 @@ components:
     Preferences:
       description: A person's own settings.
       type: object
-      required: [display_name, theme, accent, has_photo, photo_version, pinned, muted, personal]
+      required: [display_name, theme, accent, has_photo, photo_version, pinned, pinned_projects, muted, personal]
       properties:
         personal: {$ref: '#/components/schemas/PersonalPreferences'}
         display_name: {type: string}
@@ -10178,6 +10183,11 @@ components:
           description: Conversations kept at the top of the person's sidebar, most recently pinned first.
           type: array
           items: {type: string}
+        pinned_projects:
+          description: Project shortcuts kept at the top of the person's sidebar, most recently pinned first. The workspace uses `~`.
+          type: array
+          maxItems: 50
+          items: {type: string, maxLength: 63}
         muted:
           description: Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted.
           type: array

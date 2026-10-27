@@ -127,10 +127,46 @@ function Choices<T extends string>({
   );
 }
 
-/**
- * One conversation in the Pinned or Conversations list. The pin sits beside it, shown
- * on hover or focus, and a pin that did not take says so above it.
- */
+/** Pin controls stay visible when pinned, focused or used with a touch pointer. */
+function PinButton({ pinned, label, onClick, project = false, thread, projectId }: { pinned: boolean; label: string; onClick: (button: HTMLButtonElement) => void; project?: boolean; thread?: string; projectId?: string }) {
+  return <button
+    type="button"
+    onClick={event => onClick(event.currentTarget)}
+    data-pin-thread={thread}
+    data-pin-project={projectId}
+    aria-label={label}
+    aria-pressed={pinned}
+    title={label}
+    className={`absolute top-1 right-1 inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent [@media(pointer:coarse)]:top-0.5 [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100 ${project ? "group-hover/project:opacity-100 group-focus-within/project:opacity-100" : "group-hover/task:opacity-100 group-focus-within/task:opacity-100"} ${pinned ? "opacity-100" : "opacity-0"}`}
+  ><PinIcon size={14} fill={pinned ? "currentColor" : "none"} /></button>;
+}
+
+/** Agent identity and the people taking part stay separate at sidebar widths. */
+function Participants({ task, me, prefs }: { task: ThreadSummary; me: Me; prefs: Preferences | null }) {
+  const words = defaultCopy.sidebar;
+  const agents = [...new Set(task.agents)];
+  const people = [...new Set(task.people)];
+  const isYou = (person: string) => person === me.principal.subject || person === me.handle;
+  const personName = (person: string) => isYou(person) ? prefs?.display_name || me.principal.name || person : person;
+  if (agents.length === 0 && people.length === 0) return null;
+  return <span className="flex min-w-0 items-center gap-2.5 text-aui-2xs text-aui-muted">
+    {agents.length > 0 && <span role="group" aria-label={words.agents(agents)} title={words.agents(agents)} className="flex min-w-0 flex-1 items-center gap-1.5">
+      <BotIcon size={13} className="shrink-0" />
+      <span aria-hidden className="flex shrink-0 items-center gap-0.5">{agents.slice(0, 2).map(agent => <AgentMark key={agent} name={agent} size={13} />)}</span>
+      <span className="truncate">{agents[0]}</span>
+      {agents.length > 1 && <span className="shrink-0">{words.moreParticipants(agents.length - 1)}</span>}
+    </span>}
+    {people.length > 0 && <span role="group" aria-label={words.people(people.map(personName))} title={words.people(people.map(personName))} className="flex max-w-[55%] shrink-0 items-center gap-1.5">
+      <span aria-hidden className="flex shrink-0 -space-x-1">{people.slice(0, 3).map(person => <span key={person} className="rounded-full ring-2 ring-[var(--humagen-plane)]"><Avatar name={personName(person)} prefs={isYou(person) ? prefs : null} size={18} /></span>)}</span>
+      {people.length === 1 ? <span className="truncate">{isYou(people[0]!) ? words.you : personName(people[0]!)}</span> : <>
+        <span className="sr-only">{words.peopleCount(people.length)}</span>
+        {people.length > 3 && <span>{words.moreParticipants(people.length - 3)}</span>}
+      </>}
+    </span>}
+  </span>;
+}
+
+/** One conversation with its participants and an independent pin control. */
 function TaskRow({
   task,
   projectTitle,
@@ -139,6 +175,8 @@ function TaskRow({
   onSelect,
   onPin,
   flash = null,
+  me,
+  prefs,
 }: {
   task: ThreadSummary;
   projectTitle: string;
@@ -147,44 +185,30 @@ function TaskRow({
   onSelect: () => void;
   onPin?: (button: HTMLButtonElement) => void;
   flash?: Flash | null;
+  me: Me;
+  prefs: Preferences | null;
 }) {
   const title = task.title || "Untitled conversation";
   const state = task.active > 0 ? "In progress" : task.failed > 0 ? "Needs attention" : "Finished";
   return (
     // A row that is saying something sits over its neighbours and over the
     // section's label, which sticks above the first row, so the note shows.
-    <li className={`group relative humagen-enter ${flash ? "z-20" : ""}`}>
+    <li className={`group/task relative humagen-enter ${flash ? "z-20" : ""}`}>
       <button
         type="button"
         onClick={onSelect}
         title={`${title}\n${state}\n${projectTitle}`}
         aria-current={current ? "page" : undefined}
-        className="flex min-h-10 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1.5 pr-10 pointer-coarse:pr-14 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+        className="flex min-h-12 w-full items-center gap-2 rounded-aui py-2 pr-10 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg [@media(pointer:coarse)]:pr-14"
       >
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate">{title}</span>
-          {task.agents.length > 0 && (
-            <span className="flex min-w-0 items-center gap-1 text-aui-2xs text-aui-muted" aria-label={`Agents that took part: ${task.agents.join(", ")}`}>
-              {[...new Set(task.agents)].slice(0, 4).map((agent) => <AgentMark key={agent} name={agent} size={9} />)}
-              <span className="truncate">{[...new Set(task.agents)].join(", ")}</span>
-            </span>
-          )}
+          <Participants task={task} me={me} prefs={prefs} />
         </span>
         {task.active > 0 && <span className="sr-only">, running</span>}
         {task.active === 0 && task.failed > 0 && <span className="sr-only">, a reply failed</span>}
       </button>
-      {onPin && (
-        <button
-          type="button"
-          onClick={(event) => onPin(event.currentTarget)}
-          data-pin-thread={task.id}
-          aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
-          title={pinned ? "Unpin" : "Pin"}
-          className={`absolute top-0.5 right-0.5 inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 max-md:opacity-100 ${pinned ? "opacity-100" : "opacity-0"}`}
-        >
-          <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
-        </button>
-      )}
+      {onPin && <PinButton pinned={pinned} thread={task.id} label={pinned ? `Unpin ${title}` : `Pin ${title}`} onClick={onPin} />}
       {onPin && <FlashNote flash={flash} align="right" />}
     </li>
   );
@@ -217,6 +241,7 @@ export function Sidebar({
   workspaceName,
   pinned,
   onPin,
+  onPinProject,
   inboxCount,
   live,
   onSignOut,
@@ -238,6 +263,7 @@ export function Sidebar({
   pinned: string[];
   /** Resolves once the pin is saved, and rejects when it could not be. */
   onPin: (id: string, pin: boolean) => Promise<void>;
+  onPinProject?: (project: string, pin: boolean) => Promise<void>;
   inboxCount: number;
   /** Updates are arriving. When false, the sidebar says so. */
   live: boolean;
@@ -266,24 +292,39 @@ export function Sidebar({
   const { flash, say, clear: unsay } = useFlash();
   const [flashed, setFlashed] = useState<string | null>(null);
   const sidebar = useRef<HTMLElement>(null);
-  const pinFocus = useRef<{ id: string; pinned: boolean } | null>(null);
+  const pinFocus = useRef<{ kind: "conversation" | "project"; id: string; pinned: boolean } | null>(null);
   useEffect(() => {
     const target = pinFocus.current;
-    if (!target || pinned.includes(target.id) !== target.pinned) return;
-    const control = Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>("[data-pin-thread]") ?? [])
-      .find((button) => button.dataset.pinThread === target.id);
-    // An older unselected row may leave the loaded page after unpinning.
-    // Keep keyboard focus at the conversation list's stable filter control.
-    const fallback = sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Conversations"] button');
+    if (!target) return;
+    const projects = target.kind === "project";
+    const list = projects ? prefs?.pinned_projects ?? [] : pinned;
+    if (list.includes(target.id) !== target.pinned) return;
+    const selector = projects ? "[data-pin-project]" : "[data-pin-thread]";
+    const control = Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>(selector) ?? [])
+      .find((button) => (projects ? button.dataset.pinProject : button.dataset.pinThread) === target.id);
+    // An unpinned row may leave the current group or loaded page.
+    // Keep focus at its remaining control or a stable navigation target.
+    const fallback = projects
+      ? sidebar.current?.querySelector<HTMLAnchorElement>('nav[aria-label="Sections"] a[href="/projects"]')
+      : sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Conversations"] button');
     (control ?? fallback)?.focus();
     pinFocus.current = null;
-  }, [pinned]);
+  }, [pinned, prefs?.pinned_projects]);
   const togglePin = (id: string, on: boolean, button: HTMLButtonElement) => {
     unsay();
-    if (document.activeElement === button) pinFocus.current = { id, pinned: on };
+    if (document.activeElement === button) pinFocus.current = { kind: "conversation", id, pinned: on };
     onPin(id, on).catch(() => {
-      if (pinFocus.current?.id === id) pinFocus.current = null;
+      if (pinFocus.current?.kind === "conversation" && pinFocus.current.id === id) pinFocus.current = null;
       setFlashed(id);
+      say(on ? defaultCopy.pins.pinFailed : defaultCopy.pins.unpinFailed, true);
+    });
+  };
+  const toggleProjectPin = (project: string, on: boolean, button: HTMLButtonElement) => {
+    unsay();
+    if (document.activeElement === button) pinFocus.current = { kind: "project", id: project, pinned: on };
+    onPinProject?.(project, on).catch(() => {
+      if (pinFocus.current?.kind === "project" && pinFocus.current.id === project) pinFocus.current = null;
+      setFlashed(`project:${project}`);
       say(on ? defaultCopy.pins.pinFailed : defaultCopy.pins.unpinFailed, true);
     });
   };
@@ -321,6 +362,9 @@ export function Sidebar({
   const noConversations = recents.length === 0 && unpinned.length === 0;
   const isCurrent = (t: ThreadSummary) => t.id === selected;
   const canPin = can("runs:read");
+  const pinnedProjects = new Set(prefs?.pinned_projects ?? []);
+  const readableProjectPins = [...pinnedProjects].filter(project => can("projects:read") && (project === "~" || projects.some(item => item.name === project)));
+  const projectGroups = [...new Set([...recents, ...unpinned].map(thread => thread.project || "~"))];
 
   const clear = () => {
     setStanding("");
@@ -364,14 +408,21 @@ export function Sidebar({
 
       </nav>
 
-      {open && pinnedRows.length > 0 && (
+      {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
         <section aria-label="Pinned" className="flex shrink-0 flex-col pt-4">
-          <Label>Pinned</Label>
+          <Label>{defaultCopy.sidebar.pinned}</Label>
           <ul className="px-2">
+            {readableProjectPins.map(project => <li key={`project:${project}`} className={`group/project relative ${flashed === `project:${project}` && flash ? "z-20" : ""}`}>
+              <div className="py-1 pr-10 [@media(pointer:coarse)]:pr-12"><Item icon={<ProjectIcon />} label={projectTitle(project)} href={href({page:"project",name:project === "~" ? "" : project,tab:"inbox"})} active={route.page === "project" && route.name === (project === "~" ? "" : project)} open onClick={() => go({page:"project",name:project === "~" ? "" : project,tab:"inbox"})} /></div>
+              {onPinProject && <PinButton pinned project projectId={project} label={defaultCopy.sidebar.pinProject(projectTitle(project), true)} onClick={(button) => toggleProjectPin(project, false, button)} />}
+              <FlashNote flash={flashed === `project:${project}` ? flash : null} align="right" />
+            </li>)}
             {pinnedRows.map((t) => (
               <TaskRow
                 key={t.id}
                 task={t}
+                me={me}
+                prefs={prefs}
                 projectTitle={projectTitle(t.project)}
                 current={isCurrent(t)}
                 pinned
@@ -463,10 +514,13 @@ export function Sidebar({
                 {filters > 0 ? "No conversation matches these filters." : "Your conversations appear here. Start with New."}
               </li>
             )}
-            {[...new Set(unpinned.map((thread) => thread.project ?? ""))].map((project) => <li key={project} className="min-w-0 pt-2"><details open><summary className="flex min-h-7 cursor-pointer items-center gap-1.5 px-2.5 text-aui-xs font-medium text-aui-muted"><ProjectIcon size={13} /><span className="min-w-0 flex-1 truncate">{projectTitle(project)}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter((thread) => (thread.project ?? "") === project).map((t) => (
+            {projectGroups.map(project => <li key={project} className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}>
+              <details open><summary className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-aui pr-12 pl-2.5 text-aui-xs font-medium text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"><ProjectIcon size={14} /><span className="min-w-0 flex-1 truncate">{projectTitle(project)}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter(thread => (thread.project || "~") === project).map((t) => (
               <TaskRow
                 key={t.id}
                 task={t}
+                me={me}
+                prefs={prefs}
                 projectTitle={projectTitle(t.project)}
                 current={isCurrent(t)}
                 pinned={false}
@@ -474,7 +528,10 @@ export function Sidebar({
                 onPin={canPin ? (button) => togglePin(t.id, true, button) : undefined}
                 flash={flashed === t.id ? flash : null}
               />
-            ))}</ul></details></li>)}
+            ))}</ul></details>
+              {onPinProject && can("projects:read") && <div className="absolute top-2 right-0 h-10 w-10"><PinButton project projectId={project} pinned={pinnedProjects.has(project)} label={defaultCopy.sidebar.pinProject(projectTitle(project), pinnedProjects.has(project))} onClick={(button) => toggleProjectPin(project, !pinnedProjects.has(project), button)} /></div>}
+              <FlashNote flash={flashed === `project:${project}` ? flash : null} align="right" />
+            </li>)}
             {/* Older conversations arrive a page at a time, when asked for. */}
             {(hasMore || loading === "more") && (
               <li className="flex justify-center pt-2">

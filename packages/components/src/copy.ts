@@ -1709,10 +1709,21 @@ export const defaultCopy = {
     /** In Slack, to someone replying under an announcement that was withdrawn. */
     replyGone: "This announcement was withdrawn, so a reply to it starts nothing.",
   },
-  /** A conversation pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
+  /** A project or conversation pin. Said beside its pin when preferences could not be read or saved. */
   pins: {
+    pinProject: "Pin Project",
+    unpinProject: "Unpin Project",
     pinFailed: "Could not pin. Try again.",
     unpinFailed: "Could not unpin. Try again.",
+  },
+  sidebar: {
+    pinned: "Pinned",
+    you: "You",
+    agents: (names: string[]) => `Agents: ${names.join(", ")}`,
+    people: (names: string[]) => `People: ${names.join(", ")}`,
+    peopleCount: (count: number) => `${count} people`,
+    moreParticipants: (count: number) => `+${count}`,
+    pinProject: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} project ${title}`,
   },
   /** Who holds a role in a project, and what it lets them do. */
   roles: {

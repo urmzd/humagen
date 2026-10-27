@@ -48,6 +48,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-018 | Motion and metadata make navigation changes easy to follow | Implemented; Tailwind drawer/menu states, retained inert exits, reduced-motion behavior, named project pills and + New above search |
 | DES-019 | Project work has readable states, scoped filters and honest recovery | Implemented; automated delivery checks pass; final browser/CI verification pending |
 | DES-020 | Workspace previews reuse console controls, fonts and consolidated navigation | Implemented; automated delivery checks pass; final browser/CI verification pending |
+| DES-021 | Sidebar conversations show agents and people; projects and conversations can be pinned independently | Implemented; saved preferences, access checks, restart and DOM regressions, and responsive sidebar captures |
 
 ### DES-001: Working integrations
 
@@ -534,13 +535,13 @@ also pass, as do console and Storybook typechecks, both builds and 20 light/dark
 Storybook browser states with the newer shared typography and controls.
 
 Current delivery checks pass: all 15 workspace typechecks; all nine workspace
-test tasks, including 637 console, 18 client, 193 Slack, 58 adapter, eight screen
+test tasks, including 647 console, 18 client, 193 Slack, 58 adapter, eight screen
 helper and 46 core tests; the full Go suite with `-race`; Go lint with zero
 issues; Biome; API lint with five existing ignored findings; and production
 and Storybook builds. Earlier focused calendar/preferences and source-access
 regressions also pass. All 74 focused native browser captures pass with zero
 layout findings across dark phone/desktop and light 320px/desktop. The complete
-CI matrix and merge status are tracked in [PR #98](https://github.com/urmzd/humagen/pull/98).
+CI matrix and merge status are tracked in [PR #99](https://github.com/urmzd/humagen/pull/99).
 Live provider-account trials and a production deployment are not claimed here.
 
 ```sh
@@ -552,3 +553,30 @@ pnpm storybook:capture
 The capture command uses [teasr.storybook.toml](teasr.storybook.toml). The checker
 accepts `STORYBOOK_URL` and `CHROMIUM`. Story actions are isolated fixtures,
 not saved workspace changes or live provider execution.
+
+### DES-021: Conversation participants and independent pins
+
+Conversation rows show a bot glyph and the existing colored `AgentMark`s beside
+agent names, and circular people avatars with an overflow count. Full participant
+lists remain available through accessible labels and titles. Duplicate identities
+are shown once; people-only and agent-only conversations keep their own identity.
+
+Project headings and individual conversations each have a pin control. A
+project's actions menu also offers Pin Project, including before it has any
+recent conversations. Both
+appear under Pinned and save independently through personal preferences. The
+`pinned_projects` API field holds up to 50 project addresses, most recently pinned
+first; the workspace is `~`. New pins require project read access. Existing
+unreadable shortcuts stay hidden without blocking changes to other pins. Pin
+controls remain visible when pinned, on keyboard focus and on touch pointers.
+Save failures restore the previous list and report the failure beside its row.
+
+Evidence: `Sidebar.tsx`, `Projects.tsx`, `preferences.ts`, `pkg/prefs`, the preferences HTTP route
+and the regenerated client contract. DOM tests cover participants, pin/unpin,
+reopening, concurrent saves and refusal. Store tests cover bounded private lists,
+memory restart, older records and write failure. HTTP tests cover unreadable
+projects, revoked access and independent conversation pins. The
+`sidebar-participants` browser fixture checks save/reload, independent unpinning,
+participant bounds and touch targets at 320, 390 and 1280px in dark mode. Its
+multi-person roster is a simulated list response; pin persistence uses the native
+API. The open drawer uses its own bounds checks rather than page-content gutters.

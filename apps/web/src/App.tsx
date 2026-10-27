@@ -186,7 +186,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   // Until the saved preferences are read, defaults only draw the page: a save
   // sends every field, so nothing is saved over values not read yet.
-  const { prefs, prefsRead, setPrefs, pin, mute } = usePreferences();
+  const { prefs, prefsRead, setPrefs, pin, pinProject, mute } = usePreferences();
   // The reader's own open announcements, for What's new on Home, and the
   // newest of what needs them with how many do, for Needs you.
   const [welcome,setWelcome]=useState<PlatformMessage>();
@@ -438,6 +438,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         workspaceName={workspaceName}
         pinned={prefs.pinned}
         onPin={pin}
+        onPinProject={pinProject}
         inboxCount={inboxCounts.open}
         live={live}
         onSearch={()=>{setSearchOpen(true);if(window.innerWidth<768)setOpen(false)}}
@@ -565,6 +566,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             inboxTick={inboxTick}
             muted={prefs.muted}
             onMute={mute}
+            pinned={prefs.pinned_projects?.includes(route.name || "~") ?? false}
+            onPin={pinProject}
             onOpenSource={openSource}
             workspaceName={workspaceName}
             projects={projects ?? []}

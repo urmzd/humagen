@@ -42,6 +42,7 @@ import { emailScreens, notificationEmailFixture } from "./email.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
 import { activityFilters, usageScreens } from "./observability.ts";
+import { sidebarParticipants } from "./sidebar-participants.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
 import { workspaceScreens } from "./workspace.ts";
 
@@ -89,6 +90,8 @@ interface Screen {
   path: string;
   /** What a person does on the page before it is captured, such as opening a menu. */
   act?: (page: Page) => Promise<void>;
+  /** A surface such as an open navigation drawer has its own spacing checks. */
+  rules?: Rules;
   /** Release a fixture held open for capture before moving to the next screen. */
   after?: () => Promise<void>;
 }
@@ -736,6 +739,7 @@ function screens(ids: Ids, call: Call): Screen[] {
   const list: Screen[] = [
     { name: "home", path: "/" },
     { name: "sidebar-scroll", path: "/settings/profile", act: sidebarScroll },
+    sidebarParticipants(call, ids.routedChat),
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids, call),
     { name: "projects", path: "/projects" },
@@ -1611,7 +1615,7 @@ async function shoot(
   await sleep(300);
   const file = join(out, vp.name, `${s.name}.png`);
   await page.screenshot({ path: file });
-  const problems = judge(await page.evaluate(collect), vp.rules);
+  const problems = judge(await page.evaluate(collect), s.rules ?? vp.rules);
   // The page scrolls inside its own column, so a screenshot of the window
   // shows only the first screen. For review, the window is made as tall as
   // the column's content once more, and that is kept beside it.

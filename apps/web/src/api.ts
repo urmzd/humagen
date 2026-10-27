@@ -575,6 +575,8 @@ export interface Preferences {
   onboarded_at?: string;
   /** Conversations kept at the top of the sidebar, most recently pinned first. */
   pinned: string[];
+  /** Project shortcuts, independent of conversation pins. The workspace is `~`. */
+  pinned_projects?: string[];
   /** Projects whose announcements stay out of this person's own inbox. */
   muted: string[];
 }
@@ -911,7 +913,7 @@ export const api = {
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[]; personal?: PersonalPreferences }) =>
+  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; pinned_projects?: string[]; muted?: string[]; personal?: PersonalPreferences }) =>
     call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.

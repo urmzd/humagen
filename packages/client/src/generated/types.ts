@@ -1981,6 +1981,8 @@ export interface Preferences {
   onboarded_at?: string;
   /** Conversations kept at the top of the person's sidebar, most recently pinned first. */
   pinned: string[];
+  /** Project shortcuts kept at the top of the person's sidebar, most recently pinned first. The workspace uses `~`. */
+  pinned_projects: string[];
   /** Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted. */
   muted: string[];
 }
@@ -3995,6 +3997,7 @@ export interface UpdatePreferencesBody {
   accent?: Accent;
   onboarded?: boolean;
   pinned?: string[];
+  pinned_projects?: string[];
   muted?: string[];
 }
 

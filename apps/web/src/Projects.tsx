@@ -1179,6 +1179,8 @@ export function ProjectPage({
   inboxTick,
   muted = [],
   onMute,
+  pinned = false,
+  onPin,
   onOpenSource = () => {},
   workspaceName,
   projects,
@@ -1217,6 +1219,8 @@ export function ProjectPage({
   muted?: string[];
   /** Resolves once the change is saved, and rejects when it could not be. */
   onMute?: (project: string, muted: boolean) => Promise<void>;
+  pinned?: boolean;
+  onPin?: (project: string, pinned: boolean) => Promise<void>;
   /** Open what an inbox message is about. */
   onOpenSource?: (source: Source) => void;
   workspaceName: string;
@@ -1250,7 +1254,7 @@ export function ProjectPage({
   const [lead, setLead] = useState<string | null>(null);
   // Deleting cannot be undone, so it is asked twice.
   const [deleting, setDeleting] = useState(false);
-  // A mute that did not take says so beside its button.
+  // A preference change that did not take says so beside the actions.
   const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick, inboxTick and reads are signals to read again
@@ -1342,6 +1346,13 @@ export function ProjectPage({
         <PageActions
           primary={can("runs:write") ? { label: words.newTask, onSelect: onNewChat } : undefined}
           actions={[
+            ...(onPin ? [{
+              label: pinned ? defaultCopy.pins.unpinProject : defaultCopy.pins.pinProject,
+              onSelect: () => {
+                clearMute();
+                onPin(p.name || "~", !pinned).catch(() => sayMute(pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed, true));
+              },
+            }] : []),
             ...(!root && onMute
               ? [
                   {

@@ -5,7 +5,7 @@ import { api, type Preferences } from "./api.ts";
 export type PrefsRead = "reading" | "read" | "failed";
 
 interface ListChange {
-  field: "pinned" | "muted";
+  field: "pinned" | "pinned_projects" | "muted";
   next: (was: string[]) => string[];
   resolve: () => void;
   reject: (error: unknown) => void;
@@ -19,6 +19,7 @@ export const unreadPrefs: Preferences = {
   has_photo: false,
   photo_version: 0,
   pinned: [],
+  pinned_projects: [],
   muted: [],
 };
 
@@ -27,8 +28,8 @@ export const unreadPrefs: Preferences = {
  * name, theme and accent with whatever it changes, so a pin or a mute waits
  * for the saved preferences: one made while they are being read is made once
  * they are, and one made after they could not be read reads them again, so a
- * blip does not stop pinning for the rest of the session. Pin and mute show at
- * once and resolve once saved. They reject when the preferences could not be
+ * blip does not stop pinning for the rest of the session. Changes save in order
+ * and resolve once saved. They reject when the preferences could not be
  * read or the change could not be saved, with nothing changed on screen, so
  * the control can say so.
  */
@@ -38,6 +39,7 @@ export function usePreferences(): {
   /** Shows preferences just saved elsewhere, as Settings does. */
   setPrefs: (p: Preferences) => void;
   pin: (id: string, on: boolean) => Promise<void>;
+  pinProject: (project: string, on: boolean) => Promise<void>;
   mute: (project: string, on: boolean) => Promise<void>;
 } {
   const [prefs, show] = useState<Preferences>(unreadPrefs);
@@ -51,7 +53,7 @@ export function usePreferences(): {
   const reading = useRef<Promise<void> | null>(null);
   const refresh = useCallback(() => {
     const projected = pending.current.reduce(
-      (was, change) => ({ ...was, [change.field]: change.next(was[change.field]) }),
+      (was, change) => ({ ...was, [change.field]: change.next(was[change.field] ?? []) }),
       confirmed.current,
     );
     latest.current = projected;
@@ -92,7 +94,7 @@ export function usePreferences(): {
     while (pending.current.length > 0) {
       const change = pending.current[0]!;
       const was = confirmed.current;
-      const changed = { [change.field]: change.next(was[change.field]) };
+      const changed = { [change.field]: change.next(was[change.field] ?? []) };
       let error: unknown;
       let failed = false;
       try {
@@ -114,7 +116,7 @@ export function usePreferences(): {
     saving.current = false;
   }, [refresh]);
   const change = useCallback(
-    (field: "pinned" | "muted", next: (was: string[]) => string[]) =>
+    (field: "pinned" | "pinned_projects" | "muted", next: (was: string[]) => string[]) =>
       read().then(() => new Promise<void>((resolve, reject) => {
         pending.current.push({ field, next, resolve, reject });
         refresh();
@@ -131,5 +133,9 @@ export function usePreferences(): {
     (project: string, on: boolean) => change("muted", (was) => (on ? [...was.filter((p) => p !== project), project] : was.filter((p) => p !== project))),
     [change],
   );
-  return { prefs, prefsRead, setPrefs, pin, mute };
+  const pinProject = useCallback(
+    (project: string, on: boolean) => change("pinned_projects", (was) => (on ? [project, ...was.filter((p) => p !== project)] : was.filter((p) => p !== project))),
+    [change],
+  );
+  return { prefs, prefsRead, setPrefs, pin, pinProject, mute };
 }

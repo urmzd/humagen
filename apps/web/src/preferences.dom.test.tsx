@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
-import type { Me, Preferences, ThreadSummary } from "./api.ts";
+import { act, cleanup, fireEvent, render, renderHook, screen, within, waitFor } from "@testing-library/react";
+import type { Me, Preferences, ProjectView, ThreadSummary } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs, usePreferences } from "./preferences.ts";
 import { Sidebar } from "./Sidebar.tsx";
@@ -235,14 +235,152 @@ test("keyboard unpin returns to the conversation filter when an older unselected
   assert.deepEqual((puts()[0]?.body as Partial<Preferences>).pinned, []);
 });
 
+test("project and conversation pins persist independently through unpinning and reopening", async () => {
+  let stored = { ...saved, pinned: [] as string[], pinned_projects: [] as string[] };
+  net = stubFetch({
+    "GET /api/preferences": () => stored,
+    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<typeof stored> }),
+    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+  });
+  render(<Pins />);
+  fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
+  await screen.findByRole("link", { name: "Launch" });
+  fireEvent.click(screen.getByRole("button", { name: "Pin Quarterly report" }));
+  await screen.findByRole("button", { name: "Unpin Quarterly report" });
+  assert.deepEqual(stored.pinned_projects, ["Launch"]);
+  assert.deepEqual(stored.pinned, ["t1"]);
+  cleanup();
+  render(<Pins />);
+  const pinned = within(await screen.findByRole("region", { name: "Pinned" }));
+  assert.equal(pinned.getByRole("link", { name: "Launch" }).getAttribute("href"), "/projects/Launch");
+  fireEvent.click(pinned.getByRole("button", { name: "Unpin project Launch" }));
+  await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
+  assert.deepEqual(stored.pinned, ["t1"]);
+  fireEvent.click(screen.getByRole("button", { name: "Unpin Quarterly report" }));
+  await waitFor(() => assert.deepEqual(stored.pinned, []));
+});
+
+test("keyboard project pinning moves focus to its shortcut and unpinning returns to the project group", async () => {
+  let stored: Preferences = { ...saved, pinned: [], pinned_projects: [] };
+  net = stubFetch({
+    "GET /api/preferences": () => stored,
+    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<Preferences> }),
+    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+  });
+  render(<Pins />);
+  const pin = await screen.findByRole("button", { name: "Pin project Launch" });
+  pin.focus();
+  fireEvent.click(pin, { detail: 0 });
+  const shortcut = within(await screen.findByRole("region", { name: "Pinned" }));
+  const unpin = shortcut.getByRole("button", { name: "Unpin project Launch" });
+  await waitFor(() => assert.equal(document.activeElement === unpin, true));
+  fireEvent.click(unpin, { detail: 0 });
+  const restored = await screen.findByRole("button", { name: "Pin project Launch" });
+  await waitFor(() => assert.equal(document.activeElement === restored, true));
+  assert.equal(restored.isConnected, true);
+  assert.equal(Boolean(screen.queryByRole("region", { name: "Pinned" })), false);
+  await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
+  assert.deepEqual(stored.pinned, [], "project pinning leaves conversation pins unchanged");
+});
+
+test("keyboard unpinning a project without recent conversations returns focus to Projects", async () => {
+  let stored: Preferences = { ...saved, pinned: [], pinned_projects: ["Launch"] };
+  net = stubFetch({
+    "GET /api/preferences": () => stored,
+    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<Preferences> }),
+    "GET /api/threads": () => ({ threads: [], next: null }),
+  });
+  render(<Pins />);
+  const unpin = await screen.findByRole("button", { name: "Unpin project Launch" });
+  const projects = screen.getByRole("link", { name: "Projects" });
+  unpin.focus();
+  fireEvent.click(unpin, { detail: 0 });
+  await waitFor(() => assert.equal(document.activeElement === projects, true));
+  assert.equal(projects.isConnected, true);
+  assert.equal(Boolean(screen.queryByRole("region", { name: "Pinned" })), false);
+  assert.equal(screen.queryAllByRole("button", { name: /pin project Launch/i }).length, 0);
+  await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
+});
+
+test("a refused project pin rolls back and says so beside the project", async () => {
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+  });
+  render(<Pins />);
+  fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
+  await screen.findByText("Could not pin. Try again.");
+  assert.ok(screen.getByRole("button", { name: "Pin project Launch" }));
+  assert.ok(!screen.queryByRole("link", { name: "Launch" }));
+});
+
+test("overlapping project and conversation saves keep both lists", async () => {
+  let release = () => {};
+  const first = new Promise<void>(resolve => { release = resolve; });
+  let stored: Preferences = { ...saved, pinned_projects: [] };
+  let writes = 0;
+  net = stubFetch({
+    "GET /api/preferences": () => stored,
+    "PUT /api/preferences": async body => {
+      if (++writes === 1) await first;
+      stored = { ...stored, ...body as Partial<Preferences> };
+      return stored;
+    },
+  });
+  const { result } = renderHook(() => usePreferences());
+  await waitFor(() => assert.equal(result.current.prefsRead, "read"));
+  let project = Promise.resolve();
+  let conversation = Promise.resolve();
+  act(() => {
+    project = result.current.pinProject("Launch", true);
+    conversation = result.current.pin("t1", true);
+  });
+  await waitFor(() => assert.equal(writes, 1));
+  release();
+  await act(() => Promise.all([project, conversation]));
+  assert.deepEqual(result.current.prefs.pinned_projects, ["Launch"]);
+  assert.deepEqual(result.current.prefs.pinned, ["t1", "t0"]);
+});
+
+test("conversation rows identify multiple agents and people, with the full names accessible", async () => {
+  const conversation = { ...task("t1", "Launch checklist"), agents: ["lead", "helper", "lead"], people: ["ada", "mira", "jon", "sam", "mira"] };
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "GET /api/threads": () => ({ threads: [conversation], next: null }),
+  });
+  render(<Pins />);
+  const agents = await screen.findByRole("group", { name: "Agents: lead, helper" });
+  assert.equal(agents.textContent, "lead+1");
+  const people = screen.getByRole("group", { name: "People: Ada, mira, jon, sam" });
+  assert.ok(people.textContent?.includes("4 people"));
+  assert.equal(people.querySelectorAll("[aria-hidden] > span").length, 3, "only three avatars fit in a compact row");
+  assert.ok(agents.closest("button")?.textContent?.includes("Launch checklist"));
+});
+
+test("people-only and agent-only conversations show only their actual participants", async () => {
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "GET /api/threads": () => ({ threads: [
+      { ...task("people", "Team discussion"), agents: [] },
+      { ...task("agents", "Agent work"), people: [] },
+    ], next: null }),
+  });
+  render(<Pins />);
+  const person = await screen.findByRole("group", { name: "People: Ada" });
+  assert.ok(person.textContent?.includes("You"));
+  assert.ok(!person.closest("button")?.querySelector('[aria-label^="Agents:"]'));
+  const agent = screen.getByRole("group", { name: "Agents: lead" });
+  assert.ok(!agent.closest("button")?.querySelector('[aria-label^="People:"]'));
+});
+
 const me: Me = {
   principal: { subject: "ada", tenant: "acme", kind: "user", name: "Ada", roles: ["member"] },
-  permissions: ["runs:read", "runs:write"],
+  permissions: ["runs:read", "runs:write", "projects:read"],
 };
 
 // The sidebar with its pins kept as the console keeps them.
 function Pins({ threads = [], route = { page: "new" }, onGo = () => {} }: { threads?: ThreadSummary[]; route?: Route; onGo?: (route: Route) => void }) {
-  const { prefs, pin } = usePreferences();
+  const { prefs, pin, pinProject } = usePreferences();
   const noop = () => {};
   return (
     <Sidebar
@@ -254,8 +392,10 @@ function Pins({ threads = [], route = { page: "new" }, onGo = () => {} }: { thre
       prefs={prefs}
       can={(p) => me.permissions.includes(p)}
       threads={threads}
+      projects={[{ name: "Launch", title: "Launch" } as ProjectView]}
       pinned={prefs.pinned}
       onPin={pin}
+      onPinProject={pinProject}
       inboxCount={0}
       live
       onSignOut={noop}
