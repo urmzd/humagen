@@ -302,8 +302,8 @@ export function Sidebar({
     const selector = projects ? "[data-pin-project]" : "[data-pin-thread]";
     const control = Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>(selector) ?? [])
       .find((button) => (projects ? button.dataset.pinProject : button.dataset.pinThread) === target.id);
-    // An older unselected row may leave the loaded page after unpinning.
-    // Keep keyboard focus at the conversation list's stable filter control.
+    // An unpinned row may leave the current group or loaded page.
+    // Keep focus at its remaining control or a stable navigation target.
     const fallback = projects
       ? sidebar.current?.querySelector<HTMLAnchorElement>('nav[aria-label="Sections"] a[href="/projects"]')
       : sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Conversations"] button');
