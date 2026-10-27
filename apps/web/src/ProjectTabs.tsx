@@ -16,7 +16,7 @@ import {
 } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
 import { useHeld, useInbox } from "./inbox.ts";
-import { KindChips, MailboxView } from "./InboxPage.tsx";
+import { KindFilter, MailboxView } from "./InboxPage.tsx";
 import { type PlatformMessage, projectInbox, projectOf, type Source } from "./mail.ts";
 import { ago, button, Empty, field, Label, Menu, Problem, primary, SkeletonRows, Switch } from "./ui.tsx";
 import { titleOf, updateOf } from "./projects.ts";
@@ -195,7 +195,7 @@ export function ProjectInbox({
               </button>
             )
           }
-          toolbar={<KindChips value={kind} onChange={setKind} />}
+          toolbar={<KindFilter value={kind} onChange={setKind} />}
           listEnd={
             inbox.hasMore && (
               <div className="flex justify-center py-3">

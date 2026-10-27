@@ -537,7 +537,7 @@ export function SourceSyncSettings({
             className={field}
             type="number"
             min={0}
-            max={43200}
+            max={10080}
             required
             disabled={!canWrite || busy || lifecycle?.snapshot}
             value={every}

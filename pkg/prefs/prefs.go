@@ -36,7 +36,7 @@ const MaxPhoto = 512 << 10
 // maxName bounds a display name, in bytes.
 const maxName = 80
 
-// MaxPinned bounds how many conversations a person can pin.
+// MaxPinned bounds each list of conversation and project pins.
 const MaxPinned = 50
 
 // maxPinID bounds one pinned conversation's id, in bytes.
@@ -55,8 +55,8 @@ const (
 	Dark   Theme = "dark"
 )
 
-// Accents are the accent colors the console offers.
-var Accents = []string{"purple", "blue", "yellow", "teal"}
+// Accents are the accent colors the console offers. Legacy choices remain valid.
+var Accents = []string{"red", "yellow", "green", "purple", "blue", "teal"}
 
 // Preferences is one person's choices.
 type Preferences struct {
@@ -77,6 +77,9 @@ type Preferences struct {
 	// most recently pinned first. Only ids are kept: a conversation the
 	// person can no longer read is simply not shown.
 	Pinned []string `json:"pinned"`
+	// PinnedProjects keeps project shortcuts independently of conversations.
+	// The workspace uses its address, "~". Unreadable projects are not shown.
+	PinnedProjects []string `json:"pinned_projects"`
 	// Muted is the projects whose announcements are left out of the
 	// person's own inbox. They stay in each project's inbox, and the
 	// workspace itself cannot be muted.
@@ -85,7 +88,7 @@ type Preferences struct {
 
 // Defaults is what a person has before they choose anything.
 func Defaults() Preferences {
-	return Preferences{Personal: DefaultPersonal(), Theme: System, Accent: Accents[0], Pinned: []string{}, Muted: []string{}}
+	return Preferences{Personal: DefaultPersonal(), Theme: System, Accent: Accents[0], Pinned: []string{}, PinnedProjects: []string{}, Muted: []string{}}
 }
 
 type photo struct {
@@ -132,6 +135,9 @@ func Open(st state.Store) (*Store, error) {
 		}
 		if p.Pinned == nil {
 			p.Pinned = []string{}
+		}
+		if p.PinnedProjects == nil {
+			p.PinnedProjects = []string{}
 		}
 		if p.Muted == nil {
 			p.Muted = []string{}
@@ -288,6 +294,36 @@ func (s *Store) SetPinned(tenant, subject string, ids []string) (Preferences, er
 	return s.change(tenant, subject, false, func(e *entry) { e.Pinned = next })
 }
 
+// CleanPinnedProjects bounds project shortcuts and keeps each name once.
+func CleanPinnedProjects(names []string) ([]string, error) {
+	if len(names) > MaxPinned {
+		return nil, fmt.Errorf("%w: at most %d projects can be pinned", ErrInvalid, MaxPinned)
+	}
+	seen := make(map[string]bool, len(names))
+	next := make([]string, 0, len(names))
+	for _, name := range names {
+		if name != projects.RootAddress && !projects.ValidName(name) {
+			return nil, fmt.Errorf("%w: a pinned project is named by its name", ErrInvalid)
+		}
+		if !seen[name] {
+			seen[name] = true
+			next = append(next, name)
+		}
+	}
+	return next, nil
+}
+
+// SetPinnedProjects replaces the person's project shortcuts.
+func (s *Store) SetPinnedProjects(tenant, subject string, names []string) (Preferences, error) {
+	next, err := CleanPinnedProjects(names)
+	if err != nil {
+		return Preferences{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.change(tenant, subject, false, func(e *entry) { e.PinnedProjects = next })
+}
+
 // CleanMuted checks a list of muted projects and drops repeats, keeping the
 // first. Each is a project's name; the workspace, "" or "~", is never muted,
 // since what it announces is for everyone.
@@ -395,6 +431,7 @@ func (s *Store) Photo(tenant, subject string) ([]byte, string, error) {
 
 func clonePreferences(p Preferences) Preferences {
 	p.Pinned = slices.Clone(p.Pinned)
+	p.PinnedProjects = slices.Clone(p.PinnedProjects)
 	p.Muted = slices.Clone(p.Muted)
 	p.Personal.Notifications = maps.Clone(p.Personal.Notifications)
 	return p

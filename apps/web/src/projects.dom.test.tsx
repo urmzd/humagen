@@ -30,6 +30,8 @@ function open(
     routes?: Record<string, (body: unknown, query: URLSearchParams) => unknown>;
     schedules?: ScheduleView[];
     onMute?: (project: string, muted: boolean) => Promise<void>;
+    onPin?: (project: string, pinned: boolean) => Promise<void>;
+    pinned?: boolean;
   } = {},
 ) {
   const address = detail.project.name === "" ? "~" : encodeURIComponent(detail.project.name);
@@ -65,10 +67,27 @@ function open(
       onSchedulesChanged={noop}
       onDeleted={noop}
       onMute={opts.onMute}
+      onPin={opts.onPin}
+      pinned={opts.pinned}
     />,
   );
   return { opened };
 }
+
+test("a project with no recent conversations can be pinned from its actions", async () => {
+  let selected: unknown;
+  open(globexDetail, { onPin: async (project, pinned) => { selected = [project, pinned]; } });
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Pin Project" }));
+  assert.deepEqual(selected, ["Globex", true]);
+});
+
+test("a project pin refusal is reported beside the project actions", async () => {
+  open(globexDetail, { pinned: true, onPin: async () => { throw new Error("refused"); } });
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Unpin Project" }));
+  await screen.findByText("Could not unpin. Try again.");
+});
 
 test("a project page shows where it sits, what sits below it, and every limit above it in words", async () => {
   const { opened } = open(globexDetail);

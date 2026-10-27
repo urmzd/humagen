@@ -28,7 +28,7 @@ func (s *citationProvider) Fetch(context.Context, string, mcptools.Secret) ([]kn
 	return []knowledge.ImportDocument{{ID: "pinned", Title: "Pinned", Text: "release retained"}, {ID: "fresh", Title: "Fresh", Text: "release live"}}, nil
 }
 
-func TestApprovedHybridToolRecordsActualIndexedAndLiveEvidence(t *testing.T) {
+func TestApprovedHybridToolUsesCurrentReaderAccessAndNeverFallsBack(t *testing.T) {
 	p := sourceGroundingPlatform(t)
 	provider := &citationProvider{}
 	p.cfg.Ext.SourceProviders = map[string]knowledge.Provider{"test": provider}
@@ -84,7 +84,7 @@ func TestApprovedHybridToolRecordsActualIndexedAndLiveEvidence(t *testing.T) {
 		return out
 	}
 	out := execute()
-	if provider.calls != 1 || len(out.Hits) != 2 || len(out.Citations) != 2 || out.Citations[0].Mode != "indexed" || out.Citations[1].Mode != "live" || out.Citations[1].CopyAt != nil {
+	if provider.calls != 1 || len(out.Hits) != 2 || len(out.Citations) != 2 || out.Citations[0].Mode != "live" || out.Citations[1].Mode != "live" || out.Citations[1].CopyAt != nil {
 		t.Fatal("actual hybrid provenance missing", out)
 	}
 	live, ok := p.SourceEvidence.Get("tenant", "run1", out.Citations[1].ID, "")
@@ -92,8 +92,8 @@ func TestApprovedHybridToolRecordsActualIndexedAndLiveEvidence(t *testing.T) {
 		t.Fatal("live evidence lost reader binding")
 	}
 	provider.fail = true
-	out = execute()
-	if len(out.Hits) != 1 || out.Citations[0].Mode != "indexed" || len(out.Warnings) != 1 || out.Warnings[0].Cause != knowledge.AuthExpired {
-		t.Fatal("live failure discarded indexed evidence or claimed success", out)
+	text, err := p.sourceTools(req)[ToolSourceSearch].Execute(t.Context(), map[string]any{"source": "hybrid", "query": "release"})
+	if text != "" || knowledge.FailureCause(err) != knowledge.AuthExpired {
+		t.Fatal("revoked reader access returned retained text", text, err)
 	}
 }

@@ -466,7 +466,7 @@ func (s *Server) createSource(w http.ResponseWriter, r *http.Request, who auth.P
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, source)
+	ok(w, http.StatusCreated, platform.ShownSource(source))
 }
 
 func (s *Server) deleteSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -739,7 +739,7 @@ func (s *Server) configureSource(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, src)
+	ok(w, http.StatusOK, platform.ShownSource(src))
 }
 func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
@@ -757,7 +757,7 @@ func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, src)
+	ok(w, http.StatusOK, platform.ShownSource(src))
 }
 func (s *Server) syncSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	src, err := s.P.SyncSource(r.Context(), who, r.PathValue("name"))
@@ -765,7 +765,7 @@ func (s *Server) syncSource(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, src)
+	ok(w, http.StatusOK, platform.ShownSource(src))
 }
 
 func (s *Server) sourceDependencies(w http.ResponseWriter, r *http.Request, who auth.Principal) {

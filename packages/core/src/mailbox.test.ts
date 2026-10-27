@@ -239,6 +239,27 @@ describe("mailbox", () => {
     expect(messagePreview(get("m-budget"))).toBe("$48.20 of $50.00 this month");
   });
 
+  it("searches supplied subjects, senders and previews together with native filters", () => {
+    const approval = get("m-approval");
+    const budget = get("m-budget");
+    const supplied = [approval, budget];
+    expect(filterMessages(supplied, { query: "  ROLL BACK  " })).toEqual([approval]);
+    expect(filterMessages(supplied, { query: "ASSISTANT" })).toEqual([approval]);
+    expect(filterMessages(supplied, { query: "$48.20" })).toEqual([budget]);
+    expect(
+      filterMessages(supplied, {
+        query: "assistant",
+        kind: "approval",
+        state: "open",
+        unread: true,
+      }),
+    ).toEqual([approval]);
+    expect(filterMessages(supplied, { query: "assistant", kind: "alert" })).toEqual([]);
+    expect(filterMessages(supplied, { query: "   " })).toEqual(supplied);
+    expect(filterMessages(supplied, { query: get("m-alert").subject })).toEqual([]);
+    expect(supplied).toEqual([approval, budget]);
+  });
+
   it("reads the older inbox items as one-part messages", () => {
     const messages = fx.inboxItems.map((item) => messageFromItem(item));
     expect(messages).toHaveLength(fx.inboxItems.length);

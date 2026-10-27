@@ -4,6 +4,7 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -70,7 +71,7 @@ func TestProviderLiveSmoke(t *testing.T) {
 			if _, err := s.Create("smoke", "source", "", "tester", at); err != nil {
 				t.Fatal("create source failed")
 			}
-			if _, err := s.Configure("smoke", "source", SourceConfig{Mode: Indexed, Provider: kind, Origin: origin, Owner: "tester"}, at); err != nil {
+			if _, err := s.Configure("smoke", "source", SourceConfig{Mode: Indexed, Provider: kind, Origin: origin, Owner: "tester", Resources: []string{selected}}, at); err != nil {
 				t.Fatal("configure source failed")
 			}
 			sync := func(docs []ImportDocument, at time.Time) {
@@ -109,21 +110,58 @@ func TestProviderLiveSmoke(t *testing.T) {
 				t.Fatal("failed refresh changed retained copy")
 			}
 			hits, err := s.Search("smoke", []string{"source"}, marker, 6, "")
+			if !errors.Is(err, ErrUpstreamRead) || len(hits) != 0 {
+				t.Fatal("retained copy bypassed current upstream access")
+			}
+			failed, err := s.Get("smoke", "source")
+			if err != nil || failed.Lifecycle == nil || failed.Lifecycle.Status != NeedsAttention || failed.Lifecycle.Cause != AuthExpired || failed.Lifecycle.LastGoodAt == nil || !failed.Lifecycle.LastGoodAt.Equal(at.Add(time.Second)) {
+				t.Fatal("failed collection lost its status or last-good provenance")
+			}
+			// A query must authorize another provider read. Its temporary search
+			// index never serves the retained collection after a failed refresh.
+			query := func(token mcptools.Secret) ([]Hit, error) {
+				fresh, err := fetch(token)
+				if err != nil {
+					return nil, err
+				}
+				current := NewStore()
+				if _, err := current.Create("smoke", "source", "", "tester", at); err != nil {
+					return nil, err
+				}
+				id, err := current.BeginSync("smoke", "source", at)
+				if err != nil {
+					return nil, err
+				}
+				if _, err := current.CompleteSync("smoke", "source", id, fresh, "tester", at); err != nil {
+					return nil, err
+				}
+				hits, err := current.Search("smoke", []string{"source"}, marker, 6, "")
+				for i := range hits {
+					hits[i].Mode = Live
+					hits[i].CopyAt = nil
+					hits[i].RefreshFailed = false
+				}
+				return hits, err
+			}
+			if denied, err := query(mcptools.NewSecret("humagen-smoke-invalid-token")); err == nil || FailureCause(err) != AuthExpired || len(denied) != 0 {
+				t.Fatal("query returned retained data without current provider access")
+			}
+			hits, err = query(secret)
 			if err != nil || len(hits) != 1 {
-				t.Fatal("retained marker was not searchable")
+				t.Fatal("fresh authorized marker was not searchable")
 			}
 			h := hits[0]
-			if h.DocumentID != selected || h.URI != docs[0].URI || h.Mode != Indexed || h.CopyAt == nil || !h.RefreshFailed || !strings.Contains(h.Text, marker) {
-				t.Fatal("retrieval provenance did not match retained copy")
+			if h.DocumentID != selected || h.URI != docs[0].URI || h.Mode != Live || h.CopyAt != nil || h.RefreshFailed || !strings.Contains(h.Text, marker) {
+				t.Fatal("retrieval provenance did not identify a fresh provider query")
 			}
 			evidence := NewEvidenceStore()
-			entry := CitationEvidence{Source: h.Source, DocumentID: h.DocumentID, Title: h.Title, URI: h.URI, Text: h.Text, Index: h.Index, Mode: h.Mode, CopyAt: h.CopyAt, RefreshFailed: h.RefreshFailed}
+			entry := CitationEvidence{Source: h.Source, Provider: kind, Person: "tester", DocumentID: h.DocumentID, Title: h.Title, URI: h.URI, Text: h.Text, Index: h.Index, Mode: h.Mode, CopyAt: h.CopyAt, RefreshFailed: h.RefreshFailed}
 			recorded, err := evidence.RecordQuery("smoke", "run", "query", []CitationEvidence{entry})
 			if err != nil || len(recorded) != 1 {
 				t.Fatal("record citation evidence failed")
 			}
 			kept, ok := evidence.Get("smoke", "run", recorded[0].Label, selected)
-			if !ok || kept.Digest != EvidenceDigest(h.DocumentID, h.Title, h.URI, h.Text, h.Index) || kept.Mode != Indexed || kept.CopyAt == nil || !kept.RefreshFailed {
+			if !ok || kept.Provider != kind || kept.Person != "tester" || kept.Digest != EvidenceDigest(h.DocumentID, h.Title, h.URI, h.Text, h.Index) || kept.Mode != Live || kept.CopyAt != nil || kept.RefreshFailed {
 				t.Fatal("citation evidence did not retain retrieval provenance")
 			}
 			recovered, err := fetch(secret)
@@ -131,9 +169,12 @@ func TestProviderLiveSmoke(t *testing.T) {
 				t.Fatalf("recovery fetch failed: %s", FailureCause(err))
 			}
 			sync(recovered, at.Add(3*time.Second))
-			hits, err = s.Search("smoke", []string{"source"}, marker, 6, "")
-			if err != nil || len(hits) != 1 || hits[0].RefreshFailed {
+			restored, err := s.Get("smoke", "source")
+			if err != nil || restored.Lifecycle == nil || restored.Lifecycle.Status != InSync || restored.Lifecycle.Cause != "" || restored.Lifecycle.LastGoodAt == nil || !restored.Lifecycle.LastGoodAt.Equal(at.Add(3*time.Second)) {
 				t.Fatal("successful retry did not recover the source")
+			}
+			if hits, err := s.Search("smoke", []string{"source"}, marker, 6, ""); !errors.Is(err, ErrUpstreamRead) || len(hits) != 0 {
+				t.Fatal("successful collection became an upstream access grant")
 			}
 		})
 	}

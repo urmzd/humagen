@@ -207,7 +207,7 @@ test("hiding the only announcement keeps the inbox and its switch, and Show for 
   const { rerender } = render(<ProjectInbox project={member} me="cy" signal={0} onMessage={(id) => (opened = id)} onOpen={() => {}} onChanged={() => {}} />);
   assert.ok(await screen.findByText("New announcements land here. What you hid is under Resolved."));
   assert.ok(!screen.queryByText(/Nothing has been announced/));
-  assert.ok(screen.getByText("Everything"), "the kind chips stay");
+  assert.equal((screen.getByRole("combobox", { name: "Filter updates" }) as HTMLSelectElement).value, "", "the kind filter stays");
   fireEvent.click(screen.getByText("Resolved"));
   fireEvent.click(await screen.findByText("Field offsite"));
   assert.ok(screen.getByText("Hidden"), "its row says it is hidden, not dismissed");
@@ -305,11 +305,11 @@ test("an empty kind other than announcements keeps the mailbox's own words", asy
   const member = projectView({ name: "Field", access: { role: "member", from: "Field", via: "*" }, actions: ["propose"] });
   render(<ProjectInbox project={member} me="cy" signal={0} onMessage={() => {}} onOpen={() => {}} onChanged={() => {}} />);
   assert.ok(await screen.findByText("New announcements land here. What you hid is under Resolved."));
-  fireEvent.click(screen.getByText("Approvals"));
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter updates" }), { target: { value: "approval" } });
   await waitFor(() => assert.ok(net?.seen.some((s) => s.path.includes("kind=approval"))));
   assert.ok(await screen.findByText("Nothing is waiting on you. New approvals, alerts and artifacts land here."));
   assert.ok(!screen.queryByText(/New announcements land here/));
-  fireEvent.click(screen.getByText("Announcements"));
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter updates" }), { target: { value: "announcement" } });
   assert.ok(await screen.findByText("New announcements land here. What you hid is under Resolved."));
 });
 

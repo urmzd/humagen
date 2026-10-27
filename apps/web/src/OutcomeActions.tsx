@@ -58,7 +58,7 @@ export function OutcomeActions({ run, canWrite }: { run: Run; canWrite: boolean 
   return <>
     <button type="button" className={messageTextActionButton} disabled={busy || action !== null} onClick={() => open("skill")}><WrenchIcon size={16} />{copy.skill}</button>
     {run.outcome.decisions?.some((item) => item.trim() !== "") && <button type="button" className={messageTextActionButton} disabled={busy || action !== null} onClick={() => open("memory")}><BookmarkIcon size={16} />{copy.remember}</button>}
-    {action && <Inspector open title={action === "skill" ? copy.skillTitle : copy.decisionTitle} onClose={close}>
+    <Inspector open={action !== null} title={action === "skill" ? copy.skillTitle : copy.decisionTitle} onClose={close}>
       <div className="flex min-w-0 flex-col gap-4 p-4">
         <p className="text-aui-sm text-aui-muted">{copy.reviewHint}</p>
         {action === "memory" && <p className="text-aui-sm text-aui-muted">{copy.noExternalApproval}</p>}
@@ -84,6 +84,6 @@ export function OutcomeActions({ run, canWrite }: { run: Run; canWrite: boolean 
           <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={busy} onClick={close}>{copy.cancel}</button><button type="submit" className={primary} disabled={busy || loading || (action === "skill" ? !preview.can_draft : !preview.can_remember)}>{busy ? copy.saving : action === "skill" ? copy.createDraft : copy.approveRemember}</button></div>
         </form>}
       </div>
-    </Inspector>}
+    </Inspector>
   </>;
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -37,6 +38,8 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 		// Pinned replaces the pinned conversations when present. Absent
 		// leaves them as they are.
 		Pinned *[]string `json:"pinned"`
+		// Project shortcuts are independent of conversation pins.
+		PinnedProjects *[]string `json:"pinned_projects"`
 		// Muted replaces the projects whose announcements stay out of the
 		// person's own inbox when present. They stay in each project's
 		// inbox, and the workspace is never muted.
@@ -55,7 +58,7 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 		}
 		body.Personal = &clean
 	}
-	var pinned, muted []string
+	var pinned, pinnedProjects, muted []string
 	if body.Pinned != nil {
 		var err error
 		if pinned, err = prefs.CleanPinned(*body.Pinned); err != nil {
@@ -76,6 +79,25 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 			}
 		}
 	}
+	if body.PinnedProjects != nil {
+		var err error
+		if pinnedProjects, err = prefs.CleanPinnedProjects(*body.PinnedProjects); err != nil {
+			s.problem(w, err)
+			return
+		}
+		previous := s.P.Prefs.Get(who.Tenant, who.Subject).PinnedProjects
+		for _, name := range pinnedProjects {
+			// A saved shortcut that became unreadable must not prevent
+			// pinning another project or removing an unrelated shortcut.
+			if slices.Contains(previous, name) {
+				continue
+			}
+			if _, _, err := s.P.ProjectRole(who, name, projects.Viewer); err != nil {
+				s.problem(w, err)
+				return
+			}
+		}
+	}
 	var personal []prefs.Personal
 	if body.Personal != nil {
 		personal = append(personal, *body.Personal)
@@ -89,6 +111,12 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 	}
 	if body.Pinned != nil {
 		if next, err = s.P.Prefs.SetPinned(who.Tenant, who.Subject, pinned); err != nil {
+			s.problem(w, err)
+			return
+		}
+	}
+	if body.PinnedProjects != nil {
+		if next, err = s.P.Prefs.SetPinnedProjects(who.Tenant, who.Subject, pinnedProjects); err != nil {
 			s.problem(w, err)
 			return
 		}

@@ -16,6 +16,14 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
+  accentPresets: {
+    red: "Red",
+    yellow: "Yellow",
+    green: "Green",
+    purple: "Purple",
+    blue: "Blue",
+    teal: "Teal",
+  },
   outcomeLearning: {
     skill: "Save as Skill",
     remember: "Remember a Decision",
@@ -195,6 +203,57 @@ export const defaultCopy = {
     },
   },
 
+  preferences: {
+    openFor: (name: string) => `Preferences for ${name}`,
+    ownershipTitle: "Your workspace, your infrastructure",
+    ownershipDescription:
+      "Deploy Humagen internally to control your workspace data, storage and access in your own environment.",
+    typeface: "Typeface",
+    typefaceDescription:
+      "IBM Plex Sans for reading. IBM Plex Mono for files and technical details.",
+  },
+  inboxControls: {
+    search: "Search notifications",
+    filter: "Filter updates",
+    notificationFilter: "Filter notifications",
+    filters: "Notification filters",
+    filterButton: "Filter",
+    status: "Status",
+    type: "Type",
+    reset: "Reset",
+    done: "Done",
+    all: "Everything",
+    loadedHint: "Load more to include older notifications in your search.",
+  },
+  sourceCatalog: {
+    title: "New Source",
+    description: "Choose where the information lives, then how agents read it.",
+    available: "Available sources",
+    moreProviders: "Other providers",
+    manual: "Text files or pasted content",
+    manualHint: "A searchable collection you manage. Upload UTF-8 text, Markdown, CSV or JSON.",
+    drive: "Google Drive",
+    driveHint: "Google Docs and text files in the selected folder. Query live or collect a copy.",
+    notion: "Notion",
+    notionHint:
+      "Text from a selected page and supported nested blocks. Query live or collect a copy.",
+    connectorRequired: "Connector required",
+    warehouseHint: "Available through a registered connector or a separately configured MCP tool.",
+    mcp: "MCP tools",
+    mcpHint:
+      "Query a connected system through a configured tool. Tool queries do not create a synced source copy.",
+    slackHint:
+      "Live search through an approved MCP app, or permitted channel collection through a connector. Channel ingestion is not configured here yet.",
+    cadence: "Refresh cadence",
+    onDemand: "On demand",
+    scheduled: "Scheduled",
+    everyMinutes: "Every (minutes)",
+    refreshTitle: "Access and refresh",
+    refreshHint:
+      "Live query reads the provider when you search. A collected copy refreshes on demand or on a schedule. Queries still check your own provider access. Continuous push updates require a connector that supports them.",
+    formatsHint: "PDF and Office extraction is not available in text-source uploads.",
+    back: "Choose Another Provider",
+  },
   projectWork: {
     hint: "Follow the work, open a conversation, and pick up where it left off.",
     filterLabel: "Filter project conversations",
@@ -217,7 +276,8 @@ export const defaultCopy = {
       "Older conversations could not be loaded. Your current list is still available. Try See More again.",
   },
   navigation: {
-    newConversation: "New Conversation",
+    newConversation: "New",
+    updates: "Updates",
     people: "People",
     schedules: "Schedules",
     account: (name: string) => `You: ${name}`,
@@ -375,7 +435,7 @@ export const defaultCopy = {
     project: "Project",
     workspace: "Company",
     scopeHint:
-      "Indexed text is shared with readers of this project. Live searches use the asker's own access.",
+      "The project organizes this collection. Provider searches use each reader's current upstream access.",
     choose: "Choose Resources",
     loadResources: "Load Remote Resources",
     addSelected: "Add Selected",
@@ -510,10 +570,10 @@ export const defaultCopy = {
     dependencyFailed: "Source dependencies could not be loaded.",
     providers: { manual: "Manual", drive: "Google Drive", notion: "Notion" },
     grounding:
-      "Indexed sources ground runs in their retained documents. Live searches use the current reader’s own access. A failed refresh keeps the last good copy.",
+      "Local collections use their retained documents. Provider queries use the current reader’s access. Scheduled collection never grants file access, and failed reader checks never return cached external text.",
     configuration: "Configure Source",
     scopeHint:
-      "An indexed copy is shared with readers of the selected project. Choose a resource you can share with that audience.",
+      "The project organizes this collection. Provider queries still require each reader’s own upstream access.",
     provider: "Provider",
     origin: "Folder or page ID",
     mode: "Mode",
@@ -530,14 +590,18 @@ export const defaultCopy = {
     working: "Request in progress",
     failed: "The source request failed.",
     liveUnavailable:
-      "Live search is unavailable. Any indexed results below come from the retained copy.",
+      "The provider could not verify your access or complete this search. No retained external text was returned.",
+    retainedAccess:
+      "Use Resources to browse with your own provider connection, or Try a Question to search with your current access. Retained external file listings are withheld until file access can be verified.",
+    frozenAccess:
+      "This collection keeps a frozen version. Its retained files cannot be listed or searched until access to that exact version can be verified. Refreshing or querying newer provider content would change the version.",
     lastGood: "Last good copy",
     noCopy: "No successful copy yet",
     manualDocuments: "Manually added documents; no external refresh",
     attempts: "Recent refresh attempts",
     emptyAttempts: "No refresh attempted",
     stopHint: "Dependent work stops after this limit. Manual sources do not expire.",
-    modes: { indexed: "Indexed copy", live: "Live search", hybrid: "Hybrid" },
+    modes: { indexed: "Collected copy", live: "Live query", hybrid: "Copy + live query" },
     status: {
       connected: "Configured, not verified",
       importing: "Importing",
@@ -1046,7 +1110,7 @@ export const defaultCopy = {
   },
   notifications: {
     title: "Notifications",
-    pageDescription: "Your delivered updates. Open an update to respond in Needs You.",
+    pageDescription: "Updates and requests in one place. Open a notification to read or respond.",
     deliveries: "Delivered updates",
     emptyHint: "New updates appear here according to your notification preferences.",
     retry: "Try Again",
@@ -1058,6 +1122,9 @@ export const defaultCopy = {
     dismiss: "Dismiss Notification",
     settings: "Notification Preferences",
     failed: "Notifications could not be loaded.",
+    deliveryFailed:
+      "Notification delivery status could not be loaded. Your messages are still available.",
+    dismissDigest: (count: number) => `Dismiss Digest (${count} Updates)`,
     dismissFailed:
       "This notification could not be dismissed. Choose Dismiss Notification to try again.",
     items: (count: number) => `${count} updates`,
@@ -1203,9 +1270,11 @@ export const defaultCopy = {
   },
   personalPreferences: {
     profile: "Profile",
-    privacy: "Privacy and Defaults",
+    privacy: "Privacy",
     agents: "My Agents",
     displayName: "Display Name",
+    displayNameHint: "Use the name you want people and agents to see.",
+    briefingHint: "Describe the detail, tone and format that help you work.",
     role: "Role",
     connections: "Connected Accounts",
     memory: "Review My Memory",
@@ -1234,7 +1303,18 @@ export const defaultCopy = {
     digest: "Digest",
     off: "Off",
     remember: "Remember How I Work",
+    rememberHint:
+      "Let Humagen learn useful preferences from private conversations. Review or forget them in Memory.",
     personalMemory: "Allow My Personal Memory in Project Turns",
+    personalMemoryHint: "Let agents use your personal memory when responding to you in a project.",
+    privateTitle: "Private by default",
+    memorySettings: "Personal memory",
+    descriptions: {
+      profile: "Your identity and how you want agents to respond.",
+      notifications: "Choose which updates reach you and when.",
+      privacy: "Control what agents remember and where it can be used.",
+      agents: "Manage the agents that work with you.",
+    },
     privateDefault: "New conversations start private. Sharing requires an audience review.",
     events: {
       approval: "Approvals",
@@ -1331,6 +1411,27 @@ export const defaultCopy = {
     never: "No Expiry",
   },
   audit: {
+    dateRange: "Date Range",
+    rangeDefault: "Last 24 Hours",
+    clearRange: "Reset Range",
+    invalidRange: "Choose a valid time window of no more than 31 days.",
+    details: "Event Details",
+    resourceID: "Resource ID",
+    eventID: "Event ID",
+    time: "Time",
+    actions: "Actions",
+    outcomes: { succeeded: "Succeeded", failed: "Failed", pending: "Pending" },
+    domains: {
+      project: "Projects",
+      agent: "Agents",
+      skill: "Skills",
+      memory: "Memory",
+      source: "Sources",
+      credential: "Credentials",
+      action_policy: "Action Policies",
+      assignment: "Assignments",
+      call_policy: "Agent Call Policies",
+    },
     actor: "Actor",
     domain: "Domain",
     from: "From",
@@ -1608,10 +1709,21 @@ export const defaultCopy = {
     /** In Slack, to someone replying under an announcement that was withdrawn. */
     replyGone: "This announcement was withdrawn, so a reply to it starts nothing.",
   },
-  /** A conversation pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
+  /** A project or conversation pin. Said beside its pin when preferences could not be read or saved. */
   pins: {
+    pinProject: "Pin Project",
+    unpinProject: "Unpin Project",
     pinFailed: "Could not pin. Try again.",
     unpinFailed: "Could not unpin. Try again.",
+  },
+  sidebar: {
+    pinned: "Pinned",
+    you: "You",
+    agents: (names: string[]) => `Agents: ${names.join(", ")}`,
+    people: (names: string[]) => `People: ${names.join(", ")}`,
+    peopleCount: (count: number) => `${count} people`,
+    moreParticipants: (count: number) => `+${count}`,
+    pinProject: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} project ${title}`,
   },
   /** Who holds a role in a project, and what it lets them do. */
   roles: {
@@ -2160,6 +2272,8 @@ export const defaultCopy = {
     anyKind: "All",
     kindFilter: "Kind",
     search: "Search projects",
+    details: "Details",
+    moreAgents: (count: number) => `+${count} more agents`,
     /** The workspace is the root of the tree. */
     workspace: "The workspace",
     workspaceHint: "Holds every project. Its instructions and notes reach every agent.",

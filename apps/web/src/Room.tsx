@@ -39,7 +39,7 @@ import { ConversationForkPanels,type ConversationForkActions } from "./Conversat
 import { ForkContext } from "./ForkConversation.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { mergeTurns } from "./turns.ts";
-import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
+import { AgentMark, AgentTint, Presence, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
@@ -569,9 +569,10 @@ export function ThreadRoom({
         onPanel={(next) => openPanel(next)}
         onArtifact={(id) => openPanel("deliverables", { artifact: id })}
       >
-      {shareable && sharing && (
+      <Presence when={!!shareable && !!sharing} ms={220}>{leaving => (
         <div data-layer="share" className="relative z-10 px-4 pb-2">
           <ShareDialog
+            open={!leaving}
             thread={th}
             hasRuns={hasRuns}
             onPublished={onOpenThread ? (next) => {onSharing?.(false);onChanged();onOpenThread(next.id);} : undefined}
@@ -599,7 +600,7 @@ export function ThreadRoom({
             }}
           />
         </div>
-      )}
+      )}</Presence>
       {shareNote && (
         <p role="status" className="mx-auto w-full max-w-4xl px-4 pb-2 text-aui-xs text-aui-muted">
           {shareNote}
@@ -682,8 +683,8 @@ export function ThreadRoom({
       </div>
       </ConversationPage>
       <ConversationInfo onShare={shareable?()=>{openPanel();onSharing?.(true)}:undefined} panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={th} project={projectTitle(projects, th.project, workspaceName,personalProject)} onClose={() => openPanel()} />
-      {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:th.project,shared:th.visibility==="shared",...artifactActions}:undefined} thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
-      {shownView.panel === "activity" && <Activity filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length} turns={turns.flatMap((turn) => turn.run ? [turn.run] : [])} stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")} focus={shownView.run ?? null} onFocus={(run) => openPanel("activity", run ? { run } : {})} onClose={() => openPanel()} onJump={(run) => document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })} />}
+      <Presence when={shownView.panel === "deliverables"} ms={220}>{leaving => <Deliverables open={!leaving} promotion={artifactActions ? {project:th.project,shared:th.visibility==="shared",...artifactActions}:undefined} thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}</Presence>
+      <Presence when={shownView.panel === "activity"} ms={220}>{leaving => <Activity leaving={leaving} filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length} turns={turns.flatMap((turn) => turn.run ? [turn.run] : [])} stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")} focus={shownView.run ?? null} onFocus={(run) => openPanel("activity", run ? { run } : {})} onClose={() => openPanel()} onJump={(run) => document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })} />}</Presence>
     </section>
   );
 }

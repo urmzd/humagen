@@ -246,10 +246,10 @@ export function emailScreens(call: Call): Screen[] {
           false,
           "fresh screenshot account must start opted out",
         );
-        const checkbox = page.getByRole("checkbox", { name: copy.email, exact: true });
-        await checkbox.waitFor();
-        assert.equal(await checkbox.isChecked(), false);
-        assert.equal(await checkbox.isDisabled(), !configured);
+        const email = page.getByRole("switch", { name: copy.email, exact: true });
+        await email.waitFor();
+        assert.equal(await email.getAttribute("aria-checked"), "false");
+        assert.equal(await email.isDisabled(), !configured);
         await page
           .getByText(configured ? copy.emailDescription : copy.deliveryUnavailable, { exact: true })
           .first()
@@ -267,10 +267,11 @@ export function emailScreens(call: Call): Screen[] {
         const before = await call<Preferences>("GET", "/api/preferences");
         originalEmail = before.personal?.email ?? false;
         assert.equal(originalEmail, false, "opt-in fixture must begin with email off");
-        const checkbox = page.getByRole("checkbox", { name: copy.email, exact: true });
-        await checkbox.waitFor();
-        assert.equal(await checkbox.isDisabled(), false);
-        await checkbox.check();
+        const email = page.getByRole("switch", { name: copy.email, exact: true });
+        await email.waitFor();
+        assert.equal(await email.isDisabled(), false);
+        assert.equal(await email.getAttribute("aria-checked"), "false");
+        await email.click();
         await page.getByRole("button", { name: copy.save, exact: true }).click();
         await page.getByText(copy.saved, { exact: true }).waitFor();
         const after = await call<Preferences>("GET", "/api/preferences");
@@ -284,8 +285,12 @@ export function emailScreens(call: Call): Screen[] {
           "email consent CAS version did not advance",
         );
         await page.reload();
-        await checkbox.waitFor();
-        assert.equal(await checkbox.isChecked(), true, "email opt-in did not survive reload");
+        await email.waitFor();
+        assert.equal(
+          await email.getAttribute("aria-checked"),
+          "true",
+          "email opt-in did not survive reload",
+        );
       },
       after: async () => {
         const current = await call<Preferences>("GET", "/api/preferences");

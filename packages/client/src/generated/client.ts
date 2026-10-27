@@ -4090,7 +4090,7 @@ grounds nothing until a source of that name is made again.
     });
   }
 
-  /** List a source's documents */
+  /** Retained external file listings are withheld until current upstream reader authorization can be established. Provider resources use the reader's own connection. */
   async listKnowledgeDocuments(name: string, options?: RequestOptions): Promise<ListKnowledgeDocumentsResponse> {
     let path = "/api/knowledge/{name}/documents";
     path = path.replace("{name}", encodeURIComponent(String(name)));

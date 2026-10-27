@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components/copy";
 import type { Route } from "./route.ts";
 
-export type WorkspaceHub = "library" | "agents" | "operations";
+export type WorkspaceHub = "library" | "agents" | "operations" | "notifications";
 export interface HubTab {
   label: string;
   route: Route;
@@ -9,6 +9,8 @@ export interface HubTab {
 }
 
 export function workspaceHub(route: Route): WorkspaceHub | null {
+  if (route.page === "notifications" || route.page === "inbox") return "notifications";
+  if (route.page === "monitor" && route.tab === "rules") return "notifications";
   if (route.page === "library" || route.page === "artifacts" || route.page === "context")
     return "library";
   if (
@@ -32,7 +34,12 @@ export function hubTabs(
 ): HubTab[] {
   const nav = defaultCopy.navigation;
   const rows: (HubTab & { visible: boolean })[] =
-    hub === "library"
+    hub === "notifications"
+      ? [
+          { label: nav.notifications, route: {page:"notifications"}, active: route.page === "inbox" || route.page === "notifications", visible: can("runs:read") },
+          { label: nav.alertRules, route: {page:"monitor",tab:"rules"}, active: route.page === "monitor" && route.tab === "rules", visible: can("alerts:read") },
+        ]
+      : hub === "library"
       ? [
           {
             label: nav.sources,
@@ -119,12 +126,6 @@ export function hubTabs(
               route: { page: "usage" },
               active: route.page === "usage",
               visible: can("runs:read"),
-            },
-            {
-              label: nav.alertRules,
-              route: { page: "monitor", tab: "rules" },
-              active: route.page === "monitor",
-              visible: can("alerts:read"),
             },
             {
               label: nav.audit,

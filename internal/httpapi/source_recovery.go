@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"net/http"
 )
@@ -25,7 +26,7 @@ func (s *Server) snapshotSource(w http.ResponseWriter, r *http.Request, who auth
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, source)
+	ok(w, http.StatusOK, platform.ShownSource(source))
 }
 func (s *Server) replaceSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	source, err := s.P.ReplaceSource(r.Context(), who, r.PathValue("name"))
@@ -33,7 +34,7 @@ func (s *Server) replaceSource(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, source)
+	ok(w, http.StatusOK, platform.ShownSource(source))
 }
 func (s *Server) sourceSyncSettings(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
@@ -48,5 +49,5 @@ func (s *Server) sourceSyncSettings(w http.ResponseWriter, r *http.Request, who 
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, source)
+	ok(w, http.StatusOK, platform.ShownSource(source))
 }

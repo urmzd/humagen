@@ -443,6 +443,8 @@ export function sortMessages(messages: InboxMessage[], now?: string): InboxMessa
 }
 
 export interface MessageFilter {
+  /** Search the subject, sender and readable preview of the supplied messages. */
+  query?: string;
   /** Match the message's kind (see `messageKind`). */
   kind?: PartType | PartType[];
   state?: InboxItemState | InboxItemState[];
@@ -456,10 +458,13 @@ export function filterMessages(
 ): InboxMessage[] {
   const kinds = filter.kind === undefined ? null : [filter.kind].flat();
   const states = filter.state === undefined ? null : [filter.state].flat();
+  const query = filter.query?.trim().toLocaleLowerCase();
   return messages.filter(
     (m) =>
       (!kinds || kinds.includes(messageKind(m))) &&
       (!states || states.includes(messageState(m, now))) &&
+      (!query ||
+        `${m.subject} ${m.from.name} ${messagePreview(m)}`.toLocaleLowerCase().includes(query)) &&
       (filter.unread === undefined || Boolean(m.unread) === filter.unread),
   );
 }

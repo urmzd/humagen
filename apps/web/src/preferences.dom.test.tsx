@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
-import type { Me, Preferences, ThreadSummary } from "./api.ts";
+import { act, cleanup, fireEvent, render, renderHook, screen, within, waitFor } from "@testing-library/react";
+import type { Me, Preferences, ProjectView, ThreadSummary } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs, usePreferences } from "./preferences.ts";
 import { Sidebar } from "./Sidebar.tsx";
+import type { Route } from "./route.ts";
 
 // The loader imports every DOM file into one process, where a top-level hook
 // runs after other files' tests too, so it acts only on what this file set up.
@@ -111,27 +112,248 @@ test("Pin says so when the saved preferences cannot be read, and works once they
   );
 });
 
+test("a rapid pin and unpin show the latest intent while their writes finish in order", async () => {
+  const answers: ((value: Preferences) => void)[] = [];
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "PUT /api/preferences": () => new Promise<Preferences>((resolve) => answers.push(resolve)),
+  });
+  const { result } = renderHook(() => usePreferences());
+  await waitFor(() => assert.equal(result.current.prefsRead, "read"));
+  let pinned = Promise.resolve();
+  let unpinned = Promise.resolve();
+  await act(async () => {
+    pinned = result.current.pin("t1", true);
+    await Promise.resolve();
+  });
+  await waitFor(() => assert.equal(answers.length, 1));
+  assert.deepEqual(result.current.prefs.pinned, ["t1", "t0"]);
+  await act(async () => {
+    unpinned = result.current.pin("t1", false);
+    await Promise.resolve();
+  });
+  assert.deepEqual(result.current.prefs.pinned, ["t0"], "the queued unpin is visible immediately");
+  assert.equal(answers.length, 1, "the newer write waits for the earlier acknowledgement");
+  await act(async () => answers[0]?.({ ...saved, pinned: ["t1", "t0"] }));
+  await waitFor(() => assert.equal(answers.length, 2));
+  assert.deepEqual(result.current.prefs.pinned, ["t0"], "an earlier acknowledgement cannot flash the pin back");
+  assert.deepEqual((puts()[1]?.body as Partial<Preferences>).pinned, ["t0"]);
+  await act(async () => answers[1]?.({ ...saved, pinned: ["t0"] }));
+  await act(() => Promise.all([pinned, unpinned]));
+  assert.deepEqual(result.current.prefs.pinned, ["t0"]);
+});
+
+test("a refused pin rolls back only itself while the next pin is preserved and saved", async () => {
+  const answers: ((value: Preferences | Response) => void)[] = [];
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "PUT /api/preferences": () => new Promise<Preferences | Response>((resolve) => answers.push(resolve)),
+  });
+  const { result } = renderHook(() => usePreferences());
+  await waitFor(() => assert.equal(result.current.prefsRead, "read"));
+  let rejected: Promise<unknown> = Promise.resolve();
+  let pinned = Promise.resolve();
+  await act(async () => {
+    rejected = result.current.pin("t1", true).catch((error) => error);
+    pinned = result.current.pin("t2", true);
+    await Promise.resolve();
+  });
+  await waitFor(() => assert.equal(answers.length, 1));
+  assert.deepEqual(result.current.prefs.pinned, ["t2", "t1", "t0"]);
+  await act(async () => answers[0]?.(new Response(null, { status: 503 })));
+  await waitFor(() => assert.equal(answers.length, 2));
+  assert.deepEqual(result.current.prefs.pinned, ["t2", "t0"]);
+  assert.deepEqual((puts()[1]?.body as Partial<Preferences>).pinned, ["t2", "t0"]);
+  await act(async () => answers[1]?.({ ...saved, pinned: ["t2", "t0"] }));
+  await act(() => pinned);
+  assert.ok(await rejected instanceof Error);
+  assert.deepEqual(result.current.prefs.pinned, ["t2", "t0"]);
+});
+
+test("pin and unpin move one active conversation and retain focus on its action", async () => {
+  const current = task("t1", "Quarterly report");
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "PUT /api/preferences": save,
+    "GET /api/threads": () => ({ threads: [current], next: null }),
+  });
+  const visited: Route[] = [];
+  render(<Pins route={{ page: "conversation", id: "t1" }} onGo={(route) => visited.push(route)} />);
+  const pin = await screen.findByRole("button", { name: "Pin Quarterly report" });
+  pin.focus();
+  fireEvent.click(pin);
+  const unpin = await screen.findByRole("button", { name: "Unpin Quarterly report" });
+  await waitFor(() => assert.equal(document.activeElement === unpin, true));
+  const pinned = screen.getByRole("region", { name: "Pinned" });
+  assert.ok(within(pinned).getByRole("button", { name: /^Quarterly report/ }).getAttribute("aria-current") === "page");
+  assert.equal(screen.getAllByRole("button", { name: /^Quarterly report/ }).length, 1);
+  assert.equal(visited.length, 0, "pinning does not navigate away from the active conversation");
+  fireEvent.click(unpin);
+  const restored = await screen.findByRole("button", { name: "Pin Quarterly report" });
+  await waitFor(() => assert.equal(document.activeElement === restored, true));
+  assert.equal(screen.queryByRole("region", { name: "Pinned" }), null);
+  assert.equal(screen.getAllByRole("button", { name: /^Quarterly report/ }).length, 1);
+  assert.equal(screen.getByRole("button", { name: /^Quarterly report/ }).getAttribute("aria-current"), "page");
+  assert.deepEqual(puts().map((request) => (request.body as Partial<Preferences>).pinned), [["t1", "t0"], ["t0"]]);
+});
+
+test("unpinning the active conversation keeps it visible when it is older than the recent page", async () => {
+  const current = task("t1", "Older active conversation");
+  net = stubFetch({
+    "GET /api/preferences": () => ({ ...saved, pinned: ["t1"] }),
+    "PUT /api/preferences": save,
+    "GET /api/threads": () => ({ threads: [], next: null }),
+  });
+  render(<Pins threads={[current]} route={{ page: "conversation", id: "t1" }} />);
+  const unpin = await screen.findByRole("button", { name: "Unpin Older active conversation" });
+  unpin.focus();
+  fireEvent.click(unpin);
+  const pin = await screen.findByRole("button", { name: "Pin Older active conversation" });
+  await waitFor(() => assert.equal(document.activeElement === pin, true));
+  assert.equal(screen.queryByRole("region", { name: "Pinned" }), null);
+  assert.equal(screen.getAllByRole("button", { name: /^Older active conversation/ }).length, 1);
+});
+
+test("keyboard unpin returns to the conversation filter when an older unselected row leaves the page", async () => {
+  const older = task("t1", "Older pinned conversation");
+  net = stubFetch({
+    "GET /api/preferences": () => ({ ...saved, pinned: [older.id] }),
+    "PUT /api/preferences": save,
+    "GET /api/threads": () => ({ threads: [], next: null }),
+  });
+  const visited: Route[] = [];
+  render(<Pins threads={[older]} onGo={(route) => visited.push(route)} />);
+  const unpin = await screen.findByRole("button", { name: "Unpin Older pinned conversation" });
+  const filter = screen.getByRole("button", { name: "Filter conversations" });
+  unpin.focus();
+  // Native keyboard activation dispatches a click without a pointer click count.
+  fireEvent.click(unpin, { detail: 0 });
+  await waitFor(() => assert.equal(document.activeElement === filter, true));
+  assert.equal(Boolean(screen.queryByRole("region", { name: "Pinned" })), false);
+  assert.equal(screen.queryAllByRole("button", { name: /Older pinned conversation/ }).length, 0);
+  assert.deepEqual(visited, [], "unpinning does not open the disappearing conversation");
+  assert.deepEqual((puts()[0]?.body as Partial<Preferences>).pinned, []);
+});
+
+test("project and conversation pins persist independently through unpinning and reopening", async () => {
+  let stored = { ...saved, pinned: [] as string[], pinned_projects: [] as string[] };
+  net = stubFetch({
+    "GET /api/preferences": () => stored,
+    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<typeof stored> }),
+    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+  });
+  render(<Pins />);
+  fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
+  await screen.findByRole("link", { name: "Launch" });
+  fireEvent.click(screen.getByRole("button", { name: "Pin Quarterly report" }));
+  await screen.findByRole("button", { name: "Unpin Quarterly report" });
+  assert.deepEqual(stored.pinned_projects, ["Launch"]);
+  assert.deepEqual(stored.pinned, ["t1"]);
+  cleanup();
+  render(<Pins />);
+  const pinned = within(await screen.findByRole("region", { name: "Pinned" }));
+  assert.equal(pinned.getByRole("link", { name: "Launch" }).getAttribute("href"), "/projects/Launch");
+  fireEvent.click(pinned.getByRole("button", { name: "Unpin project Launch" }));
+  await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
+  assert.deepEqual(stored.pinned, ["t1"]);
+  fireEvent.click(screen.getByRole("button", { name: "Unpin Quarterly report" }));
+  await waitFor(() => assert.deepEqual(stored.pinned, []));
+});
+
+test("a refused project pin rolls back and says so beside the project", async () => {
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+  });
+  render(<Pins />);
+  fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
+  await screen.findByText("Could not pin. Try again.");
+  assert.ok(screen.getByRole("button", { name: "Pin project Launch" }));
+  assert.ok(!screen.queryByRole("link", { name: "Launch" }));
+});
+
+test("overlapping project and conversation saves keep both lists", async () => {
+  let release = () => {};
+  const first = new Promise<void>(resolve => { release = resolve; });
+  let stored: Preferences = { ...saved, pinned_projects: [] };
+  let writes = 0;
+  net = stubFetch({
+    "GET /api/preferences": () => stored,
+    "PUT /api/preferences": async body => {
+      if (++writes === 1) await first;
+      stored = { ...stored, ...body as Partial<Preferences> };
+      return stored;
+    },
+  });
+  const { result } = renderHook(() => usePreferences());
+  await waitFor(() => assert.equal(result.current.prefsRead, "read"));
+  let project = Promise.resolve();
+  let conversation = Promise.resolve();
+  act(() => {
+    project = result.current.pinProject("Launch", true);
+    conversation = result.current.pin("t1", true);
+  });
+  await waitFor(() => assert.equal(writes, 1));
+  release();
+  await act(() => Promise.all([project, conversation]));
+  assert.deepEqual(result.current.prefs.pinned_projects, ["Launch"]);
+  assert.deepEqual(result.current.prefs.pinned, ["t1", "t0"]);
+});
+
+test("conversation rows identify multiple agents and people, with the full names accessible", async () => {
+  const conversation = { ...task("t1", "Launch checklist"), agents: ["lead", "helper", "lead"], people: ["ada", "mira", "jon", "sam", "mira"] };
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "GET /api/threads": () => ({ threads: [conversation], next: null }),
+  });
+  render(<Pins />);
+  const agents = await screen.findByRole("group", { name: "Agents: lead, helper" });
+  assert.equal(agents.textContent, "lead+1");
+  const people = screen.getByRole("group", { name: "People: Ada, mira, jon, sam" });
+  assert.ok(people.textContent?.includes("4 people"));
+  assert.equal(people.querySelectorAll("[aria-hidden] > span").length, 3, "only three avatars fit in a compact row");
+  assert.ok(agents.closest("button")?.textContent?.includes("Launch checklist"));
+});
+
+test("people-only and agent-only conversations show only their actual participants", async () => {
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "GET /api/threads": () => ({ threads: [
+      { ...task("people", "Team discussion"), agents: [] },
+      { ...task("agents", "Agent work"), people: [] },
+    ], next: null }),
+  });
+  render(<Pins />);
+  const person = await screen.findByRole("group", { name: "People: Ada" });
+  assert.ok(person.textContent?.includes("You"));
+  assert.ok(!person.closest("button")?.querySelector('[aria-label^="Agents:"]'));
+  const agent = screen.getByRole("group", { name: "Agents: lead" });
+  assert.ok(!agent.closest("button")?.querySelector('[aria-label^="People:"]'));
+});
+
 const me: Me = {
   principal: { subject: "ada", tenant: "acme", kind: "user", name: "Ada", roles: ["member"] },
-  permissions: ["runs:read", "runs:write"],
+  permissions: ["runs:read", "runs:write", "projects:read"],
 };
 
 // The sidebar with its pins kept as the console keeps them.
-function Pins() {
-  const { prefs, pin } = usePreferences();
+function Pins({ threads = [], route = { page: "new" }, onGo = () => {} }: { threads?: ThreadSummary[]; route?: Route; onGo?: (route: Route) => void }) {
+  const { prefs, pin, pinProject } = usePreferences();
   const noop = () => {};
   return (
     <Sidebar
       open
       onToggle={noop}
-      route={{ page: "new" }}
-      go={noop}
+      route={route}
+      go={onGo}
       me={me}
       prefs={prefs}
       can={(p) => me.permissions.includes(p)}
-      threads={[]}
+      threads={threads}
+      projects={[{ name: "Launch", title: "Launch" } as ProjectView]}
       pinned={prefs.pinned}
       onPin={pin}
+      onPinProject={pinProject}
       inboxCount={0}
       live
       onSignOut={noop}

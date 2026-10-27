@@ -5,16 +5,18 @@ export function Modal({
   title,
   onClose,
   children,
+  open = true,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  open?: boolean;
 }) {
   const root = useRef<HTMLDialogElement>(null);
   const label = useId();
   useEffect(() => {
     const dialog = root.current;
-    if (!dialog) return;
+    if (!dialog || !open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialog.showModal();
     dialog.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
@@ -22,13 +24,15 @@ export function Modal({
       dialog.close();
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, []);
+  }, [open]);
   return (
     <dialog
       ref={root}
       aria-labelledby={label}
       aria-modal="true"
       data-layer="search"
+      inert={!open}
+      aria-hidden={!open || undefined}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -51,7 +55,7 @@ export function Modal({
         )
           onClose();
       }}
-      className="humagen-search-modal m-auto w-[min(44rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-aui-lg border border-aui-border bg-aui-bg p-0 text-aui-fg shadow-2xl backdrop:bg-black/40 open:flex open:flex-col"
+      className="humagen-search-modal m-auto w-[min(44rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-aui-lg border border-aui-border bg-aui-bg p-0 text-aui-fg shadow-2xl open:flex pointer-events-none open:pointer-events-auto open:flex-col scale-[0.98] opacity-0 open:scale-none open:opacity-100 starting:open:scale-[0.98] starting:open:opacity-0 transition-[opacity,scale,display,overlay] transition-discrete duration-150 ease-(--aui-ease-arrive) motion-reduce:transition-none backdrop:pointer-events-none open:backdrop:pointer-events-auto backdrop:bg-black/40 backdrop:opacity-0 open:backdrop:opacity-100 starting:open:backdrop:opacity-0 backdrop:transition-opacity backdrop:duration-150 motion-reduce:backdrop:transition-none"
     >
       <h2 id={label} className="sr-only">
         {title}

@@ -3,7 +3,7 @@ import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
 import { type QueueControls, QueueStrip } from "@humagen/web";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { insertTag, matching, sigilOf, type TagOption, type Typing, tagAt } from "./tags.ts";
-import { AgentMark } from "./ui.tsx";
+import { AgentMark, Presence } from "./ui.tsx";
 
 const MAX_HEIGHT = 200;
 const MAX_FILES = 5;
@@ -141,6 +141,11 @@ export function Composer({
   const speech = useRef<Recognizer | null>(null);
   const form = useRef<HTMLFormElement>(null);
   const [menu, setMenu] = useState(false);
+  const [menuEpoch, setMenuEpoch] = useState(0);
+  const showMenu = () => {
+    if (!menu) setMenuEpoch((epoch) => epoch + 1);
+    setMenu(true);
+  };
   const closeMenu = () => {
     setMenu(false);
     input.current?.focus();
@@ -251,7 +256,7 @@ export function Composer({
     if (plus && e.key === "/" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       setTyping(null);
-      setMenu(true);
+      showMenu();
       return;
     }
     // While the typeahead is open, the keys move through it and pick from it.
@@ -367,8 +372,8 @@ export function Composer({
           ))}
         </ul>
       )}
-      {plus && menu && (
-        <div data-plus-panel className="contents">
+      {plus && <Presence when={menu} ms={130}>{(leaving) => (
+        <div key={menuEpoch} data-plus-panel inert={leaving} aria-hidden={leaving || undefined} data-leaving={leaving} className="humagen-composer-menu contents">
           {plus.menu(
             closeMenu,
             () => {
@@ -378,7 +383,7 @@ export function Composer({
             () => setMenu(false),
           )}
         </div>
-      )}
+      )}</Presence>}
       <QueueStrip queue={queue} />
       {files.length > 0 && (
         <ul className="flex flex-wrap gap-1.5 px-2 pt-1" aria-label="Attached files">
@@ -454,7 +459,7 @@ export function Composer({
             aria-haspopup="dialog"
             aria-expanded={menu}
             title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut(/Mac|iPhone|iPad/.test(navigator.platform))})`}
-            onClick={() => (menu ? closeMenu() : setMenu(true))}
+            onClick={() => (menu ? closeMenu() : showMenu())}
           >
             <Glyph d={PLUS} />
           </button>

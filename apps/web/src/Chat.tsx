@@ -674,11 +674,10 @@ export function Chat({
       <HomePage banner={banner} greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
         {composer}
         {/*
-          Suggestions sit with the chat bar, as quiet text under it, until
-          the person types. A pick writes its words and adds its agent to
+          Suggestions stay with the chat bar while the person writes. A pick writes its words and adds its agent to
           the conversation, as a chip, not an @mention.
         */}
-        {canRun && starters.length > 0 && draft.trim() === "" && (
+        {canRun && starters.length > 0 && (
           // Every suggestion remains available and wraps within the reading column.
           <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 px-4 sm:px-5">
             {starters.map((st) => (
@@ -740,8 +739,8 @@ export function Chat({
       {composer}
       </ConversationPage>
       {room && <ConversationInfo panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={room.thread} project={projects?.find(project=>project.name===where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
-      {shownView.panel === "deliverables" && <Deliverables promotion={artifactActions ? {project:room?.thread.project??where??"",shared:room?.thread.visibility==="shared",...artifactActions}:undefined} thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
-      <Presence when={activity !== null} ms={180}>
+      <Presence when={shownView.panel === "deliverables"} ms={220}>{leaving => <Deliverables open={!leaving} promotion={artifactActions ? {project:room?.thread.project??where??"",shared:room?.thread.visibility==="shared",...artifactActions}:undefined} thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}</Presence>
+      <Presence when={activity !== null} ms={220}>
         {(leaving) => (
           <Activity
             filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length}

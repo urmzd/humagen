@@ -7,7 +7,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Neutral black base (chroma 0, from the sample's oklch ramp), one swappable accent. Purple by default; presets via `data-accent`, fine-tune with `--aui-accent-shift`. Red appears only as the `bad` state. Use the toolbar to switch theme, preset, and shift.",
+          "Neutral light and charcoal surfaces with a restrained red interaction accent, gold attention and green success. Red, yellow and green presets lead the palette; existing saved accents remain supported. Use the toolbar to compare themes and presets.",
       },
     },
   },
@@ -48,10 +48,12 @@ const groups: { title: string; note: string; tokens: string[] }[] = [
 ];
 
 const presets = [
+  { name: "red", hue: 27 },
+  { name: "yellow", hue: 88 },
+  { name: "green", hue: 152 },
   { name: "purple", hue: 305 },
   { name: "blue", hue: 255 },
   { name: "teal", hue: 185 },
-  { name: "yellow", hue: 90 },
 ];
 
 function Swatch({ token }: { token: string }) {
@@ -138,7 +140,7 @@ export const HueShift: Story = {
         {[-60, -45, -30, -15, 0, 15, 30, 45, 60].map((shift) => (
           <div
             key={shift}
-            data-accent="purple"
+            data-accent="red"
             style={{ ["--aui-accent-shift" as string]: String(shift) }}
             className="flex flex-col items-center gap-1.5"
           >

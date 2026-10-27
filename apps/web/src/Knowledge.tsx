@@ -1,4 +1,7 @@
 import { defaultCopy } from "@humagen/components";
+import { Inspector } from "@humagen/web";
+import { ConnectSource } from "./Integrations.tsx";
+import { SourceCatalog, type SourceChoice } from "./SourceCatalog.tsx";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   ApiError,
@@ -66,6 +69,7 @@ export function Knowledge({
 }) {
   const setSelected = (name: string) => onSelect(name);
   const [creating, setCreating] = useState(false);
+  const [sourceKind, setSourceKind] = useState<SourceChoice>();
   const [draft, setDraft] = useState({ name: "", description: "" });
   const [problem, setProblem] = useState<string | null>(null);
   const current = sources.find((s) => s.name === selected);
@@ -121,11 +125,11 @@ export function Knowledge({
 
   return (
     <Page
-      title="Context"
+      title="Sources"
       lede="What agents are grounded in: sources of documents they search and cite. Each source is shared: attach it to any agent from the agent's Context tab."
       actions={
-        canWrite && !creating ? (
-          <button type="button" className={primary} onClick={() => setCreating(true)}>
+        canWrite ? (
+          <button type="button" className={primary} aria-haspopup="dialog" aria-expanded={creating} onClick={() => {setSourceKind(undefined);setCreating(true)}}>
             New Source
           </button>
         ) : undefined
@@ -134,7 +138,10 @@ export function Knowledge({
       <p className="rounded-aui border border-aui-border px-3 py-2 text-aui-xs text-aui-muted">
         {defaultCopy.sourceLifecycle.grounding}
       </p>
-      {creating && (
+      <Inspector open={creating} title={defaultCopy.sourceCatalog.title} onClose={()=>setCreating(false)}>
+        {!sourceKind ? <SourceCatalog onSelect={setSourceKind} /> : <div className="space-y-4">
+          <button type="button" className={button} onClick={()=>setSourceKind(undefined)}>{defaultCopy.sourceCatalog.back}</button>
+          {sourceKind === "manual" ? (
         <form onSubmit={create} className={`${card} flex flex-col gap-3`}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Label text="Name" hint="Lowercase letters, digits and dashes.">
@@ -163,7 +170,9 @@ export function Knowledge({
             </button>
           </div>
         </form>
-      )}
+          ) : <ConnectSource key={sourceKind} initialProvider={sourceKind} onCancel={()=>setCreating(false)} onCreated={name=>{setCreating(false);onChanged();setSelected(name)}} />}
+        </div>}
+      </Inspector>
 
       {sources.length === 0 ? (
         <div className={card}>
@@ -238,6 +247,8 @@ function SourceDetail({
     canWrite &&
     (!source.lifecycle ||
       (source.lifecycle.provider === "manual" && source.lifecycle.mode === "indexed"));
+  const upstream = Boolean(source.lifecycle && source.lifecycle.provider !== "manual");
+  const frozen = upstream && source.lifecycle?.snapshot;
   const [docs, setDocs] = useState<Doc[]>([]);
   const [draft, setDraft] = useState({ title: "", uri: "", text: "" });
   const [query, setQuery] = useState("");
@@ -250,6 +261,10 @@ function SourceDetail({
   const picker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (upstream) {
+      setDocs([]);
+      return;
+    }
     let live = true;
     api
       .documents(source.name)
@@ -258,7 +273,7 @@ function SourceDetail({
     return () => {
       live = false;
     };
-  }, [source.name, source.documents, source.excluded]);
+  }, [source.name, source.documents, source.excluded, upstream]);
 
   const fail = (fallback: string) => (e: unknown) =>
     setProblem(e instanceof ApiError ? e.message : fallback);
@@ -368,9 +383,9 @@ function SourceDetail({
         value={tab}
         onChange={onTab}
         tabs={[
-          { id: "documents", label: "Documents", count: docs.length },
+          { id: "documents", label: "Documents", count: upstream ? undefined : docs.length },
           { id: "search", label: "Try a Question" },
-          { id: "variants", label: "Variants", count: source.variants.length },
+          ...(!upstream ? [{ id: "variants" as const, label: "Variants", count: source.variants.length }] : []),
           { id: "evals", label: "Evals", count: mine.length },
         ]}
       />
@@ -404,7 +419,7 @@ function SourceDetail({
           <p className="text-aui-sm text-aui-muted">
             What an agent asking this would get back, best match first.
           </p>
-          <form onSubmit={search} className="flex gap-2">
+          {frozen ? <p className="text-aui-sm leading-6 text-aui-muted">{defaultCopy.sourceLifecycle.frozenAccess}</p> : <form onSubmit={search} className="flex gap-2">
             <input
               aria-label="Question"
               className={field}
@@ -431,7 +446,7 @@ function SourceDetail({
             <button type="submit" className={button}>
               Search
             </button>
-          </form>
+          </form>}
           {warnings.length > 0 && (
             <output className="text-aui-sm">{defaultCopy.sourceLifecycle.liveUnavailable}</output>
           )}
@@ -464,7 +479,12 @@ function SourceDetail({
         </section>
       )}
 
-      {tab === "documents" && (
+      {tab === "documents" && upstream && (
+        <p className={`${card} text-aui-sm leading-6 text-aui-muted`}>
+          {frozen ? defaultCopy.sourceLifecycle.frozenAccess : defaultCopy.sourceLifecycle.retainedAccess}
+        </p>
+      )}
+      {tab === "documents" && !upstream && (
         <section className={`${card} flex flex-col gap-2`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-aui-sm font-medium text-aui-fg">
@@ -587,7 +607,10 @@ function SourceDetail({
         </section>
       )}
 
-      {tab === "variants" && (
+      {tab === "variants" && upstream && (
+        <p className={`${card} text-aui-sm leading-6 text-aui-muted`}>{defaultCopy.sourceLifecycle.retainedAccess}</p>
+      )}
+      {tab === "variants" && !upstream && (
         <section className={`${card} flex flex-col gap-2`}>
           <p className="text-aui-xs text-aui-muted">
             A variant saves which documents are searchable right now, so you can search two ways of

@@ -1,11 +1,12 @@
 import { defaultCopy } from "@humagen/components";
-import { BellIcon, SettingsIcon, XIcon } from "@humagen/render-web";
+import { SettingsIcon, XIcon } from "@humagen/render-web";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MouseEvent, ReactNode } from "react";
+import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import type { NativeNotification } from "../../../packages/client/src/generated/types.ts";
 import { api } from "./api.ts";
 import { href, type Route } from "./route.ts";
-import { Empty, Page, SkeletonRows, textAction } from "./ui.tsx";
+import { textAction } from "./ui.tsx";
+import { InboxPage } from "./InboxPage.tsx";
 
 /** One reader's delivery projection, shared by navigation and its page. */
 export function useNotifications(enabled: boolean, subject?: string) {
@@ -87,46 +88,18 @@ function NotificationLink({ to, onGo, children, className = "" }: { to: Route; o
   return <a href={href(to)} onClick={open} className={className}>{children}</a>;
 }
 
-/** Dismissing a delivery never resolves the operational inbox item. */
-export function NotificationsPage({ notifications, onGo }: { notifications: ReturnType<typeof useNotifications>; onGo: (route: Route) => void }) {
+/** One feed renders the original messages; delivery acknowledgements remain separate actions. */
+export function NotificationsPage({ notifications, onGo, ...inbox }: Omit<ComponentProps<typeof InboxPage>, "actions" | "notice" | "messageActions"> & {
+  notifications?: ReturnType<typeof useNotifications>;
+  onGo: (route: Route) => void;
+}) {
   const c = defaultCopy.notifications;
-  const { rows, loading, failed, dismissFailed, busy, dismiss, retry } = notifications;
-  return (
-    <Page title={c.title} lede={c.pageDescription} actions={
-      <NotificationLink to={{ page: "you", section: "notifications" }} onGo={onGo} className={`${textAction} inline-flex min-h-11 items-center gap-2`}>
-        <SettingsIcon />{c.settings}
-      </NotificationLink>
-    }>
-      <section aria-label={c.deliveries} className="w-full max-w-3xl">
-        {failed && <div role="alert" className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-aui-sm">
-          <p>{dismissFailed ? c.dismissFailed : c.failed}</p>{!dismissFailed && <button type="button" onClick={retry} className={`${textAction} min-h-11`}>{c.retry}</button>}
-        </div>}
-        {loading ? <SkeletonRows count={3} height="5rem" /> : rows.length === 0 ? (
-          !failed && <Empty title={c.empty}>{c.emptyHint}</Empty>
-        ) : (
-          <ol className="divide-y divide-aui-border">
-            {rows.map((row) => (
-              <li key={row.id} className="flex min-w-0 gap-3 py-6 first:pt-0 sm:gap-4">
-                <span className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-full bg-aui-accent-soft text-aui-accent"><BellIcon size={18} /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                    <span className="text-aui-sm font-medium">{row.mode === "digest" ? c.digest : c.immediate}{row.items.length > 1 ? ` ${c.items(row.items.length)}` : ""}</span>
-                    <time className="text-aui-xs text-aui-muted" dateTime={row.at}>{new Date(row.at).toLocaleString()}</time>
-                  </div>
-                  <ul className="mt-2 space-y-1">
-                    {row.items.map((item) => <li key={item.inbox}>
-                      <NotificationLink to={{ page: "inbox", message: item.inbox }} onGo={onGo} className="inline-flex min-h-11 items-center break-words text-aui-base text-aui-fg underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent [overflow-wrap:anywhere]">{item.subject}</NotificationLink>
-                    </li>)}
-                  </ul>
-                  <button type="button" disabled={!!busy} onClick={() => void dismiss(row.id)} className={`${textAction} mt-2 inline-flex min-h-11 items-center gap-2 disabled:opacity-50`}>
-                    <XIcon />{c.dismiss}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-    </Page>
-  );
+  return <InboxPage {...inbox}
+    actions={<NotificationLink to={{ page: "you", section: "notifications" }} onGo={onGo} className={`${textAction} inline-flex min-h-11 items-center gap-2`}><SettingsIcon />{c.settings}</NotificationLink>}
+    notice={notifications?.failed && <div role="alert" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-aui-sm">
+      <p>{notifications.dismissFailed ? c.dismissFailed : c.deliveryFailed}</p>
+      {!notifications.dismissFailed && <button type="button" onClick={notifications.retry} className={`${textAction} min-h-11`}>{c.retry}</button>}
+    </div>}
+    messageActions={message => notifications?.rows.filter(row => row.items.some(item => item.inbox === message.id)).map(row => <button key={row.id} type="button" disabled={!!notifications.busy} onClick={() => void notifications.dismiss(row.id)} className={`${textAction} inline-flex min-h-11 items-center gap-2 disabled:opacity-50`}><XIcon />{row.items.length > 1 ? c.dismissDigest(row.items.length) : c.dismiss}</button>)}
+  />;
 }
