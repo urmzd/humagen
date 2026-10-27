@@ -26,8 +26,9 @@ govern implementation, including shared presentation and agent identity.
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
-| DES-009 | Use consistent action icons and readable inbox recovery groups | Implemented; semantic shared icons, touch targets, collapsed companion diagnostics and native recovery captures |
 | DES-008 | Agent/project discovery belongs in the new-conversation picker | Implemented; search and selection preserve drafts/files and cannot submit work |
+| DES-009 | Use consistent action icons and readable inbox recovery groups | Implemented; semantic shared icons, touch targets, collapsed companion diagnostics and native recovery captures |
+| DES-010 | Notifications are a top-level destination with a live navigation count | Implemented; one permission-gated delivery reader powers the bell and page, while preferences stay separate |
 
 ### DES-001: Working integrations
 
@@ -232,3 +233,18 @@ sit under Technical Details; standalone alert bodies remain visible. Titles,
 metadata and About links wrap with separate spacing for each section. Render
 regressions cover the failing layout and native `inbox-alert-recovery` states
 capture collapsed and expanded diagnostics on phone and desktop.
+
+
+### DES-010: Top-level notifications
+
+Notifications has a canonical `/notifications` page and bell navigation entry
+above the workspace groups, including in the collapsed rail. Its live count
+measures delivery projections; Needs You continues to count actionable inbox
+items. Personal notification preferences remain at `/you/notifications`.
+
+The host shares one authenticated reader across navigation and page changes.
+Only humans with `runs:read` poll. Reader changes clear old rows, stale polling
+cannot restore an acknowledged delivery, and failures keep retry available.
+Dismissal acknowledges only a delivery; opening an update leads to the original
+inbox item. DOM and route regressions cover these boundaries, and native screen
+states cover empty, error and digest views with phone and desktop layouts.

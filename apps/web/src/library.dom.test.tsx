@@ -4,7 +4,6 @@ import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { stubFetch } from "./dom.ts";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
-import { NotificationPanel } from "./Notifications.tsx";
 import { PersonalAgents } from "./PersonalAgents.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
@@ -122,40 +121,6 @@ test("personal briefing saves only writable profile fields", async () => {
       }
     ).personal.briefing,
     "Start with the conclusion",
-  );
-});
-
-test("dismissing a delivered notification acknowledges only its projection", async () => {
-  net = stubFetch({
-    "GET /api/me": () => me,
-    "GET /api/me/notifications": () => ({
-      notifications: [
-        {
-          id: "ntf-one",
-          mode: "digest",
-          at: "2026-10-26T12:00:00Z",
-          items: [
-            {
-              inbox: "in-one",
-              kind: "mention",
-              subject: "Review the release",
-              at: "2026-10-26T11:00:00Z",
-            },
-          ],
-        },
-      ],
-    }),
-    "POST /api/me/notifications/ntf-one/ack": () => ({}),
-  });
-  render(<NotificationPanel />);
-  const summary = await screen.findByText("Notifications");
-  fireEvent.click(summary);
-  await screen.findByText("Review the release");
-  fireEvent.click(screen.getByRole("button", { name: "Dismiss Notification" }));
-  await waitFor(() => assert.equal(!!screen.queryByText("Review the release"), false));
-  assert.deepEqual(
-    net.seen.filter((request) => request.method === "POST").map((request) => request.path),
-    ["/api/me/notifications/ntf-one/ack"],
   );
 });
 

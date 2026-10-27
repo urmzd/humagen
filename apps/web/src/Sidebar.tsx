@@ -1,6 +1,24 @@
 import {
   BotIcon,
+  BellIcon,
   CheckIcon,
+  BrainIcon,
+  ClipboardListIcon,
+  DatabaseIcon,
+  FileIcon,
+  GaugeIcon,
+  InboxIcon,
+  LayersIcon,
+  LogOutIcon,
+  NetworkIcon,
+  PinIcon,
+  PlugIcon,
+  ScrollTextIcon,
+  SearchIcon,
+  ShieldIcon,
+  SlidersIcon,
+  UsersIcon,
+  WrenchIcon,
   ClockIcon,
   ComposeIcon,
   FolderIcon,
@@ -11,78 +29,12 @@ import {
 } from "@humagen/render-web";
 import { defaultCopy } from "@humagen/components";
 import { HumagenMark } from "@humagen/web";
-import { type MouseEvent, type ReactNode, type SVGProps, useState } from "react";
+import { type MouseEvent, type ReactNode, useState } from "react";
 import type { Me, Preferences, ProjectView, ThreadSummary } from "./api.ts";
 import { type Page as RoutePage, type Route, href } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
 import { type Standing, useRecents } from "./recents.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
-
-// Glyphs outside the shared icon set. Same grid and stroke.
-function glyph(d: ReactNode) {
-  return function Glyph({ size = 18, ...rest }: SVGProps<SVGSVGElement> & { size?: number }) {
-    return (
-      <svg
-        aria-hidden="true"
-        focusable="false"
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="shrink-0"
-        {...rest}
-      >
-        {d}
-      </svg>
-    );
-  };
-}
-const InboxIcon = glyph(
-  <>
-    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-  </>,
-);
-/** Context: layers of what agents are grounded in. */
-const LayersIcon = glyph(
-  <>
-    <path d="m12 2 10 5-10 5L2 7z" />
-    <path d="m2 17 10 5 10-5M2 12l10 5 10-5" />
-  </>,
-);
-/** Directory: the people and agents in the workspace. */
-const PeopleIcon = glyph(
-  <>
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-  </>,
-);
-/** Monitor: a pulse, for how runs are going. */
-const PulseIcon = glyph(<path d="M22 12h-4l-3 9L9 3l-3 9H2" />);
-const BoxIcon = glyph(
-  <>
-    <path d="M21 8v13H3V8M1 3h22v5H1z" />
-    <path d="M10 12h4" />
-  </>,
-);
-const FilterIcon = glyph(<path d="M3 5h18M7 12h10M10 19h4" />);
-const PinIcon = glyph(
-  <>
-    <path d="M12 17v5" />
-    <path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76zM8 2h8" />
-  </>,
-);
-const LogOutIcon = glyph(
-  <>
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <path d="m16 17 5-5-5-5M21 12H9" />
-  </>,
-);
 
 /** A link to a view. A plain click opens it in place; a modified one, in a new tab. */
 function Item({
@@ -92,6 +44,7 @@ function Item({
   active,
   open,
   badge,
+  badgeLabel,
   onClick,
 }: {
   icon: ReactNode;
@@ -100,6 +53,7 @@ function Item({
   active: boolean;
   open: boolean;
   badge?: number;
+  badgeLabel?: string;
   onClick: () => void;
 }) {
   const count = badge && badge > 0 ? badge : 0;
@@ -113,7 +67,7 @@ function Item({
       href={href}
       onClick={go}
       aria-current={active ? "page" : undefined}
-      aria-label={count ? `${label}, ${count} need you` : open ? undefined : label}
+      aria-label={count ? badgeLabel ?? `${label}, ${count} need you` : open ? undefined : label}
       className={`relative flex h-9 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
         open ? "px-2.5" : "w-9 justify-center"
       }`}
@@ -258,7 +212,7 @@ export function Sidebar({
   live,
   onSignOut,
   onSearch,
-  notifications,
+  notificationCount,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -279,7 +233,7 @@ export function Sidebar({
   live: boolean;
   onSignOut: () => void;
   onSearch?:()=>void;
-  notifications?:ReactNode;
+  notificationCount?: number;
 }) {
   const projectTitle = (project?:string) => me.personal_project&&project===me.personal_project ? defaultCopy.projects.personalTitle : !project||project==="~" ? workspaceName||defaultCopy.projects.companyName : projects.find(item=>item.name===project)?.title||project;
   const who = me.principal;
@@ -316,22 +270,22 @@ export function Sidebar({
   const entries: {to:Route;label:string;icon:ReactNode;show:boolean;active:boolean;badge?:number;group:"projects"|"library"|"operations"}[]=[
     {to:{page:"new"},label:nav.newConversation,icon:<ComposeIcon/>,show:can("runs:write"),active:here("new"),group:"projects"},
     {to:{page:"projects"},label:nav.projects,icon:<FolderIcon/>,show:can("projects:read"),active:here("projects","project","channel"),group:"projects"},
-    {to:{page:"directory",tab:"people"},label:nav.people,icon:<PeopleIcon/>,show:can("people:read"),active:here("directory"),group:"projects"},
-    {to:{page:"library",section:"sources"},label:nav.sources,icon:<LayersIcon/>,show:can("knowledge:read"),active:here("context")||(route.page==="library"&&route.section==="sources"),group:"library"},
-    {to:{page:"library",section:"skills"},label:nav.skills,icon:<LayersIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="skills",group:"library"},
-    {to:{page:"library",section:"memory"},label:nav.memory,icon:<LayersIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="memory",group:"library"},
-    {to:{page:"artifacts"},label:defaultCopy.conversation.deliverables,icon:<BoxIcon/>,show:can("artifacts:read"),active:here("artifacts"),group:"library"},
+    {to:{page:"directory",tab:"people"},label:nav.people,icon:<UsersIcon/>,show:can("people:read"),active:here("directory"),group:"projects"},
+    {to:{page:"library",section:"sources"},label:nav.sources,icon:<DatabaseIcon/>,show:can("knowledge:read"),active:here("context")||(route.page==="library"&&route.section==="sources"),group:"library"},
+    {to:{page:"library",section:"skills"},label:nav.skills,icon:<WrenchIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="skills",group:"library"},
+    {to:{page:"library",section:"memory"},label:nav.memory,icon:<BrainIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="memory",group:"library"},
+    {to:{page:"artifacts"},label:defaultCopy.conversation.deliverables,icon:<FileIcon/>,show:can("artifacts:read"),active:here("artifacts"),group:"library"},
     {to:{page:"inbox"},label:nav.needsYou,icon:<InboxIcon/>,show:can("runs:read"),active:here("inbox"),badge:inboxCount,group:"operations"},
     {to:{page:"agents"},label:nav.agents,icon:<BotIcon/>,show:can("agents:read"),active:here("agents","agent","agent-setup"),group:"operations"},
-    {to:{page:"agent-network"},label:nav.network,icon:<PeopleIcon/>,show:can("runs:read"),active:here("agent-network"),group:"operations"},
-    {to:{page:"assignments"},label:nav.assignments,icon:<CheckIcon/>,show:can("runs:read"),active:here("assignments"),group:"operations"},
+    {to:{page:"agent-network"},label:nav.network,icon:<NetworkIcon/>,show:can("runs:read"),active:here("agent-network"),group:"operations"},
+    {to:{page:"assignments"},label:nav.assignments,icon:<ClipboardListIcon/>,show:can("runs:read"),active:here("assignments"),group:"operations"},
     {to:{page:"operations",section:"context"},label:nav.context,icon:<LayersIcon/>,show:can("knowledge:read"),active:route.page==="operations"&&route.section==="context",group:"operations"},
-    {to:{page:"operations",section:"integrations"},label:nav.integrations,icon:<BoxIcon/>,show:can("clients:read")||can("knowledge:read"),active:route.page==="operations"&&route.section==="integrations",group:"operations"},
-    {to:{page:"action-policy"},label:nav.policies,icon:<CheckIcon/>,show:can("agents:read"),active:here("action-policy"),group:"operations"},
-    {to:{page:"agent-control"},label:nav.controls,icon:<BotIcon/>,show:can("agents:read"),active:here("agent-control"),group:"operations"},
+    {to:{page:"operations",section:"integrations"},label:nav.integrations,icon:<PlugIcon/>,show:can("clients:read")||can("knowledge:read"),active:route.page==="operations"&&route.section==="integrations",group:"operations"},
+    {to:{page:"action-policy"},label:nav.policies,icon:<ShieldIcon/>,show:can("agents:read"),active:here("action-policy"),group:"operations"},
+    {to:{page:"agent-control"},label:nav.controls,icon:<SlidersIcon/>,show:can("agents:read"),active:here("agent-control"),group:"operations"},
     {to:{page:"schedules"},label:nav.schedules,icon:<ClockIcon/>,show:can("schedules:read"),active:here("schedules"),group:"operations"},
-    {to:{page:"usage"},label:nav.usage,icon:<PulseIcon/>,show:can("runs:read"),active:here("usage","monitor"),group:"operations"},
-    {to:{page:"audit"},label:nav.audit,icon:<CheckIcon/>,show:can("projects:govern"),active:here("audit"),group:"operations"},
+    {to:{page:"usage"},label:nav.usage,icon:<GaugeIcon/>,show:can("runs:read"),active:here("usage","monitor"),group:"operations"},
+    {to:{page:"audit"},label:nav.audit,icon:<ScrollTextIcon/>,show:can("projects:govern"),active:here("audit"),group:"operations"},
   ];
 
   // Pinned conversations come from whatever is loaded. One that cannot be found
@@ -373,12 +327,13 @@ export function Sidebar({
       {/* Everything between the top row and the account scrolls as one, so a short window never squeezes the lists into a sliver. */}
       <div className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
       <nav aria-label="Sections" className={`flex shrink-0 flex-col ${open ? "px-2" : "items-center"}`}>
-        {onSearch&&<button type="button" onClick={onSearch} aria-label={nav.search} className={`flex min-h-10 items-center gap-2 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open?"px-2.5":"w-9 justify-center"}`}><FilterIcon size={18}/>{open&&<><span className="flex-1 text-left">{nav.search}</span><kbd className="text-aui-2xs">⌘ K</kbd></>}</button>}
+        {onSearch&&<button type="button" onClick={onSearch} aria-label={nav.search} className={`flex min-h-10 items-center gap-2 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open?"px-2.5":"w-9 justify-center"}`}><SearchIcon size={18}/>{open&&<><span className="flex-1 text-left">{nav.search}</span><kbd className="text-aui-2xs">⌘ K</kbd></>}</button>}
+        {notificationCount !== undefined && can("runs:read") && who.kind === "user" && <ul className={`flex flex-col pt-1 ${open ? "" : "items-center"}`}><li><Item icon={<BellIcon />} label={nav.notifications} href={href({page:"notifications"})} open={open} active={here("notifications")} badge={notificationCount} badgeLabel={defaultCopy.notifications.count(notificationCount)} onClick={()=>go({page:"notifications"})}/></li></ul>}
         {(["projects","library","operations"] as const).map(group=>{
           const shown=entries.filter(entry=>entry.group===group&&entry.show);
           return shown.length>0&&<section key={group} aria-label={nav[group]} className="pt-2">{open&&<Label>{nav[group]}</Label>}<ul className={`flex flex-col gap-0.5 ${open?"":"items-center"}`}>{shown.map(entry=><li key={entry.label}><Item icon={entry.icon} label={entry.label} href={href(entry.to)} open={open} active={entry.active} badge={entry.badge} onClick={()=>go(entry.to)}/></li>)}</ul></section>;
         })}
-        {open&&notifications&&<div className="min-w-0 pt-3">{notifications}</div>}
+
       </nav>
 
       {open && pinnedRows.length > 0 && (
@@ -413,7 +368,7 @@ export function Sidebar({
                 className="relative inline-flex size-6 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
                 button={
                   <>
-                    <FilterIcon size={14} />
+                    <SlidersIcon size={14} />
                     {filters > 0 && <span aria-hidden className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-aui-accent" />}
                   </>
                 }

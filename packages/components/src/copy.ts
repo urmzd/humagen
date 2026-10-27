@@ -992,12 +992,20 @@ export const defaultCopy = {
   },
   notifications: {
     title: "Notifications",
+    pageDescription: "Your delivered updates. Open an update to respond in Needs You.",
+    deliveries: "Delivered updates",
+    emptyHint: "New updates appear here according to your notification preferences.",
+    retry: "Try Again",
+    count: (count: number) =>
+      `Notifications, ${count} ${count === 1 ? "notification" : "notifications"}`,
     empty: "No notifications ready.",
     digest: "Digest",
     immediate: "Update",
     dismiss: "Dismiss Notification",
     settings: "Notification Preferences",
     failed: "Notifications could not be loaded.",
+    dismissFailed:
+      "This notification could not be dismissed. Choose Dismiss Notification to try again.",
     items: (count: number) => `${count} updates`,
     description:
       "Console updates arrive immediately or in hourly digests. Quiet hours delay delivery.",
