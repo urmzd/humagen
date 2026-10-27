@@ -525,7 +525,13 @@ The [workspace principles](docs/design/workspace-principles.md) and
 [reference research](docs/design/reference-research.md) record the adopted
 direction and public portfolio credits. `Workspace/Project work` in Storybook
 renders production `ProjectWork`, navigation, `Page` and `Tabs` components with
-isolated fixtures, the shared renderer font entry and console CSS.
+isolated fixtures, the shared renderer font entry and console CSS. Its
+workbench mounts the console's own `Sidebar` (New, Search Work and Notifications
+above the grouped sections, pinned projects and conversations, conversations
+grouped by project with agent and people participants), the phone
+`DrawerButton`, and the project header with Lead, breadcrumb, More menu and
+every project tab. The sidebar's one conversation-list request is answered from
+the story fixtures.
 Overview, light, phone, empty, loading, read failure, paging failure, filter/open
 and navigation stories exercise the design. Story actions are local previews,
 not saved workspace mutations.

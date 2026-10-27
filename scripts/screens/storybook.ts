@@ -44,7 +44,9 @@ try {
         await library.focus();
         await page.keyboard.press("Enter");
         assert.equal(await library.evaluate((element) => element === document.activeElement), true);
-        const work = page.getByRole("region", { name: "Conversations", exact: true });
+        const work = page
+          .getByRole("main")
+          .getByRole("region", { name: "Conversations", exact: true });
         await work.getByRole("button", { name: "Needs Attention 1", exact: true }).click();
         assert.equal(
           await work.getByRole("button", { name: /Check the revised pricing model/ }).count(),
