@@ -696,6 +696,11 @@ export function libraryScreens(call: Call): Screen[] {
         await panel
           .getByRole("button", { name: defaultCopy.inboxControls.done, exact: true })
           .click();
+        await page.waitForFunction(
+          (label) => document.activeElement?.getAttribute("aria-label") === label,
+          defaultCopy.inboxControls.notificationFilter,
+          { timeout: 1000 },
+        );
         assert.equal(new URL(page.url()).searchParams.get("kind"), "failure");
         await filter.click();
         await panel
