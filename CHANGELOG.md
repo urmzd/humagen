@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.31.0 (2026-10-27)
+
+### Breaking
+
+- replace @auto with a dynamic router where each agent decides whether to join (#102) ([b6d78e0](https://github.com/urmzd/humagen/commit/b6d78e04da8d9898b09e32afe40b54fd9069bea9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.30.0...v0.31.0)
+
+
 ## 0.30.0 (2026-10-27)
 
 ### Features
