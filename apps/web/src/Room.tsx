@@ -652,6 +652,9 @@ export function ThreadRoom({
                 <PlusMenu
                   onLeave={leave}
                   agents={tags.agents}
+                  skills={tags.skills}
+                  skillsFailed={tags.skillsFailed}
+                  onSkill={(name) => { setSeed({ text: `$${name} `, mode: "prepend" }); }}
                   selection={selection}
                   onChange={select}
                   onAttach={attach}
@@ -765,6 +768,7 @@ export function ChannelPage({
   const tags = useCompletion(project, agents, homes, topicsOf(projects, root, project), me, handle);
   // The agents the + menu picked for the thread this channel's chat bar starts.
   const [picked, setPicked] = useState<Selection>(emptySelection);
+  const [seed, setSeed] = useState<ComposerSeed>();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
@@ -853,11 +857,12 @@ export function ChannelPage({
       {canRun && info && !info.archived && !postsIn(projects, project) && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
       {canRun && info && !info.archived && postsIn(projects, project) && (
         <RoomComposer
+          seed={seed}
           placeholder={picked.agents.length > 0 ? placeholderFor(picked) : words.startThread}
           tags={tags}
           plus={{
             menu: (close, attach, leave) => (
-              <PlusMenu agents={tags.agents} selection={picked} onChange={setPicked} onAttach={attach} onClose={close} onLeave={leave} />
+              <PlusMenu agents={tags.agents} skills={tags.skills} skillsFailed={tags.skillsFailed} onSkill={(name) => { setSeed({ text: `$${name} `, mode: "prepend" }); }} selection={picked} onChange={setPicked} onAttach={attach} onClose={close} onLeave={leave} />
             ),
             chips: <SelectionChips selection={picked} onChange={setPicked} />,
           }}

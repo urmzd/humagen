@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { CheckIcon, FileIcon, ProjectIcon, MessageIcon, XIcon } from "@humagen/render-web";
+import { BotIcon, CheckIcon, ChevronRightIcon, FileIcon, ProjectIcon, WrenchIcon, XIcon } from "@humagen/render-web";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { coworking, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { ProjectChoices } from "./ProjectPicker.tsx";
@@ -48,18 +48,17 @@ export function placeholderFor(s: Pick<Selection, "agents" | "mode">): string {
   return s.mode === "all" ? words.placeholderAll(s.agents.length) : words.placeholderBest(s.agents.length);
 }
 
-/** Every item of the menu that the arrow keys move between, in order. */
+/** Every item the arrow keys move between inside the active pane. */
 const ITEM = "[data-plus-item]:not(:disabled)";
-
 const row =
-  "flex min-h-10 w-full items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-checked:bg-aui-hover";
+  "flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-aui px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-checked:bg-aui-hover disabled:cursor-default disabled:text-aui-muted disabled:hover:bg-transparent";
 
-/**
- * The + menu: attach files, check the agents an untagged message goes to,
- * and pick where the conversation lives (a project, then one of its
- * channels, general first). The arrow keys move between items, Space
- * checks, Enter or Escape closes. Still: it waits on a person.
- */
+type Pane = "root" | "agents" | "projects" | "channels" | "skills" | "finder";
+type Choice = { name: string; description?: string };
+type Channels = { project: string; state: "loading" | "ready" | "failed"; names: string[] };
+type ReturnFocus = "agents" | "projects" | "skills" | "finder" | "selected-project";
+
+/** The composer groups choices by intent; channels belong to a chosen project. */
 export function PlusMenu({
   agents,
   selection,
@@ -74,262 +73,296 @@ export function PlusMenu({
   projectFixed,
   personalProject,
   finder,
+  skills,
+  skillsFailed = false,
+  onSkill,
 }: {
   /** The agents that may answer where the conversation lives. Null while they load. */
-  agents: { name: string; description?: string }[] | null;
+  agents: Choice[] | null;
   selection: Selection;
   onChange: (next: Selection) => void;
   onAttach: () => void;
   onClose: () => void;
   /** Closes it as focus moves elsewhere, leaving focus where it went. */
   onLeave?: () => void;
-  /** The project tree, or null while it loads. Left out, the menu offers no project. */
+  /** The readable project tree, or null while it loads. */
   projects?: ProjectView[] | null;
-  personalProject?:string;
-  /** Contextual discovery offered only before a conversation starts. */
+  personalProject?: string;
   finder?: ReactNode;
   kinds?: ProjectKindSpec[];
   canCreateProject?: boolean;
   onProjectCreated?: (p: ProjectView) => void;
-  /** Why the project can't change here, such as an agent having run in it. */
+  /** Why the conversation's project and channel cannot change. */
   projectFixed?: string;
+  /** Resolved skills for this project, not the skill-management library. */
+  skills?: Choice[] | null;
+  skillsFailed?: boolean;
+  /** Prepares the message through the host's existing skill-tag insertion. */
+  onSkill?: (name: string) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [choosing, setChoosing] = useState(false);
-  const [finding, setFinding] = useState(false);
-  const finderButton = useRef<HTMLButtonElement>(null);
-  const found = useRef(false);
-  useEffect(() => {
-    if (finding) {
-      found.current = true;
-      panel.current?.querySelector<HTMLInputElement>("[data-plus-discovery] input")?.focus();
-    } else if (found.current) {
-      found.current = false;
-      finderButton.current?.focus();
-    }
-  }, [finding]);
-  // Back from choosing a project, focus returns to the project's button, so
-  // the arrow keys and Escape keep working in the menu.
-  const projectButton = useRef<HTMLButtonElement>(null);
-  const chose = useRef(false);
-  useEffect(() => {
-    if (choosing) chose.current = true;
-    else if (chose.current) {
-      chose.current = false;
-      (projectButton.current?.disabled ? search.current : projectButton.current)?.focus();
-    }
-  }, [choosing]);
-  const [channels, setChannels] = useState<string[] | null>(null);
+  const c = words.picker;
+  const [pane, setPane] = useState<Pane>("root");
+  const [agentQuery, setAgentQuery] = useState("");
+  const [skillQuery, setSkillQuery] = useState("");
+  const [channelProject, setChannelProject] = useState<string | null>(null);
+  const [channels, setChannels] = useState<Channels | null>(null);
+  const [channelRetry, setChannelRetry] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
+  const finderButton = useRef<HTMLButtonElement>(null);
+  const categoryButtons = useRef<Partial<Record<"agents" | "projects" | "skills", HTMLButtonElement | null>>>({});
+  const returnFocus = useRef<ReturnFocus | undefined>(undefined);
   const offersProject = projects !== undefined;
   const project = selection.project;
+  const scope = pane === "channels" ? channelProject : project;
+  const scopedChannels = channels?.project === scope ? channels : null;
 
-  // It opens toward the side of the chat bar with more room, and no taller
-  // than that room, so on a phone it never runs off the screen.
-  const [place, setPlace] = useState<{ up: boolean; max: number }>({ up: true, max: 448 });
+  const projectName = (name: string | null) => name === null ? words.chooseProject
+    : name === "" ? words.projectless
+    : name === personalProject ? defaultCopy.projects.personalTitle
+    : projects?.find((item) => item.name === name)?.title || name;
+
+  const open = (next: Pane) => {
+    returnFocus.current = undefined;
+    setPane(next);
+  };
+  const back = () => {
+    if (pane === "finder") {
+      returnFocus.current = "finder";
+      setPane("agents");
+    } else if (pane === "channels") {
+      returnFocus.current = "selected-project";
+      setPane("projects");
+    } else if (pane !== "root") {
+      returnFocus.current = pane;
+      setPane("root");
+    } else onClose();
+  };
+
+  useEffect(() => {
+    const wanted = returnFocus.current;
+    returnFocus.current = undefined;
+    if (pane === "root") {
+      (wanted === "agents" || wanted === "projects" || wanted === "skills"
+        ? categoryButtons.current[wanted]
+        : panel.current?.querySelector<HTMLButtonElement>(ITEM))?.focus();
+    } else if (wanted === "finder") finderButton.current?.focus();
+    else if (wanted === "selected-project") {
+      (panel.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
+        ?? panel.current?.querySelector<HTMLInputElement>("input")
+        ?? backButton.current)?.focus();
+    } else {
+      (panel.current?.querySelector<HTMLInputElement>("input") ?? backButton.current)?.focus();
+    }
+  }, [pane]);
+
+  // The popup uses the side of the composer with more available space.
+  const [place, setPlace] = useState({ up: true, max: 448 });
   useLayoutEffect(() => {
     const bar = panel.current?.parentElement?.closest("form") ?? panel.current?.parentElement;
     if (!bar) return;
-    const r = bar.getBoundingClientRect();
-    const above = r.top - 8;
-    const below = window.innerHeight - r.bottom - 8;
+    const rect = bar.getBoundingClientRect();
+    const above = rect.top - 8;
+    const below = window.innerHeight - rect.bottom - 8;
     const up = above >= below;
     setPlace({ up, max: Math.max(160, Math.min(448, up ? above : below)) });
   }, []);
 
+  // Associate each response with its project. A late response cannot fill a
+  // different project's pane, and a refused read never invents a channel.
   useEffect(() => {
-    search.current?.focus();
-  }, []);
-
-  // The channels of the project picked, general first.
-  useEffect(() => {
-    if (!offersProject || project === null) return setChannels(null);
+    if (!offersProject || scope === null) {
+      setChannels(null);
+      return;
+    }
     let live = true;
-    coworking
-      .channels(project)
-      .then((cs) => {
-        if (!live) return;
-        const names = cs.filter((c) => !c.archived).map((c) => c.name);
-        setChannels(["general", ...names.filter((n) => n !== "general")]);
-      })
-      .catch(() => live && setChannels(["general"]));
-    return () => {
-      live = false;
-    };
-  }, [offersProject, project]);
+    setChannels({ project: scope, state: "loading", names: [] });
+    coworking.channels(scope).then((items) => {
+      if (!live) return;
+      const names = items.filter((item) => !item.archived).map((item) => item.name);
+      names.sort((a, b) => a === "general" ? -1 : b === "general" ? 1 : a.localeCompare(b));
+      setChannels({ project: scope, state: "ready", names });
+    }).catch(() => {
+      if (live) setChannels({ project: scope, state: "failed", names: [] });
+    });
+    return () => { live = false; };
+  }, [offersProject, scope, channelRetry]);
 
+  useEffect(() => {
+    if (pane !== "channels" || projectFixed || scopedChannels?.state !== "ready") return;
+    if (scopedChannels.names.length === 1 && scopedChannels.names[0] === "general") {
+      setPane("root");
+      onClose();
+    }
+  }, [pane, projectFixed, scopedChannels, onClose]);
+
+  const chooseProject = (name: string) => {
+    if (projectFixed) return;
+    if (name !== selection.project) onChange({ ...selection, project: name, channel: "general" });
+    setChannelProject(name);
+    open("channels");
+  };
+  const chooseChannel = (name: string, close = true) => {
+    if (projectFixed || channelProject === null || scopedChannels?.state !== "ready" || !scopedChannels.names.includes(name)) return;
+    onChange({ ...selection, project: channelProject, channel: name });
+    if (close) onClose();
+  };
   const full = selection.agents.length >= MAX_SELECTED;
   const toggle = (name: string) => {
-    if (selection.agents.includes(name)) return onChange({ ...selection, agents: selection.agents.filter((a) => a !== name) });
+    if (selection.agents.includes(name)) return onChange({ ...selection, agents: selection.agents.filter((agent) => agent !== name) });
     const next = withAgent(selection, name);
     if (next) onChange(next);
   };
+  const matches = (choice: Choice, query: string) => !query || choice.name.toLowerCase().includes(query) || (choice.description ?? "").toLowerCase().includes(query);
+  const shownAgents = (agents ?? []).filter((agent) => matches(agent, agentQuery.trim().toLowerCase()));
+  const shownSkills = (skills ?? []).filter((skill) => matches(skill, skillQuery.trim().toLowerCase()));
 
-  const q = query.trim().toLowerCase();
-  const shown = (agents ?? []).filter((a) => !q || a.name.toLowerCase().includes(q) || (a.description ?? "").toLowerCase().includes(q));
-
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.nativeEvent.isComposing) return;
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (finding) return setFinding(false);
-      if (choosing) return setChoosing(false);
-      return onClose();
-    }
-    if (choosing || finding) return;
-    const items = [...(panel.current?.querySelectorAll<HTMLElement>(ITEM) ?? [])];
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      // Down from the search goes to the agents it narrows.
-      if (e.key === "ArrowDown" && document.activeElement === search.current) {
-        (panel.current?.querySelector<HTMLElement>('[data-plus-item="agent"]:not(:disabled)') ?? items[0])?.focus();
-        return;
-      }
-      const next = e.key === "ArrowDown" ? (at + 1) % items.length : (at <= 0 ? items.length : at) - 1;
-      items[next]?.focus();
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing || event.defaultPrevented) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      back();
       return;
     }
-    // Enter closes the menu, from an agent's row as from the search; Space
-    // checks. Any other button, such as the search's Clear, does its own job.
-    const target = e.target as HTMLElement;
-    if (e.key === "Enter" && target.dataset.plusItem !== "action" && (target.tagName !== "BUTTON" || target.dataset.plusItem === "agent")) {
-      e.preventDefault();
+    const target = event.target as HTMLElement;
+    const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable;
+    if ((pane === "projects" || pane === "finder") && target === backButton.current && event.key === "ArrowDown") {
+      event.preventDefault();
+      panel.current?.querySelector<HTMLInputElement>("input")?.focus();
+      return;
+    }
+    if (event.key === "ArrowLeft" && pane !== "root" && !editing && target.getAttribute("role") !== "radio") {
+      event.preventDefault();
+      back();
+      return;
+    }
+    if (pane === "projects" || pane === "finder") return;
+    const items = [...(panel.current?.querySelectorAll<HTMLElement>(ITEM) ?? [])];
+    if (pane === "channels" && target.getAttribute("role") === "radio" && ["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(event.key)) {
+      const radios = items.filter((item) => item.getAttribute("role") === "radio");
+      const at = radios.indexOf(target);
+      const direction = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : -1;
+      const next = radios[(at + direction + radios.length) % radios.length];
+      if (next?.dataset.channel) {
+        event.preventDefault();
+        next.focus();
+        chooseChannel(next.dataset.channel, false);
+      }
+      return;
+    }
+    if (event.key === "ArrowRight" && pane === "root" && target.dataset.category) {
+      event.preventDefault();
+      target.click();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (items.length === 0) return;
+      event.preventDefault();
+      const choices = items.filter((item) => item.dataset.plusItem === (pane === "agents" ? "agent" : "skill"));
+      if (document.activeElement === search.current) {
+        (event.key === "ArrowDown" ? choices[0] ?? items[0] : backButton.current)?.focus();
+        return;
+      }
+      if (event.key === "ArrowUp" && target === choices[0]) {
+        search.current?.focus();
+        return;
+      }
+      if (event.key === "ArrowDown" && target === backButton.current && search.current) {
+        search.current.focus();
+        return;
+      }
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      items[event.key === "ArrowDown" ? (at + 1) % items.length : (at <= 0 ? items.length : at) - 1]?.focus();
+      return;
+    }
+    if (event.key === "Enter" && (target.dataset.plusItem === "skill" || target.dataset.plusItem === "channel")) {
+      event.preventDefault();
+      target.click();
+      return;
+    }
+    if (event.key === "Enter" && pane === "agents" && (target === search.current || target.dataset.plusItem === "agent")) {
+      event.preventDefault();
       onClose();
+    } else if (event.key === "Enter" && target instanceof HTMLInputElement) {
+      event.preventDefault();
     }
   };
 
-  const chosen = project ? projects?.find((p) => p.name === project) : undefined;
+  const heading = pane === "agents" ? words.agents
+    : pane === "projects" ? defaultCopy.navigation.projects
+    : pane === "skills" ? defaultCopy.navigation.skills
+    : pane === "channels" ? c.channelsIn(projectName(channelProject))
+    : undefined;
+  const header = pane !== "root" && <div className="mb-1 flex min-w-0 items-center gap-2 border-b border-aui-border pb-1">
+    <button ref={backButton} type="button" data-plus-item="action" className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-aui px-2.5 py-2 text-aui-xs text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent" onClick={back}>
+      <ChevronRightIcon size={16} className="rotate-180" />{c.back}
+    </button>
+    {heading && <h2 className="min-w-0 truncate text-aui-sm font-medium">{heading}</h2>}
+  </div>;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: the panel moves focus between its items with the arrow keys
-    <div
-      ref={panel}
-      role="dialog"
-      data-layer="menu"
-      aria-label={words.menu}
-      onKeyDown={onKeyDown}
-      // Focus leaving the menu, by Tab or otherwise, closes it.
-      onBlur={(e) => {
-        const to = e.relatedTarget as HTMLElement | null;
-        // The + button closes the menu itself, on its click.
+    // biome-ignore lint/a11y/noStaticElementInteractions: the dialog moves focus between its controls with the arrow keys
+    <div ref={panel} role="dialog" data-layer="menu" aria-label={words.menu} onKeyDown={onKeyDown}
+      onBlur={(event) => {
+        const to = event.relatedTarget as HTMLElement | null;
         if (to && !panel.current?.contains(to) && !to.closest("[data-plus-button]")) (onLeave ?? onClose)();
       }}
       style={{ maxHeight: place.max }}
-      className={`absolute left-0 z-30 flex w-full max-w-sm flex-col overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1" : "top-full mt-1"}`}
+      className={`absolute left-0 z-30 flex w-full min-w-0 max-w-sm flex-col overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1" : "top-full mt-1"}`}
     >
-      {finding && finder ? (
-        <div data-plus-discovery>
-          <button type="button" className={row} onClick={() => setFinding(false)}>{defaultCopy.home.findHelp.back}</button>
-          {finder}
-        </div>
-      ) : choosing && projects !== undefined ? (
-        <ProjectChoices
-          projects={projects}
-          kinds={kinds}
-          personalProject={personalProject}
-          value={project}
-          canCreate={canCreateProject}
-          onChange={(name) => onChange({ ...selection, project: name, channel: "general" })}
-          onCreated={(p) => onProjectCreated?.(p)}
-          close={() => setChoosing(false)}
-        />
-      ) : (
-        <>
-          <button type="button" data-plus-item="action" className={row} onClick={onAttach}>
-            <FileIcon size={16} className="text-aui-muted" />
-            {words.attach}
+      {header}
+      {pane === "root" && <>
+        <button type="button" data-plus-item="action" className={row} onClick={onAttach}><FileIcon size={16} className="text-aui-muted" />{words.attach}</button>
+        <button type="button" ref={(button) => { categoryButtons.current.agents = button; }} data-plus-item="action" data-category="agents" aria-haspopup="dialog" className={row} onClick={() => open("agents")}>
+          <BotIcon size={16} className="text-aui-muted" /><span className="min-w-0 flex-1">{words.agents}</span>
+          {selection.agents.length > 0 && <span className="truncate text-aui-xs text-aui-muted">{c.selected(selection.agents.length)}</span>}<ChevronRightIcon size={16} className="text-aui-muted" />
+        </button>
+        {offersProject && <>
+          <button type="button" ref={(button) => { categoryButtons.current.projects = button; }} data-plus-item="action" data-category="projects" aria-haspopup="dialog" className={row} disabled={!!projectFixed} title={projectFixed} onClick={() => open("projects")}>
+            <ProjectIcon size={16} className="text-aui-muted" /><span className="min-w-0 flex-1">{defaultCopy.navigation.projects}</span><span className="max-w-[45%] truncate text-aui-xs text-aui-muted">{projectName(project)}</span><ChevronRightIcon size={16} className="text-aui-muted" />
           </button>
-          {finder && !projectFixed && <button type="button" ref={finderButton} data-plus-item="action" className={row} onClick={() => setFinding(true)}>
-            <SearchIcon size={16} />
-            {defaultCopy.home.findHelp.title}
-          </button>}
-          <div className="my-1 h-px bg-aui-border" />
-          <p className="px-2.5 pt-1 text-aui-xs font-medium text-aui-muted">{words.agents}</p>
-          <div className="p-1">
-            <SearchField label={words.findAgent} value={query} onChange={setQuery} inputRef={search} />
-          </div>
-          {agents === null ? (
-            <p role="status" className="px-2.5 py-2 text-aui-xs text-aui-muted">
-              {words.agentsLoading}
-            </p>
-          ) : shown.length === 0 ? (
-            <p role="status" className="px-2.5 py-2 text-aui-xs text-aui-muted">
-              {agents.length === 0 ? words.noAgents : words.noAgentMatch}
-            </p>
-          ) : (
-            <div role="group" aria-label={words.agents} className="flex flex-col">
-              {shown.map((a) => {
-                const on = selection.agents.includes(a.name);
-                return (
-                  <button
-                    key={a.name}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={on}
-                    aria-disabled={!on && full ? true : undefined}
-                    data-plus-item="agent"
-                    className={row}
-                    onClick={() => toggle(a.name)}
-                  >
-                    <AgentMark name={a.name} size={16} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{a.name}</span>
-                      {a.description && <span className="block truncate text-aui-xs text-aui-muted">{a.description}</span>}
-                    </span>
-                    <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
-                      {on && <CheckIcon size={14} />}
-                    </span>
-                  </button>
-                );
-              })}
-              {full && <p className="px-2.5 py-1 text-aui-xs text-aui-muted">{words.maxAgents(MAX_SELECTED)}</p>}
-            </div>
-          )}
-          {offersProject && (
-            <>
-              <div className="my-1 h-px bg-aui-border" />
-              <p className="px-2.5 pt-1 text-aui-xs font-medium text-aui-muted">{words.project}</p>
-              <button
-                type="button"
-                ref={projectButton}
-                data-plus-item="action"
-                className={row}
-                disabled={!!projectFixed}
-                title={projectFixed}
-                onClick={() => setChoosing(true)}
-              >
-                {project === "" ? <MessageIcon size={16} className="text-aui-muted" /> : <ProjectIcon size={16} className="text-aui-muted" />}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{project === null ? words.chooseProject : project === "" ? words.projectless : chosen ? titleOf(chosen) : project===personalProject?defaultCopy.projects.personalTitle:project}</span>
-                  {chosen && above(chosen).length > 0 && <span className="block truncate text-aui-xs text-aui-muted">{above(chosen).join(" › ")}</span>}
-                </span>
-              </button>
-              {projectFixed && <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{projectFixed}</p>}
-              {project !== null && channels && channels.length > 0 && (
-                <div role="radiogroup" aria-label={words.channel} className="flex flex-wrap gap-1 px-2.5 py-1">
-                  {channels.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      role="radio"
-                      aria-checked={selection.channel === c}
-                      data-plus-item="channel"
-                      disabled={!!projectFixed}
-                      onClick={() => onChange({ ...selection, channel: c })}
-                      className="rounded-aui px-1.5 py-0.5 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-checked:text-aui-fg aria-checked:underline disabled:opacity-50"
-                    >
-                      #{c}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </>
-      )}
+          {projectFixed && <p className="px-2.5 pb-2 text-aui-xs text-aui-muted">{projectFixed}</p>}
+        </>}
+        {onSkill && <button type="button" ref={(button) => { categoryButtons.current.skills = button; }} data-plus-item="action" data-category="skills" aria-haspopup="dialog" className={row} onClick={() => open("skills")}>
+          <WrenchIcon size={16} className="text-aui-muted" /><span className="min-w-0 flex-1">{defaultCopy.navigation.skills}</span><ChevronRightIcon size={16} className="text-aui-muted" />
+        </button>}
+      </>}
+      {pane === "agents" && <>
+        <div className="p-1"><SearchField label={words.findAgent} value={agentQuery} onChange={setAgentQuery} inputRef={search} /></div>
+        {agents === null ? <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">{words.agentsLoading}</p>
+          : shownAgents.length === 0 ? <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">{agents.length === 0 ? words.noAgents : words.noAgentMatch}</p>
+          : <div role="group" aria-label={words.agents} className="flex flex-col">
+            {shownAgents.map((agent) => {
+              const checked = selection.agents.includes(agent.name);
+              return <button key={agent.name} type="button" role="checkbox" aria-checked={checked} aria-disabled={!checked && full || undefined} data-plus-item="agent" className={row} onClick={() => toggle(agent.name)}>
+                <AgentMark name={agent.name} size={16} /><span className="min-w-0 flex-1"><span className="block truncate">{agent.name}</span>{agent.description && <span className="block truncate text-aui-xs text-aui-muted">{agent.description}</span>}</span>
+                <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">{checked && <CheckIcon size={14} />}</span>
+              </button>;
+            })}
+            {full && <p className="px-2.5 py-1 text-aui-xs text-aui-muted">{words.maxAgents(MAX_SELECTED)}</p>}
+          </div>}
+        {finder && !projectFixed && <div className="mt-1 border-t border-aui-border pt-1"><button type="button" ref={finderButton} data-plus-item="action" className={row} onClick={() => open("finder")}><SearchIcon size={16} className="text-aui-muted" />{defaultCopy.home.findHelp.title}<ChevronRightIcon size={16} className="ml-auto text-aui-muted" /></button></div>}
+      </>}
+      {pane === "projects" && projects !== undefined && (projectFixed ? <p className="px-2.5 py-3 text-aui-xs text-aui-muted">{projectFixed}</p> : <ProjectChoices projects={projects} kinds={kinds} personalProject={personalProject} value={project} canCreate={canCreateProject} onChange={chooseProject} onCreated={(created) => onProjectCreated?.(created)} close={() => {}} />)}
+      {pane === "channels" && <>
+        {projectFixed && <p className="px-2.5 py-3 text-aui-xs text-aui-muted">{projectFixed}</p>}
+        {!scopedChannels || scopedChannels.state === "loading" ? <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">{c.channelsLoading}</p>
+          : scopedChannels.state === "failed" ? <div className="px-2.5 py-2"><p role="alert" className="text-aui-xs text-aui-muted">{c.channelsFailed}</p><button type="button" data-plus-item="action" className={`${row} mt-1`} onClick={() => setChannelRetry((value) => value + 1)}>{c.retry}</button></div>
+          : scopedChannels.names.length === 0 ? <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">{c.noChannels}</p>
+          : (scopedChannels.names.length > 1 || scopedChannels.names[0] !== "general") && <div role="radiogroup" aria-label={c.channelsIn(projectName(channelProject))} className="flex min-w-0 flex-col">
+            {scopedChannels.names.map((name) => <button key={name} type="button" role="radio" aria-checked={selection.project === channelProject && selection.channel === name} data-plus-item="channel" data-channel={name} disabled={!!projectFixed} className={row} onClick={() => chooseChannel(name)}><span className="min-w-0 flex-1 truncate">#{name}</span><span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">{selection.channel === name && <CheckIcon size={14} />}</span></button>)}
+          </div>}
+      </>}
+      {pane === "skills" && <>
+        <div className="p-1"><SearchField label={c.findSkill} value={skillQuery} onChange={setSkillQuery} inputRef={search} /></div>
+        {skillsFailed ? <p role="alert" className="px-2.5 py-3 text-aui-xs text-aui-muted">{c.skillsFailed}</p>
+          : skills == null ? <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">{c.skillsLoading}</p>
+          : shownSkills.length === 0 ? <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">{skills.length === 0 ? c.noSkills : c.noSkillMatch}</p>
+          : <div role="group" aria-label={defaultCopy.navigation.skills} className="flex flex-col">{shownSkills.map((skill) => <button key={skill.name} type="button" data-plus-item="skill" className={row} onClick={() => { onSkill?.(skill.name); onClose(); }}><WrenchIcon size={16} className="text-aui-muted" /><span className="min-w-0 flex-1"><span className="block truncate">{skill.name}</span>{skill.description && <span className="block truncate text-aui-xs text-aui-muted">{skill.description}</span>}</span></button>)}</div>}
+      </>}
+      {pane === "finder" && finder && <div data-plus-discovery>{finder}</div>}
     </div>
   );
 }

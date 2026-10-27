@@ -202,6 +202,10 @@ export function workspaceScreens(call: Call): Screen[] {
             .click();
           await page
             .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
+            .getByRole("button", { name: /^Agents\b/ })
+            .click();
+          await page
+            .getByRole("dialog", { name: defaultCopy.chat.menu, exact: true })
             .getByRole("button", { name: c.title, exact: true })
             .click();
           let posts = 0;

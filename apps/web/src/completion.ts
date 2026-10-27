@@ -11,6 +11,9 @@ export interface Completion {
   onQuery: (typing: Typing) => void;
   /** The agents that may answer in the project, for the + menu; null while they load. */
   agents: { name: string; description?: string }[] | null;
+  /** Skills loaded for this exact project, also used by the composer picker. */
+  skills: { name: string; description?: string }[] | null;
+  skillsFailed: boolean;
 }
 
 /**
@@ -38,7 +41,7 @@ export function useCompletion(
   // undefined while it loads, null when it could not be read.
   const [names, setNames] = useState<{ all: boolean; names: string[] } | null | undefined>(undefined);
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
-  const [skills, setSkills] = useState<Skill[]>([]);
+  const [skills, setSkills] = useState<{ project: string; items: Skill[]; failed: boolean } | null>(null);
   const [kinds, setKinds] = useState<MentionKind[] | null>(null);
   const [items, setItems] = useState<{ kind: string; name: string; description?: string }[]>([]);
   const timer = useRef<number | undefined>(undefined);
@@ -54,14 +57,15 @@ export function useCompletion(
     asked.current++;
     setNames(undefined);
     setPeople([]);
+    setSkills(null);
     coworking
       .available(project)
       .then((a) => live && setNames(a.available))
       .catch(() => live && setNames(null));
     coworking
       .skills(project)
-      .then((s) => live && setSkills(s))
-      .catch(() => live && setSkills([]));
+      .then((items) => live && setSkills({ project, items, failed: false }))
+      .catch(() => live && setSkills({ project, items: [], failed: true }));
     coworking
       .mentionKinds(project)
       .then((k) => {
@@ -127,6 +131,9 @@ export function useCompletion(
     return agents.filter((a) => offered.has(a.spec.name)).map((a) => ({ name: a.spec.name, ...(a.spec.description ? { description: a.spec.description } : {}) }));
   }, [agents, homes, names]);
 
+  const scopedSkills = skills?.project === project ? skills : null;
+  const skillOptions = useMemo(() => skills?.project === project ? skills.items : [], [skills, project]);
+
   const options = useMemo(() => {
     // The directory leaves out a subject that holds an address, so the reader is known by their handle too.
     const others = people.filter((p) => p.subject !== me && p.handle !== me && (!handle || p.handle !== handle));
@@ -138,10 +145,10 @@ export function useCompletion(
       {
         ...(kinds ? { kinds: kinds.map((k) => ({ kind: k.kind, resolves:k.resolves, ...(k.title ? { title: k.title } : {}) })) } : {}),
         items,
-        skills: skills.map((s) => ({ name: s.name, ...(s.description ? { description: s.description } : {}) })),
+        skills: skillOptions.map((s) => ({ name: s.name, ...(s.description ? { description: s.description } : {}) })),
       },
     );
-  }, [here, people, topics, me, handle, kinds, items, skills]);
+  }, [here, people, topics, me, handle, kinds, items, skillOptions]);
 
-  return { label: defaultCopy.threads.typeahead, options, onQuery, agents: names === undefined ? null : here };
+  return { label: defaultCopy.threads.typeahead, options, onQuery, agents: names === undefined ? null : here, skills: scopedSkills ? skillOptions : null, skillsFailed: scopedSkills?.failed ?? false };
 }
