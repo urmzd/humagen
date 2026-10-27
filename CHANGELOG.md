@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.29.0 (2026-10-27)
+
+### Breaking
+
+- Postgres is the event bus; the Redis bus is removed (#100) ([fe2294a](https://github.com/urmzd/humagen/commit/fe2294a7a087e8a5936ea385d4f15a05835c08de))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.28.0...v0.29.0)
+
+
 ## 0.27.3 (2026-10-27)
 
 ### Bug Fixes

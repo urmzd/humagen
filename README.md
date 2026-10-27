@@ -5,54 +5,46 @@
     <br /><br />
     <a href="#installation">Install</a> &middot;
     <a href="https://github.com/urmzd/humagen/issues">Report Bug</a> &middot;
-    <a href="docs/architecture.md">Architecture</a> &middot;
     <a href="docs/deploy.md">Deploy</a>
   </p>
 </p>
 
 <p align="center">
   <a href="https://github.com/urmzd/humagen/actions/workflows/ci.yml"><img src="https://github.com/urmzd/humagen/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/humagen" alt="License"></a>
 </p>
 
 <p align="center">
   <img src="showcase/agents.png" alt="Humagen agent console with seeded example agents" width="80%">
 </p>
-<p align="center"><em>Local development preview with seeded example data, captured with teasr. No model calls.</em></p>
+<p align="center"><em>Local preview with seeded example data, captured with teasr. No model calls.</em></p>
 
-Formerly warp. Old settings, config files and specs still work, with a note at start; see [docs/upgrading-from-warp.md](docs/upgrading-from-warp.md).
+Formerly warp. Old settings, config files and specs still work, with a note at start. See [docs/upgrading-from-warp.md](docs/upgrading-from-warp.md).
 
 ## Features
 
-- Branch conversations across agents, with a shared call primitive for subagents, handoffs and delegations.
-- Edit agents and revisions, run deterministic evals, schedule work and inspect run traces.
-- Apply tenant permissions, depth and fan-out limits, run admission policies and usage accounting.
-- Search knowledge, manage project memory and inspect alerts and analytics in the web console. Ground every run in a project, and the projects below it, in the knowledge sources the project names.
-- Tag who answers (`@agent` or `@auto`), or pick a conversation's agents and let the best fit or all of them answer (on Slack and GitHub, the default a project inherits answers), enable platform agents per project or give an agent a home in one, and browse the workspace's people, agents and projects in the Directory.
-- Talk in channels and shared threads: people and agents in one room, tagging people, agents and a project's experts, with private threads for their participants alone.
-- Archive conversations from the sidebar or request immediate deletion. Archived conversations enter a 30-day queue; an admin can restore an item or approve permanent deletion.
-- Read a project's inbox and post announcements to its members, or let a scheduled agent post a recap of what changed.
-- Give each project members and owners, keep a project to its members alone, and let a project's owners set tighter limits below it.
-- Cowork from Slack and GitHub: bind a project's channel to a Slack channel, post a mapped person's Slack messages as their own, reply to an announcement in its Slack thread, and ask the app in a GitHub comment.
-- With `workspace.release_notes` on, see Humagen's release notes in the workspace's inbox after an upgrade.
-- Keep the inbox bounded: what was settled for everyone is dropped after the workspace's retention, 90 days by default.
-- Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
-- Give agents MCP tools that act as each person with that person's own credential, and never a shared one in its place.
-- Answer in Slack with the console's own components through a Socket Mode app that streams natively.
+- **Conversations** that branch across agents. Tag `@agent` or `@auto`, or let the project's default answer.
+- **Channels and threads** where people and agents talk in one room, with private threads, project inboxes and announcements.
+- **Projects** with members, owners, tighter limits below them, and knowledge sources that ground every run.
+- **Archive and deletion review**: archived conversations wait 30 days in a queue where an admin restores them or approves permanent deletion.
+- **Agent lifecycle**: revisions, deterministic evals, schedules, run traces, alerts and analytics.
+- **Governance**: tenant permissions, depth and fan-out limits, admission policies and usage accounting.
+- **Slack**: bind a project to a channel, post as mapped people, and answer with streamed console components over Socket Mode.
+- **GitHub**: ask the app in a comment, through signed webhook ingress.
+- **Per-person MCP tools**: agents act with each person's own credential, never a shared one.
 
-**Early development:** pre-1.0, one replica per database, sessions in memory, Slack and GitHub tested against simulated APIs. The full, current list is in [the ecosystem's limitations](docs/ecosystem.md#limitations-in-one-place); what each piece has been tested against is in the [status table](docs/architecture.md#status).
+**Early development:** pre-1.0, one replica per database, sessions in memory, Slack and GitHub tested against simulated APIs. See the [status table](docs/architecture.md#status).
 
 ## Installation
 
 ### Prerequisites
 
-| Requirement | Purpose |
+| Requirement | Version |
 |-------------|---------|
-| Go version from [`go.mod`](go.mod) | Build the server |
-| Node.js 22.12+ or 24+, pnpm | Build the Vite console |
-| Chrome/Chromium and [teasr](https://github.com/urmzd/teasr) | Optional screenshot capture |
-
-The platform, console, shared UI and Slack renderers live in this repository. The Go libraries are published separately.
+| Go | from [`go.mod`](go.mod) |
+| Node.js | 22.12+ or 24+ |
+| pnpm | from [`package.json`](package.json) |
 
 ```sh
 git clone https://github.com/urmzd/humagen.git
@@ -61,88 +53,43 @@ go mod download
 pnpm install
 ```
 
-A workspace answers through one or more [clients](docs/clients.md): a Slack app
-or a GitHub installation, each with its own identity, secrets, agents and limits.
-See the [integration trial guide](docs/integrations.md).
-
 ## Quick Start
 
-One command, nothing to configure:
-
 ```sh
-pnpm --filter @humagen/console build   # once, so the console is served too
+pnpm --filter @humagen/console build
 go run ./cmd/humagen start
 ```
 
-`humagen start` runs the whole platform in one process: development sign-in on
-loopback, in-memory stores (Postgres when `HUMAGEN_POSTGRES_URL` is set), files on
-disk, seeded example agents on the offline provider, and the console at
-<http://127.0.0.1:8080>. On a terminal, the first
-start asks a few questions (its name, model providers, MCP tools, sign-in,
-Slack), each with a default Enter accepts, and writes the answers to
-`humagen.yaml` in your config directory. You name where each key is kept
-(`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); Humagen reads it when it
-is used and never stores it.
+Open <http://127.0.0.1:8080>. `humagen start` runs everything in one process: loopback sign-in, in-memory stores, seeded example agents on an offline provider, and the console. No model key needed.
 
-Everything is configured in that one language: a `System` document for how and
-where Humagen runs (sign-in, stores, bus, files, limits) and a `Platform` document
-per workspace (models, tools, agents, Slack, GitHub, workspace settings). See [the spec](docs/spec.md).
-The same file runs on your own infrastructure with no code: point `stores` at
-Postgres, `blobs` at S3 and `auth` at your identity provider, and use it with
-compose or the Helm chart ([deploy](docs/deploy.md)). Any flag still wins over
-the file (`humagen start -addr 127.0.0.1:9090`).
-
-### Develop the console
-
-Run the backend in one terminal:
-
-```sh
-make dev
-```
-
-Run the console in another terminal, from the repository root:
-
-```sh
-make web
-```
-
-Open <http://127.0.0.1:5173> and select an example agent. The backend listens on `127.0.0.1:8080`. Seeded agents use fiber's offline provider, so the preview requires no model key.
-
-To run it in containers, on Kubernetes with Helm, or with Flux, see [deploy](docs/deploy.md).
-
-Development auth grants admin access on loopback; `humagen start` and `make dev` use it. `humagen serve`, the server's command, signs in with OIDC unless told otherwise. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
-
-### Capture the console
-
-With a fresh `make dev` process and `make web` running:
-
-```sh
-teasr run
-```
-
-`SCREENS_SHOWCASE=1 make screens` starts an isolated Humagen server, seeds the console and checks every screen at phone and desktop widths before refreshing [`showcase/`](showcase/). Primitives and the approval card use the console's existing gallery fixtures; `onboarding.png` shows the current welcome screen and `runs.png` shows a seeded conversation. The console opens directly after sign-in. Personal preferences are optional in Profile and Appearance settings.
+On a terminal, the first start asks a few questions (name, model providers, MCP tools, sign-in, Slack) and writes `humagen.yaml` to your config directory.
 
 <p align="center">
   <img src="showcase/runs.png" alt="Seeded offline conversation" width="30%"> &nbsp;
-  <img src="showcase/analytics.png" alt="Analytics for the seeded offline runs" width="30%">
+  <img src="showcase/analytics.png" alt="Analytics for the seeded offline runs" width="30%"> &nbsp;
+  <img src="showcase/ui-approval.png" alt="Approval card" width="30%">
 </p>
-<p align="center"><em>Runs &middot; Analytics</em></p>
+<p align="center"><em>Runs &middot; Analytics &middot; Approvals</em></p>
 
-## Conversations
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| [`github-review`](examples/github-review/) | Review agent, fixer agent and GitHub App manifest. `go run ./examples/github-review` renders a token-free preview |
+| [`slack`](examples/slack/) | Slack app manifest |
+| [`ui/basic`](examples/ui/basic/) | Render shared UI components |
+
+## Usage
+
+### Start a conversation
 
 `POST /api/runs` takes `agent`, `text`, and optionally `after` and `project`.
 
-- `agent` names who answers: an agent available where the conversation is
-  filed, or `auto` for `@auto`, which picks among those agents by name,
-  description and prompt and hands a message nothing matches to the nearest
-  default that names an agent.
-- Leave `agent` out and the default the conversation's place inherits answers:
-  its project's, then each ancestor's, then the workspace's. A new workspace's
-  default is `@auto`. With none set, nothing runs: the answer is 409, asking
-  to tag an agent.
-- `after` names the turn the message follows. Naming a turn that already has a
-  reply starts a branch. Any agent can answer any turn, and is sent the branch
-  so far.
+- `agent` names who answers, or `auto` to pick the best fit by name, description and prompt.
+- Leave `agent` out and the nearest default answers: the project's, its ancestors', then the workspace's. With none set, the answer is 409.
+- `after` names the turn the message follows. Naming a turn that already has a reply starts a branch.
+
+### Archive a conversation
 
 Archive removes a conversation from the active list and places it in the
 deletion queue. It becomes eligible for permanent deletion after 30 days. A
@@ -155,12 +102,32 @@ it. Admins can restore queued conversations before approval.
 </p>
 <p align="center"><em>Conversation actions · Admin deletion queue</em></p>
 
+### Use a real model
+
+Set `ANTHROPIC_API_KEY` before starting and configure an agent with provider `anthropic`.
+
+### Connect Slack and GitHub
+
+A workspace answers through one or more [clients](docs/clients.md): a Slack app or a GitHub installation, each with its own identity, secrets, agents and limits. Follow the [integration guide](docs/integrations.md), then [Slack](docs/slack.md) or [GitHub](docs/github.md).
+
+### Deploy
+
+Run the same config on your own infrastructure with compose, Helm or Flux. Point `stores` at Postgres, `blobs` at S3 and `auth` at your identity provider. See [deploy](docs/deploy.md) and [security](docs/security.md) for real sign-in, roles and machine tokens.
+
+## Configuration
+
+One file, two documents:
+
+| Document | Controls |
+|----------|----------|
+| `System` | Sign-in, stores, bus, files, limits |
+| `Platform` | Models, tools, agents, Slack, GitHub, workspace settings (one per workspace) |
+
+Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`). Humagen reads it when used and never stores it. Flags override the file (`humagen start -addr 127.0.0.1:9090`). See [the spec](docs/spec.md).
+
 ## API
 
-The contract is [`api/openapi.yaml`](api/openapi.yaml): every route, its
-permission, request and response, and the event stream. Tests fail when it and
-the server disagree. [`packages/client`](packages/client) is a TypeScript client
-generated from it. See [the API guide](docs/api.md).
+[`api/openapi.yaml`](api/openapi.yaml) is the contract: every route, its permission, request, response and event stream. Tests fail when it and the server disagree. [`packages/client`](packages/client) is the generated TypeScript client. See [the API guide](docs/api.md).
 
 | Route | Permission |
 |-------|------------|
@@ -184,44 +151,35 @@ generated from it. See [the API guide](docs/api.md).
 
 ## Development
 
+Run the backend and the console with hot reload in two terminals, then open <http://127.0.0.1:5173>:
+
+```sh
+make dev
+make web
+```
+
 | Task | Command |
 |------|---------|
 | Set up hooks and modules | `make init` |
 | Format, lint and test | `make check` |
 | Test with race detection | `make test` |
 | Web typecheck and tests | `cd apps/web && pnpm typecheck && pnpm test` |
-| Design previews in Storybook | `pnpm storybook` (Workspace / Project work) |
-| Storybook browser checks and captures | `pnpm storybook:check`, `pnpm storybook:capture` |
-| Shared adapter typecheck and tests | `cd packages/adapter && pnpm typecheck && pnpm test` |
+| Storybook | `pnpm storybook` |
+| Storybook checks and captures | `pnpm storybook:check`, `pnpm storybook:capture` |
+| Adapter typecheck and tests | `cd packages/adapter && pnpm typecheck && pnpm test` |
 | Slack app lint, typecheck and tests | `cd apps/slack && pnpm exec biome check && pnpm typecheck && pnpm test` |
-| Regenerate the TypeScript client from the spec | `make client` |
+| Regenerate the TypeScript client | `make client` |
 | Client typecheck and tests | `make client-check` |
 | Lint the API spec | `make spec-lint` |
+| Refresh `showcase/` | `SCREENS_SHOWCASE=1 make screens` (needs Chrome and [teasr](https://github.com/urmzd/teasr)) |
 
-## Product direction
+## Documentation
 
-Humagen is a shared place for people and agents to organize projects and tasks, maintain a living knowledge base, and improve how they work together. Agents can be created and hired into scoped project roles. Policies govern capabilities, access, budgets and approvals; connectors bring work in and send updates out. People participate through assignments, questions, approvals and notifications. Shared abilities and agent instructions improve through evaluated, reviewed changes.
-
-This is the direction, not a claim that every workflow exists today. See the [roadmap](docs/roadmap.md) and [implementation status](docs/architecture.md#status).
-
-## Architecture
-
-Humagen is the top of five layers (Humagen, fiber, saige, playscape, anchor), each
-building on the one below. [The ecosystem](docs/ecosystem.md) says who owns
-what and the order the remaining duplication is being removed in.
-
-| Part | Responsibility |
-|------|----------------|
-| **Humagen** | Shared workspace, project orchestration, API, console and presentation |
-| [Saige](https://github.com/urmzd/saige) | Agent execution, tools, retrieval and evaluations |
-| [Fiber](https://github.com/urmzd/fiber) | Messaging, connectors and request routing |
-| [Playscape](https://github.com/urmzd/playscape) | Governed execution environments and workspace isolation |
-| [Anchor](https://github.com/urmzd/anchor) | Durable execution, replay and recovery |
-
-The `@humagen/*` packages supply web and Slack presentation; `internal/presentation/github` renders GitHub Markdown. They live with the platform in this repository.
-
-
-An agent-to-agent call creates a run through `pkg/call`; its edge determines access, budget, depth and delegation mode. The platform owns identity, storage and orchestration; Humagen owns rendering. Read the [architecture and implementation status](docs/architecture.md) before relying on planned persistence or governance features.
+- [Roadmap](docs/roadmap.md)
+- [Architecture and status](docs/architecture.md)
+- [Projects](docs/projects.md)
+- [Agent calls](docs/agent-calls.md)
+- [Authorization](docs/authorization.md)
 
 ## License
 
