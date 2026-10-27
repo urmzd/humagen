@@ -433,10 +433,12 @@ export function Sidebar({
     const projects = target.kind === "project";
     const list = projects ? prefs?.pinned_projects ?? [] : pinned;
     if (list.includes(target.id) !== target.pinned) return;
-    const selector = projects ? "[data-pin-project]" : "[data-pin-thread]";
-    const match = Array.from(sidebar.current?.querySelectorAll<HTMLElement>(selector) ?? [])
-      .find((button) => (projects ? button.dataset.pinProject : button.dataset.pinThread) === target.id);
-    const control = match instanceof HTMLButtonElement ? match : match?.querySelector<HTMLButtonElement>("button");
+    const control = projects
+      ? Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>("[data-pin-project]") ?? [])
+        .find((button) => button.dataset.pinProject === target.id)
+      : Array.from(sidebar.current?.querySelectorAll<HTMLElement>("[data-pin-thread]") ?? [])
+        .find((menu) => menu.dataset.pinThread === target.id)
+        ?.querySelector<HTMLButtonElement>("button");
     // An unpinned row may leave the current group or loaded page.
     // Keep focus at its remaining control or a stable navigation target.
     const fallback = projects
