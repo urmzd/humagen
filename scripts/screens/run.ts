@@ -36,6 +36,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
+import { defaultCopy } from "../../packages/components/src/copy.ts";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
 import { libraryScreens } from "./library.ts";
@@ -158,6 +159,36 @@ function chats(ids: Ids): Screen[] {
           await actions.getByRole("button", { name: /^Copy (message|answer)/ }).waitFor();
           await actions.getByRole("button", { name: "Reply", exact: true }).waitFor();
           assert.equal(await message.getByRole("toolbar", { name: "Message actions" }).count(), 1);
+          const fork = actions.getByRole("button", {
+            name: defaultCopy.forking.fromHere,
+            exact: true,
+          });
+          await fork.waitFor();
+          const sizing = await fork.evaluate((button) => {
+            const style = getComputedStyle(button);
+            const icon = button.querySelector("svg")?.getBoundingClientRect();
+            return {
+              font: Number.parseFloat(style.fontSize),
+              expectedFont:
+                Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.75,
+              height: button.getBoundingClientRect().height,
+              minTarget: matchMedia("(pointer: coarse)").matches ? 44 : 32,
+              icon: icon?.width ?? 0,
+              overflow: button.scrollWidth > button.clientWidth,
+              wrap: style.whiteSpace,
+            };
+          });
+          assert.ok(
+            Math.abs(sizing.font - sizing.expectedFont) < 0.1,
+            `Message action labels must use compact typography: ${sizing.font}px, expected ${sizing.expectedFont}px`,
+          );
+          assert.ok(
+            sizing.height >= sizing.minTarget,
+            "Compact action labels must keep comfortable targets",
+          );
+          assert.equal(sizing.icon, 16, "Message action glyphs share one size");
+          assert.equal(sizing.wrap, "nowrap", "A message action label stays on one line");
+          assert.equal(sizing.overflow, false, "A message action must not clip its label");
         }
         await agent.getByRole("button", { name: "Reply", exact: true }).focus();
       },
