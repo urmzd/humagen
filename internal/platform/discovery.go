@@ -56,7 +56,9 @@ func (p *Platform) Discover(ctx context.Context, who auth.Principal, q Discovery
 		q.Limit = 20
 	}
 	for _, kind := range q.Kinds {
-		if kind != "project" && kind != "agent" && kind != "conversation" && !(q.Content && (kind == "message" || kind == "file" || kind == "source")) {
+		navigation := kind == "project" || kind == "agent" || kind == "conversation"
+		content := q.Content && (kind == "message" || kind == "file" || kind == "source")
+		if !navigation && !content {
 			return nil, projects.ErrInvalid
 		}
 	}

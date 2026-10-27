@@ -2294,7 +2294,7 @@ paths:
       parameters:
         - {name: q, in: query, schema: {type: string, maxLength: 200}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
-        - {name: content, in: query, schema: {type: boolean, default: false}, description: Include indexed message, file and source content.}
+        - {name: content, in: query, schema: {type: boolean, default: false}, description: "Include indexed message, file and source content."}
         - {name: kinds, in: query, schema: {type: string}, description: "Comma-separated project, agent and conversation kinds; content=true also permits message, file and source. Omitted includes all permitted kinds."}
         - {name: project, in: query, schema: {type: string}, description: An optional project scope. For agents this selects only agents available there; for conversations this selects their current project.}
       responses:
