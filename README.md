@@ -30,6 +30,7 @@ Formerly warp. Old settings, config files and specs still work, with a note at s
 - Search knowledge, manage project memory and inspect alerts and analytics in the web console. Ground every run in a project, and the projects below it, in the knowledge sources the project names.
 - Tag who answers (`@agent` or `@auto`), or pick a conversation's agents and let the best fit or all of them answer (on Slack and GitHub, the default a project inherits answers), enable platform agents per project or give an agent a home in one, and browse the workspace's people, agents and projects in the Directory.
 - Talk in channels and shared threads: people and agents in one room, tagging people, agents and a project's experts, with private threads for their participants alone.
+- Archive conversations from the sidebar or request immediate deletion. Archived conversations enter a 30-day queue; an admin can restore an item or approve permanent deletion.
 - Read a project's inbox and post announcements to its members, or let a scheduled agent post a recap of what changed.
 - Give each project members and owners, keep a project to its members alone, and let a project's owners set tighter limits below it.
 - Cowork from Slack and GitHub: bind a project's channel to a Slack channel, post a mapped person's Slack messages as their own, reply to an announcement in its Slack thread, and ask the app in a GitHub comment.
@@ -142,6 +143,17 @@ teasr run
 - `after` names the turn the message follows. Naming a turn that already has a
   reply starts a branch. Any agent can answer any turn, and is sent the branch
   so far.
+
+Archive removes a conversation from the active list and places it in the
+deletion queue. It becomes eligible for permanent deletion after 30 days. A
+person can instead request deletion immediately; an admin must still approve
+it. Admins can restore queued conversations before approval.
+
+<p align="center">
+  <img src="showcase/pr101/conversation-actions.png" alt="Conversation menu with pin, rename, archive and delete actions" width="48%"> &nbsp;
+  <img src="showcase/pr101/deletion-queue.png" alt="Admin deletion queue with due and scheduled archive requests" width="48%">
+</p>
+<p align="center"><em>Conversation actions · Admin deletion queue</em></p>
 
 ## API
 
