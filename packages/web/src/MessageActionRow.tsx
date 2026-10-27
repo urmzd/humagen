@@ -7,7 +7,7 @@ export const messageActionButton =
 
 export const messageTextActionButton = messageActionButton.replace(
   "size-8 pointer-coarse:size-11",
-  "min-h-8 pointer-coarse:min-h-11 gap-1.5 px-2",
+  "min-h-8 pointer-coarse:min-h-11 gap-1.5 px-2 text-aui-xs whitespace-nowrap",
 );
 
 /** The same persistent action row for a person's message and an agent's answer. */
