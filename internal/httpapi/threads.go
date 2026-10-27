@@ -33,6 +33,7 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/placement", s.authed(auth.ProjectsRead, s.seenThread(s.previewPlacement)))
 	mux.HandleFunc("POST /api/threads/{id}/publication", s.authed(auth.RunsWrite, s.seenThread(s.publishSummary)))
 	mux.HandleFunc("POST /api/threads/{id}/share", s.authed(auth.RunsWrite, s.seenThread(s.shareThread)))
+	s.archiveRoutes(mux)
 }
 
 // answers is who answers an untagged message in a place, and where that is

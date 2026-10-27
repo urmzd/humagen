@@ -38,6 +38,7 @@ import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
 import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
+import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
@@ -740,6 +741,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "home", path: "/" },
     { name: "sidebar-scroll", path: "/settings/profile", act: sidebarScroll },
     sidebarParticipants(call, ids.routedChat),
+    conversationDeletions(call),
     { name: "task", path: `/conversations/${ids.task}` },
     ...chats(ids, call),
     { name: "projects", path: "/projects" },

@@ -27,6 +27,10 @@ import {
   PanelLeftOpenIcon,
   SettingsIcon,
   MonitorIcon,
+  ArchiveIcon,
+  EllipsisIcon,
+  PencilIcon,
+  TrashIcon,
   SunIcon,
   MoonIcon,
   UserIcon,
@@ -36,7 +40,7 @@ import { defaultCopy } from "@humagen/components";
 import { Separator } from "@humagen/render-web/ui/separator";
 import { HumagenMark } from "@humagen/web";
 import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import type { Me, Preferences, ProjectView, ThreadSummary } from "./api.ts";
+import { coworking, type Me, type Preferences, type ProjectView, type ThreadSummary } from "./api.ts";
 import { type Page as RoutePage, type Route, href } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
 import { type Standing, useRecents } from "./recents.ts";
@@ -166,7 +170,7 @@ function Participants({ task, me, prefs }: { task: ThreadSummary; me: Me; prefs:
   </span>;
 }
 
-/** One conversation with its participants and an independent pin control. */
+/** One conversation with its participants and a ⋯ menu to pin, rename, archive or delete it. */
 function TaskRow({
   task,
   projectTitle,
@@ -174,6 +178,8 @@ function TaskRow({
   pinned,
   onSelect,
   onPin,
+  onRename,
+  onArchive,
   flash = null,
   me,
   prefs,
@@ -184,33 +190,161 @@ function TaskRow({
   pinned: boolean;
   onSelect: () => void;
   onPin?: (button: HTMLButtonElement) => void;
+  onRename?: (title: string) => void;
+  /** Archives it; deleteNow asks an admin to delete it at once. */
+  onArchive?: (deleteNow: boolean) => void;
   flash?: Flash | null;
   me: Me;
   prefs: Preferences | null;
 }) {
   const title = task.title || "Untitled conversation";
   const state = task.active > 0 ? "In progress" : task.failed > 0 ? "Needs attention" : "Finished";
+  const [renaming, setRenaming] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = () => menu.current?.querySelector<HTMLButtonElement>("button") ?? null;
+  const hasMenu = onPin || onRename || onArchive;
+  const save = (next: string) => {
+    setRenaming(false);
+    const t = next.trim();
+    if (t && t !== task.title) onRename?.(t);
+    requestAnimationFrame(() => trigger()?.focus());
+  };
   return (
     // A row that is saying something sits over its neighbours and over the
     // section's label, which sticks above the first row, so the note shows.
     <li className={`group/task relative humagen-enter ${flash ? "z-20" : ""}`}>
-      <button
-        type="button"
-        onClick={onSelect}
-        title={`${title}\n${state}\n${projectTitle}`}
-        aria-current={current ? "page" : undefined}
-        className="flex min-h-12 w-full items-center gap-2 rounded-aui py-2 pr-10 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg [@media(pointer:coarse)]:pr-14"
-      >
-        <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="truncate">{title}</span>
-          <Participants task={task} me={me} prefs={prefs} />
-        </span>
-        {task.active > 0 && <span className="sr-only">, running</span>}
-        {task.active === 0 && task.failed > 0 && <span className="sr-only">, a reply failed</span>}
-      </button>
-      {onPin && <PinButton pinned={pinned} thread={task.id} label={pinned ? `Unpin ${title}` : `Pin ${title}`} onClick={onPin} />}
-      {onPin && <FlashNote flash={flash} align="right" />}
+      {renaming ? (
+        <input
+          // biome-ignore lint/a11y/noAutofocus: rename is asked for from the menu
+          autoFocus
+          aria-label={`Rename ${title}`}
+          defaultValue={task.title}
+          maxLength={200}
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={(e) => save(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save(e.currentTarget.value);
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setRenaming(false);
+            }
+          }}
+          className="h-12 w-full rounded-aui border border-aui-accent bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onSelect}
+          title={`${title}\n${state}\n${projectTitle}`}
+          aria-current={current ? "page" : undefined}
+          className="flex min-h-12 w-full items-center gap-2 rounded-aui py-2 pr-10 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg [@media(pointer:coarse)]:pr-14"
+        >
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate">{title}</span>
+              {pinned && <PinIcon size={11} fill="currentColor" className="shrink-0 text-aui-muted" aria-hidden />}
+            </span>
+            <Participants task={task} me={me} prefs={prefs} />
+          </span>
+          {task.active > 0 && <span className="sr-only">, running</span>}
+          {task.active === 0 && task.failed > 0 && <span className="sr-only">, a reply failed</span>}
+        </button>
+      )}
+      {hasMenu && !renaming && (
+        <div ref={menu} data-pin-thread={task.id} className="absolute top-1 right-1 [@media(pointer:coarse)]:top-0.5">
+          <Popover
+            narrow
+            align="right"
+            label={`Manage ${title}`}
+            className="inline-flex size-8 items-center justify-center rounded-aui text-aui-muted opacity-0 transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover/task:opacity-100 group-focus-within/task:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100"
+            button={<EllipsisIcon size={16} />}
+          >
+            {(close) => (
+              <RowMenu
+                pinned={pinned}
+                onPin={onPin && (() => { close(); const b = trigger(); if (b) onPin(b); })}
+                onRename={onRename && (() => { close(); setRenaming(true); })}
+                onArchive={onArchive && ((now) => { close(); onArchive(now); })}
+              />
+            )}
+          </Popover>
+        </div>
+      )}
+      {hasMenu && <FlashNote flash={flash} align="right" />}
     </li>
+  );
+}
+
+const menuItem =
+  "flex h-8 w-full items-center gap-2.5 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent";
+
+/**
+ * What a conversation's ⋯ menu offers. Each item has a letter that works while
+ * the menu is open. Delete asks once more, since an admin then removes it.
+ */
+function RowMenu({
+  pinned,
+  onPin,
+  onRename,
+  onArchive,
+}: {
+  pinned: boolean;
+  onPin?: () => void;
+  onRename?: () => void;
+  onArchive?: (deleteNow: boolean) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    root.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [confirming]);
+  const items = [
+    onPin && { key: "p", label: pinned ? "Unpin" : "Pin", icon: <PinIcon size={15} />, run: onPin },
+    onRename && { key: "r", label: "Rename", icon: <PencilIcon size={15} />, run: onRename },
+    onArchive && { key: "a", label: "Archive", icon: <ArchiveIcon size={15} />, run: () => onArchive(false), separated: true },
+    onArchive && { key: "d", label: "Delete", icon: <TrashIcon size={15} />, run: () => setConfirming(true), danger: true },
+  ].filter((i): i is Exclude<typeof i, undefined | null | false> => Boolean(i));
+  if (confirming && onArchive) {
+    return (
+      <div ref={root} className="flex flex-col gap-2 p-1.5">
+        <p className="text-aui-sm text-aui-fg">Delete this conversation?</p>
+        <p className="text-aui-xs text-aui-muted">It is archived now and removed once an admin approves.</p>
+        <div className="flex justify-end gap-1.5">
+          <button type="button" onClick={() => setConfirming(false)} className="h-7 rounded-aui px-2.5 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent">
+            Cancel
+          </button>
+          <button type="button" onClick={() => onArchive(true)} className="h-7 rounded-aui bg-aui-bad px-2.5 text-aui-sm text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-aui-accent">
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      ref={root}
+      role="menu"
+      className="flex flex-col"
+      onKeyDown={(e) => {
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        const hit = items.find((i) => i.key === e.key.toLowerCase());
+        if (hit) {
+          e.preventDefault();
+          hit.run();
+        }
+      }}
+    >
+      {items.map((i) => (
+        <div key={i.key}>
+          {i.separated && <Separator className="my-1" />}
+          <button type="button" role="menuitem" onClick={i.run} className={`${menuItem} ${i.danger ? "text-aui-bad" : ""}`}>
+            {i.icon}
+            <span className="min-w-0 flex-1 truncate">{i.label}</span>
+            <kbd className="text-aui-2xs text-aui-muted">{i.key.toUpperCase()}</kbd>
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -299,11 +433,14 @@ export function Sidebar({
     const projects = target.kind === "project";
     const list = projects ? prefs?.pinned_projects ?? [] : pinned;
     if (list.includes(target.id) !== target.pinned) return;
-    const selector = projects ? "[data-pin-project]" : "[data-pin-thread]";
-    const control = Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>(selector) ?? [])
-      .find((button) => (projects ? button.dataset.pinProject : button.dataset.pinThread) === target.id);
-    // An older unselected row may leave the loaded page after unpinning.
-    // Keep keyboard focus at the conversation list's stable filter control.
+    const control = projects
+      ? Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>("[data-pin-project]") ?? [])
+        .find((button) => button.dataset.pinProject === target.id)
+      : Array.from(sidebar.current?.querySelectorAll<HTMLElement>("[data-pin-thread]") ?? [])
+        .find((menu) => menu.dataset.pinThread === target.id)
+        ?.querySelector<HTMLButtonElement>("button");
+    // An unpinned row may leave the current group or loaded page.
+    // Keep focus at its remaining control or a stable navigation target.
     const fallback = projects
       ? sidebar.current?.querySelector<HTMLAnchorElement>('nav[aria-label="Sections"] a[href="/projects"]')
       : sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Conversations"] button');
@@ -351,10 +488,43 @@ export function Sidebar({
 
   // Pinned conversations come from whatever is loaded. One that cannot be found
   // (deleted, or no longer readable) is not shown.
-  const known = new Map([...threads, ...recents].map((t) => [t.id, t]));
+  const [archived, setArchived] = useState<{ id: string; title: string; deleteNow: boolean } | null>(null);
+  const [gone, setGone] = useState<Set<string>>(() => new Set());
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  const shown = (t: ThreadSummary) => (titles[t.id] ? { ...t, title: titles[t.id]!, named: true } : t);
+  const archive = (t: ThreadSummary, deleteNow: boolean) => {
+    unsay();
+    setGone((g) => new Set(g).add(t.id));
+    setArchived({ id: t.id, title: t.title || "Untitled conversation", deleteNow });
+    if (pinned.includes(t.id)) onPin(t.id, false).catch(() => {});
+    if (selected === t.id) go({ page: "new" });
+    coworking.archive(t.id, deleteNow).catch(() => {
+      setGone((g) => { const n = new Set(g); n.delete(t.id); return n; });
+      setArchived(null);
+      setFlashed(t.id);
+      say(deleteNow ? "Could not delete. Try again." : "Could not archive. Try again.", true);
+    });
+  };
+  const undoArchive = () => {
+    if (!archived) return;
+    const { id } = archived;
+    setArchived(null);
+    coworking.unarchive(id).then(() => setGone((g) => { const n = new Set(g); n.delete(id); return n; }), () => {});
+  };
+  const rename = (t: ThreadSummary, title: string) => {
+    unsay();
+    const was = titles[t.id];
+    setTitles((m) => ({ ...m, [t.id]: title }));
+    coworking.rename(t.id, title).catch(() => {
+      setTitles((m) => { const n = { ...m }; if (was) n[t.id] = was; else delete n[t.id]; return n; });
+      setFlashed(t.id);
+      say("Could not rename. Try again.", true);
+    });
+  };
+  const known = new Map([...threads, ...recents].filter((t) => !gone.has(t.id)).map((t) => [t.id, shown(t)]));
   const pinnedRows = pinned.map((id) => known.get(id)).filter((t): t is ThreadSummary => t !== undefined);
   const pinnedSet = new Set(pinned);
-  const unpinned = recents.filter((t) => !pinnedSet.has(t.id));
+  const unpinned = recents.filter((t) => !pinnedSet.has(t.id) && !gone.has(t.id)).map(shown);
   const currentThread = selected ? known.get(selected) : undefined;
   if (currentThread && !pinnedSet.has(currentThread.id) && !unpinned.some((thread) => thread.id === currentThread.id)) {
     unpinned.push(currentThread);
@@ -364,7 +534,7 @@ export function Sidebar({
   const canPin = can("runs:read");
   const pinnedProjects = new Set(prefs?.pinned_projects ?? []);
   const readableProjectPins = [...pinnedProjects].filter(project => can("projects:read") && (project === "~" || projects.some(item => item.name === project)));
-  const projectGroups = [...new Set([...recents, ...unpinned].map(thread => thread.project || "~"))];
+  const projectGroups = [...new Set([...recents.filter(t => !gone.has(t.id)), ...unpinned].map(thread => thread.project || "~"))];
 
   const clear = () => {
     setStanding("");
@@ -428,6 +598,8 @@ export function Sidebar({
                 pinned
                 onSelect={() => go({ page: "conversation", id: t.id })}
                 onPin={(button) => togglePin(t.id, false, button)}
+                onRename={(title) => rename(t, title)}
+                onArchive={(now) => archive(t, now)}
                 flash={flashed === t.id ? flash : null}
               />
             ))}
@@ -491,6 +663,17 @@ export function Sidebar({
           >
             Conversations
           </Label>
+          {archived && (
+            <p role="status" className="mx-3 mb-1 flex items-center gap-2 rounded-aui bg-aui-hover px-2.5 py-1.5 text-aui-xs text-aui-muted">
+              <span className="min-w-0 flex-1">{archived.deleteNow ? "Sent to an admin to delete." : "Archived. An admin can delete it after 30 days."}</span>
+              <button type="button" onClick={undoArchive} className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:outline-aui-accent">
+                Undo
+              </button>
+              <button type="button" onClick={() => setArchived(null)} aria-label="Dismiss" className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+                ×
+              </button>
+            </p>
+          )}
           <ul className="px-2 pb-3" aria-label="Conversations" aria-busy={loading !== null}>
             {noConversations && loading === "first" && (
               <li className="px-2.5">
@@ -526,6 +709,8 @@ export function Sidebar({
                 pinned={false}
                 onSelect={() => go({ page: "conversation", id: t.id })}
                 onPin={canPin ? (button) => togglePin(t.id, true, button) : undefined}
+                onRename={can("runs:write") ? (title) => rename(t, title) : undefined}
+                onArchive={can("runs:write") ? (now) => archive(t, now) : undefined}
                 flash={flashed === t.id ? flash : null}
               />
             ))}</ul></details>

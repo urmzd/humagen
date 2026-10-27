@@ -203,69 +203,53 @@ export function workspaceScreens(call: Call): Screen[] {
             await page.getByRole("button", { name: /^Open sidebar/ }).click();
         };
         await reveal();
-        const pin = sidebar.getByRole("button", { name: /^Pin / }).first();
-        await pin.waitFor();
-        const thread = await pin.getAttribute("data-pin-thread");
+        // Conversation rows pin from their ⋯ menu; focus returns to that trigger.
+        const row = sidebar.locator("div[data-pin-thread]").first();
+        await row.waitFor();
+        const thread = await row.getAttribute("data-pin-thread");
         assert.ok(thread);
-        const control = sidebar.locator(`button[data-pin-thread="${thread}"]`);
-        await page.keyboard.press("Tab");
-        await pin.focus();
+        const control = sidebar.locator(`div[data-pin-thread="${thread}"] button[aria-haspopup]`);
+        const choose = async (item: RegExp) => {
+          await control.focus();
+          await page.keyboard.press("Enter");
+          await page.getByRole("menuitem", { name: item }).first().focus();
+          const saved = page.waitForResponse(
+            (response) =>
+              response.request().method() === "PUT" &&
+              new URL(response.url()).pathname === "/api/preferences",
+          );
+          await page.keyboard.press("Enter");
+          assert.equal((await saved).status(), 200);
+        };
+        const focused = () => control.evaluate((element) => element === document.activeElement);
+        await choose(/^Pin\b/);
+        await sidebar
+          .getByRole("region", { name: "Pinned", exact: true })
+          .locator(`div[data-pin-thread="${thread}"]`)
+          .waitFor();
         await page.waitForFunction(
-          (id) => {
-            const element = document.querySelector(`button[data-pin-thread="${id}"]`);
-            return (
-              element !== null &&
-              element === document.activeElement &&
-              getComputedStyle(element).opacity === "1"
-            );
-          },
+          (id) =>
+            document.querySelector(`div[data-pin-thread="${id}"] button[aria-haspopup]`) ===
+            document.activeElement,
           thread,
           { timeout: 1000 },
         );
-        const save = page.waitForResponse(
-          (response) =>
-            response.request().method() === "PUT" &&
-            new URL(response.url()).pathname === "/api/preferences",
-        );
-        await page.keyboard.press("Enter");
-        assert.equal((await save).status(), 200);
-        await sidebar
-          .getByRole("region", { name: "Pinned", exact: true })
-          .locator(`button[data-pin-thread="${thread}"]`)
-          .waitFor();
-        assert.equal(
-          await control.evaluate((element) => element === document.activeElement),
-          true,
-          "Keyboard focus follows the pinned row",
-        );
+        assert.equal(await focused(), true, "Keyboard focus follows the pinned row");
         assert.ok(
           (await call<{ pinned: string[] }>("GET", "/api/preferences")).pinned.includes(thread),
         );
         await page.reload();
         await reveal();
         await control.waitFor();
-        assert.ok((await control.getAttribute("aria-label"))?.startsWith("Unpin "));
-        await control.focus();
-        const unpin = page.waitForResponse(
-          (response) =>
-            response.request().method() === "PUT" &&
-            new URL(response.url()).pathname === "/api/preferences",
-        );
-        await page.keyboard.press("Space");
-        assert.equal((await unpin).status(), 200);
+        await choose(/^Unpin\b/);
         await page.waitForFunction(
           (id) =>
-            document
-              .querySelector(`button[data-pin-thread="${id}"]`)
-              ?.getAttribute("aria-label")
-              ?.startsWith("Pin "),
+            document.querySelector(`div[data-pin-thread="${id}"] button[aria-haspopup]`) ===
+            document.activeElement,
           thread,
+          { timeout: 1000 },
         );
-        assert.equal(
-          await control.evaluate((element) => element === document.activeElement),
-          true,
-          "Keyboard focus follows the unpinned row",
-        );
+        assert.equal(await focused(), true, "Keyboard focus follows the unpinned row");
         assert.equal(
           (await call<{ pinned: string[] }>("GET", "/api/preferences")).pinned.includes(thread),
           false,

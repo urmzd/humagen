@@ -1,7 +1,8 @@
 import { defaultCopy } from "@humagen/components";
-import { UserIcon, PaletteIcon, ServerIcon, BotIcon, BrainIcon, GaugeIcon, PlugIcon, ShieldIcon, ScrollTextIcon, MonitorIcon, SunIcon, MoonIcon } from "@humagen/render-web";
+import { UserIcon, PaletteIcon, ServerIcon, BotIcon, BrainIcon, GaugeIcon, PlugIcon, ShieldIcon, ScrollTextIcon, MonitorIcon, SunIcon, MoonIcon, TrashIcon } from "@humagen/render-web";
 import { type FormEvent, type MouseEvent, type ReactNode, useRef, useState } from "react";
 import { ReadAudit } from "./ReadAudit.tsx";
+import { DeletionQueue } from "./DeletionQueue.tsx";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { href, type SettingsSection } from "./route.ts";
 import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revision, type Settings as Workspace } from "./api.ts";
@@ -136,6 +137,7 @@ export function Settings({
   };
 
   const canReadAudit = me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
+  const canGovern = me.permissions.includes("projects:govern");
   const sections: { id: Section; label: string; icon: ReactNode }[] = [
     { id: "profile", label: "Profile", icon: <UserIcon size={16} /> },
     { id: "appearance", label: "Appearance", icon: <PaletteIcon size={16} /> },
@@ -146,6 +148,7 @@ export function Settings({
     { id: "connections", label: "Connections", icon: <PlugIcon size={16} /> },
     { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
     ...(canReadAudit ? [{ id: "read-audit" as const, label: defaultCopy.readAudit.label, icon: <ScrollTextIcon size={16} /> }] : []),
+    ...(canGovern ? [{ id: "deletions" as const, label: defaultCopy.deletions.title, icon: <TrashIcon size={16} /> }] : []),
   ];
   // On a phone the sections are a row that scrolls inside itself, kept on the open one.
   const strip = useStrip<HTMLElement>(section);
@@ -182,6 +185,8 @@ export function Settings({
               <Problem message={defaultCopy.readAudit.denied} />
             </>
           ))}
+
+          {section === "deletions" && (canGovern ? <DeletionQueue /> : <><h1 className={pageTitle}>{defaultCopy.deletions.title}</h1><Problem message={defaultCopy.deletions.denied} /></>)}
 
           {section === "routing" && (
             <>

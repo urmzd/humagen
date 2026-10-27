@@ -27,6 +27,7 @@ Formerly warp. Old settings, config files and specs still work, with a note at s
 - **Conversations** that branch across agents. Tag `@agent` or `@auto`, or let the project's default answer.
 - **Channels and threads** where people and agents talk in one room, with private threads, project inboxes and announcements.
 - **Projects** with members, owners, tighter limits below them, and knowledge sources that ground every run.
+- **Archive and deletion review**: archived conversations wait 30 days in a queue where an admin restores them or approves permanent deletion.
 - **Agent lifecycle**: revisions, deterministic evals, schedules, run traces, alerts and analytics.
 - **Governance**: tenant permissions, depth and fan-out limits, admission policies and usage accounting.
 - **Slack**: bind a project to a channel, post as mapped people, and answer with streamed console components over Socket Mode.
