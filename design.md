@@ -49,6 +49,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-019 | Project work has readable states, scoped filters and honest recovery | Implemented; automated delivery checks pass; final browser/CI verification pending |
 | DES-020 | Workspace previews reuse console controls, fonts and consolidated navigation | Implemented; automated delivery checks pass; final browser/CI verification pending |
 | DES-021 | Sidebar conversations show agents and people; projects and conversations can be pinned independently | Implemented; saved preferences, access checks, restart and DOM regressions, and responsive sidebar captures |
+| DES-022 | Conversation actions support rename, archive and admin-reviewed deletion | Included in the consolidated branch; bounded API, durable lifecycle and review UI checks |
 
 ### DES-001: Working integrations
 
@@ -580,3 +581,25 @@ projects, revoked access and independent conversation pins. The
 participant bounds and touch targets at 320, 390 and 1280px in dark mode. Its
 multi-person roster is a simulated list response; pin persistence uses the native
 API. The open drawer uses its own bounds checks rather than page-content gutters.
+
+
+### DES-022: Conversation lifecycle in the consolidated workspace
+
+Conversation actions offer Pin, Rename, Archive and Delete. Existing participant
+identity, project pins and keyboard focus are retained when rows move or disappear.
+An archive is hidden from conversation lists and becomes eligible for deletion
+after 30 days. Delete requests immediate eligibility; neither action removes
+messages before admin approval. Settings > Deletion queue offers Restore and
+Approve Deletion, with approval disabled until due. The API requires workspace
+governance and confines every row and mutation to the current reader.
+
+The server returns at most 100 queued conversations, due ones first, and the
+console refreshes the batch after each review. Approval atomically removes stored
+messages and search entries, retaining a hidden tombstone. Run journals retain
+their existing history; this feature does not erase journal retention.
+
+Evidence: `pkg/threads/archive.go`, `internal/platform/thread_archive.go`, the
+archive/deletion HTTP routes, `DeletionQueue.tsx` and sidebar actions. Store
+regressions cover restart and tombstones; API regressions cover admin authority,
+eligibility, queue bounds and batch refill. DOM regressions cover explicit
+approval, disabled early approval, restoration, refusal and the combined menu.

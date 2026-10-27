@@ -55,15 +55,16 @@ export function sidebarParticipants(call: Call, thread: string) {
       await projectPin.scrollIntoViewIfNeeded();
       await projectPin.click();
       const conversationPin = navigation.getByRole("button", {
-        name: "Pin Draft the launch checklist with the team",
+        name: "Manage Draft the launch checklist with the team",
         exact: true,
       });
       await conversationPin.scrollIntoViewIfNeeded();
       await conversationPin.click();
+      await page.getByRole("menuitem", { name: /^Pin\b/ }).click();
       const pinned = navigation.getByRole("region", { name: "Pinned", exact: true });
       await pinned
         .getByRole("button", {
-          name: "Unpin Draft the launch checklist with the team",
+          name: "Manage Draft the launch checklist with the team",
           exact: true,
         })
         .waitFor();
@@ -72,11 +73,13 @@ export function sidebarParticipants(call: Call, thread: string) {
       await pinned.getByRole("link", { name: "Launch", exact: true }).waitFor();
       await pinned.getByRole("button", { name: "Unpin project Launch", exact: true }).click();
       const unpinConversation = pinned.getByRole("button", {
-        name: "Unpin Draft the launch checklist with the team",
+        name: "Manage Draft the launch checklist with the team",
         exact: true,
       });
       await unpinConversation.waitFor();
-      assert.equal(await unpinConversation.getAttribute("aria-pressed"), "true");
+      await unpinConversation.click();
+      await page.getByRole("menuitem", { name: /^Unpin\b/ }).waitFor();
+      await page.keyboard.press("Escape");
       await navigation.getByRole("button", { name: "Pin project Launch", exact: true }).click();
       await pinned.getByRole("link", { name: "Launch", exact: true }).waitFor();
       await pinned.scrollIntoViewIfNeeded();

@@ -3,7 +3,10 @@
 Updated 2026-10-26. This queue separates the current delivery from follow-on
 platform work. Status describes the working branch; it is not a claim that the
 deployed site has been updated. Remote verification and merge status are tracked in PR #99.
-The delivery branch excludes concurrent conversation archive/deletion work.
+The delivery branch now includes conversation archive/deletion work, following
+the consolidation review. `codex/workspace-design-merge` is the single workspace
+integration branch; the earlier resource-library edits are preserved in
+`archive/resource-library-before-consolidation` and included where current.
 
 ## Current delivery, in execution order
 
@@ -20,6 +23,14 @@ The delivery branch excludes concurrent conversation archive/deletion work.
 | 9 | Publish and merge this delivery | [PR #99](https://github.com/urmzd/humagen/pull/99) | Commit the reviewed changes, create the PR on the consolidated base, resolve CI failures and merge the exact passing revision. Refresh the local main checkout. |
 
 ### Execution owners
+
+Conversation rows include Pin, Rename, Archive and Delete in their actions menu.
+Archiving hides a conversation and schedules deletion eligibility after 30 days;
+Delete requests immediate eligibility. Only an admin can approve removal in
+Settings > Deletion queue, or restore a queued conversation. The queue returns
+bounded batches and refreshes after each review. Approved deletion removes stored
+messages and their search entries, keeps a hidden tombstone and retains run
+history in the journal. This is not a promise to erase journal retention.
 
 | Work | Owner |
 | --- | --- |

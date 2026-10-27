@@ -19,6 +19,7 @@ import type {
   AmendAgentSetupBody,
   AnnouncementInput,
   Approved,
+  ArchiveThreadBody,
   Artifact,
   Assignment,
   AssignmentInput,
@@ -77,6 +78,7 @@ import type {
   ListChannelsResponse,
   ListClientBindingsResponse,
   ListClientsResponse,
+  ListDeletionsResponse,
   ListEvalRunsResponse,
   ListEvalSuitesResponse,
   ListInboxResponse,
@@ -2507,6 +2509,93 @@ here too (429).
     return this.rawRequest<ThreadMessage>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Hides the conversation from every list. It joins the admin deletion queue 30 days later, or at once with `delete_now`. Nothing is deleted until an admin approves it. Takes what changing the thread takes. */
+  async archiveThread(id: string, body?: ArchiveThreadBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/archive";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async archiveThreadRaw(id: string, body?: ArchiveThreadBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/archive";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Bring an archived conversation back and cancel its deletion */
+  async unarchiveThread(id: string, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/archive";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async unarchiveThreadRaw(id: string, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/archive";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Up to 100 readable archived conversations, those due for approval first. One is due when deletion was asked for, or 30 days after it was archived. Reload after reviewing a batch to read the next items. */
+  async listDeletions(options?: RequestOptions): Promise<ListDeletionsResponse> {
+    const path = "/api/deletions";
+    return this.request<ListDeletionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listDeletionsRaw(options?: RequestOptions): Promise<ApiResponse<ListDeletionsResponse>> {
+    const path = "/api/deletions";
+    return this.rawRequest<ListDeletionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Removes its messages and keeps a tombstone so it never shows again. Its runs stay in the run journal, hidden with it. */
+  async approveDeletion(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/deletions/{id}/approve";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      ...options,
+    });
+  }
+
+  async approveDeletionRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/deletions/{id}/approve";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Keep an archived conversation and bring it back */
+  async rejectDeletion(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/deletions/{id}/reject";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("POST", path, {
+      ...options,
+    });
+  }
+
+  async rejectDeletionRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/deletions/{id}/reject";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("POST", path, {
       ...options,
     });
   }
