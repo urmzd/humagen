@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.27.3 (2026-10-27)
+
+### Bug Fixes
+
+- **web**: group composer context into scoped menus (#97) ([b7e4651](https://github.com/urmzd/humagen/commit/b7e465194a3c751b37ff59fa26b5280fa7c660b2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.27.2...v0.27.3)
+
+
 ## 0.27.2 (2026-10-27)
 
 ### Bug Fixes
