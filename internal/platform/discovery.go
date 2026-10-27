@@ -17,12 +17,17 @@ import (
 
 // DiscoveryQuery bounds navigation rather than downloading workspace data.
 type DiscoveryQuery struct {
+	Content bool
 	Q       string
 	Limit   int
 	Kinds   []string
 	Project *string
 }
 type DiscoveryItem struct {
+	Snippet string   `json:"snippet,omitempty"`
+	Thread  string   `json:"thread,omitempty"`
+	Message string   `json:"message,omitempty"`
+	Source  string   `json:"source,omitempty"`
 	Kind    string   `json:"kind"`
 	ID      string   `json:"id"`
 	Title   string   `json:"title"`
@@ -44,14 +49,16 @@ func boundedTitle(text string) string {
 // its native route. There is no unfiltered count or all-workspace client dump.
 func (p *Platform) Discover(ctx context.Context, who auth.Principal, q DiscoveryQuery) ([]DiscoveryItem, error) {
 	q.Q = strings.TrimSpace(q.Q)
-	if utf8.RuneCountInString(q.Q) > 200 || q.Limit < 0 || q.Limit > 50 || len(q.Kinds) > 3 {
+	if utf8.RuneCountInString(q.Q) > 200 || q.Limit < 0 || q.Limit > 50 || len(q.Kinds) > 6 {
 		return nil, fmt.Errorf("%w: invalid bounded discovery query", projects.ErrInvalid)
 	}
 	if q.Limit == 0 {
 		q.Limit = 20
 	}
 	for _, kind := range q.Kinds {
-		if kind != "project" && kind != "agent" && kind != "conversation" {
+		navigation := kind == "project" || kind == "agent" || kind == "conversation"
+		content := q.Content && (kind == "message" || kind == "file" || kind == "source")
+		if !navigation && !content {
 			return nil, projects.ErrInvalid
 		}
 	}
@@ -59,7 +66,7 @@ func (p *Platform) Discover(ctx context.Context, who auth.Principal, q Discovery
 	canProjects := wants("project") && who.Can(auth.ProjectsRead)
 	canAgents := wants("agent") && who.Can(auth.AgentsRead)
 	canConversations := wants("conversation") && who.Can(auth.RunsRead)
-	if !canProjects && !canAgents && !canConversations {
+	if !q.Content && !canProjects && !canAgents && !canConversations {
 		return []DiscoveryItem{}, nil
 	}
 	seer := p.Seer(who)
@@ -139,6 +146,13 @@ func (p *Platform) Discover(ctx context.Context, who auth.Principal, q Discovery
 			out = append(out, DiscoveryItem{Kind: "conversation", ID: th.ID, Title: boundedTitle(cmp.Or(th.Title, th.ID)), Project: th.Project, Channel: th.Channel})
 		}
 	}
+	if q.Content {
+		content, err := p.discoverContent(who, q, seer)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, content...)
+	}
 	score := func(item DiscoveryItem) int {
 		title, id := strings.ToLower(item.Title), strings.ToLower(item.ID)
 		if needle != "" && (title == needle || id == needle) {
@@ -149,7 +163,7 @@ func (p *Platform) Discover(ctx context.Context, who auth.Principal, q Discovery
 		}
 		return 2
 	}
-	kindOrder := map[string]int{"project": 0, "conversation": 1, "agent": 2}
+	kindOrder := map[string]int{"project": 0, "conversation": 1, "agent": 2, "message": 3, "file": 4, "source": 5}
 	slices.SortStableFunc(out, func(a, b DiscoveryItem) int {
 		if c := cmp.Compare(score(a), score(b)); c != 0 {
 			return c

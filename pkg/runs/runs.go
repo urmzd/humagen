@@ -25,6 +25,8 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/internal/textindex"
+
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -396,8 +398,9 @@ func (r Run) Left() int64 {
 
 // Index holds every run this process has accepted.
 type Index struct {
-	mu   sync.RWMutex
-	runs map[string]*Run
+	search textindex.Index
+	mu     sync.RWMutex
+	runs   map[string]*Run
 	// order is run ids, oldest first.
 	order []string
 	// titles names conversations, by tenant and thread.

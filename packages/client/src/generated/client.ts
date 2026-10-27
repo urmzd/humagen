@@ -2357,12 +2357,13 @@ here too (429).
     });
   }
 
-  /** Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly. */
-  async discoverWorkspace(q?: string, limit?: number, kinds?: string, project?: string, options?: RequestOptions): Promise<DiscoverWorkspaceResponse> {
+  /** Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly. With content=true, also searches original messages and answers from the past year (1000 candidates per kind), current files (up to 65536 text characters indexed at publication), and at most 50 readable retained knowledge sources. Prepared context and tool payloads are excluded. Source hits link to their source documents. */
+  async discoverWorkspace(q?: string, limit?: number, content?: boolean, kinds?: string, project?: string, options?: RequestOptions): Promise<DiscoverWorkspaceResponse> {
     let path = "/api/discovery";
     const _q = new URLSearchParams();
     if (q !== undefined && q !== null) _q.set("q", String(q));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (content !== undefined && content !== null) _q.set("content", String(content));
     if (kinds !== undefined && kinds !== null) _q.set("kinds", String(kinds));
     if (project !== undefined && project !== null) _q.set("project", String(project));
     const _qs = _q.toString();
@@ -2372,11 +2373,12 @@ here too (429).
     });
   }
 
-  async discoverWorkspaceRaw(q?: string, limit?: number, kinds?: string, project?: string, options?: RequestOptions): Promise<ApiResponse<DiscoverWorkspaceResponse>> {
+  async discoverWorkspaceRaw(q?: string, limit?: number, content?: boolean, kinds?: string, project?: string, options?: RequestOptions): Promise<ApiResponse<DiscoverWorkspaceResponse>> {
     let path = "/api/discovery";
     const _q = new URLSearchParams();
     if (q !== undefined && q !== null) _q.set("q", String(q));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (content !== undefined && content !== null) _q.set("content", String(content));
     if (kinds !== undefined && kinds !== null) _q.set("kinds", String(kinds));
     if (project !== undefined && project !== null) _q.set("project", String(project));
     const _qs = _q.toString();

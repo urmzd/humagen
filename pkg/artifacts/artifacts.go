@@ -21,6 +21,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/urmzd/humagen/internal/textindex"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -57,7 +58,8 @@ const MaxTitle = 120
 
 // Artifact is one published version of a file.
 type Artifact struct {
-	ID string `json:"id"`
+	SearchText string `json:"-"`
+	ID         string `json:"id"`
 	// Title is the file's name, as a person will save it.
 	Title string `json:"title"`
 	Kind  Kind   `json:"kind"`
@@ -115,6 +117,7 @@ func CleanTitle(title string) (string, error) {
 }
 
 type tenant struct {
+	search    textindex.Index
 	items     []*Artifact // oldest first
 	byID      map[string]*Artifact
 	next      int
@@ -144,8 +147,9 @@ type stored struct {
 // storedArtifact is an artifact with what its wire form leaves out.
 type storedArtifact struct {
 	Artifact
-	Key    string   `json:"key"`
-	Within []string `json:"within,omitempty"`
+	Key        string   `json:"key"`
+	Within     []string `json:"within,omitempty"`
+	SearchText string   `json:"search_text,omitempty"`
 }
 
 const nextKey = "next"
@@ -188,7 +192,7 @@ func Open(st state.Store) (*Index, error) {
 			return nil
 		}
 		a := r.Artifact.Artifact
-		a.Key, a.Within = r.Artifact.Key, r.Artifact.Within
+		a.Key, a.Within, a.SearchText = r.Artifact.Key, r.Artifact.Within, r.Artifact.SearchText
 		a.order, a.record = r.Order, key
 		if r.Order == 0 {
 			a.order = seqOf(a.ID)
@@ -199,6 +203,7 @@ func Open(st state.Store) (*Index, error) {
 		t.orders[a.ID] = a.order
 		t.items = append(t.items, &a)
 		t.byID[a.ID] = &a
+		t.search.Put(a.ID, a.Title+"\n"+a.Description+"\n"+a.Preview+"\n"+a.SearchText)
 		t.next = max(t.next, a.order)
 		return nil
 	})
@@ -281,7 +286,7 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 	}
 	b.Put(tenantName, nextKey, stored{Next: a.order, Opaque: true, LegacyMax: legacyMax})
 	a.Within = slices.Clone(a.Within)
-	b.Put(tenantName, a.record, stored{Order: a.order, Artifact: &storedArtifact{Artifact: a, Key: a.Key, Within: a.Within}})
+	b.Put(tenantName, a.record, stored{Order: a.order, Artifact: &storedArtifact{Artifact: a, Key: a.Key, Within: a.Within, SearchText: a.SearchText}})
 	if err := b.Commit(); err != nil {
 		return Artifact{}, fmt.Errorf("artifacts: write: %w", err)
 	}
@@ -290,6 +295,7 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 	delete(t.reserved, a.ID)
 	t.items = append(t.items, &a)
 	t.byID[a.ID] = &a
+	t.search.Put(a.ID, a.Title+"\n"+a.Description+"\n"+a.Preview+"\n"+a.SearchText)
 	return a, nil
 }
 
@@ -344,6 +350,7 @@ func (x *Index) Delete(tenantName, id string) (Artifact, error) {
 		return Artifact{}, fmt.Errorf("artifacts: write: %w", err)
 	}
 	delete(t.byID, id)
+	t.search.Delete(id)
 	t.items = slices.DeleteFunc(t.items, func(o *Artifact) bool { return o.ID == id })
 	return *a, nil
 }
@@ -362,6 +369,7 @@ type Query struct {
 	Thread  string
 	Kind    Kind
 	// Title keeps files whose title contains this, whatever the case.
+	Search string
 	Title  string
 	Limit  int
 	Before string
@@ -412,6 +420,13 @@ func (x *Index) Page(tenantName string, q Query) ([]Artifact, string, error) {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
 	t := x.peek(tenantName)
+	var matching map[string]bool
+	if q.Search != "" {
+		matching = map[string]bool{}
+		for _, id := range t.search.Search(q.Search, len(t.items), nil) {
+			matching[id] = true
+		}
+	}
 	before := -1
 	if beforeID != "" {
 		if n, legacy := seq(beforeID); legacy {
@@ -441,7 +456,7 @@ func (x *Index) Page(tenantName string, q Query) ([]Artifact, string, error) {
 		if before >= 0 && a.order >= before {
 			continue
 		}
-		if !q.match(a) {
+		if (matching != nil && !matching[a.ID]) || !q.match(a) {
 			continue
 		}
 		if len(out) == limit {

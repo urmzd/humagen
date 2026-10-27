@@ -11,7 +11,7 @@ import (
 
 func (s *Server) discover(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	query := r.URL.Query()
-	in := platform.DiscoveryQuery{Q: query.Get("q")}
+	in := platform.DiscoveryQuery{Q: query.Get("q"), Content: query.Get("content") == "true"}
 	if query.Has("limit") {
 		n, err := strconv.Atoi(query.Get("limit"))
 		if err != nil || n < 1 || n > 50 {

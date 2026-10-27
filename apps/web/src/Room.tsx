@@ -556,11 +556,11 @@ export function ThreadRoom({
         agents={answering}
         location={
           <>
-            <span>{th.visibility === "private" ? words.private : (
-              <button type="button" onClick={() => onOpenChannel(th.project, th.channel)} className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
-                {words.sharedIn(projectTitle(projects, th.project, workspaceName,personalProject), th.channel)}
+            {th.visibility !== "private" && (
+              <button type="button" aria-label={words.sharedIn(projectTitle(projects, th.project, workspaceName,personalProject), th.channel)} onClick={() => onOpenChannel(th.project, th.channel)} className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+                {words.channel(th.channel)}
               </button>
-            )}</span>
+            )}
             {th.surface && <span className="ml-3">{words.inSlack}</span>}
           </>
         }

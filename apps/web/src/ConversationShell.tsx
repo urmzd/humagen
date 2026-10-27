@@ -1,9 +1,10 @@
 import { defaultCopy } from "@humagen/components";
 import {
   ArtifactOpenContext,
-  FolderIcon,
+  ProjectIcon,
   LayersIcon,
-  SettingsIcon,
+  EllipsisIcon,
+  ShareIcon,
   UsersIcon,
 } from "@humagen/render-web";
 import { Inspector } from "@humagen/web";
@@ -19,12 +20,12 @@ import {
 import { ConversationAccess } from "./ConversationAccess.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
-import type { ConversationPanel } from "./route.ts";
+import { href, type ConversationPanel } from "./route.ts";
 import { AgentMark, Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
 const control =
-  "inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-aui px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
 
 /** The conversation's own page header, used by a room and by older run-based chats. */
 export function ConversationPage({
@@ -57,35 +58,24 @@ export function ConversationPage({
       <Page
         layout="conversation"
         title={title}
-        start={
-          <button
-            ref={projectRef}
-            type="button"
-            className={`${control} max-w-full justify-start`}
-            title={words.projectAction}
-            aria-label={personal && onProject ? defaultCopy.threads.share : project}
-            onClick={onProject}
-            disabled={!onProject}
-          >
-            <FolderIcon size={15} />
-            <span className="truncate">{project}</span>
-          </button>
-        }
+        start={<span className="inline-flex min-w-0 max-w-full items-center gap-1.5" title={project}><ProjectIcon size={14}/><span className="max-w-48 truncate">{project}</span></span>}
         meta={
           <span className="inline-flex flex-wrap items-center gap-x-3">
-            <span>{location ?? (personal ? words.private : words.shared)}</span>
+            {personal && <span>{words.private}</span>}
+            {location}
             {agents.length > 0 && <span>{words.agents(new Set(agents).size)}</span>}
           </span>
         }
         actions={
           <>
+            {personal && onProject && <button ref={projectRef} type="button" className={control} aria-label={defaultCopy.threads.share} onClick={onProject}><ShareIcon size={18}/><span className="hidden sm:inline">{defaultCopy.threads.share}</span></button>}
             <button
               type="button"
               className={control}
               aria-label={words.context}
               onClick={() => onPanel("context")}
             >
-              <LayersIcon size={16} />
+              <LayersIcon size={18} />
               <span className="hidden xl:inline">{words.context}</span>
             </button>
             <button
@@ -94,11 +84,11 @@ export function ConversationPage({
               aria-label={words.people}
               onClick={() => onPanel("people")}
             >
-              <UsersIcon size={16} />
+              <UsersIcon size={18} />
             </button>
             <Popover
               label={words.settings}
-              button={<SettingsIcon size={16} />}
+              button={<EllipsisIcon size={18} />}
               className={control}
               align="right"
               narrow
@@ -157,9 +147,12 @@ function Sources({ project }: { project: string }) {
   });
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-aui-xs text-aui-muted">{words.contextHint}</p>
-      {sources.length === 0 && (
-        <p className="text-aui-sm text-aui-muted">{words.sourcesEmpty}</p>
+      {sources.length > 0 ? <p className="text-aui-xs text-aui-muted">{words.contextHint}</p> : (
+        <div className="flex flex-col items-start gap-3 py-6">
+          <LayersIcon size={24} className="text-aui-muted" />
+          <p className="text-aui-sm text-aui-muted">{words.sourcesEmpty}</p>
+          <a href={href({page:"project",name:project,tab:"context"})} className="inline-flex min-h-9 items-center rounded-aui text-aui-xs font-medium text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent">{words.artifactOpenContext}</a>
+        </div>
       )}
       {sources.map((source) => <SourceCard key={source.name} source={source} />)}
     </div>

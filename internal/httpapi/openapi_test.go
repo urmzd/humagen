@@ -1815,6 +1815,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "GET", placementRoute, "/api/threads/"+activeID+"/placement?project=Field&channel=renewals", "", http.StatusConflict)
 
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?q=Field&limit=5", "", http.StatusOK)
+	c.call(ana, "GET", "/api/discovery", "/api/discovery?q=release&content=true&kinds=message,file,source&limit=20", "", http.StatusOK)
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?limit=51", "", http.StatusBadRequest)
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?kinds=unknown", "", http.StatusBadRequest)
 	c.call(ana, "GET", "/api/discovery", "/api/discovery?project=UnknownProject", "", http.StatusNotFound)

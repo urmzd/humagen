@@ -83,6 +83,7 @@ func (p *Platform) ShownArtifact(tenant string, a artifacts.Artifact) artifacts.
 		a.Title = strings.ReplaceAll(a.Title, original, "published")
 		a.Description = strings.ReplaceAll(a.Description, original, "[Previous project]")
 		a.Preview = strings.ReplaceAll(a.Preview, original, "[Previous project]")
+		a.SearchText = strings.ReplaceAll(a.SearchText, original, "[Previous project]")
 	}
 	return a
 }

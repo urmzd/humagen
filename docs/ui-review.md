@@ -332,3 +332,24 @@ Navigation uses one semantic shared icon per destination: a database for
 sources, wrench for skills, brain for memory, plug for integrations, network for
 coordination, shield for policies, sliders for controls and a record for audit.
 Search uses a magnifying glass. Icons supplement the existing text labels.
+
+
+## Conversation drawers and search
+
+Desktop inspectors dock beside the conversation. Keep the reading column and
+composer within the remaining width; only compact screens use a modal edge
+drawer. Use one title aligned with its project/channel metadata and shared
+18px header icons in 36px controls. Share contains placement controls; More
+contains less frequent conversation views. Charcoal surfaces give the sidebar,
+conversation and drawer separate planes without floating rounded containers.
+
+[AI Elements conversation](https://elements.ai-sdk.dev/components/conversation)
+and [Aceternity sidebar](https://ui.aceternity.com/components/sidebar) and
+[modal](https://ui.aceternity.com/components/animated-modal) informed the review.
+Implementation retains Humagen's existing React primitives, shared icons and
+native dialog semantics.
+
+Search uses a centered native modal with readable result excerpts, filters,
+arrow-key navigation, Escape and focus return. It searches existing readable
+workspace content through the bounded server API; search never invokes an
+agent. DES-012 records indexing coverage and limits.

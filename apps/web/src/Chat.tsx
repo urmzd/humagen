@@ -18,6 +18,7 @@ import { ApiError, api, coworking, type ProjectView, type Revision, type Thread 
 import { askedOf, copyFor } from "./asks.ts";
 import { useCompletion } from "./completion.ts";
 import { useThreadSelection } from "./selection.ts";
+import { ProjectPicker } from "./ProjectPicker.tsx";
 import { HomePage, type HomeAnnouncement } from "./HomePage.tsx";
 import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { emptySelection, MAX_SELECTED, PlusMenu, withAgent, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
@@ -358,7 +359,7 @@ export function Chat({
   if(!threadId&&startIn===undefined&&personalProject!==undefined)setSelection(current=>current.project===null?{...current,project:personalProject}:current);
  },[threadId,startIn,personalProject]);
   const project = selection.project ?? personalProject ?? null;
-  const select=(next:Selection)=>setSelection(next.project===null && personalProject!==undefined?{...next,project:personalProject,channel:"general"}:next);
+  const select=(next:Selection)=>{if(next.project!==selection.project)setOffered(null);setSelection(next.project===null && personalProject!==undefined?{...next,project:personalProject,channel:"general"}:next)};
   const [draft, setDraft] = useState("");
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
@@ -527,7 +528,7 @@ export function Chat({
   };
 
   // A suggestion is offered only for an agent that can answer where the conversation goes.
-  const starters = STARTERS.filter((st) => agents.some((a) => a.spec.name === st.agent) && (offered === null || offered.has(st.agent)));
+  const starters = STARTERS.filter((st) => agents.some((a) => a.spec.name === st.agent) && (offered !== null && offered.has(st.agent)));
 
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
@@ -608,7 +609,7 @@ export function Chat({
                     }} /> : undefined}
                   />
                 ),
-                chips: <SelectionChips personalProject={personalProject} selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectFixed={selection.project===personalProject} />,
+                chips: <SelectionChips personalProject={personalProject} selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectControl={<ProjectPicker projects={projects??null} kinds={root?.kinds} value={selection.project} personalProject={personalProject} channel={selection.channel} canCreate={canCreateProject} onCreated={onProjectCreated} onChange={project=>select({...selection,project,channel:"general"})}/>} />,
               })
         }
       />
@@ -672,12 +673,10 @@ export function Chat({
           the conversation, as a chip, not an @mention.
         */}
         {canRun && starters.length > 0 && draft.trim() === "" && (
-          // One line, never one left alone on a line of its own: a phone
-          // shows the first two, which fit inside its gutter, and a wider
-          // screen all of them.
-          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-3 overflow-hidden px-4 sm:gap-x-4 sm:px-7">
-            {starters.map((st, i) => (
-              <li key={st.agent} className={`shrink-0 ${i >= 2 ? "hidden sm:block" : ""}`}>
+          // Every suggestion remains available and wraps within the reading column.
+          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 px-4 sm:px-5">
+            {starters.map((st) => (
+              <li key={st.agent} className="min-w-0 max-w-full">
                 <button
                   type="button"
                   onClick={() => {
@@ -687,9 +686,9 @@ export function Chat({
                     setSelection(next);
                     setSeed({ text: st.text });
                   }}
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-aui py-1 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-aui border border-aui-border px-3 py-2 text-left text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
-                  <AgentMark name={st.agent} size={12} />
+                  <AgentMark name={st.agent} size={14} />
                   <span>{st.label}</span>
                 </button>
               </li>

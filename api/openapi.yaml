@@ -2288,13 +2288,14 @@ paths:
     get:
       operationId: discoverWorkspace
       tags: [projects]
-      summary: Search readable projects, agents and conversations within server bounds
-      description: Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly.
+      summary: Search readable workspace destinations and indexed content
+      description: Returns only entity kinds the caller has permission to read. Project roles, private participation, current placement and fork source access apply before any result is emitted. No total or hidden-object count is returned. Agent scans are capped at 1000 revisions; exact canonical names are checked directly. With content=true, also searches original messages and answers from the past year (1000 candidates per kind), current files (up to 65536 text characters indexed at publication), and at most 50 readable retained knowledge sources. Prepared context and tool payloads are excluded. Source hits link to their source documents.
       x-permission: authenticated
       parameters:
         - {name: q, in: query, schema: {type: string, maxLength: 200}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
-        - {name: kinds, in: query, schema: {type: string}, description: "Comma-separated project, agent and conversation kinds. Omitted includes all permitted kinds."}
+        - {name: content, in: query, schema: {type: boolean, default: false}, description: "Include indexed message, file and source content."}
+        - {name: kinds, in: query, schema: {type: string}, description: "Comma-separated project, agent and conversation kinds; content=true also permits message, file and source. Omitted includes all permitted kinds."}
         - {name: project, in: query, schema: {type: string}, description: An optional project scope. For agents this selects only agents available there; for conversations this selects their current project.}
       responses:
         "200":
@@ -8511,12 +8512,16 @@ components:
       additionalProperties: false
       required: [kind, id, title]
       properties:
-        kind: {type: string, enum: [project, agent, conversation]}
+        kind: {type: string, enum: [project, agent, conversation, message, file, source]}
         id: {type: string}
         title: {type: string, maxLength: 200}
         project: {type: string}
         channel: {type: string}
         hue: {type: number, minimum: 0, maximum: 360}
+        snippet: {type: string, maxLength: 242}
+        thread: {type: string}
+        message: {type: string}
+        source: {type: string}
     ProjectTemplate:
       type: object
       additionalProperties: false

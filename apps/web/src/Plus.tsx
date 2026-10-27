@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { CheckIcon, FileIcon, FolderIcon, MessageIcon, XIcon } from "@humagen/render-web";
+import { CheckIcon, FileIcon, ProjectIcon, MessageIcon, XIcon } from "@humagen/render-web";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { coworking, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { ProjectChoices } from "./ProjectPicker.tsx";
@@ -229,6 +229,7 @@ export function PlusMenu({
         <ProjectChoices
           projects={projects}
           kinds={kinds}
+          personalProject={personalProject}
           value={project}
           canCreate={canCreateProject}
           onChange={(name) => onChange({ ...selection, project: name, channel: "general" })}
@@ -300,7 +301,7 @@ export function PlusMenu({
                 title={projectFixed}
                 onClick={() => setChoosing(true)}
               >
-                {project === "" ? <MessageIcon size={16} className="text-aui-muted" /> : <FolderIcon size={16} className="text-aui-muted" />}
+                {project === "" ? <MessageIcon size={16} className="text-aui-muted" /> : <ProjectIcon size={16} className="text-aui-muted" />}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{project === null ? words.chooseProject : project === "" ? words.projectless : chosen ? titleOf(chosen) : project===personalProject?defaultCopy.projects.personalTitle:project}</span>
                   {chosen && above(chosen).length > 0 && <span className="block truncate text-aui-xs text-aui-muted">{above(chosen).join(" › ")}</span>}
@@ -350,7 +351,9 @@ export function SelectionChips({
   onChange,
   projectFixed,
   personalProject,
+  projectControl,
 }: {
+  projectControl?: ReactNode;
   selection: Selection;
   projects?: ProjectView[] | null;
   personalProject?:string;
@@ -380,14 +383,16 @@ export function SelectionChips({
         </li>
       ))}
       {label !== null && (
-        <li className={chip} title={path.length > 0 ? [...path, where].join(" › ") : undefined}>
-          <FolderIcon size={13} className="shrink-0 text-aui-muted" />
+        <li className={projectControl ? "min-w-0 max-w-full" : chip} title={path.length > 0 ? [...path, where].join(" › ") : undefined}>
+          {projectControl ?? <>
+          <ProjectIcon size={13} className="shrink-0 text-aui-muted" />
           <span className="truncate">{label}</span>
           {!projectFixed && (
             <button type="button" className={remove} aria-label={words.removeProject(label)} onClick={() => onChange({ ...selection, project: null, channel: "general" })}>
               <XIcon size={12} />
             </button>
           )}
+          </>}
         </li>
       )}
       {agents.length >= 2 && (

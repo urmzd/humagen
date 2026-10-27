@@ -25,6 +25,7 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/textindex"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -346,6 +347,12 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 	}
 	if isText(mime) {
 		a.Preview = clip(string(b), previewChars)
+		a.SearchText = clip(string(b), textindex.MaxText)
+	}
+	if a.SearchText == "" {
+		if extracted, err := nativefiles.Text(title, b); err == nil {
+			a.SearchText = clip(extracted, textindex.MaxText)
+		}
 	}
 	saved, err := p.Artifacts.Publish(pub.Tenant, a)
 	if err != nil {

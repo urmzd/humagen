@@ -76,3 +76,58 @@ func TestDiscoveryReturnsOnlyPermittedReadableWorkWithinBounds(t *testing.T) {
 		t.Fatalf("result cap: %+v %v", rows, err)
 	}
 }
+
+func TestDiscoverySearchesSavedContentWithoutDisclosingHiddenWork(t *testing.T) {
+	p := startWith(t, platform.Config{})
+	if _, err := p.CreateProject(t.Context(), tenant, govern, platform.ProjectInput{Name: "SearchLaunch", Members: []projects.Entry{{Who: projects.Everyone, Role: projects.Member}, {Who: admin.Subject, Role: projects.Owner}}}); err != nil {
+		t.Fatal(err)
+	}
+	visible := startThread(t, p, admin, platform.ThreadInput{Project: "SearchLaunch", Text: "Ordinary agenda", Visibility: threads.Shared, PostOnly: true})
+	hidden := startThread(t, p, admin, platform.ThreadInput{Project: "SearchLaunch", Text: "Private agenda", Visibility: threads.Private, PostOnly: true})
+	for _, id := range []string{visible.Thread.ID, hidden.Thread.ID} {
+		if _, _, err := p.Threads.Post(tenant, id, threads.Message{By: admin.Subject, Name: "Ada", Text: "Zephyr evidence in a later message"}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.PutFile(tenant, visible.Thread.ID, "ordinary.md", "Zephyr published file evidence"); err != nil {
+		t.Fatal(err)
+	}
+	file, err := p.Publish(t.Context(), platform.Publication{Tenant: tenant, Project: "SearchLaunch", Thread: visible.Thread.ID, Path: "ordinary.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Knowledge.Create(tenant, "search-reference", "Reference", "ada", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Knowledge.Add(tenant, "search-reference", "Reference page", "", "Zephyr retained knowledge evidence", "ada", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.Discover(t.Context(), operator, platform.DiscoveryQuery{Q: "zephyr", Content: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]bool{}
+	for _, hit := range got {
+		if hit.Thread == hidden.Thread.ID || strings.Contains(hit.Title, "Private") {
+			t.Fatalf("private content leaked: %+v", hit)
+		}
+		if hit.Kind == "message" && (hit.Thread != visible.Thread.ID || hit.Message != "m-2" || !strings.Contains(hit.Snippet, "Zephyr")) {
+			t.Fatal(hit)
+		}
+		if hit.Kind == "file" && hit.ID != file.ID {
+			t.Fatal(hit)
+		}
+		kinds[hit.Kind] = true
+	}
+	if !kinds["message"] || !kinds["file"] || !kinds["source"] {
+		t.Fatalf("missing indexed content kinds: %+v", got)
+	}
+	legacy, err := p.Discover(t.Context(), operator, platform.DiscoveryQuery{Q: "zephyr"})
+	if err != nil || len(legacy) != 0 {
+		t.Fatalf("content opt-in changed navigation search: %v %v", legacy, err)
+	}
+	nobody := auth.Principal{Subject: "nobody", Tenant: tenant, Kind: auth.User}
+	if got, err := p.Discover(t.Context(), nobody, platform.DiscoveryQuery{Q: "zephyr", Content: true}); err != nil || len(got) != 0 {
+		t.Fatalf("ungranted content: %v %v", got, err)
+	}
+}

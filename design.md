@@ -29,6 +29,9 @@ govern implementation, including shared presentation and agent identity.
 | DES-008 | Agent/project discovery belongs in the new-conversation picker | Implemented; search and selection preserve drafts/files and cannot submit work |
 | DES-009 | Use consistent action icons and readable inbox recovery groups | Implemented; semantic shared icons, touch targets, collapsed companion diagnostics and native recovery captures |
 | DES-010 | Notifications are a top-level destination with a live navigation count | Implemented; one permission-gated delivery reader powers the bell and page, while preferences stay separate |
+| DES-011 | Conversation drawers reflow desktop content, with a compact header and consistent controls | Implemented; shared inspector dock, mobile native dialogs and responsive browser regressions |
+| DES-012 | Workspace search is a centered modal with indexed content and native destinations | Implemented; permission-confined content indexes, API contract, replay and search interaction tests |
+| DES-013 | Project selection is directly editable before starting work; every starter suggestion remains available | Implemented; stacked project glyph, searchable drawer, draft-preserving selection and wrapping starters |
 
 ### DES-001: Working integrations
 
@@ -248,3 +251,69 @@ cannot restore an acknowledged delivery, and failures keep retry available.
 Dismissal acknowledges only a delivery; opening an update leads to the original
 inbox item. DOM and route regressions cover these boundaries, and native screen
 states cover empty, error and digest views with phone and desktop layouts.
+
+### DES-011: Docked conversation workspace
+
+Context, People & Access, Activity, Share and Deliverables use the shared
+inspector dock. At 1024px and above the drawer occupies its own flex column,
+reflowing the conversation and composer. At smaller widths it is a native modal
+edge drawer with contained focus. Closing returns focus and restores the main
+column. The header has one left-aligned title, project/channel metadata and a
+compact action row. Share owns project placement; More contains Activity and
+Deliverables. Control geometry uses the existing shared icon family.
+
+Dark console surfaces use neutral charcoal planes, Figtree for reading, and
+the existing Bricolage display face. Agent hues and focus use the existing
+accent tokens. The `conversation-drawer-reflow` browser state asserts geometry
+and desktop/mobile modality. Existing DES-010 removes the boxed Notifications
+disclosure and retains the canonical bell destination.
+
+### DES-012: Indexed workspace search
+
+Search Workspace opens a centered native modal from navigation or Cmd/Ctrl+K.
+Filters cover projects, agents, conversations, messages, files and sources.
+Results keep native links, contextual excerpts and keyboard navigation; Escape
+restores the opener. Pending requests clear previous results, and failures
+show an explicit error. Search never starts an agent.
+
+`GET /api/discovery?content=true` adds saved human messages and original agent
+requests/answers, published file text and retained source passages. Current
+permissions, project placement and private/fork access confine every result.
+Message/run search covers the past year, at most 1000 matching candidates per
+kind; the modal returns 20 results. File text is capped at 65536 characters at
+publication. Older files retain title, description and existing preview lookup
+until republished. Source search uses the existing BM25 index, at most 50
+readable retained sources. Private prepared context, reasoning and tool payloads
+are excluded. Live providers are not queried on each keystroke.
+
+Indexes derive from authoritative records and rebuild after restart. Go tests
+cover indexing, replay, tenant confinement, current file versions and deletion;
+platform tests exercise readable and hidden content. Console DOM tests exercise
+native result destinations and request failures. The `workspace-search-modal`
+browser state checks centering, keyboard traversal and focus return.
+
+### DES-013: Project selection and starter suggestions
+
+Projects use a folder with a small second edge underneath. The composer footer
+opens a searchable project drawer directly, including when Personal is selected.
+Personal and Company remain explicit homes; selecting another project resets
+only the channel. Draft text and attachments stay in the mounted composer.
+Existing conversations retain their fixed placement and Share review.
+
+Starter suggestions wrap with consistent marks and touch targets. No action is
+hidden at phone widths. A suggestion fills an editable draft and adds its agent
+while retaining the project; sending remains explicit. DOM regressions cover
+Personal selection, preserved drafts and project-aware starters. The
+`home-project-picker` screen exercises the complete selection flow and checks
+all three suggestion buttons fit within the phone viewport.
+
+Validation for DES-011 through DES-013: production build; 15 workspace
+typechecks; 593 console tests; complete text-index, thread, run and artifact
+store suites with `-race`; focused platform access/projection/replay and HTTP
+contract tests; shared Slack validation (79 tests). Dark Chromium captures
+passed 18 phone/desktop states and 12 states at 320, 390 and 1280px, including
+project switching, all starter suggestions, search focus return and drawer
+reflow. Local captures live under `.screens/ui-cleanup` and
+`.screens/project-selection` in the cleanup worktree. No live deployment is
+claimed. This layer builds on main after PR #91 and retains the merged stack's action,
+notification, native-file, source and fork-lock changes.

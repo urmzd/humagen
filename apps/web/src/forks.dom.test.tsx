@@ -118,7 +118,7 @@ test("global discovery navigates real agent and conversation results using bound
  render(<QuickSwitcher onClose={()=>{}} onGo={(route)=>opened.push(route)}/>);
  fireEvent.click(await screen.findByRole("link",{name:/^planner/}));
  assert.deepEqual(opened,[{page:"agent",name:"planner",tab:"prompt"}]);
- fireEvent.change(screen.getByLabelText(defaultCopy.projectSwitcher.kinds),{target:{value:"conversation"}});
+ fireEvent.click(screen.getByRole("button",{name:defaultCopy.projectSwitcher.conversations}));
  fireEvent.click(await screen.findByRole("link",{name:/^Review supplier plan/}));
  assert.deepEqual(opened[1],{page:"conversation",id:"th-task"});
  assert.equal(seen.at(-1)?.get("limit"),"20");
