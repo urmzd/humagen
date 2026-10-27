@@ -10,8 +10,6 @@
     "test": "node --test --experimental-strip-types src/*.test.ts"
   },
   "dependencies": {
-    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
-    "@fontsource-variable/figtree": "^5.3.0",
     "@humagen/adapter": "workspace:*",
     "@humagen/components": "workspace:*",
     "@humagen/core": "workspace:*",

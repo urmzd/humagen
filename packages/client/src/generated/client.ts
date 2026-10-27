@@ -85,6 +85,7 @@ import type {
   ListKnowledgeResourcesResponse,
   ListKnowledgeSourcesResponse,
   ListLibrarySkillsResponse,
+  ListMemoryFoldersResponse,
   ListMentionsResponse,
   ListModelProvidersResponse,
   ListNativeNotificationsResponse,
@@ -625,6 +626,33 @@ export class ApiClient {
     let path = "/api/me/notifications/{id}/ack";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Checks each native read permission before exposing owners or counts. Returns at most two personal/company folders plus limit project and limit agent folders, and one exact selected owner. Agent discovery scans at most 1000 directory entries. Search narrows folder metadata, never private note text. */
+  async listMemoryFolders(q?: string, selected?: string, limit?: number, options?: RequestOptions): Promise<ListMemoryFoldersResponse> {
+    let path = "/api/library/memory";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (selected !== undefined && selected !== null) _q.set("selected", String(selected));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListMemoryFoldersResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listMemoryFoldersRaw(q?: string, selected?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListMemoryFoldersResponse>> {
+    let path = "/api/library/memory";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (selected !== undefined && selected !== null) _q.set("selected", String(selected));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListMemoryFoldersResponse>("GET", path, {
       ...options,
     });
   }

@@ -49,6 +49,11 @@ export const XCircleIcon = icon(
 );
 export const CircleIcon = icon(<circle cx="12" cy="12" r="8" />, "CircleIcon");
 export const XIcon = icon(<path d="M18 6 6 18M6 6l12 12" />, "XIcon");
+export const PlusIcon = icon(<path d="M12 5v14M5 12h14" />, "PlusIcon");
+export const UploadIcon = icon(
+  <path d="M12 16V3m-5 5 5-5 5 5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />,
+  "UploadIcon",
+);
 export const ShareIcon = icon(
   <path d="M12 16V3m-5 5 5-5 5 5M5 13v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7" />,
   "ShareIcon",

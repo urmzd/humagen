@@ -706,6 +706,7 @@ export const api = {
   publishSkill: (id:string,version:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/publish`),
   promoteSkill: (id:string,version:number,scope:LibraryScope,expected:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/promote`,{scope,version:expected}),
   promoteMemory: (scope:"personal"|"workspace"|"project"|"agent", owner:string, id:string, destination:string) => call<GeneratedNote>("POST","/api/memory/promote",{scope,owner,id,destination}),
+  memoryFolders: (q = "", selected = "") => call<{folders: import("../../../packages/client/src/generated/types.ts").MemoryFolder[]}>("GET", `/api/library/memory?${new URLSearchParams({q,selected,limit:"50"})}`).then(r => r.folders),
   personalMemory: () => call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then(r => r.notes),
   rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
   approvePersonal: (ids:string[]) => call<{approved:number}>("POST","/api/me/memory/approve",{ids}),

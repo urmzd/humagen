@@ -340,3 +340,56 @@ Back/Escape, draft and file preservation, and explicit message submission.
 Validation: 607 console tests passed; all 292 phone/desktop screen captures
 passed, plus 15 dark captures at 320, 768 and 1440px. The eight showcase images
 were refreshed from the reproducible screen fixtures.
+
+### DES-015: Shared web component foundation
+
+Keep React, Vite and Tailwind. Standard shadcn Radix controls belong in
+`packages/render-web/src/ui`, with one semantic theme and the actual bundled
+Figtree Variable font. Existing button and field helpers share the same variants
+and sizing. Web-only resource browsers remain controlled presentation components;
+the shared surface-neutral contracts and Slack renderer remain intact.
+
+Acceptance: production and Storybook builds, workspace typechecks, standard
+format/lint checks, dense shared controls, correct loaded font, keyboard focus,
+reduced motion and phone/desktop reflow. The Controls and ResourceWorkspace
+stories provide a repeatable design review surface.
+
+### DES-016: Skills packages and managed Memory chains
+
+Skills is a folder manager with import, file navigation, preview/source editing,
+new immutable drafts and ZIP download. SKILL.md and resource bytes use the native
+library revision store and saige's parser/snapshot. Existing testing, publication,
+promotion and agent bindings remain. Frontmatter grants no tools; supporting
+files are read only from the exact package pinned to a run.
+
+Memory is organized by real authorized owners. Retained entries have file
+addresses, projected provenance and native review/correction/forget operations.
+Management status reflects actual configuration. Chat opens a private native
+conversation draft without putting note text in the URL. Pending and expired
+memory remain excluded from automatic context. Searching a scope rail preserves
+the current chain and any correction draft. Dirty Skills drafts require Save or
+explicit Discard before changing scope.
+
+Acceptance: package bounds, malformed paths, immutable versions, replay, tenant
+and personal boundaries, current promotion capabilities, separate failure/empty
+states, native folder import/save/download, scoped deep links, draft preservation
+and private chat placement. Details and limits: [managed Library](docs/managed-library.md).
+
+### DES-017: Consolidated navigation and compact operational screens
+
+Library is one sidebar link with Sources, Skills, Memory and Deliverables tabs.
+Agents groups directory, network, assignments and controls. Operations groups
+context health, integrations, action policies, schedules, usage, alert rules and
+audit. Needs You remains directly accessible. Native routes remain usable, and
+permissions control destinations and tabs through one shared definition.
+
+Action policy uses a readable width, compact labeled rows, descriptions,
+inherited/effective values and one aligned save action. Context Health replaces
+zero-filled dashboards with one source action when empty; populated views have
+aligned filters, a compact status strip and details after selection. Development
+fixture disclaimers are kept out of product copy.
+
+Acceptance: route and permission regressions, existing operational mutations,
+phone/desktop navigation, policy and Context Health captures, narrow reflow and
+keyboard selection. Implementation is present; final verification evidence for
+DES-015 through DES-017 is recorded below after the checks complete.

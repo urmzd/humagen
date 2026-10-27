@@ -2,7 +2,20 @@ import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Source } from "./api.ts";
 import { SourceLifecycle, SourceSyncSettings } from "./SourceLifecycle.tsx";
-import { ago, button, Chip, field, Label, Page, Problem } from "./ui.tsx";
+import { ago, Chip, Page, Problem, SkeletonRows } from "./ui.tsx";
+import { DatabaseIcon, SearchIcon } from "@humagen/render-web";
+import { Button, buttonVariants } from "@humagen/render-web/ui/button";
+import { Input } from "@humagen/render-web/ui/input";
+import { NativeSelect } from "@humagen/render-web/ui/native-select";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyMedia,
+  EmptyContent,
+} from "@humagen/render-web/ui/empty";
+import { href } from "./route.ts";
 
 const words = defaultCopy.sourceOperations;
 const lifecycleWords = defaultCopy.sourceLifecycle;
@@ -79,124 +92,163 @@ export function ContextHealth({
       title={words.health}
       lede={words.healthHint}
       actions={
-        <button type="button" className={button} onClick={load}>
+        <Button variant="outline" onClick={load}>
           {words.refresh}
-        </button>
+        </Button>
       }
     >
       <Problem message={problem} />
-      <p className="text-aui-xs text-aui-muted">{words.healthMissing}</p>
-      {!sources && !problem && <output>{words.loading}</output>}
-      {sources && (
-        <>
-          <dl className="flex flex-wrap gap-5">
-            {groups.map((group) => (
-              <div key={group.value}>
-                <dt className="text-aui-xs text-aui-muted">{group.label}</dt>
-                <dd className="text-aui-xl tabular-nums">{sources.filter(group.keep).length}</dd>
-              </div>
-            ))}
-          </dl>
-          <div className="mt-5 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
-            <Label text={words.search}>
-              <input
-                className={field}
-                type="search"
-                value={query}
-                maxLength={200}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </Label>
-            <Label text={words.filter}>
-              <select
-                aria-label={words.filter}
-                className={field}
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
+      {!sources && !problem && <SkeletonRows count={4} />}
+      {sources?.length === 0 ? (
+        <Empty className="min-h-80 border border-border bg-card/30">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <DatabaseIcon />
+            </EmptyMedia>
+            <EmptyTitle>{words.healthEmptyTitle}</EmptyTitle>
+            <EmptyDescription>{words.healthEmptyHint}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <a
+              className={buttonVariants({ variant: canWrite ? "default" : "outline" })}
+              href={href({ page: "library", section: "sources" })}
+            >
+              {canWrite ? words.addSources : words.browseSources}
+            </a>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        sources && (
+          <>
+            <div className="flex flex-wrap gap-2" aria-label={words.filter}>
+              <Button
+                variant={filter === "" ? "secondary" : "ghost"}
+                size="sm"
+                aria-pressed={filter === ""}
+                onClick={() => setFilter("")}
               >
-                <option value="">{words.all}</option>
-                {groups.map((group) => (
-                  <option key={group.value} value={group.value}>
-                    {group.label}
-                  </option>
-                ))}
-              </select>
-            </Label>
-          </div>
-          <div className="mt-5 grid min-w-0 grid-cols-1 items-start gap-6 @4xl:grid-cols-[minmax(0,1fr)_minmax(20rem,1fr)]">
-            <section className="min-w-0" aria-label={words.sources}>
-              {rows?.length === 0 && <p className="text-aui-sm text-aui-muted">{words.empty}</p>}
-              <ul className="divide-y divide-aui-border">
-                {rows?.map((source) => (
-                  <li key={source.name}>
-                    <button
-                      type="button"
-                      aria-pressed={current?.name === source.name}
-                      className="flex min-h-16 w-full min-w-0 flex-col gap-2 rounded-aui px-2 py-4 text-left hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                      onClick={() => pick(source.name)}
-                    >
-                      <span className="break-words text-aui-sm font-medium">{source.name}</span>
-                      <span className="break-words text-aui-xs text-aui-muted">
-                        {source.lifecycle?.provider ?? lifecycleWords.providers.manual}
-                        {source.lifecycle?.origin ? `: ${source.lifecycle.origin}` : ""}
-                      </span>
-                      <span className="flex flex-wrap gap-2">
-                        <Chip>
-                          {snapshot(source)
-                            ? words.snapshot
-                            : lifecycleWords.modes[source.lifecycle?.mode ?? "indexed"]}
-                        </Chip>
-                        <Chip>
-                          {source.lifecycle
-                            ? lifecycleWords.status[source.lifecycle.status]
-                            : source.documents
-                              ? lifecycleWords.status.available
-                              : lifecycleWords.status.connected}
-                        </Chip>
-                      </span>
-                      <span className="text-aui-xs text-aui-muted">
-                        {words.lastGood}:{" "}
-                        {source.lifecycle?.last_good_at
-                          ? ago(source.lifecycle.last_good_at)
-                          : words.never}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-            {current ? (
-              <section className="flex min-w-0 flex-col gap-6" aria-label={words.details}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="break-words text-aui-lg font-semibold">{current.name}</h2>
-                  {onOpenSource && (
-                    <button
-                      className={button}
-                      type="button"
-                      onClick={() => onOpenSource(current.name)}
-                    >
-                      {words.sourceDetail}
-                    </button>
-                  )}
-                </div>
-                <SourceLifecycle
-                  key={`${current.name}:${current.updated_at}`}
-                  source={current}
-                  canWrite={canWrite}
-                  onChanged={load}
-                />
-                <SourceSyncSettings
-                  key={`${current.name}:${current.updated_at}:sync`}
-                  source={current}
-                  canWrite={canWrite}
-                  onChanged={load}
-                />
+                {words.all}
+                <span className="tabular-nums text-muted-foreground">{sources.length}</span>
+              </Button>
+              {groups.map((group) => (
+                <Button
+                  key={group.value}
+                  variant={filter === group.value ? "secondary" : "ghost"}
+                  size="sm"
+                  aria-pressed={filter === group.value}
+                  onClick={() => setFilter(filter === group.value ? "" : group.value)}
+                >
+                  {group.label}
+                  <span className="tabular-nums text-muted-foreground">
+                    {sources.filter(group.keep).length}
+                  </span>
+                </Button>
+              ))}
+            </div>
+            <div className="grid min-w-0 max-w-3xl gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]">
+              <label className="flex min-w-0 flex-col gap-2 text-sm font-medium">
+                {words.search}
+                <span className="relative">
+                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    type="search"
+                    value={query}
+                    maxLength={200}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </span>
+              </label>
+              <label className="flex min-w-0 flex-col gap-2 text-sm font-medium">
+                {words.filter}
+                <NativeSelect value={filter} onChange={(event) => setFilter(event.target.value)}>
+                  <option value="">{words.all}</option>
+                  {groups.map((group) => (
+                    <option key={group.value} value={group.value}>
+                      {group.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+            </div>
+            {selected && !current && <Problem message={words.selectedMissing} />}
+            <div
+              className={`grid min-w-0 grid-cols-1 items-start gap-6 ${current ? "@4xl:grid-cols-[minmax(0,1fr)_minmax(20rem,1fr)]" : ""}`}
+            >
+              <section className="min-w-0" aria-label={words.sources}>
+                {rows?.length === 0 ? (
+                  <p className="py-8 text-sm text-muted-foreground">{words.healthNoMatches}</p>
+                ) : (
+                  <ul className="divide-y divide-border border-y border-border">
+                    {rows?.map((source) => (
+                      <li key={source.name}>
+                        <button
+                          type="button"
+                          aria-pressed={current?.name === source.name}
+                          onClick={() => pick(source.name)}
+                          className="flex min-h-24 w-full min-w-0 items-start gap-3 rounded-md px-3 py-4 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-accent"
+                        >
+                          <DatabaseIcon className="mt-1" />
+                          <span className="flex min-w-0 flex-1 flex-col gap-2">
+                            <span className="break-words text-sm font-medium">{source.name}</span>
+                            <span className="break-words text-xs text-muted-foreground">
+                              {source.lifecycle?.provider ?? lifecycleWords.providers.manual}
+                              {source.lifecycle?.origin ? `: ${source.lifecycle.origin}` : ""}
+                            </span>
+                            <span className="flex flex-wrap gap-2">
+                              <Chip>
+                                {snapshot(source)
+                                  ? words.snapshot
+                                  : lifecycleWords.modes[source.lifecycle?.mode ?? "indexed"]}
+                              </Chip>
+                              <Chip>
+                                {source.lifecycle
+                                  ? lifecycleWords.status[source.lifecycle.status]
+                                  : source.documents
+                                    ? lifecycleWords.status.available
+                                    : lifecycleWords.status.connected}
+                              </Chip>
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {words.lastGood}:{" "}
+                              {source.lifecycle?.last_good_at
+                                ? ago(source.lifecycle.last_good_at)
+                                : words.never}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
-            ) : (
-              <p className="text-aui-sm text-aui-muted">{words.noSelection}</p>
-            )}
-          </div>
-        </>
+              {current && (
+                <section className="flex min-w-0 flex-col gap-6" aria-label={words.details}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="break-words text-base font-semibold">{current.name}</h2>
+                    {onOpenSource && (
+                      <Button variant="outline" onClick={() => onOpenSource(current.name)}>
+                        {words.sourceDetail}
+                      </Button>
+                    )}
+                  </div>
+                  <SourceLifecycle
+                    key={`${current.name}:${current.updated_at}`}
+                    source={current}
+                    canWrite={canWrite}
+                    onChanged={load}
+                  />
+                  <SourceSyncSettings
+                    key={`${current.name}:${current.updated_at}:sync`}
+                    source={current}
+                    canWrite={canWrite}
+                    onChanged={load}
+                  />
+                </section>
+              )}
+            </div>
+          </>
+        )
       )}
     </Page>
   );

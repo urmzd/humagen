@@ -1,8 +1,7 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { orbLabel, type OrbState } from "@humagen/web";
-import "@fontsource-variable/figtree";
-import "@fontsource-variable/bricolage-grotesque/wdth.css";
+import "@humagen/render-web/fonts.css";
 import "./styles.css";
 import { ActivityPanel } from "./Activity.tsx";
 import { sampleTrees } from "./activity.fixtures.ts";

@@ -438,6 +438,25 @@ export interface LibraryScope {
   subject?: string;
 }
 
+export interface MemoryFolder {
+  id: string;
+  scope: "personal" | "workspace" | "project" | "agent";
+  owner?: string;
+  title: string;
+  parent?: string;
+  notes: number;
+  pending: number;
+  updated_at?: string;
+  can_write: boolean;
+  can_propose: boolean;
+  can_promote: boolean;
+  selected_only?: boolean;
+  management: "manual" | "opt_in_required" | "disabled" | "unavailable" | "configured";
+  can_chat: boolean;
+  chat_project: string;
+  chat_agent?: string;
+}
+
 export interface LibrarySkillDefinition {
   name: string;
   description: string;
@@ -445,8 +464,16 @@ export interface LibrarySkillDefinition {
   argument_hint?: string;
   inputs?: string;
   outputs?: string;
+  /** Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions. */
+  files?: LibrarySkillFile[];
   /** Exact permitted tools, intersected with the agent's grants. Empty permits no tools. */
   tools: string[];
+}
+
+export interface LibrarySkillFile {
+  path: string;
+  /** Base64-encoded bytes. At most 128 KiB per file and 512 KiB per package after decoding. */
+  data: string;
 }
 
 export interface LibraryProvenance {
@@ -3643,6 +3670,10 @@ export interface PromoteMemoryBody {
 
 export interface ListNativeNotificationsResponse {
   notifications: NativeNotification[];
+}
+
+export interface ListMemoryFoldersResponse {
+  folders: MemoryFolder[];
 }
 
 export interface ListLibrarySkillsResponse {

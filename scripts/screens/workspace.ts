@@ -332,6 +332,22 @@ export function workspaceScreens(call: Call): Screen[] {
       },
     },
     {
+      name: "operations-context-health-empty",
+      path: "/operations/context",
+      act: async (page) => {
+        await page.route("**/api/knowledge", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ sources: [] }),
+          }),
+        );
+        await page.reload();
+        await page.getByText("No sources to monitor yet", { exact: true }).waitFor();
+        await page.getByRole("link", { name: "Add Sources", exact: true }).waitFor();
+      },
+    },
+    {
       name: "operations-context-health",
       path: "/operations/context",
       act: (page) => heading(page, defaultCopy.sourceOperations.health),

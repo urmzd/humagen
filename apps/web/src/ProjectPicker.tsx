@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { CheckIcon, ChevronDownIcon, ProjectIcon, FolderPlusIcon } from "@humagen/render-web";
+import { CheckIcon, ProjectIcon, FolderPlusIcon } from "@humagen/render-web";
 import { Inspector } from "@humagen/web";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type ProjectKindSpec, type ProjectView } from "./api.ts";
@@ -145,7 +145,7 @@ export function ProjectPicker({ projects, kinds, value, personalProject, channel
   const project=value===null?"Select project":value===""?words.companyName:value===personalProject?words.personalTitle:chosen?titleOf(chosen):value;
   const label=channel&&channel!=="general"?`${project} / #${channel}`:project;
   return <div className="humagen-project-picker min-w-0">
-    <button type="button" aria-label={value===null?"Select project":`Select project: ${label}`} aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)} className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"><ProjectIcon size={18}/><span className="truncate">{label}</span><ChevronDownIcon size={14}/></button>
+    <button type="button" aria-label={value===null?"Select project":`Select project: ${label}`} aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)} className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"><ProjectIcon size={18}/><span className="truncate">{label}</span></button>
     {open&&<Inspector open title={defaultCopy.chat.chooseProject} onClose={()=>setOpen(false)}><ProjectChoices projects={projects} kinds={kinds} value={value} personalProject={personalProject} canCreate={canCreate} onChange={onChange} onCreated={onCreated} close={()=>setOpen(false)}/></Inspector>}
   </div>;
 }

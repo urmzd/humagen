@@ -1,3 +1,7 @@
+import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /** Reproducible library/personal states on the screens server, never a live workspace. */
 import type { Page } from "playwright-core";
 
@@ -65,9 +69,181 @@ export function libraryScreens(call: Call): Screen[] {
             page.url(),
           ).href,
         );
-        await page.getByLabel("Name", { exact: true }).waitFor();
-        await page.getByRole("button", { name: "Test Skill", exact: true }).waitFor();
+        await page.getByRole("tab", { name: "Overview", exact: true }).waitFor();
         await page.getByRole("heading", { name: "Used By", exact: true }).waitFor();
+        const font = await page.evaluate(async () => {
+          await document.fonts.ready;
+          const surface = document.querySelector(".aui-stack");
+          return {
+            family: surface ? getComputedStyle(surface).fontFamily : "",
+            loaded: [...document.fonts].some(
+              (face) => face.family.includes("Figtree Variable") && face.status === "loaded",
+            ),
+          };
+        });
+        assert.ok(
+          font.loaded && font.family.includes("Figtree Variable"),
+          "shared presentation uses the loaded Figtree Variable face",
+        );
+      },
+    },
+    {
+      name: "library-skills-import",
+      path: "/library/skills?scope=workspace",
+      act: async (page) => {
+        const temporary = mkdtempSync(join(tmpdir(), "humagen-skill-import-"));
+        const folder = join(temporary, "release-import");
+        mkdirSync(join(folder, "references"), { recursive: true });
+        writeFileSync(
+          join(folder, "SKILL.md"),
+          "---\nname: release-import\ndescription: Summarize a release decision\n---\nRead references/style.md before writing the brief.\n",
+        );
+        writeFileSync(
+          join(folder, "references/style.md"),
+          "Keep the résumé concise and name the review date.\n",
+        );
+        try {
+          await page.waitForFunction(() => {
+            const field = document.querySelector<HTMLInputElement>("input[webkitdirectory]");
+            return field && !field.disabled;
+          });
+          await page.locator("input[webkitdirectory]").setInputFiles(folder);
+          await page.getByLabel("File Contents", { exact: true }).waitFor();
+          await page.getByRole("button", { name: "Save Draft", exact: true }).click();
+          await page.getByText("Saved revision", { exact: true }).waitFor();
+          const { skills } = await call<{ skills: { id: string; name: string }[] }>(
+            "GET",
+            "/api/library/skills?scope=workspace",
+          );
+          const saved = skills.find((skill) => skill.name === "release-import");
+          assert.ok(saved);
+          const { revisions } = await call<{
+            revisions: { files: { path: string; data: string }[] }[];
+          }>("GET", `/api/library/skills/${encodeURIComponent(saved.id)}`);
+          const reference = revisions
+            .at(-1)!
+            .files.find((file) => file.path === "references/style.md");
+          assert.ok(reference);
+          assert.equal(
+            Buffer.from(reference.data, "base64").toString("utf8"),
+            "Keep the résumé concise and name the review date.\n",
+          );
+          const [download] = await Promise.all([
+            page.waitForEvent("download"),
+            page.getByRole("button", { name: "Download Folder", exact: true }).click(),
+          ]);
+          assert.equal(download.suggestedFilename(), "release-import.zip");
+          assert.equal(await download.failure(), null);
+        } finally {
+          rmSync(temporary, { recursive: true, force: true });
+        }
+      },
+    },
+    {
+      name: "library-skills-contents",
+      path: "/library/skills?scope=workspace",
+      act: async (page) => {
+        const { skills } = await call<{ skills: { id: string; name: string }[] }>(
+          "GET",
+          "/api/library/skills?scope=workspace",
+        );
+        const skill =
+          skills.find((skill) => skill.name === "screen-package") ??
+          (await call<{ id: string }>("POST", "/api/library/skills", {
+            scope: { kind: "workspace" },
+            version: 0,
+            definition: {
+              name: "screen-package",
+              description: "A portable release brief",
+              tools: [],
+              files: [
+                {
+                  path: "SKILL.md",
+                  data: Buffer.from(
+                    "---\nname: screen-package\ndescription: A portable release brief\n---\nRead references/style.md before drafting the release brief.\n",
+                  ).toString("base64"),
+                },
+                {
+                  path: "references/style.md",
+                  data: Buffer.from(
+                    "# Brief style\n\nName the decision, owner and review date.\n",
+                  ).toString("base64"),
+                },
+                {
+                  path: "scripts/check.py",
+                  data: Buffer.from("print('Review the release brief')\n").toString("base64"),
+                },
+              ],
+            },
+          }));
+        await page.goto(
+          new URL(
+            `/library/skills?scope=workspace&skill=${encodeURIComponent(skill.id)}&tab=contents&file=references%2Fstyle.md`,
+            page.url(),
+          ).href,
+        );
+        await page.getByRole("heading", { name: "Brief style", exact: true }).waitFor();
+        await page.getByRole("tab", { name: "Contents", exact: true }).focus();
+        await page.keyboard.press("ArrowRight");
+        await page.getByRole("tab", { name: "Versions", exact: true, selected: true }).waitFor();
+        await page.keyboard.press("ArrowLeft");
+        await page.getByRole("tab", { name: "Contents", exact: true, selected: true }).waitFor();
+        await page.getByRole("button", { name: "Source", exact: true }).click();
+        await page.getByLabel("File Contents", { exact: true }).waitFor();
+      },
+    },
+    {
+      name: "library-memory-chat",
+      path: "/library/memory",
+      act: async (page) => {
+        await page.getByRole("link", { name: "Chat With Memory", exact: true }).click();
+        const me = await call<{ personal_project: string }>("GET", "/api/me");
+        assert.equal(new URL(page.url()).searchParams.get("project"), me.personal_project);
+        assert.equal(new URL(page.url()).searchParams.has("channel"), false);
+        await page.getByRole("button", { name: "Select project: Personal", exact: true }).waitFor();
+        const draft = await page.locator("textarea").first().inputValue();
+        assert.ok(draft.includes("Help me review the confirmed memory"));
+      },
+    },
+    {
+      name: "library-memory-scope",
+      path: "/library/memory",
+      act: async (page) => {
+        await page.getByRole("heading", { name: "Personal", exact: true }).waitFor();
+        const picker = page.getByRole("button", { name: "Memory Chains", exact: true });
+        if (await picker.isVisible()) {
+          await picker.click();
+          await page
+            .getByRole("dialog", { name: "Memory Chains", exact: true })
+            .getByRole("button", { name: /^Company/ })
+            .click();
+        } else {
+          await page
+            .getByRole("navigation", { name: "Memory Chains", exact: true })
+            .getByRole("button", { name: /^Company/ })
+            .click();
+        }
+        await page.waitForURL(/scope=workspace/);
+        await page.getByRole("heading", { name: "Company", exact: true }).waitFor();
+        assert.equal(
+          await page.locator("main h1").evaluate((element) => element === document.activeElement),
+          true,
+        );
+      },
+    },
+    {
+      name: "library-memory-entry",
+      path: "/library/memory",
+      act: async (page) => {
+        const note = await memory();
+        await page.goto(
+          new URL(
+            `/library/memory?scope=personal&file=${encodeURIComponent(`${note.id}.md`)}`,
+            page.url(),
+          ).href,
+        );
+        await page.getByText(remembered, { exact: true }).last().waitFor();
+        await page.getByRole("button", { name: "Back to Entries", exact: true }).waitFor();
       },
     },
     {
@@ -107,6 +283,7 @@ export function libraryScreens(call: Call): Screen[] {
         await memory();
         await page.reload();
         await page.getByText(remembered, { exact: true }).waitFor();
+        await page.getByText(remembered, { exact: true }).click();
         await page.locator("summary").filter({ hasText: "Propose to Project" }).first().click();
         await page.getByLabel("Destination Project", { exact: true }).first().waitFor();
       },

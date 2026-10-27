@@ -7,6 +7,42 @@ import { MemoryLibrary } from "./MemoryLibrary.tsx";
 import { PersonalAgents } from "./PersonalAgents.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
+import { skillFileText } from "./skill-files.ts";
+
+const memoryFolders = {
+  folders: [
+    {
+      id: "personal",
+      scope: "personal",
+      title: "Personal",
+      notes: 1,
+      pending: 0,
+      can_write: true,
+      can_propose: true,
+      can_promote: true,
+      management: "opt_in_required",
+      can_chat: true,
+      chat_project: "personal-canonical",
+    },
+    {
+      id: "workspace",
+      scope: "workspace",
+      title: "Company",
+      notes: 0,
+      pending: 0,
+      can_write: false,
+      can_propose: true,
+      can_promote: true,
+      management: "manual",
+      can_chat: true,
+      chat_project: "",
+    },
+  ],
+};
+const chooseVersion = (version: number) =>
+  fireEvent.click(screen.getByRole("button", { name: `Preview Version ${version}` }));
+const skillTab = async (name: string) =>
+  fireEvent.mouseDown(await screen.findByRole("tab", { name }), { button: 0, ctrlKey: false });
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -17,7 +53,7 @@ afterEach(() => {
 });
 const me = {
   principal: { kind: "user", subject: "ada", tenant: "acme", roles: ["operator"] },
-  permissions: ["projects:read", "projects:write", "runs:write"],
+  permissions: ["projects:read", "projects:write", "runs:read", "runs:write", "agents:read"],
   personal_project: "~personal",
 };
 const personal = {
@@ -55,7 +91,14 @@ test("editing a skill creates an exact new draft without resubmitting revision m
     "POST /api/library/skills": (body) => {
       const value = body as { scope: object; definition: typeof first; version: number };
       assert.equal(value.version, 1);
-      assert.equal(value.definition.instructions, "After");
+      assert.match(
+        skillFileText(
+          (
+            value.definition as unknown as import("../../../packages/client/src/generated/types.ts").LibrarySkillDefinition
+          ).files![0]!,
+        )!,
+        /After/,
+      );
       assert.equal("scope" in value.definition, false);
       assert.equal("version" in value.definition, false);
       assert.equal("tests" in value.definition, false);
@@ -65,7 +108,10 @@ test("editing a skill creates an exact new draft without resubmitting revision m
   });
   render(<SkillsLibrary />);
   fireEvent.click(await screen.findByRole("button", { name: /brief.*Version 1/s }));
-  fireEvent.change(await screen.findByLabelText("Instructions"), { target: { value: "After" } });
+  await skillTab("Contents");
+  fireEvent.click(screen.getByRole("button", { name: "Source" }));
+  const editor = (await screen.findByLabelText("File Contents")) as HTMLTextAreaElement;
+  fireEvent.change(editor, { target: { value: editor.value.replace("Before", "After") } });
   fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
   await waitFor(() =>
     assert.equal(net?.seen.filter((request) => request.method === "POST").length, 1),
@@ -140,6 +186,7 @@ test("memory correction retains scope and never resubmits source provenance", as
     "GET /api/me": () => me,
     "GET /api/projects": () => ({ projects: [], next: null }),
     "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/memory": () => memoryFolders,
     "GET /api/me/memory": () => ({ notes: [current] }),
     "PUT /api/me/memory/m-one": (body) => {
       const input = body as { text: string; kind: string; expires_at: null };
@@ -150,10 +197,13 @@ test("memory correction retains scope and never resubmits source provenance", as
     },
   });
   render(<MemoryLibrary />);
+  fireEvent.click(await screen.findByText(original.text));
   const edit = await screen.findByRole("button", { name: "Edit" });
   fireEvent.click(edit);
   assert.equal(
-    (screen.getByRole("link", { name: "Open Source" }) as HTMLAnchorElement).getAttribute("href"),
+    (
+      screen.getByRole("link", { name: original.source_name ?? "Open Source" }) as HTMLAnchorElement
+    ).getAttribute("href"),
     original.source_url,
   );
   fireEvent.change(screen.getByLabelText(defaultCopy.memoryLibrary.text), {
@@ -178,6 +228,7 @@ test("memory promotion selects an existing note and never copies private provena
     "GET /api/me": () => ({ ...me, permissions: [...me.permissions, "projects:write"] }),
     "GET /api/projects": () => ({ projects: [], next: null }),
     "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/memory": () => memoryFolders,
     "GET /api/me/memory": () => ({ notes: [note] }),
     "POST /api/memory/promote": (body) => {
       assert.deepEqual(body, { scope: "personal", owner: "", id: "m-private", destination: "~" });
@@ -185,7 +236,8 @@ test("memory promotion selects an existing note and never copies private provena
     },
   });
   render(<MemoryLibrary />);
-  await screen.findByText(note.text);
+  fireEvent.click(await screen.findByText(note.text));
+  fireEvent.click(screen.getByText(defaultCopy.memoryLibrary.promote, { selector: "summary" }));
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.memoryLibrary.promote }));
   await screen.findByText(defaultCopy.memoryLibrary.promotionSaved);
   assert.equal(net.seen.filter((r) => r.method === "POST").length, 1);
@@ -278,15 +330,18 @@ test("skill deep link opens the pinned published version and manual selection ke
         }}
       />,
     );
-    const instructions = (await screen.findByLabelText("Instructions")) as HTMLTextAreaElement;
-    assert.equal(instructions.value, first.instructions);
-    fireEvent.change(screen.getByLabelText("Version"), { target: { value: "2" } });
-    await waitFor(() => assert.equal(instructions.value, draft.instructions));
+    await screen.findByText(first.instructions);
+    await skillTab("Versions");
+    chooseVersion(2);
+    await waitFor(() => assert.equal((location as { version: number })?.version, 2));
+    await skillTab("Overview");
+    await screen.findByText(draft.instructions);
     assert.deepEqual(location, {
       scope: "workspace",
       project: undefined,
       skill: first.id,
       version: 2,
+      libraryTab: "overview",
     });
   } finally {
     window.history.replaceState(null, "", initial);
@@ -418,6 +473,7 @@ test("publishing waits for a completed readable test of the selected exact revis
   });
   render(<SkillsLibrary />);
   fireEvent.click(await screen.findByRole("button", { name: /tested.*Version 2/s }));
+  await skillTab("Versions");
   const publish = (await screen.findByRole("button", {
     name: "Publish Version",
   })) as HTMLButtonElement;
@@ -437,7 +493,7 @@ test("publishing waits for a completed readable test of the selected exact revis
   assert.equal(publish.disabled, true);
   status = "completed";
   await waitFor(() => assert.equal(publish.disabled, false), { timeout: 2500 });
-  fireEvent.change(screen.getByLabelText("Version"), { target: { value: "1" } });
+  chooseVersion(1);
   await waitFor(() => assert.equal(publish.disabled, true));
   assert.equal(
     net.seen.some((request) => request.path.endsWith("/publish")),
@@ -470,6 +526,7 @@ test("an unreadable recorded test cannot enable skill publication", async () => 
   });
   render(<SkillsLibrary />);
   fireEvent.click(await screen.findByRole("button", { name: /unread-test.*Version 1/s }));
+  await skillTab("Versions");
   await screen.findByText(defaultCopy.skillsLibrary.publishNeedsTest);
   assert.equal(
     (screen.getByRole("button", { name: "Publish Version" }) as HTMLButtonElement).disabled,
@@ -542,11 +599,12 @@ test("a newly saved personal draft tests with an eligible personal agent in the 
     },
   });
   render(<SkillsLibrary />);
+  const create = await screen.findByRole("button", { name: "New Skill" }) as HTMLButtonElement;
+  await waitFor(() => assert.equal(create.disabled, false));
+  fireEvent.click(create);
   fireEvent.change(await screen.findByLabelText("Name"), { target: { value: skill.name } });
   fireEvent.change(screen.getByLabelText("Purpose"), { target: { value: skill.description } });
-  fireEvent.change(screen.getByLabelText("Instructions"), {
-    target: { value: skill.instructions },
-  });
+  fireEvent.click(screen.getByRole("button", { name: "Create Skill Folder" }));
   await waitFor(() =>
     assert.equal(
       (screen.getByRole("button", { name: "Save Draft" }) as HTMLButtonElement).disabled,
@@ -554,6 +612,7 @@ test("a newly saved personal draft tests with an eligible personal agent in the 
     ),
   );
   fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+  await skillTab("Versions");
   await screen.findByLabelText("Test Request");
   fireEvent.change(screen.getByLabelText("Test Agent"), { target: { value: "personal-agent" } });
   fireEvent.change(screen.getByLabelText("Test Request"), {
@@ -567,4 +626,132 @@ test("a newly saved personal draft tests with an eligible personal agent in the 
     text: "Validate my private skill",
   });
   assert.equal(screen.queryByRole("option", { name: "foreign-agent" }), null);
+});
+
+test("memory failures never look empty and a retry recovers without reading unrelated APIs", async () => {
+  let failed = true;
+  net = stubFetch({
+    "GET /api/library/memory": () => memoryFolders,
+    "GET /api/me/memory": () =>
+      failed
+        ? new Response(JSON.stringify({ error: "unavailable" }), { status: 503 })
+        : {
+            notes: [
+              {
+                id: "m-recovered",
+                text: "Recovered private preference",
+                source: "person",
+                status: "approved",
+                at: "2026-10-26T12:00:00Z",
+              },
+            ],
+          },
+  });
+  render(<MemoryLibrary />);
+  await screen.findByText(defaultCopy.memoryLibrary.loadFailed);
+  assert.equal(screen.queryByText(defaultCopy.memoryLibrary.empty), null);
+  failed = false;
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await screen.findByText("Recovered private preference");
+  assert.ok(
+    !net.seen.some((request) => ["/api/me", "/api/projects", "/api/agents"].includes(request.path)),
+  );
+  const chat = screen.getByRole("link", { name: "Chat With Memory" }) as HTMLAnchorElement;
+  const link = new URL(chat.href);
+  assert.equal(link.searchParams.get("project"), "personal-canonical");
+  assert.equal(link.searchParams.get("channel"), null);
+  assert.ok(!link.href.includes("Recovered"));
+});
+
+test("finding another memory chain preserves the active correction draft", async () => {
+  const note = {
+    id: "m-edit",
+    text: "Keep this memory",
+    source: "person",
+    status: "approved",
+    at: "2026-10-26T12:00:00Z",
+  };
+  net = stubFetch({
+    "GET /api/library/memory": (_, query) => ({
+      folders: query.get("q")
+        ? [{ ...memoryFolders.folders[0], selected_only: true, management: "configured" }]
+        : memoryFolders.folders,
+    }),
+    "GET /api/me/memory": () => ({ notes: [note] }),
+  });
+  render(<MemoryLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  fireEvent.change(screen.getByLabelText(defaultCopy.memoryLibrary.text), {
+    target: { value: "Unsaved correction stays here" },
+  });
+  fireEvent.change(screen.getByPlaceholderText("Find a Chain"), {
+    target: { value: "another chain" },
+  });
+  await waitFor(() =>
+    assert.ok(net?.seen.some((request) => request.path.includes("q=another+chain"))),
+  );
+  await screen.findByText(defaultCopy.memoryLibrary.configured);
+  assert.equal(
+    (screen.getByLabelText(defaultCopy.memoryLibrary.text) as HTMLTextAreaElement).value,
+    "Unsaved correction stays here",
+  );
+  assert.equal(screen.queryByText(defaultCopy.memoryLibrary.chainMissing), null);
+});
+
+test("a personal memory writer without promotion permission cannot share it through a promotion control", async () => {
+  const note = {
+    id: "m-limited",
+    text: "Private context stays private",
+    source: "person",
+    status: "approved",
+    at: "2026-10-26T12:00:00Z",
+  };
+  net = stubFetch({
+    "GET /api/library/memory": () => ({
+      folders: memoryFolders.folders.map((folder) => ({ ...folder, can_promote: false })),
+    }),
+    "GET /api/me/memory": () => ({ notes: [note] }),
+  });
+  render(<MemoryLibrary />);
+  fireEvent.click(await screen.findByText(note.text));
+  assert.equal(screen.queryByText(defaultCopy.memoryLibrary.promote), null);
+  assert.ok(screen.getByRole("button", { name: "Edit" }));
+});
+
+test("a dirty skill package keeps its scope until it is explicitly saved or discarded", async () => {
+  const row = {
+    id: "sk-dirty",
+    scope: { kind: "personal", subject: "ada" },
+    name: "review",
+    description: "Review a release",
+    instructions: "Original instructions",
+    tools: [],
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    tests: [],
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [row] }),
+    "GET /api/library/skills/sk-dirty": () => ({ revisions: [row] }),
+  });
+  render(<SkillsLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: /review.*Version 1/s }));
+  await skillTab("Contents");
+  fireEvent.click(screen.getByRole("button", { name: "Source" }));
+  const editor = (await screen.findByLabelText("File Contents")) as HTMLTextAreaElement;
+  fireEvent.change(editor, {
+    target: { value: editor.value.replace("Original instructions", "Unsaved instructions") },
+  });
+  const company = screen.getByRole("button", { name: "Company" }) as HTMLButtonElement;
+  assert.equal(company.disabled, true);
+  fireEvent.click(company);
+  assert.match(editor.value, /Unsaved instructions/);
+  assert.ok(!net.seen.some((request) => request.path.includes("scope=workspace")));
+  fireEvent.click(screen.getByRole("button", { name: "Discard Changes" }));
+  assert.equal(company.disabled, false);
+  assert.match(editor.value, /Original instructions/);
 });

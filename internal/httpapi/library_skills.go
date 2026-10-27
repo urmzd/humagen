@@ -35,6 +35,7 @@ func (s *Server) listLibrarySkills(w http.ResponseWriter, r *http.Request, who a
 	rows := s.P.SkillLibrary.List(who.Tenant, scope)
 	for i := range rows {
 		rows[i] = s.P.LibraryView(who, rows[i])
+		rows[i].Files = nil // Package content is loaded only after opening a skill.
 	}
 	ok(w, 200, map[string]any{"skills": rows})
 }

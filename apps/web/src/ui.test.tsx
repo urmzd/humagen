@@ -74,7 +74,8 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
 test("the sidebar groups readable work under Projects Library and Operations",()=>{
  const out=sidebar();
  for(const group of ["Projects","Library","Operations"])assert.match(out,new RegExp(`aria-label="${group}"`));
- for(const route of ["/","/projects","/library/skills","/library/memory","/inbox","/agents","/assignments","/agent-network","/operations/usage"])assert.ok(out.includes(`href="${route}"`),route);
+ for(const route of ["/","/projects","/library/sources","/inbox","/agents","/operations/context"])assert.ok(out.includes(`href="${route}"`),route);
+ for (const route of ["/library/skills", "/library/memory", "/assignments", "/agent-network", "/operations/usage"]) assert.ok(!out.includes(`href="${route}"`), route);
  assert.match(out,/href="\/" aria-current="page"/);
  assert.match(sidebar({route:{page:"agent",name:"lead",tab:"model"}}),/href="\/agents" aria-current="page"/);
 });

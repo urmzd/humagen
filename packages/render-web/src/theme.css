@@ -78,8 +78,8 @@
     --aui-mode-accent-l: 0.65;
     --aui-mode-accent-c: 0.19;
     --aui-mode-accent-fg: oklch(0.07 0 0);
-    --aui-bg: oklch(0.07 0 0);
-    --aui-surface: oklch(0.17 0 0);
+    --aui-bg: oklch(0.18 0 0);
+    --aui-surface: oklch(0.23 0 0);
     --aui-fg: oklch(1 0 0);
     --aui-muted: oklch(0.82 0 0);
     --aui-subtle: oklch(0.25 0 0);
@@ -91,7 +91,7 @@
     --aui-ok: oklch(0.72 0.16 152);
     --aui-warn: oklch(0.8 0.15 80);
     --aui-bad: oklch(0.65 0.22 25.5);
-    --aui-hover: oklch(1 0 0 / 6%);
+    --aui-hover: oklch(0.28 0 0);
     --aui-pop: oklch(0.2 0 0);
     --aui-shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
     --aui-shadow-md: 0 1px 3px 0 oklch(0 0 0 / 0.3), 0 4px 12px -2px oklch(0 0 0 / 0.35);
@@ -110,8 +110,8 @@
   --aui-mode-accent-l: 0.65;
   --aui-mode-accent-c: 0.19;
   --aui-mode-accent-fg: oklch(0.07 0 0);
-  --aui-bg: oklch(0.07 0 0);
-  --aui-surface: oklch(0.17 0 0);
+  --aui-bg: oklch(0.18 0 0);
+  --aui-surface: oklch(0.23 0 0);
   --aui-fg: oklch(1 0 0);
   --aui-muted: oklch(0.82 0 0);
   --aui-subtle: oklch(0.25 0 0);
@@ -123,7 +123,7 @@
   --aui-ok: oklch(0.72 0.16 152);
   --aui-warn: oklch(0.8 0.15 80);
   --aui-bad: oklch(0.65 0.22 25.5);
-  --aui-hover: oklch(1 0 0 / 6%);
+  --aui-hover: oklch(0.28 0 0);
   --aui-pop: oklch(0.2 0 0);
   --aui-shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
   --aui-shadow-md: 0 1px 3px 0 oklch(0 0 0 / 0.3), 0 4px 12px -2px oklch(0 0 0 / 0.35);
@@ -178,7 +178,55 @@
 }
 
 
+/* shadcn and the surface renderer share one semantic palette. */
+:root,
+[data-theme] {
+  --background: var(--aui-bg);
+  --foreground: var(--aui-fg);
+  --card: var(--aui-surface);
+  --card-foreground: var(--aui-fg);
+  --popover: var(--aui-pop);
+  --popover-foreground: var(--aui-fg);
+  --primary: var(--aui-primary);
+  --primary-foreground: var(--aui-primary-fg);
+  --secondary: var(--aui-subtle);
+  --secondary-foreground: var(--aui-fg);
+  --muted: var(--aui-subtle);
+  --muted-foreground: var(--aui-muted);
+  --accent: var(--aui-hover);
+  --accent-foreground: var(--aui-fg);
+  --destructive: var(--aui-bad);
+  --border: var(--aui-border);
+  --input: var(--aui-border);
+  --ring: var(--aui-accent);
+  --radius: 0.6rem;
+}
+
 @theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
+
   --color-aui-bg: var(--aui-bg);
   --color-aui-surface: var(--aui-surface);
   --color-aui-pop: var(--aui-pop);
@@ -228,7 +276,7 @@
   --text-aui-xl: 1.25rem;
   --text-aui-xl--line-height: 1.75rem;
 
-  --font-aui-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-aui-sans: "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
   --font-aui-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
@@ -1186,4 +1234,8 @@
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot] { scroll-behavior: auto; transition-duration: 0s; animation-duration: 0s; }
 }

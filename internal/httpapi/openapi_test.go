@@ -598,7 +598,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
 		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: revisionView{}}, "Choice": {typ: pick.Choice{}},
-		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
+		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
@@ -921,6 +921,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/library/memory", "/api/library/memory", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/library/memory", "/api/library/memory?limit=0", "", http.StatusBadRequest)
 	libraryDraft := c.call(auditAdmin, "POST", "/api/library/skills", "/api/library/skills", `{"scope":{"kind":"workspace"},"version":0,"definition":{"name":"library-brief","description":"Briefing","instructions":"Be concise","tools":[]}}`, http.StatusCreated)
 	libraryID := libraryDraft.str("id")
 	c.call(auditAdmin, "POST", "/api/library/skills", "/api/library/skills", `{"scope":{"kind":"workspace"},"version":0,"definition":{"name":"library-brief","description":"Briefing","instructions":"Be concise","tools":[]}}`, http.StatusConflict)

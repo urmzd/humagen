@@ -60,10 +60,10 @@ export interface ConversationView {
   slide?: number;
 }
 
-export type LibrarySection = "sources" | "skills" | "memory";
+export type LibrarySection = "sources" | "skills" | "memory" | "deliverables";
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
-  | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string;version?:number}
+  | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string;version?:number;artifact?:string;file?:string;libraryTab?:"overview"|"contents"|"versions"}
   | {page:"operations";section:"context"|"integrations";selected?:string;tab?:"connect"|"resources"|"links"|"access"|"events"|"actions"}
   | {page:"assignments";id?:string;agent?:string}
   | {page:"agent-network";handoff?:string}
@@ -149,7 +149,7 @@ export function documentTitle(r: Route, unread = 0): string {
 export function href(r: Route): string {
   switch (r.page) {
     case "library": {
-      const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);if(r.version&&Number.isSafeInteger(r.version)&&r.version>0)q.set("version",String(r.version));return `/library/${r.section}${q.size?`?${q}`:""}`;
+      const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);if(r.version&&Number.isSafeInteger(r.version)&&r.version>0)q.set("version",String(r.version));if(r.artifact)q.set("artifact",r.artifact);if(r.file)q.set("file",r.file);if(r.libraryTab)q.set("tab",r.libraryTab);return `/library/${r.section}${q.size?`?${q}`:""}`;
     }
     case "operations":return `/operations/${r.section}${r.selected?`/${enc(r.selected)}${r.section==="integrations"&&r.tab&&r.tab!=="connect"?`/${r.tab}`:""}`:""}`;
     case "assignments":return `${r.id?`/assignments/${enc(r.id)}`:"/assignments"}${r.agent?`?agent=${enc(r.agent)}`:""}`;
@@ -297,7 +297,7 @@ function read(pathname: string, search: string): Route {
   const [head, a, b, c] = parts;
   switch (head) {
     case "notifications":return {page:"notifications"};
-    case "library":return {page:"library",section:pick(a,["sources","skills","memory"] as const,"sources"),scope:oneOf(q.get("scope"),["personal","workspace","project","agent"] as const),project:queryText(q,"project",63),owner:queryText(q,"owner",512),skill:queryText(q,"skill",160),version:Number.isSafeInteger(Number(q.get("version")))&&Number(q.get("version"))>0?Number(q.get("version")):undefined};
+    case "library":return {artifact:queryText(q,"artifact",160),file:queryText(q,"file",256),libraryTab:oneOf(q.get("tab"),["overview","contents","versions"] as const),page:"library",section:pick(a,["sources","skills","memory","deliverables"] as const,"sources"),scope:oneOf(q.get("scope"),["personal","workspace","project","agent"] as const),project:queryText(q,"project",63),owner:queryText(q,"owner",512),skill:queryText(q,"skill",160),version:Number.isSafeInteger(Number(q.get("version")))&&Number(q.get("version"))>0?Number(q.get("version")):undefined};
     case "operations":
       if(a==="audit")return {page:"audit"};
       if(a==="usage"){

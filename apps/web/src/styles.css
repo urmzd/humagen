@@ -33,8 +33,6 @@ body,
 }
 
 :root {
-  /* humagen names Figtree. The console ships it, so it is never a fallback. */
-  --font-aui-sans: "Figtree Variable", "Figtree", ui-sans-serif, system-ui, sans-serif;
   /* The sidebar's plane and a panel's plane, each one step off the page. */
   --humagen-plane: oklch(0.975 0 0);
   --humagen-panel: oklch(1 0 0);
@@ -67,9 +65,6 @@ body,
 }
 html[data-theme="dark"],
 html[data-theme="dark"] [data-theme="dark"] {
-  --aui-bg: oklch(0.18 0 0);
-  --aui-surface: oklch(0.23 0 0);
-  --aui-hover: oklch(0.28 0 0);
   --humagen-plane: oklch(0.205 0 0);
   --humagen-panel: oklch(0.22 0 0);
   --humagen-rule: oklch(1 0 0 / 9%);

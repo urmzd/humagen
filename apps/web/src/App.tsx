@@ -1,3 +1,4 @@
+import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import { setAgentHues } from "./ui.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -447,9 +448,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
         {route.page==="notifications"&&(canNotify?<NotificationsPage notifications={notificationDelivery} onGo={navigate}/>:<Page title={defaultCopy.notifications.title}><Problem message={defaultCopy.noPermission}/></Page>)}
-        {route.page==="library"&&<WorkspaceTabs label={defaultCopy.navigation.library} items={(["sources","skills","memory"] as const).filter(section=>can(section==="sources"?"knowledge:read":"projects:read")).map(section=>({label:defaultCopy.navigation[section],route:{page:"library",section}}))} current={href(route)} onGo={go}/>}
-        {route.page==="library"&&route.section==="skills"&&(can("projects:read")?<SkillsLibrary key={href(route)} onLocationChange={location=>go({page:"library",section:"skills",...location})}/>:<Page title={defaultCopy.navigation.skills}><Problem message={defaultCopy.noPermission}/></Page>)}
-        {route.page==="library"&&route.section==="memory"&&(can("projects:read")?<MemoryLibrary key={href(route)} onLocationChange={location=>go({page:"library",section:"memory",...location})}/>:<Page title={defaultCopy.navigation.memory}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {workspaceHub(route) && <WorkspaceTabs label={defaultCopy.navigation[workspaceHub(route)!]} items={hubTabs(workspaceHub(route)!, route, can)} current={href(route)} onGo={go}/>}
+        {route.page==="library"&&route.section==="skills"&&(can("projects:read")?<SkillsLibrary key={`${route.scope}:${route.project}:${route.skill}:${route.version}`} file={route.file} libraryTab={route.libraryTab} onLocationChange={location=>go({page:"library",section:"skills",...location})}/>:<Page title={defaultCopy.navigation.skills}><Problem message={defaultCopy.noPermission}/></Page>)}
+        {route.page==="library"&&route.section==="memory"&&((can("runs:read") || can("projects:read") || can("agents:read"))?<MemoryLibrary key={`${route.scope}:${route.owner}`} file={route.file} onLocationChange={location=>go({page:"library",section:"memory",...location})}/>:<Page title={defaultCopy.navigation.memory}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="assignments"&&(can("runs:read")?<Assignments agent={route.agent} selectedId={route.id} agents={agents.map(agent=>agent.spec.name)} sources={sources.map(source=>({name:source.name,label:source.name}))} projects={[{name:"",title:workspaceName},...(projects??[]).filter(project=>project.name!=="").map(project=>({name:project.name,title:project.title||project.name}))]} subject={me.principal.subject} canWrite={can("runs:write")} onRun={openRun} onConversation={openThread}/>:<Page title={defaultCopy.navigation.assignments}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="agent-network"&&(can("runs:read")?<AgentNetwork selectedId={route.handoff} canWrite={can("runs:write")} onAgent={openAgent} onRun={openRun}/>:<Page title={defaultCopy.navigation.network}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="agent-control"&&(can("agents:read")?<AgentControls key={route.agent??"workspace"} agent={route.agent} canWrite={can("agents:write")} onChanged={loadAgents}/>:<Page title={defaultCopy.navigation.controls}><Problem message={defaultCopy.noPermission}/></Page>)}
@@ -739,7 +740,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpenProject={openProject}
           />
         )}
-        {route.page === "artifacts" && (
+        {(route.page === "artifacts" || route.page === "library" && route.section === "deliverables") && (
           <Storage
             signal={tick}
             agents={agents.map((a) => a.spec.name)}
@@ -749,7 +750,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpenThread={openThread}
             selectedId={route.artifact ?? null}
             onOpenArtifact={(file) => go({ page: "conversation", id: file.thread, panel: "deliverables", artifact: file.id })}
-            onSelect={(artifact) => go({ page: "artifacts", artifact: artifact ?? undefined })}
+            onSelect={(artifact) => go({ page: "library", section: "deliverables", artifact: artifact ?? undefined })}
           />
         )}
         {route.page === "connections" && (
@@ -797,6 +798,6 @@ function Missing({ what, name, onBack }: { what: string; name: string; onBack: (
 }
 
 
-function WorkspaceTabs({label,items,current,onGo}:{label:string;items:{label:string;route:Route}[];current:string;onGo:(route:Route)=>void}) {
- return <nav aria-label={label} className="flex shrink-0 flex-wrap gap-1 border-aui-border border-b px-4 py-2">{items.map(item=><a key={item.label} href={href(item.route)} aria-current={current===href(item.route)?"page":undefined} onClick={event=>{if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();onGo(item.route)}}} className="inline-flex min-h-10 items-center rounded-aui px-3 text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg">{item.label}</a>)}</nav>;
+function WorkspaceTabs({label,items,current,onGo}:{label:string;items:{label:string;route:Route;active?:boolean}[];current:string;onGo:(route:Route)=>void}) {
+ return <nav aria-label={label} className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-aui-border border-b px-5 pt-2 md:px-8">{items.map(item=><a key={item.label} href={href(item.route)} aria-current={(item.active ?? current.split("?")[0] === href(item.route).split("?")[0]) ? "page" : undefined} onClick={event=>{if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();onGo(item.route)}}} className="inline-flex min-h-11 items-center border-b-2 border-transparent px-1 text-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:border-aui-primary aria-[current=page]:font-medium aria-[current=page]:text-aui-fg">{item.label}</a>)}</nav>;
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/urmzd/fiber/pkg/runtime"
+	saigeskills "github.com/urmzd/saige/agent/skills"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -47,10 +48,13 @@ import (
 
 // pinnedSkill is one skill as a run's tag carries it.
 type pinnedSkill struct {
-	Private bool      `json:"private,omitempty"`
-	Version int       `json:"version,omitempty"`
-	Tools   *[]string `json:"tools,omitempty"`
-	Name    string    `json:"name"`
+	PackageID   string                      `json:"package_id,omitempty"`
+	PackageHash string                      `json:"package_hash,omitempty"`
+	Resources   []saigeskills.SkillResource `json:"resources,omitempty"`
+	Private     bool                        `json:"private,omitempty"`
+	Version     int                         `json:"version,omitempty"`
+	Tools       *[]string                   `json:"tools,omitempty"`
+	Name        string                      `json:"name"`
 	// From is the project that declared it when the message was accepted.
 	From         string `json:"from"`
 	Instructions string `json:"instructions"`
@@ -233,7 +237,17 @@ func withSkills(req runtime.Request) (runtime.Request, error) {
 	}
 	parts := []string{skillsPrecedence}
 	for _, s := range skills {
+		if s.PackageID != "" && s.PackageHash == "" {
+			return req, fmt.Errorf("platform: skill package %q has no snapshot hash", s.Name)
+		}
 		parts = append(parts, fmt.Sprintf("Skill $%s:\n%s", s.Name, strings.TrimSpace(s.Instructions)))
+		if len(s.Resources) > 0 {
+			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
+			for _, resource := range s.Resources {
+				manifest = append(manifest, fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size))
+			}
+			parts = append(parts, strings.Join(manifest, "\n"))
+		}
 	}
 	req.Text = strings.Join(append(parts, req.Text), "\n\n")
 	return req, nil

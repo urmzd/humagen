@@ -1,3 +1,4 @@
+import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
 import {
   BotIcon,
   BellIcon,
@@ -267,25 +268,18 @@ export function Sidebar({
   const selected = route.page === "conversation" ? route.id : null;
   const here = (...pages: RoutePage[]) => pages.includes(route.page);
   const nav=defaultCopy.navigation;
+  const hub = workspaceHub(route);
+  const libraryTabs = hubTabs("library", route, can);
+  const agentTabs = hubTabs("agents", route, can);
+  const operationTabs = hubTabs("operations", route, can);
   const entries: {to:Route;label:string;icon:ReactNode;show:boolean;active:boolean;badge?:number;group:"projects"|"library"|"operations"}[]=[
     {to:{page:"new"},label:nav.newConversation,icon:<ComposeIcon/>,show:can("runs:write"),active:here("new"),group:"projects"},
     {to:{page:"projects"},label:nav.projects,icon:<ProjectIcon/>,show:can("projects:read"),active:here("projects","project","channel"),group:"projects"},
     {to:{page:"directory",tab:"people"},label:nav.people,icon:<UsersIcon/>,show:can("people:read"),active:here("directory"),group:"projects"},
-    {to:{page:"library",section:"sources"},label:nav.sources,icon:<DatabaseIcon/>,show:can("knowledge:read"),active:here("context")||(route.page==="library"&&route.section==="sources"),group:"library"},
-    {to:{page:"library",section:"skills"},label:nav.skills,icon:<WrenchIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="skills",group:"library"},
-    {to:{page:"library",section:"memory"},label:nav.memory,icon:<BrainIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="memory",group:"library"},
-    {to:{page:"artifacts"},label:defaultCopy.conversation.deliverables,icon:<FileIcon/>,show:can("artifacts:read"),active:here("artifacts"),group:"library"},
+    {to:libraryTabs[0]?.route ?? {page:"library",section:"sources"},label:nav.library,icon:<LayersIcon/>,show:libraryTabs.length > 0,active:hub === "library",group:"library"},
     {to:{page:"inbox"},label:nav.needsYou,icon:<InboxIcon/>,show:can("runs:read"),active:here("inbox"),badge:inboxCount,group:"operations"},
-    {to:{page:"agents"},label:nav.agents,icon:<BotIcon/>,show:can("agents:read"),active:here("agents","agent","agent-setup"),group:"operations"},
-    {to:{page:"agent-network"},label:nav.network,icon:<NetworkIcon/>,show:can("runs:read"),active:here("agent-network"),group:"operations"},
-    {to:{page:"assignments"},label:nav.assignments,icon:<ClipboardListIcon/>,show:can("runs:read"),active:here("assignments"),group:"operations"},
-    {to:{page:"operations",section:"context"},label:nav.context,icon:<LayersIcon/>,show:can("knowledge:read"),active:route.page==="operations"&&route.section==="context",group:"operations"},
-    {to:{page:"operations",section:"integrations"},label:nav.integrations,icon:<PlugIcon/>,show:can("clients:read")||can("knowledge:read"),active:route.page==="operations"&&route.section==="integrations",group:"operations"},
-    {to:{page:"action-policy"},label:nav.policies,icon:<ShieldIcon/>,show:can("agents:read"),active:here("action-policy"),group:"operations"},
-    {to:{page:"agent-control"},label:nav.controls,icon:<SlidersIcon/>,show:can("agents:read"),active:here("agent-control"),group:"operations"},
-    {to:{page:"schedules"},label:nav.schedules,icon:<ClockIcon/>,show:can("schedules:read"),active:here("schedules"),group:"operations"},
-    {to:{page:"usage"},label:nav.usage,icon:<GaugeIcon/>,show:can("runs:read"),active:here("usage","monitor"),group:"operations"},
-    {to:{page:"audit"},label:nav.audit,icon:<ScrollTextIcon/>,show:can("projects:govern"),active:here("audit"),group:"operations"},
+    {to:agentTabs[0]?.route ?? {page:"agents"},label:nav.agents,icon:<BotIcon/>,show:agentTabs.length > 0,active:hub === "agents",group:"operations"},
+    {to:operationTabs[0]?.route ?? {page:"operations",section:"context"},label:nav.operations,icon:<SlidersIcon/>,show:operationTabs.length > 0,active:hub === "operations",group:"operations"},
   ];
 
   // Pinned conversations come from whatever is loaded. One that cannot be found
@@ -331,7 +325,7 @@ export function Sidebar({
         {notificationCount !== undefined && can("runs:read") && who.kind === "user" && <ul className={`flex flex-col pt-1 ${open ? "" : "items-center"}`}><li><Item icon={<BellIcon />} label={nav.notifications} href={href({page:"notifications"})} open={open} active={here("notifications")} badge={notificationCount} badgeLabel={defaultCopy.notifications.count(notificationCount)} onClick={()=>go({page:"notifications"})}/></li></ul>}
         {(["projects","library","operations"] as const).map(group=>{
           const shown=entries.filter(entry=>entry.group===group&&entry.show);
-          return shown.length>0&&<section key={group} aria-label={nav[group]} className="pt-2">{open&&<Label>{nav[group]}</Label>}<ul className={`flex flex-col gap-0.5 ${open?"":"items-center"}`}>{shown.map(entry=><li key={entry.label}><Item icon={entry.icon} label={entry.label} href={href(entry.to)} open={open} active={entry.active} badge={entry.badge} onClick={()=>go(entry.to)}/></li>)}</ul></section>;
+          return shown.length>0&&<section key={group} aria-label={nav[group]} className="pt-2"><ul className={`flex flex-col gap-0.5 ${open?"":"items-center"}`}>{shown.map(entry=><li key={entry.label}><Item icon={entry.icon} label={entry.label} href={href(entry.to)} open={open} active={entry.active} badge={entry.badge} onClick={()=>go(entry.to)}/></li>)}</ul></section>;
         })}
 
       </nav>

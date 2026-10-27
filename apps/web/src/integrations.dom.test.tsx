@@ -406,7 +406,6 @@ test("a bridge whose direction changed since display is never overwritten with a
   );
 });
 
-
 const suggestion = {
   id: "verified-1",
   client: "drive-connection",
@@ -590,19 +589,22 @@ test("automatic link history shows inactive relationships without implying curre
   assert.equal(screen.queryByRole("button", { name: "Link" }), null);
 });
 
-
 test("a direction chosen as a binding appears survives its initial effects", async () => {
   net = stubFetch({
     "GET /api/clients": () => ({ clients: [client], caps: { max: 20, max_per_surface: 10 } }),
     "GET /api/knowledge": () => ({ sources: [] }),
     "GET /api/clients/local/bindings": () => ({
-      bindings: [{ project: "Launch", channel: "general", slack_channel: "C123", direction: "two_way" }],
+      bindings: [
+        { project: "Launch", channel: "general", slack_channel: "C123", direction: "two_way" },
+      ],
     }),
   });
   let edited = false;
   // Edit at insertion, before the newly mounted editor runs its passive effects.
   const observer = new MutationObserver(() => {
-    const select = document.querySelector<HTMLSelectElement>('select[aria-label="Bridge Direction: C123"]');
+    const select = document.querySelector<HTMLSelectElement>(
+      'select[aria-label="Bridge Direction: C123"]',
+    );
     if (!select || edited) return;
     edited = true;
     fireEvent.change(select, { target: { value: "inbound" } });
@@ -612,10 +614,30 @@ test("a direction chosen as a binding appears survives its initial effects", asy
     render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="resources" />);
     await waitFor(() => assert.equal(edited, true));
     await waitFor(() => {
-      assert.equal((screen.getByRole("combobox", { name: "Bridge Direction: C123" }) as HTMLSelectElement).value, "inbound");
-      assert.equal((screen.getByRole("button", { name: "Save Direction" }) as HTMLButtonElement).disabled, false);
+      assert.equal(
+        (screen.getByRole("combobox", { name: "Bridge Direction: C123" }) as HTMLSelectElement)
+          .value,
+        "inbound",
+      );
+      assert.equal(
+        (screen.getByRole("button", { name: "Save Direction" }) as HTMLButtonElement).disabled,
+        false,
+      );
     });
   } finally {
     observer.disconnect();
   }
+});
+
+test("empty Context Health offers a source action without zero counters or dead detail panes", async () => {
+  net = stubFetch({ "GET /api/knowledge": () => ({ sources: [] }) });
+  render(<ContextHealth canWrite />);
+  await screen.findByText(defaultCopy.sourceOperations.healthEmptyTitle);
+  assert.equal(
+    screen.getByRole("link", { name: "Add Sources" }).getAttribute("href"),
+    "/library/sources",
+  );
+  assert.equal(screen.queryByText(defaultCopy.sourceOperations.noSelection), null);
+  assert.equal(screen.queryByLabelText(defaultCopy.sourceOperations.filter), null);
+  assert.equal(screen.queryByText(defaultCopy.sourceOperations.healthMissing), null);
 });

@@ -15,22 +15,21 @@ import {
 } from "react";
 import { useGroup } from "./form";
 import { AlertTriangleIcon, ChevronDownIcon, EllipsisIcon } from "./icons";
+import { cn } from "./lib/utils.ts";
 import { SuppressContext } from "./meta";
+import { buttonVariants } from "./ui/button.tsx";
 
 export const ActionContext = createContext<ActionHandler>(() => {});
 
-const base =
-  "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-aui px-2.5 font-medium text-aui-xs pointer-coarse:h-10 pointer-coarse:px-4 pointer-coarse:text-aui-sm transition-[background-color,border-color,color,opacity,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-offset-2 focus-visible:ring-offset-aui-bg disabled:pointer-events-none disabled:opacity-50";
-
 export const buttonVariant = {
-  primary: "bg-aui-primary text-aui-primary-fg shadow-aui-sm hover:opacity-90",
-  danger: "bg-aui-bad text-aui-bad-fg shadow-aui-sm hover:opacity-90",
-  default: "border border-aui-border bg-aui-surface text-aui-fg shadow-aui-sm hover:bg-aui-hover",
-  ghost: "text-aui-muted hover:bg-aui-hover hover:text-aui-fg",
+  primary: "default",
+  danger: "destructive",
+  default: "outline",
+  ghost: "ghost",
 } as const;
 
 export function buttonClass(variant: keyof typeof buttonVariant = "default") {
-  return `${base} ${buttonVariant[variant]}`;
+  return buttonVariants({ variant: buttonVariant[variant] });
 }
 
 /**
@@ -136,7 +135,11 @@ export function Button({
   const [draft, setDraft] = useState("");
   const group = useGroup(collects);
   const dense = useContext(DenseContext);
-  const cls = `${buttonClass(style ?? "default")} ${dense ? "h-6 px-2" : ""} aria-pressed:border-aui-accent aria-pressed:bg-aui-accent/10`;
+  const cls = cn(
+    buttonClass(style ?? "default"),
+    dense && "h-6 px-2 py-0",
+    "aria-pressed:border-aui-accent aria-pressed:bg-aui-accent/10",
+  );
 
   if (url) {
     return (
@@ -424,8 +427,12 @@ export function Menu({ label, items }: PrimitiveProps["Menu"]) {
 
   const h = dense ? "h-6" : "h-7";
   const triggerCls = split
-    ? `${buttonClass(split)} ${h} w-6 rounded-l-none border-l border-l-[color-mix(in_oklab,currentColor_25%,transparent)] px-0`
-    : `${buttonClass("ghost")} ${h} w-7 px-0`;
+    ? cn(
+        buttonClass(split),
+        h,
+        "w-6 rounded-l-none border-l border-l-[color-mix(in_oklab,currentColor_25%,transparent)] px-0 py-0",
+      )
+    : cn(buttonClass("ghost"), h, "w-7 px-0 py-0");
 
   return (
     <span

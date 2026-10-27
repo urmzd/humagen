@@ -373,6 +373,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Piece | State |
 |-------|-------|
 | Hierarchical composer context choices | The plus menu groups Agents, Projects and Skills in named subpanes. Personal chats keep their internal General default out of the root menu; actual channel choices stay within the selected project. Skills reuse the project-scoped resolver and normal tags, preserving drafts and files until explicit Send. Scoped-loading, keyboard and native phone/desktop regressions cover the flow. |
+| Shared web foundation and managed resource browsers | Standard shadcn Radix controls below the existing web renderer, one semantic theme and font source, responsive scope drawers and file navigation are implemented. Library, Agents and Operations consolidate related destinations into permission-aware tabs. Skills store immutable bounded packages parsed by saige, with import, editor, downloads and pinned on-demand resource reads. Memory exposes authorized owner folders, retained file views, provenance, correction drawers and private contextual chat drafts. Action policy and Context Health use compact forms and meaningful empty states. Verification is tracked under DES-015 through DES-017 in `design.md`; see [managed-library.md](managed-library.md). |
 | Consistent action icons and readable inbox recovery | Message actions share semantic inline icons, consistent footer sizing and coarse-pointer targets. Inbox alert diagnostics accompanying a failure are disclosed on demand; recovery callout, actions and reference stay grouped, and metadata and related-object labels wrap. Render regressions and native phone/desktop recovery captures cover the reported layout. |
 | Independent sidebar and content scrolling | The console is bounded to the dynamic viewport; sidebar lists and page content scroll separately. Sidebar header and account controls remain visible, including in the phone drawer. The `sidebar-scroll` Chromium screen fixture exercises wheel input and scroll boundaries with long content on phone and desktop. See DES-006 in `design.md`. |
 | Project conversation workspace and native deliverables | Built in the web console. One left-aligned page title, a draft-preserving project picker with wrapping starters, Share placement, docked Context and People drawers, Activity under More, and conversations grouped by project with the agents that took part. Completed tool work is grouped; technical inputs and outputs remain inspectable, and clarification choices require a separate submit. Saved artifacts open in the conversation with immutable-version selection, DOCX and Markdown text, PPTX slides and notes, CSV and first-sheet XLSX previews, presentation mode, original downloads and version-specific revision prompts. Context shows recorded document origins and import times. See [conversation-workspace.md](conversation-workspace.md) for supported formats, limits and the separate backend work for completed conversation moves and live ingestion. |
@@ -560,14 +561,15 @@ memory and Postgres backends. Slack task cards link to their conversation when
 `HUMAGEN_PUBLIC_URL` is configured; the shared follower retains that URL while
 streaming and settling the run.
 
-### Library and personal settings work in progress
+### Library and personal settings
 
 The library implementation adds private human-owned memory, fact/decision/preference/person/risk kinds,
 expiry excluded from every context layer, provenance and persisted use counts. A preview does not
 count as use. Personal forgetting records an attempt before removing the note and does not retain
 the forgotten text in its audit snapshot. Personal briefing, notification delivery policy, quiet
-hours and privacy choices survive restart; native console notifications now use a bounded durable authenticated delivery worker with immediate, hourly digest, quiet-hour and Off policies. Email is unavailable; no external message is sent. See [native notifications](native-notifications.md). Standalone Audit, MemoryLibrary
-and PersonalPreferences console components await the shared navigation integration.
+hours and privacy choices survive restart; native console notifications now use a bounded durable authenticated delivery worker with immediate, hourly digest, quiet-hour and Off policies. Email is unavailable; no external message is sent. See [native notifications](native-notifications.md). Audit, Memory and Personal Preferences are mounted under their canonical routes.
+The managed Library and shared web foundation are described in
+[managed-library.md](managed-library.md).
 
 
 Memory corrections preserve original provenance and record the editor and review. New note IDs are

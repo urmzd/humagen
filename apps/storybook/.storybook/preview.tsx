@@ -1,4 +1,5 @@
 import type { Preview } from "@storybook/react-vite";
+import "@humagen/render-web/fonts.css";
 import "../src/styles.css";
 
 const preview: Preview = {

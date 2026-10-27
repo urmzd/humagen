@@ -105,7 +105,7 @@ test("A built-in's spec is locked, and it lives in no project", () => {
   const specSwitches = access.match(/<input type="checkbox" class="humagen-switch[^>]*>/g) ?? [];
   assert.ok(specSwitches.length > 0 && specSwitches.every((s) => s.includes('disabled=""')), "the spec's switches are locked");
   assert.match(livesIn(access), /disabled=""/, "the platform's own agents live nowhere");
-  assert.doesNotMatch(model(render(false, true, "model")), /disabled/);
+  assert.doesNotMatch(model(render(false, true, "model")), /\sdisabled(?:=|\s|>)/);
   assert.doesNotMatch(livesIn(render(false, true, "access")), /disabled=""/);
   // Without the right to write, neither changes.
   assert.match(model(render(false, false, "model")), /disabled=""/);
