@@ -89,19 +89,6 @@ On a terminal, the first start asks a few questions (name, model providers, MCP 
 - Leave `agent` out and the nearest default answers: the project's, its ancestors', then the workspace's. With none set, the answer is 409.
 - `after` names the turn the message follows. Naming a turn that already has a reply starts a branch.
 
-### Archive a conversation
-
-Archive removes a conversation from the active list and places it in the
-deletion queue. It becomes eligible for permanent deletion after 30 days. A
-person can instead request deletion immediately; an admin must still approve
-it. Admins can restore queued conversations before approval.
-
-<p align="center">
-  <img src="showcase/pr101/conversation-actions.png" alt="Conversation menu with pin, rename, archive and delete actions" width="48%"> &nbsp;
-  <img src="showcase/pr101/deletion-queue.png" alt="Admin deletion queue with due and scheduled archive requests" width="48%">
-</p>
-<p align="center"><em>Conversation actions · Admin deletion queue</em></p>
-
 ### Use a real model
 
 Set `ANTHROPIC_API_KEY` before starting and configure an agent with provider `anthropic`.
