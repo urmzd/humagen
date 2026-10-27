@@ -5,7 +5,7 @@
 # -auth=dev signs every request in as admin, so the server refuses to listen on
 # anything but loopback. A published container port is not loopback, so this
 # file puts it on the host's network instead, listening on 127.0.0.1:8080,
-# and publishes Postgres (and Redis, MinIO) on the host's loopback for it.
+# and publishes Postgres (and MinIO) on the host's loopback for it.
 # Host networking needs Linux, or Docker Desktop 4.34+ with it turned on.
 
 services:
@@ -31,7 +31,3 @@ services:
     ports: !override
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
-
-  redis:
-    ports:
-      - "127.0.0.1:6379:6379"

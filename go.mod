@@ -71,10 +71,11 @@ require (
 	github.com/aws/smithy-go v1.28.5
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/redis/go-redis/v9 v9.21.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	go.yaml.in/yaml/v3 v3.0.5
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0
 )
+
+require github.com/redis/go-redis/v9 v9.21.0 // indirect

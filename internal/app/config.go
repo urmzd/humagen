@@ -16,8 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/agentspec"
@@ -234,12 +232,6 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		}
 	}
 	set("bus", sp.Bus.Kind)
-	if sp.Bus.Kind == "redis" {
-		b, _ := spec.Block[spec.URLBlock](sp.Bus)
-		if err := secret(envRedis, b.URL); err != nil {
-			return l, err
-		}
-	}
 
 	set("workspace", sp.Execution.Workspace)
 	set("concurrency", strconv.Itoa(sp.Execution.Concurrency))
@@ -264,12 +256,9 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	return l, nil
 }
 
-// Environment variables the server reads for its stores and bus, which a
-// System document's references fill.
-const (
-	envPostgres = "HUMAGEN_POSTGRES_URL"
-	envRedis    = "HUMAGEN_REDIS_URL"
-)
+// envPostgres is the variable the server reads for its database, which a
+// System document's reference fills. The stores and the bus share it.
+const envPostgres = "HUMAGEN_POSTGRES_URL"
 
 // overlay reads vars first, then the process environment.
 func overlay(vars map[string]string, next func(string) string) func(string) string {
@@ -281,33 +270,26 @@ func overlay(vars map[string]string, next func(string) string) func(string) stri
 	}
 }
 
-// openBus builds the bus the -bus flag (or a registered kind) names.
-func openBus(ctx context.Context, o Options, l loaded, kind string, getenv func(string) string) (bus.Bus, func() error, error) {
+// openBus builds the bus the -bus flag (or a registered kind) names. Empty
+// means postgres when the stores are on Postgres, and memory otherwise.
+func openBus(ctx context.Context, o Options, l loaded, kind string, backends platform.Backends) (bus.Bus, error) {
 	switch kind {
-	case "", "memory":
-		return nil, nil, nil
+	case "":
+		return backends.Bus, nil
+	case "memory":
+		return nil, nil
+	case "postgres":
+		if backends.Bus == nil {
+			return nil, errors.New("bus: -bus=postgres shares the stores' database; set -state=postgres and $" + envPostgres)
+		}
+		return backends.Bus, nil
 	case "redis":
-		raw := strings.TrimSpace(getenv(envRedis))
-		if raw == "" {
-			return nil, nil, fmt.Errorf("bus: redis needs %s", envRedis)
-		}
-		opts, err := redis.ParseURL(raw)
-		if err != nil {
-			// Not echoed: a URL can carry a password.
-			return nil, nil, fmt.Errorf("bus: %s is not a redis:// URL", envRedis)
-		}
-		client := redis.NewClient(opts)
-		if err := client.Ping(ctx).Err(); err != nil {
-			_ = client.Close()
-			return nil, nil, fmt.Errorf("bus: redis is not reachable")
-		}
-		return bus.NewRedis(client), client.Close, nil
+		return nil, errors.New("bus: the redis bus was removed; use postgres, which shares the stores' database, or omit -bus")
 	default:
 		if l.cfg.System.Spec.Bus.Kind == kind {
-			b, err := build[bus.Bus](ctx, o, spec.SlotBus, l.cfg.System.Spec.Bus)
-			return b, nil, err
+			return build[bus.Bus](ctx, o, spec.SlotBus, l.cfg.System.Spec.Bus)
 		}
-		return nil, nil, fmt.Errorf("bus: -bus=%q is not memory or redis", kind)
+		return nil, fmt.Errorf("bus: -bus=%q is not memory or postgres", kind)
 	}
 }
 

@@ -21,8 +21,7 @@ system:
       kind: postgres
       postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}
     bus:
-      kind: redis
-      redis: {url: {ref: env:HUMAGEN_REDIS_URL}}
+      kind: postgres
     blobs:
       kind: s3
       s3:
