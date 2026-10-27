@@ -107,7 +107,7 @@ export function Rating({ up, down, selected, labels, prompt }: PrimitiveProps["F
   }, [asking]);
 
   const btn = (on: boolean) =>
-    `inline-flex size-7 items-center justify-center rounded-aui-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-aui-accent ${
+    `inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-aui-accent ${
       on
         ? "bg-aui-accent-soft text-aui-accent"
         : "text-aui-muted hover:bg-aui-hover hover:text-aui-fg"
@@ -127,7 +127,7 @@ export function Rating({ up, down, selected, labels, prompt }: PrimitiveProps["F
         className={btn(current === rating)}
         onClick={() => rate(rating)}
       >
-        <Icon size={14} fill={current === rating ? "currentColor" : "none"} fillOpacity={0.2} />
+        <Icon size={16} fill={current === rating ? "currentColor" : "none"} fillOpacity={0.2} />
       </button>
     );
   };

@@ -13,6 +13,7 @@ import {
   type ItemActions,
   ItemActionsContext,
   Rating,
+  RedirectIcon,
   RefreshIcon,
   RequestBubble,
   ShimmerVerb,
@@ -24,7 +25,7 @@ import {
 import { type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";
-import { MessageActionRow } from "./MessageActionRow";
+import { MessageActionRow, messageActionButton, messageTextActionButton } from "./MessageActionRow";
 import { Reasoning } from "./Reasoning";
 
 function seconds(ms?: number) {
@@ -98,7 +99,7 @@ function UsageChip({ usage }: { usage: Usage }) {
         onBlur={() => setOpen(false)}
         className={actionBtn}
       >
-        <GaugeIcon size={13} />
+        <GaugeIcon size={16} />
       </button>
       {open && (
         <span
@@ -117,8 +118,7 @@ function UsageChip({ usage }: { usage: Usage }) {
   );
 }
 
-const actionBtn =
-  "inline-flex size-7 items-center justify-center rounded-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-accent";
+const actionBtn = messageActionButton;
 
 function WorkSummary({ turn, copy }: { turn: Turn; copy: Copy }) {
   const attention = turn.tasks.some((task) => task.status === "waiting" || task.status === "error");
@@ -188,11 +188,8 @@ function MessageActions({
       onReply={onReply}
     >
       {turn.outcome && onRedirect && (
-        <button
-          type="button"
-          className="min-h-7 rounded-aui px-2 text-aui-xs text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-          onClick={onRedirect}
-        >
+        <button type="button" className={messageTextActionButton} onClick={onRedirect}>
+          <RedirectIcon size={16} />
           {copy.conversation.redirect}
         </button>
       )}
@@ -206,7 +203,7 @@ function MessageActions({
             onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
           }
         >
-          <RefreshIcon size={13} />
+          <RefreshIcon size={16} />
         </button>
       )}
       {rate && (
