@@ -48,6 +48,7 @@ function openChat(view: ProjectAgentsView, props: Partial<Parameters<typeof Chat
   const opened: string[] = [];
   net = stubFetch({
     "GET /api/projects/~/agents": () => view,
+    ...(props.personalProject?{[`GET /api/projects/${encodeURIComponent(props.personalProject)}/agents`]:()=>view}:{}),
     "GET /api/projects/Globex/agents": () => ({ ...view, homes: ["globex-helper"], available: { all: true, names: ["globex-helper"] } }),
     "GET /api/people": () => ({ people: [{ subject: "ada", name: "Ada", handle: "ada", picture: null }, { subject: "00u-ben", name: "Ben Ito", handle: "ben", picture: null }] }),
     "GET /api/skills": () => ({ skills: [{ name: "review", description: "Reviews a change", argument_hint: "", from: "" }] }),
@@ -606,18 +607,13 @@ test("+ closes the menu it opened, though focus moves to it from the menu first"
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
 });
 
-test("suggestions keep to one line, a phone showing the first two, so none is left alone on a line of its own", async () => {
-  const builtin = [...agents, agent("humagen-analyst"), agent("humagen-builder"), agent("humagen-writer")];
-  openChat(workspace("lead"), { agents: builtin });
-  const list = await screen.findByRole("list", { name: chat.suggestions });
-  const classes = list.className.split(/\s+/);
-  assert.ok(classes.includes("flex-nowrap") && !classes.includes("flex-wrap"), list.className);
-  const rows = [...list.querySelectorAll("li")].map((li) => li.className.split(/\s+/));
-  assert.equal(rows.length, 3);
-  assert.deepEqual(
-    rows.map((c) => c.includes("hidden") && c.includes("sm:block")),
-    [false, false, true],
-  );
+test("all starter suggestions wrap within the available width without hiding actions", async () => {
+ const builtin=[...agents,agent("humagen-analyst"),agent("humagen-builder"),agent("humagen-writer")];
+ openChat(workspace("lead"),{agents:builtin});
+ const list=await screen.findByRole("list",{name:chat.suggestions});
+ assert.ok(list.className.split(/\s+/).includes("flex-wrap"));
+ assert.equal(within(list).getAllByRole("button").length,3);
+ assert.ok([...list.querySelectorAll("li")].every(row=>!row.className.split(/\s+/).includes("hidden")));
 });
 
 test("a suggestion adds its agent as the + menu would: All of Them gives way past three, and a full selection says so", async () => {
@@ -797,4 +793,29 @@ test("Escape returns from discovery to its picker trigger before closing the pic
   fireEvent.keyDown(trigger, { key: "Escape" });
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
   assert.equal(document.activeElement, box());
+});
+
+
+test("the Personal project control opens a searchable chooser and keeps an unsent draft when switching",async()=>{
+ openChat(workspace("lead"),{personalProject:"Personal",projects:[globex] as never});
+ fireEvent.change(box(),{target:{value:"Preserve this draft"}});
+ fireEvent.click(screen.getByRole("button",{name:"Select project: Personal"}));
+ const drawer=await screen.findByRole("dialog",{name:chat.chooseProject});
+ assert.ok(within(drawer).getByRole("button",{name:"Personal"}));
+ fireEvent.change(within(drawer).getByRole("searchbox",{name:defaultCopy.projects.search}),{target:{value:"Globex"}});
+ fireEvent.click(within(drawer).getByRole("button",{name:/^Globex/}));
+ await waitFor(()=>assert.ok(screen.getByRole("button",{name:"Select project: Globex"})));
+ assert.equal(box().value,"Preserve this draft");
+ assert.ok(!net?.seen.some(request=>request.method==="POST"));
+});
+
+
+test("a starter suggestion keeps the selected project and waits for explicit submission",async()=>{
+ const builtin=[...agents,agent("humagen-writer")];
+ openChat(workspace("lead"),{startIn:"Globex",projects:[globex] as never,agents:builtin});
+ const list=await screen.findByRole("list",{name:chat.suggestions});
+ fireEvent.click(within(list).getByRole("button",{name:/Write a report/}));
+ await waitFor(()=>assert.equal(box().value,"Write a one-page report on "));
+ assert.ok(screen.getByRole("button",{name:"Select project: Globex"}));
+ assert.ok(!net?.seen.some(request=>request.method==="POST"));
 });

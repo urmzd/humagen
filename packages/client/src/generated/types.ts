@@ -905,12 +905,16 @@ export interface ProjectRollup {
 }
 
 export interface DiscoveryItem {
-  kind: "project" | "agent" | "conversation";
+  kind: "project" | "agent" | "conversation" | "message" | "file" | "source";
   id: string;
   title: string;
   project?: string;
   channel?: string;
   hue?: number;
+  snippet?: string;
+  thread?: string;
+  message?: string;
+  source?: string;
 }
 
 export interface ProjectTemplate {

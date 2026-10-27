@@ -248,7 +248,7 @@ export function Page({
   actions?: ReactNode;
   /** Tabs under the header, sticking to the top while the page scrolls. What the page shows under them is a column of its own. */
   tabs?: ReactNode;
-  /** Conversation controls surround its one centered page title. */
+  /** Conversation controls share a row with its left-aligned title. */
   layout?: "conversation";
   /** The project control, at the leading edge of a conversation. */
   start?: ReactNode;
@@ -261,11 +261,10 @@ export function Page({
   if (layout === "conversation") {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="humagen-conversation-header relative z-10 grid shrink-0 items-center gap-x-3 gap-y-2 border-aui-border border-b px-4 py-3">
-          <div className="humagen-conversation-start flex min-w-0 items-center gap-2">{start}</div>
-          <div className="humagen-conversation-title min-w-0 text-center">
-            <h1 className="truncate text-aui-sm font-semibold text-aui-fg" title={typeof title === "string" ? title : undefined}>{title}</h1>
-            {meta && <div className="truncate pt-1 text-aui-2xs text-aui-muted">{meta}</div>}
+        <header className="humagen-conversation-header relative z-10 grid shrink-0 items-center gap-x-4 gap-y-2 border-aui-border border-b px-4 py-3 md:px-6">
+          <div className="humagen-conversation-title min-w-0">
+            <h1 className="truncate text-aui-base font-semibold leading-6 text-aui-fg" title={typeof title === "string" ? title : undefined}>{title}</h1>
+            {(start || meta) && <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted">{start}{meta}</div>}
           </div>
           <div className="humagen-conversation-actions flex min-w-0 items-center justify-end gap-1">{actions}</div>
         </header>

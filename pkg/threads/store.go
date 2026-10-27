@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/urmzd/humagen/internal/textindex"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -51,6 +52,7 @@ type thread struct {
 }
 
 type tenant struct {
+	search  textindex.Index
 	threads map[string]*thread
 	// inProject counts the threads of each project, "" the root.
 	inProject map[string]int
@@ -207,6 +209,7 @@ func Open(st state.Store) (*Store, error) {
 			return nil, fmt.Errorf("threads: load: %w: %s of %q follows %s, which is not before it", ErrInvalid, l.m.ID, l.thread, l.m.Prev)
 		}
 		th.add(l.m)
+		s.of(l.tenant).search.Put(l.m.Thread+"\x00"+l.m.ID, l.m.Text)
 	}
 	return s, nil
 }
@@ -426,6 +429,7 @@ func (s *Store) Start(tenantName string, t Thread, m Message, at time.Time) (Thr
 	th.add(m)
 	tn := s.of(tenantName)
 	tn.hold(th)
+	tn.search.Put(m.Thread+"\x00"+m.ID, m.Text)
 	tn.tell(Notice{ID: t.ID, Message: m.ID, At: at})
 	return t.clone(), m.clone(), nil
 }
@@ -491,6 +495,7 @@ func (s *Store) Post(tenantName, id string, m Message, at time.Time) (Message, b
 	}
 	th.rec = rec
 	th.add(m)
+	s.tenants[tenantName].search.Put(m.Thread+"\x00"+m.ID, m.Text)
 	s.tenants[tenantName].tell(Notice{ID: id, Message: m.ID, At: at})
 	return m.clone(), true, nil
 }

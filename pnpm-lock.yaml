@@ -370,6 +370,9 @@ importers:
       react:
         specifier: ^19
         version: 19.3.1
+      react-dom:
+        specifier: ^19
+        version: 19.3.1(react@19.3.1)
 
   scripts/screens:
     devDependencies:

@@ -830,9 +830,10 @@ export const api = {
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
   /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
-  discover: (q: string, options: { limit?: number; kinds?: string[]; project?: string } = {}) => {
+  discover: (q: string, options: { limit?: number; kinds?: string[]; project?: string; content?: boolean } = {}) => {
     const query = new URLSearchParams({ q, limit: String(options.limit ?? 20) });
     if (options.kinds?.length) query.set("kinds", options.kinds.join(","));
+    if (options.content) query.set("content", "true");
     if (options.project !== undefined) query.set("project", options.project === "" ? "~" : options.project);
     return call<{ items: DiscoveryItem[] }>("GET", `/api/discovery?${query}`).then((result) => result.items);
   },
@@ -1416,4 +1417,4 @@ export interface ProjectForkOperation {
  id: string; source: string; destination: string; state: "preparing" | "failed" | "ready"; error?: string; projects: number; agents: number; memory: number; archives: number;
 }
 
-export interface DiscoveryItem { kind: "project" | "agent" | "conversation"; id: string; title: string; project?: string; channel?: string; hue?: number }
+export interface DiscoveryItem { kind: "project" | "agent" | "conversation" | "message" | "file" | "source"; id: string; title: string; project?: string; channel?: string; hue?: number; snippet?: string; thread?: string; message?: string; source?: string }

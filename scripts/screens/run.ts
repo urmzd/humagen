@@ -146,7 +146,7 @@ async function twoAgents(page: Page): Promise<void> {
  * dialog, a shared conversation, and answers its selected agents were
  * routed to.
  */
-function chats(ids: Ids): Screen[] {
+function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
   return [
     {
       name: "conversation-message-actions",
@@ -341,6 +341,100 @@ function chats(ids: Ids): Screen[] {
       },
     },
     {
+      name: "workspace-search-modal",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const posted = await call<{ thread: { id: string } }>("POST", "/api/threads", {
+          project: "Launch",
+          visibility: "private",
+          text: "Search interaction reference",
+          post_only: true,
+        });
+        await call("POST", `/api/threads/${posted.thread.id}/messages`, {
+          text: "Cobalt validation evidence is inside this later message.",
+          post_only: true,
+        });
+        const composer = bar(page);
+        await composer.focus();
+        await page.keyboard.press("ControlOrMeta+k");
+        const modal = page.getByRole("dialog", {
+          name: defaultCopy.projectSwitcher.title,
+          exact: true,
+        });
+        const input = modal.getByRole("searchbox");
+        await input.fill("cobalt validation");
+        await modal
+          .getByRole("button", { name: defaultCopy.projectSwitcher.messages, exact: true })
+          .click();
+        const match = modal.locator(`a[href="/conversations/${posted.thread.id}?message=m-2"]`);
+        await match.waitFor();
+        assert.equal(
+          await match.getAttribute("href"),
+          `/conversations/${posted.thread.id}?message=m-2`,
+        );
+        await input.focus();
+        await page.keyboard.press("ArrowDown");
+        assert.ok(await match.evaluate((el) => el === document.activeElement));
+        await page.keyboard.press("ArrowUp");
+        assert.ok(await input.evaluate((el) => el === document.activeElement));
+        assert.ok(await modal.evaluate((el) => el.matches(":modal")));
+        const box = await modal.boundingBox();
+        const view = page.viewportSize();
+        assert.ok(
+          box && view && Math.abs(box.x + box.width / 2 - view.width / 2) < 2,
+          "Search is centered",
+        );
+        await page.keyboard.press("Escape");
+        await modal.waitFor({ state: "hidden" });
+        assert.ok(
+          await composer.evaluate((el) => el === document.activeElement),
+          "Search restores the original focus",
+        );
+        await page.keyboard.press("ControlOrMeta+k");
+        await page.getByRole("searchbox").fill("cobalt validation");
+        await page
+          .getByRole("dialog", { name: defaultCopy.projectSwitcher.title })
+          .locator(`a[href="/conversations/${posted.thread.id}?message=m-2"]`)
+          .waitFor();
+      },
+    },
+    {
+      name: "conversation-drawer-reflow",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const main = page.locator("main");
+        const before = await main.boundingBox();
+        await page
+          .getByRole("button", { name: defaultCopy.conversation.context, exact: true })
+          .click();
+        const drawer = page.getByRole("dialog", {
+          name: defaultCopy.conversation.context,
+          exact: true,
+        });
+        await drawer.waitFor();
+        const panel = await drawer.boundingBox();
+        const after = await main.boundingBox();
+        const desktop = (page.viewportSize()?.width ?? 0) >= 1024;
+        assert.ok(await drawer.evaluate((el, modal) => el.matches(":modal") === modal, !desktop));
+        assert.ok(before && panel && after);
+        if (desktop) {
+          assert.ok(after.width < before.width, "Opening a drawer reflows the conversation");
+          assert.ok(
+            after.x + after.width <= panel.x + 1,
+            "The drawer cannot cover the conversation",
+          );
+        }
+        await page.keyboard.press("Escape");
+        await drawer.waitFor({ state: "hidden" });
+        const restored = await main.boundingBox();
+        assert.ok(restored && Math.abs(restored.width - before.width) < 1);
+        await page
+          .getByRole("button", { name: defaultCopy.conversation.context, exact: true })
+          .click();
+        await drawer.waitFor();
+      },
+    },
+    {
       name: "conversation-context",
       path: `/conversations/${ids.privateChat}/context`,
       act: async (page) => {
@@ -530,7 +624,7 @@ function screens(ids: Ids, call: Call): Screen[] {
     { name: "home", path: "/" },
     { name: "sidebar-scroll", path: "/settings/profile", act: sidebarScroll },
     { name: "task", path: `/conversations/${ids.task}` },
-    ...chats(ids),
+    ...chats(ids, call),
     { name: "projects", path: "/projects" },
     {
       name: "project-template",

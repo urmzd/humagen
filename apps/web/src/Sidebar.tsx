@@ -21,7 +21,7 @@ import {
   WrenchIcon,
   ClockIcon,
   ComposeIcon,
-  FolderIcon,
+  ProjectIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SettingsIcon,
@@ -269,7 +269,7 @@ export function Sidebar({
   const nav=defaultCopy.navigation;
   const entries: {to:Route;label:string;icon:ReactNode;show:boolean;active:boolean;badge?:number;group:"projects"|"library"|"operations"}[]=[
     {to:{page:"new"},label:nav.newConversation,icon:<ComposeIcon/>,show:can("runs:write"),active:here("new"),group:"projects"},
-    {to:{page:"projects"},label:nav.projects,icon:<FolderIcon/>,show:can("projects:read"),active:here("projects","project","channel"),group:"projects"},
+    {to:{page:"projects"},label:nav.projects,icon:<ProjectIcon/>,show:can("projects:read"),active:here("projects","project","channel"),group:"projects"},
     {to:{page:"directory",tab:"people"},label:nav.people,icon:<UsersIcon/>,show:can("people:read"),active:here("directory"),group:"projects"},
     {to:{page:"library",section:"sources"},label:nav.sources,icon:<DatabaseIcon/>,show:can("knowledge:read"),active:here("context")||(route.page==="library"&&route.section==="sources"),group:"library"},
     {to:{page:"library",section:"skills"},label:nav.skills,icon:<WrenchIcon/>,show:can("projects:read"),active:route.page==="library"&&route.section==="skills",group:"library"},
@@ -435,7 +435,7 @@ export function Sidebar({
                 {filters > 0 ? "No conversation matches these filters." : "Your conversations appear here. Start with New."}
               </li>
             )}
-            {[...new Set(unpinned.map((thread) => thread.project ?? ""))].map((project) => <li key={project} className="min-w-0 pt-2"><details open><summary className="flex min-h-7 cursor-pointer items-center gap-1.5 px-2.5 text-aui-xs font-medium text-aui-muted"><FolderIcon size={13} /><span className="min-w-0 flex-1 truncate">{projectTitle(project)}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter((thread) => (thread.project ?? "") === project).map((t) => (
+            {[...new Set(unpinned.map((thread) => thread.project ?? ""))].map((project) => <li key={project} className="min-w-0 pt-2"><details open><summary className="flex min-h-7 cursor-pointer items-center gap-1.5 px-2.5 text-aui-xs font-medium text-aui-muted"><ProjectIcon size={13} /><span className="min-w-0 flex-1 truncate">{projectTitle(project)}</span></summary><ul className="ml-2 border-aui-border border-l pl-1">{unpinned.filter((thread) => (thread.project ?? "") === project).map((t) => (
               <TaskRow
                 key={t.id}
                 task={t}

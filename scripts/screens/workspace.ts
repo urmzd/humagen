@@ -13,6 +13,41 @@ type Screen = {
 /** Canonical workspace states use the real isolated screens API and production host. */
 export function workspaceScreens(call: Call): Screen[] {
   const setup = defaultCopy.agentSetup;
+  const projectPickerScreen: Screen = {
+    name: "home-project-picker",
+    path: "/",
+    act: async (page) => {
+      const input = page.locator('form[aria-label="Message"] textarea');
+      await input.fill("Keep this draft when changing projects.");
+      await page.getByRole("button", { name: /^Select project: Personal/ }).click();
+      const drawer = page.getByRole("dialog", {
+        name: defaultCopy.chat.chooseProject,
+        exact: true,
+      });
+      await drawer.waitFor();
+      const project = drawer
+        .getByRole("list", { name: "Projects" })
+        .getByRole("button")
+        .filter({ has: page.getByText("Launch", { exact: true }) });
+      await project.click();
+      assert.equal(await input.inputValue(), "Keep this draft when changing projects.");
+      await page.getByRole("button", { name: "Select project: Launch", exact: true }).waitFor();
+      await input.fill("");
+      const suggestions = page.getByRole("list", { name: defaultCopy.chat.suggestions });
+      await suggestions.waitFor();
+      assert.equal(await suggestions.getByRole("button").count(), 3);
+      for (const choice of await suggestions.getByRole("button").all()) {
+        const box = await choice.boundingBox();
+        assert.ok(
+          box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0),
+          "Every starter fits the viewport",
+        );
+      }
+      await page.getByRole("button", { name: "Select project: Launch", exact: true }).click();
+      await drawer.waitFor();
+    },
+  };
+
   const heading = (page: Page, title: string) =>
     page.getByRole("heading", { name: title, exact: true }).first().waitFor();
   const prepare = async (page: Page) => {
@@ -140,6 +175,7 @@ export function workspaceScreens(call: Call): Screen[] {
     },
   });
   return [
+    projectPickerScreen,
     nativeFormat("docx"),
     nativeFormat("xlsx"),
     {

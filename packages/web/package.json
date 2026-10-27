@@ -17,6 +17,7 @@
     "@humagen/render-web": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^19"
+    "react": "^19",
+    "react-dom": "^19"
   }
 }

@@ -101,6 +101,7 @@ func (c counters) of(tenant, project string) *ProjectCount {
 // count adds a run that was just recorded, or read back, to its project. The
 // caller holds the lock.
 func (x *Index) count(r *Run) {
+	x.search.Put(r.ID, r.Text+"\n"+r.Answer)
 	key := r.Tenant + "\x00" + r.Thread
 	project, known := x.counts.filed[key]
 	if !known {
@@ -123,6 +124,7 @@ func (x *Index) count(r *Run) {
 // the count of runs in flight once it has ended, and its change is the
 // project's latest activity. The caller holds the lock.
 func (x *Index) recount(r *Run) {
+	x.search.Put(r.ID, r.Text+"\n"+r.Answer)
 	x.counts.of(r.Tenant, x.counts.filed[r.Tenant+"\x00"+r.Thread]).settle(r)
 	x.counts.one(r.Tenant, r.Thread).settle(r)
 }

@@ -157,20 +157,20 @@ test("an update carries every field it does not change, from the version read, a
 
 test("the picker shows each project's path and kind, and searches its customer", () => {
   const out = html(<ProjectChoices projects={tree} value="Globex" onChange={noop} onCreated={noop} close={noop} />);
-  assert.match(out, /Account · Globex Inc · in Field engineering/);
-  assert.match(out, /Team · in Field engineering › East › Retail/);
+  assert.match(out, /Account Globex Inc in Field engineering/);
+  assert.match(out, /Team in Field engineering › East › Retail/);
   assert.match(out, />Field engineering</, "a project is shown by its title");
   assert.match(out, /Create Project/);
-  assert.equal(placeOf(renewals, []), "Team · in Field engineering › Globex");
-  assert.equal(placeOf(initech, []), "Account · Initech LLC · in Field engineering");
-  assert.equal(placeOf(east, []), "Team · in Field engineering");
+  assert.equal(placeOf(renewals, []), "Team in Field engineering › Globex");
+  assert.equal(placeOf(initech, []), "Account Initech LLC in Field engineering");
+  assert.equal(placeOf(east, []), "Team in Field engineering");
   // Without projects:write it only chooses.
   assert.doesNotMatch(html(<ProjectChoices projects={tree} value={null} canCreate={false} onChange={noop} onCreated={noop} close={noop} />), /Create Project/);
   // A project of one of the workspace's own kinds is called by the kind's title.
   const reseller = view("Reseller", { kind: "partner", parent: field });
   const kinds = [{ name: "partner", title: "Partner", like: "account" as const }];
-  assert.equal(placeOf(reseller, kinds), "Partner · in Field engineering");
-  assert.match(html(<ProjectChoices projects={[reseller]} kinds={kinds} value={null} onChange={noop} onCreated={noop} close={noop} />), /Partner · in Field engineering/);
+  assert.equal(placeOf(reseller, kinds), "Partner in Field engineering");
+  assert.match(html(<ProjectChoices projects={[reseller]} kinds={kinds} value={null} onChange={noop} onCreated={noop} close={noop} />), /Partner in Field engineering/);
   // The closed picker names the chosen project by its title.
   assert.match(html(<ProjectPicker projects={tree} value="Field" onChange={noop} onCreated={noop} />), /aria-label="Select project: Field engineering"/);
 });

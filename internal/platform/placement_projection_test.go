@@ -54,6 +54,15 @@ func TestMovedHistoryDoesNotRevealPrivatePlacementMetadata(t *testing.T) {
 		if strings.Contains(string(shown), personal.Name) || strings.Contains(string(shown), "private-source") {
 			t.Fatalf("private identity in operational run: %s", shown)
 		}
+		if _, err := p.Runs.End(id, runs.Completed, "answer from private-source", "", time.Now()); !err {
+			t.Fatal("run did not settle")
+		}
+		reader := who
+		reader.Scopes = []auth.Permission{auth.RunsRead}
+		hits, err := p.Discover(t.Context(), reader, platform.DiscoveryQuery{Content: true, Q: "private-source", Kinds: []string{"message"}})
+		if err != nil || len(hits) != 0 {
+			t.Fatalf("search exposed redacted historical placement: %+v %v", hits, err)
+		}
 		projected := p.ShownRun(tenant, raw)
 		if len(projected.Citations) != 0 || strings.Contains(projected.Outcome.Summary, personal.Name) || strings.Contains(projected.Outcome.Decisions[0], "private-source") {
 			t.Fatalf("private retained outcome/evidence: %+v", projected)

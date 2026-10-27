@@ -49,6 +49,10 @@ export const XCircleIcon = icon(
 );
 export const CircleIcon = icon(<circle cx="12" cy="12" r="8" />, "CircleIcon");
 export const XIcon = icon(<path d="M18 6 6 18M6 6l12 12" />, "XIcon");
+export const ShareIcon = icon(
+  <path d="M12 16V3m-5 5 5-5 5 5M5 13v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7" />,
+  "ShareIcon",
+);
 export const ChevronDownIcon = icon(<path d="m6 9 6 6 6-6" />, "ChevronDownIcon");
 export const ChevronRightIcon = icon(<path d="m9 18 6-6-6-6" />, "ChevronRightIcon");
 export const CopyIcon = icon(
@@ -197,6 +201,14 @@ export const PencilIcon = icon(
 export const FolderIcon = icon(
   <path d="M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z" />,
   "FolderIcon",
+);
+/** A project is a folder with a second edge underneath. */
+export const ProjectIcon = icon(
+  <>
+    <path d="M4 4h5l2 3h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+    <path d="M5 21h14" />
+  </>,
+  "ProjectIcon",
 );
 export const LayersIcon = icon(
   <path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" />,

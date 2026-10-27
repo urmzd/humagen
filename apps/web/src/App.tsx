@@ -422,7 +422,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   }, [can, needing]);
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden text-aui-fg">
+    <div className="humagen-shell flex h-full min-h-0 overflow-hidden text-aui-fg">
       <Sidebar
         open={open}
         onToggle={toggle}
@@ -782,6 +782,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           />
         )}
       </main>
+      <div id="humagen-inspector-dock" className="humagen-inspector-dock" />
     </div>
   );
 }

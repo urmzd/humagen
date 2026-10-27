@@ -106,7 +106,7 @@ test("a shared thread shows people by name and agents by theirs and where it is 
   // The thread is untitled, so its first message is its title as well.
   assert.equal(screen.getAllByText("@helper when does Globex renew?").length, 2);
   assert.ok(screen.getByText("It renews on May 3."));
-  const where = screen.getByText(words.sharedIn(globex.title ?? "Globex", "renewals"));
+  const where = screen.getByRole("button",{name:words.sharedIn(globex.title ?? "Globex", "renewals")});
   // Nobody answers untagged messages in the console, so nothing says who does.
   assert.ok(!screen.queryByText(words.answers("helper")));
   assert.ok(!screen.queryByText(words.nobody));
@@ -330,7 +330,7 @@ test("a private thread says so where a shared one says where it is shared", asyn
     />,
   );
   assert.ok(await screen.findByText(words.private));
-  assert.ok(!screen.queryByText(words.sharedIn(globex.title ?? "Globex", "renewals")));
+  assert.ok(!screen.queryByRole("button",{name:words.sharedIn(globex.title ?? "Globex", "renewals")}));
   // A thread's own composer starts nothing, so it offers no Private.
   assert.ok(!screen.queryByText(words.startPrivate, { selector: "button" }));
 });
@@ -1100,7 +1100,7 @@ test("Share at the top of a private conversation moves it into a project's chann
   assert.equal(sent?.path, "/api/threads/th-00000000000000aa/share");
   assert.deepEqual(sent?.body, { project: "Initech", channel: "general", add: ["dana"] });
   // Shared, it says where, and offers no Share.
-  assert.ok(await screen.findByText(words.sharedIn("Initech", "general")));
+  assert.ok(await screen.findByRole("button",{name:words.sharedIn("Initech", "general")}));
   assert.equal(screen.queryByRole("dialog"), null);
   assert.equal(screen.queryByRole("button", { name: words.share }), null);
   assert.deepEqual(opened, [true, false]);

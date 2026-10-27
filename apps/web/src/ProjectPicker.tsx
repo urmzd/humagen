@@ -1,25 +1,27 @@
 import { defaultCopy } from "@humagen/components";
-import { CheckIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, MessageIcon } from "@humagen/render-web";
+import { CheckIcon, ChevronDownIcon, ProjectIcon, FolderPlusIcon } from "@humagen/render-web";
+import { Inspector } from "@humagen/web";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { above, kindWord, matches, titleOf } from "./projects.ts";
-import { button, field, Label, Popover, primary, Problem, SearchField } from "./ui.tsx";
+import { button, field, Label, primary, Problem, SearchField } from "./ui.tsx";
 
 const words = defaultCopy.projects;
 const choice = "flex min-h-11 w-full items-center gap-3 rounded-aui px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover";
 
-/** Where a project sits, in words under its title: "Account · in Field › Globex". */
+/** Where a project sits, in words under its title: "Account in Field › Globex". */
 export function placeOf(p: ProjectView, kinds: ProjectKindSpec[]): string {
   const path = above(p);
-  return [kindWord(p.kind, kinds), p.account?.customer, path.length > 0 ? words.within(path) : null].filter(Boolean).join(" · ");
+  return [kindWord(p.kind, kinds), p.account?.customer, path.length > 0 ? words.within(path) : null].filter(Boolean).join(" ");
 }
 
-export function ProjectChoices({ projects, kinds = [], value, canCreate = true, onChange, onCreated, close }: {
+export function ProjectChoices({ projects, kinds = [], value, personalProject, canCreate = true, onChange, onCreated, close }: {
   /** The tree as GET /api/projects lists it, or null while it loads. */
   projects: ProjectView[] | null;
   /** The workspace's own kinds, so a project of one is called by its title. */
   kinds?: ProjectKindSpec[];
   value: string | null;
+  personalProject?: string;
   /** May make a project here. */
   canCreate?: boolean;
   onChange: (name: string) => void;
@@ -57,6 +59,7 @@ export function ProjectChoices({ projects, kinds = [], value, canCreate = true, 
     // This panel lives inside the composer's form. Enter creates the project
     // without submitting the message, and there is no nested form.
     <div className="flex flex-col gap-3 p-2" onKeyDown={(e) => {
+      if(e.key==="Escape") { e.preventDefault();e.stopPropagation();setCreating(false);setProblem(null);return; }
       if (e.key === "Enter" && e.target instanceof HTMLInputElement && !e.nativeEvent.isComposing) {
         e.preventDefault();
         if (input.current?.reportValidity()) void create();
@@ -81,23 +84,32 @@ export function ProjectChoices({ projects, kinds = [], value, canCreate = true, 
     </div>
   );
 
-  const shown = projects?.filter((p) => matches(p, query));
+  const shown = projects?.filter((p) => p.name !== personalProject && matches(p, query));
   return (
     <div className="flex flex-col gap-1" onKeyDown={(e) => {
+      if(e.nativeEvent.isComposing) return;
       if (e.key === "Enter" && e.target instanceof HTMLInputElement) e.preventDefault();
+      if(e.key==="ArrowDown" || e.key==="ArrowUp") {
+        const buttons=[...e.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+        if(!buttons.length)return;e.preventDefault();
+        const at=buttons.indexOf(document.activeElement as HTMLButtonElement);
+        if(at===0&&e.key==="ArrowUp")input.current?.focus();
+        else buttons[at<0?(e.key==="ArrowDown"?0:buttons.length-1):(at+(e.key==="ArrowDown"?1:buttons.length-1))%buttons.length]?.focus();
+      }
     }}>
       <div className="p-1">
         <SearchField label={words.search} value={query} onChange={setQuery} inputRef={input} />
       </div>
+      {personalProject && <button type="button" className={choice} aria-pressed={value===personalProject} onClick={()=>select(personalProject)}><ProjectIcon size={18}/><span className="min-w-0 flex-1">{words.personalTitle}</span>{value===personalProject&&<CheckIcon size={14}/>}</button>}
       <button type="button" className={choice} aria-pressed={value === ""} onClick={() => select("")}>
-        <MessageIcon size={18} className="text-aui-muted" /><span className="min-w-0 flex-1"><span className="block">{words.companyName}</span><span className="block text-aui-xs text-aui-muted">{words.companyStart}</span></span>
+        <ProjectIcon size={18} className="text-aui-muted" /><span className="min-w-0 flex-1"><span className="block">{words.companyName}</span><span className="block text-aui-xs text-aui-muted">{words.companyStart}</span></span>
         {value === "" && <CheckIcon size={14} />}
       </button>
       <div className="my-1 h-px bg-aui-border" />
       <ul className="aui-scroll max-h-56 overflow-y-auto" aria-label="Projects">
         {shown?.map((p) => <li key={p.name}>
           <button type="button" className={choice} aria-pressed={p.name === value} onClick={() => select(p.name)}>
-            {p.name === value ? <FolderOpenIcon size={18} /> : <FolderIcon size={18} className="text-aui-muted" />}
+            <ProjectIcon size={18} className="text-aui-muted" />
             <span className="min-w-0 flex-1">
               <span className="block truncate">{titleOf(p)}</span>
               <span className="block truncate text-aui-xs text-aui-muted">{placeOf(p, kinds)}</span>
@@ -118,21 +130,22 @@ export function ProjectChoices({ projects, kinds = [], value, canCreate = true, 
 }
 
 /** Choose where new work belongs without leaving or clearing the message. */
-export function ProjectPicker({ projects, kinds, value, canCreate = true, onChange, onCreated }: {
+export function ProjectPicker({ projects, kinds, value, personalProject, channel, canCreate = true, onChange, onCreated }: {
   projects: ProjectView[] | null;
-  /** The workspace's own kinds, so a project of one is called by its title. */
   kinds?: ProjectKindSpec[];
-  /** null is untouched; an empty string explicitly chooses Company. */
   value: string | null;
+  personalProject?: string;
+  channel?: string;
   canCreate?: boolean;
   onChange: (name: string) => void;
   onCreated: (project: ProjectView) => void;
 }) {
-  const chosen = value ? projects?.find((p) => p.name === value) : undefined;
-  const label = value === null ? "Select project" : value === "" ? words.companyName : chosen ? titleOf(chosen) : value;
-  return <div className="humagen-project-picker min-w-0"><Popover label={value === null ? "Select project" : `Select project: ${label}`} up
-    className="inline-flex h-8 max-w-32 items-center gap-1 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent sm:max-w-40"
-    button={<>{value === "" ? <MessageIcon size={16} /> : value ? <FolderOpenIcon size={16} /> : <FolderIcon size={16} />}<span className="truncate">{label}</span><ChevronDownIcon size={14} className="hidden shrink-0 sm:block" /></>}>
-    {(close) => <ProjectChoices projects={projects} kinds={kinds} value={value} canCreate={canCreate} onChange={onChange} onCreated={onCreated} close={close} />}
-  </Popover></div>;
+  const [open,setOpen]=useState(false);
+  const chosen=value ? projects?.find(project=>project.name===value) : undefined;
+  const project=value===null?"Select project":value===""?words.companyName:value===personalProject?words.personalTitle:chosen?titleOf(chosen):value;
+  const label=channel&&channel!=="general"?`${project} / #${channel}`:project;
+  return <div className="humagen-project-picker min-w-0">
+    <button type="button" aria-label={value===null?"Select project":`Select project: ${label}`} aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)} className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"><ProjectIcon size={18}/><span className="truncate">{label}</span><ChevronDownIcon size={14}/></button>
+    {open&&<Inspector open title={defaultCopy.chat.chooseProject} onClose={()=>setOpen(false)}><ProjectChoices projects={projects} kinds={kinds} value={value} personalProject={personalProject} canCreate={canCreate} onChange={onChange} onCreated={onCreated} close={()=>setOpen(false)}/></Inspector>}
+  </div>;
 }
