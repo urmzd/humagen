@@ -14,6 +14,12 @@ larger design. The gap analysis records its own review revision; recheck code
 before treating it as current. Repository rules in [AGENTS.md](AGENTS.md) still
 govern implementation, including shared presentation and agent identity.
 
+The [workspace principles](docs/design/workspace-principles.md) apply the
+[designer and portfolio research](docs/design/reference-research.md): Harvey II
+for project structure, Codex for human control, Linear for restraint, and Dust
+for testing working interactions. Storybook previews use the console's own
+components. These references inform Humagen's identity rather than replacing it.
+
 ## Requirements
 
 | ID | Requirement | Status |
@@ -33,6 +39,8 @@ govern implementation, including shared presentation and agent identity.
 | DES-012 | Workspace search is a centered modal with indexed content and native destinations | Implemented; permission-confined content indexes, API contract, replay and search interaction tests |
 | DES-013 | Project selection is directly editable before starting work; every starter suggestion remains available | Implemented; stacked project glyph, searchable drawer, draft-preserving selection and wrapping starters |
 | DES-014 | Composer context choices use named categories and scoped subpanes | Implemented; Agents, Projects and Skills preserve the draft, and channel choices stay inside their project |
+| DES-019 | Project work has readable states, scoped filters and honest recovery | Implemented; focused integration checks pass; full delivery checks remain in progress |
+| DES-020 | Workspace previews reuse console controls, fonts and consolidated navigation | Implemented; focused integration checks pass; full delivery checks remain in progress |
 
 ### DES-001: Working integrations
 
@@ -393,3 +401,58 @@ Acceptance: route and permission regressions, existing operational mutations,
 phone/desktop navigation, policy and Context Health captures, narrow reflow and
 keyboard selection. Implementation is present; final verification evidence for
 DES-015 through DES-017 is recorded below after the checks complete.
+
+
+### DES-019: Readable project work
+
+The overview uses `apps/web/src/ProjectWork.tsx` for the real paged conversation
+records. Rows keep agent, title, last activity and explicit state together.
+All, In progress, Needs attention and Finished filters describe the loaded
+rows only; when an older page exists, that boundary is stated beside the list.
+Failure counts are not described as approval counts or outcomes awaiting review.
+Metadata uses gaps rather than separator dots. On phones, status moves below
+the title and filters wrap. Supporting notes and schedules share a quiet plane.
+
+`ProjectTasks` in `Projects.tsx` owns the API requests. Initial read failures
+offer Try Again instead of appearing as an empty project. Pagination failures
+retain the current rows and offer See More again. Responses from a previous
+scope cannot overwrite the current list. DOM tests cover filtering and native
+conversation selection, failure/retry and obsolete-scope responses.
+
+### DES-020: Shared workspace design previews
+
+The newer consolidated Library, Agents, Notifications and Operations hubs remain
+owned by the shared permission-aware navigation definition. This pass does not
+restore the older expanded sidebar. The console and Storybook share the native
+navigation item renderer and the same semantic controls and fonts.
+
+The [workspace principles](docs/design/workspace-principles.md) and
+[reference research](docs/design/reference-research.md) record the adopted
+direction and public portfolio credits. `Workspace/Project work` in Storybook
+renders production `ProjectWork`, navigation, `Page` and `Tabs` components with
+isolated fixtures, the shared renderer font entry and console CSS.
+Overview, light, phone, empty, loading, read failure, paging failure, filter/open
+and navigation stories exercise the design. Story actions are local previews,
+not saved workspace mutations.
+
+Integration evidence: all 619 console tests pass on the committed managed-library
+base. The active branch's project-work filter, read-retry and stale-scope tests
+also pass, as do console and Storybook typechecks, both builds and 20 light/dark
+Storybook browser states with the newer shared typography and controls.
+
+The active branch's full delivery suite is still in progress. Its source-creation
+assertion expects indexed mode while the current implementation sends live mode
+with a zero sync interval; two notification tests still expect the previous
+badge/visibility behavior. Those paths are unchanged by this design patch.
+Their completion remains in the other session's delivery queue. No full-suite,
+live-provider or remote-main merge claim is made here.
+
+```sh
+pnpm storybook
+pnpm storybook:check
+pnpm storybook:capture
+```
+
+The capture command uses [teasr.storybook.toml](teasr.storybook.toml). The checker
+accepts `STORYBOOK_URL` and `CHROMIUM`. Story actions are isolated fixtures,
+not saved workspace changes or live provider execution.

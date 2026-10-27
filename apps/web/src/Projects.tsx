@@ -1,7 +1,7 @@
 import { ProjectRollup } from "./ProjectRollup.tsx";
 import { defaultCopy } from "@humagen/components";
 import { FolderIcon, FolderPlusIcon } from "@humagen/render-web";
-import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   api,
@@ -20,6 +20,7 @@ import {
 import { ScopeLimits } from "./Billing.tsx";
 import { inWords } from "./cron.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
+import { ProjectWork } from "./ProjectWork.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
 import type { Source } from "./mail.ts";
@@ -632,72 +633,62 @@ function ProjectTasks({
   const [below, setBelow] = useState(false);
   const [page, setPage] = useState<{ threads: ThreadSummary[]; next: string | null } | null>(null);
   const [more, setMore] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const generation = useRef(0);
+  const loadedScope = useRef("");
   const address = name === "" ? "~" : name;
   const scope = useCallback((): { project?: string; within?: string } => (below ? { within: address } : { project: address }), [below, address]);
+  const scopeKey = `${below ? "within" : "project"}:${address}`;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the signal to read again
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and retry are signals to read again
   useEffect(() => {
-    let live = true;
+    const current = ++generation.current;
+    // Keep readable rows steady during live refreshes; a new scope starts empty.
+    if (loadedScope.current !== scopeKey) setPage(null);
+    loadedScope.current = scopeKey;
+    setFailed(false);
+    setMore(false);
+    setMoreFailed(false);
     api
       .threadsPage({ limit: TASK_PAGE, ...scope() })
-      .then((r) => live && setPage({ threads: r.threads, next: r.next ?? null }))
-      .catch(() => live && setPage({ threads: [], next: null }));
+      .then((r) => current === generation.current && setPage({ threads: r.threads, next: r.next ?? null }))
+      .catch(() => current === generation.current && setFailed(true));
     return () => {
-      live = false;
+      generation.current++;
     };
-  }, [scope, tick]);
+  }, [scope, scopeKey, tick, retry]);
 
   const loadMore = () => {
     if (!page?.next || more) return;
+    const current = generation.current;
     setMore(true);
+    setMoreFailed(false);
     api
       .threadsPage({ limit: TASK_PAGE, before: page.next, ...scope() })
-      .then((r) => setPage({ threads: [...page.threads, ...r.threads.filter((t) => !page.threads.some((s) => s.id === t.id))], next: r.next ?? null }))
-      .catch(() => {})
-      .finally(() => setMore(false));
+      .then((r) => current === generation.current && setPage({ threads: [...page.threads, ...r.threads.filter((t) => !page.threads.some((s) => s.id === t.id))], next: r.next ?? null }))
+      .catch(() => current === generation.current && setMoreFailed(true))
+      .finally(() => current === generation.current && setMore(false));
   };
 
   return (
-    <section className="flex flex-col gap-2" aria-label={words.tasks}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={heading}>{words.tasks}</h2>
-        {hasChildren && (
+    <ProjectWork
+      threads={page?.threads ?? null}
+      project={name}
+      failed={failed}
+      onRetry={() => setRetry(n => n + 1)}
+      onOpenThread={onOpenThread}
+      hasMore={Boolean(page?.next)}
+      loadingMore={more}
+      onMore={loadMore}
+      moreFailed={moreFailed}
+      controls={hasChildren && (
           <div className="min-w-0 max-w-xs">
             <Switch label={words.includeBelow} checked={below} onChange={setBelow} />
           </div>
-        )}
-      </div>
-      {page === null ? (
-        <SkeletonRows count={3} />
-      ) : page.threads.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">{words.noTasks}</p>
-      ) : (
-        <ul>
-          {page.threads.map((t) => (
-            <li key={t.id} className="humagen-enter border-aui-border border-t first:border-t-0">
-              <button
-                type="button"
-                onClick={() => onOpenThread(t.id)}
-                className="flex w-full items-center gap-3 py-2 text-left text-aui-sm hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-              >
-                <AgentMark name={t.agents[t.agents.length - 1] ?? "?"} size={14} state={t.active > 0 ? "thinking" : t.failed > 0 ? "error" : "idle"} />
-                <span className="min-w-0 flex-1 truncate text-aui-fg">{t.title}</span>
-                <span className="shrink-0 text-aui-xs text-aui-muted">
-                  {(t.project ?? "") !== name ? `${words.within([t.project || words.workspace])} · ` : ""}
-                  {t.origin === "cron" || t.origin === "manual" ? "Scheduled, " : ""}
-                  {t.active > 0 ? "In progress" : t.failed > 0 ? "Needs attention" : "Finished"} · {ago(t.updated_at)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
       )}
-      {page?.next && (
-        <button type="button" className={`${button} self-start`} disabled={more} onClick={loadMore}>
-          {words.moreTasks}
-        </button>
-      )}
-    </section>
+    />
   );
 }
 
@@ -1317,18 +1308,17 @@ export function ProjectPage({
       title={titleOf(p, workspaceName)}
       meta={
         <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          {meta}
+          <span>{meta}</span>
           {lead && (
-            <>
-
-              {words.lead}
+            <span className="inline-flex items-center gap-1.5">
+              <span>{words.lead}</span>
               {lead === "auto" ? "@auto" : (
                 <span className="inline-flex items-center gap-1">
                   <AgentMark name={lead} size={12} />
                   {lead}
                 </span>
               )}
-            </>
+            </span>
           )}
         </span>
       }
@@ -1508,7 +1498,7 @@ export function ProjectPage({
               }}
             />
           </div>
-          <aside className="flex flex-col gap-8">
+          <aside className="humagen-project-context flex min-w-0 flex-col gap-8">
             <SharedMemory project={p.name} canWrite={may("notes")} canPropose={may("propose")} onChanged={changed} />
             <Scheduled
               name={p.name}

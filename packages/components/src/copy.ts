@@ -195,6 +195,27 @@ export const defaultCopy = {
     },
   },
 
+  projectWork: {
+    hint: "Follow the work, open a conversation, and pick up where it left off.",
+    filterLabel: "Filter project conversations",
+    filter: {
+      all: "All",
+      running: "In Progress",
+      attention: "Needs Attention",
+      finished: "Finished",
+    },
+    status: { running: "In progress", attention: "Needs attention", finished: "Finished" },
+    loadedOnly: "Filters apply to the conversations loaded below. See More includes older work.",
+    scheduled: "Scheduled",
+    empty: "A place to move work forward",
+    noMatch: "No loaded conversations match this filter.",
+    failed: "Conversations could not be loaded",
+    failedHint: "Try again to see the work in this project.",
+    retry: "Try Again",
+    loadingMore: "Loading…",
+    moreFailed:
+      "Older conversations could not be loaded. Your current list is still available. Try See More again.",
+  },
   navigation: {
     newConversation: "New Conversation",
     people: "People",

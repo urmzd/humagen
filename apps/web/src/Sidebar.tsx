@@ -38,7 +38,7 @@ import { type Standing, useRecents } from "./recents.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 
 /** A link to a view. A plain click opens it in place; a modified one, in a new tab. */
-function Item({
+export function SidebarItem({
   icon,
   label,
   href,
@@ -87,6 +87,8 @@ function Item({
   );
   return open ? link : <Tooltip label={label}>{link}</Tooltip>;
 }
+
+const Item = SidebarItem;
 
 /** One group in the filter panel: a title, then choices where exactly one is on. */
 function Choices<T extends string>({

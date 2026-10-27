@@ -1,5 +1,4 @@
-@import "tailwindcss";
-@import "@humagen/render-web/theme.css";
+@import "../../web/src/styles.css";
 
 @source "../../../packages/render-web/src";
 @source "../../../packages/web/src";
@@ -10,6 +9,13 @@ html {
 }
 html[data-theme="dark"] {
   color-scheme: dark;
+}
+
+/* The console owns its viewport; ordinary component stories may be longer. */
+html,
+body {
+  height: auto;
+  overflow: auto;
 }
 
 body {
