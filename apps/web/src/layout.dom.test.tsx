@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { KindChips } from "./InboxPage.tsx";
+import { KindFilter } from "./InboxPage.tsx";
 import { FADE_PX, GUTTER_PX } from "./layout.ts";
 import { kinds as mailKinds } from "./mail.ts";
 import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
@@ -136,16 +136,16 @@ test("a segmented choice that does not fit scrolls inside its box, each choice o
   for (const b of screen.getAllByRole("button")) assert.match(b.className, /\bwhitespace-nowrap\b/, `${b.textContent} stays on one line`);
 });
 
-test("the inbox's kind chips fade where there are more, and keep the chosen one in view", () => {
-  phoneStrips();
-  const { rerender } = render(<KindChips value="" onChange={() => {}} />);
-  const strip = screen.getByRole("group", { name: "Kind" });
-  assert.equal(strip.dataset.more, "end", "the cut-off chip reads as more to scroll to");
+test("the compact inbox filter keeps every category reachable", () => {
+  const chosen: string[] = [];
+  const { rerender } = render(<KindFilter value="" onChange={kind=>chosen.push(kind)} />);
+  const select = screen.getByRole("combobox", {name:"Filter updates"}) as HTMLSelectElement;
+  assert.equal(select.options.length, mailKinds.length + 1);
   const last = mailKinds.at(-1)?.id ?? "";
-  assert.ok(last);
-  rerender(<KindChips value={last} onChange={() => {}} />);
-  assert.equal(strip.scrollLeft, strip.children.length * ITEM - STRIP.width, "the last chip is chosen, so the row ends at it");
-  assert.equal(strip.dataset.more, "start");
+  fireEvent.change(select, {target:{value:last}});
+  assert.deepEqual(chosen, [last]);
+  rerender(<KindFilter value={last} onChange={()=>{}} />);
+  assert.equal(select.value, last);
 });
 
 /**

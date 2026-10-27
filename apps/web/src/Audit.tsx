@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 import { api } from "./api.ts";
 import { auditCSV } from "./audit.ts";
 import { href } from "./route.ts";
-import { card, field, Page, Problem, SkeletonRows } from "./ui.tsx";
+import { DownloadIcon, RefreshIcon, ChevronRightIcon } from "@humagen/render-web";
+import { Button } from "@humagen/render-web/ui/button";
+import { Input } from "@humagen/render-web/ui/input";
+import { NativeSelect } from "@humagen/render-web/ui/native-select";
+import { Label } from "@humagen/render-web/ui/label";
+import { Badge } from "@humagen/render-web/ui/badge";
+import { DateRangePicker } from "@humagen/render-web/ui/date-range-picker";
+import { Page, Problem, SkeletonRows } from "./ui.tsx";
 
 export function Audit() {
   const [rows, setRows] = useState<AuditRecord[] | null>(null);
@@ -14,11 +21,13 @@ export function Audit() {
   const [domain, setDomain] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [invalidRange, setInvalidRange] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const copy = defaultCopy.audit;
   useEffect(() => {
     let live = true;
     setFailed(false);
+    setRows(null);
     api
       .audit(query)
       .then((value) => {
@@ -33,14 +42,20 @@ export function Audit() {
   }, [query, refresh]);
   const apply = () => {
     try {
+      const end = to ? new Date(to) : new Date();
+      const start = from ? new Date(from) : new Date(end.getTime() - 24 * 60 * 60 * 1000);
+      const duration = end.getTime() - start.getTime();
+      if (!Number.isFinite(duration) || duration <= 0 || duration > 31 * 24 * 60 * 60 * 1000)
+        throw new Error("range");
+      setInvalidRange(false);
       setQuery({
-        ...(actor ? { actor } : {}),
+        ...(actor.trim() ? { actor: actor.trim() } : {}),
         ...(domain ? { resource: domain } : {}),
-        ...(from ? { from: new Date(from).toISOString() } : {}),
-        ...(to ? { to: new Date(to).toISOString() } : {}),
+        ...(from ? { from: start.toISOString() } : {}),
+        ...(to ? { to: end.toISOString() } : {}),
       });
     } catch {
-      setFailed(true);
+      setInvalidRange(true);
     }
   };
   const download = () => {
@@ -68,6 +83,8 @@ export function Audit() {
               : row.scope === "project"
                 ? href({ page: "project", name: row.project ?? "", tab: "history" })
                 : undefined;
+  const humanize = (value: string) =>
+    value.replace(/[_.:-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase());
   return (
     <Page title={copy.title} lede={copy.description}>
       <form
@@ -75,80 +92,64 @@ export function Audit() {
           event.preventDefault();
           apply();
         }}
-        className="flex flex-wrap items-end gap-4"
+        className="grid grid-cols-1 gap-3 rounded-xl border border-aui-border bg-aui-surface/80 p-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.5fr_auto] xl:items-end"
       >
-        <label>
-          {copy.actor}
-          <input
-            className={`${field} mt-2`}
+        <div className="space-y-2">
+          <Label htmlFor="audit-actor">{copy.actor}</Label>
+          <Input
+            id="audit-actor"
             maxLength={512}
             value={actor}
             onChange={(event) => setActor(event.target.value)}
           />
-        </label>
-        <label>
-          {copy.domain}
-          <select
-            className={`${field} mt-2`}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="audit-domain">{copy.domain}</Label>
+          <NativeSelect
+            id="audit-domain"
             value={domain}
             onChange={(event) => setDomain(event.target.value)}
           >
             <option value="">{copy.allDomains}</option>
-            {[
-              "project",
-              "agent",
-              "skill",
-              "memory",
-              "source",
-              "credential",
-              "action_policy",
-              "assignment",
-              "call_policy",
-            ].map((value) => (
+            {Object.entries(copy.domains).map(([value, label]) => (
               <option key={value} value={value}>
-                {value}
+                {label}
               </option>
             ))}
-          </select>
-        </label>
-        <label>
-          {copy.from}
-          <input
-            type="datetime-local"
-            className={`${field} mt-2 max-w-full`}
-            value={from}
-            onChange={(event) => setFrom(event.target.value)}
+          </NativeSelect>
+        </div>
+        <div className="space-y-2">
+          <Label>{copy.dateRange}</Label>
+          <DateRangePicker
+            from={from}
+            to={to}
+            onChange={(start, end) => {
+              setFrom(start);
+              setTo(end);
+              setInvalidRange(false);
+            }}
+            labels={{
+              label: copy.dateRange,
+              empty: copy.rangeDefault,
+              from: copy.from,
+              to: copy.to,
+              time: copy.time,
+              clear: copy.clearRange,
+            }}
           />
-        </label>
-        <label>
-          {copy.to}
-          <input
-            type="datetime-local"
-            className={`${field} mt-2 max-w-full`}
-            value={to}
-            onChange={(event) => setTo(event.target.value)}
-          />
-        </label>
-        <button type="submit" className="min-h-11 text-aui-accent">
-          {copy.apply}
-        </button>
+        </div>
+        <Button type="submit">{copy.apply}</Button>
       </form>
-      <div className="flex flex-wrap gap-5">
-        <button
-          type="button"
-          onClick={() => setRefresh((value) => value + 1)}
-          className="min-h-11 text-aui-accent"
-        >
+      {invalidRange && <Problem message={copy.invalidRange} />}
+      <div aria-label={copy.actions} className="flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={() => setRefresh((value) => value + 1)}>
+          <RefreshIcon aria-hidden="true" />
           {copy.refresh}
-        </button>
-        <button
-          type="button"
-          disabled={!rows?.length}
-          onClick={download}
-          className="min-h-11 text-aui-accent disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="outline" size="sm" disabled={!rows?.length || failed} onClick={download}>
+          <DownloadIcon aria-hidden="true" />
           {copy.export}
-        </button>
+        </Button>
       </div>
       {failed ? (
         <Problem message={copy.failed} />
@@ -157,59 +158,86 @@ export function Audit() {
       ) : rows.length === 0 ? (
         <p className="text-aui-muted">{copy.empty}</p>
       ) : (
-        <ol className="space-y-3">
+        <ol className="divide-y divide-aui-border rounded-xl border border-aui-border bg-aui-surface/60">
           {rows.map((row) => (
-            <li key={row.id} className={`${card} min-w-0 break-words p-4`}>
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="font-medium">{row.action}</h2>
-                <span className="text-aui-sm text-aui-muted">{row.outcome}</span>
-              </div>
-              <p>{row.resource_id}</p>
-              <p className="text-aui-sm text-aui-muted">
-                {row.actor}, {row.scope}
-                {row.project ? ` / ${row.project}` : ""}
-              </p>
-              {row.route && (
-                <p className="text-aui-sm text-aui-muted">
-                  {copy.route}: {row.route}
-                </p>
-              )}
-              {row.rule && (
-                <p className="text-aui-sm text-aui-muted">
-                  {copy.rule}: {row.rule}
-                </p>
-              )}
-              <time dateTime={row.at} className="text-aui-sm text-aui-muted">
-                {new Date(row.at).toLocaleString()}
-              </time>
-              {resource(row) && (
-                <a
-                  href={resource(row)}
-                  className="ml-4 inline-flex min-h-11 items-center text-aui-sm text-aui-accent"
+            <li key={row.id} className="min-w-0 break-words p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-medium">{humanize(row.action)}</h2>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-aui-muted">
+                    <span>{row.actor}</span>
+                    {row.project && <span>{row.project}</span>}
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={
+                    row.outcome === "failed"
+                      ? "text-aui-bad"
+                      : row.outcome === "pending"
+                        ? "text-aui-warn"
+                        : "text-aui-muted"
+                  }
                 >
-                  {copy.open}
-                </a>
-              )}
-              {(
-                [
-                  [copy.before, row.before],
-                  [copy.after, row.after],
-                ] as const
-              ).map(([label, fields]) =>
-                fields && Object.keys(fields).length > 0 ? (
-                  <details key={label} className="mt-3">
-                    <summary className="min-h-11 cursor-pointer">{label}</summary>
-                    <dl className="space-y-2">
-                      {Object.entries(fields).map(([key, value]) => (
-                        <div key={key}>
-                          <dt className="text-aui-sm text-aui-muted">{key}</dt>
-                          <dd className="whitespace-pre-wrap">{value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </details>
-                ) : null,
-              )}
+                  {copy.outcomes[row.outcome] ?? row.outcome}
+                </Badge>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <time dateTime={row.at} className="text-xs text-aui-muted">
+                  {new Date(row.at).toLocaleString()}
+                </time>
+                {resource(row) && (
+                  <Button asChild variant="ghost" size="sm">
+                    <a href={resource(row)}>
+                      {copy.open}
+                      <ChevronRightIcon aria-hidden="true" />
+                    </a>
+                  </Button>
+                )}
+              </div>
+              <details className="mt-2">
+                <summary className="w-fit cursor-pointer rounded-md py-2 text-xs text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">
+                  {copy.details}
+                </summary>
+                <dl className="mt-1 grid gap-2 rounded-lg bg-aui-muted/5 p-3 text-xs sm:grid-cols-2">
+                  {[
+                    [copy.eventID, row.id],
+                    [copy.resourceID, row.resource_id],
+                    [copy.domain, `${row.resource} / ${row.scope}`],
+                    [copy.route, row.route],
+                    [copy.rule, row.rule],
+                  ].map(([label, value]) =>
+                    value ? (
+                      <div key={label} className="min-w-0">
+                        <dt className="text-aui-muted">{label}</dt>
+                        <dd className="mt-1 break-all font-aui-mono">{value}</dd>
+                      </div>
+                    ) : null,
+                  )}
+                </dl>
+                {(
+                  [
+                    [copy.before, row.before],
+                    [copy.after, row.after],
+                  ] as const
+                ).map(([label, fields]) =>
+                  fields && Object.keys(fields).length > 0 ? (
+                    <details key={label} className="mt-2 rounded-lg border border-aui-border px-3">
+                      <summary className="cursor-pointer py-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-aui-accent">
+                        {label}
+                      </summary>
+                      <dl className="space-y-2 pb-3">
+                        {Object.entries(fields).map(([key, value]) => (
+                          <div key={key}>
+                            <dt className="text-xs text-aui-muted">{key}</dt>
+                            <dd className="mt-1 whitespace-pre-wrap text-sm">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </details>
+                  ) : null,
+                )}
+              </details>
             </li>
           ))}
         </ol>

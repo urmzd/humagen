@@ -47,8 +47,12 @@ func TestLifecycleRetainsLastGoodCopyAndBoundsAttempts(t *testing.T) {
 			t.Fatalf("lifecycle: %+v", got.Lifecycle)
 		}
 		hits, err := s.Search("acme", []string{"docs"}, "deploy", 6, "")
-		if err != nil || len(hits) != 1 {
-			t.Fatalf("last good copy: %+v %v", hits, err)
+		if !errors.Is(err, ErrUpstreamRead) || len(hits) != 0 {
+			t.Fatalf("external retained copy bypassed upstream access: %+v %v", hits, err)
+		}
+		documents, err := s.Documents("acme", "docs")
+		if err != nil || len(documents) != 1 {
+			t.Fatal("collection lost its retained data", documents, err)
 		}
 		again, err := Open(st)
 		if err != nil {
@@ -214,6 +218,109 @@ func TestScopedReadsRejectReconfiguredEmptySource(t *testing.T) {
 	}
 }
 
+func TestScopedExternalFileMetadataStaysWithheldAcrossRestart(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		for _, mode := range []Mode{Indexed, Hybrid} {
+			t.Run(string(mode), func(t *testing.T) {
+				st := open(t)
+				s, err := Open(st)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, _ = s.Create("tenant", "docs", "", "owner", now)
+				cfg := SourceConfig{Mode: mode, Provider: "drive", Origin: "folder", Owner: "owner", Project: "Secret"}
+				configured, err := s.Configure("tenant", "docs", cfg, now)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cfg = configured.Lifecycle.SourceConfig
+				id, err := s.BeginSync("tenant", "docs", now)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.CompleteSync("tenant", "docs", id, []ImportDocument{{ID: "private-file", Title: "Private title", URI: "https://example.test/private", Text: "retained canary"}}, "owner", now); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.SetExcluded("tenant", "docs", "private-file", true, now); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.SaveVariant("tenant", "docs", "retained", now); err != nil {
+					t.Fatal(err)
+				}
+				for attempt := range 2 {
+					if attempt == 1 {
+						s, err = Open(st)
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+					before, _ := s.Get("tenant", "docs")
+					if docs, err := s.DocumentsForScope("tenant", "docs", &cfg); !errors.Is(err, ErrUpstreamRead) || len(docs) != 0 {
+						t.Fatal("project access exposed retained provider file listing", docs, err)
+					}
+					for _, docID := range []string{"private-file", "unknown-file"} {
+						if doc, err := s.SetExcludedForScope("tenant", "docs", docID, false, now.Add(time.Hour), &cfg); !errors.Is(err, ErrUpstreamRead) || doc.ID != "" || doc.Title != "" || doc.URI != "" {
+							t.Fatal("curation disclosed retained provider metadata", doc, err)
+						}
+					}
+					if variant, err := s.SaveVariantForScope("tenant", "docs", "retained", now.Add(time.Hour), &cfg); !errors.Is(err, ErrUpstreamRead) || len(variant.Excluded) != 0 {
+						t.Fatal("variant disclosed retained provider file IDs", variant, err)
+					}
+					if hits, err := s.SearchForScopes("tenant", []string{"docs"}, "canary", 6, "retained", map[string]*SourceConfig{"docs": &cfg}); !errors.Is(err, ErrUpstreamRead) || len(hits) != 0 {
+						t.Fatal("saved view bypassed provider authorization", hits, err)
+					}
+					if _, err := s.SetExcludedForScope("other", "docs", "private-file", false, now, &cfg); !errors.Is(err, ErrNotFound) {
+						t.Fatal("cross-tenant curation exposed existence", err)
+					}
+					stale := cfg
+					stale.Project = "Other"
+					if _, err := s.SaveVariantForScope("tenant", "docs", "retained", now, &stale); !errors.Is(err, ErrNotFound) {
+						t.Fatal("stale scope exposed source authority", err)
+					}
+					after, _ := s.Get("tenant", "docs")
+					if !reflect.DeepEqual(before, after) {
+						t.Fatal("denied curation changed retained source", before, after)
+					}
+				}
+			})
+		}
+	})
+}
+
+func TestScopedLocalFileCurationKeepsNativeAccess(t *testing.T) {
+	for _, managed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy", true: "configured"}[managed], func(t *testing.T) {
+			s := NewStore()
+			_, _ = s.Create("tenant", "docs", "", "owner", now)
+			var cfg *SourceConfig
+			if managed {
+				cfg = &SourceConfig{Mode: Indexed, Provider: "manual", Owner: "owner", Project: "Secret"}
+				configured, err := s.Configure("tenant", "docs", *cfg, now)
+				if err != nil {
+					t.Fatal(err)
+				}
+				*cfg = configured.Lifecycle.SourceConfig
+			}
+			doc, err := s.Add("tenant", "docs", "Local title", "", "local canary", "owner", now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changed, err := s.SetExcludedForScope("tenant", "docs", doc.ID, true, now, cfg)
+			if err != nil || changed.Title != "Local title" || !changed.Excluded {
+				t.Fatal("local document curation lost native access", changed, err)
+			}
+			variant, err := s.SaveVariantForScope("tenant", "docs", "local-view", now, cfg)
+			if err != nil || !reflect.DeepEqual(variant.Excluded, []string{doc.ID}) {
+				t.Fatal("local saved view lost its curated selection", variant, err)
+			}
+			docs, err := s.DocumentsForScope("tenant", "docs", cfg)
+			if err != nil || len(docs) != 1 || docs[0].ID != doc.ID {
+				t.Fatal("local file listing lost native access", docs, err)
+			}
+		})
+	}
+}
+
 func TestContentVersionChangesOnlyForRetainedContentAcrossRestart(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
@@ -368,8 +475,12 @@ func TestSnapshotDecisionDoesNotInventASuccessfulRefresh(t *testing.T) {
 			t.Fatal("snapshot decision fabricated successful refresh", shown.Lifecycle)
 		}
 		hits, err := s.Search("tenant", []string{"docs"}, "retained", 1, "")
-		if err != nil || len(hits) != 1 || !hits[0].RefreshFailed {
-			t.Fatal("last good copy lost failed-refresh provenance", hits, err)
+		if !errors.Is(err, ErrUpstreamRead) || len(hits) != 0 {
+			t.Fatal("snapshot bypassed current upstream access", hits, err)
+		}
+		documents, err := s.Documents("tenant", "docs")
+		if err != nil || len(documents) != 1 || shown.Lifecycle.LastGoodAt == nil {
+			t.Fatal("snapshot lost retained data or collection provenance", documents, err)
 		}
 	})
 }

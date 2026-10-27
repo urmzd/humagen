@@ -262,9 +262,8 @@ export function ConversationInfo({
   const [ownTab,setOwnTab]=useState<"sources"|"instructions">("sources");
   const selected=contextTab??ownTab;
   const select=(next:"sources"|"instructions")=>onContextTab?onContextTab(next):setOwnTab(next);
-  if (panel !== "context" && panel !== "people") return null;
   return (
-    <Inspector open title={words[panel]} onClose={onClose}>
+    <Inspector open={panel === "context" || panel === "people"} title={words[panel === "people" ? "people" : "context"]} onClose={onClose}>
       {panel === "context" ? (
         <div className="flex flex-col gap-6"><ForkContext thread={thread} /><Tabs label={words.contextSections} value={selected} tabs={[{id:"sources",label:words.sourcesTab},{id:"instructions",label:words.instructionsTab}]} onChange={select}/>{selected==="instructions"?<ProjectContextPreview key={`${thread.id}:${thread.version}`} project={thread.project} version={thread.version} initialAgent={thread.participants.find(participant=>participant.kind==="agent")?.name} initialChannel={thread.channel}/>:<Sources project={thread.project} />}</div>
       ) : <ConversationAccess thread={thread} onShare={onShare} />}

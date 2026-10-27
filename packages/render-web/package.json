@@ -6,16 +6,26 @@
   "description": "DOM implementations of the humagen primitives, plus theme tokens.",
   "exports": {
     ".": "./src/index.tsx",
-    "./theme.css": "./src/theme.css"
+    "./theme.css": "./src/theme.css",
+    "./ui/*": "./src/ui/*.tsx",
+    "./lib/utils": "./src/lib/utils.ts",
+    "./fonts.css": "./src/fonts.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
     "@humagen/core": "workspace:*",
     "@humagen/primitives": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "radix-ui": "^1.4.3",
+    "react-day-picker": "^10.0.2",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.4.0"
   },
   "peerDependencies": {
     "react": "^19",

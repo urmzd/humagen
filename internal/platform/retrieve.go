@@ -145,10 +145,12 @@ func (r retriever) Retrieve(ctx context.Context, query string) (*ragtypes.Assemb
 		entries := []knowledge.CitationEvidence{}
 		for _, h := range hits {
 			project := ""
+			provider := "manual"
 			if cfg := r.expected[h.Source]; cfg != nil {
 				project = cfg.Project
+				provider = cfg.Provider
 			}
-			entries = append(entries, knowledge.CitationEvidence{Source: h.Source, Project: project, DocumentID: h.DocumentID, Index: h.Index, Title: h.Title, URI: h.URI, Text: h.Text, Mode: knowledge.Indexed, CopyAt: h.CopyAt, RefreshFailed: h.RefreshFailed})
+			entries = append(entries, knowledge.CitationEvidence{Source: h.Source, Provider: provider, Project: project, DocumentID: h.DocumentID, Index: h.Index, Title: h.Title, URI: h.URI, Text: h.Text, Mode: knowledge.Indexed, CopyAt: h.CopyAt, RefreshFailed: h.RefreshFailed})
 		}
 		evidence, err := r.p.SourceEvidence.RecordQuery(r.tenant, r.runID, fmt.Sprintf("rag:%d", max(r.attempt, 1)), entries)
 		if err != nil {

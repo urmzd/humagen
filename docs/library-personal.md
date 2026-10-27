@@ -1,8 +1,9 @@
 # Library and personal settings
 
 This layer supplies dedicated Skills, Memory, Audit, Profile, Notifications,
-Privacy and Personal Agents components and APIs. The upper Outcomes layer mounts
-the canonical routes and navigation. Connected Accounts uses the existing real
+Privacy and Personal Agents components and APIs. The canonical routes are
+mounted, and the [managed Library](managed-library.md) provides the scoped folder
+browsers and shared control foundation. Connected Accounts uses the existing real
 provider connections page.
 
 Skills have immutable scoped revisions. A draft leaves the published revision
@@ -43,8 +44,9 @@ exact-owner visibility. A filtered limit never reveals hidden record counts.
 
 ## Reproduce the visual checks
 
-`scripts/screens/library.ts` supplies thirteen states, each checked at phone and
-desktop widths once the upper host mounts its routes and activates this helper.
+`scripts/screens/library.ts` supplies the library and personal-setting states,
+including folder import, file editing, memory scopes and retained entry details.
+Each is captured at phone and desktop widths by the mounted host.
 They use the isolated scripts/screens server and real API seed.
 The expanded digest uses a retained delivery fixture; real timing, replay and
 confinement are covered by deterministic worker journey tests.

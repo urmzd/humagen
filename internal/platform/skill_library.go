@@ -57,6 +57,10 @@ func (p *Platform) DraftSkill(who auth.Principal, scope library.Scope, definitio
 	if err := p.LibraryScope(who, scope, true); err != nil {
 		return library.Revision{}, err
 	}
+	var normalizeErr error
+	if definition, normalizeErr = definition.Normalize(); normalizeErr != nil {
+		return library.Revision{}, normalizeErr
+	}
 	if !definition.Valid() {
 		return library.Revision{}, library.ErrInvalid
 	}
@@ -198,7 +202,14 @@ func pinRevision(r library.Revision) pinnedSkill {
 	if tools == nil {
 		tools = []string{}
 	}
-	return pinnedSkill{Private: r.Scope.Kind == "personal", Name: r.Name, From: r.Scope.Project, Instructions: r.Instructions, Description: r.Description, Version: r.Version, Tools: &tools}
+	pinned := pinnedSkill{Private: r.Scope.Kind == "personal", Name: r.Name, From: r.Scope.Project, Instructions: r.Instructions, Description: r.Description, Version: r.Version, Tools: &tools}
+	if r.Files != nil {
+		pinned.PackageID = r.ID
+		if pkg, err := r.Package(); err == nil {
+			pinned.PackageHash, pinned.Resources = pkg.Hash, pkg.Resources
+		}
+	}
+	return pinned
 }
 
 func humanSubject(who auth.Principal) string {

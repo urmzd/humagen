@@ -14,6 +14,15 @@ larger design. The gap analysis records its own review revision; recheck code
 before treating it as current. Repository rules in [AGENTS.md](AGENTS.md) still
 govern implementation, including shared presentation and agent identity.
 
+The [workspace principles](docs/design/workspace-principles.md) apply the
+[designer and portfolio research](docs/design/reference-research.md): Harvey II
+for project structure, Codex for human control, Linear for restraint, and Dust
+for testing working interactions. Storybook previews use the console's own
+components. These references inform Humagen's identity rather than replacing it.
+The [task queue](docs/ui-task-queue.md) tracks the active delivery. The
+[conversation-first design](docs/design/conversation-workspace.md) separates
+planned collections, browser, protocol and improvement work from this UI pass.
+
 ## Requirements
 
 | ID | Requirement | Status |
@@ -28,11 +37,18 @@ govern implementation, including shared presentation and agent identity.
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
 | DES-008 | Agent/project discovery belongs in the new-conversation picker | Implemented; search and selection preserve drafts/files and cannot submit work |
 | DES-009 | Use consistent action icons and readable inbox recovery groups | Implemented; semantic shared icons, touch targets, collapsed companion diagnostics and native recovery captures |
-| DES-010 | Notifications are a top-level destination with a live navigation count | Implemented; one permission-gated delivery reader powers the bell and page, while preferences stay separate |
+| DES-010 | Notifications consolidates actionable work and delivered updates | Implemented; one Notifications feed, one status/type filter panel and a permission-aware Alert Rules companion tab |
 | DES-011 | Conversation drawers reflow desktop content, with a compact header and consistent controls | Implemented; shared inspector dock, mobile native dialogs and responsive browser regressions |
 | DES-012 | Workspace search is a centered modal with indexed content and native destinations | Implemented; permission-confined content indexes, API contract, replay and search interaction tests |
 | DES-013 | Project selection is directly editable before starting work; every starter suggestion remains available | Implemented; stacked project glyph, searchable drawer, draft-preserving selection and wrapping starters |
 | DES-014 | Composer context choices use named categories and scoped subpanes | Implemented; Agents, Projects and Skills preserve the draft, and channel choices stay inside their project |
+| DES-015 | Shared web controls use one semantic theme, font and responsive sizing | Implemented; standard shadcn Radix controls, renderer adapters and foundation stories |
+| DES-016 | Skills packages and managed Memory chains have browsable, scoped files | Implemented; immutable packages, folder import/editor, native memory review and private contextual chat |
+| DES-017 | Related destinations use tabs and compact operational screens | Implemented; permission-aware Library, Agents and Operations hubs, bounded policy rows and actionable source health |
+| DES-018 | Motion and metadata make navigation changes easy to follow | Implemented; Tailwind drawer/menu states, retained inert exits, reduced-motion behavior, named project pills and + New above search |
+| DES-019 | Project work has readable states, scoped filters and honest recovery | Implemented; automated delivery checks pass; final browser/CI verification pending |
+| DES-020 | Workspace previews reuse console controls, fonts and consolidated navigation | Implemented; automated delivery checks pass; final browser/CI verification pending |
+| DES-021 | Sidebar conversations show agents and people; projects and conversations can be pinned independently | Implemented; saved preferences, access checks, restart and DOM regressions, and responsive sidebar captures |
 
 ### DES-001: Working integrations
 
@@ -241,17 +257,36 @@ capture collapsed and expanded diagnostics on phone and desktop.
 
 ### DES-010: Top-level notifications
 
-Notifications has a canonical `/notifications` page and bell navigation entry
-above the workspace groups, including in the collapsed rail. Its live count
-measures delivery projections; Needs You continues to count actionable inbox
-items. Personal notification preferences remain at `/you/notifications`.
+Notifications has one bell navigation entry and a single feed of requests and
+updates. There is no Needs You or Updates tab or separate list section. The feed
+starts with all messages; one Filter popover combines status (All, Open,
+Resolved) and type, with an active-filter count and Reset. Search stays in the
+same toolbar. Filtering preserves the selected reading pane and server paging.
+Alert Rules is the only companion tab, visible with `alerts:read`, and uses the
+existing native rule editor without another Overview/Rules strip.
 
-The host shares one authenticated reader across navigation and page changes.
-Only humans with `runs:read` poll. Reader changes clear old rows, stale polling
-cannot restore an acknowledged delivery, and failures keep retry available.
-Dismissal acknowledges only a delivery; opening an update leads to the original
-inbox item. DOM and route regressions cover these boundaries, and native screen
-states cover empty, error and digest views with phone and desktop layouts.
+Both `/notifications` and existing `/inbox` links open the same feed. Message,
+alert and kind selections remain addressable. The navigation badge counts
+actionable work and always opens Notifications. Machine readers with `runs:read`
+use the same feed without human delivery polling. Notification preferences
+remain at `/you/notifications`.
+
+The host retains one authenticated delivery reader. Projection acknowledgements
+remain separate from resolving the original message and never add duplicate
+feed rows. Reader changes clear stale delivery rows; polling and acknowledgement
+failures retain recovery. A delivery-status failure leaves the feed usable.
+The Workspace/Notifications Storybook stories exercise the real feed, combined
+filters, empty/failure states, phone layout and Alert Rules navigation.
+Validation: 30 route/navigation checks and 43 focused DOM checks pass. Both
+production builds and console/Storybook typechecks pass. The Notifications browser
+journey passes 20 light/dark states at 320, 390, 768 and 1440 pixels, including the
+combined filter panel, Alert Rules, errors, empty states, message dismissal and a
+selected reader retained outside the filtered list. Evidence is in
+`.screens/notifications/checks.json`; reproduce with
+`STORYBOOK_URL=http://127.0.0.1:6007 pnpm --filter @humagen/screens exec node --experimental-strip-types notifications.ts`.
+The concurrent full console run reports 636/637 passing; its remaining failure is
+`the tree at depth 4 indents one level at 390px, and deeper rows say where they sit`
+(`ok(indents.length > 0)`) in the other session's project layout work.
 
 ### DES-011: Docked conversation workspace
 
@@ -263,8 +298,8 @@ column. The header has one left-aligned title, project/channel metadata and a
 compact action row. Share owns project placement; More contains Activity and
 Deliverables. Control geometry uses the existing shared icon family.
 
-Dark console surfaces use neutral charcoal planes, Figtree for reading, and
-the existing Bricolage display face. Agent hues and focus use the existing
+Dark console surfaces use neutral charcoal planes, IBM Plex Sans for reading and headings, with
+IBM Plex Mono for editors and technical text. Agent hues and focus use the existing
 accent tokens. The `conversation-drawer-reflow` browser state asserts geometry
 and desktop/mobile modality. Existing DES-010 removes the boxed Notifications
 disclosure and retains the canonical bell destination.
@@ -278,14 +313,17 @@ restores the opener. Pending requests clear previous results, and failures
 show an explicit error. Search never starts an agent.
 
 `GET /api/discovery?content=true` adds saved human messages and original agent
-requests/answers, published file text and retained source passages. Current
+requests/answers, published file text and authored local source passages. Current
 permissions, project placement and private/fork access confine every result.
 Message/run search covers the past year, at most 1000 matching candidates per
 kind; the modal returns 20 results. File text is capped at 65536 characters at
 publication. Older files retain title, description and existing preview lookup
 until republished. Source search uses the existing BM25 index, at most 50
-readable retained sources. Private prepared context, reasoning and tool payloads
-are excluded. Live providers are not queried on each keystroke.
+readable local sources. Retained external source passages are withheld pending
+current-reader file authorization. Private prepared context, reasoning and tool
+payloads are excluded. Live providers are not queried on each keystroke. This
+does not rewrite previously retained conversation text; its existing access
+rules continue to apply.
 
 Indexes derive from authoritative records and rebuild after restart. Go tests
 cover indexing, replay, tenant confinement, current file versions and deletion;
@@ -301,8 +339,9 @@ Personal and Company remain explicit homes; selecting another project resets
 only the channel. Draft text and attachments stay in the mounted composer.
 Existing conversations retain their fixed placement and Share review.
 
-Starter suggestions wrap with consistent marks and touch targets. No action is
-hidden at phone widths. A suggestion fills an editable draft and adds its agent
+Starter suggestions wrap with consistent marks and touch targets. They stay
+visible while the person edits a draft and change context only when the project
+changes. No action is hidden at phone widths. A suggestion fills an editable draft and adds its agent
 while retaining the project; sending remains explicit. DOM regressions cover
 Personal selection, preserved drafts and project-aware starters. The
 `home-project-picker` screen exercises the complete selection flow and checks
@@ -340,3 +379,202 @@ Back/Escape, draft and file preservation, and explicit message submission.
 Validation: 607 console tests passed; all 292 phone/desktop screen captures
 passed, plus 15 dark captures at 320, 768 and 1440px. The eight showcase images
 were refreshed from the reproducible screen fixtures.
+
+### DES-015: Shared web component foundation
+
+Keep React, Vite and Tailwind. Standard shadcn Radix controls belong in
+`packages/render-web/src/ui`, with one semantic theme and the actual bundled
+IBM Plex Sans Variable font for reading and headings. IBM Plex Mono serves
+file editors and technical text. Both fonts are self-hosted with their licenses.
+Neutral light and charcoal surfaces use red as the default interaction accent,
+with real yellow and green presets. Existing purple, blue and teal preferences
+remain valid. Gold attention, green success and agent identity colors retain
+their separate meanings. Glass and a thin static color streak belong to chrome;
+content and popovers keep opaque readable surfaces with restrained bevel/shadow.
+Existing button and field helpers share the same variants and sizing.
+Web-only resource browsers remain controlled presentation components;
+the shared surface-neutral contracts and Slack renderer remain intact.
+
+Acceptance: production and Storybook builds, workspace typechecks, standard
+format/lint checks, dense shared controls, correct loaded font, keyboard focus,
+reduced motion and phone/desktop reflow. The Controls and ResourceWorkspace
+stories provide a repeatable design review surface.
+
+### DES-016: Skills packages and managed Memory chains
+
+Skills is a folder manager with import, file navigation, preview/source editing,
+new immutable drafts and ZIP download. SKILL.md and resource bytes use the native
+library revision store and saige's parser/snapshot. Existing testing, publication,
+promotion and agent bindings remain. Frontmatter grants no tools; supporting
+files are read only from the exact package pinned to a run.
+
+Memory is organized by real authorized owners. Retained entries have file
+addresses, projected provenance and native review/correction/forget operations.
+Management status reflects actual configuration. Chat opens a private native
+conversation draft without putting note text in the URL. Pending and expired
+memory remain excluded from automatic context. Searching a scope rail preserves
+the current chain and any correction draft. Dirty Skills drafts require Save or
+explicit Discard before changing scope.
+
+Acceptance: package bounds, malformed paths, immutable versions, replay, tenant
+and personal boundaries, current promotion capabilities, separate failure/empty
+states, native folder import/save/download, scoped deep links, draft preservation
+and private chat placement. Details and limits: [managed Library](docs/managed-library.md).
+
+### DES-017: Consolidated navigation and compact operational screens
+
+Library is one sidebar link with Sources, Skills, Memory and Deliverables tabs.
+Agents groups directory, network, assignments and controls. Operations groups
+context health, integrations, action policies, schedules, usage and
+audit. Notifications combines requests and updates in one feed, with Alert Rules
+as its only companion tab and one status/type filter panel.
+Native routes remain usable, and permissions control destinations and tabs
+through one shared definition. Search and a single status/type Filter popover
+replace the long inbox category strip; local search covers loaded updates and states when
+older pages need to be loaded.
+
+Action policy uses a readable width, compact labeled rows, descriptions,
+inherited/effective values and one aligned save action. Context Health replaces
+zero-filled dashboards with one source action when empty; populated views have
+aligned filters, a compact status strip and details after selection. Development
+fixture disclaimers are kept out of product copy.
+
+Profile, Notifications, Privacy and workspace administration share compact
+`SettingsFormRow` controls. Privacy uses icons and labeled switches with hints,
+a direct Memory link and one aligned save action. Audit uses a shared
+Radix/react-day-picker calendar with local date/time inputs, host conversion to
+ISO timestamps and positive-range validation capped at 31 days. Compact event
+rows expand retained details; resource, Refresh and Export actions carry icons.
+Announcements use a compact card, one Open
+Announcement action and a labeled eye-with-slash Hide button with a busy guard.
+
+Acceptance: route and permission regressions, existing operational mutations,
+phone/desktop navigation, policy and Context Health captures, narrow reflow and
+keyboard selection. Automated delivery checks pass; final browser/CI verification for DES-015
+through DES-018 remains pending. Current evidence is recorded below.
+
+### DES-018: Motion, visibility and named project metadata
+
+Native drawers and the search modal enter and exit with short Tailwind transitions.
+Outgoing content is inert and hidden from assistive technology immediately; its
+visual shell survives only long enough to finish leaving. Reopening cancels
+pending removal. Desktop drawer width animates while the panel keeps its width,
+so the conversation reflows without scaling text. Nested composer panes have
+directional reveals and Radix folders expand and collapse. Reduced motion removes
+travel and delays. Waiting states remain still.
+
+Project rows show up to two named agent pills and useful nonzero activity.
+Descriptions and additional agents expand under Details; long names wrap.
+The sidebar starts with + New, followed by Search Work, with appropriate
+workspace/operations separators. Home's project control opens a drawer using
+its project icon and name, with no dropdown caret.
+
+Acceptance: rapid drawer close/reopen, immediate focus return, nested keyboard
+navigation, reduced motion, desktop dock reflow and narrow project metadata.
+
+Conversation pin writes are serialized while the display updates optimistically.
+Confirmed saves replay later pending operations; a refused save rolls back only
+its own operation. Focus recovery and visibility of the active older
+conversation are preserved after unpinning. Focused concurrency and recovery
+regressions cover these cases.
+
+### Source access in the current delivery
+
+New Source distinguishes native text, Drive and Notion paths from providers
+that need a connector. Configuration saves refresh cadence with project scope.
+Live query, collected copy and copy plus live query describe acquisition,
+not a broader reader grant. Selected resources constrain fresh provider reads.
+Frozen snapshots and external saved variants fail closed rather than query a
+broader or newer collection. External retained content and per-file metadata
+remain withheld without current-file authorization; provider failures never
+fall back to retained external text.
+
+New evidence records native source authority. Network-free reader projections
+withhold external, unknown and missing-source citations pending an authorizer.
+This does not erase historical conversation text. See [sources.md](docs/sources.md)
+for that limitation and the separate reviewed-summary publication path. Source
+access and final integration checks remain in the active task queue until their
+regressions pass.
+
+
+### DES-019: Readable project work
+
+The overview uses `apps/web/src/ProjectWork.tsx` for the real paged conversation
+records. Rows keep agent, title, last activity and explicit state together.
+All, In progress, Needs attention and Finished filters describe the loaded
+rows only; when an older page exists, that boundary is stated beside the list.
+Failure counts are not described as approval counts or outcomes awaiting review.
+Metadata uses gaps rather than separator dots. On phones, status moves below
+the title and filters wrap. Supporting notes and schedules share a quiet plane.
+
+`ProjectTasks` in `Projects.tsx` owns the API requests. Initial read failures
+offer Try Again instead of appearing as an empty project. Pagination failures
+retain the current rows and offer See More again. Responses from a previous
+scope cannot overwrite the current list. DOM tests cover filtering and native
+conversation selection, failure/retry and obsolete-scope responses.
+
+### DES-020: Shared workspace design previews
+
+The newer consolidated Library, Agents, Notifications and Operations hubs remain
+owned by the shared permission-aware navigation definition. This pass does not
+restore the older expanded sidebar. The console and Storybook share the native
+navigation item renderer and the same semantic controls and fonts.
+
+The [workspace principles](docs/design/workspace-principles.md) and
+[reference research](docs/design/reference-research.md) record the adopted
+direction and public portfolio credits. `Workspace/Project work` in Storybook
+renders production `ProjectWork`, navigation, `Page` and `Tabs` components with
+isolated fixtures, the shared renderer font entry and console CSS.
+Overview, light, phone, empty, loading, read failure, paging failure, filter/open
+and navigation stories exercise the design. Story actions are local previews,
+not saved workspace mutations.
+
+Integration evidence: all 619 console tests pass on the committed managed-library
+base. The active branch's project-work filter, read-retry and stale-scope tests
+also pass, as do console and Storybook typechecks, both builds and 20 light/dark
+Storybook browser states with the newer shared typography and controls.
+
+Current delivery checks pass: all 15 workspace typechecks; all nine workspace
+test tasks, including 637 console, 18 client, 193 Slack, 58 adapter, eight screen
+helper and 46 core tests; the full Go suite with `-race`; Go lint with zero
+issues; Biome; API lint with five existing ignored findings; and production
+and Storybook builds. Earlier focused calendar/preferences and source-access
+regressions also pass. The final native browser matrix and remote CI remain
+in progress. Live provider-account trials and merge are not claimed here.
+
+```sh
+pnpm storybook
+pnpm storybook:check
+pnpm storybook:capture
+```
+
+The capture command uses [teasr.storybook.toml](teasr.storybook.toml). The checker
+accepts `STORYBOOK_URL` and `CHROMIUM`. Story actions are isolated fixtures,
+not saved workspace changes or live provider execution.
+
+### DES-021: Conversation participants and independent pins
+
+Conversation rows show a bot glyph and the existing colored `AgentMark`s beside
+agent names, and circular people avatars with an overflow count. Full participant
+lists remain available through accessible labels and titles. Duplicate identities
+are shown once; people-only and agent-only conversations keep their own identity.
+
+Project headings and individual conversations each have a pin control. A
+project's actions menu also offers Pin Project, including before it has any
+recent conversations. Both
+appear under Pinned and save independently through personal preferences. The
+`pinned_projects` API field holds up to 50 project addresses, most recently pinned
+first; the workspace is `~`. New pins require project read access. Existing
+unreadable shortcuts stay hidden without blocking changes to other pins. Pin
+controls remain visible when pinned, on keyboard focus and on touch pointers.
+Save failures restore the previous list and report the failure beside its row.
+
+Evidence: `Sidebar.tsx`, `Projects.tsx`, `preferences.ts`, `pkg/prefs`, the preferences HTTP route
+and the regenerated client contract. DOM tests cover participants, pin/unpin,
+reopening, concurrent saves and refusal. Store tests cover bounded private lists,
+memory restart, older records and write failure. HTTP tests cover unreadable
+projects, revoked access and independent conversation pins. The
+`sidebar-participants` browser fixture checks save/reload, independent unpinning,
+participant bounds and touch targets at 320, 390 and 1280px in dark mode. Its
+multi-person roster is a simulated list response; pin persistence uses the native
+API. The open drawer uses its own bounds checks rather than page-content gutters.

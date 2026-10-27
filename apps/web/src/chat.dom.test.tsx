@@ -137,7 +137,7 @@ const chips = () =>
     ? []
     : [...(screen.getByRole("list", { name: chat.selected }).querySelectorAll("li"))].map((li) => li.textContent ?? "");
 
-test("a link that names an agent, or a suggestion, adds the agent as a chip, not an @mention, and suggestions go once the person types", async () => {
+test("a link or suggestion selects the agent without submitting, and suggestions remain while typing", async () => {
   openChat(workspace("lead"), { startAgent: "helper", startAsk: "Help with the launch." });
   await waitFor(() => assert.equal(box().value, "Help with the launch."));
   assert.deepEqual(chips(), ["helper"]);
@@ -149,8 +149,10 @@ test("a link that names an agent, or a suggestion, adds the agent as a chip, not
   fireEvent.click(within(suggestions).getByRole("button", { name: /Write a report/ }));
   await waitFor(() => assert.equal(box().value, "Write a one-page report on "));
   assert.deepEqual(chips(), ["humagen-writer"]);
-  // Typed in, the suggestions step aside.
-  assert.equal(screen.queryByRole("list", { name: chat.suggestions }), null);
+  assert.equal(screen.getByRole("list", { name: chat.suggestions }) === suggestions, true);
+  fireEvent.change(box(), { target: { value: "Write a one-page report on launch notes" } });
+  assert.equal(screen.getByRole("list", { name: chat.suggestions }) === suggestions, true, "typing keeps the suggestion list mounted");
+  assert.equal(net?.seen.some((request) => request.method === "POST"), false);
   fireEvent.change(box(), { target: { value: "" } });
   assert.ok(screen.getByRole("list", { name: chat.suggestions }));
 });

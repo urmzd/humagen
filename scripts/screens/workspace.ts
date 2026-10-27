@@ -19,7 +19,14 @@ export function workspaceScreens(call: Call): Screen[] {
     act: async (page) => {
       const input = page.locator('form[aria-label="Message"] textarea');
       await input.fill("Keep this draft when changing projects.");
-      await page.getByRole("button", { name: /^Select project: Personal/ }).click();
+      const picker = page.getByRole("button", { name: /^Select project: Personal/ });
+      assert.equal(await picker.getAttribute("aria-haspopup"), "dialog");
+      assert.equal(
+        await picker.locator("svg").count(),
+        1,
+        "a drawer trigger has no dropdown caret",
+      );
+      await picker.click();
       const drawer = page.getByRole("dialog", {
         name: defaultCopy.chat.chooseProject,
         exact: true,
@@ -36,6 +43,15 @@ export function workspaceScreens(call: Call): Screen[] {
       const suggestions = page.getByRole("list", { name: defaultCopy.chat.suggestions });
       await suggestions.waitFor();
       assert.equal(await suggestions.getByRole("button").count(), 3);
+      const beforeTyping = await suggestions.boundingBox();
+      await input.fill("Prepare the launch brief.");
+      const afterTyping = await suggestions.boundingBox();
+      assert.ok(beforeTyping && afterTyping, "Starters remain visible while composing");
+      assert.ok(
+        Math.abs(beforeTyping.y - afterTyping.y) < 1 &&
+          Math.abs(beforeTyping.height - afterTyping.height) < 1,
+        "Typing a short draft does not move or collapse the starter suggestions",
+      );
       for (const choice of await suggestions.getByRole("button").all()) {
         const box = await choice.boundingBox();
         assert.ok(
@@ -73,6 +89,7 @@ export function workspaceScreens(call: Call): Screen[] {
   let priorControl:
     | { paused: boolean; version: number; manager?: string; stop_rules?: string }
     | undefined;
+  let welcomeAnnouncement: string | undefined;
   const nativeFormat = (format: "docx" | "xlsx"): Screen => ({
     name: `native-${format}-production`,
     path: "/",
@@ -176,6 +193,129 @@ export function workspaceScreens(call: Call): Screen[] {
   });
   return [
     projectPickerScreen,
+    {
+      name: "workspace-sidebar-pin",
+      path: "/",
+      act: async (page) => {
+        const sidebar = page.getByRole("complementary", { name: "Navigation", exact: true });
+        const reveal = async () => {
+          if (!(await sidebar.isVisible()))
+            await page.getByRole("button", { name: /^Open sidebar/ }).click();
+        };
+        await reveal();
+        const pin = sidebar.getByRole("button", { name: /^Pin / }).first();
+        await pin.waitFor();
+        const thread = await pin.getAttribute("data-pin-thread");
+        assert.ok(thread);
+        const control = sidebar.locator(`button[data-pin-thread="${thread}"]`);
+        await page.keyboard.press("Tab");
+        await pin.focus();
+        await page.waitForFunction(
+          (id) => {
+            const element = document.querySelector(`button[data-pin-thread="${id}"]`);
+            return (
+              element !== null &&
+              element === document.activeElement &&
+              getComputedStyle(element).opacity === "1"
+            );
+          },
+          thread,
+          { timeout: 1000 },
+        );
+        const save = page.waitForResponse(
+          (response) =>
+            response.request().method() === "PUT" &&
+            new URL(response.url()).pathname === "/api/preferences",
+        );
+        await page.keyboard.press("Enter");
+        assert.equal((await save).status(), 200);
+        await sidebar
+          .getByRole("region", { name: "Pinned", exact: true })
+          .locator(`button[data-pin-thread="${thread}"]`)
+          .waitFor();
+        assert.equal(
+          await control.evaluate((element) => element === document.activeElement),
+          true,
+          "Keyboard focus follows the pinned row",
+        );
+        assert.ok(
+          (await call<{ pinned: string[] }>("GET", "/api/preferences")).pinned.includes(thread),
+        );
+        await page.reload();
+        await reveal();
+        await control.waitFor();
+        assert.ok((await control.getAttribute("aria-label"))?.startsWith("Unpin "));
+        await control.focus();
+        const unpin = page.waitForResponse(
+          (response) =>
+            response.request().method() === "PUT" &&
+            new URL(response.url()).pathname === "/api/preferences",
+        );
+        await page.keyboard.press("Space");
+        assert.equal((await unpin).status(), 200);
+        await page.waitForFunction(
+          (id) =>
+            document
+              .querySelector(`button[data-pin-thread="${id}"]`)
+              ?.getAttribute("aria-label")
+              ?.startsWith("Pin "),
+          thread,
+        );
+        assert.equal(
+          await control.evaluate((element) => element === document.activeElement),
+          true,
+          "Keyboard focus follows the unpinned row",
+        );
+        assert.equal(
+          (await call<{ pinned: string[] }>("GET", "/api/preferences")).pinned.includes(thread),
+          false,
+        );
+        if ((page.viewportSize()?.width ?? 0) < 768)
+          await sidebar.getByRole("button", { name: "Close sidebar", exact: true }).click();
+      },
+    },
+    {
+      name: "workspace-motion",
+      path: "/",
+      act: async (page) => {
+        await page.emulateMedia({ reducedMotion: "no-preference" });
+        const picker = page.getByRole("button", { name: /^Select project: Personal/ });
+        const drawer = page.getByRole("dialog", {
+          name: defaultCopy.chat.chooseProject,
+          exact: true,
+        });
+        await picker.click();
+        await drawer.waitFor();
+        const moving = await drawer.evaluate((element) => ({
+          properties: getComputedStyle(element).transitionProperty,
+          duration: getComputedStyle(element).transitionDuration,
+        }));
+        assert.ok(moving.properties.includes("translate"));
+        assert.ok(moving.duration.split(",").some((duration) => parseFloat(duration) > 0));
+        await page.keyboard.press("Escape");
+        await drawer.waitFor({ state: "hidden" });
+        assert.equal(await picker.evaluate((element) => element === document.activeElement), true);
+        // Reopening before the outgoing shell is removed cancels that removal.
+        await picker.click();
+        await drawer.waitFor();
+        await page.waitForTimeout(240);
+        assert.equal(await page.locator(".humagen-inspector[open]").count(), 1);
+        await page.keyboard.press("Escape");
+        await drawer.waitFor({ state: "hidden" });
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        await picker.click();
+        await drawer.waitFor();
+        assert.equal(
+          await drawer.evaluate((element) => getComputedStyle(element).transitionProperty),
+          "none",
+          "Reduced motion removes transitions even when a duration token remains defined",
+        );
+        await page.keyboard.press("Escape");
+        await drawer.waitFor({ state: "hidden" });
+        await picker.click();
+        await drawer.waitFor();
+      },
+    },
     nativeFormat("docx"),
     nativeFormat("xlsx"),
     {
@@ -185,6 +325,33 @@ export function workspaceScreens(call: Call): Screen[] {
         await page.getByRole("heading", { level: 1 }).waitFor();
         const me = await call<{ welcome_announcement?: string }>("GET", "/api/me");
         assert.ok(me.welcome_announcement, "Home must use its real retained announcement identity");
+        welcomeAnnouncement = me.welcome_announcement;
+        // The shared runner intentionally dismisses initial announcements.
+        // Restore this native projection for its own browser state.
+        await call("POST", `/api/inbox/${welcomeAnnouncement}/unhide`, {});
+        await page.reload();
+        const banner = page.getByRole("region", { name: defaultCopy.home.banner.label });
+        await banner.waitFor();
+        const hide = banner.getByRole("button", {
+          name: defaultCopy.home.banner.hide,
+          exact: true,
+        });
+        assert.equal(await hide.locator("svg").count(), 1, "Hide uses an accessible icon control");
+        await banner
+          .getByRole("button", { name: defaultCopy.home.banner.open, exact: true })
+          .waitFor();
+        assert.equal(
+          await banner
+            .getByRole("button", { name: defaultCopy.home.banner.markRead, exact: true })
+            .count(),
+          0,
+          "The announcement exposes one reading action",
+        );
+      },
+      after: async () => {
+        if (welcomeAnnouncement)
+          await call("POST", `/api/inbox/${welcomeAnnouncement}/dismiss`, {});
+        welcomeAnnouncement = undefined;
       },
     },
     ...[false, true].map(
@@ -329,6 +496,22 @@ export function workspaceScreens(call: Call): Screen[] {
           .locator("ol > li")
           .first()
           .waitFor();
+      },
+    },
+    {
+      name: "operations-context-health-empty",
+      path: "/operations/context",
+      act: async (page) => {
+        await page.route("**/api/knowledge", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ sources: [] }),
+          }),
+        );
+        await page.reload();
+        await page.getByText("No sources to monitor yet", { exact: true }).waitFor();
+        await page.getByRole("link", { name: "Add Sources", exact: true }).waitFor();
       },
     },
     {

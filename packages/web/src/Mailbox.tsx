@@ -61,6 +61,8 @@ export interface MailboxProps {
   messages: InboxMessage[];
   /** Controlled selection. Leave out to let the mailbox keep its own. */
   selectedId?: string | null;
+  /** A selected record outside the current page stays readable without rejoining the list. */
+  selectedMessage?: InboxMessage;
   onSelect?: (id: string | null) => void;
   /**
    * Every click, in the shared contract: `payload.turnId` is the message id and
@@ -84,6 +86,8 @@ export interface MailboxProps {
    * mailbox never splits by kind itself: every message carries its kind as a tag.
    */
   filter?: MessageFilter;
+  /** Keep one list when the host combines requests and updates in a single feed. */
+  groupByAction?: boolean;
   /** Rendered under the title, across the whole mailbox: the host's own filters. */
   toolbar?: ReactNode;
   /** Rendered after the last row: a "See more" control, a loading note. */
@@ -268,6 +272,7 @@ const headerButton = `${buttonClass("ghost")} min-h-10 px-2.5`;
 export function Mailbox({
   messages,
   selectedId,
+  selectedMessage,
   onSelect,
   onAction = () => {},
   viewer,
@@ -279,6 +284,7 @@ export function Mailbox({
   messageActions,
   emptyOpen,
   filter,
+  groupByAction = true,
   defaultShow = "open",
   show: controlledShow,
   onShow,
@@ -305,12 +311,14 @@ export function Mailbox({
   // Decisions first, then updates. Within each, the order stays most urgent first.
   const asking = shown.filter((m) => messageState(m, now) === "open" && openParts(m).length > 0);
   const rest = shown.filter((m) => !asking.includes(m));
-  const grouped = show !== "resolved" && asking.length > 0 && rest.length > 0;
+  const grouped = groupByAction && show !== "resolved" && asking.length > 0 && rest.length > 0;
   const ordered = [...asking, ...rest];
 
   const current = selectedId === undefined ? own : selectedId;
   // Keep showing a message that just left this tab, so its record is read where it was resolved.
-  const selected = messages.find((m) => m.id === current) ?? null;
+  const selected =
+    messages.find((m) => m.id === current) ??
+    (selectedMessage?.id === current ? selectedMessage : null);
   const count = openCount ?? openMessageCount(messages, now);
 
   // Reading is showing: a row click and a deep link (`selectedId`) both mark it read, once.

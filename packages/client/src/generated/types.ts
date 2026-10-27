@@ -438,6 +438,25 @@ export interface LibraryScope {
   subject?: string;
 }
 
+export interface MemoryFolder {
+  id: string;
+  scope: "personal" | "workspace" | "project" | "agent";
+  owner?: string;
+  title: string;
+  parent?: string;
+  notes: number;
+  pending: number;
+  updated_at?: string;
+  can_write: boolean;
+  can_propose: boolean;
+  can_promote: boolean;
+  selected_only?: boolean;
+  management: "manual" | "opt_in_required" | "disabled" | "unavailable" | "configured";
+  can_chat: boolean;
+  chat_project: string;
+  chat_agent?: string;
+}
+
 export interface LibrarySkillDefinition {
   name: string;
   description: string;
@@ -445,8 +464,16 @@ export interface LibrarySkillDefinition {
   argument_hint?: string;
   inputs?: string;
   outputs?: string;
+  /** Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions. */
+  files?: LibrarySkillFile[];
   /** Exact permitted tools, intersected with the agent's grants. Empty permits no tools. */
   tools: string[];
+}
+
+export interface LibrarySkillFile {
+  path: string;
+  /** Base64-encoded bytes. At most 128 KiB per file and 512 KiB per package after decoding. */
+  data: string;
 }
 
 export interface LibraryProvenance {
@@ -1923,6 +1950,9 @@ cannot be removed (409).
   setup_by?: string;
 }
 
+/** The caller's interaction accent. Existing saved choices remain supported. */
+export type Accent = "red" | "yellow" | "green" | "purple" | "blue" | "teal";
+
 export type Theme = "system" | "light" | "dark";
 
 export interface PersonalPreferences {
@@ -1944,13 +1974,15 @@ export interface Preferences {
   personal: PersonalPreferences;
   display_name: string;
   theme: Theme;
-  accent: string;
+  accent: Accent;
   has_photo: boolean;
   photo_version: number;
   /** When the person finished or skipped the first-run questions. */
   onboarded_at?: string;
   /** Conversations kept at the top of the person's sidebar, most recently pinned first. */
   pinned: string[];
+  /** Project shortcuts kept at the top of the person's sidebar, most recently pinned first. The workspace uses `~`. */
+  pinned_projects: string[];
   /** Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted. */
   muted: string[];
 }
@@ -3645,6 +3677,10 @@ export interface ListNativeNotificationsResponse {
   notifications: NativeNotification[];
 }
 
+export interface ListMemoryFoldersResponse {
+  folders: MemoryFolder[];
+}
+
 export interface ListLibrarySkillsResponse {
   skills: LibrarySkill[];
 }
@@ -3958,9 +3994,10 @@ export interface UpdatePreferencesBody {
   personal?: PersonalPreferences;
   display_name?: string;
   theme?: Theme;
-  accent?: string;
+  accent?: Accent;
   onboarded?: boolean;
   pinned?: string[];
+  pinned_projects?: string[];
   muted?: string[];
 }
 

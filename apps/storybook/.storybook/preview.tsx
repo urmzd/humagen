@@ -1,4 +1,5 @@
 import type { Preview } from "@storybook/react-vite";
+import "@humagen/render-web/fonts.css";
 import "../src/styles.css";
 
 const preview: Preview = {
@@ -20,7 +21,7 @@ const preview: Preview = {
       toolbar: {
         title: "Accent",
         icon: "paintbrush",
-        items: ["purple", "blue", "yellow", "teal"],
+        items: ["red", "yellow", "green", "purple", "blue", "teal"],
         dynamicTitle: true,
       },
     },
@@ -40,15 +41,21 @@ const preview: Preview = {
       },
     },
   },
-  initialGlobals: { theme: "dark", accent: "purple", shift: "0" },
+  initialGlobals: { theme: "dark", accent: "red", shift: "0" },
   decorators: [
-    (Story, { globals }) => {
+    (Story, { globals, parameters }) => {
       const root = document.documentElement;
       root.dataset.theme = globals.theme;
       root.dataset.accent = globals.accent;
       root.style.setProperty("--aui-accent-shift", globals.shift ?? "0");
       return (
-        <div className="min-h-screen bg-aui-bg px-4 py-8 text-aui-fg sm:px-8">
+        <div
+          className={
+            parameters.workspace
+              ? "h-dvh bg-aui-bg text-aui-fg"
+              : "min-h-screen bg-aui-bg px-4 py-8 text-aui-fg sm:px-8"
+          }
+        >
           <Story />
         </div>
       );
@@ -59,7 +66,7 @@ const preview: Preview = {
     controls: { expanded: true },
     options: {
       storySort: {
-        order: ["Foundations", "Primitives", "Agent", "Web-only"],
+        order: ["Workspace", "Foundations", "Primitives", "Agent", "Web-only"],
       },
     },
   },

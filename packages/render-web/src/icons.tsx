@@ -49,6 +49,11 @@ export const XCircleIcon = icon(
 );
 export const CircleIcon = icon(<circle cx="12" cy="12" r="8" />, "CircleIcon");
 export const XIcon = icon(<path d="M18 6 6 18M6 6l12 12" />, "XIcon");
+export const PlusIcon = icon(<path d="M12 5v14M5 12h14" />, "PlusIcon");
+export const UploadIcon = icon(
+  <path d="M12 16V3m-5 5 5-5 5 5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />,
+  "UploadIcon",
+);
 export const ShareIcon = icon(
   <path d="M12 16V3m-5 5 5-5 5 5M5 13v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7" />,
   "ShareIcon",
@@ -168,6 +173,13 @@ export const ClockIcon = icon(
   </>,
   "ClockIcon",
 );
+export const CalendarIcon = icon(
+  <>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M16 3v4M8 3v4M3 11h18" />
+  </>,
+  "CalendarIcon",
+);
 export const GaugeIcon = icon(<path d="M12 14l4-4M3.3 19a10 10 0 1 1 17.4 0" />, "GaugeIcon");
 export const MegaphoneIcon = icon(
   <>
@@ -191,6 +203,10 @@ export const EyeIcon = icon(
     <circle cx="12" cy="12" r="3" />
   </>,
   "EyeIcon",
+);
+export const EyeOffIcon = icon(
+  <path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A10.8 10.8 0 0 1 12 5c7 0 10 7 10 7a16.3 16.3 0 0 1-3.1 4.1M6.3 6.3A17.4 17.4 0 0 0 2 12s3 7 10 7a10.5 10.5 0 0 0 5.7-1.7" />,
+  "EyeOffIcon",
 );
 export const ArrowUpDownIcon = icon(<path d="m7 15 5 5 5-5M7 9l5-5 5 5" />, "ArrowUpDownIcon");
 export const PencilIcon = icon(
@@ -266,6 +282,43 @@ export const SettingsIcon = icon(
     <circle cx="12" cy="12" r="3" />
   </>,
   "SettingsIcon",
+);
+export const UserIcon = icon(
+  <>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21v-2a8 8 0 0 1 16 0v2" />
+  </>,
+  "UserIcon",
+);
+export const MonitorIcon = icon(
+  <>
+    <rect x="3" y="4" width="18" height="13" rx="2" />
+    <path d="M8 21h8m-4-4v4" />
+  </>,
+  "MonitorIcon",
+);
+export const SunIcon = icon(
+  <>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </>,
+  "SunIcon",
+);
+export const MoonIcon = icon(<path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z" />, "MoonIcon");
+export const PaletteIcon = icon(
+  <>
+    <path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1.4-3.4 1.7 1.7 0 0 1 1.2-2.9H17a4 4 0 0 0 4-4C21 6.4 17 3 12 3Z" />
+    <path d="M7.5 10h.01M10 6.5h.01M15 6.5h.01M18 10h.01" />
+  </>,
+  "PaletteIcon",
+);
+export const ServerIcon = icon(
+  <>
+    <rect x="3" y="3" width="18" height="7" rx="2" />
+    <rect x="3" y="14" width="18" height="7" rx="2" />
+    <path d="M7 6.5h.01M7 17.5h.01" />
+  </>,
+  "ServerIcon",
 );
 
 /** Shared navigation and action glyphs use the same grid and stroke. */

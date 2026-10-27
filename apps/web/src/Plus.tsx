@@ -102,6 +102,7 @@ export function PlusMenu({
 }) {
   const c = words.picker;
   const [pane, setPane] = useState<Pane>("root");
+  const [backward, setBackward] = useState(false);
   const [agentQuery, setAgentQuery] = useState("");
   const [skillQuery, setSkillQuery] = useState("");
   const [channelProject, setChannelProject] = useState<string | null>(null);
@@ -124,10 +125,12 @@ export function PlusMenu({
     : projects?.find((item) => item.name === name)?.title || name;
 
   const open = (next: Pane) => {
+    setBackward(false);
     returnFocus.current = undefined;
     setPane(next);
   };
   const back = () => {
+    setBackward(true);
     if (pane === "finder") {
       returnFocus.current = "finder";
       setPane("agents");
@@ -310,8 +313,10 @@ export function PlusMenu({
         if (to && !panel.current?.contains(to) && !to.closest("[data-plus-button]")) (onLeave ?? onClose)();
       }}
       style={{ maxHeight: place.max }}
-      className={`absolute left-0 z-30 flex w-full min-w-0 max-w-sm flex-col overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1" : "top-full mt-1"}`}
+      data-plus-menu
+      className={`motion-safe:animate-aui-pop absolute left-0 z-30 flex w-full min-w-0 max-w-sm flex-col overflow-x-hidden overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1 origin-bottom-left" : "top-full mt-1 origin-top-left"}`}
     >
+      <div key={pane} data-direction={backward ? "back" : "forward"} className="min-w-0 motion-safe:animate-aui-pane data-[direction=back]:motion-safe:animate-aui-pane-back">
       {header}
       {pane === "root" && <>
         <button type="button" data-plus-item="action" className={row} onClick={onAttach}><FileIcon size={16} className="text-aui-muted" />{words.attach}</button>
@@ -363,6 +368,7 @@ export function PlusMenu({
           : <div role="group" aria-label={defaultCopy.navigation.skills} className="flex flex-col">{shownSkills.map((skill) => <button key={skill.name} type="button" data-plus-item="skill" className={row} onClick={() => { onSkill?.(skill.name); onClose(); }}><WrenchIcon size={16} className="text-aui-muted" /><span className="min-w-0 flex-1"><span className="block truncate">{skill.name}</span>{skill.description && <span className="block truncate text-aui-xs text-aui-muted">{skill.description}</span>}</span></button>)}</div>}
       </>}
       {pane === "finder" && finder && <div data-plus-discovery>{finder}</div>}
+      </div>
     </div>
   );
 }

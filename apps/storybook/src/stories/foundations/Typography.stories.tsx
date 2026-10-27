@@ -10,7 +10,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Figtree at a dense chat scale: 14px body, 13px secondary, 12px meta. Utilities are `text-aui-*`; mono is `font-aui-mono`. Motion: one spinner, one shimmer, all of it off under prefers-reduced-motion.",
+          "IBM Plex Sans at a dense chat scale: 14px body, 13px secondary, 12px meta. Utilities are `text-aui-*`; mono is `font-aui-mono`. Motion: one spinner, one shimmer, all of it off under prefers-reduced-motion.",
       },
     },
   },

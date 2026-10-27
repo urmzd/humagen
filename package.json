@@ -12,6 +12,8 @@
     "typecheck": "turbo run typecheck",
     "check": "pnpm run fmt && pnpm run lint && pnpm run typecheck && pnpm test",
     "storybook": "pnpm --filter @humagen/storybook dev",
+    "storybook:check": "pnpm --filter @humagen/screens storybook",
+    "storybook:capture": "teasr run -c teasr.storybook.toml",
     "sandbox": "pnpm --silent --filter @humagen/slack-sandbox cli",
     "dev": "pnpm --filter @humagen/console dev",
     "test:server": "pnpm --filter @humagen/slack test:server",

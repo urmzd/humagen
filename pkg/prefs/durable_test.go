@@ -78,10 +78,13 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	if _, err := s.SetPhoto("acme", "ada", png); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("SetPhoto = %v", err)
 	}
+	if _, err := s.SetPinnedProjects("acme", "ada", []string{"Launch"}); !errors.Is(err, statetest.ErrInjected) {
+		t.Fatalf("SetPinnedProjects = %v", err)
+	}
 	if _, err := s.MarkOnboarded("acme", "new", time.Now()); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("MarkOnboarded = %v", err)
 	}
-	if got := s.Get("acme", "ada"); got.DisplayName != "Ada" || got.HasPhoto || got.PhotoVersion != 0 {
+	if got := s.Get("acme", "ada"); got.DisplayName != "Ada" || got.HasPhoto || got.PhotoVersion != 0 || len(got.PinnedProjects) != 0 {
 		t.Fatalf("after failed writes = %+v", got)
 	}
 	if got := s.Get("acme", "new"); !got.OnboardedAt.IsZero() {

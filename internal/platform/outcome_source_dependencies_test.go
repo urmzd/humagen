@@ -37,7 +37,7 @@ func TestSourceDependenciesUseOnlyVisibleTypedLearningOrigins(t *testing.T) {
 		if _, err := p.Knowledge.Create(tenant, "unrelated-source", "", who.Subject, time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.SourceEvidence.RecordQuery(tenant, id, "trusted-query", []knowledge.CitationEvidence{{Source: "evidence-source", DocumentID: "doc", Title: "Private Evidence", Text: "private evidence marker", Mode: knowledge.Indexed, Project: "Learning", Person: who.Subject}}); err != nil {
+		if _, err := p.SourceEvidence.RecordQuery(tenant, id, "trusted-query", []knowledge.CitationEvidence{{Provider: "manual", Source: "evidence-source", DocumentID: "doc", Title: "Private Evidence", Text: "private evidence marker", Mode: knowledge.Indexed, Project: "Learning", Person: who.Subject}}); err != nil {
 			t.Fatal(err)
 		}
 		preview, err := p.OutcomeLearning(who, id, library.Scope{})

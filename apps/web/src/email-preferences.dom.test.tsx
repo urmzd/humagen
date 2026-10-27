@@ -19,7 +19,7 @@ function mount(available:boolean){
 }
 test("email opt-in is saved only when this account has native delivery configured",async()=>{
  mount(true);
- const checkbox=await screen.findByRole("checkbox",{name:defaultCopy.personalPreferences.email});
+ const checkbox=await screen.findByRole("switch",{name:defaultCopy.personalPreferences.email});
  assert.equal((checkbox as HTMLInputElement).disabled,false);
  fireEvent.click(checkbox);
  fireEvent.click(screen.getByRole("button",{name:defaultCopy.personalPreferences.save}));
@@ -29,8 +29,26 @@ test("email opt-in is saved only when this account has native delivery configure
 });
 test("an unconfigured account cannot enable email delivery",async()=>{
  mount(false);
- const checkbox=await screen.findByRole("checkbox",{name:defaultCopy.personalPreferences.email});
+ const checkbox=await screen.findByRole("switch",{name:defaultCopy.personalPreferences.email});
  assert.equal((checkbox as HTMLInputElement).disabled,true);
+});
+
+test("notification rows save each delivery mode with quiet hours and time zone",async()=>{
+ mount(true);
+ const copy=defaultCopy.personalPreferences;
+ for(const [kind,mode] of [["approval","immediate"],["result","digest"],["mention","off"]] as const){
+  fireEvent.change(await screen.findByRole("combobox",{name:copy.events[kind]}),{target:{value:mode}});
+ }
+ fireEvent.change(screen.getByLabelText(copy.start),{target:{value:"22:30"}});
+ fireEvent.change(screen.getByLabelText(copy.end),{target:{value:"07:00"}});
+ fireEvent.change(screen.getByLabelText(copy.timezone),{target:{value:"America/Toronto"}});
+ fireEvent.click(screen.getByRole("button",{name:copy.save}));
+ await screen.findByRole("status");
+ const body=net?.seen.find(r=>r.method==="PUT")?.body as {personal:typeof personal};
+ assert.deepEqual(body.personal.notifications,{approval:"immediate",result:"digest",mention:"off"});
+ assert.equal(body.personal.quiet_start,"22:30");
+ assert.equal(body.personal.quiet_end,"07:00");
+ assert.equal(body.personal.timezone,"America/Toronto");
 });
 
 test("a stale profile save refreshes email consent without losing the edited briefing",async()=>{

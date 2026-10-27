@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Shared agent components (turn, approval, clarification, notice) built only from primitives.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./copy": "./src/copy.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

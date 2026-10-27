@@ -1,23 +1,27 @@
 import { defaultCopy } from "@humagen/components";
-import { type FormEvent, type MouseEvent, useRef, useState } from "react";
+import { UserIcon, PaletteIcon, ServerIcon, BotIcon, BrainIcon, GaugeIcon, PlugIcon, ShieldIcon, ScrollTextIcon, MonitorIcon, SunIcon, MoonIcon } from "@humagen/render-web";
+import { type FormEvent, type MouseEvent, type ReactNode, useRef, useState } from "react";
 import { ReadAudit } from "./ReadAudit.tsx";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { href, type SettingsSection } from "./route.ts";
 import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revision, type Settings as Workspace } from "./api.ts";
 import { ModelChain, POLICY, chainProblem, starterPolicy } from "./ModelChain.tsx";
+import { Input } from "@humagen/render-web/ui/input";
+import { NativeSelect } from "@humagen/render-web/ui/native-select";
+import { Switch as SettingSwitch } from "@humagen/render-web/ui/switch";
+import { SettingsFormRow } from "./SettingsFormRow.tsx";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
 import type { PrefsRead } from "./preferences.ts";
-import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, SkeletonRows, Switch, pageLede, pageTitle, useStrip } from "./ui.tsx";
+import { agentOptions, button, card, field, Label, Problem, primary, Segmented, SkeletonRows, pageLede, pageTitle, useStrip } from "./ui.tsx";
 
 export type Section = SettingsSection;
 
-const accents: { id: string; label: string }[] = [
-  { id: "purple", label: "Purple" },
-  { id: "blue", label: "Blue" },
-  { id: "yellow", label: "Yellow" },
-  { id: "teal", label: "Teal" },
-];
+const accents = (["red", "yellow", "green", "purple", "blue", "teal"] as const).map(id => ({
+  id,
+  label: defaultCopy.accentPresets[id],
+  icon: <span aria-hidden data-accent={id} className="size-2.5 rounded-full bg-aui-accent" />,
+}));
 
 /** A person's picture, or their initial when they have none. */
 export function Avatar({ name, prefs, size = 28 }: { name: string; prefs: Preferences | null; size?: number }) {
@@ -132,16 +136,16 @@ export function Settings({
   };
 
   const canReadAudit = me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
-  const sections: { id: Section; label: string }[] = [
-    { id: "profile", label: "Profile" },
-    { id: "appearance", label: "Appearance" },
-    { id: "workspace", label: "Workspace" },
-    { id: "routing", label: "Agent routing" },
-    { id: "models", label: "Models" },
-    { id: "limits", label: "Limits" },
-    { id: "connections", label: "Connections" },
-    { id: "access", label: "Access" },
-    ...(canReadAudit ? [{ id: "read-audit" as const, label: defaultCopy.readAudit.label }] : []),
+  const sections: { id: Section; label: string; icon: ReactNode }[] = [
+    { id: "profile", label: "Profile", icon: <UserIcon size={16} /> },
+    { id: "appearance", label: "Appearance", icon: <PaletteIcon size={16} /> },
+    { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
+    { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
+    { id: "models", label: "Models", icon: <BrainIcon size={16} /> },
+    { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
+    { id: "connections", label: "Connections", icon: <PlugIcon size={16} /> },
+    { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
+    ...(canReadAudit ? [{ id: "read-audit" as const, label: defaultCopy.readAudit.label, icon: <ScrollTextIcon size={16} /> }] : []),
   ];
   // On a phone the sections are a row that scrolls inside itself, kept on the open one.
   const strip = useStrip<HTMLElement>(section);
@@ -161,9 +165,9 @@ export function Settings({
                 setSection(s.id);
                 setProblem(null);
               }}
-              className="h-8 shrink-0 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+              className="inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
             >
-              {s.label}
+              {s.icon}{s.label}
             </button>
           ))}
         </nav>
@@ -310,9 +314,9 @@ export function Settings({
                       value={prefs.theme}
                       onChange={(theme) => savePrefs({ theme })}
                       options={[
-                        { id: "system", label: "System" },
-                        { id: "light", label: "Light" },
-                        { id: "dark", label: "Dark" },
+                        { id: "system", label: "System", icon: <MonitorIcon size={14} /> },
+                        { id: "light", label: "Light", icon: <SunIcon size={14} /> },
+                        { id: "dark", label: "Dark", icon: <MoonIcon size={14} /> },
                       ]}
                     />
                   </div>
@@ -322,6 +326,12 @@ export function Settings({
                       <span className="block text-aui-xs text-aui-muted">Used for focus, selection and progress.</span>
                     </span>
                     <Segmented label="Accent" value={prefs.accent} onChange={(accent) => savePrefs({ accent })} options={accents} />
+                  </div>
+                  <div className="border-t border-aui-border pt-4">
+                    <span className="block text-aui-sm text-aui-fg">{defaultCopy.preferences.typeface}</span>
+                    <p className="mt-1 text-aui-xs text-aui-muted">{defaultCopy.preferences.typefaceDescription}</p>
+                    <p className="mt-3 text-aui-sm">A clear place to think and work.</p>
+                    <p className="mt-1 font-aui-mono text-aui-xs text-aui-muted">SKILL.md / memory / agents</p>
                   </div>
                 </section>
               )}
@@ -358,56 +368,68 @@ export function Settings({
                   Shared by everyone in {who.tenant}. {canAdmin ? "" : "Only an admin can change these."}
                 </p>
               </header>
+              <section className="flex items-start gap-3 rounded-aui-lg border border-aui-border bg-aui-surface p-4">
+                <ServerIcon size={20} className="mt-0.5 shrink-0 text-aui-muted" />
+                <div className="min-w-0">
+                  <h2 className="text-aui-sm font-medium">{defaultCopy.preferences.ownershipTitle}</h2>
+                  <p className="mt-1 text-aui-xs leading-5 text-aui-muted">{defaultCopy.preferences.ownershipDescription}</p>
+                </div>
+              </section>
               {!workspace ? null : (
                 <>
-                  <section className={`${card} flex flex-col gap-3`}>
-                    <Label
-                      text="Title agent"
-                      hint="After a conversation's first turn, this agent is asked to name it. It needs a real model: nothing happens on the offline provider."
+                  <section>
+                    <SettingsFormRow
+                      id="workspace-title-agent"
+                      label="Title agent"
+                      icon={<BotIcon size={18} />}
+                      description="After a conversation's first turn, this agent is asked to name it. It needs a real model: nothing happens on the offline provider."
                     >
-                      <Menu
-                        label="Naming agent"
+                      <NativeSelect
+                        id="workspace-title-agent"
+                        aria-label="Naming agent"
+                        aria-describedby="workspace-title-agent-hint"
                         value={workspace.title_agent}
                         disabled={!canAdmin}
-                        options={agentOptions(agents.map((a) => a.spec.name), "None")}
-                        onChange={(next) => saveWorkspace({ title_agent: next })}
-                      />
-                    </Label>
-                    <Label
-                      text="Memory agent"
-                      hint="After each turn, this agent is asked what the answering agent should remember. What it writes is shown on that agent's Memory tab, where anyone who can edit the agent can remove it."
+                        onChange={(event) => saveWorkspace({ title_agent: event.target.value })}
+                      >{agentOptions(agents.map((a) => a.spec.name), "None").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</NativeSelect>
+                    </SettingsFormRow>
+                    <SettingsFormRow
+                      id="workspace-memory-agent"
+                      label="Memory agent"
+                      icon={<BrainIcon size={18} />}
+                      description="After each turn, this agent is asked what the answering agent should remember. What it writes is shown on that agent's Memory tab, where anyone who can edit the agent can remove it."
                     >
-                      <Menu
-                        label="Memory agent"
+                      <NativeSelect
+                        id="workspace-memory-agent"
+                        aria-describedby="workspace-memory-agent-hint"
                         value={workspace.memory_agent}
                         disabled={!canAdmin}
-                        options={agentOptions(agents.map((a) => a.spec.name), "None")}
-                        onChange={(next) => saveWorkspace({ memory_agent: next })}
-                      />
-                    </Label>
-                    <Switch
+                        onChange={(event) => saveWorkspace({ memory_agent: event.target.value })}
+                      >{agentOptions(agents.map((a) => a.spec.name), "None").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</NativeSelect>
+                    </SettingsFormRow>
+                    <SettingsFormRow
+                      id="workspace-memory-approve"
                       label="Keep what the memory agent writes without asking"
-                      hint="Off, every note it writes waits for a person to approve it. On, notes for the workspace and company projects still wait for someone who can govern projects. Notes that carry personal data are refused either way."
-                      checked={workspace.memory_auto_approve}
-                      disabled={!canAdmin || !workspace.memory_agent}
-                      onChange={(on) => saveWorkspace({ memory_auto_approve: on })}
-                    />
+                      description="Off, every note it writes waits for a person to approve it. On, notes for the workspace and company projects still wait for someone who can govern projects. Notes that carry personal data are refused either way."
+                      compact
+                    ><SettingSwitch id="workspace-memory-approve" aria-describedby="workspace-memory-approve-hint" checked={workspace.memory_auto_approve} disabled={!canAdmin || !workspace.memory_agent} onCheckedChange={(on) => saveWorkspace({ memory_auto_approve: on })} /></SettingsFormRow>
                   </section>
 
-                  <section className={`${card} flex flex-col gap-3`}>
-                    <Switch
+                  <section>
+                    <SettingsFormRow
+                      id="workspace-history"
                       label="Carry the conversation forward"
-                      hint="Send the agent answering the next turn what was said before it. Off sends only the new message."
-                      checked={workspace.history === "recent"}
-                      disabled={!canAdmin}
-                      onChange={(on) => saveWorkspace({ history: on ? "recent" : "none" })}
-                    />
-                    <Label
-                      text="Keep at most (characters)"
-                      hint="When a conversation is longer, the oldest turns are left out of what the agent is sent. They are dropped, not summarized, and stay on record."
+                      description="Send the agent answering the next turn what was said before it. Off sends only the new message."
+                      compact
+                    ><SettingSwitch id="workspace-history" aria-describedby="workspace-history-hint" checked={workspace.history === "recent"} disabled={!canAdmin} onCheckedChange={(on) => saveWorkspace({ history: on ? "recent" : "none" })} /></SettingsFormRow>
+                    <SettingsFormRow
+                      id="workspace-history-limit"
+                      label="Keep at most (characters)"
+                      description="When a conversation is longer, the oldest turns are left out of what the agent is sent. They are dropped, not summarized, and stay on record."
                     >
-                      <input
-                        className={field}
+                      <Input
+                        id="workspace-history-limit"
+                        aria-describedby="workspace-history-limit-hint"
                         type="number"
                         min={1000}
                         max={200000}
@@ -420,7 +442,7 @@ export function Settings({
                           if (n !== workspace.history_limit) saveWorkspace({ history_limit: n });
                         }}
                       />
-                    </Label>
+                    </SettingsFormRow>
                   </section>
 
                   {/* Projects have their own page. The workspace is the top of their tree. */}

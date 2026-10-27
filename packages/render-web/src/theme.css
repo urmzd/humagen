@@ -4,13 +4,14 @@
  * Base: neutral black/white (chroma 0). Primary actions are black in light
  * mode and near-white in dark mode; color never carries the brand on its own.
  *
- * Accent: one hue, swappable. Purple by default. Pick a preset with
- * data-accent="purple|blue|yellow|teal", or set --aui-accent-h directly, and
+ * Accent: red by default, with yellow and green companion presets. Existing
+ * purple, blue and teal choices remain available through data-accent. Set
+ * --aui-accent-h directly to customize the hue, and
  * nudge any preset with --aui-accent-shift (degrees). Lightness and chroma
  * are tuned per mode so every preset keeps contrast.
  *
- * Status tones (ok/warn/bad/info/neutral) are for state only. Red appears
- * only as `bad`. `info` follows the accent.
+ * Status tones (ok/warn/bad/info/neutral) identify labeled state. Green marks
+ * success, gold marks attention and red marks failure. `info` follows the accent.
  *
  * Theme: data-theme="light|dark" on any ancestor, else the OS preference.
  */
@@ -27,10 +28,10 @@
   --aui-dur-page: 260ms; /* drawers, pages, arriving messages */
   --aui-ease-arrive: cubic-bezier(0.16, 1, 0.3, 1);
   --aui-ease-leave: cubic-bezier(0.4, 0, 1, 1);
-  --aui-accent-h: 305;
+  --aui-accent-h: 27;
   --aui-accent-shift: 0;
-  --aui-mode-accent-l: 0.54;
-  --aui-mode-accent-c: 0.18;
+  --aui-mode-accent-l: 0.5;
+  --aui-mode-accent-c: 0.17;
   --aui-mode-accent-fg: oklch(1 0 0);
 
   --aui-bg: oklch(1 0 0);
@@ -44,9 +45,9 @@
   --aui-primary-fg: oklch(1 0 0);
   --aui-ring: oklch(0.55 0 0);
 
-  --aui-ok: oklch(0.6 0.15 152);
-  --aui-warn: oklch(0.72 0.15 75);
-  --aui-bad: oklch(0.55 0.22 25.5);
+  --aui-ok: oklch(0.5 0.13 152);
+  --aui-warn: oklch(0.5 0.11 88);
+  --aui-bad: oklch(0.5 0.18 27);
   --aui-neutral: oklch(0.55 0 0);
   --aui-bad-fg: oklch(1 0 0);
 
@@ -64,7 +65,7 @@
   --aui-term-border: oklch(1 0 0 / 10%);
 
   /* Floating layers (popovers, the jump pill): translucent glass. */
-  --aui-glass-bg: oklch(1 0 0 / 88%);
+  --aui-glass-bg: oklch(1 0 0 / 94%);
   --aui-glass-border: oklch(0.07 0 0 / 8%);
   --aui-glass-shadow: 0 8px 32px oklch(0.07 0 0 / 0.08);
   --aui-glass-blur: 16px;
@@ -75,11 +76,11 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --aui-mode-accent-l: 0.65;
-    --aui-mode-accent-c: 0.19;
+    --aui-mode-accent-l: 0.72;
+    --aui-mode-accent-c: 0.16;
     --aui-mode-accent-fg: oklch(0.07 0 0);
-    --aui-bg: oklch(0.07 0 0);
-    --aui-surface: oklch(0.17 0 0);
+    --aui-bg: oklch(0.18 0 0);
+    --aui-surface: oklch(0.23 0 0);
     --aui-fg: oklch(1 0 0);
     --aui-muted: oklch(0.82 0 0);
     --aui-subtle: oklch(0.25 0 0);
@@ -88,17 +89,17 @@
     --aui-primary: oklch(0.9 0 0);
     --aui-primary-fg: oklch(0.07 0 0);
     --aui-ring: oklch(0.6 0 0);
-    --aui-ok: oklch(0.72 0.16 152);
-    --aui-warn: oklch(0.8 0.15 80);
-    --aui-bad: oklch(0.65 0.22 25.5);
-    --aui-hover: oklch(1 0 0 / 6%);
+    --aui-ok: oklch(0.74 0.14 152);
+    --aui-warn: oklch(0.8 0.14 88);
+    --aui-bad: oklch(0.72 0.16 27);
+    --aui-hover: oklch(0.28 0 0);
     --aui-pop: oklch(0.2 0 0);
     --aui-shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
     --aui-shadow-md: 0 1px 3px 0 oklch(0 0 0 / 0.3), 0 4px 12px -2px oklch(0 0 0 / 0.35);
     --aui-shadow-pop: 0 1px 3px 0 oklch(0 0 0 / 0.4), 0 12px 32px -4px oklch(0 0 0 / 0.5);
     --aui-term-bg: oklch(0.12 0 0);
     --aui-bad-fg: oklch(0.12 0 0);
-    --aui-glass-bg: oklch(0.17 0 0 / 85%);
+    --aui-glass-bg: oklch(0.2 0 0 / 94%);
     --aui-glass-border: oklch(1 0 0 / 8%);
     --aui-glass-shadow: 0 8px 32px oklch(0 0 0 / 0.3);
     --aui-scrollbar-thumb: oklch(0.4 0 0 / 50%);
@@ -107,11 +108,11 @@
 }
 
 [data-theme="dark"] {
-  --aui-mode-accent-l: 0.65;
-  --aui-mode-accent-c: 0.19;
+  --aui-mode-accent-l: 0.72;
+  --aui-mode-accent-c: 0.16;
   --aui-mode-accent-fg: oklch(0.07 0 0);
-  --aui-bg: oklch(0.07 0 0);
-  --aui-surface: oklch(0.17 0 0);
+  --aui-bg: oklch(0.18 0 0);
+  --aui-surface: oklch(0.23 0 0);
   --aui-fg: oklch(1 0 0);
   --aui-muted: oklch(0.82 0 0);
   --aui-subtle: oklch(0.25 0 0);
@@ -120,17 +121,17 @@
   --aui-primary: oklch(0.9 0 0);
   --aui-primary-fg: oklch(0.07 0 0);
   --aui-ring: oklch(0.6 0 0);
-  --aui-ok: oklch(0.72 0.16 152);
-  --aui-warn: oklch(0.8 0.15 80);
-  --aui-bad: oklch(0.65 0.22 25.5);
-  --aui-hover: oklch(1 0 0 / 6%);
+  --aui-ok: oklch(0.74 0.14 152);
+  --aui-warn: oklch(0.8 0.14 88);
+  --aui-bad: oklch(0.72 0.16 27);
+  --aui-hover: oklch(0.28 0 0);
   --aui-pop: oklch(0.2 0 0);
   --aui-shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
   --aui-shadow-md: 0 1px 3px 0 oklch(0 0 0 / 0.3), 0 4px 12px -2px oklch(0 0 0 / 0.35);
   --aui-shadow-pop: 0 1px 3px 0 oklch(0 0 0 / 0.4), 0 12px 32px -4px oklch(0 0 0 / 0.5);
   --aui-term-bg: oklch(0.12 0 0);
   --aui-bad-fg: oklch(0.12 0 0);
-  --aui-glass-bg: oklch(0.17 0 0 / 85%);
+  --aui-glass-bg: oklch(0.2 0 0 / 94%);
   --aui-glass-border: oklch(1 0 0 / 8%);
   --aui-glass-shadow: 0 8px 32px oklch(0 0 0 / 0.3);
   --aui-scrollbar-thumb: oklch(0.4 0 0 / 50%);
@@ -147,6 +148,13 @@
   --aui-accent-c: var(--aui-mode-accent-c);
   --aui-accent-fg: var(--aui-mode-accent-fg);
 }
+[data-accent="red"] {
+  --aui-accent-h: 27;
+}
+[data-accent="green"] {
+  --aui-accent-h: 152;
+  --aui-accent-c: 0.13;
+}
 [data-accent="purple"] {
   --aui-accent-h: 305;
 }
@@ -155,13 +163,12 @@
 }
 [data-accent="teal"] {
   --aui-accent-h: 185;
+  --aui-accent-c: 0.1;
 }
-/* Yellow is light at any chroma: raise lightness and put dark text on it in both modes. */
+/* Gold stays dark enough for links on light surfaces and brightens in dark mode. */
 [data-accent="yellow"] {
-  --aui-accent-h: 90;
-  --aui-accent-l: 0.82;
-  --aui-accent-c: 0.16;
-  --aui-accent-fg: oklch(0.07 0 0);
+  --aui-accent-h: 88;
+  --aui-accent-c: 0.12;
 }
 
 :root,
@@ -175,10 +182,68 @@
       14%
   );
   --aui-info: var(--aui-accent);
+  --aui-brand-red: oklch(var(--aui-mode-accent-l) 0.16 27);
+  --aui-brand-yellow: oklch(var(--aui-mode-accent-l) 0.12 88);
+  --aui-brand-green: oklch(var(--aui-mode-accent-l) 0.13 152);
 }
 
 
+/* shadcn and the surface renderer share one semantic palette. */
+:root,
+[data-theme] {
+  --background: var(--aui-bg);
+  --foreground: var(--aui-fg);
+  --card: var(--aui-surface);
+  --card-foreground: var(--aui-fg);
+  --popover: var(--aui-pop);
+  --popover-foreground: var(--aui-fg);
+  --primary: var(--aui-primary);
+  --primary-foreground: var(--aui-primary-fg);
+  --secondary: var(--aui-subtle);
+  --secondary-foreground: var(--aui-fg);
+  --muted: var(--aui-subtle);
+  --muted-foreground: var(--aui-muted);
+  --accent: var(--aui-hover);
+  --accent-foreground: var(--aui-fg);
+  --destructive: var(--aui-bad);
+  --border: var(--aui-border);
+  --input: var(--aui-border);
+  --ring: var(--aui-accent);
+  --radius: 0.6rem;
+}
+
 @theme inline {
+  --animate-aui-pop: aui-pop-in 180ms var(--aui-ease-arrive) backwards;
+  --animate-aui-pop-out: aui-pop-out 110ms var(--aui-ease-leave) forwards;
+  --animate-aui-pane: aui-pane-in 150ms var(--aui-ease-arrive) backwards;
+  --animate-aui-pane-back: aui-pane-back 150ms var(--aui-ease-arrive) backwards;
+  --animate-aui-expand: aui-expand 180ms var(--aui-ease-arrive);
+  --animate-aui-collapse: aui-collapse-out 150ms var(--aui-ease-leave);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --color-aui-bg: var(--aui-bg);
   --color-aui-surface: var(--aui-surface);
   --color-aui-pop: var(--aui-pop);
@@ -228,9 +293,9 @@
   --text-aui-xl: 1.25rem;
   --text-aui-xl--line-height: 1.75rem;
 
-  --font-aui-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-aui-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-aui-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 @layer components {
@@ -582,6 +647,24 @@
     opacity: 0;
     transform: translateY(2px) scale(0.98);
   }
+}
+
+@keyframes aui-pop-out {
+  to { opacity: 0; transform: scale(0.98); }
+}
+@keyframes aui-pane-in {
+  from { opacity: 0; transform: translateX(8px); }
+}
+@keyframes aui-pane-back {
+  from { opacity: 0; transform: translateX(-8px); }
+}
+@keyframes aui-expand {
+  from { height: 0; opacity: 0; }
+  to { height: var(--radix-collapsible-content-height); opacity: 1; }
+}
+@keyframes aui-collapse-out {
+  from { height: var(--radix-collapsible-content-height); opacity: 1; }
+  to { height: 0; opacity: 0; }
 }
 
 .aui-fade-up {
@@ -1186,4 +1269,8 @@
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot] { scroll-behavior: auto; transition-duration: 0s; animation-duration: 0s; }
 }

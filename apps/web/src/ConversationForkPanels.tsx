@@ -3,7 +3,7 @@ import {useEffect,useState} from "react";
 import {api,type Thread} from "./api.ts";
 import type {Run} from "./adapter.ts";
 import {ForkConversation,BringBackResult} from "./ForkConversation.tsx";
-import {Inspector} from "@humagen/web";
+import {Inspector,Presence} from "@humagen/web";
 import {Problem} from "./ui.tsx";
 
 export interface ConversationForkActions {
@@ -31,10 +31,11 @@ export function ConversationForkPanels({thread,runs,actions}:{thread:Thread;runs
   return()=>{live=false};
  },[runID,thread.id,runs]);
  if(!actions||thread.read_only)return null;
- if(actions.point)return <ForkConversation thread={thread} through={actions.point} onClose={()=>actions.onClose?.()} onForked={next=>actions.onOpenThread?.(next.id)}/>;
- if(runID&&thread.fork){
-  if(selected)return <BringBackResult thread={thread} run={selected.id} text={selected.answer??""} onClose={()=>actions.onClose?.()} onPosted={()=>actions.onOpenThread?.(thread.fork!.source_thread)}/>;
-  return <Inspector open title={defaultCopy.forking.bringBack} onClose={()=>actions.onClose?.()}>{failed?<Problem message={defaultCopy.forking.bringFailed}/>:<p className="text-aui-sm text-aui-muted">{defaultCopy.forking.loading}</p>}</Inspector>;
- }
- return null;
+ return <>
+  <Presence when={!!actions.point} ms={220}>{leaving => <ForkConversation open={!leaving} thread={thread} through={actions.point ?? ""} onClose={()=>actions.onClose?.()} onForked={next=>actions.onOpenThread?.(next.id)}/>}</Presence>
+  <Presence when={!!runID && !!thread.fork} ms={220}>{leaving => selected
+   ? <BringBackResult open={!leaving} thread={thread} run={selected.id} text={selected.answer??""} onClose={()=>actions.onClose?.()} onPosted={()=>actions.onOpenThread?.(thread.fork!.source_thread)}/>
+   : <Inspector open={!leaving} title={defaultCopy.forking.bringBack} onClose={()=>actions.onClose?.()}>{failed?<Problem message={defaultCopy.forking.bringFailed}/>:<p className="text-aui-sm text-aui-muted">{defaultCopy.forking.loading}</p>}</Inspector>
+  }</Presence>
+ </>;
 }

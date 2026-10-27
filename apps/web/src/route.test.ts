@@ -216,8 +216,8 @@ test("the read audit has a Settings address", () => {
 });
 
 test("the tab title names the place, then the product, with unread in front", () => {
-  assert.equal(documentTitle({ page: "inbox" }), "Inbox · Humagen");
-  assert.equal(documentTitle({ page: "inbox" }, 3), "(3) Inbox · Humagen");
+  assert.equal(documentTitle({ page: "inbox" }), "Notifications · Humagen");
+  assert.equal(documentTitle({ page: "inbox" }, 3), "(3) Notifications · Humagen");
   assert.equal(documentTitle({ page: "agent", name: "analyst", tab: "prompt" }), "analyst · Humagen");
   assert.equal(documentTitle({ page: "project", name: "", tab: "inbox" }), "Workspace · Humagen");
   assert.equal(documentTitle({ page: "channel", project: "ops", channel: "launch" }), "#launch · Humagen");
@@ -275,4 +275,13 @@ test("delivered notifications have a top-level address distinct from delivery pr
   assert.equal(documentTitle({ page: "notifications" }), "Notifications · Humagen");
   assert.equal(href({ page: "you", section: "notifications" }), "/you/notifications");
   assert.deepEqual(at("/you/notifications"), { page: "you", section: "notifications" });
+});
+
+
+test("Notifications deep links preserve the selected message and combined feed kind", () => {
+  const route = { page: "notifications", message: "review-one", kind: "approval" } as const;
+  const url = new URL(href(route), "http://localhost");
+  assert.equal(url.pathname, "/notifications");
+  assert.deepEqual(parse(url.pathname, url.search), route);
+  assert.deepEqual(at("/notifications?alert=rule-one"), { page: "notifications", alert: "rule-one" });
 });

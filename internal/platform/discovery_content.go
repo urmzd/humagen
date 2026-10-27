@@ -90,6 +90,9 @@ func (p *Platform) discoverContent(who auth.Principal, q DiscoveryQuery, seer *S
 			if len(indexed) >= 50 {
 				break
 			}
+			if source.RequiresUpstreamRead() {
+				continue
+			}
 			if source.Lifecycle != nil && (source.Lifecycle.Mode == knowledge.Live || (q.Project != nil && source.Lifecycle.Project != *q.Project)) {
 				continue
 			}

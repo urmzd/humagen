@@ -12,7 +12,7 @@ import { Schedules } from "./Schedules.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import type { Me, ScheduleView, ThreadSummary } from "./api.ts";
+import type { Me, ProjectView, ScheduleView, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { bindingWords, SessionGauge } from "./SessionGauge.tsx";
@@ -74,14 +74,15 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
 test("the sidebar groups readable work under Projects Library and Operations",()=>{
  const out=sidebar();
  for(const group of ["Projects","Library","Operations"])assert.match(out,new RegExp(`aria-label="${group}"`));
- for(const route of ["/","/projects","/library/skills","/library/memory","/inbox","/agents","/assignments","/agent-network","/operations/usage"])assert.ok(out.includes(`href="${route}"`),route);
+ for(const route of ["/","/projects","/library/sources","/notifications","/agents","/operations/context"])assert.ok(out.includes(`href="${route}"`),route);
+ for (const route of ["/library/skills", "/library/memory", "/assignments", "/agent-network", "/operations/usage"]) assert.ok(!out.includes(`href="${route}"`), route);
  assert.match(out,/href="\/" aria-current="page"/);
  assert.match(sidebar({route:{page:"agent",name:"lead",tab:"model"}}),/href="\/agents" aria-current="page"/);
 });
 
 test("the sidebar does not expose unreadable destination links",()=>{
  const out=sidebar({can:permission=>permission==="runs:write"});
- assert.match(out,/>New Conversation</);
+ assert.match(out,/>New</);
  for(const route of ["/projects","/library/skills","/inbox","/agents","/assignments","/operations/audit"])assert.ok(!out.includes(`href="${route}"`),route);
 });
 
@@ -94,6 +95,16 @@ test("pinned conversations sit in their own section, ahead of the rest", () => {
   // An id that is not loaded is not drawn, and nothing is listed twice.
   assert.equal(out.match(/Fix the build</g)?.length, 1);
   assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Conversations<"));
+});
+
+test("project pins work without recent conversations and omit unreadable projects", () => {
+  const prefs = { display_name: "Ada", theme: "dark" as const, accent: "purple", has_photo: false, photo_version: 0, pinned: [], muted: [], pinned_projects: ["Launch", "hidden"] };
+  const out = sidebar({ prefs, threads: [], projects: [{ name: "Launch", title: "Spring launch" } as ProjectView], onPinProject: async () => {} });
+  assert.match(out, /aria-label="Pinned"/);
+  assert.match(out, /href="\/projects\/Launch"/);
+  assert.match(out, /aria-label="Unpin project Spring launch"/);
+  assert.doesNotMatch(out, /href="\/projects\/hidden"/);
+  assert.doesNotMatch(sidebar({ prefs, can: permission => permission === "runs:read" }), /aria-label="Pinned"/);
 });
 
 test("project selection: an empty directory offers the explicit Company home and project creation", () => {
@@ -114,7 +125,7 @@ test("project selection: an empty directory offers the explicit Company home and
 import type { Alert, AlertRule } from "./api.ts";
 import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@humagen/core";
 import { after, merge } from "./inbox.ts";
-import { edgeOf, KindChips, MailboxView } from "./InboxPage.tsx";
+import { edgeOf, KindFilter, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
 import { AgentMark, AgentTint, setAgentHues, AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf, PageActions } from "./ui.tsx";
@@ -720,13 +731,13 @@ test("MailboxView: an artifact shows the file, opens it in Artifacts, and offers
   assert.match(out, /Nothing to decide/);
 });
 
-test("MailboxView: the kind filter is a row of chips, and there is no j/k hint", () => {
+test("MailboxView: the compact native kind filter retains selection, and there is no j/k hint", () => {
   const out = mailbox(null);
   assert.doesNotMatch(out, /j\/k|<kbd/);
-  const chips = html(<KindChips value="artifact" onChange={() => {}} />);
-  assert.match(chips, /aria-pressed="true"[^>]*>Artifacts</);
+  const chips = html(<KindFilter value="artifact" onChange={() => {}} />);
+  assert.match(chips, /value="artifact" selected=""/);
   assert.match(chips, />Everything</);
-  assert.doesNotMatch(chips, /<select/);
+  assert.match(chips, /<select[^>]*aria-label="Filter updates"/);
 });
 
 test("MailboxView: nothing in the inbox animates", () => {
@@ -784,7 +795,7 @@ test("Monitor: what fired is counted and sent to the inbox, never listed or ackn
   const out = monitor();
   assert.match(out, /1 fired alert is open/);
   assert.match(out, /Latest: lead failed/);
-  assert.match(out, />Review in Inbox</);
+  assert.match(out, />Open Notifications</);
   assert.doesNotMatch(out, />Acknowledge<|>Fired</);
   assert.match(html(<FiredStrip alerts={[]} />), /Nothing that fired is still open/);
 });

@@ -594,9 +594,12 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(payload.Action
 				return fmt.Sprintf("Wrote %s (%d bytes).", f.Path, f.Size), nil
 			}),
 		ToolFileRead: tool(ToolFileRead,
-			"Read text or the editable revision JSON of a native Office file from this conversation. To revise an immutable published version, use path artifact:<id>@<version>. Other conversations are never read.",
+			"Read text or the editable revision JSON of a native Office file from this conversation. To revise an immutable published version, use path artifact:<id>@<version>. Read a pinned skill's supporting file with path skill:<name>/<path>. Other conversations and unselected skills are never read.",
 			schema([]string{"path"}, map[string]string{"path": "Relative path of the file"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
+				if requested := arg(args, "path"); strings.HasPrefix(requested, "skill:") {
+					return p.readPinnedSkillFile(req, requested)
+				}
 				thread, _, root, err := where()
 				if err != nil {
 					return "", err

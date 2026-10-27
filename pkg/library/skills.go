@@ -57,10 +57,11 @@ type Definition struct {
 	Inputs  string   `json:"inputs,omitempty"`
 	Outputs string   `json:"outputs,omitempty"`
 	Tools   []string `json:"tools"`
+	Files   []File   `json:"files,omitempty"`
 }
 
 func (d Definition) Valid() bool {
-	if !projects.ValidSkill(d.Name) || strings.TrimSpace(d.Description) == "" || strings.TrimSpace(d.Instructions) == "" || utf8.RuneCountInString(d.Description) > projects.MaxSkillDescription || utf8.RuneCountInString(d.Instructions) > projects.MaxSkillInstructions || len(d.ArgumentHint) > projects.MaxArgumentHint || len(d.Inputs) > 4000 || len(d.Outputs) > 4000 || len(d.Tools) > 32 {
+	if !projects.ValidSkill(d.Name) || !d.validPackage() || strings.TrimSpace(d.Description) == "" || strings.TrimSpace(d.Instructions) == "" || utf8.RuneCountInString(d.Description) > projects.MaxSkillDescription || len(d.ArgumentHint) > projects.MaxArgumentHint || len(d.Inputs) > 4000 || len(d.Outputs) > 4000 || len(d.Tools) > 32 {
 		return false
 	}
 	for _, value := range []string{d.Description, d.Instructions, d.ArgumentHint, d.Inputs, d.Outputs} {
@@ -99,6 +100,7 @@ type Revision struct {
 
 func clone(r Revision) Revision {
 	r.Tools = slices.Clone(r.Tools)
+	r.Files = cloneFiles(r.Files)
 	r.Tests = slices.Clone(r.Tests)
 	if r.From != nil {
 		from := *r.From
@@ -165,6 +167,10 @@ func (s *Store) put(tenant string, scope Scope, name string, rows []Revision) er
 // Draft appends an immutable revision; expected is the latest version read.
 // Provenance is validated by the platform before entering this store.
 func (s *Store) Draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time, trustedOrigin ...string) (Revision, error) {
+	var err error
+	if d, err = d.Normalize(); err != nil {
+		return Revision{}, err
+	}
 	if tenant == "" || by == "" || !scope.Valid() || !d.Valid() || at.IsZero() || len(trustedOrigin) > 1 || len(trustedOrigin) == 1 && len(trustedOrigin[0]) > 128 {
 		return Revision{}, ErrInvalid
 	}

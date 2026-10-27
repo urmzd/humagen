@@ -90,7 +90,7 @@ export function FiredStrip({ alerts, onOpen }: { alerts: Alert[]; onOpen?: () =>
       </div>
       {onOpen && (
         <button type="button" className={`${open.length > 0 ? primary : button} max-sm:w-full`} onClick={onOpen}>
-          Review in Inbox
+          Open Notifications
         </button>
       )}
     </section>
@@ -142,6 +142,7 @@ export function Monitor({
   onOpenAlert,
   onAsk,
   onOpenRun,
+  embeddedRules = false,
 }: {
   /** Overview: how runs are going. Rules: what is watched. */
   tab?: MonitorTab;
@@ -165,6 +166,8 @@ export function Monitor({
   onAsk?: (question: string) => void;
   /** Open the task a run belongs to, from the overview. */
   onOpenRun?: (id: string) => void;
+  /** The Notifications hub already provides the Alert Rules tab. */
+  embeddedRules?: boolean;
 }) {
   const [own, setOwn] = useState<MonitorTab>(wanted);
   const asked = onTab ? wanted : own;
@@ -184,8 +187,8 @@ export function Monitor({
 
   return (
     <Page
-      title="Monitor"
-      lede="How your agents are doing, and the rules that watch them. When a rule fires, it lands in your inbox, where it gets resolved."
+      title={embeddedRules ? "Alert Rules" : "Monitor"}
+      lede={embeddedRules ? "Choose what to watch. Fired alerts appear in Notifications." : "How your agents are doing, and the rules that watch them. When a rule fires, it lands in Notifications, where it gets resolved."}
       actions={
         canWrite && !adding && tab === "rules" ? (
           <button type="button" className={primary} onClick={() => setAdding(true)}>
@@ -194,7 +197,7 @@ export function Monitor({
         ) : undefined
       }
       tabs={
-        <Tabs
+        !embeddedRules && <Tabs
           label="Monitor sections"
           value={tab}
           onChange={setTab}

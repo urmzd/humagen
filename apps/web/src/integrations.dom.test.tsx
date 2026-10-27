@@ -5,7 +5,7 @@ import { defaultCopy } from "@humagen/components";
 import type { Source } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { ContextHealth } from "./ContextHealth.tsx";
-import { Integrations } from "./Integrations.tsx";
+import { ConnectSource, Integrations } from "./Integrations.tsx";
 import {
   SourceResources,
   SourceSyncSettings,
@@ -206,7 +206,7 @@ test("integrations link rules are persisted with exact input and previews do not
   );
 });
 
-test("external source creation includes its private project in one atomic request", async () => {
+test("external source creation defaults to live access and includes its project atomically", async () => {
   let body: unknown;
   const picked: string[] = [];
   net = stubFetch({
@@ -228,6 +228,8 @@ test("external source creation includes its private project in one atomic reques
   );
   fireEvent.click(screen.getByRole("button", { name: "Connect a System" }));
   const form = screen.getByRole("form", { name: "Connect Source" });
+  assert.equal((within(form).getByLabelText(defaultCopy.sourceOperations.mode) as HTMLSelectElement).value, "live");
+  assert.equal(within(form).queryByLabelText(defaultCopy.sourceCatalog.cadence), null);
   fireEvent.change(within(form).getByLabelText("Source Name"), {
     target: { value: "private-source" },
   });
@@ -246,13 +248,54 @@ test("external source creation includes its private project in one atomic reques
       provider: "drive",
       origin: "folder-private",
       project: "Private Project",
-      mode: "indexed",
+      mode: "live",
+      sync_every_seconds: 0,
     },
   });
   assert.equal(
     net.seen.some((request) => request.method === "PUT"),
     false,
   );
+});
+
+test("a collected source saves its selected cadence in the same creation request", async () => {
+  let body: unknown;
+  const picked: string[] = [];
+  net = stubFetch({
+    "POST /api/knowledge": (input) => {
+      body = input;
+      return { ...source, name: "scheduled-source" };
+    },
+  });
+  render(<ConnectSource onCreated={(name) => picked.push(name)} onCancel={() => {}} />);
+  const form = screen.getByRole("form", { name: "Connect Source" });
+  fireEvent.change(within(form).getByLabelText("Source Name"), {
+    target: { value: "scheduled-source" },
+  });
+  fireEvent.change(within(form).getByLabelText("Folder or Page ID"), {
+    target: { value: "selected-folder" },
+  });
+  fireEvent.change(within(form).getByLabelText(defaultCopy.sourceOperations.mode), { target: { value: "indexed" } });
+  const cadence = within(form).getByLabelText(defaultCopy.sourceCatalog.cadence);
+  assert.equal((cadence as HTMLSelectElement).value, "manual");
+  fireEvent.change(cadence, { target: { value: "scheduled" } });
+  fireEvent.change(within(form).getByLabelText(defaultCopy.sourceCatalog.everyMinutes), {
+    target: { value: "15" },
+  });
+  fireEvent.click(within(form).getByRole("button", { name: "Create Source" }));
+  await waitFor(() => assert.deepEqual(picked, ["scheduled-source"]));
+  assert.deepEqual(body, {
+    name: "scheduled-source",
+    description: "",
+    configuration: {
+      provider: "drive",
+      origin: "selected-folder",
+      project: "~",
+      mode: "indexed",
+      sync_every_seconds: 900,
+    },
+  });
+  assert.equal(net.seen.length, 1, "source and schedule are one atomic create request");
 });
 
 test("Access changes live mode explicitly and clears indexed resource pins", async () => {
@@ -405,7 +448,6 @@ test("a bridge whose direction changed since display is never overwritten with a
     false,
   );
 });
-
 
 const suggestion = {
   id: "verified-1",
@@ -590,19 +632,22 @@ test("automatic link history shows inactive relationships without implying curre
   assert.equal(screen.queryByRole("button", { name: "Link" }), null);
 });
 
-
 test("a direction chosen as a binding appears survives its initial effects", async () => {
   net = stubFetch({
     "GET /api/clients": () => ({ clients: [client], caps: { max: 20, max_per_surface: 10 } }),
     "GET /api/knowledge": () => ({ sources: [] }),
     "GET /api/clients/local/bindings": () => ({
-      bindings: [{ project: "Launch", channel: "general", slack_channel: "C123", direction: "two_way" }],
+      bindings: [
+        { project: "Launch", channel: "general", slack_channel: "C123", direction: "two_way" },
+      ],
     }),
   });
   let edited = false;
   // Edit at insertion, before the newly mounted editor runs its passive effects.
   const observer = new MutationObserver(() => {
-    const select = document.querySelector<HTMLSelectElement>('select[aria-label="Bridge Direction: C123"]');
+    const select = document.querySelector<HTMLSelectElement>(
+      'select[aria-label="Bridge Direction: C123"]',
+    );
     if (!select || edited) return;
     edited = true;
     fireEvent.change(select, { target: { value: "inbound" } });
@@ -612,10 +657,30 @@ test("a direction chosen as a binding appears survives its initial effects", asy
     render(<Integrations canWrite canKnowledgeWrite selected="client:local" tab="resources" />);
     await waitFor(() => assert.equal(edited, true));
     await waitFor(() => {
-      assert.equal((screen.getByRole("combobox", { name: "Bridge Direction: C123" }) as HTMLSelectElement).value, "inbound");
-      assert.equal((screen.getByRole("button", { name: "Save Direction" }) as HTMLButtonElement).disabled, false);
+      assert.equal(
+        (screen.getByRole("combobox", { name: "Bridge Direction: C123" }) as HTMLSelectElement)
+          .value,
+        "inbound",
+      );
+      assert.equal(
+        (screen.getByRole("button", { name: "Save Direction" }) as HTMLButtonElement).disabled,
+        false,
+      );
     });
   } finally {
     observer.disconnect();
   }
+});
+
+test("empty Context Health offers a source action without zero counters or dead detail panes", async () => {
+  net = stubFetch({ "GET /api/knowledge": () => ({ sources: [] }) });
+  render(<ContextHealth canWrite />);
+  await screen.findByText(defaultCopy.sourceOperations.healthEmptyTitle);
+  assert.equal(
+    screen.getByRole("link", { name: "Add Sources" }).getAttribute("href"),
+    "/library/sources",
+  );
+  assert.equal(screen.queryByText(defaultCopy.sourceOperations.noSelection), null);
+  assert.equal(screen.queryByLabelText(defaultCopy.sourceOperations.filter), null);
+  assert.equal(screen.queryByText(defaultCopy.sourceOperations.healthMissing), null);
 });

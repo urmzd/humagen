@@ -90,9 +90,9 @@ func TestManagedSourceConfinementAttentionAndPersonalAccess(t *testing.T) {
 		if _, err := p.InboxGet(outsider, messages[0].ID); !errors.Is(err, inbox.ErrNotFound) {
 			t.Fatal("hidden attention exposed")
 		}
-		hits, err := p.SearchSources(t.Context(), ana, []string{"source"}, "release", "")
-		if err != nil || len(hits) != 1 {
-			t.Fatalf("last good read: %+v %v", hits, err)
+		read, err := p.SearchSourcesDetailed(t.Context(), ana, []string{"source"}, "release", "")
+		if err != nil || len(read.Hits) != 0 || len(read.Warnings) != 1 || read.Warnings[0].Cause != knowledge.AuthExpired {
+			t.Fatalf("revoked upstream access fell back to retained text: %+v %v", read, err)
 		}
 		provider.cause = ""
 		if _, err := p.SyncSource(t.Context(), ana, "source"); err != nil {

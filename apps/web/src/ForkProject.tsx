@@ -7,8 +7,8 @@ import { button, field, Label, primary, Problem } from "./ui.tsx";
 const words = defaultCopy.projectFork;
 
 /** The host opens the ready project only after the durable publication gate. */
-export function ForkProject({ source, projects, onClose, onReady }: {
-  source: string; projects: ProjectView[]; onClose: () => void; onReady: (name: string) => void;
+export function ForkProject({ source, projects, onClose, onReady, open = true }: {
+  open?: boolean; source: string; projects: ProjectView[]; onClose: () => void; onReady: (name: string) => void;
 }) {
   const [name, setName] = useState(`${source}-copy`);
   const [title, setTitle] = useState("");
@@ -34,7 +34,7 @@ export function ForkProject({ source, projects, onClose, onReady }: {
       if (result.state === "ready") onReady(result.destination);
     }).catch((error: unknown) => setProblem(error instanceof Error ? error.message : words.failed)).finally(() => setSaving(false));
   };
-  return <Inspector open title={words.title} onClose={onClose}>
+  return <Inspector open={open} title={words.title} onClose={onClose}>
     <form className="flex min-w-0 flex-col gap-5" onSubmit={(event) => { event.preventDefault(); submit(); }}>
       <p className="text-aui-sm text-aui-muted">{words.hint}</p><p className="text-aui-xs text-aui-muted">{words.hidden}</p>
       <Label text={words.name}><input className={field} value={name} maxLength={63} required disabled={saving || operation !== null} onChange={(event) => setName(event.target.value)} /></Label>

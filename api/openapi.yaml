@@ -236,6 +236,33 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /api/library/memory:
+    get:
+      operationId: listMemoryFolders
+      tags: [agents]
+      summary: List readable managed memory folders
+      description: Checks each native read permission before exposing owners or counts. Returns at most two personal/company folders plus limit project and limit agent folders, and one exact selected owner. Agent discovery scans at most 1000 directory entries. Search narrows folder metadata, never private note text.
+      x-permission: authenticated
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+        - {name: selected, in: query, description: An exact currently selected owner is resolved independently of the search page., schema: {type: string, maxLength: 512}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 50}}
+      responses:
+        '200':
+          description: Authorized folders only.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [folders]
+                properties:
+                  folders:
+                    type: array
+                    maxItems: 103
+                    items: {$ref: '#/components/schemas/MemoryFolder'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '500': {$ref: '#/components/responses/ServerError'}
   /api/library/skills:
     get:
       operationId: listLibrarySkills
@@ -4343,6 +4370,7 @@ paths:
       operationId: listKnowledgeDocuments
       tags: [knowledge]
       summary: List a source's documents
+      description: Retained external file listings are withheld until current upstream reader authorization can be established. Provider resources use the reader's own connection.
       x-permission: knowledge:read
       parameters:
         - {$ref: "#/components/parameters/SourceName"}
@@ -4358,6 +4386,7 @@ paths:
                   documents:
                     type: array
                     items: {$ref: "#/components/schemas/KnowledgeDocument"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -4514,7 +4543,7 @@ paths:
                 personal: {$ref: '#/components/schemas/PersonalPreferences'}
                 display_name: {type: string}
                 theme: {$ref: "#/components/schemas/Theme"}
-                accent: {type: string}
+                accent: {$ref: "#/components/schemas/Accent"}
                 onboarded:
                   description: Marks the first-run questions as done. It can be set and never unset.
                   type: boolean
@@ -4523,6 +4552,11 @@ paths:
                   type: array
                   maxItems: 50
                   items: {type: string}
+                pinned_projects:
+                  description: Replaces the pinned projects, most recently pinned first, at most 50. New pins must be readable (404 otherwise); saved unreadable shortcuts may be retained. The workspace uses `~`. Absent leaves them as they are.
+                  type: array
+                  maxItems: 50
+                  items: {type: string, maxLength: 63}
                 muted:
                   description: |
                     Replaces the projects whose announcements stay out of the
@@ -7764,21 +7798,56 @@ components:
         subject:
           description: Present only for the caller's personal scope. Derived from identity when omitted on input.
           type: string
+    MemoryFolder:
+      type: object
+      required: [id, scope, title, notes, pending, can_write, can_propose, can_promote, management, can_chat, chat_project]
+      properties:
+        id: {type: string}
+        scope: {type: string, enum: [personal, workspace, project, agent]}
+        owner: {type: string}
+        title: {type: string}
+        parent: {type: string}
+        notes: {type: integer, minimum: 0, maximum: 50}
+        pending: {type: integer, minimum: 0, maximum: 20}
+        updated_at: {type: string, format: date-time}
+        can_write: {type: boolean}
+        can_propose: {type: boolean}
+        can_promote: {type: boolean}
+        selected_only: {type: boolean}
+        management: {type: string, enum: [manual, opt_in_required, disabled, unavailable, configured]}
+        can_chat: {type: boolean}
+        chat_project: {type: string}
+        chat_agent: {type: string}
     LibrarySkillDefinition:
       type: object
       required: [name, description, tools]
       properties:
         name: {type: string, maxLength: 64}
         description: {type: string, maxLength: 1024}
-        instructions: {type: string, maxLength: 8000}
+        instructions: {type: string, maxLength: 32000}
         argument_hint: {type: string, maxLength: 100}
         inputs: {type: string, maxLength: 4000}
         outputs: {type: string, maxLength: 4000}
+        files:
+          description: Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions.
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: {$ref: '#/components/schemas/LibrarySkillFile'}
         tools:
           description: Exact permitted tools, intersected with the agent's grants. Empty permits no tools.
           type: array
           maxItems: 32
           items: {type: string, maxLength: 128}
+    LibrarySkillFile:
+      type: object
+      required: [path, data]
+      properties:
+        path: {type: string, maxLength: 256}
+        data:
+          description: Base64-encoded bytes. At most 128 KiB per file and 512 KiB per package after decoding.
+          type: string
+          maxLength: 174764
     LibraryProvenance:
       type: object
       required: [scope, name, version]
@@ -10071,6 +10140,11 @@ components:
           type: string
           format: date-time
         setup_by: {type: string}
+    Accent:
+      description: The caller's interaction accent. Existing saved choices remain supported.
+      type: string
+      enum: [red, yellow, green, purple, blue, teal]
+      default: red
     Theme:
       type: string
       enum: [system, light, dark]
@@ -10093,12 +10167,12 @@ components:
     Preferences:
       description: A person's own settings.
       type: object
-      required: [display_name, theme, accent, has_photo, photo_version, pinned, muted, personal]
+      required: [display_name, theme, accent, has_photo, photo_version, pinned, pinned_projects, muted, personal]
       properties:
         personal: {$ref: '#/components/schemas/PersonalPreferences'}
         display_name: {type: string}
         theme: {$ref: "#/components/schemas/Theme"}
-        accent: {type: string}
+        accent: {$ref: "#/components/schemas/Accent"}
         has_photo: {type: boolean}
         photo_version: {type: integer}
         onboarded_at:
@@ -10109,6 +10183,11 @@ components:
           description: Conversations kept at the top of the person's sidebar, most recently pinned first.
           type: array
           items: {type: string}
+        pinned_projects:
+          description: Project shortcuts kept at the top of the person's sidebar, most recently pinned first. The workspace uses `~`.
+          type: array
+          maxItems: 50
+          items: {type: string, maxLength: 63}
         muted:
           description: Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted.
           type: array

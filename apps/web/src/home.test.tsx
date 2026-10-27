@@ -135,5 +135,5 @@ test("retained Company announcement sits above the greeting and uses one page he
  const html = renderToStaticMarkup(<HomePage greeting="Good afternoon, Developer" canRun hasAgents banner={{id:"m-welcome",source:"Company",title:"Welcome to Humagen",text:"Retained copy",unread:true,onRead:noop,onHide:noop}}>{prompt}</HomePage>);
  assert.ok(html.indexOf("Company announcement") < html.indexOf("Good afternoon, Developer"));
  assert.equal([...html.matchAll(/<h1/g)].length,1);
- assert.match(html,/Mark as Read/); assert.match(html,/Hide for Me/); assert.doesNotMatch(html,/role="alert"|animate/);
+ assert.match(html,/Hide for Me/); assert.doesNotMatch(html,/Mark as Read|role="alert"|animate/);
 });

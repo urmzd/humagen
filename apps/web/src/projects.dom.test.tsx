@@ -2,9 +2,10 @@ import { setAgentHues } from "./agentHues.ts";
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Note, Policy, ProjectDetail, ScheduleView } from "./api.ts";
+import type { Note, Policy, ProjectDetail, ScheduleView, ThreadSummary } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
+import { ProjectWork } from "./ProjectWork.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { east, field, globex, globexDetail, globexKnowledge, knowledgeSources, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
 import type { ProjectTab } from "./route.ts";
@@ -29,6 +30,8 @@ function open(
     routes?: Record<string, (body: unknown, query: URLSearchParams) => unknown>;
     schedules?: ScheduleView[];
     onMute?: (project: string, muted: boolean) => Promise<void>;
+    onPin?: (project: string, pinned: boolean) => Promise<void>;
+    pinned?: boolean;
   } = {},
 ) {
   const address = detail.project.name === "" ? "~" : encodeURIComponent(detail.project.name);
@@ -64,10 +67,27 @@ function open(
       onSchedulesChanged={noop}
       onDeleted={noop}
       onMute={opts.onMute}
+      onPin={opts.onPin}
+      pinned={opts.pinned}
     />,
   );
   return { opened };
 }
+
+test("a project with no recent conversations can be pinned from its actions", async () => {
+  let selected: unknown;
+  open(globexDetail, { onPin: async (project, pinned) => { selected = [project, pinned]; } });
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Pin Project" }));
+  assert.deepEqual(selected, ["Globex", true]);
+});
+
+test("a project pin refusal is reported beside the project actions", async () => {
+  open(globexDetail, { pinned: true, onPin: async () => { throw new Error("refused"); } });
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Unpin Project" }));
+  await screen.findByText("Could not unpin. Try again.");
+});
 
 test("a project page shows where it sits, what sits below it, and every limit above it in words", async () => {
   const { opened } = open(globexDetail);
@@ -232,6 +252,52 @@ test("including sub-projects reads the tasks of everything below", async () => {
   open(globexDetail);
   fireEvent.click(await screen.findByRole("checkbox", { name: "Include sub-projects" }));
   await waitFor(() => assert.ok(net.seen.some((r) => r.path === "/api/threads?limit=20&within=Globex")));
+});
+
+const workThread = (id: string, active = 0, failed = 0): ThreadSummary => ({
+  id, title: `Work ${id}`, named: true, origin: "api", project: "Globex", channel: "general",
+  agents: ["research"], people: ["ada"], visibility: "shared", messages: 1,
+  turns: 1, branches: 0, active, failed, created_at: at, updated_at: at,
+});
+
+test("project work filters loaded rows and opens their native conversation", () => {
+  net = stubFetch({});
+  const opened: string[] = [];
+  render(<ProjectWork project="Globex" threads={[workThread("running", 1), workThread("failed", 0, 1), workThread("done")]}
+    hasMore onOpenThread={id => opened.push(id)} />);
+  fireEvent.click(screen.getByRole("button", { name: "Needs Attention 1" }));
+  assert.equal(screen.queryByRole("button", { name: /Work running/ }), null);
+  assert.equal(screen.queryByRole("button", { name: /Work done/ }), null);
+  assert.ok(screen.getByText(/Filters apply to the conversations loaded/));
+  fireEvent.click(screen.getByRole("button", { name: /Work failed/ }));
+  assert.deepEqual(opened, ["failed"]);
+});
+
+test("a failed project work read is recoverable and never presented as an empty project", async () => {
+  let failed = true;
+  open(globexDetail, { routes: { "GET /api/threads": () => {
+    if (failed) return new Response(JSON.stringify({ error: "not available" }), { status: 503 });
+    return { threads: [workThread("recovered")], next: null };
+  } } });
+  await screen.findByText("Conversations could not be loaded");
+  assert.equal(screen.queryByText("A place to move work forward"), null);
+  failed = false;
+  fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+  await screen.findByRole("button", { name: /Work recovered/ });
+  assert.equal(screen.queryByText("Conversations could not be loaded"), null);
+});
+
+test("a project scope change discards an older conversation response", async () => {
+  let resolveOld: (value: unknown) => void = () => {};
+  const old = new Promise(resolve => { resolveOld = resolve; });
+  open(globexDetail, { routes: { "GET /api/threads": (_body, query) => query.has("within")
+    ? { threads: [workThread("within")], next: null } : old } });
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Include sub-projects" }));
+  await screen.findByRole("button", { name: /Work within/ });
+  resolveOld({ threads: [workThread("obsolete")], next: null });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(screen.queryByRole("button", { name: /Work obsolete/ }), null);
+  assert.ok(screen.getByRole("button", { name: /Work within/ }));
 });
 
 test("the Context tab saves the instructions as a whole from the version read, and shows what comes from above, read only", async () => {

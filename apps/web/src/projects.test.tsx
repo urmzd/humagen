@@ -70,12 +70,12 @@ test("the tree at depth 4 indents one level at 390px, and deeper rows say where 
 
   // As drawn: nothing indents more than one 16px level, and the deep rows print where they are.
   const phone = html(<ProjectsPage projects={tree} root={workspace} workspaceName="Acme" onFilter={noop} canCreate canGovern={false} narrow={narrowAt(390)} onOpen={noop} onCreated={noop} />);
-  const indents = [...phone.matchAll(/padding-left:(\d+)px/g)].map((m) => Number(m[1]));
+  const indents = [...phone.matchAll(/margin-left:(\d+)px/g)].map((m) => Number(m[1]));
   assert.ok(indents.length > 0);
   assert.ok(indents.every((px) => px === 16), `indents at 390px: ${indents}`);
   assert.match(phone, /in Field engineering › East › Retail/);
   const desk = html(<ProjectsPage projects={tree} root={workspace} workspaceName="Acme" onFilter={noop} canCreate canGovern={false} narrow={false} onOpen={noop} onCreated={noop} />);
-  assert.match(desk, /padding-left:48px/);
+  assert.match(desk, /margin-left:48px/);
   assert.doesNotMatch(desk, /in Field engineering › East › Retail/);
 });
 
@@ -112,8 +112,10 @@ test("the projects page heads Company-wide with the workspace, links every row, 
   assert.ok(out.indexOf('href="/projects/~"') < out.indexOf('href="/projects/Company%20news"'), "the workspace comes first");
   assert.match(out, />Acme</);
   assert.match(out, /href="\/projects\/Globex"/);
-  assert.match(out, /Account · Globex Inc · in Field engineering/);
-  assert.match(out, /1 running · 4 conversations/);
+  for (const label of ["Globex Inc", "in Field engineering"]) assert.ok(out.includes(label));
+  assert.match(out, />1 running<\/span>/);
+  assert.match(out, />4 conversations<\/span>/);
+  assert.doesNotMatch(out, /1 running ·/);
   assert.doesNotMatch(out, /New Project/);
   assert.match(page({ canCreate: true }), /New Project/);
   assert.match(page({ projects: [], root: null, canCreate: true }), /No projects yet. Make one/);
@@ -300,8 +302,8 @@ test("project rows show named agents and a still unread indicator only for unrea
  const unread = {...view("Unread"), unread: 2, row_agents: ["lead", "helper"]};
  const read = {...view("Read"), unread: 0, row_agents: []};
  const markup = html(<ProjectsPage projects={[unread, read]} root={null} workspaceName="Acme" canCreate={false} canGovern={false} narrow={false} onFilter={noop} onOpen={noop} onCreated={noop} />);
- assert.match(markup, /title="lead"/);
- assert.match(markup, /title="helper"/);
+ assert.match(markup, />lead<\/span>/);
+ assert.match(markup, />helper<\/span>/);
  assert.equal((markup.match(/aria-label="Unread updates"/g) ?? []).length, 1);
  assert.doesNotMatch(markup, /animate-/);
 });

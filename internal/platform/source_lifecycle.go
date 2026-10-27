@@ -31,7 +31,7 @@ func (p *Platform) SourcesAs(who auth.Principal) []knowledge.Source {
 	out := []knowledge.Source{}
 	for _, src := range p.Knowledge.List(who.Tenant) {
 		if p.sourceRecordVisible(who, src) {
-			out = append(out, src.HealthAt(p.now()))
+			out = append(out, ShownSource(src.HealthAt(p.now())))
 			if len(out) == 200 {
 				break
 			}
@@ -178,15 +178,7 @@ func (p *Platform) syncSourceExpected(ctx context.Context, who auth.Principal, n
 	secret, fetchErr := p.sourceSecret(ctx, who, src)
 	var docs []knowledge.ImportDocument
 	if fetchErr == nil {
-		if len(src.Lifecycle.Resources) > 0 {
-			if selected, ok := provider.(knowledge.ResourceProvider); ok {
-				docs, fetchErr = selected.FetchSelected(ctx, src.Lifecycle.Origin, src.Lifecycle.Resources, secret)
-			} else {
-				fetchErr = knowledge.ProviderError{Cause: knowledge.Unsupported}
-			}
-		} else {
-			docs, fetchErr = provider.Fetch(ctx, src.Lifecycle.Origin, secret)
-		}
+		docs, fetchErr = fetchSourceDocuments(ctx, provider, src.Lifecycle.SourceConfig, secret)
 	}
 	if fetchErr != nil {
 		failed, err := p.Knowledge.FailSync(who.Tenant, name, id, knowledge.FailureCause(fetchErr), p.now())
@@ -243,7 +235,8 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 	if len(names) > 50 {
 		return out, fmt.Errorf("%w: at most 50 sources", knowledge.ErrInvalid)
 	}
-	if len(names) == 0 {
+	implicit := len(names) == 0
+	if implicit {
 		for _, s := range p.SourcesAs(who) {
 			names = append(names, s.Name)
 			if len(names) == 50 {
@@ -259,7 +252,14 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 		if err != nil {
 			return out, err
 		}
-		if src.Lifecycle == nil || src.Lifecycle.Mode != knowledge.Live {
+		if implicit && src.RequiresUpstreamRead() && src.Lifecycle.Snapshot {
+			out.Warnings = append(out.Warnings, SourceSearchWarning{Source: name, Cause: knowledge.Unsupported})
+			continue
+		}
+		if src.RequiresUpstreamRead() && variant != "" {
+			return out, fmt.Errorf("%w: saved variants are unavailable for external provider queries", knowledge.ErrInvalid)
+		}
+		if !src.RequiresUpstreamRead() && (src.Lifecycle == nil || src.Lifecycle.Mode != knowledge.Live) {
 			indexed = append(indexed, name)
 			if src.Lifecycle != nil {
 				cfg := src.Lifecycle.SourceConfig
@@ -268,7 +268,7 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 				expected[name] = nil
 			}
 		}
-		if src.Lifecycle == nil || src.Lifecycle.Mode == knowledge.Indexed {
+		if !src.RequiresUpstreamRead() && (src.Lifecycle == nil || src.Lifecycle.Mode == knowledge.Indexed) {
 			continue
 		}
 		found, err := p.searchSourceLive(ctx, who, src, query)
@@ -458,31 +458,33 @@ func (p *Platform) SourceDependenciesAs(ctx context.Context, who auth.Principal,
 // searchSourceLive is the one provider/search composition used by the API and
 // actor-bound runtime tool. The caller checks access before entering it.
 func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src knowledge.Source, query string) ([]knowledge.Hit, error) {
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	if src.Lifecycle == nil {
+		return nil, knowledge.ErrInvalid
+	}
+	if src.Lifecycle.Snapshot {
+		return nil, fmt.Errorf("%w: frozen external snapshots cannot be searched until access to their retained version is verified", knowledge.ErrInvalid)
+	}
 	provider := p.sourceProvider(src.Lifecycle.Provider)
 	if provider == nil {
 		return nil, knowledge.ProviderError{Cause: knowledge.Unavailable}
 	}
+	connection, _ := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
 	secret, err := p.sourceSecret(ctx, who, src)
 	if err != nil {
 		return nil, err
 	}
-	docs, err := provider.Fetch(ctx, src.Lifecycle.Origin, secret)
+	docs, err := fetchSourceDocuments(ctx, provider, src.Lifecycle.SourceConfig, secret)
 	if err != nil {
 		return nil, knowledge.ProviderError{Cause: knowledge.FailureCause(err)}
 	}
-	if src.Lifecycle.Mode == knowledge.Hybrid {
-		documents, err := p.Knowledge.DocumentsForScope(who.Tenant, src.Name, &src.Lifecycle.SourceConfig)
-		if err != nil {
-			return nil, err
-		}
-		pinned := map[string]bool{}
-		for _, doc := range documents {
-			pinned[doc.ID] = true
-		}
-		docs = slices.DeleteFunc(slices.Clone(docs), func(doc knowledge.ImportDocument) bool { return pinned[doc.ID] })
-		if docs == nil {
-			docs = []knowledge.ImportDocument{}
-		}
+	if ctx.Err() != nil {
+		return nil, knowledge.ProviderError{Cause: knowledge.Interrupted}
+	}
+	currentConnection, connected := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	if !connected || currentConnection.Kind != credentials.Reference || currentConnection.Ref != connection.Ref || !currentConnection.UpdatedAt.Equal(connection.UpdatedAt) || !p.refAllowed(who.Tenant, who.Subject, currentConnection.Ref) {
+		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
 	ephemeral := knowledge.NewStore()
 	if _, err := ephemeral.Create(who.Tenant, src.Name, "", who.Subject, p.now()); err != nil {
@@ -506,6 +508,28 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 		hits[i].RefreshFailed = false
 	}
 	return hits, err
+}
+
+// Collection and query reads share the exact configured selection. A provider
+// without selected-file support cannot widen a collection to its whole origin.
+func fetchSourceDocuments(ctx context.Context, provider knowledge.Provider, cfg knowledge.SourceConfig, secret mcptools.Secret) ([]knowledge.ImportDocument, error) {
+	if len(cfg.Resources) == 0 {
+		return provider.Fetch(ctx, cfg.Origin, secret)
+	}
+	selected, ok := provider.(knowledge.ResourceProvider)
+	if !ok {
+		return nil, knowledge.ProviderError{Cause: knowledge.Unsupported}
+	}
+	docs, err := selected.FetchSelected(ctx, cfg.Origin, slices.Clone(cfg.Resources), secret)
+	if err != nil {
+		return nil, err
+	}
+	for _, doc := range docs {
+		if !slices.Contains(cfg.Resources, doc.ID) {
+			return nil, knowledge.ProviderError{Cause: knowledge.Unsupported}
+		}
+	}
+	return docs, nil
 }
 
 func (p *Platform) authorizeSourceConfig(who auth.Principal, cfg knowledge.SourceConfig) (knowledge.SourceConfig, error) {

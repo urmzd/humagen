@@ -60,16 +60,16 @@ export interface ConversationView {
   slide?: number;
 }
 
-export type LibrarySection = "sources" | "skills" | "memory";
+export type LibrarySection = "sources" | "skills" | "memory" | "deliverables";
 export type YouSection = "profile" | "notifications" | "privacy" | "agents" | "connections";
 export type Route =
-  | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string;version?:number}
+  | {page:"library";section:LibrarySection;scope?:"personal"|"workspace"|"project"|"agent";project?:string;owner?:string;skill?:string;version?:number;artifact?:string;file?:string;libraryTab?:"overview"|"contents"|"versions"}
   | {page:"operations";section:"context"|"integrations";selected?:string;tab?:"connect"|"resources"|"links"|"access"|"events"|"actions"}
   | {page:"assignments";id?:string;agent?:string}
   | {page:"agent-network";handoff?:string}
   | {page:"agent-control";agent?:string}
   | {page:"action-policy";scope?:"workspace"|"agent"|"project"|"personal";name?:string}
-  | {page:"notifications"}
+  | {page:"notifications";message?:string;alert?:string;kind?:string}
   | {page:"audit"}
   | {page:"usage";days?:7|14|30;day?:string;display?:"chart"|"table"}
   | {page:"you";section:YouSection;provider?:string}
@@ -126,7 +126,7 @@ const PAGE_TITLES: Record<Page, string> = {
   channel: "Channel",
   schedules: "Schedules",
   monitor: "Monitor",
-  inbox: "Inbox",
+  inbox: "Notifications",
   context: "Context",
   agents: "Agents",
   agent: "Agent",
@@ -149,7 +149,7 @@ export function documentTitle(r: Route, unread = 0): string {
 export function href(r: Route): string {
   switch (r.page) {
     case "library": {
-      const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);if(r.version&&Number.isSafeInteger(r.version)&&r.version>0)q.set("version",String(r.version));return `/library/${r.section}${q.size?`?${q}`:""}`;
+      const q=new URLSearchParams();if(r.scope)q.set("scope",r.scope);if(r.project!==undefined)q.set("project",r.project);if(r.owner!==undefined)q.set("owner",r.owner);if(r.skill)q.set("skill",r.skill);if(r.version&&Number.isSafeInteger(r.version)&&r.version>0)q.set("version",String(r.version));if(r.artifact)q.set("artifact",r.artifact);if(r.file)q.set("file",r.file);if(r.libraryTab)q.set("tab",r.libraryTab);return `/library/${r.section}${q.size?`?${q}`:""}`;
     }
     case "operations":return `/operations/${r.section}${r.selected?`/${enc(r.selected)}${r.section==="integrations"&&r.tab&&r.tab!=="connect"?`/${r.tab}`:""}`:""}`;
     case "assignments":return `${r.id?`/assignments/${enc(r.id)}`:"/assignments"}${r.agent?`?agent=${enc(r.agent)}`:""}`;
@@ -157,7 +157,6 @@ export function href(r: Route): string {
     case "agent-control":return r.agent?`/agents/${enc(r.agent)}/control`:"/agent-controls";
     case "agent-setup":return r.name?`/agents/${enc(r.name)}/setup`:"/agents/new/setup";
     case "action-policy":return r.scope&&r.scope!=="workspace"&&!(r.scope==="project"&&(!r.name||r.name==="~"))?`/operations/policies/${r.scope}${r.name?`/${enc(r.name)}`:""}`:"/operations/policies";
-    case "notifications":return "/notifications";
     case "audit":return "/operations/audit";
     case "usage":{
       const q=new URLSearchParams();if(r.days&&r.days!==14)q.set("days",String(r.days));if(r.day)q.set("day",r.day);if(r.display==="table")q.set("display","table");return `/operations/usage${q.size?`?${q}`:""}`;
@@ -207,13 +206,15 @@ export function href(r: Route): string {
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
       return r.tab === "overview" ? "/monitor" : `/monitor/${r.tab}`;
+    case "notifications":
     case "inbox": {
       const q = new URLSearchParams();
       if (r.message) q.set("message", r.message);
       if (r.alert) q.set("alert", r.alert);
       if (r.kind) q.set("kind", r.kind);
       const query = q.toString();
-      return query ? `/inbox?${query}` : "/inbox";
+      const path = r.page === "notifications" ? "/notifications" : "/inbox";
+      return query ? `${path}?${query}` : path;
     }
     case "context":
       if (!r.source) return "/context";
@@ -296,8 +297,8 @@ function read(pathname: string, search: string): Route {
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
   switch (head) {
-    case "notifications":return {page:"notifications"};
-    case "library":return {page:"library",section:pick(a,["sources","skills","memory"] as const,"sources"),scope:oneOf(q.get("scope"),["personal","workspace","project","agent"] as const),project:queryText(q,"project",63),owner:queryText(q,"owner",512),skill:queryText(q,"skill",160),version:Number.isSafeInteger(Number(q.get("version")))&&Number(q.get("version"))>0?Number(q.get("version")):undefined};
+    case "notifications":return {page:"notifications",message:q.get("message")??undefined,alert:q.get("alert")??undefined,kind:q.get("kind")??undefined};
+    case "library":return {artifact:queryText(q,"artifact",160),file:queryText(q,"file",256),libraryTab:oneOf(q.get("tab"),["overview","contents","versions"] as const),page:"library",section:pick(a,["sources","skills","memory","deliverables"] as const,"sources"),scope:oneOf(q.get("scope"),["personal","workspace","project","agent"] as const),project:queryText(q,"project",63),owner:queryText(q,"owner",512),skill:queryText(q,"skill",160),version:Number.isSafeInteger(Number(q.get("version")))&&Number(q.get("version"))>0?Number(q.get("version")):undefined};
     case "operations":
       if(a==="audit")return {page:"audit"};
       if(a==="usage"){

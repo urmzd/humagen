@@ -28,9 +28,10 @@ import (
 
 // Errors.
 var (
-	ErrInvalid  = errors.New("knowledge: invalid")
-	ErrExists   = errors.New("knowledge: source already exists")
-	ErrNotFound = errors.New("knowledge: not found")
+	ErrInvalid      = errors.New("knowledge: invalid")
+	ErrExists       = errors.New("knowledge: source already exists")
+	ErrNotFound     = errors.New("knowledge: not found")
+	ErrUpstreamRead = fmt.Errorf("%w: current upstream file access is required before reading retained external data", ErrInvalid)
 )
 
 // passageSize is the target length of a passage in bytes.
@@ -57,6 +58,12 @@ type Source struct {
 	Variants  []Variant `json:"variants"`
 	CreatedBy string    `json:"created_by,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// RequiresUpstreamRead distinguishes provider copies from authored local data.
+// Collection authority and project membership cannot establish a reader's file access.
+func (s Source) RequiresUpstreamRead() bool {
+	return s.Lifecycle != nil && s.Lifecycle.Provider != "manual"
 }
 
 // MaxVariants bounds how many views a source keeps.
@@ -394,6 +401,9 @@ func (s *Store) documents(tenant, name string, expected *SourceConfig, guard boo
 	if guard && !sameConfiguration(src.Source, expected) {
 		return nil, ErrNotFound
 	}
+	if guard && src.RequiresUpstreamRead() {
+		return nil, ErrUpstreamRead
+	}
 	out := make([]Document, 0, len(src.docs))
 	for _, d := range slices.Backward(src.docs) {
 		out = append(out, *d)
@@ -567,6 +577,9 @@ func (s *Store) setExcludedWithScope(tenant, name, id string, excluded bool, at 
 	if guard && !sameConfiguration(src.Source, expected) {
 		return Document{}, ErrNotFound
 	}
+	if guard && src.RequiresUpstreamRead() {
+		return Document{}, ErrUpstreamRead
+	}
 	i := slices.IndexFunc(src.docs, func(d *Document) bool { return d.ID == id })
 	if i < 0 {
 		return Document{}, fmt.Errorf("%w: document %q", ErrNotFound, id)
@@ -624,6 +637,9 @@ func (s *Store) saveVariantWithScope(tenant, name, variant string, at time.Time,
 	}
 	if guard && !sameConfiguration(src.Source, expected) {
 		return Variant{}, ErrNotFound
+	}
+	if guard && src.RequiresUpstreamRead() {
+		return Variant{}, ErrUpstreamRead
 	}
 	v := Variant{Name: variant, Excluded: []string{}}
 	for _, d := range src.docs {
@@ -737,6 +753,11 @@ func (s *Store) search(tenant string, names []string, query string, limit int, v
 		in = append(in, src)
 	}
 
+	for _, src := range in {
+		if src.RequiresUpstreamRead() {
+			return nil, ErrUpstreamRead
+		}
+	}
 	skip := func(p *passage) bool { return p.doc.Excluded }
 	if variant != "" {
 		// The source must be named. Guessing it from "the tenant happens to

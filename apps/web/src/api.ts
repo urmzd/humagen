@@ -575,6 +575,8 @@ export interface Preferences {
   onboarded_at?: string;
   /** Conversations kept at the top of the sidebar, most recently pinned first. */
   pinned: string[];
+  /** Project shortcuts, independent of conversation pins. The workspace is `~`. */
+  pinned_projects?: string[];
   /** Projects whose announcements stay out of this person's own inbox. */
   muted: string[];
 }
@@ -706,6 +708,7 @@ export const api = {
   publishSkill: (id:string,version:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/publish`),
   promoteSkill: (id:string,version:number,scope:LibraryScope,expected:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/promote`,{scope,version:expected}),
   promoteMemory: (scope:"personal"|"workspace"|"project"|"agent", owner:string, id:string, destination:string) => call<GeneratedNote>("POST","/api/memory/promote",{scope,owner,id,destination}),
+  memoryFolders: (q = "", selected = "") => call<{folders: import("../../../packages/client/src/generated/types.ts").MemoryFolder[]}>("GET", `/api/library/memory?${new URLSearchParams({q,selected,limit:"50"})}`).then(r => r.folders),
   personalMemory: () => call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then(r => r.notes),
   rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
   approvePersonal: (ids:string[]) => call<{approved:number}>("POST","/api/me/memory/approve",{ids}),
@@ -910,7 +913,7 @@ export const api = {
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[]; personal?: PersonalPreferences }) =>
+  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; pinned_projects?: string[]; muted?: string[]; personal?: PersonalPreferences }) =>
     call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.

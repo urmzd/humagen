@@ -2,21 +2,21 @@ import { builtinAgentKey } from "./legacy.ts";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
 import { BanIcon, CheckIcon, ChevronDownIcon, SearchIcon, ShieldIcon, Tooltip, XIcon } from "@humagen/render-web";
 import { defaultCopy } from "@humagen/components";
-import { AgentOrb, type OrbState } from "@humagen/web";
+import { AgentOrb, type OrbState, usePresence } from "@humagen/web";
+export { usePresence, Presence } from "@humagen/web";
+import { buttonVariants } from "@humagen/render-web/ui/button";
+import { inputClass } from "@humagen/render-web/ui/input";
 import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Run } from "./adapter.ts";
 import { cause, dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
 
-export const field =
-  "w-full rounded-aui border border-aui-border bg-aui-bg px-2.5 py-1.5 text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted focus-visible:border-aui-accent focus-visible:ring-2 focus-visible:ring-aui-ring";
+export const field = inputClass;
 
 // A button's label stays on one line: the button is one line tall.
-export const button =
-  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 whitespace-nowrap humagen-press rounded-aui border border-aui-border bg-aui-surface px-3 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
+export const button = buttonVariants({ variant: "outline" });
 
-export const primary =
-  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 whitespace-nowrap humagen-press rounded-aui bg-aui-primary px-3 text-aui-sm font-medium text-aui-primary-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
+export const primary = buttonVariants();
 
 export function Label({ text, hint, children }: { text: string; hint?: string; children: ReactNode }) {
   return (
@@ -231,6 +231,7 @@ export function Page({
   layout,
   start,
   narrow,
+  wide,
   children,
 }: {
   title: ReactNode;
@@ -272,7 +273,7 @@ export function Page({
       </div>
     );
   }
-  const width = narrow ? "max-w-3xl" : "max-w-[68rem]";
+  const width = narrow ? "max-w-3xl" : wide ? "max-w-[82rem]" : "max-w-[68rem]";
   return (
     <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
       {/* Every page is one centered column, so a wide window never strands the content against the sidebar. */}
@@ -608,7 +609,7 @@ export function Segmented<T extends string>({
 }: {
   label: string;
   value: T;
-  options: { id: T; label: string }[];
+  options: { id: T; label: string; icon?: ReactNode }[];
   onChange: (next: T) => void;
 }) {
   const strip = useStrip<HTMLDivElement>(value);
@@ -624,8 +625,9 @@ export function Segmented<T extends string>({
             type="button"
             aria-pressed={value === o.id}
             onClick={() => onChange(o.id)}
-            className="h-7 shrink-0 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg"
+            className="inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg motion-reduce:transition-none"
           >
+            {o.icon}
             {o.label}
           </button>
         ))}
@@ -1129,31 +1131,6 @@ export function SearchField({
       )}
     </div>
   );
-}
-
-/**
- * Keeps something on screen for as long as its leaving takes. `mounted` says
- * whether to render it, and `leaving` is true for the moment between being
- * closed and being gone: set it as data-leaving so the motion classes play out.
- * The timer is cleared if the thing reopens or the component goes away.
- */
-export function usePresence(open: boolean, ms = 110): { mounted: boolean; leaving: boolean } {
-  const [held, setHeld] = useState(open);
-  useEffect(() => {
-    if (open) {
-      setHeld(true);
-      return;
-    }
-    const timer = window.setTimeout(() => setHeld(false), ms);
-    return () => window.clearTimeout(timer);
-  }, [open, ms]);
-  return { mounted: open || held, leaving: !open && held };
-}
-
-/** Renders its children while `when` is true and for `ms` after, telling them when they are leaving. */
-export function Presence({ when, ms, children }: { when: boolean; ms?: number; children: (leaving: boolean) => ReactNode }) {
-  const { mounted, leaving } = usePresence(when, ms);
-  return mounted ? children(leaving) : null;
 }
 
 export type Flash = { text: string; bad: boolean };

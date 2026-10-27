@@ -345,19 +345,23 @@ export function Integrations({
   );
 }
 
-function ConnectSource({
+export function ConnectSource({
   onCreated,
   onCancel,
+  initialProvider = "drive",
 }: {
   onCreated: (name: string) => void;
   onCancel: () => void;
+  initialProvider?: "drive" | "notion";
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [provider, setProvider] = useState("drive");
+  const [provider, setProvider] = useState<string>(initialProvider);
   const [origin, setOrigin] = useState("");
   const [project, setProject] = useState("~");
-  const [mode, setMode] = useState<"indexed" | "live" | "hybrid">("indexed");
+  const [mode, setMode] = useState<"indexed" | "live" | "hybrid">("live");
+  const [scheduled, setScheduled] = useState(false);
+  const [every, setEvery] = useState("60");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const submit = async (e: FormEvent) => {
@@ -366,7 +370,7 @@ function ConnectSource({
     setBusy(true);
     setProblem(null);
     try {
-      await api.createSource(name, description, { provider, origin, project, mode });
+      await api.createSource(name, description, { provider, origin, project, mode, sync_every_seconds: mode !== "live" && scheduled ? Number(every) * 60 : 0 });
       onCreated(name);
     } catch (error) {
       setProblem(sourceProblem(error));
@@ -426,6 +430,13 @@ function ConnectSource({
           ))}
         </select>
       </Label>
+      <p className="text-aui-xs leading-5 text-aui-muted sm:col-span-2">{defaultCopy.sourceCatalog.refreshHint}</p>
+      {mode !== "live" && <>
+        <Label text={defaultCopy.sourceCatalog.cadence}>
+          <select aria-label={defaultCopy.sourceCatalog.cadence} className={field} value={scheduled ? "scheduled" : "manual"} onChange={event=>setScheduled(event.target.value === "scheduled")}><option value="manual">{defaultCopy.sourceCatalog.onDemand}</option><option value="scheduled">{defaultCopy.sourceCatalog.scheduled}</option></select>
+        </Label>
+        {scheduled && <Label text={defaultCopy.sourceCatalog.everyMinutes}><input className={field} type="number" min={1} max={10080} required value={every} onChange={event=>setEvery(event.target.value)} /></Label>}
+      </>}
       <Label text={words.origin}>
         <input
           className={field}
