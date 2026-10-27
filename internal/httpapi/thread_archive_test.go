@@ -64,7 +64,7 @@ func TestDeletionQueueIsBoundedAndRefillsAfterApproval(t *testing.T) {
 	admin := f.person(t, "acme", "root", "Root", "humagen-admins")
 	for index := 0; index <= platform.MaxDeletionQueue; index++ {
 		// Bulk fixture creation does not exercise the per-person post rate limit.
-		thread, err := f.p.Threads.Create("acme", threads.Thread{ID: fmt.Sprintf("batch-%03d", index), Channel: "general", Visibility: threads.Shared, CreatedBy: "root"}, time.Now())
+		thread, err := f.p.Threads.Create("acme", threads.Thread{Channel: "general", Visibility: threads.Shared, CreatedBy: "root"}, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}

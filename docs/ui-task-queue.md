@@ -2,7 +2,7 @@
 
 Updated 2026-10-26. This queue separates the current delivery from follow-on
 platform work. Status describes the working branch; it is not a claim that the
-deployed site has been updated. Remote verification and merge status are tracked in PR #99.
+deployed site has been updated. The workspace UI delivery merged in [PR #99](https://github.com/urmzd/humagen/pull/99); this branch carries the consolidated archive/deletion follow-up on current main.
 The delivery branch now includes conversation archive/deletion work, following
 the consolidation review. `codex/workspace-design-merge` is the single workspace
 integration branch; the earlier resource-library edits are preserved in
@@ -19,10 +19,10 @@ integration branch; the earlier resource-library edits are preserved in
 | 5 | Verify typography, settings, Audit and transitions | Verified locally | Plex fonts and red/yellow/green presets load; shared settings rows persist values; Audit calendar submits valid local-to-ISO ranges; drawers preserve focus and reduced motion. |
 | 6 | Finish source creation and access safeguards | Verified locally | Providers/formats are accurate; cadence is saved with the source; selected provider reads and retained projections preserve upstream authority without cached fallback. |
 | 7 | Reconcile design, API and architecture documentation | Reconciled and checked | Generated clients match the contract; docs reflect the Notifications consolidation and source access behavior; implemented features are distinguished from proposed integrations. |
-| 8 | Run integrated verification | Local checks complete; CI tracked in PR #99 | Complete native narrow/desktop, light/dark, focus and reduced-motion journeys; pass remote CI for the final revision. |
-| 9 | Publish and merge this delivery | [PR #99](https://github.com/urmzd/humagen/pull/99) | Commit the reviewed changes, create the PR on the consolidated base, resolve CI failures and merge the exact passing revision. Refresh the local main checkout. |
+| 8 | Run integrated verification | Workspace checks complete; archive follow-up CI pending | Complete native narrow/desktop, light/dark, focus and reduced-motion journeys; pass remote CI for the final revision. |
+| 9 | Publish and merge this delivery | Workspace delivery merged in [PR #99](https://github.com/urmzd/humagen/pull/99); archive follow-up pending | Commit the reviewed changes, create the PR on the consolidated base, resolve CI failures and merge the exact passing revision. Refresh the local main checkout. |
 
-### Execution owners
+### Conversation lifecycle
 
 Conversation rows include Pin, Rename, Archive and Delete in their actions menu.
 Archiving hides a conversation and schedules deletion eligibility after 30 days;
@@ -31,6 +31,8 @@ Settings > Deletion queue, or restore a queued conversation. The queue returns
 bounded batches and refreshes after each review. Approved deletion removes stored
 messages and their search entries, keeps a hidden tombstone and retains run
 history in the journal. This is not a promise to erase journal retention.
+
+### Execution owners
 
 | Work | Owner |
 | --- | --- |
@@ -100,3 +102,7 @@ a provider tile does not mean the capability is available.
   Items 10 through 15 remain planned and are not part of the current UI backend.
 - See [managed library behavior](managed-library.md), [design requirements](../design.md)
   and [architecture status](architecture.md#status) for the implementation contract.
+
+Consolidation follow-up: 651 console tests, console and screen typechecks, and
+production build pass. Six native dark browser captures pass at 320, 390 and
+1280px, including actual deletion approval, restoration and sidebar pins.
