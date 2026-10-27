@@ -29,10 +29,9 @@ spec:
     # compose.yaml points this at the bundled Postgres unless .env says otherwise.
     postgres: {url: {ref: env:WARP_POSTGRES_URL}}
   bus:
-    kind: memory
-    # With the redis profile:
-    # kind: redis
-    # redis: {url: {ref: env:WARP_REDIS_URL}}
+    # On the stores' database: events in a table, readers woken by
+    # LISTEN/NOTIFY. Leaving bus out picks this whenever stores is postgres.
+    kind: postgres
   blobs:
     # In the warp-data volume.
     kind: disk

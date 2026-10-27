@@ -57,11 +57,11 @@ func TestAdoptEnv(t *testing.T) {
 			[]string{"WARP_PERSON_ANA_ISSUES is read as HUMAGEN_PERSON_ANA_ISSUES; it still works, rename it (references to env:WARP_PERSON_ANA_ISSUES keep working)"},
 		},
 		"sorted": {
-			[]string{"WARP_TEST=x", "WARP_REDIS_URL=r", "WARP_HOME=h"},
-			map[string]string{"HUMAGEN_REDIS_URL": "r", "HUMAGEN_HOME": "h"},
+			[]string{"WARP_TEST=x", "WARP_SLACK_TOKEN=r", "WARP_HOME=h"},
+			map[string]string{"HUMAGEN_SLACK_TOKEN": "r", "HUMAGEN_HOME": "h"},
 			[]string{
 				"WARP_HOME is the old name of HUMAGEN_HOME; it still works, rename it",
-				"WARP_REDIS_URL is the old name of HUMAGEN_REDIS_URL; it still works, rename it",
+				"WARP_SLACK_TOKEN is the old name of HUMAGEN_SLACK_TOKEN; it still works, rename it",
 			},
 		},
 	} {
@@ -85,7 +85,7 @@ func TestAdoptEnv(t *testing.T) {
 // A note names variables and never prints a value.
 func TestAdoptEnvNeverPrintsAValue(t *testing.T) {
 	var buf bytes.Buffer
-	legacy.AdoptEnv([]string{"WARP_OIDC_CLIENT_SECRET=hunter2", "WARP_POSTGRES_URL=postgres://u:hunter2@db", "HUMAGEN_REDIS_URL=hunter2", "WARP_REDIS_URL=other"},
+	legacy.AdoptEnv([]string{"WARP_OIDC_CLIENT_SECRET=hunter2", "WARP_POSTGRES_URL=postgres://u:hunter2@db", "HUMAGEN_SLACK_TOKEN=hunter2", "WARP_SLACK_TOKEN=other"},
 		func(string, string) error { return nil }, legacy.NewNotes(&buf))
 	if strings.Contains(buf.String(), "hunter2") || strings.Contains(buf.String(), "other") {
 		t.Fatalf("a note printed a value:\n%s", buf.String())

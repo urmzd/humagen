@@ -8,7 +8,7 @@ process with its stores beside it.
 | Where | What | Files |
 |-------|------|-------|
 | Your machine, no containers | `humagen start`, or `make dev` and `make web` | [README](../README.md#quick-start) |
-| Your machine or one host | Docker Compose: Humagen, Postgres, optional MinIO and Redis | [`deploy/compose`](../deploy/compose) |
+| Your machine or one host | Docker Compose: Humagen, Postgres, optional MinIO | [`deploy/compose`](../deploy/compose) |
 | Kubernetes | A Helm chart | [`deploy/helm/humagen`](../deploy/helm/humagen) |
 | Kubernetes, from Git | Flux deploying that chart | [`deploy/flux`](../deploy/flux) |
 | Wherever the spec says | `humagen deploy`: the spec's `deploy` slot picks `local`, `compose` or `kubernetes`, and `-o DIR` writes what it would apply and stops | [the spec](spec.md#deploying-it) |
@@ -46,10 +46,11 @@ process with its stores beside it.
   and register `public_url` plus `/auth/callback` with your identity provider.
   See [security](security.md).
 - **Stores.** `stores.kind: postgres` with `url: {ref: env:HUMAGEN_POSTGRES_URL}`
-  puts every store in Postgres; `memory` loses them on restart. `bus.kind:
-  redis` moves the event bus out of the process; `memory` is right for one
-  replica. See [Storage](architecture.md#storage) for what a Postgres-only setup
-  cannot do. **Published files** go to `blobs.kind: disk` (the workspace
+  puts every store in Postgres; `memory` loses them on restart. The event bus
+  follows the stores: on Postgres it is `bus.kind: postgres`, events in a table
+  on the same database with readers woken by LISTEN/NOTIFY, so there is no
+  Redis to run. `bus.kind: memory` keeps it in the process. See
+  [Storage](architecture.md#storage). **Published files** go to `blobs.kind: disk` (the workspace
   volume) or `s3`, any S3-compatible bucket.
 
 ## The image
@@ -84,8 +85,8 @@ the server over HTTP.
 ## Docker Compose
 
 [`deploy/compose/compose.yaml`](../deploy/compose/compose.yaml) runs Humagen and
-Postgres 17, with two optional profiles: `s3` (MinIO, and a one-shot job that
-creates the bucket) and `redis`. Each service has a healthcheck, and Humagen waits
+Postgres 17, with one optional profile: `s3` (MinIO, and a one-shot job that
+creates the bucket). Each service has a healthcheck, and Humagen waits
 for what it depends on.
 
 ```sh
@@ -102,8 +103,8 @@ document (OIDC, Postgres through `env:HUMAGEN_POSTGRES_URL`, disk files) and a
 compose runs `serve -f /etc/warp -addr 0.0.0.0:8080 -web /usr/share/warp/web`
 and passes `.env` to the container, so a variable a reference names only has to
 be in `.env`. [`.env.example`](../deploy/compose/.env.example) lists them,
-commented. `COMPOSE_PROFILES=s3,redis` turns on the profiles; uncomment the
-matching `blobs` or `bus` block in `humagen.yaml` as well.
+commented. `COMPOSE_PROFILES=s3` turns on the profile; uncomment the
+matching `blobs` block in `humagen.yaml` as well.
 
 Humagen is published on `127.0.0.1:8080` by default. To reach it from other
 machines, set `HUMAGEN_BIND=0.0.0.0` behind TLS, and `public_url` to the address
@@ -114,8 +115,7 @@ browsers use.
 [`compose.dev.yaml`](../deploy/compose/compose.dev.yaml) mounts
 [`dev/warp.yaml`](../deploy/compose/dev/warp.yaml) instead: `auth.kind: dev`,
 seeded agents on the offline provider, the same Platform document. Humagen runs
-on the host's network, listening on `127.0.0.1:8080`, with Postgres (and MinIO,
-Redis) published on the host's loopback for it. It needs host networking: Linux, or Docker Desktop 4.34+ with
+on the host's network, listening on `127.0.0.1:8080`, with Postgres (and MinIO) published on the host's loopback for it. It needs host networking: Linux, or Docker Desktop 4.34+ with
 it turned on.
 
 ```sh
@@ -173,7 +173,7 @@ when it is installed, and runs `humagen config check` on the `humagen.yaml` each
 render produces, so the chart cannot render a spec Humagen refuses. It also checks
 the compose stack's two specs.
 
-The chart does not run Postgres, Redis or a bucket: use what your cluster
+The chart does not run Postgres or a bucket: use what your cluster
 already has, or an operator. With an ingress, turn off proxy buffering and
 raise the read timeout so the event stream is not cut; `values.yaml` shows the
 ingress-nginx annotations. `webhooks.enabled` adds the separate listener for

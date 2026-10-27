@@ -1,9 +1,9 @@
-# Humagen with Postgres, and optional MinIO (S3) and Redis.
+# Humagen with Postgres, and optional MinIO (S3).
 #
 #   cp .env.example .env                       # the secrets config/warp.yaml names
 #   $EDITOR config/warp.yaml                   # the identity provider, public URL
 #   docker compose up -d --build               # Humagen and Postgres
-#   docker compose --profile s3 --profile redis up -d --build   # and MinIO, Redis
+#   docker compose --profile s3 up -d --build   # and MinIO
 #
 # `make up` and `make down` at the repository root wrap these, and take the
 # profiles from COMPOSE_PROFILES in .env. See docs/deploy.md.
@@ -50,9 +50,6 @@ services:
       # Only waited for when their profile is on.
       minio-bucket:
         condition: service_completed_successfully
-        required: false
-      redis:
-        condition: service_healthy
         required: false
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
@@ -114,21 +111,7 @@ services:
       MINIO_ROOT_USER: ${HUMAGEN_S3_ACCESS_KEY_ID:-${WARP_S3_ACCESS_KEY_ID:-warp}}
       MINIO_ROOT_PASSWORD: ${HUMAGEN_S3_SECRET_ACCESS_KEY:-${WARP_S3_SECRET_ACCESS_KEY:-change-me-please}}
 
-  # The event bus. Use with HUMAGEN_REDIS_URL=redis://redis:6379/0.
-  redis:
-    profiles: ["redis"]
-    image: redis:8-alpine
-    restart: unless-stopped
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
 volumes:
   warp-data:
   postgres-data:
   minio-data:
-  redis-data:

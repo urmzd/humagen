@@ -76,8 +76,8 @@ spec:
     kind: postgres
     postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}
 
-  bus:                      # slot: memory | redis
-    kind: memory
+  bus:                      # slot: memory | postgres. Leave it out and it
+    kind: postgres          # follows the stores: postgres on Postgres stores
 
   blobs:                    # slot: disk | memory | s3
     kind: s3
@@ -677,7 +677,7 @@ when a run uses it, so there is nothing to read or pass when deploying:
 | Slot | Built in | A registered kind returns |
 |------|----------|---------------------------|
 | `system.blobs` | disk, memory, s3 | a `blob.Store` |
-| `system.bus` | memory, redis | a `bus.Bus` |
+| `system.bus` | memory, postgres | a `bus.Bus` |
 | `system.extensions[]` | none | something with `Run(ctx) error`, run beside the server |
 | `platform.models[]` | anthropic, openai, ollama | an `agentrt.ProviderFunc` |
 | `platform.tools[]` | mcp | a `runtime.Catalog` |

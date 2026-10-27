@@ -207,7 +207,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	fs.Var(&specFiles, "f", "a spec file or directory of System and Platform documents (docs/spec.md); repeatable. Flags win over it")
 	workspaceDir := fs.String("workspace", "", "directory agents write their files under. Empty means the user cache directory")
 	concurrency := fs.Int("concurrency", 1, "how many runs execute at once")
-	busKind := fs.String("bus", "memory", `the event bus: "memory", or "redis" at HUMAGEN_REDIS_URL`)
+	busKind := fs.String("bus", "", `the event bus: "memory", for one process, or "postgres", on the stores' database. Empty means postgres with -state=postgres, and memory otherwise`)
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	parent := o.ctx
 	if parent == nil {
@@ -298,13 +298,6 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return err
 		}
 	}
-	broker, closeBus, err := openBus(ctx, o, file, *busKind, getenv)
-	if err != nil {
-		return err
-	}
-	if closeBus != nil {
-		defer func() { _ = closeBus() }()
-	}
 	// Model and tool providers: the spec's Platform documents for the common
 	// cases, options for the rest. Keys are references, read when used.
 	fromFile, err := fileExtensions(ctx, o, file.cfg, keys)
@@ -325,6 +318,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 	defer releaseState()
+	broker, err := openBus(ctx, o, file, *busKind, backends)
+	if err != nil {
+		return err
+	}
 	cfg := platform.Config{
 		Email:    emailConfiguration(file.cfg.System, *publicURL, keys),
 		Backends: backends,
