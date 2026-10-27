@@ -128,11 +128,12 @@ function Choices<T extends string>({
 }
 
 /** Pin controls stay visible when pinned, focused or used with a touch pointer. */
-function PinButton({ pinned, label, onClick, project = false, thread }: { pinned: boolean; label: string; onClick: (button: HTMLButtonElement) => void; project?: boolean; thread?: string }) {
+function PinButton({ pinned, label, onClick, project = false, thread, projectId }: { pinned: boolean; label: string; onClick: (button: HTMLButtonElement) => void; project?: boolean; thread?: string; projectId?: string }) {
   return <button
     type="button"
     onClick={event => onClick(event.currentTarget)}
     data-pin-thread={thread}
+    data-pin-project={projectId}
     aria-label={label}
     aria-pressed={pinned}
     title={label}
@@ -291,30 +292,38 @@ export function Sidebar({
   const { flash, say, clear: unsay } = useFlash();
   const [flashed, setFlashed] = useState<string | null>(null);
   const sidebar = useRef<HTMLElement>(null);
-  const pinFocus = useRef<{ id: string; pinned: boolean } | null>(null);
+  const pinFocus = useRef<{ kind: "conversation" | "project"; id: string; pinned: boolean } | null>(null);
   useEffect(() => {
     const target = pinFocus.current;
-    if (!target || pinned.includes(target.id) !== target.pinned) return;
-    const control = Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>("[data-pin-thread]") ?? [])
-      .find((button) => button.dataset.pinThread === target.id);
+    if (!target) return;
+    const projects = target.kind === "project";
+    const list = projects ? prefs?.pinned_projects ?? [] : pinned;
+    if (list.includes(target.id) !== target.pinned) return;
+    const selector = projects ? "[data-pin-project]" : "[data-pin-thread]";
+    const control = Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>(selector) ?? [])
+      .find((button) => (projects ? button.dataset.pinProject : button.dataset.pinThread) === target.id);
     // An older unselected row may leave the loaded page after unpinning.
     // Keep keyboard focus at the conversation list's stable filter control.
-    const fallback = sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Conversations"] button');
+    const fallback = projects
+      ? sidebar.current?.querySelector<HTMLAnchorElement>('nav[aria-label="Sections"] a[href="/projects"]')
+      : sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Conversations"] button');
     (control ?? fallback)?.focus();
     pinFocus.current = null;
-  }, [pinned]);
+  }, [pinned, prefs?.pinned_projects]);
   const togglePin = (id: string, on: boolean, button: HTMLButtonElement) => {
     unsay();
-    if (document.activeElement === button) pinFocus.current = { id, pinned: on };
+    if (document.activeElement === button) pinFocus.current = { kind: "conversation", id, pinned: on };
     onPin(id, on).catch(() => {
-      if (pinFocus.current?.id === id) pinFocus.current = null;
+      if (pinFocus.current?.kind === "conversation" && pinFocus.current.id === id) pinFocus.current = null;
       setFlashed(id);
       say(on ? defaultCopy.pins.pinFailed : defaultCopy.pins.unpinFailed, true);
     });
   };
-  const toggleProjectPin = (project: string, on: boolean) => {
+  const toggleProjectPin = (project: string, on: boolean, button: HTMLButtonElement) => {
     unsay();
+    if (document.activeElement === button) pinFocus.current = { kind: "project", id: project, pinned: on };
     onPinProject?.(project, on).catch(() => {
+      if (pinFocus.current?.kind === "project" && pinFocus.current.id === project) pinFocus.current = null;
       setFlashed(`project:${project}`);
       say(on ? defaultCopy.pins.pinFailed : defaultCopy.pins.unpinFailed, true);
     });
@@ -405,7 +414,7 @@ export function Sidebar({
           <ul className="px-2">
             {readableProjectPins.map(project => <li key={`project:${project}`} className={`group/project relative ${flashed === `project:${project}` && flash ? "z-20" : ""}`}>
               <div className="py-1 pr-10 [@media(pointer:coarse)]:pr-12"><Item icon={<ProjectIcon />} label={projectTitle(project)} href={href({page:"project",name:project === "~" ? "" : project,tab:"inbox"})} active={route.page === "project" && route.name === (project === "~" ? "" : project)} open onClick={() => go({page:"project",name:project === "~" ? "" : project,tab:"inbox"})} /></div>
-              {onPinProject && <PinButton pinned project label={defaultCopy.sidebar.pinProject(projectTitle(project), true)} onClick={() => toggleProjectPin(project, false)} />}
+              {onPinProject && <PinButton pinned project projectId={project} label={defaultCopy.sidebar.pinProject(projectTitle(project), true)} onClick={(button) => toggleProjectPin(project, false, button)} />}
               <FlashNote flash={flashed === `project:${project}` ? flash : null} align="right" />
             </li>)}
             {pinnedRows.map((t) => (
@@ -520,7 +529,7 @@ export function Sidebar({
                 flash={flashed === t.id ? flash : null}
               />
             ))}</ul></details>
-              {onPinProject && can("projects:read") && <div className="absolute top-2 right-0 h-10 w-10"><PinButton project pinned={pinnedProjects.has(project)} label={defaultCopy.sidebar.pinProject(projectTitle(project), pinnedProjects.has(project))} onClick={() => toggleProjectPin(project, !pinnedProjects.has(project))} /></div>}
+              {onPinProject && can("projects:read") && <div className="absolute top-2 right-0 h-10 w-10"><PinButton project projectId={project} pinned={pinnedProjects.has(project)} label={defaultCopy.sidebar.pinProject(projectTitle(project), pinnedProjects.has(project))} onClick={(button) => toggleProjectPin(project, !pinnedProjects.has(project), button)} /></div>}
               <FlashNote flash={flashed === `project:${project}` ? flash : null} align="right" />
             </li>)}
             {/* Older conversations arrive a page at a time, when asked for. */}

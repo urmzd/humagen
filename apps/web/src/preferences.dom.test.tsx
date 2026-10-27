@@ -260,6 +260,48 @@ test("project and conversation pins persist independently through unpinning and 
   await waitFor(() => assert.deepEqual(stored.pinned, []));
 });
 
+test("keyboard project pinning moves focus to its shortcut and unpinning returns to the project group", async () => {
+  let stored: Preferences = { ...saved, pinned: [], pinned_projects: [] };
+  net = stubFetch({
+    "GET /api/preferences": () => stored,
+    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<Preferences> }),
+    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+  });
+  render(<Pins />);
+  const pin = await screen.findByRole("button", { name: "Pin project Launch" });
+  pin.focus();
+  fireEvent.click(pin, { detail: 0 });
+  const shortcut = within(await screen.findByRole("region", { name: "Pinned" }));
+  const unpin = shortcut.getByRole("button", { name: "Unpin project Launch" });
+  await waitFor(() => assert.equal(document.activeElement === unpin, true));
+  fireEvent.click(unpin, { detail: 0 });
+  const restored = await screen.findByRole("button", { name: "Pin project Launch" });
+  await waitFor(() => assert.equal(document.activeElement === restored, true));
+  assert.equal(restored.isConnected, true);
+  assert.equal(Boolean(screen.queryByRole("region", { name: "Pinned" })), false);
+  await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
+  assert.deepEqual(stored.pinned, [], "project pinning leaves conversation pins unchanged");
+});
+
+test("keyboard unpinning a project without recent conversations returns focus to Projects", async () => {
+  let stored: Preferences = { ...saved, pinned: [], pinned_projects: ["Launch"] };
+  net = stubFetch({
+    "GET /api/preferences": () => stored,
+    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<Preferences> }),
+    "GET /api/threads": () => ({ threads: [], next: null }),
+  });
+  render(<Pins />);
+  const unpin = await screen.findByRole("button", { name: "Unpin project Launch" });
+  const projects = screen.getByRole("link", { name: "Projects" });
+  unpin.focus();
+  fireEvent.click(unpin, { detail: 0 });
+  await waitFor(() => assert.equal(document.activeElement === projects, true));
+  assert.equal(projects.isConnected, true);
+  assert.equal(Boolean(screen.queryByRole("region", { name: "Pinned" })), false);
+  assert.equal(screen.queryAllByRole("button", { name: /pin project Launch/i }).length, 0);
+  await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
+});
+
 test("a refused project pin rolls back and says so beside the project", async () => {
   net = stubFetch({
     "GET /api/preferences": () => saved,

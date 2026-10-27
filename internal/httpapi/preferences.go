@@ -92,6 +92,10 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 			if slices.Contains(previous, name) {
 				continue
 			}
+			if !who.Can(auth.ProjectsRead) {
+				s.problem(w, auth.ErrForbidden)
+				return
+			}
 			if _, _, err := s.P.ProjectRole(who, name, projects.Viewer); err != nil {
 				s.problem(w, err)
 				return
