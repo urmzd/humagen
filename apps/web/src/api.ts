@@ -1249,6 +1249,19 @@ export interface ThreadTurn {
   ask?: ThreadAsk;
 }
 
+/** An archived conversation waiting on an admin to approve its deletion. */
+export interface Deletion {
+  id: string;
+  title: string;
+  project: string;
+  archived_by: string;
+  archived_at: string;
+  delete_after: string;
+  requested: boolean;
+  due: boolean;
+  messages: number;
+}
+
 export interface ThreadPage {
   thread: Thread;
   turns: ThreadTurn[];
@@ -1401,6 +1414,17 @@ export const coworking = {
     },
   ) =>
     call<Thread>("PUT", threadPath(id), t),
+  /** Renames a conversation, keeping everything else as it stands. */
+  rename: (id: string, title: string) =>
+    call<ThreadPage>("GET", `${threadPath(id)}?limit=1`).then(({ thread: t }) =>
+      call<Thread>("PUT", threadPath(id), { version: t.version, title, visibility: t.visibility, default: t.default || "", agents: t.agents, mode: t.mode }),
+    ),
+  /** Archives a conversation: hidden now, queued for an admin to delete in 30 days, or at once with deleteNow. */
+  archive: (id: string, deleteNow = false) => call<Thread>("POST", `${threadPath(id)}/archive`, { delete_now: deleteNow }),
+  unarchive: (id: string) => call<Thread>("DELETE", `${threadPath(id)}/archive`),
+  deletions: () => call<{ deletions: Deletion[] }>("GET", "/api/deletions").then((r) => r.deletions),
+  approveDeletion: (id: string) => call<void>("POST", `/api/deletions/${encodeURIComponent(id)}/approve`),
+  rejectDeletion: (id: string) => call<void>("POST", `/api/deletions/${encodeURIComponent(id)}/reject`),
   /** The workspace's people whose name or handle holds `q`, for the @ typeahead. */
   people: (q: string, limit = 8) =>
     call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: String(limit) })}`).then((r) => r.people),

@@ -496,7 +496,7 @@ func (h hidden) unplaced(path, param string) bool {
 		case strings.HasPrefix(path, "/api/inbox/"):
 			return h.message == ""
 		}
-		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/artifacts/", "/api/alerts/", "/api/assignments/", "/api/handoffs/"}, func(p string) bool { return strings.HasPrefix(path, p) })
+		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/deletions/", "/api/artifacts/", "/api/alerts/", "/api/assignments/", "/api/handoffs/"}, func(p string) bool { return strings.HasPrefix(path, p) })
 	}
 	if !h.inside {
 		return false
@@ -560,7 +560,7 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.assignment, true
 		case prefix("/api/runs/"):
 			return h.run, true
-		case prefix("/api/threads/"):
+		case prefix("/api/threads/"), prefix("/api/deletions/"):
 			return h.thread, true
 		case prefix("/api/inbox/"):
 			return h.message, true
