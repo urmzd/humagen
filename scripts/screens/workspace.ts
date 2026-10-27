@@ -228,7 +228,9 @@ export function workspaceScreens(call: Call): Screen[] {
           .locator(`div[data-pin-thread="${thread}"]`)
           .waitFor();
         await page.waitForFunction(
-          (id) => document.querySelector(`div[data-pin-thread="${id}"] button[aria-haspopup]`) === document.activeElement,
+          (id) =>
+            document.querySelector(`div[data-pin-thread="${id}"] button[aria-haspopup]`) ===
+            document.activeElement,
           thread,
           { timeout: 1000 },
         );
@@ -241,7 +243,9 @@ export function workspaceScreens(call: Call): Screen[] {
         await control.waitFor();
         await choose(/^Unpin\b/);
         await page.waitForFunction(
-          (id) => document.querySelector(`div[data-pin-thread="${id}"] button[aria-haspopup]`) === document.activeElement,
+          (id) =>
+            document.querySelector(`div[data-pin-thread="${id}"] button[aria-haspopup]`) ===
+            document.activeElement,
           thread,
           { timeout: 1000 },
         );
