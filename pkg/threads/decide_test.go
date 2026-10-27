@@ -20,14 +20,14 @@ func TestTheFirstRuleThatAppliesDecides(t *testing.T) {
 		agents []string
 	}{
 		{"tagged agents answer, not the default", threads.Input{Mentions: []threads.Mention{agent("scribe"), person("okta|dana")}, Default: ignite}, threads.RuleTagged, []string{"scribe"}},
-		{"@auto is a tag", threads.Input{Mentions: []threads.Mention{agent("auto")}}, threads.RuleTagged, []string{"auto"}},
+		{"open asked is a tag", threads.Input{Mentions: []threads.Mention{agent(threads.OpenName)}}, threads.RuleTagged, []string{threads.OpenName}},
 		{"a tag beats a reply", threads.Input{Mentions: []threads.Mention{agent("scribe")}, Reply: true}, threads.RuleTagged, []string{"scribe"}},
 		{"a tag beats post only", threads.Input{Mentions: []threads.Mention{agent("scribe")}, PostOnly: true}, threads.RuleTagged, []string{"scribe"}},
 		{"a refused agent sends nothing to the default", threads.Input{Mentions: []threads.Mention{refused(agent("scribe"))}, Default: ignite}, threads.RuleTagged, []string{}},
 		{"people only", threads.Input{Mentions: []threads.Mention{person("okta|dana")}, Default: ignite}, threads.RulePeople, []string{}},
 		{"experts only", threads.Input{Mentions: []threads.Mention{sme("billing")}, Default: ignite}, threads.RulePeople, []string{}},
 		{"a role only", threads.Input{Mentions: []threads.Mention{role("sre")}, Default: ignite}, threads.RulePeople, []string{}},
-		{"a skill with @auto added", threads.Input{Mentions: threads.WithSkillAgent([]threads.Mention{skillOf("review")}), Default: ignite}, threads.RuleTagged, []string{"auto"}},
+		{"a skill with open added", threads.Input{Mentions: threads.WithSkillAgent([]threads.Mention{skillOf("review")}), Default: ignite}, threads.RuleTagged, []string{threads.OpenName}},
 		{"a tag that names nobody is still a person's", threads.Input{Mentions: []threads.Mention{{Kind: threads.Person, Name: "ignit", Refused: "no one goes by @ignit"}}, Default: ignite}, threads.RulePeople, []string{}},
 		{"a reply", threads.Input{Reply: true, PostOnly: true, Default: ignite}, threads.RuleReply, []string{}},
 		{"post only", threads.Input{PostOnly: true, Default: ignite}, threads.RulePostOnly, []string{}},
@@ -37,7 +37,7 @@ func TestTheFirstRuleThatAppliesDecides(t *testing.T) {
 		{"a tag answers in the console", threads.Input{TagsOnly: true, Mentions: []threads.Mention{agent("scribe")}, Default: ignite}, threads.RuleTagged, []string{"scribe"}},
 		{"people only in the console", threads.Input{TagsOnly: true, Mentions: []threads.Mention{person("okta|dana")}, Default: ignite}, threads.RulePeople, []string{}},
 		{"post only in the console", threads.Input{TagsOnly: true, PostOnly: true, Default: ignite}, threads.RulePostOnly, []string{}},
-		{"a skill in the console goes to @auto", threads.Input{TagsOnly: true, Mentions: threads.WithSkillAgent([]threads.Mention{skillOf("triage"), person("okta|dana")}), Default: ignite}, threads.RuleTagged, []string{"auto"}},
+		{"a skill in the console goes to the agents that join", threads.Input{TagsOnly: true, Mentions: threads.WithSkillAgent([]threads.Mention{skillOf("triage"), person("okta|dana")}), Default: ignite}, threads.RuleTagged, []string{threads.OpenName}},
 		{"a skill with an agent goes to that agent", threads.Input{TagsOnly: true, Mentions: threads.WithSkillAgent([]threads.Mention{skillOf("triage"), agent("scribe")}), Default: ignite}, threads.RuleTagged, []string{"scribe"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -94,7 +94,7 @@ func TestTheNearerDefaultsAreTheThreadsThenTheClientsThenTheChannels(t *testing.
 }
 
 // A thread's selected agents answer its untagged messages: the best fit
-// among them, through @auto, or each of them. A tag wins over them, and a
+// each of them that joins on its own, or each of them. A tag wins over them, and a
 // message to people starts nothing unless it names a skill.
 func TestSelectedAgentsAnswerUntaggedMessages(t *testing.T) {
 	sel := []string{"scribe", "ignite"}
@@ -105,7 +105,7 @@ func TestSelectedAgentsAnswerUntaggedMessages(t *testing.T) {
 		agents []string
 		among  []string
 	}{
-		{"best fit", threads.Input{TagsOnly: true, Routed: sel, Mode: threads.ModeBestFit}, threads.RuleRouted, []string{"auto"}, sel},
+		{"join", threads.Input{TagsOnly: true, Routed: sel, Mode: threads.ModeJoin}, threads.RuleRouted, []string{threads.OpenName}, sel},
 		{"one selected", threads.Input{TagsOnly: true, Routed: []string{"scribe"}}, threads.RuleRouted, []string{"scribe"}, nil},
 		{"all", threads.Input{TagsOnly: true, Routed: sel, Mode: threads.ModeAll}, threads.RuleRouted, sel, nil},
 		{"a tag wins", threads.Input{TagsOnly: true, Routed: sel, Mode: threads.ModeAll, Mentions: []threads.Mention{agent("lead")}}, threads.RuleTagged, []string{"lead"}, nil},
@@ -126,7 +126,7 @@ func TestSelectedAgentsAnswerUntaggedMessages(t *testing.T) {
 }
 
 func TestRoutingIsNormalizedAndBounded(t *testing.T) {
-	if a, m, err := threads.Routing([]string{"a", "b", "a"}, ""); err != nil || !reflect.DeepEqual(a, []string{"a", "b"}) || m != threads.ModeBestFit {
+	if a, m, err := threads.Routing([]string{"a", "b", "a"}, ""); err != nil || !reflect.DeepEqual(a, []string{"a", "b"}) || m != threads.ModeJoin {
 		t.Fatalf("Routing = %v %q %v", a, m, err)
 	}
 	if a, m, err := threads.Routing([]string{"a"}, threads.ModeAll); err != nil || m != "" || len(a) != 1 {

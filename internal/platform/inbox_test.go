@@ -254,7 +254,7 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 	}
 }
 
-// Auto-approval remains limited to standalone agent memory. Project memory
+// Open-approval remains limited to standalone agent memory. Project memory
 // always waits for human review, even when an owner started the turn.
 func TestAutoApproveNeverBypassesProjectMemoryReview(t *testing.T) {
 	p := withMemoryAgent(t)

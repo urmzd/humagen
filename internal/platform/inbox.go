@@ -911,10 +911,14 @@ func (p *Platform) retryAnswer(ctx context.Context, tenant string, run runs.Run,
 	if err != nil {
 		return runs.Run{}, err
 	}
-	if t.Agent != Auto && !t.Sees(t.Agent) {
+	if t.Agent != Open && !t.Sees(t.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: %q", registry.ErrNotFound, t.Agent)
 	}
-	return p.answerMessage(ctx, tenant, th, m, "", t.Agent, nil, run.Routed, t.Actor, t.ID, t.KeepsNotes, t.Sees)
+	started, err := p.answerMessage(ctx, tenant, th, m, "", t.Agent, nil, run.Routed, t.Actor, t.ID, t.KeepsNotes, t.Sees)
+	if err != nil {
+		return runs.Run{}, err
+	}
+	return started[0], nil
 }
 
 // decideMemory keeps the chosen proposals and discards the rest.

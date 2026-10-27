@@ -18,6 +18,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/auth/authtest"
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/join"
 )
 
 const (
@@ -57,6 +58,9 @@ func newFixtureGranting(t *testing.T, cfg platform.Config, grants string) *fixtu
 		}
 	}
 	cfg.Workspace, cfg.Limits = t.TempDir(), call.Limits{MaxDepth: 2, MaxFanOut: 4}
+	if cfg.Router == nil {
+		cfg.Router = func(string) join.Asker { return join.Words }
+	}
 	p, err := platform.New(cfg)
 	if err != nil {
 		t.Fatal(err)

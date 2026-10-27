@@ -5,10 +5,11 @@ import { builtinAgent } from "./legacy.ts";
  * Who answers a message. In order:
  *
  * 1. An agent named in the message as `@name`, when that agent exists and this
- *    surface may route to it, or `@auto`, the platform's built-in router,
- *    which picks among the agents available where the message lands, where
- *    this surface may reach any agent. The name is taken out of the message.
+ *    surface may route to it. The name is taken out of the message. `@auto`
+ *    names nobody.
  * 2. The default agent: the client's, or the one configured for the app.
+ *    `*` asks every agent available where the message lands whether to take
+ *    it, where this surface may reach any agent.
  * 3. Nobody, when the surface may reach any agent: the app sends no agent,
  *    and the default the platform's projects set decides. With none set, the
  *    platform refuses, and the person is asked to tag an agent.
@@ -16,9 +17,9 @@ import { builtinAgent } from "./legacy.ts";
  * Nothing is picked here. With a client that lists its agents and names no
  * default, nothing is chosen: the platform's default is not known here, so it
  * could be one the list leaves out. For the same reason a client that lists
- * its agents never sends `auto`, as a tag or as its default: the platform
- * picks among every agent available where the run lands, and the API does not
- * tell it the client's list, so the pick could be one the list leaves out.
+ * its agents never sends `*` as its default: the platform asks every agent
+ * available where the run lands, and the API does not tell it the client's
+ * list, so one that joins could be one the list leaves out.
  */
 export type Choice =
   | { agent: string; text: string; how: "named" | "default" }
@@ -32,8 +33,8 @@ export interface Routing {
   defaultAgent?: string;
 }
 
-/** The platform's built-in router. It is no agent: the platform picks one. */
-export const AUTO = "auto";
+/** The default that lets every agent available decide whether to take a message. It is no agent. */
+export const AUTO = "*";
 
 /**
  * The platform's agent that builds and changes agents with a person, each
@@ -44,9 +45,9 @@ export const BUILDER = "humagen-builder";
 
 /**
  * Whether this surface may route to an agent. Without a client, any agent in
- * the workspace. `auto` only where the surface may reach any agent, this
- * app's own choice: the platform picks @auto among a client's agents for a
- * run that acts for its person (`act_as`).
+ * the workspace. `*` only where the surface may reach any agent, this
+ * app's own choice: the platform asks only a client's agents for a run that
+ * acts for its person (`act_as`).
  */
 export function mayRoute(routing: Routing, name: string): boolean {
   const client = routing.client;
@@ -64,7 +65,7 @@ export function choose(text: string, agents: Agent[], routing: Routing): Choice 
   const known = new Set(agents.map((a) => a.name));
   for (const m of said.matchAll(NAMED)) {
     const name = m[2] as string;
-    if ((!known.has(builtinAgent(name)) && name !== AUTO) || !mayRoute(routing, name)) continue;
+    if (!known.has(builtinAgent(name)) || !mayRoute(routing, name)) continue;
     const at = (m.index ?? 0) + (m[1] ?? "").length;
     const rest = `${said.slice(0, at)}${said.slice(at + name.length + 1)}`
       .replace(/\s{2,}/g, " ")

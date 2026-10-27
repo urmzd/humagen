@@ -142,6 +142,8 @@ github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213 h
 github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213/go.mod h1:bdzIJ9pJENypV5GFcEjCaLb14PxRdefezz9tMbSTfLs=
 github.com/urmzd/fiber v0.24.0 h1:keOd7AXTmtH8An4613qEDU4ZAOO2XXXgwwoED37/O0s=
 github.com/urmzd/fiber v0.24.0/go.mod h1:08lPgjZinY0qezmr6pt34SnZwnt/LM1WiT/CEgLpkig=
+github.com/urmzd/fiber v0.24.2-0.20261027033013-ab69fb870c55 h1:z8SLBiwhclWujrJvCagSW2dDu+DxJkMo4ECwlRcDWcM=
+github.com/urmzd/fiber v0.24.2-0.20261027033013-ab69fb870c55/go.mod h1:08lPgjZinY0qezmr6pt34SnZwnt/LM1WiT/CEgLpkig=
 github.com/urmzd/playscape v0.7.0 h1:i7oraz05UmlyD1wZEFoU42lwRNhOd/LlOwdtpLF+rEw=
 github.com/urmzd/playscape v0.7.0/go.mod h1:0bGEI/XZ/l8xk6ceWKWnhvm/dXfrHVmILPWMP2lOMKk=
 github.com/urmzd/saige v0.41.0 h1:5g75IZrA0MD0f8Y9xqFfGZbGGhoIeHEOKabimcn+oQo=

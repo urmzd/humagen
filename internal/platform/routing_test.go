@@ -62,16 +62,16 @@ func TestSelectedAgentsAnswerAConversationsUntaggedMessages(t *testing.T) {
 
 	// bo, a member who did not start it, changes only which agents answer.
 	cur, _ := p.Threads.Get(tenant, th.ID)
-	upd, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: cur.Version, Visibility: threads.Shared, Agents: []string{"helper", "lead"}, Mode: threads.ModeBestFit})
-	if err != nil || upd.Mode != threads.ModeBestFit {
+	upd, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: cur.Version, Visibility: threads.Shared, Agents: []string{"helper", "lead"}, Mode: threads.ModeJoin})
+	if err != nil || upd.Mode != threads.ModeJoin {
 		t.Fatalf("a member selecting agents = %+v, %v", upd, err)
 	}
 	if _, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: upd.Version, Title: "renamed", Visibility: threads.Shared, Agents: upd.Agents, Mode: upd.Mode}); !errors.Is(err, projects.ErrForbidden) {
 		t.Fatalf("a member who did not start it renamed it: %v", err)
 	}
-	best := post(t, p, bo, th.ID, platform.MessageInput{Text: "who should take this?"})
-	if best.Rule != threads.RuleRouted || len(best.Runs) != 1 || !slices.Contains([]string{"helper", "lead"}, best.Runs[0].Agent) || best.Runs[0].Picked == "" || best.Runs[0].Routed != threads.ModeBestFit {
-		t.Fatalf("an untagged message with best_fit started %+v (%s)", best.Runs, best.Rule)
+	best := post(t, p, bo, th.ID, platform.MessageInput{Text: "a lead for this, please"})
+	if best.Rule != threads.RuleRouted || len(best.Runs) != 1 || best.Runs[0].Agent != "lead" || best.Runs[0].Picked == "" || best.Runs[0].Routed != threads.ModeJoin {
+		t.Fatalf("an untagged message with join started %+v (%s)", best.Runs, best.Rule)
 	}
 	await(t, p, best.Runs[0].ID, runs.Completed)
 
@@ -193,10 +193,10 @@ func TestAHiddenSelectedAgentIsNoOracle(t *testing.T) {
 	}
 }
 
-// In a Slack thread whose client lists the agents it routes to, the best fit
-// is picked among the selected agents it may route to, and the client is held
-// to the agent picked, not to @auto.
-func TestTheBestFitInASlackThreadIsOneTheClientRoutesTo(t *testing.T) {
+// In a Slack thread whose client lists the agents it routes to, only the
+// selected agents it may route to are asked, and each that joins answers in
+// the same thread, side by side.
+func TestJoiningInASlackThreadAsksOnlyAgentsTheClientRoutesTo(t *testing.T) {
 	p, machine := slackRoom(t, func(in *platform.ClientInput) { in.Agents = []string{"helper", "lead"} })
 	ana := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
 	workIn(t, p, "Field", ana)
@@ -209,9 +209,14 @@ func TestTheBestFitInASlackThreadIsOneTheClientRoutesTo(t *testing.T) {
 	if _, err := p.UpdateThread(t.Context(), ana, th.ID, platform.ThreadUpdate{Version: th.Version, Visibility: th.Visibility, Agents: []string{"helper", "lead"}}); err != nil {
 		t.Fatal(err)
 	}
-	best := post(t, p, ana, th.ID, platform.MessageInput{Text: "which of you?"})
-	if best.Rule != threads.RuleRouted || len(best.Runs) != 1 {
-		t.Fatalf("the best fit in a Slack thread started %+v (%s: %s)", best.Runs, best.Rule, best.Reason)
+	both := post(t, p, ana, th.ID, platform.MessageInput{Text: "lead and help, both of you"})
+	if both.Rule != threads.RuleRouted || !slices.Equal(agentsOf(both.Runs), []string{"helper", "lead"}) {
+		t.Fatalf("joining in a Slack thread started %+v (%s: %s)", agentsOf(both.Runs), both.Rule, both.Reason)
+	}
+	for _, r := range both.Runs {
+		if r.Thread != both.Runs[0].Thread || r.Picked == "" {
+			t.Fatalf("the runs that joined = %+v", both.Runs)
+		}
 	}
 }
 
@@ -299,9 +304,9 @@ func TestAGovernorWhoTakesNoPartDoesNotMoveAPrivateConversation(t *testing.T) {
 	}
 }
 
-// The best fit, when nothing matches, says it fell back to a selected agent,
-// not to a default.
-func TestABestFitThatMatchesNothingSaysSo(t *testing.T) {
+// When no selected agent takes a message, nothing starts, and it says it
+// waits; no agent is fallen back on.
+func TestAMessageNoSelectedAgentTakesWaits(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Initech", operator)
@@ -309,8 +314,8 @@ func TestABestFitThatMatchesNothingSaysSo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Runs) != 1 || !strings.HasPrefix(got.Runs[0].Picked, "Picked from the selected agents") {
-		t.Fatalf("the best fit that matched nothing = %+v", got.Runs)
+	if len(got.Runs) != 0 || !strings.Contains(got.Reason, "waits for a person") {
+		t.Fatalf("a message no selected agent took = %+v (%s)", got.Runs, got.Reason)
 	}
 }
 

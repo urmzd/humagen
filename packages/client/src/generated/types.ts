@@ -375,6 +375,8 @@ anyone in the workspace approve, except the person who asked.
   self_approval?: boolean;
   /** When set, the only people who may answer a choice or a reply, named as approvers are. */
   answerers?: string[];
+  /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
+  tagged_only?: boolean;
 }
 
 /** A class of model error that moves a call on to the next model. `any` cannot be combined with another. */
@@ -407,12 +409,24 @@ export interface Revision {
   created_by_name?: string;
 }
 
-/** Which agent @auto would pick for a message, and why. */
-export interface Choice {
+/** Whether each agent is asked, about a message that names no agent,
+"should I be involved?", and the model that asks. The provider is one
+the deployment declares; its key is a reference (an environment
+variable or a secrets manager), never stored here. Off by default:
+no agent takes a message on its own.
+ */
+export interface RouterSettings {
+  enabled: boolean;
+  provider?: string;
+  model?: string;
+}
+
+/** One agent's answer to whether it should take a message that names no agent. */
+export interface JoinDecision {
   agent: string;
-  /** A sentence a person reads, such as "Picked by @auto: matched billing." */
+  join: boolean;
+  /** A sentence a person reads. */
   reason: string;
-  matched?: string[];
 }
 
 export interface NativeNotificationItem {
@@ -700,12 +714,13 @@ turned back into it.
   /** Why the agent was chosen, when the caller left it to the platform. */
   picked?: string;
   /** Set when the run was started by its thread's selected agents, and
-how: `best_fit`, the one that fit best (`picked` says why), or
-`all`, one of each selected agent. Absent for a run a tag, a
+how: `join`, one that took it on its own (`picked` says why), or
+`all`, one of each selected agent. Runs from before say
+`best_fit` for `join`. Absent for a run a tag, a
 default or anything else started, and kept whatever the
 selection becomes later.
  */
-  routed?: "best_fit" | "all";
+  routed?: "join" | "best_fit" | "all";
   project?: string;
   /** The project's ancestors, nearest first and the workspace left out,
 pinned when the run was admitted: what it counts toward besides
@@ -768,8 +783,9 @@ export interface RunList {
 }
 
 export interface CreateRunRequest {
-  /** Who should answer: an agent, or `auto` for `@auto`, which picks
-among the agents available where the conversation is filed. Left
+  /** Who should answer: an agent, or `*`, which asks every agent
+available where the conversation is filed and starts one run for
+each that takes it (the first is returned). Left
 out, the default the conversation's place inherits answers: the
 thread's, the acting client's, the channel's, then the project
 chain's and the workspace's.
@@ -897,7 +913,7 @@ export interface Thread {
   visibility: ThreadVisibility;
   /** Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds people and agents up to 50 they are shown; with the ones they are not shown, and the people who post and the agents who answer, who join on their own, the record holds at most 100. */
   participants: ThreadParticipant[];
-  /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set. */
+  /** Answers an untagged message here, an agent or `*`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set. */
   default?: string;
   /** The agents selected to answer the untagged messages people post in
 the thread as themselves (the console), at most 5; a client's
@@ -1007,7 +1023,7 @@ that resolves roles. A mention kind the workspace declares is
 recorded as what it resolves to.
  */
   kind: "agent" | "person" | "sme" | "skill" | "role";
-  /** The agent (`auto` for @auto, which a message that names a skill and tags no agent starts), the person's handle (as written, when nobody goes by it), the experts' topic (empty for every expert), the skill, or the role. A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent. */
+  /** The agent (`*` when every agent is asked, as a message that names a skill and tags no agent does), the person's handle (as written, when nobody goes by it), the experts' topic (empty for every expert), the skill, or the role. A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent. */
   name: string;
   /** The run an agent's tag started. */
   run?: string;
@@ -1151,7 +1167,7 @@ export interface ThreadInput {
   channel?: string;
   visibility?: ThreadVisibility;
   title?: string;
-  /** Answers untagged messages in the thread, an agent available in the project or `auto`. */
+  /** Answers untagged messages in the thread, an agent available in the project or `*`. */
   default?: string;
   /** Agents selected to answer the untagged messages people post in the thread as themselves (the console), at most 5, each available in the project (400; one the caller may not read is as one that does not exist). `all` takes at most 3. */
   agents?: string[];
@@ -1216,12 +1232,13 @@ export interface ThreadMessageInput {
 
 /** How a thread's selected agents answer an untagged message a person
 posts as themselves (the console):
-`best_fit`, the one of them that fits it best, picked as `@auto`
-picks among them alone (the run's `picked` says why), or `all`, each
-of them side by side, at most 3. Absent with fewer than two agents
-selected; `best_fit` when two or more are selected and none is named.
+`join`, each of them that takes it on its own (the run's `picked`
+says why), or `all`, each of them side by side, at most 3. Absent
+with fewer than two agents selected; `join` when two or more are
+selected and none is named. `best_fit`, as written before, reads as
+`join`.
  */
-export type ThreadMode = "best_fit" | "all";
+export type ThreadMode = "join" | "all";
 
 /** A thread's title, visibility, default and selected agents, as a
 whole, and where a private conversation is. Changing only `agents` and
@@ -1311,7 +1328,7 @@ export interface Channel {
   title?: string;
   /** Sent to every agent answering in the channel. */
   purpose?: string;
-  /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. One naming an agent that lives in a project the reader may not read reads as absent, here and in the project's history. */
+  /** Answers untagged messages here, an agent or `*`. Absent inherits from the project. One naming an agent that lives in a project the reader may not read reads as absent, here and in the project's history. */
   default?: string;
   slack?: SlackBinding;
   /** When `slack` was bound as it stands: set when a binding is made
@@ -1839,7 +1856,7 @@ narrows nothing. Empty only when every agent it names lives in a
 project the caller may not read.
  */
   allow?: string[];
-  /** Answers a message that tags no agent, here and below. An agent or `auto`. Absent inherits. */
+  /** Answers a message that tags no agent, here and below. An agent, or `*` to let every agent decide. Absent inherits. */
   default?: string;
 }
 
@@ -1863,7 +1880,7 @@ export interface AgentOffer {
 
 /** Who answers a message that tags no agent, and where that default is set. */
 export interface DefaultResolved {
-  /** An agent, or `auto`. */
+  /** An agent, or `*`. */
   agent: string;
   /** `project:<name>`, or `project:~` for the workspace. */
   from: string;
@@ -1969,6 +1986,7 @@ it stands when each call starts. A policy an agent still runs on
 cannot be removed (409).
  */
   model_policies: ModelPolicy[];
+  router: RouterSettings;
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -3796,6 +3814,10 @@ export interface ListReachableAgentsResponse {
 
 export interface ListPendingMemoryResponse {
   proposals: MemoryProposal[];
+}
+
+export interface PreviewJoinResponse {
+  decisions: JoinDecision[];
 }
 
 export interface DraftSkillFromOutcomeBody {

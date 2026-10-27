@@ -86,16 +86,15 @@ test("choose: a named agent, then the default, then the platform's default", () 
   assert.equal(choose("@helper", agents, {}).text, "@helper");
 });
 
-test("choose: @auto is the platform's router, sent as auto where the surface may route to any agent", () => {
+test("choose: @auto names nobody, and * as the default lets agents decide where the surface may route to any agent", () => {
   assert.deepEqual(choose("@auto who knows billing?", agents, {}), {
-    agent: "auto",
-    text: "who knows billing?",
-    how: "named",
+    agent: "",
+    text: "@auto who knows billing?",
+    how: "inherited",
   });
-  assert.equal(choose("@auto hi", agents, { client: client({ agents: ["*"] }) }).agent, "auto");
   assert.equal(
-    choose("hi", agents, { client: client({ default_agent: "auto", agents: ["*"] }) }).agent,
-    "auto",
+    choose("hi", agents, { client: client({ default_agent: "*", agents: ["*"] }) }).agent,
+    "*",
   );
   // A client that lists its agents keeps its list.
   assert.equal(
@@ -106,17 +105,17 @@ test("choose: @auto is the platform's router, sent as auto where the surface may
   );
 });
 
-test("choose: a client that lists its agents never sends auto, which the platform would pick past its list", () => {
-  const listed = { client: client({ default_agent: "auto", agents: ["helper"] }) };
+test("choose: a client that lists its agents never sends *, which the platform would ask past its list", () => {
+  const listed = { client: client({ default_agent: "*", agents: ["helper"] }) };
   for (const text of ["@auto who knows billing?", "who knows billing?", "@auto @lead hi"]) {
     const picked = choose(text, agents, listed);
-    assert.notEqual(picked.agent, "auto", text);
+    assert.notEqual(picked.agent, "*", text);
     assert.ok(picked.agent === null || mayRoute(listed, picked.agent), text);
   }
   assert.equal(choose("@auto @helper hi", agents, listed).agent, "helper");
-  assert.equal(mayRoute(listed, "auto"), false);
-  assert.equal(mayRoute({ client: client({ enabled: false, agents: ["*"] }) }, "auto"), false);
-  assert.equal(mayRoute({}, "auto"), true);
+  assert.equal(mayRoute(listed, "*"), false);
+  assert.equal(mayRoute({ client: client({ enabled: false, agents: ["*"] }) }, "*"), false);
+  assert.equal(mayRoute({}, "*"), true);
 });
 
 test("choose: a client's list is default deny", () => {

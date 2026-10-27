@@ -39,13 +39,13 @@ import (
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
-	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
@@ -153,7 +153,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
 	mux.HandleFunc("GET /api/threads", s.authed(auth.RunsRead, s.listThreads))
 	mux.HandleFunc("GET /api/threads/{id}", s.authed(auth.RunsRead, s.seenThread(s.getThread)))
-	mux.HandleFunc("GET /api/pick", s.authed(auth.AgentsRead, s.pickAgent))
+	mux.HandleFunc("GET /api/join", s.authed(auth.AgentsRead, s.previewJoin))
 	mux.HandleFunc("GET /api/me/notifications", s.authed(auth.RunsRead, s.listNativeNotifications))
 	mux.HandleFunc("POST /api/me/notifications/{id}/ack", s.authed(auth.RunsRead, s.acknowledgeNativeNotification))
 	mux.HandleFunc("GET /api/library/skills", s.authed(auth.ProjectsRead, s.listLibrarySkills))
@@ -585,10 +585,10 @@ func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Princ
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
-		// Agent is who should answer. "auto" is @auto, which picks among the
-		// agents available where the conversation is filed, and for a person
-		// a client's credential acts for, only among the agents the client
-		// may route to. Empty is the default the conversation's place
+		// Agent is who should answer. "*" asks every agent available where
+		// the conversation is filed whether to take it ("auto", as written
+		// before, reads as it); for a person a client's credential acts
+		// for, only the agents the client may route to are asked. Empty is the default the conversation's place
 		// inherits: its thread's, the client's, its channel's, then its
 		// project chain's; with none, 409.
 		Agent string `json:"agent"`
@@ -725,20 +725,26 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 	ok(w, http.StatusOK, map[string]any{"threads": s.P.ShowSummaries(who.Tenant, page), "next": cursor})
 }
 
-// pickAgent previews which agent @auto would pick for a message in a project,
-// "~" or nothing for the workspace, and why.
-func (s *Server) pickAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+// previewJoin asks each agent available in a project, "~" or nothing for
+// the workspace, whether it would take a message, without starting
+// anything. Agents the caller may not read are left out.
+func (s *Server) previewJoin(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
-	if !s.P.Seer(who).Project(projects.NameOf(q.Get("project"))) {
+	seer := s.P.Seer(who)
+	if !seer.Project(projects.NameOf(q.Get("project"))) {
 		notFound(w)
 		return
 	}
-	choice, err := s.P.Pick(r.Context(), who.Tenant, q.Get("project"), q.Get("q"))
+	ds, err := s.P.Route(r.Context(), who.Tenant, q.Get("project"), q.Get("q"))
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, choice)
+	ds = slices.DeleteFunc(ds, func(d join.Decision) bool { return !seer.Agent(d.Agent) })
+	if ds == nil {
+		ds = []join.Decision{}
+	}
+	ok(w, http.StatusOK, map[string]any{"decisions": ds})
 }
 
 // getSettings reads the workspace's settings. A title or memory agent that
@@ -1089,8 +1095,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, callpolicy.ErrLimit):
 		fail(w, http.StatusTooManyRequests, err.Error())
-	case errors.Is(err, pick.ErrNoAgent):
-		fail(w, http.StatusConflict, "no agent fits; tag one")
+	case errors.Is(err, platform.ErrNoTakers):
+		fail(w, http.StatusConflict, detail(err, platform.ErrNoTakers))
 	case errors.Is(err, platform.ErrNoDefault):
 		fail(w, http.StatusConflict, detail(err, platform.ErrNoDefault))
 	case errors.Is(err, platform.ErrNotAvailable):

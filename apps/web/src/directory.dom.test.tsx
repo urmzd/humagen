@@ -159,16 +159,16 @@ test("changing the default writes the lists as a whole, at the version read", as
   const opened = openAgents(field.name, fieldAgents);
   await screen.findByRole("list", { name: "Available here" });
   fireEvent.click(screen.getByRole("button", { name: /^Default:/ }));
-  fireEvent.click(await screen.findByRole("option", { name: /@auto/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /Everyone decides/ }));
   fireEvent.click(screen.getByRole("button", { name: "Save Agents" }));
   await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "PUT")));
   const put = net?.seen.find((r) => r.method === "PUT");
-  assert.deepEqual(put?.body, { version: 3, enable: ["helper"], default: "auto" });
+  assert.deepEqual(put?.body, { version: 3, enable: ["helper"], default: "*" });
   await waitFor(() => assert.equal(opened.changed(), 1));
 });
 
 test("on the workspace the default is the Workspace Default, and someone who may not change it sees it still", async () => {
-  openAgents("", { ...fieldAgents, enable: ["*"], default: "auto", default_resolved: { agent: "auto", from: "project:~" } }, { write: false, home: false });
+  openAgents("", { ...fieldAgents, enable: ["*"], default: "*", default_resolved: { agent: "*", from: "project:~" } }, { write: false, home: false });
   await screen.findByRole("list", { name: "Available here" });
   const control = screen.getByRole("button", { name: /^Workspace Default:/ }) as HTMLButtonElement;
   assert.ok(control.disabled);

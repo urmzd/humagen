@@ -14,6 +14,7 @@ import {
   type SourceRuleMatch,
   type SourceRuleResource,
 } from "./api.ts";
+import { AUTO } from "./availability.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
 import {
   SourceLifecycle,
@@ -230,7 +231,7 @@ export function Integrations({
                           {client.home?.channel ? ` / #${client.home.channel}` : ""}
                         </dd>
                         <dt className="text-aui-muted">{words.defaultAgent}</dt>
-                        <dd>{client.default_agent || words.noDefault}</dd>
+                        <dd>{client.default_agent === AUTO ? defaultCopy.auto.handle : client.default_agent || words.noDefault}</dd>
                         <dt className="text-aui-muted">{words.allowed}</dt>
                         <dd className="break-words">
                           {client.agents?.join(", ") || words.noDefault}

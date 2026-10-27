@@ -30,7 +30,6 @@ import type {
   ChannelInput,
   ChannelUpdate,
   ChannelView,
-  Choice,
   ClientBridgeDeliveryResponse,
   ClientCapabilityPolicy,
   ClientInput,
@@ -119,6 +118,7 @@ import type {
   Policy,
   PolicyInput,
   Preferences,
+  PreviewJoinResponse,
   PreviewSourceLinkRulesResponse,
   ProjectAgentsInput,
   ProjectAgentsView,
@@ -1696,31 +1696,32 @@ owner is no agent's, and answers 404.
     });
   }
 
-  /** `@auto` picks among the agents available in the project by the words
-of the message. With no match it hands the message to the nearest
-default on the project's chain that names an agent, and with none it
-answers 409, "no agent fits; tag one". Nothing is started.
+  /** Each agent available in the project that takes untagged messages
+(its spec is not `tagged_only`) is asked, all at once, whether it
+should be involved. Each that says yes would answer, side by side;
+when none does, the message waits for a person. Nothing is started.
+Agents the caller may not read are left out.
  */
-  async pickAgent(q: string, project?: string, options?: RequestOptions): Promise<Choice> {
-    let path = "/api/pick";
+  async previewJoin(q: string, project?: string, options?: RequestOptions): Promise<PreviewJoinResponse> {
+    let path = "/api/join";
     const _q = new URLSearchParams();
     if (q !== undefined && q !== null) _q.set("q", String(q));
     if (project !== undefined && project !== null) _q.set("project", String(project));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
-    return this.request<Choice>("GET", path, {
+    return this.request<PreviewJoinResponse>("GET", path, {
       ...options,
     });
   }
 
-  async pickAgentRaw(q: string, project?: string, options?: RequestOptions): Promise<ApiResponse<Choice>> {
-    let path = "/api/pick";
+  async previewJoinRaw(q: string, project?: string, options?: RequestOptions): Promise<ApiResponse<PreviewJoinResponse>> {
+    let path = "/api/join";
     const _q = new URLSearchParams();
     if (q !== undefined && q !== null) _q.set("q", String(q));
     if (project !== undefined && project !== null) _q.set("project", String(project));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
-    return this.rawRequest<Choice>("GET", path, {
+    return this.rawRequest<PreviewJoinResponse>("GET", path, {
       ...options,
     });
   }
@@ -1762,9 +1763,10 @@ conversation's place inherits answers, the first set of: the
 thread's (`updateThread`), the acting client's when `act_as` names
 one, the channel's (a new conversation is in `general` of its
 project), then the project's, each ancestor's nearest first, and the
-workspace's. With none set it is 409, "tag an agent". `auto` is
-`@auto`, which for a person a client acts for picks only among the
-agents that client may route to. An agent not available in the
+workspace's. With none set it is 409, "tag an agent". `*` asks every
+agent available there whether to take it, and each that does answers
+(for a person a client acts for, only agents that client may route
+to); with none, 409. `auto`, as written before, reads as `*`. An agent not available in the
 conversation's project, or a default that has stopped being
 available there, is 403. So is a conversation in a project where the
 caller, or the person `act_as` names, is only a viewer: starting work
@@ -2184,7 +2186,7 @@ that issued it.
 through a client that maps them; no field names an author, and a
 credential acting for nobody is refused (403). What the message
 starts follows the tag rules: the agents it tags answer, at most 3,
-and a `$skill` with no agent tagged goes to `@auto`; tagging only
+and a `$skill` with no agent tagged asks the agents; tagging only
 people or experts notifies them; posted only, nothing answers. A
 message a person posts as themselves, as the console does, that tags
 no agent in a thread with selected agents (`agents`, `mode`) is
@@ -4586,7 +4588,7 @@ out of `enable`, `allow` and `default`, as if it were not there.
 here and below (`*` alone is every one); `allow`, when set, is the
 only agents that may run here and below, and a child can only narrow
 it; `default` answers a message that tags no agent, here and below,
-and is an agent or `auto`. Every name is an agent in the workspace
+and is an agent or `*`. Every name is an agent in the workspace
 that the caller may read, a named default is available where it is
 set, and an agent that lives in a project is not enabled (400). An
 agent that lives in a project the caller may not read is refused in

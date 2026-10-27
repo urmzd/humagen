@@ -587,7 +587,7 @@ func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) er
 			continue
 		}
 		for _, n := range slices.Concat(l.agents.Enable, l.agents.Allow, []string{l.agents.Default}) {
-			if n == "" || n == spec.EveryAgent || n == spec.AutoAgent {
+			if n == "" || n == spec.EveryAgent || n == legacy.AutoDefault {
 				continue
 			}
 			if _, err := p.Agents.Get(ctx, tenant, n, 0); err != nil {

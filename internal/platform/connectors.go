@@ -182,15 +182,13 @@ func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
 			}
 			return
 		case tag := <-tags:
-			tag, ok := s.stamp(ctx, st, tag)
-			if !ok {
-				continue
-			}
-			select {
-			case out <- tag:
-			case <-ctx.Done():
-				wait()
-				return
+			for _, tag := range s.stamp(ctx, st, tag) {
+				select {
+				case out <- tag:
+				case <-ctx.Done():
+					wait()
+					return
+				}
 			}
 		}
 	}
@@ -204,36 +202,39 @@ func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
 // in the client's home, written over whatever the connector said.
 //
 // A message that named no agent reaches stamp as untagged, and the place it
-// is filed in decides who answers it (untaggedFor). A connector may ask for
-// @auto, and so may that default. stamp resolves it before admission, among
-// the agents available where the run is filed that the client may route to.
-// With none that fits, or no default anywhere, the tag goes no further.
+// is filed in decides who answers it (untaggedFor). That default may be
+// open, and a connector may ask for it too: then every agent available where
+// the run is filed that the client may route to is asked whether it takes
+// the message, and each that does gets a tag of its own, so they answer in
+// the same thread side by side, each posted and streamed on its own. With
+// none that takes it, or no default anywhere, nothing goes further and the
+// message waits for a person.
 //
 // The run acts for the person the client's team maps the surface's user to,
 // so it is held to what that person may do where it is filed (mayRaise),
 // and goes no further when they may not.
-func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelope.Tag, bool) {
+func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) []envelope.Tag {
 	c := st.client
 	current, enabled := s.p.currentInstallation(c)
 	if !enabled {
-		return envelope.Tag{}, false
+		return nil
 	}
 	event := tag.Meta["slack_event"]
 	if c.Surface == clients.GitHub {
 		event = tag.Meta["github_event"]
 	}
 	if !current.AllowsEvent(event) {
-		return envelope.Tag{}, false
+		return nil
 	}
 	if direction, bound := s.p.bridgeDirection(current, tag.Meta["slack_channel"]); bound && direction != projects.BridgeTwoWay {
-		return envelope.Tag{}, false
+		return nil
 	}
 	c = current
 	resource, hasResource := clientResource(c, tag)
 	if hasResource {
 		if err := s.p.observeClientResource(c, resource); err != nil {
 			s.p.log.Warn("verified resource relation could not be kept", "client", c.ID, "error", err)
-			return envelope.Tag{}, false
+			return nil
 		}
 	}
 	project, channel, bound := s.p.filedFor(c.Tenant, c, tag.Meta["slack_channel"])
@@ -246,40 +247,53 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelo
 	person := s.p.surfacePerson(c, tag)
 	if err := s.p.mayRaise(c, person, project, bound); err != nil {
 		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "person", person, "tag", tag.ID, "why", err.Error())
-		return envelope.Tag{}, false
+		return nil
 	}
 	if tag.Agent == untagged {
 		if tag.Agent = s.p.untaggedFor(c, project, channel, tag.Meta["slack_channel"]); tag.Agent == "" {
 			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "tag", tag.ID)
-			return envelope.Tag{}, false
+			return nil
 		}
 	}
-	if tag.Agent == Auto {
-		choice, err := s.p.autoFor(ctx, c, s.p.clientPlace(c, project, channel, tag.Meta["slack_channel"]), tag.Text)
+	type answer struct{ agent, id, picked string }
+	who := []answer{{agent: tag.Agent, id: tag.ID}}
+	if tag.Agent == Open {
+		joined, err := s.p.joinFor(ctx, c, s.p.clientPlace(c, project, channel, tag.Meta["slack_channel"]), tag.Text)
 		if err != nil {
-			s.p.log.Warn("platform: @auto found no agent for a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "tag", tag.ID, "error", err)
-			return envelope.Tag{}, false
+			s.p.log.Info("platform: no agent took a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "tag", tag.ID, "why", err.Error())
+			return nil
 		}
-		tag.Agent = choice.Agent
+		who = who[:0]
+		for _, d := range joined {
+			who = append(who, answer{agent: d.Agent, id: joinedTagID(tag.ID, d.Agent), picked: joinedReason(d)})
+		}
 	}
-	if !c.Routes(tag.Agent) {
-		s.p.log.Warn("platform: client may not route to that agent", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "agent", tag.Agent, "tag", tag.ID)
-		return envelope.Tag{}, false
+	var out []envelope.Tag
+	for _, a := range who {
+		if !c.Routes(a.agent) {
+			s.p.log.Warn("platform: client may not route to that agent", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "agent", a.agent, "tag", a.id)
+			continue
+		}
+		meta := make(map[string]string, len(tag.Meta)+4)
+		for k, v := range tag.Meta {
+			meta[k] = v
+		}
+		meta[runs.MetaClient] = c.ID
+		// Where the run is filed is the binding's: the channel a Slack
+		// channel is bound to, or else the client's home. What the connector
+		// said is overwritten, and runs.ProjectOf believes only this.
+		meta[runs.MetaProject], meta[runs.MetaChannel] = project, channel
+		if a.picked != "" {
+			meta[runs.MetaPicked] = a.picked
+		}
+		t := tag
+		t.ID, t.Agent, t.Tenant, t.Origin, t.Meta = a.id, a.agent, c.Tenant, s.name, meta
+		// Who the run acts for is the person the client's team maps the
+		// surface's user to, whatever the connector said.
+		t.Actor.User = person
+		out = append(out, t)
 	}
-	meta := make(map[string]string, len(tag.Meta)+3)
-	for k, v := range tag.Meta {
-		meta[k] = v
-	}
-	meta[runs.MetaClient] = c.ID
-	// Where the run is filed is the binding's: the channel a Slack channel
-	// is bound to, or else the client's home. What the connector said is
-	// overwritten, and runs.ProjectOf believes only this.
-	meta[runs.MetaProject], meta[runs.MetaChannel] = project, channel
-	tag.Tenant, tag.Origin, tag.Meta = c.Tenant, s.name, meta
-	// Who the run acts for is the person the client's team maps the
-	// surface's user to, whatever the connector said.
-	tag.Actor.User = person
-	return tag, true
+	return out
 }
 
 // mayRaise holds a message a client's own connector raised to what the

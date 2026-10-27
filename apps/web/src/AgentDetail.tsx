@@ -562,7 +562,7 @@ export function AgentDetail({
             )}
             <Label
               text="Description"
-              hint="One or two lines on what this agent is for. @auto reads it first when deciding who answers, the way a skill's description is read. Leave it empty and the prompt is searched instead."
+              hint="One or two lines on what this agent is for. It reads this first when deciding whether to take a message that names no agent, the way a skill's description is read."
             >
               <textarea
                 className={`${field} min-h-14`}
@@ -572,6 +572,13 @@ export function AgentDetail({
                 onChange={(e) => set({ description: e.target.value })}
               />
             </Label>
+            <Switch
+              label="Only when tagged"
+              hint="On, it answers only a message that names it, and is never asked about one that names no agent."
+              checked={spec.tagged_only === true}
+              disabled={!editable}
+              onChange={(on) => set({ tagged_only: on || undefined })}
+            />
             <div className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between">
                 <label htmlFor="agent-prompt" className="text-aui-xs font-medium text-aui-muted">

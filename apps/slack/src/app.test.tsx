@@ -1164,6 +1164,19 @@ test("a message that names no agent leaves the choice to the platform's default"
   await w.app.idle();
 });
 
+test("a message no agent takes waits for a person, and says so", async () => {
+  const w = world({ defaultAgent: undefined });
+  w.humagen.refuse = new HumagenError(
+    409,
+    "no agent takes it: it waits for a person to answer or tag an agent",
+  );
+  await deliver(w, mention("what changed?", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.runs.size, 0);
+  const said = textIn(blocksOf(w.slack.of("chat.postMessage")[0]));
+  assert.ok(said.includes(defaultCopy.auto.noFit), said);
+});
+
 test("with no default anywhere, the person is asked to tag an agent, for example one this app may reach", async () => {
   const w = world({ defaultAgent: undefined });
   w.humagen.refuse = new HumagenError(

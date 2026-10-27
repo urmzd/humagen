@@ -19,6 +19,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -37,6 +38,9 @@ func start(t *testing.T, lim call.Limits) *platform.Platform {
 func startWith(t *testing.T, cfg platform.Config) *platform.Platform {
 	t.Helper()
 	cfg.Workspace = t.TempDir()
+	if cfg.Router == nil {
+		cfg.Router = func(string) join.Asker { return join.Words }
+	}
 	p, err := platform.New(cfg)
 	if err != nil {
 		t.Fatal(err)

@@ -48,7 +48,7 @@ func TestRacingMovesNeverMakeACycle(t *testing.T) {
 	if tree := s.Tree("acme"); len(tree.Subtree("")) != tree.Len()+1 {
 		t.Fatal("a project fell out of the tree")
 	}
-	// What was written is a tree: Open refuses a cycle.
+	// What was written is a tree: OpenDefault refuses a cycle.
 	if _, err := projects.Open(st); err != nil {
 		t.Fatalf("after racing moves: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestPagesKeepTreeOrderAcrossDeletes(t *testing.T) {
 // the whole workspace as owners.
 func TestAMoveNeverPutsAMembersOnlyProjectUnderOneEveryoneOwns(t *testing.T) {
 	s := projects.NewStore()
-	mustCreate(t, s, "acme", with(team("Open", ""), members("*=owner")), ada)
+	mustCreate(t, s, "acme", with(team("OpenDefault", ""), members("*=owner")), ada)
 	field := mustCreate(t, s, "acme", with(team("Field", ""), members("*=viewer", "ada=owner")), ada)
 	mustCreate(t, s, "acme", with(team("Mid", "Field"), members("*=viewer", "ada=owner")), ada)
 	mustCreate(t, s, "acme", with(team("Secret", "Mid"), members("ada=owner", "bo=member")), ada)
@@ -423,9 +423,9 @@ func TestAMoveNeverPutsAMembersOnlyProjectUnderOneEveryoneOwns(t *testing.T) {
 	// Secret is two levels below Field and one below Mid.
 	for _, name := range []string{"Field", "Mid"} {
 		p, _ := s.Get("acme", name)
-		_, err := s.Move("acme", name, p.Version, "Open", ada, t0, nil)
+		_, err := s.Move("acme", name, p.Version, "OpenDefault", ada, t0, nil)
 		if !errors.Is(err, projects.ErrInvalid) || !strings.Contains(err.Error(), "Secret") {
-			t.Fatalf("moving %s, with Secret below it, under Open = %v", name, err)
+			t.Fatalf("moving %s, with Secret below it, under OpenDefault = %v", name, err)
 		}
 	}
 	if a := s.Tree("acme").Resolve("Secret", stranger); a.Role != projects.None {
@@ -438,7 +438,7 @@ func TestAMoveNeverPutsAMembersOnlyProjectUnderOneEveryoneOwns(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Move("acme", "Field", field.Version, "Open", ada, t0, nil); err != nil {
+	if _, err := s.Move("acme", "Field", field.Version, "OpenDefault", ada, t0, nil); err != nil {
 		t.Fatalf("moving Field with nothing members only below it = %v", err)
 	}
 }

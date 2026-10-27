@@ -21,8 +21,8 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/people"
-	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -297,7 +297,7 @@ func TestADefaultThatStoppedBeingAvailableIsNotPassedOver(t *testing.T) {
 	}
 }
 
-func TestAutoPicksAmongTheAgentsAvailableWhereItIsAsked(t *testing.T) {
+func TestOnlyAgentsAvailableWhereAMessageIsPostedAreAskedToJoin(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
 	for _, spec := range []agentspec.AgentSpec{
@@ -307,33 +307,60 @@ func TestAutoPicksAmongTheAgentsAvailableWhereItIsAsked(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// In Globex, globex-helper lives there and matches; outside, it cannot
-	// be picked, and biller can.
-	got, err := p.Pick(t.Context(), tenant, "Globex", "the Globex renewals")
-	if err != nil || got.Agent != "globex-helper" || !strings.HasPrefix(got.Reason, "Picked by @auto: matched") {
-		t.Fatalf("in Globex = %+v, %v", got, err)
+	// In Globex, globex-helper lives there and joins; outside, it is never
+	// asked, and biller is.
+	ds, err := p.Route(t.Context(), tenant, "Globex", "the Globex renewals")
+	if err != nil || len(join.Joined(ds)) != 1 || join.Joined(ds)[0].Agent != "globex-helper" {
+		t.Fatalf("in Globex = %+v, %v", ds, err)
 	}
-	if got, err := p.Pick(t.Context(), tenant, "Initech", "the Globex renewals"); !errors.Is(err, pick.ErrNoAgent) {
-		t.Fatalf("in Initech, a message only globex-helper matches = %+v, %v", got, err)
+	ds, _ = p.Route(t.Context(), tenant, "Initech", "the Globex renewals")
+	if slices.ContainsFunc(ds, func(d join.Decision) bool { return d.Agent == "globex-helper" }) || len(join.Joined(ds)) != 0 {
+		t.Fatalf("in Initech, globex-helper was asked or someone joined: %+v", ds)
 	}
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t1", Agent: "auto", Text: "an invoice question", Project: "Initech"})
-	if err != nil || r.Agent != "biller" || !strings.Contains(r.Picked, "Picked by @auto: matched invoice") {
-		t.Fatalf("@auto in Initech = %+v, %v", r, err)
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t1", Agent: "*", Text: "an invoice question", Project: "Initech"})
+	if err != nil || r.Agent != "biller" || !strings.Contains(r.Picked, "Joined on its own: matched invoice") {
+		t.Fatalf("open in Initech = %+v, %v", r, err)
 	}
 }
 
-func TestAutoWithNoMatchHandsTheMessageToTheNearestNamedDefault(t *testing.T) {
+// Several agents can take one message, each in a run of its own; when none
+// does, nothing starts and it waits, and no named default is fallen back on.
+func TestEveryAgentThatJoinsAnswersAndNoTakersStartsNothing(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
-	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "auto"})
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "*"})
 	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Default: "helper"})
-	setAgents(t, p, "Globex", platform.AgentsInput{Enable: []string{}, Default: "auto"})
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t1", Text: "zzz", Project: "Renewals"})
-	if err != nil || r.Agent != "helper" || !strings.Contains(r.Picked, "the default answered") {
-		t.Fatalf("an untagged turn @auto cannot match = %+v, %v", r, err)
+	setAgents(t, p, "Globex", platform.AgentsInput{Enable: []string{}, Default: "*"})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t1", Text: "Lead and Help, please.", Project: "Renewals"})
+	if err != nil || r.Picked == "" {
+		t.Fatalf("an untagged turn both agents fit = %+v, %v", r, err)
 	}
-	if _, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t2", Text: "zzz"}); !errors.Is(err, pick.ErrNoAgent) {
-		t.Fatalf("at the root, with no named default = %v, want pick.ErrNoAgent", err)
+	thread := r.Thread
+	got := map[string]bool{}
+	for _, run := range p.Runs.List(tenant, 50) {
+		if run.Thread == thread {
+			got[run.Agent] = true
+		}
+	}
+	if !got["lead"] || !got["helper"] {
+		t.Fatalf("the runs in the conversation are for %v, want lead and helper", got)
+	}
+	if _, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t2", Text: "zzz", Project: "Renewals"}); !errors.Is(err, platform.ErrNoTakers) {
+		t.Fatalf("a turn no agent fits = %v, want ErrNoTakers", err)
+	}
+}
+
+// An agent whose spec is tagged_only is never asked.
+func TestATaggedOnlyAgentIsNeverAskedToJoin(t *testing.T) {
+	p := start(t, call.Limits{})
+	if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{
+		Name: "quiet", Model: "offline", Provider: "offline", SystemPrompt: "Quiet.", TaggedOnly: true,
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	ds, err := p.Route(t.Context(), tenant, "", "Quiet, please.")
+	if err != nil || slices.ContainsFunc(ds, func(d join.Decision) bool { return d.Agent == "quiet" }) {
+		t.Fatalf("a tagged-only agent was asked: %+v, %v", ds, err)
 	}
 }
 
@@ -475,7 +502,7 @@ func TestTheBaselineBecomesTheWorkspaceDefault(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for tenantName, want := range map[string]string{"named": "lead", "unnamed": "auto"} {
+		for tenantName, want := range map[string]string{"named": "lead", "unnamed": "*"} {
 			root := p.ProjectTree(tenantName).Root()
 			if root.Agents.Default != want || len(root.Agents.Enable) != 1 || root.Agents.Enable[0] != "*" {
 				t.Fatalf("the root of %s = %+v, want default %s", tenantName, root.Agents, want)
@@ -487,7 +514,7 @@ func TestTheBaselineBecomesTheWorkspaceDefault(t *testing.T) {
 		if h, _ := p.Projects.History("named", projects.Root, 0, 0); len(h) == 0 || h[0].By != "migration" {
 			t.Fatalf("the root of named does not say the upgrade set it: %+v", h)
 		}
-		// An empty baseline was the picker, which auto still is: the
+		// An empty baseline was the picker, which open is now: the
 		// workspace reads as it did, and is given no tree.
 		if p.Projects.Stored("unnamed") {
 			t.Fatal("settings that named no baseline, with no tree, were given one")
@@ -625,12 +652,12 @@ func TestARootWrittenBeforeProjectsHadAgentsEnablesEveryAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := p.ProjectTree(tenant).Root()
-	if len(root.Agents.Enable) != 1 || root.Agents.Enable[0] != "*" || root.Agents.Default != "auto" {
+	if len(root.Agents.Enable) != 1 || root.Agents.Enable[0] != "*" || root.Agents.Default != "*" {
 		t.Fatalf("the root = %+v", root.Agents)
 	}
 }
 
-func TestAWorkspaceNeverWrittenRunsAnyAgentAndPicksWithAuto(t *testing.T) {
+func TestAWorkspaceNeverWrittenRunsAnyAgentThatJoins(t *testing.T) {
 	p := start(t, call.Limits{})
 	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t1", Text: "Lead."})
 	if err != nil || r.Agent != "lead" || r.Picked == "" {
@@ -702,30 +729,31 @@ func TestRacingSignInsKeepOnePerson(t *testing.T) {
 	}
 }
 
-func TestAClientTagForAutoIsPickedAmongWhatTheClientMayRoute(t *testing.T) {
+func TestAClientsMessageIsOfferedOnlyToWhatTheClientMayRoute(t *testing.T) {
 	p := start(t, call.Limits{})
-	c := clients.Client{Tenant: tenant, ID: "docs", Surface: clients.Slack, Enabled: true, DefaultAgent: "auto", Agents: []string{"helper"}}
-	got, err := p.AutoFor(t.Context(), c, "Help.")
-	if err != nil || got.Agent != "helper" {
-		t.Fatalf("@auto for a client that routes to helper only = %+v, %v", got, err)
+	c := clients.Client{Tenant: tenant, ID: "docs", Surface: clients.Slack, Enabled: true, DefaultAgent: "*", Agents: []string{"helper"}}
+	got, err := p.JoinFor(t.Context(), c, "Help and Lead.")
+	if err != nil || len(got) != 1 || got[0].Agent != "helper" {
+		t.Fatalf("joining for a client that routes to helper only = %+v, %v", got, err)
 	}
 	c.Agents = nil
-	if _, err := p.AutoFor(t.Context(), c, "Help."); !errors.Is(err, pick.ErrNoAgent) {
-		t.Fatalf("@auto for a client that routes to no agent = %v", err)
+	if _, err := p.JoinFor(t.Context(), c, "Help."); !errors.Is(err, platform.ErrNoTakers) {
+		t.Fatalf("joining for a client that routes to no agent = %v", err)
 	}
 }
 
-func TestATurnCannotRunAutoItself(t *testing.T) {
+func TestATurnCannotRunOpenItself(t *testing.T) {
 	p := start(t, call.Limits{})
-	if _, err := p.Invoke(t.Context(), envelope.Tag{ID: "a", Tenant: tenant, Agent: "auto", Origin: "api", Text: "hi"}); !errors.Is(err, platform.ErrNotAvailable) {
-		t.Fatalf("a run of auto itself = %v", err)
+	if _, err := p.Invoke(t.Context(), envelope.Tag{ID: "a", Tenant: tenant, Agent: "*", Origin: "api", Text: "hi"}); !errors.Is(err, platform.ErrNotAvailable) {
+		t.Fatalf("a run of open itself = %v", err)
 	}
 }
 
-// @auto for a person a client's credential acts for picks only among the
-// agents the client may route to, whether the turn asks for it or the
-// client's default is auto, and never answers with an agent off its list.
-func TestAutoThroughAClientPicksOnlyAmongItsAgents(t *testing.T) {
+// For a person a client's credential acts for, only the agents the client
+// may route to are asked, whether the turn asks for open or the client's
+// default is open (or auto, as written before), and no agent off its list
+// ever answers.
+func TestJoiningThroughAClientAsksOnlyItsAgents(t *testing.T) {
 	f := &fakes{}
 	p := startWith(t, f.config())
 	ctx := t.Context()
@@ -738,19 +766,19 @@ func TestAutoThroughAClientPicksOnlyAmongItsAgents(t *testing.T) {
 	in := slackClient("app", "A0APP", team, "auto")
 	in.Agents = []string{"helper"}
 	create(t, p, tenant, in)
-	if r, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-free", Agent: "auto", Text: "tag the next release"}); err != nil || r.Agent != "releaser" {
-		t.Fatalf("@auto with no client = %+v, %v", r, err)
+	if r, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-free", Agent: "*", Text: "tag the next release"}); err != nil || r.Agent != "releaser" {
+		t.Fatalf("open with no client = %+v, %v", r, err)
 	}
-	for _, c := range []struct{ id, agent string }{{"t-asked", "auto"}, {"t-default", ""}} {
+	for _, c := range []struct{ id, agent string }{{"t-asked", "*"}, {"t-default", ""}} {
 		r, err := p.Converse(ctx, tenant, platform.Turn{ID: c.id, Agent: c.agent, Text: "tag the next release", Client: "app"})
 		if err == nil && r.Agent != "helper" {
 			t.Fatalf("%s through the client was answered by %s, off its list", c.id, r.Agent)
 		}
-		if err != nil && !errors.Is(err, pick.ErrNoAgent) {
+		if err != nil && !errors.Is(err, platform.ErrNoTakers) {
 			t.Fatalf("%s through the client = %v", c.id, err)
 		}
 	}
-	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ghost", Agent: "auto", Text: "x", Client: "ghost"}); !errors.Is(err, platform.ErrForbidden) {
+	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ghost", Agent: "*", Text: "x", Client: "ghost"}); !errors.Is(err, platform.ErrForbidden) {
 		t.Fatalf("a turn through a client that is not there = %v", err)
 	}
 }
@@ -831,14 +859,12 @@ func TestAMoveNeverLeavesWhatItsProjectsRunWithoutTheirAgent(t *testing.T) {
 	}
 }
 
-// @auto for a client's message that nothing fits hands it to the nearest
-// default that names an agent, the client's own before the project's chain,
-// as @auto in a thread does.
-func TestAClientsAutoFallsBackToTheNearestNamedDefault(t *testing.T) {
+// A client's message no agent takes is not handed to a named default: it
+// waits.
+func TestAClientsMessageNoAgentTakesWaits(t *testing.T) {
 	p := start(t, call.Limits{})
 	c := clients.Client{Tenant: tenant, ID: "docs", Surface: clients.Slack, Enabled: true, DefaultAgent: "lead", Agents: []string{clients.AnyAgent}}
-	got, err := p.AutoFor(t.Context(), c, "qqqq zzzz")
-	if err != nil || got.Agent != "lead" {
-		t.Fatalf("@auto with nothing fitting = %+v, %v; want the client's default", got, err)
+	if got, err := p.JoinFor(t.Context(), c, "qqqq zzzz"); !errors.Is(err, platform.ErrNoTakers) {
+		t.Fatalf("joining with nothing fitting = %+v, %v; want ErrNoTakers", got, err)
 	}
 }

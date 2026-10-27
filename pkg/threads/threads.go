@@ -104,16 +104,18 @@ const (
 
 // How a thread's selected agents answer an untagged message.
 const (
-	// ModeBestFit: the one of them that fits the message best, as @auto
-	// picks, among them alone.
-	ModeBestFit = "best_fit"
+	// ModeJoin: each of them decides for itself whether to take the
+	// message (pkg/join), and each that does answers.
+	ModeJoin = "join"
+	// modeBestFit is what ModeJoin was written as when one agent was picked.
+	modeBestFit = "best_fit"
 	// ModeAll: each of them, side by side, at most MaxRuns.
 	ModeAll = "all"
 )
 
 // Routing is a thread's selected agents and how they answer, normalized:
 // each agent once, in the order given, and a mode only with two or more,
-// ModeBestFit when none is named. It refuses more than MaxRouted agents, a
+// ModeJoin when none is named. It refuses more than MaxRouted agents, a
 // mode that is neither, ModeAll over more than MaxRuns agents, and a name no
 // agent can have (ErrInvalid).
 func Routing(agents []string, mode string) ([]string, string, error) {
@@ -123,14 +125,17 @@ func Routing(agents []string, mode string) ([]string, string, error) {
 			out = append(out, a)
 		}
 	}
+	if mode == modeBestFit {
+		mode = ModeJoin
+	}
 	switch {
 	case len(out) > MaxRouted:
 		return nil, "", fmt.Errorf("%w: a thread selects at most %d agents", ErrInvalid, MaxRouted)
-	case mode != "" && mode != ModeBestFit && mode != ModeAll:
-		return nil, "", fmt.Errorf("%w: a mode is best_fit or all", ErrInvalid)
+	case mode != "" && mode != ModeJoin && mode != ModeAll:
+		return nil, "", fmt.Errorf("%w: a mode is join or all", ErrInvalid)
 	}
 	for _, a := range out {
-		if a == AutoName || !projects.ValidDefault(a) {
+		if a == OpenName || a == AutoName || !projects.ValidDefault(a) {
 			return nil, "", fmt.Errorf("%w: no agent can be called %q", ErrInvalid, a)
 		}
 	}
@@ -138,10 +143,10 @@ func Routing(agents []string, mode string) ([]string, string, error) {
 		return out, "", nil
 	}
 	if mode == "" {
-		mode = ModeBestFit
+		mode = ModeJoin
 	}
 	if mode == ModeAll && len(out) > MaxRuns {
-		return nil, "", fmt.Errorf("%w: at most %d agents answer one message side by side; select fewer, or best_fit", ErrInvalid, MaxRuns)
+		return nil, "", fmt.Errorf("%w: at most %d agents answer one message side by side; select fewer, or join", ErrInvalid, MaxRuns)
 	}
 	return out, mode, nil
 }
@@ -198,11 +203,11 @@ type Thread struct {
 	Visibility Visibility `json:"visibility"`
 	// Participants are who takes part, in the order they joined.
 	Participants []Participant `json:"participants"`
-	// Default answers an untagged message here: an agent, or "auto". ""
+	// Default answers an untagged message here: an agent, or OpenName. ""
 	// inherits from the channel.
 	Default string `json:"default,omitempty"`
 	// Agents are the agents selected to answer the thread's untagged
-	// messages, at most MaxRouted, and Mode how: ModeBestFit, the one that
+	// messages, at most MaxRouted, and Mode how: ModeJoin, the one that
 	// fits each message best, or ModeAll, each of them side by side. A
 	// message's tags win over them. Mode is "" with fewer than two.
 	Agents []string `json:"agents,omitempty"`
@@ -275,7 +280,7 @@ type AnswerRef struct {
 type Mention struct {
 	// Kind is agent, person, sme, skill or role.
 	Kind string `json:"kind"`
-	// Name is the agent ("auto" for @auto), the person's subject, the topic
+	// Name is the agent ("*" for every agent asked), the person's subject, the topic
 	// ("" for every expert), the skill or the role. A person nobody goes by
 	// keeps the handle as written.
 	Name string `json:"name"`
@@ -389,7 +394,7 @@ func (p Participant) validate() error {
 		return fmt.Errorf("%w: a participant is a person or an agent", ErrInvalid)
 	case strings.TrimSpace(p.Name) == "" || utf8.RuneCountInString(p.Name) > MaxName || !oneLine(p.Name):
 		return fmt.Errorf("%w: a participant is named on one line of at most %d characters", ErrInvalid, MaxName)
-	case p.Kind == Agent && !projects.ValidDefault(p.Name):
+	case p.Kind == Agent && (p.Name == OpenName || !projects.ValidDefault(p.Name)):
 		return fmt.Errorf("%w: no agent can be called %q", ErrInvalid, p.Name)
 	case p.Kind == Agent && p.Owner:
 		return fmt.Errorf("%w: a thread is started by a person", ErrInvalid)
@@ -417,7 +422,7 @@ func (t Thread) validate() error {
 	case !validDefault(t.Default):
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
 	case !validRouting(t.Agents, t.Mode):
-		return fmt.Errorf("%w: a thread selects at most %d agents, best_fit or all", ErrInvalid, MaxRouted)
+		return fmt.Errorf("%w: a thread selects at most %d agents, join or all", ErrInvalid, MaxRouted)
 	case len(t.Participants) > MaxHeld:
 		return fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	case t.CreatedBy != "" && strings.TrimSpace(t.CreatedBy) == "":

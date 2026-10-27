@@ -117,9 +117,9 @@ func TestBuiltinCompatibilityKeepsAnOldProjectRoutingGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selected, err := p.Pick(ctx, "acme", "", "runs failures alerts")
-	if err != nil || selected.Agent != "warp-analyst" {
-		t.Fatalf("old routing grant = %+v, %v", selected, err)
+	ds, err := p.Route(ctx, "acme", "", "runs failures alerts")
+	if err != nil || len(ds) != 1 || ds[0].Agent != "warp-analyst" {
+		t.Fatalf("old routing grant = %+v, %v", ds, err)
 	}
 	if err := p.Available("acme", "", "humagen-analyst"); err == nil {
 		t.Fatal("old allow-list granted the new handle")

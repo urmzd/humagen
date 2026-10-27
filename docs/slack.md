@@ -34,9 +34,9 @@ The app works around each of these and says where in its README.
 | Missing | Effect today | Proposal |
 |---------|--------------|----------|
 | `actor` on `POST /api/runs` for anyone | Runs are recorded as the Slack person only when the app's client maps them (`act_as`, see [clients](clients.md#people-a-slack-app-answers-for)); anyone else's run is the app's | Built for mapped people. A Slack person nobody mapped stays unnamed on purpose |
-| `client` on `POST /api/runs`, or a machine bound to a client | The client's run limits and allow-list are not applied by the platform, except that `auto` for a person the client acts for (`act_as`) picks only among the client's agents. The app sends `auto` only for a client whose list is `*` | Bind a machine credential to one client (a `client` claim, or a `client_id` on the token mapped in the client record) so the platform places its runs as it places webhook runs |
+| `client` on `POST /api/runs`, or a machine bound to a client | The client's run limits and allow-list are not applied by the platform, except that `*` for a person the client acts for (`act_as`) asks only the client's agents whether to join. The app sends `*` only for a client whose list is `*` | Bind a machine credential to one client (a `client` claim, or a `client_id` on the token mapped in the client record) so the platform places its runs as it places webhook runs |
 | `metadata` on `POST /api/runs` | The Slack team, channel and thread a run answers are not on the run; the app derives them from the run id instead | Accept a bounded `metadata` map (string keys and values, a few hundred bytes) and return it on the run, so a surface can find its own place without encoding it in the idempotency key |
-| A picker that knows a client's allow-list | A client with a list and no default answers nothing, and `@auto`, or a default of `auto`, is not sent for a client with a list: the platform would pick past it | `GET /api/pick?client=` and the same rule in `POST /api/runs` |
+| A router preview that knows a client's allow-list | A client with a list and no default answers nothing, and a default of `*` is not sent for a client with a list: the platform would ask agents past it | `GET /api/join?client=` and the same rule in `POST /api/runs` |
 | The run a retry started, in the resolve response | Retry from Slack starts its own run and acknowledges the inbox part | Return `{message, run}` from `POST /api/inbox/{id}/parts/{part}/resolve` |
 | A stream of inbox notices alone | The app subscribes to a topic no agent can have | `GET /api/inbox/events` |
 | Feedback with comments | Built: like and dislike open a comment modal and save the rating even when skipped | `PUT /api/runs/{id}/feedback` stores a run reference, rating, reason and comment; the run provides context; `GET` collects paginated records |
@@ -94,9 +94,9 @@ posted first, each as its person and posted only, so the room in Humagen reads a
 it did in Slack. Each message is posted once by its ts: a redelivered event
 answers `repeated` and starts nothing again. Outside a bound channel the
 client's default answers an untagged message; the client's allow-list holds
-everywhere, and a client that lists its agents treats `@auto` as a name
-outside the list. The machine reads every thread on its own surface, wherever
-it is filed, but a person it posts or answers for is held to where they may
+everywhere, and for a default of `*` only the agents on a client's list are
+asked to join. `@auto` tags nobody. The machine reads every thread on its
+own surface, wherever it is filed, but a person it posts or answers for is held to where they may
 read: someone who may not read a project's runs answers no question there,
 even on a card in a channel bound to it. A bound channel is a project's
 channel, so only people the client maps post there: anyone else who mentions

@@ -165,7 +165,7 @@ test("a popover near the left edge of a phone moves inside the gutter", () => {
   const left = phonePanel('[role="dialog"]');
   assert.equal(left, 6);
   render(
-    <Popover label="Choose who answers" align="right" up button="@auto">
+    <Popover label="Choose who answers" align="right" up button="Everyone decides">
       {() => <p>helper</p>}
     </Popover>,
   );

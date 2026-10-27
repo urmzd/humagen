@@ -374,12 +374,12 @@ test("a project's channels open their pages, and a new one is made with a name t
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({
       channels: [
-        { project: "Globex", name: "general", version: 0, created_at: at, updated_at: at, answers: { agent: "auto", from: "project:~" }, slack: { client: "slack-acme", channel: "C0123GLOBEX" } },
+        { project: "Globex", name: "general", version: 0, created_at: at, updated_at: at, answers: { agent: "*", from: "project:~" }, slack: { client: "slack-acme", channel: "C0123GLOBEX" } },
       ],
     }),
     "POST /api/projects/Globex/channels": (body) => {
       made.push(body);
-      return { project: "Globex", name: "renewals", version: 1, created_at: at, updated_at: at, answers: { agent: "auto", from: "project:~" } };
+      return { project: "Globex", name: "renewals", version: 1, created_at: at, updated_at: at, answers: { agent: "*", from: "project:~" } };
     },
   });
   const opened: string[] = [];
@@ -1179,7 +1179,7 @@ test("agents checked in a conversation's + menu are saved on the thread, and an 
     fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
     fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
     await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
-    assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 1, title: "", visibility: "private", default: "", agents: ["helper"], mode: "best_fit" });
+    assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 1, title: "", visibility: "private", default: "", agents: ["helper"], mode: "join" });
     cleanup();
 
     // Read back, the selection is the thread's, for everyone in it; a run its message did not tag was routed.
@@ -1232,7 +1232,7 @@ test("two quick changes in a conversation's + menu are saved one after the other
     "PUT /api/threads/th-00000000000000aa": (body) => {
       puts.push(body);
       const b = body as { version: number; agents: string[] };
-      const answer = { ...mine.thread, agents: b.agents, mode: "best_fit", version: b.version + 1 };
+      const answer = { ...mine.thread, agents: b.agents, mode: "join", version: b.version + 1 };
       // The first save is slow, so the second change is made while it is in flight.
       return puts.length === 1 ? new Promise((resolve) => (release = () => resolve(answer))) : answer;
     },
@@ -1282,9 +1282,9 @@ test("All of Them is offered for three agents at most, and a conversation checks
   let sel: Selection = { agents: ["a1", "a2", "a3"], mode: "all", project: "Globex", channel: "general" };
   const { rerender } = render(<PlusMenu agents={names.map((name) => ({ name }))} selection={sel} onChange={(n) => (sel = n)} onAttach={() => {}} onClose={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: /^Agents\b/ }));
-  // A fourth agent turns All of Them back to the best fit.
+  // A fourth agent turns All of Them back to Each Decides.
   fireEvent.click(screen.getByRole("checkbox", { name: /^a4/ }));
-  assert.deepEqual(sel, { agents: ["a1", "a2", "a3", "a4"], mode: "best_fit", project: "Globex", channel: "general" });
+  assert.deepEqual(sel, { agents: ["a1", "a2", "a3", "a4"], mode: "join", project: "Globex", channel: "general" });
   sel = { ...sel, agents: ["a1", "a2", "a3", "a4", "a5"] };
   rerender(<PlusMenu agents={names.map((name) => ({ name }))} selection={sel} onChange={(n) => (sel = n)} onAttach={() => {}} onClose={() => {}} />);
   const before = sel;
@@ -1342,12 +1342,12 @@ test("an answer says it was routed as its run recorded it, whatever the conversa
   try {
     const run = (id: string, agent: string, extra: object) =>
       ({ id, agent, status: "completed", answer: `${agent} answered.`, text: "q", message: "m-1", prev: "m-1", thread: "th-00000000000000aa", calls: 0, created_at: at, updated_at: at, ...extra }) as never;
-    // Nothing is selected now; one run was routed as the best fit, one as one of all, and one was tagged.
+    // Nothing is selected now; one run was routed as one that joined, one as one of all, and one was tagged.
     const read: ThreadPage = {
       ...mine,
       turns: [
         ...mine.turns,
-        { kind: "run", run: run("r4", "helper", { routed: "best_fit", picked: "Picked by @auto: matched renewals." }) },
+        { kind: "run", run: run("r4", "helper", { routed: "join", picked: "Joined on its own: matched renewals." }) },
         { kind: "run", run: run("r5", "lead", { routed: "all" }) },
         { kind: "run", run: run("r6", "helper", {}) },
       ],
@@ -1357,7 +1357,7 @@ test("an answer says it was routed as its run recorded it, whatever the conversa
       "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
     });
     render(<ThreadRoom id={read.thread.id} me="ana" initial={read} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
-    assert.ok(await screen.findByText(`${defaultCopy.chat.routedBest("helper")}. Picked by @auto: matched renewals.`));
+    assert.ok(await screen.findByText(`${defaultCopy.chat.routed("helper")}. Joined on its own: matched renewals.`));
     assert.ok(screen.getByText(defaultCopy.chat.routedAll("lead")));
     assert.equal(screen.getAllByText(/^Routed to /).length, 2, "the tagged answer says nothing of routing");
     cleanup();
@@ -1469,7 +1469,7 @@ test("the + menu returns focus to its category when leaving Agents and Projects"
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({ channels: [] }),
   });
-  const sel: Selection = { agents: [], mode: "best_fit", project: "Globex", channel: "general" };
+  const sel: Selection = { agents: [], mode: "join", project: "Globex", channel: "general" };
   render(<PlusMenu agents={[{ name: "helper" }, { name: "lead" }]} skills={[]} onSkill={() => {}} selection={sel} onChange={() => {}} onAttach={() => {}} onClose={() => {}} projects={tree} />);
   const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
   const agents = within(menu).getByRole("button", { name: /^Agents\b/ });

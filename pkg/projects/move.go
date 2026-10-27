@@ -192,7 +192,7 @@ func (s *Store) Move(tenantName, name string, version int, parent string, w Writ
 // cannot change, so it holds no move back.
 func lostByMove(t *tenant, before, after *Tree, names []string) []string {
 	lost := func(project, agent string) bool {
-		return agent != "" && agent != Auto && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
+		return agent != "" && agent != OpenDefault && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
 	}
 	var out []string
 	moved := make(map[string]bool, len(names))

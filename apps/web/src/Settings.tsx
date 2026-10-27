@@ -1,11 +1,11 @@
 import { defaultCopy } from "@humagen/components";
 import { UserIcon, PaletteIcon, ServerIcon, BotIcon, BrainIcon, GaugeIcon, PlugIcon, ShieldIcon, ScrollTextIcon, MonitorIcon, SunIcon, MoonIcon, TrashIcon } from "@humagen/render-web";
-import { type FormEvent, type MouseEvent, type ReactNode, useRef, useState } from "react";
+import { type FormEvent, type MouseEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ReadAudit } from "./ReadAudit.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { href, type SettingsSection } from "./route.ts";
-import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revision, type Settings as Workspace } from "./api.ts";
+import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revision, type RouterSettings, type Settings as Workspace } from "./api.ts";
 import { ModelChain, POLICY, chainProblem, starterPolicy } from "./ModelChain.tsx";
 import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
@@ -192,15 +192,23 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Agent routing</h1>
-                <p className={pageLede}>A message goes to the agent it tags. One that tags none goes to the default where it is posted, which can be @auto.</p>
-              </header>
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">@auto</h2>
-                <p className="text-aui-sm text-aui-muted">
-                  Matches a message to the names, descriptions and instructions of the agents available where it is posted.
-                  Names and descriptions carry more weight. When agents tie or none match, the nearest default that names an
-                  agent answers.
+                <p className={pageLede}>
+                  A message goes to the agents it tags. One that tags none goes to the default where it is posted. When
+                  that is Everyone decides, each agent available there decides for itself whether to answer, and each
+                  that does answers in the same thread. When none does, the message waits for a person to answer or tag
+                  an agent.
                 </p>
+              </header>
+              {workspace && (
+                <RouterControl
+                  key={JSON.stringify(workspace.router ?? null)}
+                  saved={workspace.router ?? { enabled: false }}
+                  canEdit={canAdmin}
+                  onSave={(router) => saveWorkspace({ router })}
+                />
+              )}
+              <section className={`${card} flex flex-col gap-3`}>
+                <h2 className="text-aui-sm font-medium text-aui-fg">{defaultCopy.workspaceDefault}</h2>
                 <p className="text-aui-sm text-aui-muted">
                   {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a project sets its own. It lives on the
                   workspace's Agents tab.
@@ -211,12 +219,12 @@ export function Settings({
               </section>
               <section className={`${card} flex flex-col gap-3`}>
                 <h2 className="text-aui-sm font-medium text-aui-fg">Agent capabilities</h2>
-                <p className="text-aui-xs text-aui-muted">Edit descriptions and instructions in Agents to change how requests are matched.</p>
+                <p className="text-aui-xs text-aui-muted">Each agent reads its description first when deciding whether to take a message. Edit them in Agents.</p>
                 {agents.length === 0 && <p className="text-aui-sm text-aui-muted">No agents configured.</p>}
                 {agents.map((a) => (
                   <div key={a.spec.name}>
                     <p className="text-aui-sm font-medium text-aui-fg">{a.spec.name}</p>
-                    <p className="text-aui-xs text-aui-muted">{a.spec.description || "Matches using its name and instructions."}</p>
+                    <p className="text-aui-xs text-aui-muted">{a.spec.tagged_only ? "Only when tagged." : a.spec.description || "Decides using its name and instructions."}</p>
                   </div>
                 ))}
               </section>
@@ -517,6 +525,92 @@ export function Settings({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Whether agents decide for themselves to take a message that names no agent,
+ * and the model that asks them. The provider is one this deployment declares;
+ * its key comes from an environment variable or a secrets manager, never from
+ * here.
+ */
+function RouterControl({ saved, canEdit, onSave }: { saved: RouterSettings; canEdit: boolean; onSave: (next: RouterSettings) => void }) {
+  const [draft, setDraft] = useState<RouterSettings>(saved);
+  const [providers, setProviders] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api
+      .modelProviders()
+      .then((all) => live && setProviders(all.filter((p) => p.declared && p.name !== "offline").map((p) => p.name)))
+      .catch(() => live && setProviders([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const problem = draft.enabled && !draft.provider ? "Choose a provider." : draft.enabled && !draft.model?.trim() ? "Name a model." : null;
+  const choices = providers ?? [];
+  // A saved provider stays listed even when this deployment no longer declares it, so the field shows what is saved.
+  const listed = draft.provider && !choices.includes(draft.provider) ? [draft.provider, ...choices] : choices;
+  return (
+    <section className={`${card} flex flex-col gap-3`} aria-label="Agents decide for themselves">
+      <SettingsFormRow
+        id="workspace-router"
+        label="Agents decide for themselves"
+        description="On, every agent available where an untagged message is posted is asked, all at once, whether it should answer. Off, no agent takes a message on its own."
+        compact
+      >
+        <SettingSwitch
+          id="workspace-router"
+          aria-describedby="workspace-router-hint"
+          checked={draft.enabled}
+          disabled={!canEdit}
+          onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
+        />
+      </SettingsFormRow>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Label text="Provider" hint="One this deployment declares.">
+          <NativeSelect
+            aria-label="Router provider"
+            value={draft.provider ?? ""}
+            disabled={!canEdit || !draft.enabled}
+            onChange={(e) => setDraft((d) => ({ ...d, provider: e.target.value || undefined }))}
+          >
+            <option value="">{providers === null ? "Loading providers" : listed.length === 0 ? "No provider declared" : "Choose a provider"}</option>
+            {listed.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </NativeSelect>
+        </Label>
+        <Label text="Model" hint="A small, fast model is enough: each agent answers yes or no.">
+          <input
+            className={field}
+            maxLength={200}
+            value={draft.model ?? ""}
+            disabled={!canEdit || !draft.enabled}
+            onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
+          />
+        </Label>
+      </div>
+      <p className="text-aui-xs text-aui-muted">
+        No credential is stored here. The provider's key comes from an environment variable or a secrets manager.
+      </p>
+      {canEdit && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {problem && dirty && <span className="text-aui-xs text-aui-bad">{problem}</span>}
+          {dirty && (
+            <button type="button" className={button} onClick={() => setDraft(saved)}>
+              Discard
+            </button>
+          )}
+          <button type="button" className={primary} disabled={!dirty || problem !== null} onClick={() => onSave(draft)}>
+            Save Routing
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 

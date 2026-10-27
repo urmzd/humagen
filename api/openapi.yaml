@@ -1480,16 +1480,17 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
-  /api/pick:
+  /api/join:
     get:
-      operationId: pickAgent
+      operationId: previewJoin
       tags: [agents]
-      summary: Preview which agent @auto would pick for a message
+      summary: Preview which agents would take a message on their own
       description: |
-        `@auto` picks among the agents available in the project by the words
-        of the message. With no match it hands the message to the nearest
-        default on the project's chain that names an agent, and with none it
-        answers 409, "no agent fits; tag one". Nothing is started.
+        Each agent available in the project that takes untagged messages
+        (its spec is not `tagged_only`) is asked, all at once, whether it
+        should be involved. Each that says yes would answer, side by side;
+        when none does, the message waits for a person. Nothing is started.
+        Agents the caller may not read are left out.
       x-permission: agents:read
       parameters:
         - {name: q, in: query, required: true, description: The message., schema: {type: string}}
@@ -1499,14 +1500,19 @@ paths:
           schema: {type: string, maxLength: 63}
       responses:
         "200":
-          description: The agent and why.
+          description: Each agent's answer.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/Choice"}
+              schema:
+                type: object
+                required: [decisions]
+                properties:
+                  decisions:
+                    type: array
+                    items: {$ref: "#/components/schemas/JoinDecision"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
 
   /api/runs:
@@ -1552,9 +1558,10 @@ paths:
         thread's (`updateThread`), the acting client's when `act_as` names
         one, the channel's (a new conversation is in `general` of its
         project), then the project's, each ancestor's nearest first, and the
-        workspace's. With none set it is 409, "tag an agent". `auto` is
-        `@auto`, which for a person a client acts for picks only among the
-        agents that client may route to. An agent not available in the
+        workspace's. With none set it is 409, "tag an agent". `*` asks every
+        agent available there whether to take it, and each that does answers
+        (for a person a client acts for, only agents that client may route
+        to); with none, 409. `auto`, as written before, reads as `*`. An agent not available in the
         conversation's project, or a default that has stopped being
         available there, is 403. So is a conversation in a project where the
         caller, or the person `act_as` names, is only a viewer: starting work
@@ -2086,7 +2093,7 @@ paths:
         through a client that maps them; no field names an author, and a
         credential acting for nobody is refused (403). What the message
         starts follows the tag rules: the agents it tags answer, at most 3,
-        and a `$skill` with no agent tagged goes to `@auto`; tagging only
+        and a `$skill` with no agent tagged asks the agents; tagging only
         people or experts notifies them; posted only, nothing answers. A
         message a person posts as themselves, as the console does, that tags
         no agent in a thread with selected agents (`agents`, `mode`) is
@@ -4975,7 +4982,7 @@ paths:
         here and below (`*` alone is every one); `allow`, when set, is the
         only agents that may run here and below, and a child can only narrow
         it; `default` answers a message that tags no agent, here and below,
-        and is an agent or `auto`. Every name is an agent in the workspace
+        and is an agent or `*`. Every name is an agent in the workspace
         that the caller may read, a named default is available where it is
         set, and an agent that lives in a project is not enabled (400). An
         agent that lives in a project the caller may not read is refused in
@@ -7817,6 +7824,9 @@ components:
           description: When set, the only people who may answer a choice or a reply, named as approvers are.
           type: array
           items: {type: string}
+        tagged_only:
+          description: The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default.
+          type: boolean
     FallbackCondition:
       description: A class of model error that moves a call on to the next model. `any` cannot be combined with another.
       type: string
@@ -7859,18 +7869,29 @@ components:
         created_by_name:
           description: What whoever saved it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject.
           type: string
-    Choice:
-      description: Which agent @auto would pick for a message, and why.
+    RouterSettings:
+      description: |
+        Whether each agent is asked, about a message that names no agent,
+        "should I be involved?", and the model that asks. The provider is one
+        the deployment declares; its key is a reference (an environment
+        variable or a secrets manager), never stored here. Off by default:
+        no agent takes a message on its own.
       type: object
-      required: [agent, reason]
+      required: [enabled]
+      properties:
+        enabled: {type: boolean}
+        provider: {type: string, maxLength: 64}
+        model: {type: string, maxLength: 200}
+    JoinDecision:
+      description: One agent's answer to whether it should take a message that names no agent.
+      type: object
+      required: [agent, join, reason]
       properties:
         agent: {type: string}
+        join: {type: boolean}
         reason:
-          description: 'A sentence a person reads, such as "Picked by @auto: matched billing."'
+          description: A sentence a person reads.
           type: string
-        matched:
-          type: array
-          items: {type: string}
 
     NativeNotificationItem:
       type: object
@@ -8265,12 +8286,13 @@ components:
         routed:
           description: |
             Set when the run was started by its thread's selected agents, and
-            how: `best_fit`, the one that fit best (`picked` says why), or
-            `all`, one of each selected agent. Absent for a run a tag, a
+            how: `join`, one that took it on its own (`picked` says why), or
+            `all`, one of each selected agent. Runs from before say
+            `best_fit` for `join`. Absent for a run a tag, a
             default or anything else started, and kept whatever the
             selection becomes later.
           type: string
-          enum: [best_fit, all]
+          enum: [join, best_fit, all]
         project: {type: string}
         within:
           description: |
@@ -8372,8 +8394,9 @@ components:
       properties:
         agent:
           description: |
-            Who should answer: an agent, or `auto` for `@auto`, which picks
-            among the agents available where the conversation is filed. Left
+            Who should answer: an agent, or `*`, which asks every agent
+            available where the conversation is filed and starts one run for
+            each that takes it (the first is returned). Left
             out, the default the conversation's place inherits answers: the
             thread's, the acting client's, the channel's, then the project
             chain's and the workspace's.
@@ -8601,7 +8624,7 @@ components:
           maxItems: 100
           items: {$ref: "#/components/schemas/ThreadParticipant"}
         default:
-          description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set.
+          description: Answers an untagged message here, an agent or `*`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set.
           type: string
         agents:
           description: |
@@ -8789,7 +8812,7 @@ components:
           type: string
           enum: [agent, person, sme, skill, role]
         name:
-          description: The agent (`auto` for @auto, which a message that names a skill and tags no agent starts), the person's handle (as written, when nobody goes by it), the experts' topic (empty for every expert), the skill, or the role. A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent.
+          description: The agent (`*` when every agent is asked, as a message that names a skill and tags no agent does), the person's handle (as written, when nobody goes by it), the experts' topic (empty for every expert), the skill, or the role. A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent.
           type: string
         run:
           description: The run an agent's tag started.
@@ -8976,7 +8999,7 @@ components:
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
         title: {type: string, maxLength: 200}
         default:
-          description: Answers untagged messages in the thread, an agent available in the project or `auto`.
+          description: Answers untagged messages in the thread, an agent available in the project or `*`.
           type: string
         agents:
           description: Agents selected to answer the untagged messages people post in the thread as themselves (the console), at most 5, each available in the project (400; one the caller may not read is as one that does not exist). `all` takes at most 3.
@@ -9072,12 +9095,13 @@ components:
       description: |
         How a thread's selected agents answer an untagged message a person
         posts as themselves (the console):
-        `best_fit`, the one of them that fits it best, picked as `@auto`
-        picks among them alone (the run's `picked` says why), or `all`, each
-        of them side by side, at most 3. Absent with fewer than two agents
-        selected; `best_fit` when two or more are selected and none is named.
+        `join`, each of them that takes it on its own (the run's `picked`
+        says why), or `all`, each of them side by side, at most 3. Absent
+        with fewer than two agents selected; `join` when two or more are
+        selected and none is named. `best_fit`, as written before, reads as
+        `join`.
       type: string
-      enum: [best_fit, all]
+      enum: [join, all]
     ThreadUpdate:
       description: |
         A thread's title, visibility, default and selected agents, as a
@@ -9206,7 +9230,7 @@ components:
           type: string
           maxLength: 200
         default:
-          description: Answers untagged messages here, an agent or `auto`. Absent inherits from the project. One naming an agent that lives in a project the reader may not read reads as absent, here and in the project's history.
+          description: Answers untagged messages here, an agent or `*`. Absent inherits from the project. One naming an agent that lives in a project the reader may not read reads as absent, here and in the project's history.
           type: string
         slack: {$ref: "#/components/schemas/SlackBinding"}
         bound_at:
@@ -10068,7 +10092,7 @@ components:
           maxItems: 64
           items: {type: string}
         default:
-          description: Answers a message that tags no agent, here and below. An agent or `auto`. Absent inherits.
+          description: Answers a message that tags no agent, here and below. An agent, or `*` to let every agent decide. Absent inherits.
           type: string
     AgentAvailability:
       description: Which agents may run in a project.
@@ -10102,7 +10126,7 @@ components:
       required: [agent, from]
       properties:
         agent:
-          description: An agent, or `auto`.
+          description: An agent, or `*`.
           type: string
         from:
           description: "`project:<name>`, or `project:~` for the workspace."
@@ -10242,7 +10266,7 @@ components:
         message that tags none, is the root's `default`
         (`GET /api/projects/~/agents`).
       type: object
-      required: [history, history_limit, title_agent, memory_agent, memory_auto_approve, workspace_name, model_policies]
+      required: [history, history_limit, title_agent, memory_agent, memory_auto_approve, workspace_name, model_policies, router]
       properties:
         history:
           description: Whether an agent is sent the conversation so far.
@@ -10267,6 +10291,8 @@ components:
           type: array
           maxItems: 32
           items: {$ref: "#/components/schemas/ModelPolicy"}
+        router:
+          $ref: "#/components/schemas/RouterSettings"
         setup_at:
           description: Set once by the server when an admin first saves settings.
           type: string

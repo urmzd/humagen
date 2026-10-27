@@ -23,6 +23,7 @@ import {
   type ThreadTurn,
 } from "./api.ts";
 import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
+import { answersLine } from "./availability.ts";
 import { type Completion, useCompletion } from "./completion.ts";
 import { rememberSaid, saidFor } from "./conflicts.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
@@ -47,8 +48,8 @@ import { OLD_SYSTEM_SENDER } from "./legacy.ts";
 /**
  * Conversations, channels and shared threads: where people and agents work
  * together in a project. A person's message is posted as them and starts no
- * run of its own: an agent runs only when the message tags it (`@name`,
- * `@auto`, or `$skill`, which @auto answers when no agent is tagged).
+ * run of its own: an agent runs when the message tags it (`@name` or
+ * `$skill`), or, when it tags none, when the agent decides to join.
  */
 
 const words = defaultCopy.threads;
@@ -88,8 +89,7 @@ export function PersonMark({ name, size = 28 }: { name: string; size?: number })
 
 /** Who answers an untagged message in a channel, as its row in a list says it. */
 function answersShort(a: ThreadAnswers | undefined): string {
-  if (!a || !a.agent) return defaultCopy.auto.nobody;
-  return defaultCopy.auto.answers(a.agent);
+  return answersLine(a?.agent || undefined);
 }
 
 /**
@@ -339,7 +339,7 @@ function AnswerView({
       {!run.message && (
         <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
       )}
-      {/* The answer names its agent; why @auto chose it is said above it. */}
+      {/* The answer names its agent; why it joined is said above it. */}
       {(routed || run.picked) && <p className="pl-11 text-aui-xs text-aui-muted">{[routed, run.picked].filter(Boolean).join(". ")}</p>}
       <AgentTint name={run.agent}>
         <AgentMessage actions={<>{control}{actions}</>} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
@@ -492,8 +492,8 @@ export function ThreadRoom({
     // A message routed to one agent alone says only where it went, whatever the mode was.
     const alone = run.message ? turns.filter((t) => t.run?.message === run.message && t.run?.routed).length <= 1 : false;
     if (run.routed === "all") return alone ? c.routed(run.agent) : c.routedAll(run.agent);
-    // The best fit of one agent was not picked from others, and says only where it went.
-    if (run.routed === "best_fit") return run.picked ? c.routedBest(run.agent) : c.routed(run.agent);
+    // Among the selected agents, one that joined says where it went; `picked` says why it joined.
+    if (run.routed === "join" || run.routed === "best_fit") return c.routed(run.agent);
     return undefined;
   };
   const shareButton = useRef<HTMLButtonElement>(null);

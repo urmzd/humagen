@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // General is the channel every project has. It exists before anything is
@@ -39,7 +41,7 @@ type Channel struct {
 	Title string `json:"title,omitempty"`
 	// Purpose is sent to every agent answering in the channel.
 	Purpose string `json:"purpose,omitempty"`
-	// Default answers an untagged message here: an agent, or "auto". ""
+	// Default answers an untagged message here: an agent, or OpenDefault. ""
 	// inherits from the project.
 	Default string `json:"default,omitempty"`
 	// Slack binds the channel to one Slack channel of one Slack client: a
@@ -142,9 +144,9 @@ var (
 // ValidChannel reports whether a name can name a channel.
 func ValidChannel(name string) bool { return validChannel.MatchString(name) }
 
-// ValidDefault reports whether a default names an agent or "auto". Whether
+// ValidDefault reports whether a default names an agent or OpenDefault. Whether
 // that agent is available where it is set is the platform's to check.
-func ValidDefault(agent string) bool { return validDefault.MatchString(agent) }
+func ValidDefault(agent string) bool { return agent == OpenDefault || validDefault.MatchString(agent) }
 
 // channelKey is where a channel is kept. Neither a project's name nor a
 // channel's holds a "/".
@@ -274,6 +276,7 @@ func (t *tenant) loadChannel(key string, raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return fmt.Errorf("channel %q: %w", key, err)
 	}
+	c.Default = legacy.Default(c.Default)
 	if keyChannel+channelKey(c.Project, c.Name) != key {
 		return fmt.Errorf("%w: the channel %q of %q is kept under %q", ErrInvalid, c.Name, c.Project, key)
 	}
@@ -285,6 +288,7 @@ func (t *tenant) loadChannel(key string, raw json.RawMessage) error {
 // a channel of a project that is not there is refused.
 func (t *tenant) checkChannels() error {
 	for key, c := range t.channels {
+		c.Default = legacy.Default(c.Default)
 		if err := c.validate(); err != nil {
 			return fmt.Errorf("channel %q: %w", key, err)
 		}
@@ -396,6 +400,7 @@ func (s *Store) Channel(tenantName, project, name string) (Channel, error) {
 func (s *Store) CreateChannel(tenantName string, c Channel, w Writer, at time.Time) (Channel, error) {
 	c = cloneChannel(c)
 	c.Archived, c.Managed = false, ""
+	c.Default = legacy.Default(c.Default)
 	if err := c.validate(); err != nil {
 		return Channel{}, err
 	}
@@ -475,6 +480,7 @@ func (s *Store) UpdateChannel(tenantName, project, name string, version int, w W
 		return Channel{}, fmt.Errorf("%w: only the platform file manages a channel", ErrInvalid)
 	}
 	next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedBy, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedBy, cur.UpdatedAt
+	next.Default = legacy.Default(next.Default)
 	if err := next.validate(); err != nil {
 		return Channel{}, err
 	}
@@ -524,6 +530,7 @@ func (s *Store) ArchiveChannel(tenantName, project, name string, w Writer, at ti
 // declaration that changes nothing writes nothing and keeps the version.
 func (s *Store) UpsertChannel(tenantName string, c Channel, by string, at time.Time) (Channel, error) {
 	c.Archived, c.Managed = false, ManagedFile
+	c.Default = legacy.Default(c.Default)
 	if err := c.validate(); err != nil {
 		return Channel{}, err
 	}

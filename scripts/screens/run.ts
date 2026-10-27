@@ -147,7 +147,7 @@ async function twoAgents(page: Page): Promise<void> {
 /**
  * The chat's states, each a page and what a person does on it: completion
  * open after @ and after $, the + menu with two agents checked, the chips
- * with Best Fit and All of Them, a private conversation answered, its Share
+ * with Each Decides and All of Them, a private conversation answered, its Share
  * dialog, a shared conversation, and answers its selected agents were
  * routed to.
  */

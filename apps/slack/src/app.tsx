@@ -1098,6 +1098,12 @@ export class App {
           kind: "forbidden",
           message: this.copy.announcements.replyGone,
         });
+      // No agent took a message that names none: it waits for a person.
+      if (e instanceof HumagenError && e.status === 409 && /waits for a person/.test(e.message))
+        return this.refuse(job, presenter, "", {
+          kind: "forbidden",
+          message: this.copy.auto.noFit,
+        });
       // No agent was named, and nothing answers here by default.
       if (agent === "" && e instanceof HumagenError && e.status === 409)
         return this.refuse(job, presenter, "", await this.tagOne(routing));

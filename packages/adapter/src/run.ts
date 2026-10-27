@@ -142,8 +142,8 @@ export interface Run {
   prev?: string;
   /** Why the agent was chosen, when the platform picked it. */
   picked?: string;
-  /** How its thread's selected agents started it, when they did: the best fit of them, or each of them. Kept whatever the selection becomes. */
-  routed?: "best_fit" | "all";
+  /** How its thread's selected agents started it, when they did: one that decided to join, or each of them. Kept whatever the selection becomes. `best_fit` is how a run written before `join` reads. */
+  routed?: "join" | "all" | "best_fit";
   project?: string;
   /** The project's channel the conversation is in. Absent is `general`. */
   channel?: string;

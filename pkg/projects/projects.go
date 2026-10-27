@@ -455,7 +455,7 @@ type node struct {
 // platform agent available, and the built-in router answering a message that
 // tags no agent.
 func virtualRoot() Project {
-	return Project{Name: Root, Kind: Company, Members: legacyMembers(Root), Agents: Agents{Enable: []string{Everyone}, Default: Auto}}
+	return Project{Name: Root, Kind: Company, Members: legacyMembers(Root), Agents: Agents{Enable: []string{Everyone}, Default: OpenDefault}}
 }
 
 // build makes a tree. Every parent and every home must be in projects; build

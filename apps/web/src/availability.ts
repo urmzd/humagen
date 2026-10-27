@@ -10,8 +10,8 @@ import type { AgentOffer, DefaultResolved, ProjectAgentsView, ProjectView } from
 const place = defaultCopy.agentPlace;
 const auto = defaultCopy.auto;
 
-/** The built-in router's name. It is a tag and a default, never an agent. */
-export const AUTO = "auto";
+/** The default that lets every agent available decide for itself whether to answer. It is never an agent. */
+export const AUTO = "*";
 /** Every platform agent, alone in an enable list. */
 export const EVERYONE = "*";
 

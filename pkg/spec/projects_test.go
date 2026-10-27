@@ -282,7 +282,7 @@ func TestWhatHumagenWritesOfATreeItReads(t *testing.T) {
 		Instructions: &instr,
 		Projects: []Project{
 			{Name: "Field", Title: "Field engineering", Kind: ProjectTeam, Instructions: "Never promise dates.\nBe brief.",
-				Channels: []Channel{{Name: "renewals", Purpose: "Renewal work", Default: "auto"}}, Experts: []Expert{{Who: "role:billing", Topics: []string{"billing"}}}},
+				Channels: []Channel{{Name: "renewals", Purpose: "Renewal work", Default: "*"}}, Experts: []Expert{{Who: "role:billing", Topics: []string{"billing"}}}},
 			{Name: "Globex", Parent: "Field", Kind: "partner", Account: &Account{Customer: "Globex Inc", ExternalID: "sf:1", URL: "https://crm.example.com/g"},
 				Members: []Member{{Who: "*", Role: RoleViewer}, {Who: "okta|00u1ana", Role: RoleOwner}}},
 		},
@@ -381,7 +381,7 @@ func TestTheLanguagesBoundsAreTheProjectStores(t *testing.T) {
 			t.Errorf("default %q: the spec says %v, the store %v", agent, defaultName.MatchString(agent), projects.ValidDefault(agent))
 		}
 	}
-	if generalChannel != projects.General || autoDefault != projects.Auto || expertRolePrefix != projects.RolePrefix {
+	if generalChannel != projects.General || openDefault != projects.OpenDefault || expertRolePrefix != projects.RolePrefix {
 		t.Error("general, auto or role: is written differently in the spec and the store")
 	}
 	if RootParent != projects.RootAddress {

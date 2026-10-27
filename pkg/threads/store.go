@@ -16,6 +16,8 @@ import (
 
 	"github.com/urmzd/humagen/internal/textindex"
 	"github.com/urmzd/humagen/pkg/state"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // namespace is where every tenant's threads and messages are kept, so a
@@ -121,6 +123,10 @@ func Open(st state.Store) (*Store, error) {
 			var rec Thread
 			if err := json.Unmarshal(raw, &rec); err != nil {
 				return fmt.Errorf("thread %q: %w", key, err)
+			}
+			rec.Default = legacy.Default(rec.Default)
+			if rec.Mode == modeBestFit {
+				rec.Mode = ModeJoin
 			}
 			if threadKey(rec.ID) != key {
 				return fmt.Errorf("%w: the thread %q is kept under %q", ErrInvalid, rec.ID, key)
@@ -333,6 +339,7 @@ func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, erro
 		}
 	}
 	t.Version, t.CreatedAt, t.UpdatedAt = 1, at, at
+	t.Default = legacy.Default(t.Default)
 	if err := t.validate(); err != nil {
 		return Thread{}, err
 	}
@@ -390,6 +397,7 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	}
 	next.Version, next.UpdatedAt = th.rec.Version+1, at
+	next.Default = legacy.Default(next.Default)
 	if err := next.validate(); err != nil {
 		return Thread{}, err
 	}
@@ -645,6 +653,7 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 		return Thread{}, fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
 	}
 	next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedAt
+	next.Default = legacy.Default(next.Default)
 	if err := next.validate(); err != nil {
 		return Thread{}, err
 	}
@@ -791,6 +800,7 @@ func (s *Store) Share(tenantName, id string, version int, project, channel, def 
 	case len(next.Participants) > MaxHeld:
 		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	}
+	next.Default = legacy.Default(next.Default)
 	if err := next.validate(); err != nil {
 		return Thread{}, err
 	}

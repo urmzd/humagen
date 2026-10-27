@@ -293,7 +293,7 @@ func TestRoutingIsKept(t *testing.T) {
 		rec.Agents, rec.Mode = []string{"scribe", "ignite"}, threads.ModeAll
 		th, _ := start(t, s, "acme", rec, msg("dana", "both of you"))
 		got, err := s.Update("acme", th.ID, th.Version, t0, func(t *threads.Thread) error {
-			t.Agents, t.Mode = []string{"scribe", "ignite", "lead"}, threads.ModeBestFit
+			t.Agents, t.Mode = []string{"scribe", "ignite", "lead"}, threads.ModeJoin
 			return nil
 		})
 		if err != nil || got.Version != th.Version+1 {
@@ -303,7 +303,7 @@ func TestRoutingIsKept(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if kept, _ := everything(t, again, "acme", th.ID); !reflect.DeepEqual(kept.Agents, []string{"scribe", "ignite", "lead"}) || kept.Mode != threads.ModeBestFit {
+		if kept, _ := everything(t, again, "acme", th.ID); !reflect.DeepEqual(kept.Agents, []string{"scribe", "ignite", "lead"}) || kept.Mode != threads.ModeJoin {
 			t.Fatalf("read back, the selection is %v %q", kept.Agents, kept.Mode)
 		}
 		if _, err := again.Update("acme", th.ID, got.Version, t0, func(t *threads.Thread) error {

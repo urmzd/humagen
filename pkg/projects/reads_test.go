@@ -91,7 +91,7 @@ func TestKeepNarrowsAPageAndItsCursor(t *testing.T) {
 // it, and the tree is as it was.
 func TestAMoveNeverStrandsADefault(t *testing.T) {
 	s := field(t)
-	setAgents(t, s, "", projects.Agents{Enable: []string{}, Default: projects.Auto}, admin)
+	setAgents(t, s, "", projects.Agents{Enable: []string{}, Default: projects.OpenDefault}, admin)
 	setAgents(t, s, "Field", projects.Agents{Enable: []string{"field-helper"}}, admin)
 	setAgents(t, s, "Globex", projects.Agents{Enable: []string{}, Default: "field-helper"}, admin)
 	globex, _ := s.Get("acme", "Globex")

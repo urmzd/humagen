@@ -52,7 +52,7 @@ func TestTheFilesAgentsAndHomesLand(t *testing.T) {
 		t.Fatal("availability does not follow the file")
 	}
 	root := tree.Root()
-	if root.Agents.Default != projects.Auto || !slices.Contains(root.FileOwns, projects.FieldAgents) {
+	if root.Agents.Default != projects.OpenDefault || !slices.Contains(root.FileOwns, projects.FieldAgents) {
 		t.Fatalf("the root = %+v", root)
 	}
 	if h, _ := p.Projects.History("acme", "Globex", 0, 0); len(h) != 2 {

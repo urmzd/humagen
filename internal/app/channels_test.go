@@ -36,7 +36,7 @@ func TestTheFilesChannelsAndExpertsMergeIntoTheTree(t *testing.T) {
 		}
 	}
 	renewals, err := p.Projects.Channel(tenant, "Globex", "renewals")
-	if err != nil || renewals.Managed != projects.ManagedFile || renewals.Version != 1 || renewals.Default != "auto" || renewals.Purpose != "Renewal work" {
+	if err != nil || renewals.Managed != projects.ManagedFile || renewals.Version != 1 || renewals.Default != "*" || renewals.Purpose != "Renewal work" {
 		t.Fatalf("the file's channel = %+v, %v", renewals, err)
 	}
 	if bound, ok := p.Projects.BoundTo(tenant, "slack-acme", "C0123GLOBEX"); !ok || bound.Name != "renewals" {

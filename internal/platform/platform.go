@@ -63,6 +63,7 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
@@ -190,6 +191,10 @@ type Config struct {
 	Log          *slog.Logger
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
+	// Router, when set, asks a workspace's agents whether to take a message
+	// that names none (pkg/join), in place of the model the workspace's
+	// settings name. A nil Asker for a workspace asks nobody there.
+	Router func(tenant string) join.Asker
 	// Ext is what a program built on humagen adds: model providers, tool
 	// sources and MCP tool providers. The zero value adds nothing.
 	Ext Extensions

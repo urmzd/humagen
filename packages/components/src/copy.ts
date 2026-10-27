@@ -853,7 +853,7 @@ export const defaultCopy = {
     brought: "Result posted to the source conversation.",
     bringFailed: "The result could not be posted.",
     cancel: "Cancel",
-    bestFit: "Best Fit",
+    join: "Each Decides",
     all: "All Selected Agents",
     mode: "Who answers",
   },
@@ -1928,7 +1928,6 @@ export const defaultCopy = {
     empty: "No agent can be asked here yet.",
     handle: (name: string) => `@${name}`,
   },
-  /** @auto, the built-in router, and who answers a message that tags no agent. */
   /** The chat bar's + menu and what it selects for a conversation. */
   chat: {
     /** The + button, which opens the menu. */
@@ -1975,8 +1974,8 @@ export const defaultCopy = {
     removeProject: (where: string) => `Remove ${where}`,
     /** How an untagged message goes to two agents or more. */
     routing: "How messages are routed",
-    bestFit: "Best Fit",
-    bestFitHint: "One of them answers each message: the one that fits it best.",
+    join: "Each Decides",
+    joinHint: "Each of them decides whether to take a message. Each that does answers.",
     all: "All of Them",
     allHint: "Each of them answers every message, side by side.",
     allMax: (n: number) =>
@@ -1989,11 +1988,10 @@ export const defaultCopy = {
     /** The chat bar's prompt with nothing selected, with one agent, and with several. */
     placeholder: "Message, or @ an agent",
     placeholderOne: (agent: string) => `Message ${agent}`,
-    placeholderBest: (_n: number) => "Message, and the agent that fits best answers",
+    placeholderJoin: (_n: number) => "Message, and each agent that decides to answers",
     placeholderAll: (n: number) =>
       n === 2 ? "Message, and both agents answer" : `Message, and all ${n} agents answer`,
     /** Under an answer that went to an agent because it was selected, not tagged. */
-    routedBest: (agent: string) => `Routed to ${agent}, the best fit`,
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
     /** Home's suggestions, as a list. */
@@ -2001,14 +1999,18 @@ export const defaultCopy = {
     /** The selection could not be saved on the conversation. */
     saveFailed: "The conversation's agents could not be saved. Try again.",
   },
+  /**
+   * Who answers a message that tags no agent. The default `*` lets every
+   * agent available here decide for itself whether to answer.
+   */
   auto: {
-    handle: "@auto",
-    description: "Picks the agent that fits, from the agents available here.",
+    handle: "Everyone decides",
+    description: "Each agent available here decides for itself whether to answer.",
     /** Under the composer: who answers a message that tags nobody. */
     answers: (handle: string) => `@${handle} answers`,
     nobody: "Nobody answers; tag an agent",
-    /** @auto matched nothing, and no default on the way up names an agent. */
-    noFit: "No agent fits; tag one.",
+    /** No agent took the message, so it waits for a person. */
+    noFit: "No agent took it. It waits for a person to answer or tag an agent.",
     /** Nothing answers here by default, so the person names an agent. */
     tagOne: (example?: string) => `Tag an agent, for example @${example ?? "name"}.`,
     /** Where a default comes from: "from Field". */
@@ -2017,9 +2019,9 @@ export const defaultCopy = {
     choose: "Choose who answers",
     /** Marks the agent that answers untagged messages where the person is. */
     defaultChip: "Default",
-    /** @auto is chosen, or is the default, and has picked. */
-    picks: (agent: string) => `@auto picks @${agent}`,
-    picksWho: "@auto picks who answers",
+    /** Everyone decides is the default, and an agent has joined. */
+    picks: (agent: string) => `@${agent} joined on its own`,
+    picksWho: "Agents decide for themselves who answers",
     /** The composer's prompt with nobody to answer yet. */
     tagToAsk: "Tag an agent to ask",
   },
@@ -2149,7 +2151,7 @@ export const defaultCopy = {
     ask: "Ask",
     attach: "Attach a File",
     answeredBy: "Answered by",
-    anyAgent: "Whoever fits best",
+    anyAgent: "Agents decide for themselves",
     startHere: "Start here",
     /** Each way to start. `slack` is its button on the Slack Home tab, where it has one. */
     starts: {
@@ -2363,8 +2365,13 @@ export const defaultCopy = {
         "Answers a message that tags no agent, here and below. A project below can set its own.",
       inherit: "Inherit",
       inherits: (agent: string, from: string) => `Inherits @${agent} from ${from}`,
+      /** The default inherited is `*`: every agent available decides for itself. */
+      inheritsDecide: (from: string) => `Inherits Everyone decides from ${from}`,
       nobody: "Nobody answers untagged messages here. A message has to tag an agent.",
       answers: (agent: string) => `@${agent} answers untagged messages here.`,
+      /** The default here is `*`. */
+      decide:
+        "Each agent available here decides for itself whether to answer an untagged message. When none does, it waits for a person.",
       enable: "Enable",
       enableHint:
         "Company agents this project enables for itself and everything below. It adds to what the projects above enable.",
