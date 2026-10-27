@@ -309,6 +309,9 @@ type Platform struct {
 	publicationGuards []ConversationPublicationGuard
 	// moves serialize starting a thread's runs with moving the thread.
 	moves threadLocks
+	// projectForkLocks serialize destination copies independently of the
+	// conversation placement locks acquired while capturing archives.
+	projectForkLocks threadLocks
 	// afterAccept, when set, runs between a run's acceptance and its record.
 	// Only tests set it, to stand for a loaded machine.
 	afterAccept func(envelope.Tag)

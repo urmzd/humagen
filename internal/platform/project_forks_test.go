@@ -275,6 +275,61 @@ func TestProjectForkResumeRechecksSourceAccessAfterRevocation(t *testing.T) {
 	}
 }
 
+func TestProjectForkArchivesDoNotShareConversationLockStripe(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		p, err := platform.New(platform.Config{Workspace: t.TempDir(), Backends: platform.Backends{State: open(t)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		projectForkSource(t, p)
+		// This ID and project-fork:Copy share placement lock stripe 20.
+		// An archive must not recursively acquire its conversation's stripe.
+		_, _, err = p.Threads.Start(tenant,
+			threads.Thread{ID: "th-0000000000000008", Project: "Field", Channel: "general", Visibility: threads.Shared},
+			threads.Message{By: admin.Subject, Text: "archive without locking itself"}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		type result struct {
+			view platform.ProjectForkOperation
+			err  error
+		}
+		finished := make(chan result, 2)
+		ctx := t.Context()
+		for range 2 {
+			go func() {
+				view, err := p.ForkProject(ctx, admin, "Field", platform.ProjectForkInput{Name: "Copy", ArchiveConversations: true})
+				finished <- result{view, err}
+			}()
+		}
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		var operation string
+		for range 2 {
+			select {
+			case got := <-finished:
+				if got.err != nil || got.view.State != "ready" || got.view.Archives != 1 {
+					t.Fatalf("archive fork: %+v %v", got.view, got.err)
+				}
+				if operation != "" && got.view.ID != operation {
+					t.Fatal("concurrent retries created different fork operations")
+				}
+				operation = got.view.ID
+			case <-timer.C:
+				t.Fatal("archive fork blocked on a colliding conversation lock stripe")
+			}
+		}
+		rows, _, err := p.ThreadPageAs(admin, runs.ThreadQuery{Projects: []string{"Copy"}})
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("archive rows: %+v %v", rows, err)
+		}
+		archive, err := p.ThreadRecord(tenant, rows[0].ID)
+		if err != nil || !archive.ReadOnly || archive.Fork == nil || len(archive.Fork.Context) != 1 || archive.Fork.Context[0].Text != "archive without locking itself" {
+			t.Fatalf("archive lost passive history: %+v %v", archive, err)
+		}
+	})
+}
+
 func TestProjectForkExplicitArchivesArePassiveConfinedAndReplayable(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := &faultyIn{Store: open(t)}
