@@ -336,3 +336,7 @@ and sends nothing. A project change immediately withholds old skill rows and
 completion options while the new project loads; refused reads offer no skill.
 DOM and native browser states cover root categories, nested choices, keyboard
 Back/Escape, draft and file preservation, and explicit message submission.
+
+Validation: 607 console tests passed; all 292 phone/desktop screen captures
+passed, plus 15 dark captures at 320, 768 and 1440px. The eight showcase images
+were refreshed from the reproducible screen fixtures.
