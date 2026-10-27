@@ -2110,7 +2110,8 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 		}
 	}
 	recs, elsewhere := p.Threads.Summaries(tenant, func(th threads.Thread) bool {
-		return (in == nil || in[th.Project]) && (q.Channel == "" || th.Channel == q.Channel)
+		// An archived conversation leaves every list until it comes back.
+		return th.Archive == nil && (in == nil || in[th.Project]) && (q.Channel == "" || th.Channel == q.Channel)
 	})
 	byID := map[string]*ThreadSummary{}
 	var order []*ThreadSummary

@@ -41,8 +41,8 @@ const KIND_SHAPE = /^[a-z][a-z0-9-]{0,31}$/;
 /** A kind as an address names it, or nothing when it is not shaped as one. */
 export const kindParam = (value: string | null | undefined): ProjectKindFilter | undefined => (value && KIND_SHAPE.test(value) ? value : undefined);
 
-export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "models" | "limits" | "connections" | "access" | "read-audit";
-export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "models", "limits", "connections", "access", "read-audit"];
+export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "models" | "limits" | "connections" | "access" | "read-audit" | "deletions";
+export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "models", "limits", "connections", "access", "read-audit", "deletions"];
 
 export type ConversationPanel = "activity" | "context" | "people" | "deliverables";
 const CONVERSATION_PANELS: ConversationPanel[] = ["activity", "context", "people", "deliverables"];

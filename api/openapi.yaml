@@ -2501,6 +2501,109 @@ paths:
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/archive:
+    post:
+      operationId: archiveThread
+      tags: [threads]
+      summary: Archive a conversation, scheduling its deletion
+      description: Hides the conversation from every list. It joins the admin deletion queue 30 days later, or at once with `delete_now`. Nothing is deleted until an admin approves it. Takes what changing the thread takes.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                delete_now: {type: boolean}
+      responses:
+        "200":
+          description: The archived thread.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: unarchiveThread
+      tags: [threads]
+      summary: Bring an archived conversation back and cancel its deletion
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: The thread, no longer archived.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/deletions:
+    get:
+      operationId: listDeletions
+      tags: [threads]
+      summary: List archived conversations waiting on deletion approval
+      description: Every archived conversation in the workspace, those due for approval first. One is due when deletion was asked for, or 30 days after it was archived.
+      x-permission: projects:govern
+      responses:
+        "200":
+          description: The deletion queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deletions]
+                additionalProperties: false
+                properties:
+                  deletions:
+                    type: array
+                    items: {$ref: "#/components/schemas/Deletion"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/deletions/{id}/approve:
+    post:
+      operationId: approveDeletion
+      tags: [threads]
+      summary: Delete an archived conversation that is due
+      description: Removes its messages and keeps a tombstone so it never shows again. Its runs stay in the run journal, hidden with it.
+      x-permission: projects:govern
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "204": {description: Deleted.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/deletions/{id}/reject:
+    post:
+      operationId: rejectDeletion
+      tags: [threads]
+      summary: Keep an archived conversation and bring it back
+      x-permission: projects:govern
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "204": {description: Brought back.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/threads/{id}/participants:
     put:
       operationId: updateThreadParticipants
@@ -8512,6 +8615,7 @@ components:
         mode: {$ref: "#/components/schemas/ThreadMode"}
         surface: {$ref: "#/components/schemas/ThreadSurface"}
         fork: {$ref: "#/components/schemas/ThreadFork"}
+        archive: {$ref: "#/components/schemas/ThreadArchive"}
         announcement:
           description: The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it.
           type: string
@@ -8615,6 +8719,33 @@ components:
         agents: {type: integer, minimum: 0, maximum: 20}
         memory: {type: integer, minimum: 0, maximum: 100}
         archives: {type: integer, minimum: 0, maximum: 20}
+    ThreadArchive:
+      description: Set while a conversation is archived; it joins the deletion queue at delete_after, or at once when requested.
+      type: object
+      additionalProperties: false
+      required: [by, at, delete_after]
+      properties:
+        by: {type: string}
+        at: {type: string, format: date-time}
+        delete_after: {type: string, format: date-time}
+        requested: {type: boolean}
+        deleted: {type: string, format: date-time}
+        deleted_by: {type: string}
+    Deletion:
+      description: An archived conversation waiting on an admin to approve its deletion.
+      type: object
+      additionalProperties: false
+      required: [id, title, project, archived_by, archived_at, delete_after, requested, due, messages]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        project: {type: string}
+        archived_by: {type: string}
+        archived_at: {type: string, format: date-time}
+        delete_after: {type: string, format: date-time}
+        requested: {type: boolean}
+        due: {type: boolean}
+        messages: {type: integer, minimum: 0}
     ThreadFork:
       description: Immutable passive history. Access to every source conversation remains required. It contains no executable actions or approvals.
       type: object

@@ -75,20 +75,37 @@ test("after the saved preferences could not be read, a mute reads them again, an
   assert.equal(result.current.prefsRead, "read");
 });
 
+/** Opens a conversation's ⋯ menu and picks Pin or Unpin, as a person does. */
+async function choose(title: string, item: "Pin" | "Unpin", init?: object) {
+  // The row can be drawn again while the saved preferences arrive, so the
+  // menu is opened on whichever trigger is on the page by then.
+  let entry: HTMLElement | undefined;
+  await waitFor(() => {
+    const trigger = screen.getByRole("button", { name: `Manage ${title}` });
+    if (trigger.getAttribute("aria-expanded") !== "true") {
+      trigger.focus();
+      fireEvent.click(trigger);
+    }
+    entry = screen.getByRole("menuitem", { name: new RegExp(`^${item}`) });
+  });
+  fireEvent.click(entry!, init);
+}
+const manage = (title: string) => screen.findByRole("button", { name: `Manage ${title}` });
+const pinnedRegion = () => screen.queryByRole("region", { name: "Pinned" });
+
 test("a pin that cannot be saved goes back, and the sidebar says so beside the task", async () => {
   net = stubFetch({
     "GET /api/preferences": () => saved,
     "GET /api/threads": () => ({ threads: [task("t1", "Quarterly report")], next: null }),
   });
   render(<Pins />);
-  fireEvent.click(await screen.findByRole("button", { name: "Pin Quarterly report" }));
+  await choose("Quarterly report", "Pin");
   const note = await screen.findByText("Could not pin. Try again.");
   // The row sits over the section's label, which sticks above the first row, so the note is not hidden under it.
   assert.ok(note.closest("li")?.className.split(" ").includes("z-20"), "the row saying it is not raised");
   // PUT /api/preferences is not stubbed, so the save failed and the task is not pinned.
   assert.equal(puts().length, 1);
-  assert.ok(screen.getByRole("button", { name: "Pin Quarterly report" }));
-  assert.ok(!screen.queryByRole("button", { name: "Unpin Quarterly report" }));
+  assert.ok(!pinnedRegion(), "Pinned is still shown");
 });
 
 test("Pin says so when the saved preferences cannot be read, and works once they can be", async () => {
@@ -98,13 +115,13 @@ test("Pin says so when the saved preferences cannot be read, and works once they
   };
   net = stubFetch(routes);
   render(<Pins />);
-  fireEvent.click(await screen.findByRole("button", { name: "Pin Quarterly report" }));
+  await choose("Quarterly report", "Pin");
   await screen.findByText("Could not pin. Try again.");
   assert.equal(puts().length, 0);
 
   routes["GET /api/preferences"] = () => saved;
-  fireEvent.click(screen.getByRole("button", { name: "Pin Quarterly report" }));
-  await screen.findByRole("button", { name: "Unpin Quarterly report" });
+  await choose("Quarterly report", "Pin");
+  await screen.findByRole("region", { name: "Pinned" });
   assert.ok(!screen.queryByText("Could not pin. Try again."));
   assert.deepEqual(
     puts().map((r) => r.body),
@@ -179,17 +196,15 @@ test("pin and unpin move one active conversation and retain focus on its action"
   });
   const visited: Route[] = [];
   render(<Pins route={{ page: "conversation", id: "t1" }} onGo={(route) => visited.push(route)} />);
-  const pin = await screen.findByRole("button", { name: "Pin Quarterly report" });
-  pin.focus();
-  fireEvent.click(pin);
-  const unpin = await screen.findByRole("button", { name: "Unpin Quarterly report" });
-  await waitFor(() => assert.equal(document.activeElement === unpin, true));
-  const pinned = screen.getByRole("region", { name: "Pinned" });
+  await choose("Quarterly report", "Pin");
+  const pinned = await screen.findByRole("region", { name: "Pinned" });
+  await waitFor(() => assert.equal(document.activeElement === within(pinned).getByRole("button", { name: "Manage Quarterly report" }), true));
   assert.ok(within(pinned).getByRole("button", { name: /^Quarterly report/ }).getAttribute("aria-current") === "page");
   assert.equal(screen.getAllByRole("button", { name: /^Quarterly report/ }).length, 1);
   assert.equal(visited.length, 0, "pinning does not navigate away from the active conversation");
-  fireEvent.click(unpin);
-  const restored = await screen.findByRole("button", { name: "Pin Quarterly report" });
+  await choose("Quarterly report", "Unpin");
+  await waitFor(() => assert.ok(!pinnedRegion(), "Pinned is still shown"));
+  const restored = await manage("Quarterly report");
   await waitFor(() => assert.equal(document.activeElement === restored, true));
   assert.equal(screen.queryByRole("region", { name: "Pinned" }), null);
   assert.equal(screen.getAllByRole("button", { name: /^Quarterly report/ }).length, 1);
@@ -205,10 +220,9 @@ test("unpinning the active conversation keeps it visible when it is older than t
     "GET /api/threads": () => ({ threads: [], next: null }),
   });
   render(<Pins threads={[current]} route={{ page: "conversation", id: "t1" }} />);
-  const unpin = await screen.findByRole("button", { name: "Unpin Older active conversation" });
-  unpin.focus();
-  fireEvent.click(unpin);
-  const pin = await screen.findByRole("button", { name: "Pin Older active conversation" });
+  await choose("Older active conversation", "Unpin");
+  await waitFor(() => assert.ok(!pinnedRegion(), "Pinned is still shown"));
+  const pin = await manage("Older active conversation");
   await waitFor(() => assert.equal(document.activeElement === pin, true));
   assert.equal(screen.queryByRole("region", { name: "Pinned" }), null);
   assert.equal(screen.getAllByRole("button", { name: /^Older active conversation/ }).length, 1);
@@ -223,11 +237,10 @@ test("keyboard unpin returns to the conversation filter when an older unselected
   });
   const visited: Route[] = [];
   render(<Pins threads={[older]} onGo={(route) => visited.push(route)} />);
-  const unpin = await screen.findByRole("button", { name: "Unpin Older pinned conversation" });
+  await manage("Older pinned conversation");
   const filter = screen.getByRole("button", { name: "Filter conversations" });
-  unpin.focus();
   // Native keyboard activation dispatches a click without a pointer click count.
-  fireEvent.click(unpin, { detail: 0 });
+  await choose("Older pinned conversation", "Unpin", { detail: 0 });
   await waitFor(() => assert.equal(document.activeElement === filter, true));
   assert.equal(Boolean(screen.queryByRole("region", { name: "Pinned" })), false);
   assert.equal(screen.queryAllByRole("button", { name: /Older pinned conversation/ }).length, 0);
@@ -245,8 +258,8 @@ test("project and conversation pins persist independently through unpinning and 
   render(<Pins />);
   fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
   await screen.findByRole("link", { name: "Launch" });
-  fireEvent.click(screen.getByRole("button", { name: "Pin Quarterly report" }));
-  await screen.findByRole("button", { name: "Unpin Quarterly report" });
+  await choose("Quarterly report", "Pin");
+  await waitFor(() => assert.deepEqual(stored.pinned, ["t1"]));
   assert.deepEqual(stored.pinned_projects, ["Launch"]);
   assert.deepEqual(stored.pinned, ["t1"]);
   cleanup();
@@ -256,7 +269,7 @@ test("project and conversation pins persist independently through unpinning and 
   fireEvent.click(pinned.getByRole("button", { name: "Unpin project Launch" }));
   await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
   assert.deepEqual(stored.pinned, ["t1"]);
-  fireEvent.click(screen.getByRole("button", { name: "Unpin Quarterly report" }));
+  await choose("Quarterly report", "Unpin");
   await waitFor(() => assert.deepEqual(stored.pinned, []));
 });
 
@@ -329,6 +342,32 @@ test("people-only and agent-only conversations show only their actual participan
   assert.ok(!person.closest("button")?.querySelector('[aria-label^="Agents:"]'));
   const agent = screen.getByRole("group", { name: "Agents: lead" });
   assert.ok(!agent.closest("button")?.querySelector('[aria-label^="People:"]'));
+});
+
+test("Archive hides a conversation at once, and Delete asks once more before queueing it for an admin", async () => {
+  net = stubFetch({
+    "GET /api/preferences": () => saved,
+    "GET /api/threads": () => ({ threads: [task("t1", "Quarterly report"), task("t2", "Old draft")], next: null }),
+    "POST /api/threads/t1/archive": () => ({}),
+    "POST /api/threads/t2/archive": () => ({}),
+  });
+  render(<Pins />);
+  fireEvent.click(await manage("Quarterly report"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /^Archive/ }));
+  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /^Quarterly report/ }), "the archived row is still listed"));
+  assert.ok(screen.getByText(/Archived/));
+
+  fireEvent.click(await manage("Old draft"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /^Delete/ }));
+  assert.ok(screen.getByText(/removed once an admin approves/));
+  assert.ok(screen.queryByRole("button", { name: /^Old draft/ }), "nothing happens before the second Delete");
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /^Old draft/ })));
+  const archives = net.seen.filter((r) => r.method === "POST" && r.path.endsWith("/archive"));
+  assert.deepEqual(archives.map((r) => [r.path, (r.body as { delete_now: boolean }).delete_now]), [
+    ["/api/threads/t1/archive", false],
+    ["/api/threads/t2/archive", true],
+  ]);
 });
 
 const me: Me = {

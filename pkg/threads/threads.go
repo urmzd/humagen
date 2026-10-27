@@ -220,6 +220,9 @@ type Thread struct {
 	ReadOnly     bool   `json:"read_only,omitempty"`
 	// Fork is immutable passive history from another conversation.
 	Fork *Fork `json:"fork,omitempty"`
+	// Archive is set while the conversation is archived, and stays as a
+	// tombstone once an admin approves its deletion (SetArchive, Purge).
+	Archive *Archive `json:"archive,omitempty"`
 	// Version counts the edits made to the record: its title, visibility,
 	// default and participants. Posting, and joining by posting, leave it.
 	Version int `json:"version"`
@@ -329,6 +332,7 @@ func (t Thread) clone() Thread {
 	t.Participants = ps
 	t.Agents = slices.Clone(t.Agents)
 	t.Fork = t.Fork.clone()
+	t.Archive = t.Archive.clone()
 	if t.Surface != nil {
 		sf := *t.Surface
 		t.Surface = &sf
