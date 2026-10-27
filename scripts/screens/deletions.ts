@@ -37,22 +37,18 @@ export function conversationDeletions(call: Call) {
         await pending.getByRole("button", { name: words.approve, exact: true }).isDisabled(),
         true,
       );
-      const ready = page
-        .getByRole("listitem")
-        .filter({
-          has: page.getByText("Launch draft awaiting deletion approval", { exact: true }),
-        });
+      const ready = page.getByRole("listitem").filter({
+        has: page.getByText("Launch draft awaiting deletion approval", { exact: true }),
+      });
       assert.equal(
         await ready.getByRole("button", { name: words.approve, exact: true }).isEnabled(),
         true,
       );
     },
     after: async () => {
-      const ready = page
-        .getByRole("listitem")
-        .filter({
-          has: page.getByText("Launch draft awaiting deletion approval", { exact: true }),
-        });
+      const ready = page.getByRole("listitem").filter({
+        has: page.getByText("Launch draft awaiting deletion approval", { exact: true }),
+      });
       await ready.getByRole("button", { name: words.approve, exact: true }).click();
       await ready.waitFor({ state: "detached" });
       const response = await page.request.get(`${new URL(page.url()).origin}/api/threads/${due}`);
