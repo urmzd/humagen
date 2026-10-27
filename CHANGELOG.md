@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.28.0 (2026-10-27)
+
+### Features
+
+- unify workspace navigation and enforce source access (#99) ([c47c531](https://github.com/urmzd/humagen/commit/c47c531c136b08ba2e1bf013cd88423d8bb65311))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.27.3...v0.28.0)
+
+
 ## 0.27.3 (2026-10-27)
 
 ### Bug Fixes
