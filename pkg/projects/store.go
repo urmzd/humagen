@@ -13,6 +13,8 @@ import (
 	"unicode"
 
 	"github.com/urmzd/humagen/pkg/state"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // namespace is where every tenant's projects, history and tombstones are
@@ -182,6 +184,7 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 			return fmt.Errorf("project %q: %w", key, err)
 		}
 		p := r.project()
+		p.Agents.Default = legacy.Default(p.Agents.Default)
 		if p.Name != strings.TrimPrefix(key, keyProject) {
 			return fmt.Errorf("%w: the project %q is kept under %q", ErrInvalid, p.Name, key)
 		}

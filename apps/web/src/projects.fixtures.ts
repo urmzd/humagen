@@ -59,7 +59,7 @@ export function view(
 /** The workspace itself, as GET /api/projects/~ reads it. */
 export const workspace: ProjectView = {
   ...view("", { kind: "company", instructions: "Acme sells warehouse robots. Answer plainly." }),
-  agents: { enable: ["*"], default: "auto" },
+  agents: { enable: ["*"], default: "*" },
   depth: 0,
   path: [],
   version: 3,

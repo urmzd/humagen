@@ -361,6 +361,7 @@ func Parse(b []byte) (parsed, error) {
 			if err != nil {
 				return out, fmt.Errorf("%s: spec: %w", where, err)
 			}
+			notes = append(notes, p.Spec.adoptAutoDefaults()...)
 			for _, n := range notes {
 				out.Old = true
 				out.Notes = append(out.Notes, where+": "+n)

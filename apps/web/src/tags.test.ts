@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { insertTag, matching, tagAt, tagOptions, type TagOption } from "./tags.ts";
 
-const words = { auto: "Picks the agent that fits", experts: (t: string) => (t ? `Experts on ${t}` : "Every expert") };
+const words = { experts: (t: string) => (t ? `Experts on ${t}` : "Every expert") };
 
 test("a tag is typed where a word starts with @, never inside a word or inside code", () => {
   assert.deepEqual(tagAt("ask @ig", 7), { start: 4, query: "ig", sigil: "@" });
@@ -26,9 +26,11 @@ test("options that start with what is typed come first, then the rest that hold 
   assert.deepEqual(matching(options, "ig").map((o) => o.token), ["ignite", "ignacio"]);
   assert.deepEqual(matching(options, "sc").map((o) => o.token), ["dana"]);
   assert.deepEqual(matching(options, "sme").map((o) => o.token), []);
-  assert.equal(matching(options, "").length, 5);
+  assert.equal(matching(options, "").length, 4);
   assert.equal(matching(options, "", 2).length, 2);
-  assert.equal(options[0]?.kind, "auto");
+  // `@auto` is no tag: nobody goes by it, so it is never offered.
+  assert.equal(options[0]?.kind, "agent");
+  assert.ok(!options.some((o) => o.token === "auto"));
 });
 
 test("when more match than the list holds, agents and people each keep places in it", () => {
@@ -40,15 +42,15 @@ test("when more match than the list holds, agents and people each keep places in
   );
   const shown = matching(options, "");
   assert.equal(shown.length, 8);
-  // @auto and the first agents, the first people, then every expert and the first topic.
+  // The first agents, then the first people.
   assert.deepEqual(
     shown.map((o) => o.token),
-    ["auto", "globex-helper", "helper", "lead", "ada-okafor", "lee-wong", "priya-nair", "sam-ortiz"],
+    ["globex-helper", "helper", "lead", "ledger", "ada-okafor", "lee-wong", "priya-nair", "sam-ortiz"],
   );
   // A short list still holds one of each, in the order given.
   assert.deepEqual(
     matching(options, "", 4).map((o) => o.token),
-    ["auto", "globex-helper", "ada-okafor", "lee-wong"],
+    ["globex-helper", "helper", "ada-okafor", "lee-wong"],
   );
   // A kind with fewer matches than its share gives the rest to the others.
   assert.deepEqual(
@@ -98,5 +100,5 @@ test("a mention kind completes to @kind: and stays open for its items, which com
 
 test("retired routing never appears even with cached expert kinds and topics", () => {
  const options=tagOptions([],[],["billing"],words,{kinds:[{kind:"sme"},{kind:"expert",resolves:"experts"}],items:[{kind:"sme",name:"billing"},{kind:"expert",name:"billing"}]});
- assert.deepEqual(options.map((o)=>o.token),["auto"]);
+ assert.deepEqual(options.map((o)=>o.token),[]);
 });

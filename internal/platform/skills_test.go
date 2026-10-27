@@ -160,7 +160,7 @@ func TestASkillWithNoAgentStartsAuto(t *testing.T) {
 		t.Fatalf("the message started %+v (%s, %s)", got.Runs, got.Rule, got.Reason)
 	}
 	ms := got.Message.Mentions
-	if len(ms) != 2 || ms[1].Kind != threads.Agent || ms[1].Name != threads.AutoName || ms[1].Run != got.Runs[0].ID {
+	if len(ms) != 2 || ms[1].Kind != threads.Agent || ms[1].Name != threads.OpenName || ms[1].Run != got.Runs[0].ID {
 		t.Fatalf("the message's tags are %+v", ms)
 	}
 	run := await(t, p, got.Runs[0].ID, runs.Completed)

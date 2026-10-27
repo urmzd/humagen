@@ -11,15 +11,16 @@ import (
 
 // Names an agent list holds besides agents.
 const (
-	// AutoAgent is the built-in router, @auto: only ever a default.
-	AutoAgent = "auto"
+	// OpenDefault, as a default, lets every available agent decide for
+	// itself whether to take an untagged message. "auto" reads as it.
+	OpenDefault = EveryAgent
 	// EveryAgent, alone in an enable list, is every platform agent.
 	EveryAgent = "*"
 )
 
 // ReservedNames are the tags no agent can be named: the built-in router and
 // the tag for a project's experts. A test holds them to the directory's.
-var ReservedNames = []string{AutoAgent, "sme"}
+var ReservedNames = []string{legacy.AutoDefault, "sme"}
 
 // maxAgentList bounds an enable and an allow list, as the project store
 // does.
@@ -116,7 +117,7 @@ func checkAgents(sp PlatformSpec) error {
 		byName[p.Name] = p.Agents
 	}
 	for _, l := range levels {
-		if l.agents == nil || l.agents.Default == "" || l.agents.Default == AutoAgent {
+		if l.agents == nil || l.agents.Default == "" || l.agents.Default == OpenDefault {
 			continue
 		}
 		if why := unavailable(l.agents.Default, l.name, parents, byName, homes); why != "" {
@@ -153,8 +154,8 @@ func checkAgentLists(a Agents, known map[string]bool, blind bool, homes map[stri
 				continue
 			case n == EveryAgent:
 				return fmt.Errorf("allow: %q is only for enable; leave allow out to narrow nothing", EveryAgent)
-			case n == AutoAgent:
-				return fmt.Errorf("%s: auto is the built-in router: it is only ever a default", field)
+			case n == legacy.AutoDefault:
+				return fmt.Errorf("%s: auto is no agent; \"*\" as a default lets every agent decide", field)
 			}
 			if err := checkAgentName(n, known, blind); err != nil {
 				return fmt.Errorf("%s: %w", field, err)
@@ -165,9 +166,7 @@ func checkAgentLists(a Agents, known map[string]bool, blind bool, homes map[stri
 		}
 	}
 	switch a.Default {
-	case "", AutoAgent:
-	case EveryAgent:
-		return fmt.Errorf("default: one agent, or auto")
+	case "", OpenDefault:
 	default:
 		if err := checkAgentName(a.Default, known, blind); err != nil {
 			return fmt.Errorf("default: %w", err)
@@ -216,4 +215,33 @@ func unavailable(agent, project string, parents map[string]string, lists map[str
 		return "nothing on its chain enables it"
 	}
 	return ""
+}
+
+// adoptAutoDefaults reads every default written as "auto", the router that
+// picked one agent, as OpenDefault, and returns a note for each.
+func (sp *PlatformSpec) adoptAutoDefaults() []string {
+	var notes []string
+	adopt := func(at string, d *string) {
+		if *d == legacy.AutoDefault {
+			*d = OpenDefault
+			notes = append(notes, at+": auto still works; write \"*\"")
+		}
+	}
+	w := &sp.Workspace
+	if w.Agents != nil {
+		adopt("workspace.agents.default", &w.Agents.Default)
+	}
+	for i := range w.Channels {
+		adopt(fmt.Sprintf("workspace.channels[%d].default", i), &w.Channels[i].Default)
+	}
+	for i := range w.Projects {
+		p := &w.Projects[i]
+		if p.Agents != nil {
+			adopt(fmt.Sprintf("workspace.projects[%d].agents.default", i), &p.Agents.Default)
+		}
+		for j := range p.Channels {
+			adopt(fmt.Sprintf("workspace.projects[%d].channels[%d].default", i, j), &p.Channels[j].Default)
+		}
+	}
+	return notes
 }

@@ -196,7 +196,7 @@ func TestOpenRefusesATreeThatIsNotOne(t *testing.T) {
 			st := state.NewMemory()
 			c.write(st)
 			if _, err := projects.Open(st); !errors.Is(err, projects.ErrInvalid) {
-				t.Fatalf("Open = %v, want ErrInvalid", err)
+				t.Fatalf("OpenDefault = %v, want ErrInvalid", err)
 			}
 		})
 	}

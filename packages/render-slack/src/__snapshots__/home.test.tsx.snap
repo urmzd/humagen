@@ -218,19 +218,19 @@ Team",
         "initial_option": {
           "text": {
             "emoji": true,
-            "text": "Whoever fits best",
+            "text": "Agents decide for themselves",
             "type": "plain_text",
           },
-          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
         },
         "options": [
           {
             "text": {
               "emoji": true,
-              "text": "Whoever fits best",
+              "text": "Agents decide for themselves",
               "type": "plain_text",
             },
-            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
           },
           {
             "text": {
@@ -579,19 +579,19 @@ Team",
         "initial_option": {
           "text": {
             "emoji": true,
-            "text": "Whoever fits best",
+            "text": "Agents decide for themselves",
             "type": "plain_text",
           },
-          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
         },
         "options": [
           {
             "text": {
               "emoji": true,
-              "text": "Whoever fits best",
+              "text": "Agents decide for themselves",
               "type": "plain_text",
             },
-            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
           },
           {
             "text": {
@@ -836,19 +836,19 @@ exports[`homeView > renders the empty Home tab 1`] = `
         "initial_option": {
           "text": {
             "emoji": true,
-            "text": "Whoever fits best",
+            "text": "Agents decide for themselves",
             "type": "plain_text",
           },
-          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
         },
         "options": [
           {
             "text": {
               "emoji": true,
-              "text": "Whoever fits best",
+              "text": "Agents decide for themselves",
               "type": "plain_text",
             },
-            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
           },
           {
             "text": {
@@ -1197,19 +1197,19 @@ Team",
         "initial_option": {
           "text": {
             "emoji": true,
-            "text": "Whoever fits best",
+            "text": "Agents decide for themselves",
             "type": "plain_text",
           },
-          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
         },
         "options": [
           {
             "text": {
               "emoji": true,
-              "text": "Whoever fits best",
+              "text": "Agents decide for themselves",
               "type": "plain_text",
             },
-            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
           },
           {
             "text": {
@@ -1991,19 +1991,19 @@ Account · in Field engineering · active <!date^1791288000^{date_short_pretty} 
         "initial_option": {
           "text": {
             "emoji": true,
-            "text": "Whoever fits best",
+            "text": "Agents decide for themselves",
             "type": "plain_text",
           },
-          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
         },
         "options": [
           {
             "text": {
               "emoji": true,
-              "text": "Whoever fits best",
+              "text": "Agents decide for themselves",
               "type": "plain_text",
             },
-            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
           },
           {
             "text": {
@@ -2533,19 +2533,19 @@ Team",
         "initial_option": {
           "text": {
             "emoji": true,
-            "text": "Whoever fits best",
+            "text": "Agents decide for themselves",
             "type": "plain_text",
           },
-          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
         },
         "options": [
           {
             "text": {
               "emoji": true,
-              "text": "Whoever fits best",
+              "text": "Agents decide for themselves",
               "type": "plain_text",
             },
-            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"*"}}",
           },
           {
             "text": {

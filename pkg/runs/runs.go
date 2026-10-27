@@ -64,7 +64,7 @@ const (
 	MetaPicked  = "warp.picked"
 	MetaProject = "warp.project"
 	// MetaRouted is how a thread's selected agents started the run, when
-	// they did: "best_fit" or "all". It is private
+	// they did: "join" (or "best_fit", written before) or "all". It is private
 	// (envelope.PrivateMetaPrefix): the run's record says it, and fiber
 	// keeps it out of the prompt and the journal.
 	MetaRouted = envelope.PrivateMetaPrefix + "warp.routed"
@@ -273,7 +273,7 @@ type Run struct {
 	// platform.
 	Picked string `json:"picked,omitempty"`
 	// Routed says the run was started by its thread's selected agents, and
-	// how: "best_fit" or "all". A run a tag or a default started has none.
+	// how: "join" (or "best_fit", written before) or "all". A run a tag or a default started has none.
 	Routed string `json:"routed,omitempty"`
 	// Project is the project the conversation is filed under, if any.
 	Project string `json:"project,omitempty"`

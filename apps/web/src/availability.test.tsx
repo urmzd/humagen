@@ -41,10 +41,10 @@ test("where an agent comes from reads in words, and where a default is set is a 
   assert.equal(defaultFrom({ agent: "lead", from: "project:Field" }), "Field");
 });
 
-test("who answers an untagged message: the default, @auto and whom it picks, or nobody", () => {
+test("who answers an untagged message: the default, agents deciding for themselves and who joined, or nobody", () => {
   assert.equal(answersLine("ignite"), "@ignite answers");
-  assert.equal(answersLine("auto"), "@auto picks who answers");
-  assert.equal(answersLine("auto", "ignite"), "@auto picks @ignite");
+  assert.equal(answersLine("*"), "Agents decide for themselves who answers");
+  assert.equal(answersLine("*", "ignite"), "@ignite joined on its own");
   assert.equal(answersLine(undefined), "Nobody answers; tag an agent");
 });
 

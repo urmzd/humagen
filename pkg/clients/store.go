@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Caps is how many clients a workspace may have. Zero means none: a caller
@@ -78,6 +80,7 @@ func Open(st state.Store) (*Memory, error) {
 	var loaded []storedClient
 	err := m.kept.Load(func(tenant, id string, r storedClient) error {
 		r.Client.Tenant, r.Client.ID = tenant, id
+		r.Client.DefaultAgent = legacy.Default(r.Client.DefaultAgent)
 		loaded = append(loaded, r)
 		return nil
 	})
@@ -114,6 +117,7 @@ func (m *Memory) index(tenant, id string) int {
 func (m *Memory) Create(tenant string, c Client, caps Caps, at time.Time) (Client, error) {
 	c = c.clone()
 	c.Tenant = tenant
+	c.DefaultAgent = legacy.Default(c.DefaultAgent)
 	if tenant == "" {
 		return Client{}, fmt.Errorf("%w: a client belongs to a workspace", ErrInvalid)
 	}
@@ -159,6 +163,7 @@ func (m *Memory) Create(tenant string, c Client, caps Caps, at time.Time) (Clien
 func (m *Memory) Update(tenant string, c Client, at time.Time) (Client, error) {
 	c = c.clone()
 	c.Tenant = tenant
+	c.DefaultAgent = legacy.Default(c.DefaultAgent)
 	if err := c.Validate(); err != nil {
 		return Client{}, err
 	}

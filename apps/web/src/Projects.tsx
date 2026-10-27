@@ -1,5 +1,6 @@
 import { ProjectRollup } from "./ProjectRollup.tsx";
 import { defaultCopy } from "@humagen/components";
+import { AUTO } from "./availability.ts";
 import { ChevronDownIcon, FolderIcon, FolderPlusIcon } from "@humagen/render-web";
 import { Badge } from "@humagen/render-web/ui/badge";
 import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -1330,7 +1331,7 @@ export function ProjectPage({
           {lead && (
             <span className="inline-flex items-center gap-1.5">
               <span>{words.lead}</span>
-              {lead === "auto" ? "@auto" : (
+              {lead === AUTO ? defaultCopy.auto.handle : (
                 <span className="inline-flex items-center gap-1">
                   <AgentMark name={lead} size={12} />
                   {lead}

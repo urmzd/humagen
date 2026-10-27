@@ -12,7 +12,11 @@ import (
 
 // Reserved names. No agent and no person goes by them.
 const (
-	// AutoName is @auto: the built-in router picks the agent.
+	// OpenName is no tag anyone writes: it is what a message that names no
+	// agent starts when the agents decide for themselves (pkg/join).
+	OpenName = projects.OpenDefault
+	// AutoName was @auto, the router that picked one agent. Nobody is named
+	// it, and a message that writes it tags nobody.
 	AutoName = "auto"
 	// SMEName is @sme, and @sme:<topic>: the project's experts.
 	SMEName = "sme"
@@ -73,7 +77,7 @@ type Lookups interface {
 // slackMention is Slack's own mention of a person: <@U123> or <@U123|dana>.
 var slackMention = regexp.MustCompile(`^<@([A-Z][A-Z0-9]{2,31})(?:\|[^<>]{0,100})?>`)
 
-// Parse finds the tags in a message: @<agent>, @auto, @<handle> for a
+// Parse finds the tags in a message: @<agent>, @<handle> for a
 // person, @sme and @sme:<topic> for experts, $<name> and @skill:<name> for a
 // skill, @<kind>:<name> for a mention kind the workspace declares, and
 // Slack's <@U…> for a Slack person. Text inside inline code or a code block
@@ -167,8 +171,9 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 }
 
 // WithSkillAgent is what a message that names a skill and tags no agent
-// starts: @auto, which picks the agent and is told to use the skill. It
-// returns the message's tags with @auto added after them when it does, and
+// starts: OpenName, and each agent that takes it is told to use the skill.
+// It returns the message's tags with OpenName added after them when it
+// does, and
 // the tags as they are otherwise. An agent tagged and refused still counts
 // as tagged, so no other agent answers in its place. Check first that the
 // tag fits (RoomForSkillAgent).
@@ -185,14 +190,14 @@ func WithSkillAgent(ms []Mention) []Mention {
 	if !skill {
 		return ms
 	}
-	return append(cloneMentions(ms), Mention{Kind: Agent, Name: AutoName})
+	return append(cloneMentions(ms), Mention{Kind: Agent, Name: OpenName})
 }
 
-// RoomForSkillAgent refuses a message whose tags leave no room for the @auto
+// RoomForSkillAgent refuses a message whose tags leave no room for the OpenName
 // WithSkillAgent would add: it already holds MaxMentions (ErrInvalid).
 func RoomForSkillAgent(ms []Mention) error {
 	if len(WithSkillAgent(ms)) > MaxMentions {
-		return fmt.Errorf("%w: a message tags at most %d people, agents and skills, and the @auto a skill starts is one more", ErrInvalid, MaxMentions)
+		return fmt.Errorf("%w: a message tags at most %d people, agents and skills, and asking the agents a skill starts is one more", ErrInvalid, MaxMentions)
 	}
 	return nil
 }
@@ -247,8 +252,6 @@ func (k *kindLookup) of(kind string) (string, bool) {
 func atTag(token string, r Resolver, kinds *kindLookup) (string, func() Mention) {
 	low := strings.ToLower(token)
 	switch low {
-	case AutoName:
-		return "@" + low, func() Mention { return Mention{Kind: Agent, Name: AutoName} }
 	case SMEName:
 		return "@" + low, func() Mention { return Mention{Kind: SME} }
 	}

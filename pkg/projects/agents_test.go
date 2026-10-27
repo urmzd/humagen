@@ -48,13 +48,13 @@ func TestAWorkspaceThatWroteNothingReadsAsTheUpgradeLeavesIt(t *testing.T) {
 	if got := tree.Available(projects.Root); !got.All || len(got.Names) != 0 {
 		t.Fatalf("a workspace with no records = %+v, want every platform agent", got)
 	}
-	if d, from := tree.DefaultOf(projects.Root); d != projects.Auto || from != projects.Root {
+	if d, from := tree.DefaultOf(projects.Root); d != projects.OpenDefault || from != projects.Root {
 		t.Fatalf("its default = %q from %q, want auto at the root", d, from)
 	}
 	// Its first write keeps that, rather than closing everything.
 	s := projects.NewStore()
 	mustCreate(t, s, "acme", team("Field", ""), ada)
-	if !s.Tree("acme").IsAvailable("Field", "helper") || s.Tree("acme").Root().Agents.Default != projects.Auto {
+	if !s.Tree("acme").IsAvailable("Field", "helper") || s.Tree("acme").Root().Agents.Default != projects.OpenDefault {
 		t.Fatalf("the first write closed the workspace: %+v", s.Tree("acme").Root().Agents)
 	}
 }
@@ -204,7 +204,7 @@ func TestAvailableAgreesWithIsAvailable(t *testing.T) {
 		{"Launch", "lead", false}, {"Field", "lead", true}, {"Field", "field-helper", true}, {"Field", "globex-helper", false},
 		{"Initech", "writer", true}, {"Initech", "field-helper", true}, {"Initech", "globex-helper", false}, {"Initech", "other", false},
 		{"Renewals", "globex-helper", true}, {"Renewals", "lead", true}, {"Renewals", "writer", false}, {"Renewals", "field-helper", false},
-		{"Globex", projects.Auto, false}, {"Nowhere", "writer", false},
+		{"Globex", projects.OpenDefault, false}, {"Nowhere", "writer", false},
 	} {
 		if got := tree.IsAvailable(c.project, c.agent); got != c.want {
 			t.Errorf("IsAvailable(%q, %s) = %v, want %v", c.project, c.agent, got, c.want)
@@ -215,19 +215,19 @@ func TestAvailableAgreesWithIsAvailable(t *testing.T) {
 func TestADefaultIsInheritedNearestFirst(t *testing.T) {
 	s := field(t)
 	tree := s.Tree("acme")
-	if d, from := tree.DefaultOf("Renewals"); d != projects.Auto || from != projects.Root {
+	if d, from := tree.DefaultOf("Renewals"); d != projects.OpenDefault || from != projects.Root {
 		t.Fatalf("Renewals inherits %q from %q, want the root's auto", d, from)
 	}
 	if d, _ := tree.NamedDefault("Renewals"); d != "" {
 		t.Fatalf("a chain of auto names %q", d)
 	}
 	setAgents(t, s, "Field", projects.Agents{Enable: []string{}, Default: "field-helper"}, ada)
-	setAgents(t, s, "Globex", projects.Agents{Enable: []string{}, Default: projects.Auto}, ada)
+	setAgents(t, s, "Globex", projects.Agents{Enable: []string{}, Default: projects.OpenDefault}, ada)
 	tree = s.Tree("acme")
 	for _, c := range []struct{ project, agent, from, named, namedFrom string }{
-		{"Renewals", projects.Auto, "Globex", "field-helper", "Field"},
+		{"Renewals", projects.OpenDefault, "Globex", "field-helper", "Field"},
 		{"Initech", "field-helper", "Field", "field-helper", "Field"},
-		{"Launch", projects.Auto, projects.Root, "", ""},
+		{"Launch", projects.OpenDefault, projects.Root, "", ""},
 		{"Nowhere", "", "", "", ""},
 	} {
 		d, from := tree.DefaultOf(c.project)
@@ -255,7 +255,7 @@ func TestADefaultMustBeAvailableWhereItIsSet(t *testing.T) {
 	if err := set("Field", projects.Agents{Enable: []string{}, Allow: []string{"writer"}, Default: "lead"}, ada); !errors.Is(err, projects.ErrInvalid) {
 		t.Fatalf("a default its own allow list refuses = %v", err)
 	}
-	if err := set("Launch", projects.Agents{Enable: []string{}, Default: projects.Auto}, ada); err != nil {
+	if err := set("Launch", projects.Agents{Enable: []string{}, Default: projects.OpenDefault}, ada); err != nil {
 		t.Fatalf("auto = %v", err)
 	}
 	if err := set(projects.Root, projects.Agents{Enable: []string{}, Default: "lead"}, admin); !errors.Is(err, projects.ErrInvalid) {
@@ -273,13 +273,12 @@ func TestAgentListsAreValidated(t *testing.T) {
 		"65 allowed":           {Allow: many},
 		"star with others":     {Enable: []string{projects.Everyone, "lead"}},
 		"star in allow":        {Allow: []string{projects.Everyone}},
-		"auto enabled":         {Enable: []string{projects.Auto}},
-		"auto allowed":         {Allow: []string{projects.Auto}},
+		"auto enabled":         {Enable: []string{"auto"}},
+		"auto allowed":         {Allow: []string{"auto"}},
 		"an empty allow list":  {Allow: []string{}},
 		"twice":                {Enable: []string{"lead", "Lead"}},
 		"not a name":           {Enable: []string{"lead bot"}},
 		"fiber's control name": {Enable: []string{"_control"}},
-		"a default of star":    {Default: projects.Everyone},
 		"a default not a name": {Default: "a/b"},
 		"too long":             {Enable: []string{strings.Repeat("a", 65)}},
 	} {
@@ -308,7 +307,7 @@ func TestSettingAgentsIsVersionedAndRecorded(t *testing.T) {
 		t.Fatalf("root = %+v", root)
 	}
 	h, _ := s.History("acme", projects.Root, 1, 0)
-	if h[0].What != projects.AgentsChanged || h[0].Before.Agents.Default != projects.Auto || h[0].After.Agents.Default != "lead" {
+	if h[0].What != projects.AgentsChanged || h[0].Before.Agents.Default != projects.OpenDefault || h[0].After.Agents.Default != "lead" {
 		t.Fatalf("the change recorded = %+v", h[0])
 	}
 	again := setAgents(t, s, projects.Root, projects.Agents{Enable: []string{projects.Everyone}, Default: "lead"}, admin)
@@ -401,7 +400,7 @@ func TestHomingInAndOut(t *testing.T) {
 		want           error
 	}{
 		{"helper", "Nowhere", projects.ErrNotFound},
-		{projects.Auto, "Globex", projects.ErrInvalid},
+		{projects.OpenDefault, "Globex", projects.ErrInvalid},
 		{"Not A Name", "Globex", projects.ErrInvalid},
 	} {
 		if err := s.SetHome("acme", c.agent, c.project, admin, t0, nil); !errors.Is(err, c.want) {

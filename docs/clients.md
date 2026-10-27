@@ -13,7 +13,7 @@ one per agent are all the same record with different values.
 | `surface` | `slack` or `github`. It cannot change after the client is created. |
 | `identity` | The external identity the client answers for. Slack: `team` (required) and `app_id`. GitHub: `owners` (required), `installation` and `app_id`. |
 | `credentials` | `token` and `signing_secret`. Written, never read back. See [Secrets](#secrets). |
-| `default_agent` | Answers a request that named no agent. |
+| `default_agent` | Answers a request that named no agent. `"*"` asks each agent the client routes to whether to join (see [the dynamic router](projects.md#the-dynamic-router)); `auto` reads as `"*"`. |
 | `agents` | The agents the client may route to, besides its default. |
 | `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. These three, and `github.auto_labels`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
@@ -59,7 +59,8 @@ A default a person may not read is never available where they read, so it
 answers nothing for them, and it is passed over for them, as if it were not
 set: who answers them on the client's surface is the next default along, a
 channel's or a project's, and what their message, or their turn through the
-client, did never names it; `@auto` never falls back to it for them.
+client, did never names it; an agent they may not read is never asked to
+join for them.
 
 ### Which agents a client reaches
 
@@ -73,9 +74,9 @@ outside it is not read as an agent, and a tag for an agent outside it is
 dropped before it reaches the platform. In Humagen's threads it holds for every
 message the client's machine posts for a person, on the client's own surface
 or in any other thread, such as one started in the console: an agent outside
-it, a default outside it, and `@auto` for a client that lists its agents are
-refused there, never swapped. The person posting as themselves is held to no
-client's list.
+it and a default outside it are refused there, never swapped, and for a
+default of `*` only the agents on the list are asked to join. The person
+posting as themselves is held to no client's list.
 
 A client lends its actions (posting a message, reading a pull request) under the
 same rule. A run gets the actions of the client that raised it. On another

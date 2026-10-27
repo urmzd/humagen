@@ -96,14 +96,15 @@ test("Home's chat bar has no menu of who answers and no line saying who does", a
   assert.equal(screen.queryByRole("list", { name: "Agents" }), null);
 });
 
-test("@ completes @auto, the agents available here and people, never the person typing, and Tab picks", async () => {
+test("@ completes the agents available here and people, never @auto, never the person typing, and Tab picks", async () => {
   openChat(workspace("lead"));
   await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents")));
   fireEvent.change(box(), { target: { value: "@" } });
   const list = await screen.findByRole("listbox");
   await waitFor(() => assert.ok(list.textContent?.includes("@ben"), list.textContent ?? ""));
   const text = list.textContent ?? "";
-  for (const want of ["@auto", "@lead", "@helper", "@ben"]) assert.ok(text.includes(want), `${want} in ${text}`);
+  for (const want of ["@lead", "@helper", "@ben"]) assert.ok(text.includes(want), `${want} in ${text}`);
+  assert.ok(!text.includes("@auto"), "nobody goes by @auto, so it is not offered");
   assert.ok(!text.includes("@sme"), "retired SME routing is not offered, even from cached mention kinds");
   assert.ok(!text.includes("globex-helper"), "an agent that lives in Globex is not offered at the workspace");
   assert.ok(!text.includes("@ada"), "the person typing is not offered");
@@ -157,7 +158,7 @@ test("a link or suggestion selects the agent without submitting, and suggestions
   assert.ok(screen.getByRole("list", { name: chat.suggestions }));
 });
 
-test("+ opens a menu where agents are checked with Space and the project with its channel is picked; the chips row routes Best Fit or All of Them", async () => {
+test("+ opens a menu where agents are checked with Space and the project with its channel is picked; the chips row routes Each Decides or All of Them", async () => {
   openChat(workspace("lead"), {
     projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
   });
@@ -200,7 +201,7 @@ test("+ opens a menu where agents are checked with Space and the project with it
 
   // Two agents: the routing is chosen with text on the chips row.
   const all = screen.getByRole("button", { name: chat.all });
-  assert.equal(screen.getByRole("button", { name: chat.bestFit }).getAttribute("aria-pressed"), "true");
+  assert.equal(screen.getByRole("button", { name: chat.join }).getAttribute("aria-pressed"), "true");
   fireEvent.click(all);
   assert.equal(all.getAttribute("aria-pressed"), "true");
   assert.ok(screen.getByPlaceholderText(chat.placeholderAll(2)));
@@ -633,7 +634,7 @@ test("a suggestion adds its agent as the + menu would: All of Them gives way pas
   fireEvent.click(screen.getByRole("button", { name: chat.all }));
   fireEvent.click(within(await screen.findByRole("list", { name: chat.suggestions })).getByRole("button", { name: /Write a report/ }));
   await waitFor(() => assert.deepEqual(chips().slice(0, 4), ["a1", "a2", "a3", "humagen-writer"]));
-  assert.equal(screen.getByRole("button", { name: chat.bestFit }).getAttribute("aria-pressed"), "true");
+  assert.equal(screen.getByRole("button", { name: chat.join }).getAttribute("aria-pressed"), "true");
   // Five selected, a suggestion for another agent is refused in words.
   fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("humagen-writer") }));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
@@ -692,7 +693,7 @@ test("a conversation of runs has the + menu: its agents are saved on its thread 
   fireEvent.click(within(menu).getByRole("button", { name: /^Agents\b/ }));
   fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
   await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
-  assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 0, title: "", visibility: "shared", default: "", agents: ["helper"], mode: "best_fit" });
+  assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 0, title: "", visibility: "shared", default: "", agents: ["helper"], mode: "join" });
   fireEvent.keyDown(menu, { key: "Escape" });
   fireEvent.keyDown(menu, { key: "Escape" });
   await waitFor(() => assert.ok(chips().includes("helper"), JSON.stringify(chips())));

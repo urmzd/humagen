@@ -9,7 +9,7 @@ import { follow } from "@humagen/adapter";
 import { defaultCopy } from "@humagen/components";
 import { App } from "./app.tsx";
 import { CHANNEL, FakeSlack, mention, settle, stopPressed, TEAM, USER } from "./harness.ts";
-import { type Humagen, httpHumagen, staticToken } from "./humagen.ts";
+import { type Humagen, HumagenError, httpHumagen, staticToken } from "./humagen.ts";
 import { runId, threadKey } from "./keys.ts";
 
 /**
@@ -138,11 +138,15 @@ test("the stand-in client against the real routes", { skip: !enabled }, async ()
   const turns = (await c.getThread(run.id))?.turns;
   assert.deepEqual(turns?.map((t) => t.id).sort(), [run.id, next.id].sort());
 
-  // auto is the platform's picker, which says why it chose.
-  const picked = await c.createRun({ agent: "auto", text: "do one task well" }, `${key}-auto`);
-  assert.ok(["lead", "helper"].includes(picked.agent), picked.agent);
-  assert.ok(picked.picked, "auto says why it picked");
-  await finish(c, picked);
+  // * asks every agent whether to take it. The router is off by default, so
+  // none does, and the message waits for a person.
+  await assert.rejects(
+    c.createRun({ agent: "*", text: "do one task well" }, `${key}-everyone`),
+    (e: unknown) =>
+      e instanceof HumagenError &&
+      e.status === 409 &&
+      /waits for a person to answer or tag an agent/.test(e.message),
+  );
 
   assert.equal(await c.getRun("api-dev-no-such-run"), null);
   assert.equal(await c.getThread("api-dev-no-such-run"), null);

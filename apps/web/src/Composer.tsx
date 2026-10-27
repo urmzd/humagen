@@ -356,7 +356,7 @@ export function Composer({
               }}
               className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg aria-selected:bg-aui-hover"
             >
-              {o.kind === "agent" || o.kind === "auto" ? (
+              {o.kind === "agent" ? (
                 <AgentMark name={o.token} size={16} />
               ) : (
                 <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium">

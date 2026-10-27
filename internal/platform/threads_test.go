@@ -368,8 +368,8 @@ func TestTheConsoleRunsOnlyWhatAMessageTags(t *testing.T) {
 	}
 }
 
-// @auto picks among the agents available in the thread's project.
-func TestAutoPicksAmongTheAgentsAvailableInTheProject(t *testing.T) {
+// @auto tags nobody now: no agent is asked and nothing starts.
+func TestAutoTagsNobody(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Globex", operator)
@@ -383,11 +383,8 @@ func TestAutoPicksAmongTheAgentsAvailableInTheProject(t *testing.T) {
 	}
 	setAgents(t, p, "Globex", platform.AgentsInput{Enable: []string{}, Allow: []string{"contracts", "lead", "helper"}})
 	got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: "@auto the invoices look wrong"})
-	if len(got.Runs) != 1 || got.Runs[0].Agent != "contracts" || got.Runs[0].Picked == "" {
-		t.Fatalf("@auto started %+v", got.Runs)
-	}
-	if got.Message.Mentions[0].Name != threads.AutoName || got.Message.Mentions[0].Run != got.Runs[0].ID {
-		t.Fatalf("the tag records %+v", got.Message.Mentions)
+	if len(got.Runs) != 0 || got.Message.Mentions[0].Refused == "" {
+		t.Fatalf("@auto started %+v, tags %+v", got.Runs, got.Message.Mentions)
 	}
 }
 

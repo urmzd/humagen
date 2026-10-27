@@ -15,8 +15,8 @@ import type { Tone } from "./types";
 /** `turnId` of every Home action that isn't about one waiting item. */
 export const HOME_ID = "home";
 
-/** `option` of `ActionId.homeAnsweredBy` that lets the router choose the agent. */
-export const ANY_AGENT = "auto";
+/** `option` of `ActionId.homeAnsweredBy` that lets every agent decide for itself whether to answer. */
+export const ANY_AGENT = "*";
 
 /** The ways to start, in the order the web shows them. Labels live in copy. */
 export const HOME_STARTS = ["talk", "build", "search", "review", "runs", "schedule"] as const;

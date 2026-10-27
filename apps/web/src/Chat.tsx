@@ -609,7 +609,7 @@ export function Chat({
                     canCreateProject={canCreateProject}
                     onProjectCreated={onProjectCreated}
                     finder={findHelp ? <FindHelp initialDescription={draft} onSearch={findHelp} canChoose={canRun} onChoose={(match, description) => {
-                      select({ ...selection, project: match.project, channel: "general", agents: [match.agent], mode: "best_fit" });
+                      select({ ...selection, project: match.project, channel: "general", agents: [match.agent], mode: "join" });
                       if (!draft.trim()) setSeed({ text: description });
                       close();
                     }} /> : undefined}

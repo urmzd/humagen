@@ -18,7 +18,7 @@ export interface Completion {
 
 /**
  * Completion for a message in a project: `@` people, the agents that can
- * answer there, @auto and the mention kinds (`@sme:`, completed further to
+ * answer there and the mention kinds (`@sme:`, completed further to
  * their items as `@kind:` is typed); `$` the project's skills. With `*`, an
  * agent that lives in a project is offered only where the platform lists
  * it, on its home's chain: `*` never reaches it. The person typing is never
@@ -141,7 +141,7 @@ export function useCompletion(
       here,
       others,
       topics,
-      { auto: defaultCopy.auto.description, experts: defaultCopy.threads.experts, kind: defaultCopy.threads.mentionKind },
+      { experts: defaultCopy.threads.experts, kind: defaultCopy.threads.mentionKind },
       {
         ...(kinds ? { kinds: kinds.map((k) => ({ kind: k.kind, resolves:k.resolves, ...(k.title ? { title: k.title } : {}) })) } : {}),
         items,

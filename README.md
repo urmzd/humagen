@@ -24,7 +24,7 @@ Formerly warp. Old settings, config files and specs still work, with a note at s
 
 ## Features
 
-- **Conversations** that branch across agents. Tag `@agent` or `@auto`, or let the project's default answer.
+- **Conversations** that branch across agents. Tag `@agent`, or let every available agent decide whether to join: each that does answers side by side, and with none the message waits for a person.
 - **Channels and threads** where people and agents talk in one room, with private threads, project inboxes and announcements.
 - **Projects** with members, owners, tighter limits below them, and knowledge sources that ground every run.
 - **Archive and deletion review**: archived conversations wait 30 days in a queue where an admin restores them or approves permanent deletion.
@@ -85,7 +85,7 @@ On a terminal, the first start asks a few questions (name, model providers, MCP 
 
 `POST /api/runs` takes `agent`, `text`, and optionally `after` and `project`.
 
-- `agent` names who answers, or `auto` to pick the best fit by name, description and prompt.
+- `agent` names who answers, or `*` to ask every available agent whether to join; each that does answers in the same conversation (the first run is returned), and with none the answer is 409. The workspace's `router` setting turns this on and names the model that asks.
 - Leave `agent` out and the nearest default answers: the project's, its ancestors', then the workspace's. With none set, the answer is 409.
 - `after` names the turn the message follows. Naming a turn that already has a reply starts a branch.
 
@@ -122,7 +122,7 @@ Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/F
 | `GET`, `POST /api/agents`, `PUT /api/agents/{name}`, `GET /api/agents/{name}/history` | `agents:read`, `agents:write` |
 | `GET`, `POST /api/runs`, `GET /api/runs/{id}`, `/tree`, `/trace` | `runs:read`, `runs:write` |
 | `GET /api/threads`, `GET /api/threads/{id}` | `runs:read` |
-| `GET /api/pick?q=&project=`, `GET`, `PUT /api/settings`, `PUT /api/agents/{name}/home` | `agents:read`, `agents:write` |
+| `GET /api/join?q=&project=`, `GET`, `PUT /api/settings`, `PUT /api/agents/{name}/home` | `agents:read`, `agents:write` |
 | `GET`, `PUT /api/projects/{name}/agents` | `projects:read`, `projects:write` |
 | `GET`, `PUT /api/projects/{name}/knowledge` | `projects:read`, `projects:write` (naming sources also takes `knowledge:read`) |
 | `GET /api/people`, `GET /api/people/{handle}/photo` | `people:read` |

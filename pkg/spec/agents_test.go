@@ -43,9 +43,8 @@ func TestEachAgentCheckNamesItsPath(t *testing.T) {
 		},
 		"star with others":       {"    agents: {enable: [\"*\", lead]}\n", platformAgentsYAML, `workspace.agents.enable: "*" stands alone`},
 		"star in allow":          {"    agents: {allow: [\"*\"]}\n", platformAgentsYAML, `workspace.agents.allow: "*" is only for enable`},
-		"auto enabled":           {"    agents: {enable: [auto]}\n", platformAgentsYAML, `workspace.agents.enable: auto is the built-in router`},
+		"auto enabled":           {"    agents: {enable: [auto]}\n", platformAgentsYAML, `workspace.agents.enable: auto is no agent`},
 		"an empty allow list":    {"    agents: {allow: []}\n", platformAgentsYAML, `workspace.agents.allow: names at least one agent`},
-		"a default of everyone":  {"    agents: {default: \"*\"}\n", platformAgentsYAML, `workspace.agents.default: one agent, or auto`},
 		"a name not in its form": {"    agents: {enable: [Lead]}\n", platformAgentsYAML, `workspace.agents.enable: "Lead" is not an agent's name`},
 		"a home not in the file": {
 			"    projects:\n" + field, "    - project: Initech\n      spec: {name: x, provider: p, model: m, system_prompt: X.}\n",
@@ -90,7 +89,7 @@ func TestEachAgentCheckNamesItsPath(t *testing.T) {
 // The design's own example passes, and a default set where the console's
 // lists may enable it is left to the start.
 func TestAgentListsTheStoreTakesPass(t *testing.T) {
-	workspace := `    agents: {enable: ["*"], default: auto}
+	workspace := `    agents: {enable: ["*"], default: "*"}
     projects:
       - {name: Field, agents: {enable: [helper], default: helper}}
       - {name: Globex, parent: Field, kind: account, agents: {allow: [globex-helper, humagen-writer], default: globex-helper}}
@@ -101,7 +100,7 @@ func TestAgentListsTheStoreTakesPass(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := cfg.Platforms[0].Spec.Workspace
-	if w.Agents.Default != AutoAgent || w.Projects[1].Agents.Allow[0] != "globex-helper" || cfg.Platforms[0].Spec.Agents[2].Project != "Globex" {
+	if w.Agents.Default != OpenDefault || w.Projects[1].Agents.Allow[0] != "globex-helper" || cfg.Platforms[0].Spec.Agents[2].Project != "Globex" {
 		t.Fatalf("loaded = %+v", w)
 	}
 	// The workspace's lists are the console's here, so a default on a
@@ -118,8 +117,8 @@ func TestAgentListsTheStoreTakesPass(t *testing.T) {
 
 // The language's agent words and bounds are the project store's.
 func TestTheLanguagesAgentWordsAreTheProjectStores(t *testing.T) {
-	if AutoAgent != projects.Auto || EveryAgent != projects.Everyone || maxAgentList != projects.MaxAgentList {
-		t.Fatalf("spec %q %q %d, store %q %q %d", AutoAgent, EveryAgent, maxAgentList, projects.Auto, projects.Everyone, projects.MaxAgentList)
+	if OpenDefault != projects.OpenDefault || EveryAgent != projects.Everyone || maxAgentList != projects.MaxAgentList {
+		t.Fatalf("spec %q %q %d, store %q %q %d", OpenDefault, EveryAgent, maxAgentList, projects.OpenDefault, projects.Everyone, projects.MaxAgentList)
 	}
 }
 

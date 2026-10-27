@@ -150,7 +150,7 @@ export function ProjectAgentsTab({
                     <span className="block truncate text-aui-sm text-aui-fg">{o.agent === EVERYONE ? words.everyPlatform : o.agent}</span>
                     {whence && <span className="block truncate text-aui-xs text-aui-muted">{whence}</span>}
                   </span>
-                  {view.default_resolved?.agent === o.agent && <Chip>{defaultCopy.auto.defaultChip}</Chip>}
+                  {o.agent !== EVERYONE && view.default_resolved?.agent === o.agent && <Chip>{defaultCopy.auto.defaultChip}</Chip>}
                 </li>
               );
             })}
@@ -174,9 +174,13 @@ export function ProjectAgentsTab({
         </Label>
         <p className="text-aui-xs text-aui-muted">
           {inherited
-            ? words.inherits(inherited.agent, title(defaultFrom(inherited)))
+            ? inherited.agent === AUTO
+              ? words.inheritsDecide(title(defaultFrom(inherited)))
+              : words.inherits(inherited.agent, title(defaultFrom(inherited)))
             : view.default_resolved
-              ? words.answers(view.default_resolved.agent)
+              ? view.default_resolved.agent === AUTO
+                ? words.decide
+                : words.answers(view.default_resolved.agent)
               : words.nobody}
         </p>
       </Section>

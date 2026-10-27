@@ -25,7 +25,7 @@ import (
 //     project's chain, the nearest declaration first (projects.Tree.Skill);
 //     a skill nobody on the chain declares refuses the message before
 //     anything is posted (threads.UnknownSkill);
-//   - a message that names a skill and tags no agent starts @auto
+//   - a message that names a skill and tags no agent asks the agents
 //     (startsForSkills), which picks the agent;
 //   - when the message is accepted, answerMessage pins each skill's
 //     instructions into the run's tag (runs.MetaSkills), so every attempt of
@@ -40,7 +40,7 @@ import (
 //
 // A Slack client's command whose name is a skill's on the chain uses that
 // skill too: the client posts "/<name> ..." as the message, and the runs it
-// starts are told to use the skill, without starting @auto, so the client's
+// starts are told to use the skill, without asking the agents, so the client's
 // commands work as they did.
 //
 // A skill is read by whoever reads its project: its instructions are the
@@ -58,11 +58,11 @@ type pinnedSkill struct {
 	// From is the project that declared it when the message was accepted.
 	From         string `json:"from"`
 	Instructions string `json:"instructions"`
-	// Description helps @auto pick the agent; it is not pinned.
+	// Description helps an agent decide whether to join; it is not pinned.
 	Description string `json:"-"`
 }
 
-// pickText is what @auto picks an agent for: the message, then what each
+// pickText is what each agent is asked whether to join: the message, then what each
 // skill it names is for.
 func pickText(text string, skills []pinnedSkill) string {
 	for _, s := range skills {
@@ -72,7 +72,7 @@ func pickText(text string, skills []pinnedSkill) string {
 }
 
 // startsForSkills is what a console message's tags start, with skills
-// counted: one that names a skill and tags no agent starts @auto, which is
+// counted: one that names a skill and tags no agent asks the agents, which is
 // added to its tags (threads.WithSkillAgent), and one with no room for it is
 // refused. skillTags calls it for a message a person posts in the console as
 // themselves, before threads.Decide. A path that sends a message elsewhere,
@@ -90,13 +90,13 @@ func startsForSkills(ms []threads.Mention) ([]threads.Mention, error) {
 // nothing is posted for (threads.UnknownSkill); a message a surface posted,
 // which is there already, keeps it, refused, so its writer is told. Then a
 // message a person posted in the console as themselves (console) that names
-// a skill and tags no agent starts @auto (startsForSkills). A message posted
-// only is not one: the @auto a skill starts is not written, so a person who
+// a skill and tags no agent asks the agents (startsForSkills). A message posted
+// only is not one: the asking a skill starts is not written, so a person who
 // chose to post only is taken at their word. A message a client posts keeps
 // the client's defaults, as its commands do: the default answers with the
-// skill, and a client that lists its agents is never sent to @auto. In a
+// skill, and a client that lists its agents asks only its own agents. In a
 // thread with selected agents (routed) the skill goes to them instead
-// (threads.Decide), so no @auto is added.
+// (threads.Decide), so no OpenName is added.
 func skillTags(ms []threads.Mention, surfaced, console, routed bool) ([]threads.Mention, error) {
 	if !surfaced {
 		if err := threads.UnknownSkill(ms); err != nil {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -74,6 +76,9 @@ type Settings struct {
 	// call moves from one to the next. An agent runs on one by naming the
 	// provider "policy" and the policy's name as its model.
 	ModelPolicies []ModelPolicy `json:"model_policies"`
+	// Router is whether, and on which model, each agent is asked about a
+	// message that names none: "should I be involved?".
+	Router RouterSettings `json:"router"`
 	// SetupAt and SetupBy record the first time an admin saved the
 	// workspace's settings. The server sets them once. A value sent by a
 	// client is ignored.
@@ -222,6 +227,9 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 	if err := checkModelPolicies(next.ModelPolicies); err != nil {
 		return err
 	}
+	if err := p.checkRouter(&next.Router); err != nil {
+		return err
+	}
 	// A policy an agent still runs on cannot be removed, or that agent would
 	// have no model at its next call.
 	for _, old := range stored.ModelPolicies {
@@ -278,7 +286,7 @@ type Turn struct {
 	// AssignmentID pins a durable assignment reservation to this ordinary turn.
 	AssignmentID string
 	ID           string
-	// Agent is who should answer: an agent, Auto for @auto, or "" for the
+	// Agent is who should answer: an agent, Open to ask every agent, or "" for the
 	// default the conversation's place inherits.
 	Agent string
 	Text  string
@@ -291,7 +299,7 @@ type Turn struct {
 	Actor   envelope.Actor
 	// Client is the client a surface's credential sends the turn through,
 	// when it acts for a person (act_as): its default is nearer than the
-	// channel's, and @auto picks only among the agents it may route to.
+	// channel's, and only the agents it may route to are asked.
 	Client string
 	// KeepsNotes says the person the turn is for may change the notes of the
 	// project it is filed in (MayChangeNotes), so what the memory agent
@@ -314,7 +322,7 @@ func NoProjectCalled(name string) error {
 // Converse sends a message into a conversation and starts the run that answers.
 //
 // Any agent available where the conversation is filed can answer any turn.
-// The turn names it, or names Auto for @auto, or names none and the default
+// The turn names it, or names Open, or names none and the default
 // the conversation's place inherits answers: the thread's, the client's, the
 // channel's, then the project chain's, as for a message posted in the thread
 // (a new conversation is in general of its project). With no default set it
@@ -372,8 +380,8 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		routes, clientDefault = c.Routes, c.DefaultAgent
 	}
-	asked := strings.TrimSpace(t.Agent)
-	if t.Sees != nil && asked != "" && asked != Auto {
+	asked := legacy.Default(strings.TrimSpace(t.Agent))
+	if t.Sees != nil && asked != "" && asked != Open {
 		if _, err := p.Agents.Get(ctx, tenant, asked, 0); err != nil {
 			return runs.Run{}, err
 		}
@@ -384,35 +392,60 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	place := p.placeIn(tenant, th, clientDefault)
 	if t.Sees != nil {
 		// A default naming an agent the person may not read is passed over
-		// for them, as if unset (placeSeen), and @auto falls back to no
-		// agent they may not read.
+		// for them, as if unset (placeSeen), and no agent they may not
+		// read is asked.
 		place = placeSeen(place, t.Sees)
 		client := routes
 		routes = func(a string) bool { return (client == nil || client(a)) && t.Sees(a) }
 	}
-	who, err := p.resolveAgent(ctx, tenant, place, asked, t.Text, routes)
+	who, err := p.resolveAgents(ctx, tenant, place, asked, t.Text, routes)
 	if err != nil {
 		return runs.Run{}, err
 	}
-	agent := who.Agent
-	if who.Picked != "" {
-		meta[runs.MetaPicked] = who.Picked
-	}
-
 	if t.AssignmentID != "" {
 		meta[metaAssignment] = t.AssignmentID
 	}
 	if t.ForceAsk {
 		meta[operations.MetaForceAsk] = "true"
 	}
-	if existing, err := p.Runs.Get(tenant, runtime.RunID(tenant, t.ID)); err == nil {
-		return existing, nil
+	// Each agent that joined answers side by side, in its own run of the
+	// same conversation, streamed on its own. The first is returned; the
+	// rest are in the conversation.
+	var first runs.Run
+	for i, a := range who {
+		id, m := t.ID, meta
+		if a.Picked != "" {
+			id, m = joinedTagID(t.ID, a.Agent), maps.Clone(meta)
+			m[runs.MetaPicked] = a.Picked
+			// Agents after the first answer in the first one's conversation.
+			if i > 0 && m[runs.MetaThread] == "" && first.Thread != "" {
+				m[runs.MetaThread] = first.Thread
+			}
+		}
+		run, err := p.Runs.Get(tenant, runtime.RunID(tenant, id))
+		if err != nil {
+			run, err = p.Invoke(ctx, envelope.Tag{
+				ID: id, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAPI,
+				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, body, m), Actor: t.Actor, Meta: m,
+			})
+		}
+		if err != nil {
+			if i == 0 {
+				return runs.Run{}, err
+			}
+			p.log.Warn("platform: an agent that joined could not start", "tenant", tenant, "agent", a.Agent, "tag", id, "error", err)
+			continue
+		}
+		if i == 0 {
+			first = run
+		}
 	}
-	return p.Invoke(ctx, envelope.Tag{
-		ID: t.ID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.turnContext(tenant, th.Project, th.Channel, agent, t.Actor.User, body, meta), Actor: t.Actor, Meta: meta,
-	})
+	return first, nil
 }
+
+// joinedTagID is the tag of the run an agent starts on joining a message
+// whose tag is id, so a retry of the message starts each one once.
+func joinedTagID(id, agent string) string { return id + "-" + agent }
 
 // threadOf is the thread a conversation's first run is in: its record, or
 // what a conversation from before threads reads as.

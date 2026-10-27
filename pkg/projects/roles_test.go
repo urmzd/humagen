@@ -252,9 +252,9 @@ func TestAProjectMayBeMembersOnlyWhereNobodyOwnsAll(t *testing.T) {
 	if _, err := s.Update("acme", "Field", 1, ada, t0, func(p *projects.Project) error { p.Members = members("ada=owner"); return nil }); err != nil {
 		t.Fatalf("closing a project nobody owns wholesale = %v", err)
 	}
-	// Everyone owning Open owns what is below it, so nothing there is members only.
-	mustCreate(t, s, "acme", with(team("Open", ""), members("*=owner")), ada)
-	if _, err := s.Create("acme", with(team("Hidden", "Open"), members("ada=owner")), ada, t0); !errors.Is(err, projects.ErrInvalid) {
+	// Everyone owning OpenDefault owns what is below it, so nothing there is members only.
+	mustCreate(t, s, "acme", with(team("OpenDefault", ""), members("*=owner")), ada)
+	if _, err := s.Create("acme", with(team("Hidden", "OpenDefault"), members("ada=owner")), ada, t0); !errors.Is(err, projects.ErrInvalid) {
 		t.Fatalf("members only under a project everyone owns = %v", err)
 	}
 	if _, err := s.Update("acme", "Field", 2, ada, t0, func(p *projects.Project) error { p.Members = members("*=owner"); return nil }); !errors.Is(err, projects.ErrInvalid) {
@@ -337,8 +337,8 @@ func TestADeletedProjectIsReadByWhoReadItThen(t *testing.T) {
 	now := time.Now()
 	mustCreate(t, s, "acme", with(team("Field", ""), members("*=member", "ada=owner")), ada)
 	mustCreate(t, s, "acme", with(team("Vault", "Field"), members("ada=owner", "cy=member")), ada)
-	mustCreate(t, s, "acme", with(team("Open", "Field"), members("*=viewer", "ada=owner")), ada)
-	for _, name := range []string{"Vault", "Open"} {
+	mustCreate(t, s, "acme", with(team("OpenDefault", "Field"), members("*=viewer", "ada=owner")), ada)
+	for _, name := range []string{"Vault", "OpenDefault"} {
 		if err := s.Delete("acme", name, ada, now, nil); err != nil {
 			t.Fatal(err)
 		}
@@ -358,25 +358,25 @@ func TestADeletedProjectIsReadByWhoReadItThen(t *testing.T) {
 		{"Vault", "cy", projects.Member},
 		{"Vault", "bo", projects.None},
 		{"Vault", "ada", projects.Owner},
-		{"Open", "bo", projects.Viewer},
+		{"OpenDefault", "bo", projects.Viewer},
 	} {
 		if got := role(c.project, c.who); got != c.want {
 			t.Errorf("%s in deleted %s = %q, want %q", c.who, c.project, got, c.want)
 		}
 	}
 
-	// Field turns members only: Open's old readers outside it read nothing.
+	// Field turns members only: OpenDefault's old readers outside it read nothing.
 	if _, err := s.Update("acme", "Field", 1, ada, now, func(p *projects.Project) error {
 		p.Members = members("ada=owner", "dee=member")
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := role("Open", "bo"); got != projects.None {
-		t.Errorf("after Field closed, bo reads deleted Open as %q", got)
+	if got := role("OpenDefault", "bo"); got != projects.None {
+		t.Errorf("after Field closed, bo reads deleted OpenDefault as %q", got)
 	}
-	if got := role("Open", "dee"); got != projects.Viewer {
-		t.Errorf("after Field closed, dee reads deleted Open as %q", got)
+	if got := role("OpenDefault", "dee"); got != projects.Viewer {
+		t.Errorf("after Field closed, dee reads deleted OpenDefault as %q", got)
 	}
 
 	old := projects.Tombstone{Name: "Before", At: now}

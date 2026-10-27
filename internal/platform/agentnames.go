@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/registry"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -170,8 +171,9 @@ func (p *Platform) ClientWrittenBy(ctx context.Context, who auth.Principal, old 
 		p.log.Warn("platform: built-in agents", "error", err)
 	}
 	for _, a := range agentsNamed(c) {
-		// auto is no agent: it picks one. Each name is looked up once.
-		if held[a] || a == Auto {
+		// Everyone is no agent, nor is auto as written before. Each name is
+		// looked up once.
+		if held[a] || a == Open || a == legacy.AutoDefault {
 			continue
 		}
 		rev, err := p.Agents.Get(ctx, who.Tenant, a, 0)
@@ -244,7 +246,7 @@ func (s *Seer) ProjectAgents(a projects.Agents) projects.Agents {
 	if a.Allow != nil {
 		out.Allow = s.shownNames(a.Allow)
 	}
-	if out.Default != "" && out.Default != Auto && !s.Agent(out.Default) {
+	if out.Default != "" && out.Default != Open && !s.Agent(out.Default) {
 		out.Default = ""
 	}
 	return out
@@ -261,7 +263,7 @@ func (s *Seer) AgentsView(v ProjectAgents) ProjectAgents {
 	if v.Enable == nil {
 		v.Enable = []string{}
 	}
-	if d := v.DefaultResolved; d != nil && d.Agent != Auto && !s.Agent(d.Agent) {
+	if d := v.DefaultResolved; d != nil && d.Agent != Open && !s.Agent(d.Agent) {
 		v.DefaultResolved = nil
 	}
 	return v
@@ -315,7 +317,7 @@ func (p *Platform) ProjectAgentsWrittenBy(ctx context.Context, who auth.Principa
 		p.log.Warn("platform: built-in agents", "error", err)
 	}
 	for _, n := range slices.Concat(in.Enable, in.Allow, []string{in.Default}) {
-		if n == "" || n == projects.Everyone || n == Auto {
+		if n == "" || n == projects.Everyone || n == legacy.AutoDefault {
 			continue
 		}
 		if _, err := p.Agents.Get(ctx, who.Tenant, n, 0); err != nil || !seer.Agent(n) {
@@ -741,7 +743,7 @@ func (p *Platform) DefaultForAs(who auth.Principal, id, project, channel string)
 // the client its Slack channel is bound to is shown it, as it is a thread's
 // there.
 func (s *Seer) Channel(c projects.Channel) projects.Channel {
-	if c.Default != "" && c.Default != Auto && !s.channelAgents(c)(c.Default) {
+	if c.Default != "" && c.Default != Open && !s.channelAgents(c)(c.Default) {
 		c.Default = ""
 	}
 	return c

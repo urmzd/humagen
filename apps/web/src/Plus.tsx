@@ -8,8 +8,8 @@ import { AgentMark, SearchField, SearchIcon } from "./ui.tsx";
 
 const words = defaultCopy.chat;
 
-/** How a message no one is tagged in goes to the agents selected: the best fit of them, or every one. */
-export type Mode = "best_fit" | "all";
+/** How a message no one is tagged in goes to the agents selected: each that decides to join, or every one. */
+export type Mode = "join" | "all";
 
 /**
  * What a conversation is set to, from the + menu: the agents an untagged
@@ -29,23 +29,23 @@ export const MAX_ALL = 3;
 
 /**
  * The selection with one more agent, as the platform takes it: at most
- * MAX_SELECTED, and All of Them for MAX_ALL at most, past which the best
- * fit answers. Null when the selection is full.
+ * MAX_SELECTED, and All of Them for MAX_ALL at most, past which each
+ * decides whether to join. Null when the selection is full.
  */
 export function withAgent(s: Selection, name: string): Selection | null {
   if (s.agents.includes(name)) return s;
   if (s.agents.length >= MAX_SELECTED) return null;
   const agents = [...s.agents, name];
-  return { ...s, agents, mode: s.mode === "all" && agents.length > MAX_ALL ? "best_fit" : s.mode };
+  return { ...s, agents, mode: s.mode === "all" && agents.length > MAX_ALL ? "join" : s.mode };
 }
 
-export const emptySelection: Selection = { agents: [], mode: "best_fit", project: null, channel: "general" };
+export const emptySelection: Selection = { agents: [], mode: "join", project: null, channel: "general" };
 
 /** The chat bar's prompt for a selection: how to bring an agent in, or who answers. */
 export function placeholderFor(s: Pick<Selection, "agents" | "mode">): string {
   if (s.agents.length === 0) return words.placeholder;
   if (s.agents.length === 1) return words.placeholderOne(s.agents[0] ?? "");
-  return s.mode === "all" ? words.placeholderAll(s.agents.length) : words.placeholderBest(s.agents.length);
+  return s.mode === "all" ? words.placeholderAll(s.agents.length) : words.placeholderJoin(s.agents.length);
 }
 
 /** Every item the arrow keys move between inside the active pane. */
@@ -381,7 +381,7 @@ const remove =
  * What the + menu selected, as text controls below the composer: each
  * agent with its color, the project with its path (and channel when not
  * general), each removable. With two agents or more, a text control says
- * how an untagged message is routed: Best Fit or All of Them.
+ * how an untagged message is routed: Each Decides or All of Them.
  */
 export function SelectionChips({
   selection,
@@ -436,7 +436,7 @@ export function SelectionChips({
       )}
       {agents.length >= 2 && (
         <li className="inline-flex flex-wrap items-center" role="group" aria-label={words.routing}>
-          {(["best_fit", "all"] as const).map((m) => {
+          {(["join", "all"] as const).map((m) => {
             // Past three agents, All of Them is not offered, and says why when pressed.
             const off = m === "all" && agents.length > MAX_ALL;
             return (
@@ -446,11 +446,11 @@ export function SelectionChips({
                 aria-pressed={mode === m}
                 aria-disabled={off || undefined}
                 aria-describedby={off ? why : undefined}
-                title={m === "best_fit" ? words.bestFitHint : off ? words.allMax(MAX_ALL) : words.allHint}
+                title={m === "join" ? words.joinHint : off ? words.allMax(MAX_ALL) : words.allHint}
                 onClick={() => (off ? setExplained(true) : onChange({ ...selection, mode: m }))}
                 className="min-h-6 rounded-aui px-1.5 py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline aria-disabled:opacity-50"
               >
-                {m === "best_fit" ? words.bestFit : words.all}
+                {m === "join" ? words.join : words.all}
               </button>
             );
           })}

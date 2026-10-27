@@ -6,12 +6,16 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/topic"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
-// Auto is the built-in router's reserved name. It is no agent: it is not in
-// the registry and is never homed, enabled or allowed. As a default it means
-// "pick, with pkg/pick, from the agents available here".
-const Auto = "auto"
+// OpenDefault is the default that names no agent: every agent available
+// where an untagged message is posted decides for itself whether to take it
+// (pkg/join). It is no agent: it is not in the registry and is never
+// homed, enabled or allowed. A default written as "auto", the router that
+// picked one agent, reads as it (legacy.Default).
+const OpenDefault = Everyone
 
 // Everyone, alone in an enable list, is every platform agent: every agent
 // with no home. It never reaches an agent that lives in a project.
@@ -48,16 +52,16 @@ type Agents struct {
 	// shown the agents it names.
 	Allow []string `json:"allow,omitzero"`
 	// Default answers a message that tags no agent, here and below: an agent,
-	// or Auto. "" inherits the nearest ancestor's.
+	// or OpenDefault. "" inherits the nearest ancestor's.
 	Default string `json:"default,omitempty"`
 }
 
 // ValidAgent reports whether a name can stand for an agent in a project's
 // lists, as a default or as an agent with a home: a fiber agent name in its
-// canonical form. Auto is no agent, and neither is fiber's control segment.
+// canonical form. OpenDefault is no agent, and neither is fiber's control segment.
 func ValidAgent(name string) bool {
 	if name == "" || name != agentspec.NormalizeName(name) || len(name) > agentspec.MaxNameLen ||
-		name == Auto || name == topic.ControlName {
+		name == OpenDefault || name == legacy.AutoDefault || name == topic.ControlName {
 		return false
 	}
 	_, err := topic.Agent(name)
@@ -83,7 +87,7 @@ func (a Agents) listed() Agents {
 // each list sorted, and enable never nil. A set allow list stays set, even
 // empty, so validate can refuse it rather than widen it to nil.
 func (a Agents) canonical() Agents {
-	out := Agents{Enable: canonicalNames(a.Enable), Default: agentspec.NormalizeName(a.Default)}
+	out := Agents{Enable: canonicalNames(a.Enable), Default: legacy.Default(agentspec.NormalizeName(a.Default))}
 	if out.Enable == nil {
 		out.Enable = []string{}
 	}
@@ -130,9 +134,7 @@ func (a Agents) validate() error {
 		return err
 	}
 	switch d := a.Default; {
-	case d == "" || d == Auto:
-	case d == Everyone:
-		return bad("a default is one agent or %s", Auto)
+	case d == "" || d == OpenDefault:
 	case !ValidAgent(d):
 		return bad("%q is not an agent name", d)
 	}
@@ -145,8 +147,8 @@ func names(list string, ns []string, everyone bool) error {
 		case n == Everyone && everyone:
 		case n == Everyone:
 			return fmt.Errorf("%w: %q is only for enable; leave allow out to narrow nothing", ErrInvalid, Everyone)
-		case n == Auto:
-			return fmt.Errorf("%w: %s is the built-in router: it is never enabled or allowed, only made a default", ErrInvalid, Auto)
+		case n == legacy.AutoDefault:
+			return fmt.Errorf("%w: auto is no agent; %q as a default lets every agent decide", ErrInvalid, OpenDefault)
 		case !ValidAgent(n):
 			return fmt.Errorf("%w: %q in %s is not an agent name", ErrInvalid, n, list)
 		}
@@ -305,7 +307,7 @@ func Widens(was, next []string) bool {
 
 // IsAvailable reports whether an agent may run in a project: offered there,
 // and permitted by every allow list on the chain. It does not know whether
-// the agent exists; the registry does. Auto is no agent, so it is never
+// the agent exists; the registry does. OpenDefault is no agent, so it is never
 // available itself: a caller resolves it to one first.
 func (t *Tree) IsAvailable(project, agent string) bool {
 	if home, ok := t.homes[agent]; ok && home != project {
@@ -350,12 +352,12 @@ func (t *Tree) DefaultOf(project string) (agent, from string) {
 }
 
 // NamedDefault returns the nearest default on a project's chain that names an
-// agent rather than Auto, and where it is set. It is where Auto hands a
+// agent rather than OpenDefault, and where it is set. It is where OpenDefault hands a
 // message that nothing matched. It is not skipped when it has stopped being
 // available: admission refuses it, and says why.
 func (t *Tree) NamedDefault(project string) (agent, from string) {
 	t.chain(project, func(q *Project) bool {
-		if d := q.Agents.Default; d != "" && d != Auto {
+		if d := q.Agents.Default; d != "" && d != OpenDefault {
 			agent, from = d, q.Name
 			return false
 		}
@@ -374,7 +376,7 @@ func checkAgents(t *Tree, p Project) error {
 			return fmt.Errorf("%w: %s lives in %s, so it is available there and below, and enabling it adds nothing", ErrInvalid, n, home)
 		}
 	}
-	if d := p.Agents.Default; d != "" && d != Auto && !t.IsAvailable(p.Name, d) {
+	if d := p.Agents.Default; d != "" && d != OpenDefault && !t.IsAvailable(p.Name, d) {
 		return fmt.Errorf("%w: %s is not available in %s, so it cannot answer there", ErrInvalid, d, display(p.Name))
 	}
 	return nil

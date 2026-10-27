@@ -45,8 +45,8 @@ func TestTheTagGrammar(t *testing.T) {
 		want []threads.Mention
 	}{
 		{"@ignite draft the renewal note", []threads.Mention{agent("ignite")}},
-		{"@auto what changed?", []threads.Mention{agent("auto")}},
-		{"@AUTO and @Auto are one tag", []threads.Mention{agent("auto")}},
+		{"@auto what changed?", []threads.Mention{{Kind: threads.Person, Name: "auto", Refused: "no one goes by @auto"}}},
+		{"@AUTO and @Auto are one tag", []threads.Mention{{Kind: threads.Person, Name: "auto", Refused: "no one goes by @auto"}}},
 		{"@dana can you check?", []threads.Mention{person("okta|dana")}},
 		{"thanks @ana.b.", []threads.Mention{person("okta|ana")}},
 		{"@sme who knows?", []threads.Mention{sme("")}},
@@ -356,7 +356,7 @@ func TestSkillsAndKindsCostBoundedLookups(t *testing.T) {
 	}
 }
 
-func TestAMessageThatNamesASkillAndNoAgentStartsAuto(t *testing.T) {
+func TestAMessageThatNamesASkillAndNoAgentAsksTheAgents(t *testing.T) {
 	refused := agent("ignite")
 	refused.Refused = "not here"
 	unknown := skillOf("ghost")
@@ -364,8 +364,8 @@ func TestAMessageThatNamesASkillAndNoAgentStartsAuto(t *testing.T) {
 	for _, c := range []struct {
 		in, want []threads.Mention
 	}{
-		{[]threads.Mention{skillOf("review")}, []threads.Mention{skillOf("review"), agent("auto")}},
-		{[]threads.Mention{person("okta|dana"), skillOf("review")}, []threads.Mention{person("okta|dana"), skillOf("review"), agent("auto")}},
+		{[]threads.Mention{skillOf("review")}, []threads.Mention{skillOf("review"), agent(threads.OpenName)}},
+		{[]threads.Mention{person("okta|dana"), skillOf("review")}, []threads.Mention{person("okta|dana"), skillOf("review"), agent(threads.OpenName)}},
 		{[]threads.Mention{agent("ignite"), skillOf("review")}, []threads.Mention{agent("ignite"), skillOf("review")}},
 		// An agent tagged and refused is still tagged: nobody answers in its
 		// place.

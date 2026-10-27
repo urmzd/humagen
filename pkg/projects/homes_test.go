@@ -97,7 +97,7 @@ func TestAgentsAndHomesSurviveARestart(t *testing.T) {
 		if _, err := s.SetAgents("acme", projects.Root, 1, projects.Agents{Enable: []string{"writer"}, Default: "writer"}, admin, t0); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.SetAgents("acme", "Field", 1, projects.Agents{Enable: []string{"lead"}, Allow: []string{"lead", "globex-helper"}, Default: projects.Auto}, ada, t0); err != nil {
+		if _, err := s.SetAgents("acme", "Field", 1, projects.Agents{Enable: []string{"lead"}, Allow: []string{"lead", "globex-helper"}, Default: projects.OpenDefault}, ada, t0); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.SetHome("acme", "globex-helper", "Globex", ada, t0, nil); err != nil {
@@ -233,7 +233,7 @@ func TestEnsureRootWritesTheRootOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := s.Tree("acme").Root()
-	if root.Version != 1 || root.CreatedBy != "migration" || root.Agents.Default != projects.Auto {
+	if root.Version != 1 || root.CreatedBy != "migration" || root.Agents.Default != projects.OpenDefault {
 		t.Fatalf("the root = %+v", root)
 	}
 	if h, _ := s.History("acme", projects.Root, 0, 0); len(h) != 1 {

@@ -158,7 +158,7 @@ func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names
 		moved[n] = true
 	}
 	lost := func(project, agent string) bool {
-		return agent != "" && agent != Auto && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
+		return agent != "" && agent != Open && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
 	}
 	var out []string
 	scheds := p.Schedules.List(tenant)

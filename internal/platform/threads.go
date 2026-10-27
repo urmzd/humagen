@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,10 +17,10 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
-	"github.com/urmzd/humagen/pkg/pick"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -405,7 +406,7 @@ func (l tagLookup) Slack(user string) (string, bool) {
 // can. It is the check admission makes (Available), made sooner so the
 // message says why.
 func (p *Platform) tagRefusal(tenant, project, agent string) string {
-	if agent == Auto {
+	if agent == Open {
 		return ""
 	}
 	if err := p.Available(tenant, project, agent); err != nil {
@@ -480,7 +481,7 @@ func (p *Platform) clientDefault(tenant string, th threads.Thread) string {
 func (p *Platform) defaultOf(tenant string, th threads.Thread, sees func(string) bool) (threads.Default, string) {
 	n := p.DefaultAt(tenant, placeSeen(p.placeOfThread(tenant, th), sees))
 	d := threads.Default{Agent: n.Agent, From: n.From}
-	if d.Agent == "" || d.Agent == Auto {
+	if d.Agent == "" || d.Agent == Open {
 		return d, ""
 	}
 	if p.tagRefusal(tenant, th.Project, d.Agent) != "" {
@@ -520,7 +521,7 @@ func placeSeen(at Place, sees func(string) bool) Place {
 	out := at
 	out.Nearer = slices.Clone(at.Nearer)
 	for i, n := range out.Nearer {
-		if n.Agent != "" && n.Agent != Auto && !sees(n.Agent) {
+		if n.Agent != "" && n.Agent != Open && !sees(n.Agent) {
 			out.Nearer[i].Agent = ""
 		}
 	}
@@ -644,11 +645,11 @@ func (p *Platform) placeFor(person auth.Principal, project, channel string) (str
 // agents its writer may read, nil for every agent: any other is refused as
 // one that does not exist.
 func (p *Platform) checkDefault(ctx context.Context, tenant, project, agent string, sees func(string) bool) error {
-	if agent == "" || agent == threads.AutoName {
+	if agent = legacy.Default(agent); agent == "" || agent == threads.OpenName {
 		return nil
 	}
 	if !projects.ValidDefault(agent) {
-		return fmt.Errorf("%w: a default is an agent's name or auto", projects.ErrInvalid)
+		return fmt.Errorf("%w: a default is an agent's name or \"*\"", projects.ErrInvalid)
 	}
 	if _, err := p.Agents.Get(ctx, tenant, agent, 0); err != nil || (sees != nil && !sees(agent)) {
 		return fmt.Errorf("%w: there is no agent called %s", projects.ErrInvalid, agent)
@@ -1029,23 +1030,23 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	// (threads.Ask).
 	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
-	start := func(agent string) (runs.Run, error) {
-		// A run the selection starts says how: the best fit among the
-		// selected agents, or one of all of them (a lone selected agent
-		// answers as all of one).
+	start := func(agent string) ([]runs.Run, error) {
+		// A run the selection starts says how: one of the selected agents
+		// that joined on its own, or one of all of them (a lone selected
+		// agent answers as all of one).
 		routedBy := ""
 		switch {
 		case d.Rule == threads.RuleRouted && d.Among != nil:
-			routedBy = threads.ModeBestFit
+			routedBy = threads.ModeJoin
 		case d.Rule == threads.RuleRouted:
 			routedBy = threads.ModeAll
 		}
-		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, routedBy, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
-		if err == nil {
+		started, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, routedBy, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
+		for _, run := range started {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
 		}
-		return run, err
+		return started, err
 	}
 	switch {
 	case d.Rule == threads.RuleTagged:
@@ -1054,17 +1055,19 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 			if mn.Kind != threads.Agent || mn.Refused != "" || !slices.Contains(d.Agents, mn.Name) {
 				continue
 			}
-			run, err := start(mn.Name)
-			if err != nil {
+			started, err := start(mn.Name)
+			if err != nil || len(started) == 0 {
 				mn.Refused = refusalOf(err)
 				continue
 			}
-			mn.Run = run.ID
+			mn.Run = started[0].ID
 		}
 	case d.Rule == threads.RuleRouted:
 		var refused []string
 		for _, agent := range d.Agents {
-			if _, err := start(agent); err != nil {
+			if _, err := start(agent); errors.Is(err, ErrNoTakers) {
+				out.Reason = "No selected agent took it, so it waits for a person to answer or tag an agent."
+			} else if err != nil {
 				refused = append(refused, refusalOf(err))
 			}
 		}
@@ -1073,6 +1076,13 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 			out.Reason = "No selected agent could answer: " + strings.Join(refused, "; ") + "."
 		case len(refused) > 0:
 			out.Reason = "Not every selected agent could answer: " + strings.Join(refused, "; ") + "."
+		}
+	case d.Default && len(d.Agents) == 1 && d.Agents[0] == Open:
+		if _, err := start(Open); err != nil {
+			out.Reason = "No agent took it, so it waits for a person to answer or tag an agent."
+			if !errors.Is(err, ErrNoTakers) {
+				out.Reason = fmt.Sprintf("The agents here could not be asked: %s.", refusalOf(err))
+			}
 		}
 	case d.Default && len(d.Agents) == 1:
 		if _, err := start(d.Agents[0]); err != nil {
@@ -1141,25 +1151,16 @@ func answerTagID(thread, message, agent string) string {
 }
 
 // answerMessage starts an agent answering a person's message, as the run
-// tagID names: @auto picks the agent first, among the agents among names
-// alone when it names any (a thread's selected agents, best fit). The agent is sent its context and
-// the room's transcript up to the message, then the message. via is the
+// tagID names. For Open, each agent that takes the message on its own
+// answers, in a run of its own: among the agents among names alone when it
+// names any (a thread's selected agents, ModeJoin), and otherwise among
+// every agent available where the thread is. Each agent is sent its context
+// and the room's transcript up to the message, then the message. via is the
 // client whose credential posted the message for its poster, if one did.
 // keeps pins that the person it acts for may change the project's notes, as
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
-// @auto never falls back to one they may not read.
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) (runs.Run, error) {
-	if agent == Auto && len(among) > 0 {
-		// The best fit is picked among the selected agents the clients it
-		// reaches the thread through may route to, and it is the agent
-		// picked that they are held to, not @auto.
-		among = slices.DeleteFunc(slices.Clone(among), func(a string) bool { return p.mayRoute(tenant, th, via, a) != nil })
-		if len(among) == 0 {
-			return runs.Run{}, fmt.Errorf("%w: no selected agent may answer here", ErrNotAvailable)
-		}
-	} else if err := p.mayRoute(tenant, th, via, agent); err != nil {
-		return runs.Run{}, err
-	}
+// one they may not read is never asked.
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
@@ -1172,59 +1173,66 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	skills := p.skillsOfMessage(tenant, th, m, via, actor.User)
 	pinSkills(meta, skills)
-	if agent == Auto && len(among) > 0 {
-		who, err := p.bestFit(ctx, tenant, th.Project, pickText(m.Text, skills), among, sees)
+	type answer struct{ agent, tag, picked string }
+	var who []answer
+	if agent == Open {
+		// Only agents the clients it reaches the thread through may route
+		// to are asked, and those the poster may read; each that joins is
+		// held to them, not Open.
+		keep := func(a string) bool {
+			return (len(among) == 0 || slices.Contains(among, a)) && (sees == nil || sees(a)) && p.mayRoute(tenant, th, via, a) == nil
+		}
+		joined, err := p.join(ctx, tenant, p.Projects.Tree(tenant), th.Project, pickText(m.Text, skills), keep)
 		if err != nil {
-			return runs.Run{}, err
+			return nil, err
 		}
-		agent = who.Agent
-		meta[runs.MetaPicked] = who.Reason
-		if len(who.Matched) == 0 {
-			meta[runs.MetaPicked] = fmt.Sprintf("Picked from the selected agents: nothing matched, so @%s, the first that could answer, did.", who.Agent)
+		for _, d := range joined {
+			who = append(who, answer{agent: d.Agent, tag: joinedTagID(tagID, d.Agent), picked: joinedReason(d)})
 		}
-	} else if agent == Auto {
-		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, pickText(m.Text, skills), sees)
-		if err != nil {
-			return runs.Run{}, err
+	} else {
+		if err := p.mayRoute(tenant, th, via, agent); err != nil {
+			return nil, err
 		}
-		agent = who.Agent
-		meta[runs.MetaPicked] = who.Picked
-	}
-	if existing, err := p.Runs.Get(tenant, runtime.RunID(tenant, tagID)); err == nil {
-		return existing, nil
+		who = []answer{{agent: agent, tag: tagID}}
 	}
 	cfg := p.Settings(tenant)
 	body := m.Text
 	if cfg.History == HistoryRecent {
 		body = threads.Ask(p.roomBefore(tenant, th, m), cfg.HistoryLimit, p.shower(tenant), threads.Asker{Person: m.By, Name: m.Name}, m.Text)
 	}
-	return p.Invoke(ctx, envelope.Tag{
-		ID: tagID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.turnContext(tenant, th.Project, th.Channel, agent, actor.User, body, meta), Attachments: m.Attachments, Actor: actor, Meta: meta,
-	})
-}
-
-// bestFit is the one of a thread's selected agents that fits a message best,
-// as @auto picks (pkg/pick), among them alone and those the poster may read;
-// when none fits, the first of them available in the project.
-func (p *Platform) bestFit(ctx context.Context, tenant, project, text string, among []string, sees func(string) bool) (pick.Choice, error) {
-	tree := p.Projects.Tree(tenant)
-	keep := func(a string) bool { return slices.Contains(among, a) && (sees == nil || sees(a)) }
-	fallback := ""
-	for _, a := range among {
-		if keep(a) && tree.IsAvailable(project, a) {
-			fallback = a
-			break
+	var out []runs.Run
+	var firstErr error
+	for _, a := range who {
+		if existing, err := p.Runs.Get(tenant, runtime.RunID(tenant, a.tag)); err == nil {
+			out = append(out, existing)
+			continue
 		}
+		mt := meta
+		if a.picked != "" {
+			mt = maps.Clone(meta)
+			mt[runs.MetaPicked] = a.picked
+		}
+		run, err := p.Invoke(ctx, envelope.Tag{
+			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI,
+			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, body, mt), Attachments: m.Attachments, Actor: actor, Meta: mt,
+		})
+		if err != nil {
+			firstErr = cmp.Or(firstErr, err)
+			continue
+		}
+		out = append(out, run)
 	}
-	return p.auto(ctx, tenant, tree, project, text, fallback, keep)
+	if len(out) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+	return out, nil
 }
 
 // mayRoute holds an agent answering a message to the allow-lists of the
 // clients it reaches the thread through: the client whose surface the
 // thread is on, and the client whose credential posted the message for a
 // person, wherever the thread is. An agent either may not route to is
-// refused, never swapped, and a client that lists its agents treats @auto
+// refused, never swapped, and a client that lists its agents treats "*"
 // as a name outside the list. A client that posted the message and is gone
 // now routes to nothing.
 func (p *Platform) mayRoute(tenant string, th threads.Thread, via, agent string) error {
@@ -1651,7 +1659,7 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 			if !keepsDefault {
 				t.Default = in.Default
 			}
-			if t.Project != project && t.Default != "" && t.Default != Auto && p.tagRefusal(who.Tenant, project, t.Default) != "" {
+			if t.Project != project && t.Default != "" && t.Default != Open && p.tagRefusal(who.Tenant, project, t.Default) != "" {
 				// A default kept, hidden from the caller, that cannot answer
 				// where it goes is cleared, naming nothing.
 				t.Default = ""
@@ -1899,7 +1907,7 @@ func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in 
 		return Shared{}, err
 	}
 	def := th.Default
-	if project != th.Project && def != "" && def != Auto && p.tagRefusal(who.Tenant, project, def) != "" {
+	if project != th.Project && def != "" && def != Open && p.tagRefusal(who.Tenant, project, def) != "" {
 		// It could not answer there. Clearing it says nothing of an agent
 		// the sharer may not read.
 		def = ""

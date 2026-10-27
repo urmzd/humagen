@@ -283,19 +283,19 @@ func TestConversationsBranchAndPick(t *testing.T) {
 	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
 	f.do(t, nil, "POST", "/api/agents", tok, `{"name":"releaser","description":"Cuts releases and tags versions.","model":"offline","provider":"offline","system_prompt":"x"}`)
 
-	// A new workspace's default is @auto. With no default that names an
-	// agent, a message nothing matches goes nowhere: tag one.
-	if res, out := f.do(t, nil, "POST", "/api/runs", tok, `{"text":"what is the weather"}`); res.StatusCode != http.StatusConflict || out["error"] != "no agent fits; tag one" {
-		t.Fatalf("@auto with nothing to fall back to = %d %v, want 409", res.StatusCode, out)
+	// A new workspace's default is everyone. A message no agent takes
+	// starts nothing: it waits.
+	if res, out := f.do(t, nil, "POST", "/api/runs", tok, `{"text":"what is the weather"}`); res.StatusCode != http.StatusConflict || !strings.Contains(fmt.Sprint(out["error"]), "waits for a person") {
+		t.Fatalf("a message no agent takes = %d %v, want 409", res.StatusCode, out)
 	}
 	if res, _ := f.do(t, nil, "PUT", "/api/projects/~/agents", tok, `{"version":0,"enable":["*"],"default":"ghost"}`); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a workspace default that is not an agent = %d, want 400", res.StatusCode)
 	}
-	// The workspace default names helper; a project below it uses @auto,
-	// which falls back to helper.
+	// The workspace default names helper.
 	f.do(t, nil, "PUT", "/api/projects/~/agents", tok, `{"version":0,"enable":["*"],"default":"helper"}`)
 
-	// The first message starts a thread and is auto-picked by description.
+	// The first message starts a thread; releaser takes it on its own. A
+	// caller still sending "auto", as written before, asks everyone.
 	_, first := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"auto","text":"tag the next release"}`)
 	if first["agent"] != "releaser" || first["picked"] == "" || first["thread"] != first["id"] {
 		t.Fatalf("first = %v", first)
@@ -304,9 +304,10 @@ func TestConversationsBranchAndPick(t *testing.T) {
 	if weather["agent"] != "helper" || weather["picked"] != nil {
 		t.Fatalf("an untagged message, so the workspace default should answer: %v", weather)
 	}
-	_, auto := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"auto","text":"what is the weather"}`)
-	if auto["agent"] != "helper" || !strings.Contains(fmt.Sprint(auto["picked"]), "the default answered") {
-		t.Fatalf("@auto with no match should hand the message to the default: %v", auto)
+	// Asking everyone, when no agent takes it, never falls back to the
+	// default: it waits.
+	if res, _ := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"*","text":"what is the weather"}`); res.StatusCode != http.StatusConflict {
+		t.Fatalf("asking everyone with no taker = %d, want 409", res.StatusCode)
 	}
 	id := first["id"].(string)
 
@@ -360,9 +361,15 @@ func TestConversationsBranchAndPick(t *testing.T) {
 		t.Fatalf("project: first %v, follow-up %v", filed["project"], next["project"])
 	}
 
-	_, choice := f.do(t, nil, "GET", "/api/pick?q=cut+a+release", tok, "")
-	if choice["agent"] != "releaser" {
-		t.Fatalf("pick = %v", choice)
+	_, preview := f.do(t, nil, "GET", "/api/join?q=cut+a+release", tok, "")
+	joined := []string{}
+	for _, d := range sliceOf(preview["decisions"]) {
+		if obj(d)["join"] == true {
+			joined = append(joined, fmt.Sprint(obj(d)["agent"]))
+		}
+	}
+	if len(joined) != 1 || joined[0] != "releaser" {
+		t.Fatalf("join preview = %v", preview)
 	}
 
 	// Another tenant cannot read the thread or continue it.

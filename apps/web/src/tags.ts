@@ -1,7 +1,7 @@
 /**
  * Completion in the chat bar: what is being typed at the caret, what it could
- * complete to, and the text once one is picked. `@` names people, agents,
- * @auto and the kinds of `@kind:name` mention (`@sme:billing`); `$` names a
+ * complete to, and the text once one is picked. `@` names people, agents
+ * and the kinds of `@kind:name` mention (`@sme:billing`); `$` names a
  * skill. The platform reads them (pkg/threads); this only helps a person
  * write them, so it follows the same rules: a tag starts a word, and nothing
  * inside code is a tag.
@@ -13,12 +13,12 @@ export type Sigil = "@" | "$";
 /** A name a message can tag, as completion offers it. */
 export interface TagOption {
   /**
-   * agent and auto: who runs. person: someone to bring in. kind: a mention
+   * agent: who runs. person: someone to bring in. kind: a mention
    * kind, written `@kind:` and completed further. item: one item of a
    * mention kind, `@kind:name` (and `@sme`, every expert). skill: `$name`.
    */
-  kind: "agent" | "auto" | "person" | "kind" | "item" | "skill";
-  /** What is written after the sigil: an agent's name, auto, a handle, `sme:`, `sme:billing`, a skill's name. */
+  kind: "agent" | "person" | "kind" | "item" | "skill";
+  /** What is written after the sigil: an agent's name, a handle, `sme:`, `sme:billing`, a skill's name. */
   token: string;
   /** What the list shows. */
   label: string;
@@ -66,8 +66,8 @@ const rank = (o: TagOption, q: string): number => {
   return -1;
 };
 
-/** Which share of the list an option takes: agents with @auto, people, mention kinds with their items, skills. */
-const shareOf = (o: TagOption): string => (o.kind === "auto" ? "agent" : o.kind === "item" ? "kind" : o.kind);
+/** Which share of the list an option takes: agents, people, mention kinds with their items, skills. */
+const shareOf = (o: TagOption): string => (o.kind === "item" ? "kind" : o.kind);
 
 /**
  * The options that match what is typed after its sigil: closest first, then
@@ -117,7 +117,7 @@ export interface KindOption {
 }
 
 /**
- * What a message can tag: @auto first, then the agents that can answer
+ * What a message can tag: the agents that can answer
  * there, then people, then each mention kind (`@sme:`) and the items of it
  * read so far (topics are sme's), then skills for `$`. Experts on every
  * topic, `@sme`, are offered when sme is a kind here.
@@ -126,7 +126,7 @@ export function tagOptions(
   agents: { name: string; description?: string }[],
   people: { handle: string; name?: string }[],
   _topics: string[],
-  words: { auto: string; experts: (topic: string) => string; kind?: (kind: string, title?: string) => string },
+  words: { experts: (topic: string) => string; kind?: (kind: string, title?: string) => string },
   extra: { kinds?: KindOption[]; items?: { kind: string; name: string; description?: string }[]; skills?: { name: string; description?: string }[] } = {},
 ): TagOption[] {
   // Old expert metadata can still be returned by a cached or older host, but
@@ -135,7 +135,6 @@ export function tagOptions(
   const kinds = (extra.kinds ?? []).filter((k) => !retired.has(k.kind));
   const items = (extra.items ?? []).filter((i) => i.kind !== "sme" && !retired.has(i.kind));
   return [
-    { kind: "auto" as const, token: "auto", label: "auto", hint: words.auto },
     ...agents.map((a) => ({ kind: "agent" as const, token: a.name, label: a.name, ...(a.description ? { hint: a.description } : {}) })),
     ...people.map((p) => ({ kind: "person" as const, token: p.handle, label: p.handle, ...(p.name ? { hint: p.name } : {}) })),
     ...kinds.map((k) => ({

@@ -178,7 +178,7 @@ type Agents struct {
 	// project below can only narrow it. Left out, it narrows nothing.
 	Allow []string `json:"allow,omitempty"`
 	// Default answers a message that tags no agent, here and below: an
-	// agent available here, or auto for @auto. Left out, it inherits.
+	// agent available here, or "*" to let every agent decide. Left out, it inherits.
 	Default string `json:"default,omitempty"`
 }
 

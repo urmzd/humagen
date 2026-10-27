@@ -158,6 +158,8 @@ export interface AgentSpec {
   approvers?: string[];
   /** Lets the person who asked approve their own call. */
   self_approval?: boolean;
+  /** Runs only when a message names it; never asked about untagged messages. */
+  tagged_only?: boolean;
   /** When set, the only people who may answer a question the agent asks. */
   answerers?: string[];
 }
@@ -390,10 +392,22 @@ export interface ThreadSummary {
   updated_at: string;
 }
 
-export interface Choice {
+/** One agent's answer to whether it would take a message that names no agent. */
+export interface JoinDecision {
   agent: string;
+  join: boolean;
   reason: string;
-  matched?: string[];
+}
+
+/**
+ * The dynamic router: when on, every available agent is asked whether it
+ * should take a message that names no agent. The provider is one the
+ * deployment declares; its key never lives here.
+ */
+export interface RouterSettings {
+  enabled: boolean;
+  provider?: string;
+  model?: string;
 }
 
 /**
@@ -409,6 +423,8 @@ export interface Settings {
   workspace_name?: string;
   /** Named model lists agents run on with provider "policy". */
   model_policies?: ModelPolicy[];
+  /** Whether agents decide for themselves to take a message that names no agent. */
+  router: RouterSettings;
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -773,9 +789,9 @@ export const api = {
     call<ThreadPage>("GET", `/api/threads/${encodeURIComponent(id)}`).then((r) =>
       r.turns.flatMap((t) => (t.run ? [t.run] : [])),
     ),
-  /** Who @auto would pick for a message in a project, "" for the workspace. */
-  pick: (q: string, project = "") =>
-    call<Choice>("GET", `/api/pick?${new URLSearchParams(project ? { q, project } : { q })}`),
+  /** Which agents would join a message that names none, in a project, "" for the workspace. Nothing is started. */
+  join: (q: string, project = "") =>
+    call<{ decisions: JoinDecision[] }>("GET", `/api/join?${new URLSearchParams(project ? { q, project } : { q })}`).then((r) => r.decisions),
   settings: () => call<Settings>("GET", "/api/settings"),
   saveSettings: (s: Settings) => call<Settings>("PUT", "/api/settings", s),
   history: (name: string) =>
@@ -1166,9 +1182,9 @@ export interface Thread {
   visibility: "shared" | "private";
   participants: ThreadParticipant[];
   default?: string;
-  /** The agents an untagged message goes to, from the + menu, and how: the best fit of them, or every one. */
+  /** The agents an untagged message goes to, from the + menu, and how: each that decides to join, or every one. */
   agents?: string[];
-  mode?: "best_fit" | "all";
+  mode?: "join" | "all";
   read_only?: boolean;
   fork?: {
     source_thread: string; through: string; by: string; at: string; sources?: string[];
@@ -1186,7 +1202,7 @@ export interface Thread {
 
 export interface ThreadMention {
   kind: "agent" | "person" | "sme" | "skill" | "role";
-  /** The agent (`auto` for @auto), the person's subject, or the experts' topic. */
+  /** The agent, the person's subject, or the experts' topic. */
   name: string;
   run?: string;
   refused?: string;
@@ -1318,7 +1334,7 @@ export interface DirectoryPerson {
 /** A thread after a share, and the people the share named who were not added, each with why. */
 export type ThreadShared = ThreadPage & { not_added: { handle: string; reason: string }[] };
 
-/** A skill a `$name` picks for the agent a message tags, or for @auto, and the project that declares it. */
+/** A skill a `$name` picks for the agent a message tags, or for the agents that join, and the project that declares it. */
 export type Skill = ProjectSkillRef;
 export type { MentionItem, MentionKind };
 
@@ -1336,7 +1352,7 @@ const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
 
 /** Channels, experts and shared threads: where people and agents work together. */
 export const coworking = {
-  fork: (id: string, input: { through: string; title?: string; agents?: string[]; mode?: "best_fit" | "all"; sources?: string[] }) => call<Thread>("POST", `${threadPath(id)}/fork`, input),
+  fork: (id: string, input: { through: string; title?: string; agents?: string[]; mode?: "join" | "all"; sources?: string[] }) => call<Thread>("POST", `${threadPath(id)}/fork`, input),
   bringBack: (id: string, input: { run: string; text?: string }) => call<ThreadMessage>("POST", `${threadPath(id)}/bring-back`, input),
   participants: (id: string, input: { version: number; add?: { kind: "person" | "agent"; name: string }[]; remove?: string[] }) => call<Thread>("PUT", `${threadPath(id)}/participants`, input),
   channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
@@ -1375,7 +1391,7 @@ export const coworking = {
     title?: string;
     visibility?: "shared" | "private";
     agents?: string[];
-    mode?: "best_fit" | "all";
+    mode?: "join" | "all";
   }) =>
     call<ThreadPosted>("POST", "/api/threads", { visibility: "private", ...t }),
   /**
@@ -1408,7 +1424,7 @@ export const coworking = {
       visibility: "shared" | "private";
       default: string;
       agents?: string[];
-      mode?: "best_fit" | "all";
+      mode?: "join" | "all";
       project?: string;
       channel?: string;
     },

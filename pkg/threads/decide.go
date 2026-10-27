@@ -15,7 +15,7 @@ type Rule string
 
 // The rules, in the order they apply: the first that applies decides.
 const (
-	// RuleTagged: the message tags agents or @auto, and each answers.
+	// RuleTagged: the message tags agents, and each answers.
 	RuleTagged Rule = "tagged"
 	// RulePeople: it tags only people or experts, so no agent answers.
 	RulePeople Rule = "people"
@@ -88,11 +88,11 @@ type Input struct {
 // Decision is what a message starts.
 type Decision struct {
 	Rule Rule `json:"rule"`
-	// Agents answer, in order, at most MaxRuns. "auto" is @auto, which the
+	// Agents answer, in order, at most MaxRuns. OpenName asks every agent, which the
 	// platform resolves.
 	Agents []string `json:"agents"`
-	// Among is set when the thread's selected agents answer with ModeBestFit:
-	// Agents is then @auto, picking among these alone.
+	// Among is set when the thread's selected agents answer with ModeJoin:
+	// Agents is then OpenName, asking these alone.
 	Among []string `json:"among,omitempty"`
 	// Default is set when the agent answering is the inherited default.
 	Default bool `json:"default,omitempty"`
@@ -104,7 +104,7 @@ type Decision struct {
 
 // Decide applies the rules in order, and the first that applies decides:
 //
-//  1. a message that tags agents or @auto is answered by each tagged agent
+//  1. a message that tags agents is answered by each tagged agent
 //     that can answer, at most MaxRuns, and by no default, even when none
 //     can;
 //  2. one that tags only people, experts or a role starts no run, unless it
@@ -113,7 +113,7 @@ type Decision struct {
 //  4. and one posted only;
 //  5. one posted in the console (TagsOnly) in a thread with selected agents
 //     is answered by them: the one that fits it best (Among, through
-//     @auto), or each of them (ModeAll);
+//     OpenName), or each of them (ModeAll);
 //  6. one posted in the console (TagsOnly) starts no run, whatever the
 //     default;
 //  7. otherwise the inherited default answers. With none, or with one that
@@ -121,7 +121,7 @@ type Decision struct {
 //
 // A refused tag still counts as a tag of its kind, so a tag that names
 // nobody never sends the message to the default instead. A skill is no tag of
-// anyone: a message that names one and tags no agent starts @auto, which the
+// anyone: a message that names one and tags no agent asks the agents (OpenName), which the
 // platform adds to its tags before deciding (WithSkillAgent). Decide is a
 // pure function of its input.
 func Decide(in Input) Decision {
@@ -164,7 +164,7 @@ func Decide(in Input) Decision {
 	case routed && (len(in.Routed) == 1 || in.Mode == ModeAll):
 		d.Rule, d.Agents = RuleRouted, slices.Clone(in.Routed[:min(len(in.Routed), MaxRuns)])
 	case routed:
-		d.Rule, d.Agents, d.Among = RuleRouted, []string{AutoName}, slices.Clone(in.Routed)
+		d.Rule, d.Agents, d.Among = RuleRouted, []string{OpenName}, slices.Clone(in.Routed)
 	case in.TagsOnly:
 		d.Rule, d.Reason = RuleUntagged, "Nothing runs until you tag an agent."
 	case in.Default.Agent == "":

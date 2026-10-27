@@ -14,7 +14,7 @@ export function ForkConversation({ thread, through, onClose, onForked, open = tr
   const [title, setTitle] = useState(thread.title ? `${thread.title} (fork)` : "");
   const [available, setAvailable] = useState<string[] | null>(null);
   const [agents, setAgents] = useState<string[]>([]);
-  const [mode, setMode] = useState<"best_fit" | "all">("best_fit");
+  const [mode, setMode] = useState<"join" | "all">("join");
   const [sources, setSources] = useState<string[]>([]);
   const [knownSources, setKnownSources] = useState<string[]>([]);
   const [sourceMode, setSourceMode] = useState("inherit");
@@ -43,7 +43,7 @@ export function ForkConversation({ thread, through, onClose, onForked, open = tr
         {available === null ? <p className="text-aui-sm text-aui-muted">{words.loading}</p> : available.map((name) => <label key={name} className="flex min-h-10 items-center gap-2 text-aui-sm"><input type="checkbox" checked={agents.includes(name)} disabled={!agents.includes(name) && agents.length >= 5} onChange={(event) => setAgents(event.target.checked ? [...agents, name] : agents.filter((agent) => agent !== name))} /><AgentMark name={name} size={16} />{name}</label>)}
         {agents.length === 0 && <p className="text-aui-xs text-aui-muted">{words.empty}</p>}
       </fieldset>
-      {agents.length > 1 && <Label text={words.mode}><select aria-label={words.mode} className={field} value={mode} onChange={(event) => setMode(event.target.value as "best_fit" | "all")}><option value="best_fit">{words.bestFit}</option><option value="all" disabled={agents.length > 3}>{words.all}</option></select></Label>}
+      {agents.length > 1 && <Label text={words.mode}><select aria-label={words.mode} className={field} value={mode} onChange={(event) => setMode(event.target.value as "join" | "all")}><option value="join">{words.join}</option><option value="all" disabled={agents.length > 3}>{words.all}</option></select></Label>}
       <Label text={words.sources}><select aria-label={words.sources} className={field} value={sourceMode} onChange={(event) => setSourceMode(event.target.value)}><option value="inherit">{words.inherit}</option><option value="none">{words.none}</option>{knownSources.length > 0 && <option value="selected">{words.selected}</option>}</select></Label>
       {sourceMode === "selected" && <fieldset className="flex flex-col gap-2"><legend className="text-aui-xs text-aui-muted">{words.sourceHint}</legend>{knownSources.map((name) => <label key={name} className="flex min-h-10 items-center gap-2 text-aui-sm"><input type="checkbox" checked={sources.includes(name)} disabled={!sources.includes(name) && sources.length >= 16} onChange={(event) => setSources(event.target.checked ? [...sources, name] : sources.filter((source) => source !== name))} />{name}</label>)}</fieldset>}
       <Problem message={problem} />

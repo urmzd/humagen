@@ -32,7 +32,7 @@ const (
 	maxExpertTopics  = 8
 	maxExpertWho     = 200
 	generalChannel   = "general"
-	autoDefault      = "auto"
+	openDefault      = "*"
 	expertRolePrefix = "role:"
 
 	maxKnowledge = 8
@@ -87,7 +87,7 @@ var (
 var mentionResolves = []string{"experts", "skills", "role", "people"}
 
 // reservedKinds are the names no declared mention kind takes: the built-in
-// kinds and @auto.
+// kinds and @auto, which once picked an agent.
 var reservedKinds = []string{"sme", "skill", "auto"}
 
 // checkProjects holds the workspace's instructions and project tree to what
@@ -432,7 +432,7 @@ func checkChannels(cs []Channel) error {
 		if err := checkText(c.Purpose, maxPurpose, false); err != nil {
 			return fmt.Errorf("%s.purpose: %w", at, err)
 		}
-		if c.Default != "" && !defaultName.MatchString(c.Default) {
+		if c.Default != "" && c.Default != openDefault && !defaultName.MatchString(c.Default) {
 			return fmt.Errorf("%s.default: %q is not an agent's name or auto", at, c.Default)
 		}
 		if b := c.Slack; b != nil {

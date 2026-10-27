@@ -8,12 +8,13 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
 
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/clients"
-	"github.com/urmzd/humagen/pkg/pick"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -22,7 +23,7 @@ import (
 // tags none, and where an agent lives (docs/projects.md, "Agents in
 // projects"). The project tree decides availability; the platform asks it
 // once, at admission, and again sooner wherever an answer helps a person:
-// writing a schedule or a default, and previewing @auto.
+// writing a schedule or a default, and previewing who would join a message.
 
 var (
 	// ErrNotAvailable reports an agent that may not run where a run is
@@ -32,10 +33,15 @@ var (
 	// ErrNoDefault reports a message that tags no agent, in a place where
 	// nothing answers untagged messages.
 	ErrNoDefault = errors.New("platform: tag an agent")
+	// ErrNoTakers reports a message no agent took: every agent available
+	// where it was posted was asked and stayed out. It waits for a person
+	// to answer it or tag an agent.
+	ErrNoTakers = errors.New("platform: no agent took it")
 )
 
-// Auto is the built-in router's reserved name: @auto picks the agent.
-const Auto = projects.Auto
+// Open is the default that names no agent: each agent available where an
+// untagged message is posted decides for itself whether to take it.
+const Open = projects.OpenDefault
 
 // whereOf is how a project is named in what a person reads: its title, or the
 // workspace's name for the root.
@@ -72,8 +78,8 @@ func (p *Platform) Available(tenant, project, agent string) error {
 // home.
 func (p *Platform) notAvailable(tenant string, tree *projects.Tree, project, agent string) error {
 	where := p.whereOf(tenant, tree, project)
-	if agent == Auto {
-		return fmt.Errorf("%w: @auto picks an agent before anything runs, so it never runs itself", ErrNotAvailable)
+	if agent == Open {
+		return fmt.Errorf("%w: open is no agent: the agents decide whether to take a message before anything runs", ErrNotAvailable)
 	}
 	if home, ok := tree.Home(agent); ok && home != projects.Root && !onChain(tree, project, home) && everyoneIn(tree, home) {
 		return fmt.Errorf("%w: %s is not available in %s; it lives in %s and is available only there and below", ErrNotAvailable, agent, where, p.whereOf(tenant, tree, home))
@@ -140,10 +146,11 @@ func (p *Platform) unavailableAlert(tenant, schedule, agent, project string, err
 	}
 }
 
-// candidates are the agents available in a project that keep passes, as
-// @auto weighs them. keep nil keeps every one.
-func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects.Tree, project string, keep func(string) bool) ([]pick.Candidate, error) {
-	var out []pick.Candidate
+// candidates are the agents available in a project that keep passes and
+// that take untagged messages, as join asks them. keep nil keeps
+// every one. An agent whose spec is tagged_only is never asked.
+func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects.Tree, project string, keep func(string) bool) ([]join.Candidate, error) {
+	var out []join.Candidate
 	page := registry.Page{Size: 100}
 	for {
 		revs, next, err := p.Agents.List(ctx, tenant, page)
@@ -151,10 +158,13 @@ func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects
 			return nil, err
 		}
 		for _, r := range revs {
-			if !tree.IsAvailable(project, r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
+			if r.Spec.TaggedOnly || !tree.IsAvailable(project, r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
 				continue
 			}
-			out = append(out, pick.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt})
+			out = append(out, join.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt})
+			if len(out) == join.MaxCandidates {
+				return out, nil
+			}
 		}
 		if next == "" {
 			return out, nil
@@ -163,26 +173,97 @@ func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects
 	}
 }
 
-// Pick is what @auto does with a message in a project ("" or "~" is the
-// root), without starting anything: it chooses among the agents available
-// there. With no match it falls back to the nearest default on the project's
-// chain that names an agent, and with none it is pick.ErrNoAgent.
-func (p *Platform) Pick(ctx context.Context, tenant, project, message string) (pick.Choice, error) {
+// RouterSettings is whether a workspace's agents are asked about messages
+// that name none, and the model that asks. The model is one of the
+// providers the deployment declares, whose key is a reference read when it
+// is used (an environment variable, a secrets manager), never a value kept
+// here. Off, which is the default, no agent takes a message on its own.
+type RouterSettings struct {
+	Enabled  bool   `json:"enabled"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+}
+
+// checkRouter holds router settings to the providers this deployment has.
+func (p *Platform) checkRouter(r *RouterSettings) error {
+	r.Provider, r.Model = strings.TrimSpace(r.Provider), strings.TrimSpace(r.Model)
+	if !r.Enabled {
+		return nil
+	}
+	switch {
+	case p.cfg.Ext.Providers[r.Provider] == nil:
+		return fmt.Errorf("%w: the router's provider %q is not one this deployment declares", ErrSettings, r.Provider)
+	case r.Model == "" || len(r.Model) > 200:
+		return fmt.Errorf("%w: name the router's model at %s", ErrSettings, r.Provider)
+	}
+	return nil
+}
+
+// asker is what asks a workspace's agents whether to join: a program's own
+// (Config.Router), else the model the workspace's settings name, built for
+// this message so a changed key or model applies at once. It is nil when the
+// router is off or its model cannot be built, and then no agent takes a
+// message on its own.
+func (p *Platform) asker(tenant string) join.Asker {
+	if p.cfg.Router != nil {
+		return p.cfg.Router(tenant)
+	}
+	r := p.Settings(tenant).Router
+	fn := p.cfg.Ext.Providers[r.Provider]
+	if !r.Enabled || fn == nil {
+		return nil
+	}
+	prov, err := fn(agentrt.Spec{Name: "join", Provider: r.Provider, Model: r.Model})
+	if err != nil {
+		p.log.Warn("platform: the router's model could not be built", "tenant", tenant, "provider", r.Provider, "error", err)
+		return nil
+	}
+	return join.Model{Provider: prov}
+}
+
+// Route is what would happen to a message posted in a project ("" or "~"
+// is the root), without starting anything: each agent available there that
+// takes untagged messages is asked whether it would, and its answer is
+// returned.
+func (p *Platform) Route(ctx context.Context, tenant, project, message string) ([]join.Decision, error) {
 	project = projects.NameOf(project)
 	tree := p.Projects.Tree(tenant)
 	if !tree.Has(project) {
-		return pick.Choice{}, fmt.Errorf("%w: %q", projects.ErrNotFound, project)
+		return nil, fmt.Errorf("%w: %q", projects.ErrNotFound, project)
 	}
-	fallback, _ := tree.NamedDefault(project)
-	return p.auto(ctx, tenant, tree, project, message, fallback, nil)
+	cs, err := p.candidates(ctx, tenant, tree, project, nil)
+	if err != nil {
+		return nil, err
+	}
+	return join.Route(ctx, p.asker(tenant), cs, message), nil
 }
 
-func (p *Platform) auto(ctx context.Context, tenant string, tree *projects.Tree, project, message, fallback string, keep func(string) bool) (pick.Choice, error) {
+// join asks every candidate in a project at once and returns those that
+// take the message, in order. With none it is ErrNoTakers.
+func (p *Platform) join(ctx context.Context, tenant string, tree *projects.Tree, project, message string, keep func(string) bool) ([]join.Decision, error) {
 	cs, err := p.candidates(ctx, tenant, tree, project, keep)
 	if err != nil {
-		return pick.Choice{}, err
+		return nil, err
 	}
-	return pick.Agent(message, cs, fallback)
+	joined := join.Joined(join.Route(ctx, p.asker(tenant), cs, message))
+	if len(joined) == 0 {
+		return nil, fmt.Errorf("%w: it waits for a person to answer or tag an agent", ErrNoTakers)
+	}
+	if len(joined) > maxJoined {
+		joined = joined[:maxJoined]
+	}
+	return joined, nil
+}
+
+// maxJoined bounds how many agents take one message.
+const maxJoined = 5
+
+// joinedReason is what a run started by joining says about why.
+func joinedReason(d join.Decision) string {
+	if d.Reason == "" {
+		return "Joined on its own."
+	}
+	return "Joined on its own: " + d.Reason
 }
 
 // Nearer is a default set nearer a message than its project: a thread's, a
@@ -207,7 +288,7 @@ type Place struct {
 // Answerer is who answers a message, and how they were chosen.
 type Answerer struct {
 	Agent string
-	// Picked is @auto's reason, when @auto chose.
+	// Picked is why the agent joined, when it took the message on its own.
 	Picked string
 	// From is where the default that answered is set: "thread", "client",
 	// "channel", or "project:<name>" ("project:~" for the root). It is empty
@@ -239,70 +320,50 @@ func (p *Platform) DefaultAt(tenant string, at Place) Nearer {
 	return Nearer{}
 }
 
-// namedDefault is the nearest default on a place's chain that names an
-// agent, where @auto hands a message nothing matched.
-func namedDefault(tree *projects.Tree, at Place) string {
-	for _, n := range at.Nearer {
-		if n.Agent != "" && n.Agent != Auto {
-			return n.Agent
-		}
-	}
-	agent, _ := tree.NamedDefault(at.Project)
-	return agent
-}
-
-// resolveAgent decides who answers a message in a place. asked is the agent
-// the message tags: an agent, Auto for @auto, or "" for none.
+// resolveAgents decides who answers a message in a place. asked is the
+// agent the message tags, Open, or "" for none.
 //
-// Nothing routes on its own: with no agent asked, the default the place
-// inherits answers, and with none set it is ErrNoDefault. A default of auto,
-// and @auto itself, pick among the agents available in the place
-// (pick.ErrNoAgent when nothing fits). A named default that has stopped being
-// available is not passed over for the next one along: it is ErrNotAvailable,
-// saying why. Whether a tagged agent is available is admission's to say.
-// routes, when set, is the client's list a surface sends the message through:
-// @auto picks only among the agents on it, and falls back only to one on it.
-func (p *Platform) resolveAgent(ctx context.Context, tenant string, at Place, asked, text string, routes func(string) bool) (Answerer, error) {
+// A tagged agent answers alone. With none tagged, the default the place
+// inherits answers, and with none set it is ErrNoDefault. A default of
+// open, and Open asked, ask every agent available in the place whether it
+// takes the message, all at once, and each that does answers
+// (ErrNoTakers when none does). A named default that has stopped being
+// available is not passed over for the next one along: it is
+// ErrNotAvailable, saying why. Whether a tagged agent is available is
+// admission's to say. routes, when set, is the client's list a surface
+// sends the message through: only agents on it are asked.
+func (p *Platform) resolveAgents(ctx context.Context, tenant string, at Place, asked, text string, routes func(string) bool) ([]Answerer, error) {
 	tree := p.Projects.Tree(tenant)
 	out := Answerer{Agent: asked}
 	if asked == "" {
 		d := p.DefaultAt(tenant, at)
 		if d.Agent == "" {
-			return Answerer{}, fmt.Errorf("%w: nobody answers untagged messages in %s; tag an agent", ErrNoDefault, p.whereOf(tenant, tree, at.Project))
+			return nil, fmt.Errorf("%w: nobody answers untagged messages in %s; tag an agent", ErrNoDefault, p.whereOf(tenant, tree, at.Project))
 		}
 		out.Agent, out.From = d.Agent, d.From
 	}
-	if out.Agent == Auto {
-		fallback := namedDefault(tree, at)
-		if routes != nil && !routes(fallback) {
-			fallback = ""
-		}
-		choice, err := p.auto(ctx, tenant, tree, at.Project, text, fallback, routes)
+	if out.Agent == Open {
+		joined, err := p.join(ctx, tenant, tree, at.Project, text, routes)
 		if err != nil {
-			return Answerer{}, err
+			return nil, err
 		}
-		out.Agent, out.Picked = choice.Agent, choice.Reason
-		return out, nil
+		answer := make([]Answerer, len(joined))
+		for i, d := range joined {
+			answer[i] = Answerer{Agent: d.Agent, Picked: joinedReason(d), From: out.From}
+		}
+		return answer, nil
 	}
 	if out.From != "" && !tree.IsAvailable(at.Project, out.Agent) {
-		return Answerer{}, fmt.Errorf("%w: @%s answers untagged messages in %s, but it is not available there; tag an agent", ErrNotAvailable, out.Agent, p.whereOf(tenant, tree, at.Project))
+		return nil, fmt.Errorf("%w: @%s answers untagged messages in %s, but it is not available there; tag an agent", ErrNotAvailable, out.Agent, p.whereOf(tenant, tree, at.Project))
 	}
-	return out, nil
+	return []Answerer{out}, nil
 }
 
-// autoFor is @auto for a message a client raised: it picks among the agents
-// available where the client files its run (its bound channel, or its home)
-// that the client may route to. With none that fits it hands the message to
-// the nearest default that names an agent, as resolveAgent does: the
-// client's own, outside a bound channel, then the channel's, then the
-// project's chain.
-func (p *Platform) autoFor(ctx context.Context, c clients.Client, at Place, text string) (pick.Choice, error) {
-	tree := p.Projects.Tree(c.Tenant)
-	fallback := namedDefault(tree, at)
-	if !c.Routes(fallback) {
-		fallback = ""
-	}
-	return p.auto(ctx, c.Tenant, tree, at.Project, text, fallback, c.Routes)
+// joinFor asks, for a message a client raised, the agents available where
+// the client files its run (its bound channel, or its home) that the client
+// may route to, and returns those that take it.
+func (p *Platform) joinFor(ctx context.Context, c clients.Client, at Place, text string) ([]join.Decision, error) {
+	return p.join(ctx, c.Tenant, p.Projects.Tree(c.Tenant), at.Project, text, c.Routes)
 }
 
 // migrateBaseline replaces each workspace's baseline with its root's default,
@@ -310,7 +371,7 @@ func (p *Platform) autoFor(ctx context.Context, c clients.Client, at Place, text
 // agents, so every agent stays available everywhere, as it was. A workspace
 // whose settings named a baseline gets that agent as its default, which is
 // what the console sent when nobody chose one; one whose settings named none
-// gets auto, which keeps the picker for callers that name no agent. Then its
+// gets everyone ("*"), which lets agents decide for callers that name no agent. Then its
 // settings are written again without the baseline. A workspace whose settings
 // named none and that has no tree is given none: its root already reads as
 // every agent enabled and auto, so the upgrade changes nothing there.
@@ -349,14 +410,14 @@ func (p *Platform) migrateBaseline() error {
 		case had && baseline != "":
 			next.Default = baseline
 		case next.Default == "":
-			next.Default = Auto
+			next.Default = Open
 		}
 		_, err := p.Projects.SetAgents(tenant, projects.Root, root.Version, next, w, p.now())
-		if errors.Is(err, projects.ErrInvalid) && next.Default != Auto {
+		if errors.Is(err, projects.ErrInvalid) && next.Default != Open {
 			// A baseline the tree cannot hold as a default still leaves the
-			// workspace with an answer: @auto, as if none had been set.
-			p.log.Warn("platform: the baseline cannot be the workspace default; @auto answers instead", "tenant", tenant, "baseline", baseline, "error", err)
-			next.Default = Auto
+			// workspace with an answer: everyone decides, as if none had been set.
+			p.log.Warn("platform: the baseline cannot be the workspace default; agents decide instead", "tenant", tenant, "baseline", baseline, "error", err)
+			next.Default = Open
 			_, err = p.Projects.SetAgents(tenant, projects.Root, root.Version, next, w, p.now())
 		}
 		if err != nil {
@@ -479,7 +540,7 @@ func (p *Platform) SetProjectAgents(ctx context.Context, tenant, name string, w 
 		p.log.Warn("platform: built-in agents", "error", err)
 	}
 	for _, n := range slices.Concat(in.Enable, in.Allow, []string{in.Default}) {
-		if n == "" || n == projects.Everyone || n == Auto {
+		if n == "" || n == projects.Everyone || n == Open {
 			continue
 		}
 		if _, err := p.Agents.Get(ctx, tenant, n, 0); err != nil {

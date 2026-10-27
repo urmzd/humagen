@@ -14,7 +14,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/clients"
-	"github.com/urmzd/humagen/pkg/pick"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -93,11 +93,11 @@ func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (a
 	return t.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: ToolCallAgent, Arguments: args})
 }
 
-// AutoFor is @auto for a message a client raised, as stamp resolves it, in
-// the client's home.
-func (p *Platform) AutoFor(ctx context.Context, c clients.Client, text string) (pick.Choice, error) {
+// JoinFor is who takes a message a client raised, as stamp asks, in the
+// client's home.
+func (p *Platform) JoinFor(ctx context.Context, c clients.Client, text string) ([]join.Decision, error) {
 	project, channel, _ := p.filedFor(c.Tenant, c, "")
-	return p.autoFor(ctx, c, p.clientPlace(c, project, channel, ""), text)
+	return p.joinFor(ctx, c, p.clientPlace(c, project, channel, ""), text)
 }
 
 // DelayRecord holds every run between being accepted and being recorded, as

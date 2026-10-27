@@ -147,7 +147,7 @@ metadata:
 spec:
   workspace:                # a field left out is left to the console
     history: {mode: recent, limit: 8000}
-    agents: {enable: ["*"], default: auto}   # the workspace's own: every platform agent, and @auto for untagged messages
+    agents: {enable: ["*"], default: "*"}   # the workspace's own: every platform agent, and each decides on untagged messages
     instructions: Acme sells warehouse robots. Answer plainly.   # the workspace's own, sent first
     channels: [{name: announcements, purpose: Company news}]      # the workspace's own; every project has general
     experts: [{who: "role:security", topics: [security]}]         # answer anywhere a nearer project names nobody
@@ -178,7 +178,7 @@ spec:
         kind: account
         account: {customer: Globex Inc, external_id: "sf:0015g00000ABC", url: "https://crm.example.com/globex"}
         channels:
-          - {name: renewals, purpose: Renewal work, default: auto}   # auto: @auto answers untagged messages here
+          - {name: renewals, purpose: Renewal work, default: "*"}   # everyone decides: each agent available asks itself whether to answer
           - {name: general, slack: {client: slack-acme, channel: C0123GLOBEX}}  # a Slack thread there is a shared thread here
         experts: [{who: "okta|00u1ana", topics: [billing, renewals]}]
         agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
@@ -263,8 +263,8 @@ builds on:
 
 - **Agents** in the file are created, or revised to the file's spec. An
   unchanged spec makes no new revision. An edit made in the console to an agent
-  the file declares lasts until the next start. `auto` and `sme` are tags, so
-  never an agent's name (`humagen config check` refuses one written inline, the
+  the file declares lasts until the next start. `auto` and `sme` are reserved,
+  so never an agent's name (`humagen config check` refuses one written inline, the
   start one read from a file), and a new agent named like a handle a person
   in the workspace goes by fails the start with "a person goes by @dana", as
   the API answers 409.
@@ -292,7 +292,10 @@ builds on:
   what it turns on: `enable` adds platform agents here and below (`*` alone
   is every one), `allow`, when set, is the only agents that may run here and
   below, and `default` answers a message that tags no agent (an agent, or
-  `auto` for `@auto`). Each list names agents in the file or the platform's
+  `*` for everyone decides: each agent available there that is not
+  `tagged_only` is asked whether to join, see
+  [the dynamic router](projects.md#the-dynamic-router)). `auto` still works
+  and reads as `*`, with a load note asking to write `"*"`. Each list names agents in the file or the platform's
   own. Set, the three are the file's as a whole, and the console cannot
   change them. An agent's `project` is where it lives: available there and
   below, and nowhere else, so `*` never reaches it and enabling it adds
@@ -393,7 +396,8 @@ agent's own. A message posted in a project can name its project's skills, then
 each project's above it, `workspace.skills` last, nearest first, each name
 once; never a sibling's or a sub-project's. A skill nobody on the way declares
 refuses the message. A message a person posts in the console, as themselves
-and not posted only, that names a skill and tags no agent starts `@auto`; one
+and not posted only, that names a skill and tags no agent asks the agents
+whether to join, and each that joins is told to use it; one
 a client posts is answered by the client's default with the skill. The skills
 are fixed when a run is accepted, so a change made while it works, or a
 restart, does not change what it was told. A skill's name and description are
@@ -432,7 +436,7 @@ or declares `general` to set its purpose:
 | `name` | required | lower case letters, digits and dashes, starting with a letter or digit, at most 40, once per project, never changed |
 | `title` | the name | one line, at most 80 characters |
 | `purpose` | none | one line, at most 200 characters, sent to every agent answering in the channel |
-| `default` | the project's | the agent that answers a message that tags none, or `auto`. One that cannot answer in the project answers nothing, and the message says why |
+| `default` | the project's | the agent that answers a message that tags none, or `"*"` for everyone decides (`auto` reads as `*`). One that cannot answer in the project answers nothing, and the message says why |
 | `slack` | unbound | `{client, channel}`: a Slack client's id and a Slack channel's (`C...` or `G...`, never a direct message) whose threads are shared threads here. One Slack channel is bound once in the file. The client need not exist yet: until it does the binding binds nothing. The app's bot must already be in the channel |
 
 `experts` names who answers for some topics, here and below: at most 50, each
@@ -486,7 +490,7 @@ it:
 | asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app. A message the app posts for them into the Humagen thread their Slack thread is (with its `surface`) is theirs, and so is every run it starts |
 | asked about with that app's message shortcut, on someone else's message | nobody: the app asks as itself, since those words are the whole request. Under a dev sign-in, where the app's own credential is the person `dev`, asking as itself acts for `dev`. In a channel bound to a project the app refuses it, since only a person's own words are posted there |
 | raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody. It is started only if that person may start it where it is filed: the policy grants their subject `runs:write` and they are a member of the project. In a channel bound to a project it is not started for nobody |
-| started by a message in a shared thread (a tagged agent, `@auto` or the thread's default) | the person who posted it, never another participant, though it is sent what the others said in the room ahead of the poster's words; its retry is the poster's alone, from their inbox |
+| started by a message in a shared thread (a tagged agent, an agent that joined, or the thread's default) | the person who posted it, never another participant, though it is sent what the others said in the room ahead of the poster's words; its retry is the poster's alone, from their inbox |
 | Run Now on a schedule | whoever pressed it, when they wrote what it runs (whoever last changed its text, or its creator while nobody has, unless someone else has since chosen its agent or its project, whose instructions and notes go ahead of the text); anyone else's press acts for nobody. When the answer may hold what their own credentials reached, `deliver` does not post it in the project, hold it for the owners or send it to someone else who created the schedule: it goes to them alone, saying why |
 | Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person, as themselves, and anyone else, an operator included, is refused, except a turn the Slack app asked as itself, which it asks again the same way, by the person who asked or an operator: under a dev sign-in, one that acted for `dev`. A turn that acted for nobody is retried for nobody: in the inbox by anyone who may start runs, in the Slack app by the person who asked or an operator |
 | Retry or Regenerate in a console conversation | the person pressing it, as anything they send there, so each is offered only on a turn that acted for them |

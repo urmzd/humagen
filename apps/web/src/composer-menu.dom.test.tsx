@@ -18,7 +18,7 @@ afterEach(() => {
 
 test("the composer root groups Agents Projects and Skills without a loose default channel", async () => {
   net = stubFetch({ "GET /api/projects/personal/channels": () => ({ channels: [{ name: "general" }] }) });
-  render(<PlusMenu agents={[{ name: "helper" }]} skills={[]} onSkill={() => {}} projects={[]} personalProject="personal" selection={{ agents: [], mode: "best_fit", project: "personal", channel: "general" }} onChange={() => {}} onAttach={() => {}} onClose={() => {}} />);
+  render(<PlusMenu agents={[{ name: "helper" }]} skills={[]} onSkill={() => {}} projects={[]} personalProject="personal" selection={{ agents: [], mode: "join", project: "personal", channel: "general" }} onChange={() => {}} onAttach={() => {}} onClose={() => {}} />);
   const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
   for (const name of ["Agents", "Projects", "Skills"]) assert.ok(within(menu).getByRole("button", { name: new RegExp(`^${name}\\b`) }));
   await waitFor(() => assert.equal(!!within(menu).queryByRole("radio", { name: "#general" }), false));
@@ -70,7 +70,7 @@ test("a late skill lookup from the previous project cannot enter the current men
 
 function ProjectMenu({ onChange, onClose, project = "Globex" }: { onChange: (selection: Selection) => void; onClose: () => void; project?: string }) {
   const [open, setOpen] = useState(true);
-  const [selection, setSelection] = useState<Selection>({ agents: [], mode: "best_fit", project, channel: "deals" });
+  const [selection, setSelection] = useState<Selection>({ agents: [], mode: "join", project, channel: "deals" });
   if (!open) return null;
   return <PlusMenu agents={[{ name: "helper" }]} skills={[]} onSkill={() => {}} projects={tree} selection={selection} onChange={next => { setSelection(next); onChange(next); }} onAttach={() => {}} onClose={() => { setOpen(false); onClose(); }} />;
 }
@@ -120,7 +120,7 @@ test("Skills search Enter cannot submit work and Escape restores category focus 
   let closed = 0;
   const chosen: string[] = [];
   render(<form aria-label="Message" onSubmit={event => { event.preventDefault(); throw new Error("search submitted the message"); }}>
-    <PlusMenu agents={[]} skills={[{ name: "review", description: "Review a change" }]} onSkill={name => chosen.push(name)} projects={[]} selection={{ agents: [], mode: "best_fit", project: null, channel: "general" }} onChange={() => {}} onAttach={() => {}} onClose={() => { closed++; }} />
+    <PlusMenu agents={[]} skills={[{ name: "review", description: "Review a change" }]} onSkill={name => chosen.push(name)} projects={[]} selection={{ agents: [], mode: "join", project: null, channel: "general" }} onChange={() => {}} onAttach={() => {}} onClose={() => { closed++; }} />
   </form>);
   const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
   fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
@@ -143,7 +143,7 @@ test("Skills search Enter cannot submit work and Escape restores category focus 
 
 test("Skills loading and failure states never offer a stale skill choice", async () => {
   net = stubFetch({});
-  const common = { agents: [], projects: [], selection: { agents: [], mode: "best_fit", project: null, channel: "general" } as Selection, onChange: () => {}, onAttach: () => {}, onClose: () => {}, onSkill: () => {} };
+  const common = { agents: [], projects: [], selection: { agents: [], mode: "join", project: null, channel: "general" } as Selection, onChange: () => {}, onAttach: () => {}, onClose: () => {}, onSkill: () => {} };
   const { rerender } = render(<PlusMenu {...common} skills={null} />);
   const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
   fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
@@ -182,7 +182,7 @@ for (const category of ["Agents", "Skills"] as const) {
   test(`${category} search keeps native caret movement when ArrowLeft is pressed`, async () => {
     net = stubFetch({});
     let closed = 0;
-    render(<PlusMenu agents={[{ name: "helper", description: "Review changes" }]} skills={[{ name: "review", description: "Review a change" }]} onSkill={() => {}} projects={[]} selection={{ agents: [], mode: "best_fit", project: null, channel: "general" }} onChange={() => {}} onAttach={() => {}} onClose={() => { closed++; }} />);
+    render(<PlusMenu agents={[{ name: "helper", description: "Review changes" }]} skills={[{ name: "review", description: "Review a change" }]} onSkill={() => {}} projects={[]} selection={{ agents: [], mode: "join", project: null, channel: "general" }} onChange={() => {}} onAttach={() => {}} onClose={() => { closed++; }} />);
     const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
     fireEvent.click(within(menu).getByRole("button", { name: new RegExp(`^${category}\\b`) }));
     const search = await within(menu).findByRole("searchbox") as HTMLInputElement;
@@ -201,7 +201,7 @@ test("browsing the selected project's channels preserves a nondefault channel un
   net = stubFetch({ "GET /api/projects/Launch/channels": () => ({ channels: [{ name: "general" }, { name: "deals" }] }) });
   const launch = { ...tree.find(project => project.name === "Globex")!, name: "Launch", title: "Launch" };
   const changes: Selection[] = [];
-  let current: Selection = { agents: [], mode: "best_fit", project: "Launch", channel: "deals" };
+  let current: Selection = { agents: [], mode: "join", project: "Launch", channel: "deals" };
   function ExistingProjectMenu() {
     const [selection, setSelection] = useState(current);
     current = selection;

@@ -366,7 +366,7 @@ func (c Client) Validate() error {
 		return bad("a client has a name of at most %d characters", maxName)
 	case c.Surface != Slack && c.Surface != GitHub:
 		return bad("the surface is slack or github")
-	case c.DefaultAgent != "" && !agentPattern.MatchString(c.DefaultAgent):
+	case c.DefaultAgent != "" && c.DefaultAgent != AnyAgent && !agentPattern.MatchString(c.DefaultAgent):
 		return bad("the default agent %q is not an agent name", c.DefaultAgent)
 	case len(c.Agents) > maxAgents:
 		return bad("a client names at most %d agents", maxAgents)
