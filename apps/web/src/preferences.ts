@@ -4,11 +4,18 @@ import { api, type Preferences } from "./api.ts";
 /** Whether the saved preferences were read: until they are, nothing is saved over them. */
 export type PrefsRead = "reading" | "read" | "failed";
 
+interface ListChange {
+  field: "pinned" | "muted";
+  next: (was: string[]) => string[];
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
 /** What the console draws with before the saved preferences are read. */
 export const unreadPrefs: Preferences = {
   display_name: "",
   theme: "system",
-  accent: "purple",
+  accent: "red",
   has_photo: false,
   photo_version: 0,
   pinned: [],
@@ -35,14 +42,25 @@ export function usePreferences(): {
 } {
   const [prefs, show] = useState<Preferences>(unreadPrefs);
   const [prefsRead, setPrefsRead] = useState<PrefsRead>("reading");
-  // What is on screen, for a change made before the next render: two pins in
-  // a row each build on the one before.
+  // Keep acknowledged data separate from the immediate view. Pending list
+  // changes replay over it, so a late response cannot erase a newer intent.
   const latest = useRef(prefs);
+  const confirmed = useRef(prefs);
+  const pending = useRef<ListChange[]>([]);
+  const saving = useRef(false);
   const reading = useRef<Promise<void> | null>(null);
-  const setPrefs = useCallback((p: Preferences) => {
-    latest.current = p;
-    show(p);
+  const refresh = useCallback(() => {
+    const projected = pending.current.reduce(
+      (was, change) => ({ ...was, [change.field]: change.next(was[change.field]) }),
+      confirmed.current,
+    );
+    latest.current = projected;
+    show(projected);
   }, []);
+  const setPrefs = useCallback((p: Preferences) => {
+    confirmed.current = p;
+    refresh();
+  }, [refresh]);
   // The saved preferences, as on screen. A read under way is shared, a read
   // that failed is tried again, and one that worked is not repeated.
   const read = useCallback((): Promise<Preferences> => {
@@ -66,20 +84,43 @@ export function usePreferences(): {
     read().catch(() => {});
   }, [read]);
 
-  // A change to one list, shown at once and saved with the name, theme and
-  // accent as read. If the save fails, the list goes back to what it was.
+  // Persist list mutations in order. Removing a failed mutation and replaying
+  // the rest rolls back only that change, keeping later pins and unpins intact.
+  const drain = useCallback(async () => {
+    if (saving.current) return;
+    saving.current = true;
+    while (pending.current.length > 0) {
+      const change = pending.current[0]!;
+      const was = confirmed.current;
+      const changed = { [change.field]: change.next(was[change.field]) };
+      let error: unknown;
+      let failed = false;
+      try {
+        confirmed.current = await api.savePreferences({
+          display_name: was.display_name,
+          theme: was.theme,
+          accent: was.accent,
+          ...changed,
+        });
+      } catch (cause) {
+        error = cause;
+        failed = true;
+      }
+      pending.current.shift();
+      refresh();
+      if (failed) change.reject(error);
+      else change.resolve();
+    }
+    saving.current = false;
+  }, [refresh]);
   const change = useCallback(
     (field: "pinned" | "muted", next: (was: string[]) => string[]) =>
-      read().then((was) => {
-        const list = next(was[field]);
-        const changed = field === "pinned" ? { pinned: list } : { muted: list };
-        setPrefs({ ...was, ...changed });
-        return api.savePreferences({ display_name: was.display_name, theme: was.theme, accent: was.accent, ...changed }).then(setPrefs, (e) => {
-          setPrefs({ ...latest.current, [field]: was[field] });
-          throw e;
-        });
-      }),
-    [read, setPrefs],
+      read().then(() => new Promise<void>((resolve, reject) => {
+        pending.current.push({ field, next, resolve, reject });
+        refresh();
+        void drain();
+      })),
+    [read, refresh, drain],
   );
   // Pinned conversations are most recently pinned first.
   const pin = useCallback(

@@ -51,10 +51,21 @@ test("Home's rows open what they name, and each box's text control goes to the r
 test("announcement actions use the retained inbox callbacks", () => {
  rendered = true; const did:string[]=[];
  render(<HomePage greeting="Hello" canRun hasAgents banner={{id:"m-1",source:"Company",title:"A retained announcement",text:"Saved copy",unread:true,onRead:()=>did.push("read"),onHide:()=>did.push("hide"),onOpen:()=>did.push("open")}}><form aria-label="Message" /></HomePage>);
- fireEvent.click(screen.getByRole("button",{name:"Mark as Read"}));
- fireEvent.click(screen.getByRole("button",{name:"Hide for Me"}));
+ const hide = screen.getByRole("button",{name:"Hide for Me"});
+ assert.ok(hide.querySelector("svg"));
+ fireEvent.click(hide);
  fireEvent.click(screen.getByRole("button",{name:"Open Announcement"}));
- assert.deepEqual(did,["read","hide","open"]);
+ assert.deepEqual(did,["hide","open"]);
+ assert.equal(screen.queryByRole("button",{name:"Mark as Read"}),null);
+});
+
+test("a pending announcement action prevents hiding again", () => {
+ rendered = true; let hidden = false;
+ render(<HomePage greeting="Hello" canRun hasAgents banner={{id:"m-1",source:"Company",title:"A retained announcement",text:"Saved copy",unread:true,busy:true,onRead:()=>{},onHide:()=>{hidden=true;}}}><form aria-label="Message" /></HomePage>);
+ const hide = screen.getByRole("button",{name:"Hide for Me"}) as HTMLButtonElement;
+ assert.equal(hide.disabled,true);
+ fireEvent.click(hide);
+ assert.equal(hidden,false);
 });
 
 test("agent and project discovery searches without starting work and choosing is explicit", async () => {

@@ -21,16 +21,21 @@ import {
   UsersIcon,
   WrenchIcon,
   ClockIcon,
-  ComposeIcon,
+  PlusIcon,
   ProjectIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SettingsIcon,
+  MonitorIcon,
+  SunIcon,
+  MoonIcon,
+  UserIcon,
   Tooltip,
 } from "@humagen/render-web";
 import { defaultCopy } from "@humagen/components";
+import { Separator } from "@humagen/render-web/ui/separator";
 import { HumagenMark } from "@humagen/web";
-import { type MouseEvent, type ReactNode, useState } from "react";
+import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import type { Me, Preferences, ProjectView, ThreadSummary } from "./api.ts";
 import { type Page as RoutePage, type Route, href } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
@@ -69,7 +74,7 @@ export function SidebarItem({
       onClick={go}
       aria-current={active ? "page" : undefined}
       aria-label={count ? badgeLabel ?? `${label}, ${count} need you` : open ? undefined : label}
-      className={`relative flex h-9 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
+      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
         open ? "px-2.5" : "w-9 justify-center"
       }`}
     >
@@ -140,7 +145,7 @@ function TaskRow({
   current: boolean;
   pinned: boolean;
   onSelect: () => void;
-  onPin?: () => void;
+  onPin?: (button: HTMLButtonElement) => void;
   flash?: Flash | null;
 }) {
   const title = task.title || "Untitled conversation";
@@ -154,7 +159,7 @@ function TaskRow({
         onClick={onSelect}
         title={`${title}\n${state}\n${projectTitle}`}
         aria-current={current ? "page" : undefined}
-        className="flex min-h-10 w-full items-center gap-2 rounded-aui py-1.5 pr-8 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+        className="flex min-h-10 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1.5 pr-10 pointer-coarse:pr-14 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
       >
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate">{title}</span>
@@ -171,10 +176,11 @@ function TaskRow({
       {onPin && (
         <button
           type="button"
-          onClick={onPin}
+          onClick={(event) => onPin(event.currentTarget)}
+          data-pin-thread={task.id}
           aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
           title={pinned ? "Unpin" : "Pin"}
-          className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-aui text-aui-muted opacity-0 transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover:opacity-100 max-md:opacity-100"
+          className={`absolute top-0.5 right-0.5 inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 max-md:opacity-100 ${pinned ? "opacity-100" : "opacity-0"}`}
         >
           <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
         </button>
@@ -214,6 +220,7 @@ export function Sidebar({
   inboxCount,
   live,
   onSignOut,
+  onTheme,
   onSearch,
   notificationCount,
 }: {
@@ -235,6 +242,8 @@ export function Sidebar({
   /** Updates are arriving. When false, the sidebar says so. */
   live: boolean;
   onSignOut: () => void;
+  /** Saves the theme picked from the account menu. */
+  onTheme?: (theme: Preferences["theme"]) => void;
   onSearch?:()=>void;
   notificationCount?: number;
 }) {
@@ -242,6 +251,7 @@ export function Sidebar({
   const who = me.principal;
   const dev = who.subject === "dev";
   const name = prefs?.display_name || who.name || who.email || who.subject;
+  const subtitle = dev ? "Dev mode, no sign-in" : (who.roles ?? []).join(", ") || who.tenant;
   // Recents is what people asked for. Scheduled and eval runs live on their own
   // pages, so a timer cannot push a person's work off the list.
   const [standing, setStanding] = useState<Standing>("");
@@ -255,9 +265,24 @@ export function Sidebar({
   // list the conversation is in by then.
   const { flash, say, clear: unsay } = useFlash();
   const [flashed, setFlashed] = useState<string | null>(null);
-  const togglePin = (id: string, on: boolean) => {
+  const sidebar = useRef<HTMLElement>(null);
+  const pinFocus = useRef<{ id: string; pinned: boolean } | null>(null);
+  useEffect(() => {
+    const target = pinFocus.current;
+    if (!target || pinned.includes(target.id) !== target.pinned) return;
+    const control = Array.from(sidebar.current?.querySelectorAll<HTMLButtonElement>("[data-pin-thread]") ?? [])
+      .find((button) => button.dataset.pinThread === target.id);
+    // An older unselected row may leave the loaded page after unpinning.
+    // Keep keyboard focus at the conversation list's stable filter control.
+    const fallback = sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Conversations"] button');
+    (control ?? fallback)?.focus();
+    pinFocus.current = null;
+  }, [pinned]);
+  const togglePin = (id: string, on: boolean, button: HTMLButtonElement) => {
     unsay();
+    if (document.activeElement === button) pinFocus.current = { id, pinned: on };
     onPin(id, on).catch(() => {
+      if (pinFocus.current?.id === id) pinFocus.current = null;
       setFlashed(id);
       say(on ? defaultCopy.pins.pinFailed : defaultCopy.pins.unpinFailed, true);
     });
@@ -271,15 +296,14 @@ export function Sidebar({
   const here = (...pages: RoutePage[]) => pages.includes(route.page);
   const nav=defaultCopy.navigation;
   const hub = workspaceHub(route);
+  const notificationRoute: Route = { page: "notifications" };
   const libraryTabs = hubTabs("library", route, can);
   const agentTabs = hubTabs("agents", route, can);
   const operationTabs = hubTabs("operations", route, can);
   const entries: {to:Route;label:string;icon:ReactNode;show:boolean;active:boolean;badge?:number;group:"projects"|"library"|"operations"}[]=[
-    {to:{page:"new"},label:nav.newConversation,icon:<ComposeIcon/>,show:can("runs:write"),active:here("new"),group:"projects"},
     {to:{page:"projects"},label:nav.projects,icon:<ProjectIcon/>,show:can("projects:read"),active:here("projects","project","channel"),group:"projects"},
     {to:{page:"directory",tab:"people"},label:nav.people,icon:<UsersIcon/>,show:can("people:read"),active:here("directory"),group:"projects"},
     {to:libraryTabs[0]?.route ?? {page:"library",section:"sources"},label:nav.library,icon:<LayersIcon/>,show:libraryTabs.length > 0,active:hub === "library",group:"library"},
-    {to:{page:"inbox"},label:nav.needsYou,icon:<InboxIcon/>,show:can("runs:read"),active:here("inbox"),badge:inboxCount,group:"operations"},
     {to:agentTabs[0]?.route ?? {page:"agents"},label:nav.agents,icon:<BotIcon/>,show:agentTabs.length > 0,active:hub === "agents",group:"operations"},
     {to:operationTabs[0]?.route ?? {page:"operations",section:"context"},label:nav.operations,icon:<SlidersIcon/>,show:operationTabs.length > 0,active:hub === "operations",group:"operations"},
   ];
@@ -290,6 +314,11 @@ export function Sidebar({
   const pinnedRows = pinned.map((id) => known.get(id)).filter((t): t is ThreadSummary => t !== undefined);
   const pinnedSet = new Set(pinned);
   const unpinned = recents.filter((t) => !pinnedSet.has(t.id));
+  const currentThread = selected ? known.get(selected) : undefined;
+  if (currentThread && !pinnedSet.has(currentThread.id) && !unpinned.some((thread) => thread.id === currentThread.id)) {
+    unpinned.push(currentThread);
+  }
+  const noConversations = recents.length === 0 && unpinned.length === 0;
   const isCurrent = (t: ThreadSummary) => t.id === selected;
   const canPin = can("runs:read");
 
@@ -302,6 +331,7 @@ export function Sidebar({
     <>
     {open && <button type="button" tabIndex={-1} aria-label="Dismiss navigation" onClick={onToggle} className="fixed inset-0 z-40 bg-black/40 md:hidden" />}
     <aside
+      ref={sidebar}
       aria-label="Navigation"
       className={`humagen-glass-bar flex h-full min-h-0 shrink-0 flex-col border-[var(--humagen-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
         open ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]" : "w-12 max-md:hidden"
@@ -322,12 +352,14 @@ export function Sidebar({
 
       {/* Everything between the top row and the account scrolls as one, so a short window never squeezes the lists into a sliver. */}
       <div className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
-      <nav aria-label="Sections" className={`flex shrink-0 flex-col ${open ? "px-2" : "items-center"}`}>
-        {onSearch&&<button type="button" onClick={onSearch} aria-label={nav.search} className={`flex min-h-10 items-center gap-2 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open?"px-2.5":"w-9 justify-center"}`}><SearchIcon size={18}/>{open&&<><span className="flex-1 text-left">{nav.search}</span><kbd className="text-aui-2xs">⌘ K</kbd></>}</button>}
-        {notificationCount !== undefined && can("runs:read") && who.kind === "user" && <ul className={`flex flex-col pt-1 ${open ? "" : "items-center"}`}><li><Item icon={<BellIcon />} label={nav.notifications} href={href({page:"notifications"})} open={open} active={here("notifications")} badge={notificationCount} badgeLabel={defaultCopy.notifications.count(notificationCount)} onClick={()=>go({page:"notifications"})}/></li></ul>}
+      <nav aria-label="Sections" className={`flex shrink-0 flex-col gap-1 ${open ? "px-2" : "items-center"}`}>
+        {can("runs:write") && <Item icon={<PlusIcon />} label={nav.newConversation} href={href({page:"new"})} active={here("new")} open={open} onClick={()=>go({page:"new"})} />}
+        {onSearch&&<button type="button" onClick={onSearch} aria-label={nav.search} className={`flex h-9 pointer-coarse:h-11 items-center gap-2.5 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open?"px-2.5":"w-9 justify-center"}`}><SearchIcon size={18}/>{open&&<><span className="flex-1 text-left">{nav.search}</span><kbd className="text-aui-2xs">⌘ K</kbd></>}</button>}
+
+        {(can("runs:read") || can("alerts:read")) && <Item icon={<BellIcon />} label={nav.notifications} href={href(can("runs:read") ? notificationRoute : {page:"monitor",tab:"rules"})} open={open} active={hub === "notifications"} badge={inboxCount} onClick={()=>go(can("runs:read") ? notificationRoute : {page:"monitor",tab:"rules"})} />}
         {(["projects","library","operations"] as const).map(group=>{
           const shown=entries.filter(entry=>entry.group===group&&entry.show);
-          return shown.length>0&&<section key={group} aria-label={nav[group]} className="pt-2"><ul className={`flex flex-col gap-0.5 ${open?"":"items-center"}`}>{shown.map(entry=><li key={entry.label}><Item icon={entry.icon} label={entry.label} href={href(entry.to)} open={open} active={entry.active} badge={entry.badge} onClick={()=>go(entry.to)}/></li>)}</ul></section>;
+          return shown.length>0&&<section key={group} aria-label={nav[group]} className={group === "library" ? "" : "mt-2"}>{group !== "library" && <Separator className="mb-3" />}<ul className={`flex flex-col gap-0.5 ${open?"":"items-center"}`}>{shown.map(entry=><li key={entry.label}><Item icon={entry.icon} label={entry.label} href={href(entry.to)} open={open} active={entry.active} badge={entry.badge} onClick={()=>go(entry.to)}/></li>)}</ul></section>;
         })}
 
       </nav>
@@ -344,7 +376,7 @@ export function Sidebar({
                 current={isCurrent(t)}
                 pinned
                 onSelect={() => go({ page: "conversation", id: t.id })}
-                onPin={() => togglePin(t.id, false)}
+                onPin={(button) => togglePin(t.id, false, button)}
                 flash={flashed === t.id ? flash : null}
               />
             ))}
@@ -409,12 +441,12 @@ export function Sidebar({
             Conversations
           </Label>
           <ul className="px-2 pb-3" aria-label="Conversations" aria-busy={loading !== null}>
-            {recents.length === 0 && loading === "first" && (
+            {noConversations && loading === "first" && (
               <li className="px-2.5">
                 <SkeletonRows count={5} height="1.25rem" />
               </li>
             )}
-            {recents.length === 0 && loading !== "first" && stalled && (
+            {noConversations && loading !== "first" && stalled && (
               <li className="flex flex-col items-start gap-1.5 px-2.5 py-1.5 text-aui-xs text-aui-muted">
                 Your conversations could not be loaded.
                 <button
@@ -426,7 +458,7 @@ export function Sidebar({
                 </button>
               </li>
             )}
-            {recents.length === 0 && loading !== "first" && !stalled && (
+            {noConversations && loading !== "first" && !stalled && (
               <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
                 {filters > 0 ? "No conversation matches these filters." : "Your conversations appear here. Start with New."}
               </li>
@@ -439,7 +471,7 @@ export function Sidebar({
                 current={isCurrent(t)}
                 pinned={false}
                 onSelect={() => go({ page: "conversation", id: t.id })}
-                onPin={canPin ? () => togglePin(t.id, true) : undefined}
+                onPin={canPin ? (button) => togglePin(t.id, true, button) : undefined}
                 flash={flashed === t.id ? flash : null}
               />
             ))}</ul></details></li>)}
@@ -463,37 +495,81 @@ export function Sidebar({
 
       {!live && open && <p className="px-4 pb-2 text-aui-2xs text-aui-muted">Reconnecting. What you see may be out of date.</p>}
       <div className={`flex shrink-0 items-center gap-1 border-aui-border border-t p-1.5 ${open ? "" : "flex-col"}`}>
-        <button
-          type="button"
-          onClick={() => go({ page: "you", section: "profile" })}
-          aria-current={route.page === "you" ? "page" : undefined}
-          aria-label={nav.account(name)}
-          title={open ? undefined : nav.you}
-          className={`flex min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover ${
-            open ? "flex-1" : "size-9 justify-center"
-          }`}
-        >
-          {open ? <Avatar name={name} prefs={prefs} size={26} /> : <SettingsIcon size={18} />}
-          {open && (
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-aui-sm text-aui-fg">{name}</span>
-              <span className="block truncate text-aui-2xs text-aui-muted">
-                {dev ? "Dev mode, no sign-in" : (who.roles ?? []).join(", ") || who.tenant}
-              </span>
-            </span>
-          )}
-        </button>
-        {!dev && (
-          <button
-            type="button"
-            onClick={onSignOut}
-            aria-label="Sign out"
-            title="Sign out"
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        <div className={open ? "min-w-0 flex-1" : ""}>
+          <Popover
+            narrow
+            up
+            side={open ? undefined : "right"}
+            label={defaultCopy.preferences.openFor(name)}
+            tooltip={open ? undefined : name}
+            className={`flex w-full min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover ${
+              open ? "" : "size-9 justify-center"
+            }`}
+            button={
+              <>
+                <Avatar name={name} prefs={prefs} size={26} />
+                {open && (
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-aui-sm text-aui-fg">{name}</span>
+                    <span className="block truncate text-aui-2xs text-aui-muted">{subtitle}</span>
+                  </span>
+                )}
+              </>
+            }
           >
-            <LogOutIcon />
-          </button>
-        )}
+            {(close) => (
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2 px-2.5 py-2">
+                  <Avatar name={name} prefs={prefs} size={32} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-aui-sm text-aui-fg">{name}</span>
+                    <span className="block truncate text-aui-2xs text-aui-muted">{subtitle}</span>
+                  </span>
+                </div>
+                <Separator className="my-1" />
+                {[
+                  { label: "Profile", icon: <UserIcon size={14} />, to: { page: "you", section: "profile" } as Route },
+                  { label: "Settings", icon: <SettingsIcon size={14} />, to: { page: "settings", section: "appearance" } as Route },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => { close(); go(item.to); }}
+                    className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  >
+                    {item.icon}
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  </button>
+                ))}
+                {onTheme && (
+                  <Choices
+                    title="Theme"
+                    value={prefs?.theme ?? "system"}
+                    options={[
+                      { value: "system", label: "Auto", mark: <MonitorIcon size={14} /> },
+                      { value: "light", label: "Light", mark: <SunIcon size={14} /> },
+                      { value: "dark", label: "Dark", mark: <MoonIcon size={14} /> },
+                    ]}
+                    onChange={onTheme}
+                  />
+                )}
+                {!dev && (
+                  <>
+                    <Separator className="my-1" />
+                    <button
+                      type="button"
+                      onClick={() => { close(); onSignOut(); }}
+                      className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    >
+                      <LogOutIcon size={14} />
+                      <span className="min-w-0 flex-1 truncate">Sign out</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </Popover>
+        </div>
       </div>
     </aside>
     </>

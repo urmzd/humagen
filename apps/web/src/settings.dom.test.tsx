@@ -20,7 +20,7 @@ afterEach(() => {
 
 const me: Me = { principal: { subject: "ada", tenant: "acme", kind: "user", name: "Developer", roles: ["admin"] }, permissions: ["runs:read", "runs:write"] };
 // What the console draws with before the saved preferences are read.
-const defaults: Preferences = { display_name: "", theme: "system", accent: "purple", has_photo: false, photo_version: 0, pinned: [], muted: [] };
+const defaults: Preferences = { display_name: "", theme: "system", accent: "red", has_photo: false, photo_version: 0, pinned: [], muted: [] };
 const saved: Preferences = { ...defaults, display_name: "Ada", theme: "dark", accent: "green" };
 
 function page(prefs: Preferences, prefsRead: PrefsRead, section: SettingsSection = "profile", onPrefs: (p: Preferences) => void = () => {}) {
@@ -86,6 +86,22 @@ test("the theme and accent are not offered, so not saved, before the saved ones 
   render(page(defaults, "failed", "appearance"));
   assert.ok(screen.getByText("Your preferences could not be read. Reload to try again."));
   assert.ok(!screen.queryByRole("button", { name: "Dark" }));
+});
+
+test("appearance saves red and green accents without rewriting a saved legacy choice on open", async () => {
+  let shown: Preferences = { ...saved, accent: "purple" };
+  net = stubFetch({ "PUT /api/preferences": (body) => ({ ...shown, ...(body as Partial<Preferences>) }) });
+  const { rerender } = render(page(shown, "read", "appearance", (next) => { shown = next; }));
+  assert.equal(net.seen.some((request) => request.method === "PUT"), false);
+  assert.equal(screen.getByRole("button", { name: "Purple" }).getAttribute("aria-pressed"), "true");
+  for (const [label, accent] of [["Red", "red"], ["Green", "green"]] as const) {
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    await waitFor(() => assert.equal(shown.accent, accent));
+    const request = net.seen.filter((request) => request.method === "PUT").at(-1);
+    assert.equal((request?.body as { accent: string }).accent, accent);
+    rerender(page(shown, "read", "appearance", (next) => { shown = next; }));
+    assert.equal(screen.getByRole("button", { name: label }).getAttribute("aria-pressed"), "true");
+  }
 });
 
 test("the audit address refuses a reader without governance", async () => {

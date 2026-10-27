@@ -86,19 +86,20 @@ func (p *Platform) sourceTools(req runtime.Request) map[string]saigetypes.Tool {
 				expected = &cfg
 				mode = string(cfg.Mode)
 			}
-			if src.Lifecycle == nil || src.Lifecycle.Mode != knowledge.Live {
+			if !src.RequiresUpstreamRead() && (src.Lifecycle == nil || src.Lifecycle.Mode != knowledge.Live) {
 				hits, err = p.Knowledge.SearchForScopes(req.Tenant, []string{name}, query, 8, "", map[string]*knowledge.SourceConfig{name: expected})
 				if err != nil {
 					return "", err
 				}
 			}
-			if src.Lifecycle != nil && src.Lifecycle.Mode != knowledge.Indexed {
+			if src.RequiresUpstreamRead() || (src.Lifecycle != nil && src.Lifecycle.Mode != knowledge.Indexed) {
+				mode = string(knowledge.Live)
 				live, liveErr := p.searchSourceLive(ctx, who, src, query)
 				if liveErr != nil {
 					if ctx.Err() != nil {
 						return "", ctx.Err()
 					}
-					if src.Lifecycle.Mode == knowledge.Live || errors.Is(liveErr, knowledge.ErrInvalid) || errors.Is(liveErr, knowledge.ErrNotFound) {
+					if src.RequiresUpstreamRead() || src.Lifecycle.Mode == knowledge.Live || errors.Is(liveErr, knowledge.ErrInvalid) || errors.Is(liveErr, knowledge.ErrNotFound) {
 						return "", liveErr
 					}
 					warnings = append(warnings, SourceSearchWarning{Source: name, Cause: knowledge.FailureCause(liveErr)})

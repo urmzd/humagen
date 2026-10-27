@@ -20,7 +20,7 @@ function destination(item: DiscoveryItem): Route {
 }
 
 /** A bounded server search. Every result retains its native address. */
-export function QuickSwitcher({ onClose, onGo }: { onClose: () => void; onGo: (route: Route) => void }) {
+export function QuickSwitcher({ onClose, onGo, open = true }: { onClose: () => void; onGo: (route: Route) => void; open?: boolean }) {
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<DiscoveryItem[]>([]);
   const [kind, setKind] = useState("");
@@ -53,7 +53,7 @@ export function QuickSwitcher({ onClose, onGo }: { onClose: () => void; onGo: (r
     else if (at === 0 && event.key === "ArrowUp") input.current?.focus();
     else links[(at + (event.key === "ArrowDown" ? 1 : links.length - 1)) % links.length]?.focus();
   };
-  return <Modal title={words.title} onClose={onClose}>
+  return <Modal open={open} title={words.title} onClose={onClose}>
     <div className="flex min-h-18 items-center gap-3 border-aui-border border-b px-5 py-4">
       <SearchIcon size={20} className="text-aui-muted" />
       <input ref={input} aria-label={words.search} aria-describedby="workspace-search-hint" aria-controls="workspace-search-results" className="min-w-0 flex-1 bg-transparent py-1 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted" type="search" placeholder={words.search} maxLength={200} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => move(event, true)} />

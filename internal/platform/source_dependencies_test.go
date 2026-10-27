@@ -52,7 +52,7 @@ func TestSourceDependenciesUseActualConfinedEvidenceAfterRestart(t *testing.T) {
 			if err := p.Runs.Record(item.id, tag, 1); err != nil {
 				t.Fatal(err)
 			}
-			_, err = p.SourceEvidence.RecordQuery("tenant", item.id, "rag:1", []knowledge.CitationEvidence{{Source: "public", DocumentID: "doc", Title: "Source", Text: "actual passage", Mode: knowledge.Indexed}})
+			_, err = p.SourceEvidence.RecordQuery("tenant", item.id, "rag:1", []knowledge.CitationEvidence{{Provider: "manual", Source: "public", DocumentID: "doc", Title: "Source", Text: "actual passage", Mode: knowledge.Indexed}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -186,13 +186,26 @@ func TestExtraSourceGraphRequiresOrdinaryHumanSourceAccess(t *testing.T) {
 	if err := p.Runs.Record("run1", tag, 1); err != nil {
 		t.Fatal(err)
 	}
-	_, err := p.SourceEvidence.RecordQuery("tenant", "run1", "rag:1", []knowledge.CitationEvidence{{Source: "private", Project: "Secret", DocumentID: "doc", Text: "retained", Mode: knowledge.Indexed}})
+	_, err := p.SourceEvidence.RecordQuery("tenant", "run1", "rag:1", []knowledge.CitationEvidence{{Provider: "manual", Source: "private", Project: "Secret", DocumentID: "doc", Text: "retained", Mode: knowledge.Indexed}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	owner := auth.Principal{Tenant: "tenant", Subject: "owner", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead, auth.RunsRead}}
 	if len(p.ordinarySourceDependencyRuns(owner, "private")) != 1 {
 		t.Fatal("ordinary owner lost real origin proof")
+	}
+	for _, provider := range []string{"", "drive"} {
+		id := "historical-" + provider
+		tag := envelope.Tag{ID: id, Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Meta: map[string]string{runs.MetaProject: "Secret"}}
+		if err := p.Runs.Record(id, tag, 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.SourceEvidence.RecordQuery("tenant", id, "rag:1", []knowledge.CitationEvidence{{Source: "private", Provider: provider, Project: "Secret", DocumentID: "doc", Text: "retained", Mode: knowledge.Indexed}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ids := p.ordinarySourceDependencyRuns(owner, "private"); len(ids) != 1 || ids[0] != "run1" {
+		t.Fatal("derived learning graph exposed external or unknown file provenance", ids)
 	}
 	govern := owner
 	govern.Subject = "govern-only"

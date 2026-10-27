@@ -1,5 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { HOME_NEEDS, type HomeModel, type HomeNotification, type HomeUpdate, orderNotifications, orderUpdates } from "@humagen/core";
+import { EyeOffIcon } from "@humagen/render-web";
+import { Button } from "@humagen/render-web/ui/button";
 import type { ReactNode } from "react";
 import { ago, RowButton, Section, textAction } from "./ui.tsx";
 
@@ -145,14 +147,15 @@ export interface HomeAnnouncement {
 }
 export function AnnouncementBanner({ announcement: a }: { announcement: HomeAnnouncement }) {
   const c = defaultCopy.home.banner;
-  return <section aria-label={c.label} className="mx-auto mb-8 w-[calc(100%_-_2rem)] max-w-3xl border-l-2 border-aui-fg/30 bg-aui-muted/5 px-4 py-3 text-aui-sm">
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted"><span>{a.source}</span>{a.unread && <span>{defaultCopy.mailbox.unread}</span>}</div>
-    <p className="mt-1 font-medium text-aui-fg">{a.title}</p>
-    <p className="mt-1 line-clamp-3 max-w-[70ch] whitespace-pre-wrap text-aui-muted">{a.text}</p>
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-      {a.onOpen && <button type="button" className={textAction} onClick={a.onOpen}>{c.open}</button>}
-      {a.unread && <button type="button" className={textAction} disabled={a.busy} onClick={a.onRead}>{c.markRead}</button>}
-      <button type="button" className={textAction} disabled={a.busy} onClick={a.onHide}>{c.hide}</button>
+  return <section aria-label={c.label} className="mx-auto mb-6 w-[calc(100%_-_2rem)] max-w-3xl rounded-xl border border-aui-border bg-aui-muted/5 p-4 text-aui-sm">
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-aui-xs text-aui-muted"><span>{a.source}</span>{a.unread && <span className="rounded-full bg-aui-muted/10 px-2 py-0.5">{defaultCopy.mailbox.unread}</span>}</div>
+        <p className="mt-1 break-words font-medium text-aui-fg">{a.title}</p>
+      </div>
+      <Button variant="ghost" size="icon" aria-label={c.hide} title={c.hide} disabled={a.busy} onClick={() => { if (!a.busy) a.onHide(); }} className="-mr-1 -mt-1 text-aui-muted"><EyeOffIcon aria-hidden="true" /></Button>
     </div>
+    <p className="mt-2 max-w-[70ch] whitespace-pre-wrap break-words leading-relaxed text-aui-muted">{a.text}</p>
+    {a.onOpen && <Button variant="outline" size="sm" className="mt-3" onClick={a.onOpen}>{c.open}</Button>}
   </section>;
 }

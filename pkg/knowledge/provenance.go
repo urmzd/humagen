@@ -22,12 +22,15 @@ const MaxEvidenceBytes = 64 << 20
 var evidenceRunID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
 // CitationEvidence is an actual retrieval snapshot, written before model input.
-// Source, Project, Person and DocumentID are private binding/visibility facts;
+// Source, Provider, Project, Person and DocumentID are private binding/visibility facts;
 // only the approved display fields are projected into citation responses.
 type CitationEvidence struct {
-	QueryKey      string     `json:"query_key,omitempty"`
-	Label         string     `json:"label"`
-	Source        string     `json:"source"`
+	QueryKey string `json:"query_key,omitempty"`
+	Label    string `json:"label"`
+	Source   string `json:"source"`
+	// Provider records query-time authority. Empty is legacy unknown authority,
+	// never an implicit local/manual grant.
+	Provider      string     `json:"provider,omitempty"`
 	Project       string     `json:"project,omitempty"`
 	Person        string     `json:"person,omitempty"`
 	DocumentID    string     `json:"document_id"`
@@ -78,6 +81,9 @@ func cloneEvidenceRecord(r evidenceRecord) evidenceRecord {
 }
 func checkEvidence(e CitationEvidence) error {
 	if len(e.QueryKey) > 128 || e.Label == "" || len(e.Label) > 128 || !ValidName(e.Source) || e.DocumentID == "" || len(e.DocumentID) > 256 || e.Index < 0 || len(e.Project) > 256 || len(e.Person) > 256 || len(e.Title) > 4096 || len(e.URI) > 4096 || len(e.Text) > 8000 {
+		return ErrInvalid
+	}
+	if e.Provider != "" && !ValidName(e.Provider) {
 		return ErrInvalid
 	}
 	if e.Mode != Indexed && e.Mode != Live || e.Mode == Live && (e.CopyAt != nil || e.RefreshFailed) {
@@ -224,6 +230,17 @@ func (s *EvidenceStore) Get(tenant, run, label, documentID string) (CitationEvid
 		}
 	}
 	return CitationEvidence{}, false
+}
+
+// ForRun returns at most MaxEvidencePerRun retained proofs for one exact run.
+// This is an internal composition input, not reader-authorized display data.
+func (s *EvidenceStore) ForRun(tenant, run string) []CitationEvidence {
+	if s == nil {
+		return []CitationEvidence{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return cloneEvidenceRecord(s.by[tenant][run]).Citations
 }
 
 func equalEvidence(a, b CitationEvidence) bool {

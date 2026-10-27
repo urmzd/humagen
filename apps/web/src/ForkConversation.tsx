@@ -8,8 +8,8 @@ import { AgentMark, button, field, Label, primary, Problem } from "./ui.tsx";
 const words = defaultCopy.forking;
 
 /** Saved branch creation. The host owns navigation to the resulting thread. */
-export function ForkConversation({ thread, through, onClose, onForked }: {
-  thread: Thread; through: string; onClose: () => void; onForked: (thread: Thread) => void;
+export function ForkConversation({ thread, through, onClose, onForked, open = true }: {
+  open?: boolean; thread: Thread; through: string; onClose: () => void; onForked: (thread: Thread) => void;
 }) {
   const [title, setTitle] = useState(thread.title ? `${thread.title} (fork)` : "");
   const [available, setAvailable] = useState<string[] | null>(null);
@@ -34,7 +34,7 @@ export function ForkConversation({ thread, through, onClose, onForked }: {
     coworking.fork(thread.id, { through, title, agents, ...(agents.length > 1 ? { mode } : {}), ...(sourceMode === "inherit" ? {} : { sources: sourceMode === "none" ? [] : sources }) })
       .then(onForked).catch((error: unknown) => setProblem(error instanceof Error ? error.message : words.failed)).finally(() => setSaving(false));
   };
-  return <Inspector open title={words.title} onClose={onClose}>
+  return <Inspector open={open} title={words.title} onClose={onClose}>
     <form onSubmit={submit} className="flex min-w-0 flex-col gap-5">
       <p className="text-aui-sm text-aui-muted">{words.hint}</p>
       <p className="text-aui-xs text-aui-muted">{words.through}: {through}</p>
@@ -62,13 +62,13 @@ export function ForkContext({ thread }: { thread: Thread }) {
   </section>;
 }
 
-export function BringBackResult({ thread, run, text: initial, onClose, onPosted }: {
-  thread: Thread; run: string; text: string; onClose: () => void; onPosted: () => void;
+export function BringBackResult({ thread, run, text: initial, onClose, onPosted, open = true }: {
+  open?: boolean; thread: Thread; run: string; text: string; onClose: () => void; onPosted: () => void;
 }) {
   const [text, setText] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  return <Inspector open title={words.bringBack} onClose={onClose}><form className="flex min-w-0 flex-col gap-4" onSubmit={(event) => {
+  return <Inspector open={open} title={words.bringBack} onClose={onClose}><form className="flex min-w-0 flex-col gap-4" onSubmit={(event) => {
     event.preventDefault(); setSaving(true); setProblem(null);
     coworking.bringBack(thread.id, { run, text }).then(onPosted).catch((error: unknown) => setProblem(error instanceof Error ? error.message : words.bringFailed)).finally(() => setSaving(false));
   }}><p className="text-aui-sm text-aui-muted">{words.bringHint}</p><Label text={words.result}><textarea className={`${field} min-h-64`} value={text} maxLength={7600} onChange={(event) => setText(event.target.value)} /></Label><Problem message={problem} /><button type="submit" className={primary} disabled={saving || !text.trim()}>{words.bringBack}</button></form></Inspector>;

@@ -4370,6 +4370,7 @@ paths:
       operationId: listKnowledgeDocuments
       tags: [knowledge]
       summary: List a source's documents
+      description: Retained external file listings are withheld until current upstream reader authorization can be established. Provider resources use the reader's own connection.
       x-permission: knowledge:read
       parameters:
         - {$ref: "#/components/parameters/SourceName"}
@@ -4385,6 +4386,7 @@ paths:
                   documents:
                     type: array
                     items: {$ref: "#/components/schemas/KnowledgeDocument"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -4541,7 +4543,7 @@ paths:
                 personal: {$ref: '#/components/schemas/PersonalPreferences'}
                 display_name: {type: string}
                 theme: {$ref: "#/components/schemas/Theme"}
-                accent: {type: string}
+                accent: {$ref: "#/components/schemas/Accent"}
                 onboarded:
                   description: Marks the first-run questions as done. It can be set and never unset.
                   type: boolean
@@ -10133,6 +10135,11 @@ components:
           type: string
           format: date-time
         setup_by: {type: string}
+    Accent:
+      description: The caller's interaction accent. Existing saved choices remain supported.
+      type: string
+      enum: [red, yellow, green, purple, blue, teal]
+      default: red
     Theme:
       type: string
       enum: [system, light, dark]
@@ -10160,7 +10167,7 @@ components:
         personal: {$ref: '#/components/schemas/PersonalPreferences'}
         display_name: {type: string}
         theme: {$ref: "#/components/schemas/Theme"}
-        accent: {type: string}
+        accent: {$ref: "#/components/schemas/Accent"}
         has_photo: {type: boolean}
         photo_version: {type: integer}
         onboarded_at:

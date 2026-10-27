@@ -149,6 +149,7 @@ function PeopleToAdd({
  * then stands. A project the server will not change to says why.
  */
 export function ShareDialog({
+  open = true,
   thread,
   hasRuns,
   projects,
@@ -159,6 +160,7 @@ export function ShareDialog({
   onPublished,
   onClose,
 }: {
+  open?: boolean;
   thread: Thread;
   /** Completed work requires an explicit audience review. */
   hasRuns: boolean;
@@ -271,7 +273,7 @@ export function ShareDialog({
   if (project === thread.project && thread.channel && !names.includes(thread.channel)) names.push(thread.channel);
 
   return (
-    <Inspector open title={words.shareTitle} onClose={onClose} footer={<>
+    <Inspector open={open} title={words.shareTitle} onClose={onClose} footer={<>
       <button type="button" className={button} onClick={onClose}>{defaultCopy.projects.cancel}</button>
       <button type="button" className={primary} disabled={busy || (hasRuns && (!preview || !reviewed || (preview.summary_required && (!summary.trim() || !onPublished))))} onClick={() => form.current?.requestSubmit()}>{preview?.summary_required ? words.publishSummary : words.share}</button>
     </>}>

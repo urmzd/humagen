@@ -678,9 +678,9 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
                 (expected) =>
                   document.querySelector<HTMLTextAreaElement>('form[aria-label="Message"] textarea')
                     ?.value === expected,
-                "$launch-review " + draft,
+                `$launch-review ${draft}`,
               );
-              assert.equal(await bar(page).inputValue(), "$launch-review " + draft);
+              assert.equal(await bar(page).inputValue(), `$launch-review ${draft}`);
             } else assert.equal(await bar(page).inputValue(), draft);
             await page.getByText("brief.txt", { exact: true }).waitFor();
             assert.equal(posts, 0, "Picking a skill must not submit the message");

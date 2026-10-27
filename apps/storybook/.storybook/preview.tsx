@@ -21,7 +21,7 @@ const preview: Preview = {
       toolbar: {
         title: "Accent",
         icon: "paintbrush",
-        items: ["purple", "blue", "yellow", "teal"],
+        items: ["red", "yellow", "green", "purple", "blue", "teal"],
         dynamicTitle: true,
       },
     },
@@ -41,7 +41,7 @@ const preview: Preview = {
       },
     },
   },
-  initialGlobals: { theme: "dark", accent: "purple", shift: "0" },
+  initialGlobals: { theme: "dark", accent: "red", shift: "0" },
   decorators: [
     (Story, { globals, parameters }) => {
       const root = document.documentElement;

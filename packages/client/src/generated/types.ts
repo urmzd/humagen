@@ -1950,6 +1950,9 @@ cannot be removed (409).
   setup_by?: string;
 }
 
+/** The caller's interaction accent. Existing saved choices remain supported. */
+export type Accent = "red" | "yellow" | "green" | "purple" | "blue" | "teal";
+
 export type Theme = "system" | "light" | "dark";
 
 export interface PersonalPreferences {
@@ -1971,7 +1974,7 @@ export interface Preferences {
   personal: PersonalPreferences;
   display_name: string;
   theme: Theme;
-  accent: string;
+  accent: Accent;
   has_photo: boolean;
   photo_version: number;
   /** When the person finished or skipped the first-run questions. */
@@ -3989,7 +3992,7 @@ export interface UpdatePreferencesBody {
   personal?: PersonalPreferences;
   display_name?: string;
   theme?: Theme;
-  accent?: string;
+  accent?: Accent;
   onboarded?: boolean;
   pinned?: string[];
   muted?: string[];

@@ -1,6 +1,8 @@
+import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import { setAgentHues } from "./ui.tsx";
+import { UserIcon, BellIcon, BotIcon, PlugIcon, ShieldIcon } from "@humagen/render-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
@@ -42,7 +44,6 @@ import { Chat } from "./Chat.tsx";
 import { YourConnections } from "./Connections.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
-import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { Monitor } from "./Monitor.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
@@ -59,7 +60,7 @@ import { type Source as About, type PlatformMessage, transport as mail } from ".
 import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { type AgentTab, documentTitle, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { defaultCopy } from "@humagen/components";
-import { Page, primary, Problem,SkeletonRows,button } from "./ui.tsx";
+import { Page, primary, Problem,SkeletonRows,button, Presence } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
 
@@ -135,7 +136,7 @@ function useAppearance(prefs: Preferences | null) {
     const apply = () => {
       const theme = prefs?.theme ?? "system";
       root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
-      root.dataset.accent = prefs?.accent ?? "purple";
+      root.dataset.accent = prefs?.accent ?? "red";
     };
     apply();
     media.addEventListener("change", apply);
@@ -345,14 +346,14 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // A built-in can be asked when the workspace has it and the reader may start runs.
   const canAsk = (name: string) => can("runs:write") && agents.some((a) => a.spec.name === name);
   // An alert's link names the alert. What fired is resolved in the inbox, so it opens the message the alert raised.
-  const alertLinked = route.page === "inbox" ? route.alert : undefined;
+  const alertLinked = route.page === "inbox" || route.page === "notifications" ? route.alert : undefined;
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per linked alert
   useEffect(() => {
     if (!alertLinked) return;
     api
       .inboxFor(alertLinked)
-      .then((message) => go({ page: "inbox", message: message ?? undefined, kind: message ? undefined : "alert" }, { replace: true }))
-      .catch(() => go({ page: "inbox", kind: "alert" }, { replace: true }));
+      .then((message) => go({ page: "notifications", message: message ?? undefined, kind: message ? undefined : "alert" }, { replace: true }))
+      .catch(() => go({ page: "notifications", kind: "alert" }, { replace: true }));
   }, [alertLinked]);
   // Opening a run opens the task it belongs to, where its history is kept.
   const openRun = (id: string) => {
@@ -442,12 +443,16 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         onSearch={()=>{setSearchOpen(true);if(window.innerWidth<768)setOpen(false)}}
         notificationCount={canNotify ? notificationDelivery.rows.length : undefined}
         onSignOut={() => api.logout().then(onSignedOut).catch(onSignedOut)}
+        onTheme={prefsRead ? (theme) => {
+          const was = prefs;
+          setPrefs({ ...was, theme });
+          api.savePreferences({ display_name: was.display_name, theme, accent: was.accent }).then(setPrefs, () => setPrefs(was));
+        } : undefined}
       />
-      {searchOpen&&<QuickSwitcher onClose={()=>setSearchOpen(false)} onGo={(next)=>{setSearchOpen(false);navigate(next)}}/>}
+      <Presence when={searchOpen} ms={170}>{leaving=><QuickSwitcher open={!leaving} onClose={()=>setSearchOpen(false)} onGo={(next)=>{setSearchOpen(false);navigate(next)}}/>}</Presence>
       <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
       {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
-        {route.page==="notifications"&&(canNotify?<NotificationsPage notifications={notificationDelivery} onGo={navigate}/>:<Page title={defaultCopy.notifications.title}><Problem message={defaultCopy.noPermission}/></Page>)}
         {workspaceHub(route) && <WorkspaceTabs label={defaultCopy.navigation[workspaceHub(route)!]} items={hubTabs(workspaceHub(route)!, route, can)} current={href(route)} onGo={go}/>}
         {route.page==="library"&&route.section==="skills"&&(can("projects:read")?<SkillsLibrary key={`${route.scope}:${route.project}:${route.skill}:${route.version}`} file={route.file} libraryTab={route.libraryTab} onLocationChange={location=>go({page:"library",section:"skills",...location})}/>:<Page title={defaultCopy.navigation.skills}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="library"&&route.section==="memory"&&((can("runs:read") || can("projects:read") || can("agents:read"))?<MemoryLibrary key={`${route.scope}:${route.owner}`} file={route.file} onLocationChange={location=>go({page:"library",section:"memory",...location})}/>:<Page title={defaultCopy.navigation.memory}><Problem message={defaultCopy.noPermission}/></Page>)}
@@ -459,7 +464,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         {route.page==="usage"&&(can("runs:read")?<Usage agents={agents.map(agent=>agent.spec.name)} tick={tick} onOpenRun={openRun} onOpenAgent={openAgent} view={{days:route.days??defaultUsageView.days,day:route.day,display:route.display??defaultUsageView.display}} onViewChange={view=>go({page:"usage",...view},{replace:true})}/>:<Page title={defaultCopy.navigation.usage}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="operations"&&route.section==="integrations"&&((can("clients:read")||can("knowledge:read"))?<Integrations selected={route.selected} tab={route.tab} onSelect={(selected,tab)=>go({page:"operations",section:"integrations",selected,tab})} canWrite={can("clients:write")} canKnowledgeWrite={can("knowledge:write")} onOpenSource={source=>go({page:"context",source})} onOpenProject={openProject}/>:<Page title={defaultCopy.navigation.integrations}><Problem message={defaultCopy.noPermission}/></Page>)}
         {route.page==="operations"&&route.section==="context"&&(can("knowledge:read")?<ContextHealth selected={route.selected} onSelect={selected=>go({page:"operations",section:"context",selected})} canWrite={can("knowledge:write")} onOpenSource={source=>go({page:"context",source})} onOpenAgent={openAgent} onOpenProject={openProject}/>:<Page title={defaultCopy.sourceOperations.health}><Problem message={defaultCopy.noPermission}/></Page>)}
-        {route.page==="you"&&<><WorkspaceTabs label={defaultCopy.navigation.you} items={(["profile","notifications","agents","connections","privacy"] as const).map(section=>({label:defaultCopy.navigation[section==="agents"?"personalAgents":section],route:{page:"you",section}}))} current={href(route)} onGo={go}/>{route.section==="connections"?<YourConnections open={route.provider} onOpen={provider=>go({page:"you",section:"connections",provider},{replace:true})} canConnect={can(CONNECT_PERMISSION)} onWhy={()=>go({page:"settings",section:"access",permission:CONNECT_PERMISSION})}/>:<PersonalPreferences key={route.section} section={route.section} onSaved={setPrefs}/>}</>}
+        {route.page==="you"&&<><WorkspaceTabs label={defaultCopy.navigation.you} items={(["profile","notifications","agents","connections","privacy"] as const).map(section=>({icon:section==="profile"?<UserIcon size={16}/>:section==="notifications"?<BellIcon size={16}/>:section==="agents"?<BotIcon size={16}/>:section==="connections"?<PlugIcon size={16}/>:<ShieldIcon size={16}/>,label:defaultCopy.navigation[section==="agents"?"personalAgents":section],route:{page:"you",section}}))} current={href(route)} onGo={go}/>{route.section==="connections"?<YourConnections open={route.provider} onOpen={provider=>go({page:"you",section:"connections",provider},{replace:true})} canConnect={can(CONNECT_PERMISSION)} onWhy={()=>go({page:"settings",section:"access",permission:CONNECT_PERMISSION})}/>:<PersonalPreferences key={route.section} section={route.section} onSaved={setPrefs}/>}</>}
 
         {(page === "new" || page === "conversation") && (
           <Chat
@@ -587,7 +592,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpenChannel={(channel) => go({ page: "channel", project: route.name, channel })}
           />
         )}
-        {route.page==="project"&&route.fork&&<ForkProject source={route.name} projects={projects??[]} onClose={()=>go({...route,fork:undefined})} onReady={name=>{loadProjects();openProject(name)}}/>}
+        {route.page==="project"&&<Presence when={!!route.fork} ms={220}>{leaving=><ForkProject open={!leaving} source={route.name} projects={projects??[]} onClose={()=>go({...route,fork:undefined})} onReady={name=>{loadProjects();openProject(name)}}/>}</Presence>}
         {route.page === "channel" && (
           <ChannelPage
             key={`${route.project}/${route.channel}`}
@@ -623,6 +628,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         {route.page === "monitor" && (
           <Monitor
             tab={route.tab}
+            embeddedRules={route.tab === "rules"}
             onTab={(tab) => go({ page: "monitor", tab })}
             alerts={alerts}
             rules={rules}
@@ -638,17 +644,20 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onAsk={canAsk(BUILTIN_ANALYST) ? (ask) => go({ page: "new", agent: BUILTIN_ANALYST, ask }) : undefined}
           />
         )}
-        {route.page === "inbox" && (
-          <InboxPage
+        {(route.page === "inbox" || route.page === "notifications") && (can("runs:read") ? (
+          <NotificationsPage
+            notifications={canNotify ? notificationDelivery : undefined}
+            onGo={navigate}
             signal={inboxTick}
             viewer={shownName}
             openId={route.message ?? null}
+            onSelection={(message) => go({ page: "notifications", message: message ?? undefined, kind: route.kind }, { replace: true })}
             kind={route.kind ?? ""}
-            onKind={(kind) => go({ page: "inbox", kind: kind || undefined }, { replace: true })}
+            onKind={(kind) => go({ page: "notifications", message: route.message, kind: kind || undefined }, { replace: true })}
             onCounts={setInboxCounts}
             onOpen={openSource}
           />
-        )}
+        ) : <Page title={defaultCopy.notifications.title}><Problem message={defaultCopy.noPermission}/></Page>)}
         {(route.page === "context" || (route.page==="library"&&route.section==="sources")) && (
           <Knowledge
             sources={sources}
@@ -795,9 +804,4 @@ function Missing({ what, name, onBack }: { what: string; name: string; onBack: (
       {null}
     </Page>
   );
-}
-
-
-function WorkspaceTabs({label,items,current,onGo}:{label:string;items:{label:string;route:Route;active?:boolean}[];current:string;onGo:(route:Route)=>void}) {
- return <nav aria-label={label} className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-aui-border border-b px-5 pt-2 md:px-8">{items.map(item=><a key={item.label} href={href(item.route)} aria-current={(item.active ?? current.split("?")[0] === href(item.route).split("?")[0]) ? "page" : undefined} onClick={event=>{if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();onGo(item.route)}}} className="inline-flex min-h-11 items-center border-b-2 border-transparent px-1 text-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:border-aui-primary aria-[current=page]:font-medium aria-[current=page]:text-aui-fg">{item.label}</a>)}</nav>;
 }

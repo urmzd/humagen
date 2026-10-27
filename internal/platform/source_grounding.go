@@ -114,7 +114,7 @@ func (p *Platform) withSourceGrounding(req runtime.Request, project, person stri
 	}
 	for _, declared := range spec.Sources {
 		src, err := p.Knowledge.Get(req.Tenant, declared.Name)
-		if err != nil || !p.runtimeSourceRecordAllowed(req.Tenant, src, project, person) {
+		if err != nil || src.RequiresUpstreamRead() || !p.runtimeSourceRecordAllowed(req.Tenant, src, project, person) {
 			continue
 		}
 		if src.Lifecycle == nil || src.Lifecycle.Mode != knowledge.Live {

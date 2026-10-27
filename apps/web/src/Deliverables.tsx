@@ -347,6 +347,7 @@ function FileBody({
 
 /** Saved artifacts in a conversation. A version is selected by its immutable artifact id. */
 export function Deliverables({
+  open = true,
   thread,
   view,
   onView,
@@ -354,6 +355,7 @@ export function Deliverables({
   onRevise,
   promotion,
 }: {
+  open?: boolean;
   thread: string;
   view: ConversationView;
   onView: (view: ConversationView) => void;
@@ -456,7 +458,7 @@ export function Deliverables({
     }
   };
   return (
-    <Inspector open wide={!!selected} title={file?.title || words.deliverables} onClose={onClose}>
+    <Inspector open={open} wide={!!selected} title={file?.title || words.deliverables} onClose={onClose}>
       <Problem message={problem ?? null} />
       {selected ? (
         <div className="flex min-w-0 flex-col gap-4">

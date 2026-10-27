@@ -1,6 +1,7 @@
 import { ProjectRollup } from "./ProjectRollup.tsx";
 import { defaultCopy } from "@humagen/components";
-import { FolderIcon, FolderPlusIcon } from "@humagen/render-web";
+import { ChevronDownIcon, FolderIcon, FolderPlusIcon } from "@humagen/render-web";
+import { Badge } from "@humagen/render-web/ui/badge";
 import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
@@ -61,7 +62,6 @@ import {
   PageActions,
   Problem,
   primary,
-  rows,
   SearchField,
   Segmented,
   SkeletonRows,
@@ -107,19 +107,22 @@ export function useNarrow(): boolean {
 
 /** What is happening in a project, what waits, and how much it holds, most pressing first. */
 export function factsOf(p: ProjectView): string {
+  return factLabelsOf(p).join(", ");
+}
+
+function factLabelsOf(p: ProjectView): string[] {
   return [
     p.active > 0 && words.count.running(p.active),
     p.proposed > 0 && words.count.review(p.proposed),
     words.count.tasks(p.conversations),
     p.active_at && words.count.active(ago(p.active_at)),
   ]
-    .filter(Boolean)
-    .join(" · ");
+    .filter((label): label is string => typeof label === "string");
 }
 
 /** A project in words under its title: its kind, its customer, and where it sits when the tree does not show it. */
-function aboutOf(p: ProjectView, path: string[], kinds: ProjectKindSpec[]): string {
-  return [kindWord(p.kind, kinds), p.account?.customer, path.length > 0 ? words.within(path) : null].filter(Boolean).join(" · ");
+function aboutOf(p: ProjectView, path: string[], kinds: ProjectKindSpec[]): string[] {
+  return [kindWord(p.kind, kinds), p.account?.customer, path.length > 0 ? words.within(path) : null].filter((label): label is string => typeof label === "string" && label.length > 0);
 }
 
 /** The workspace's own kinds, as a project page reads them: from the workspace, first among its ancestors. */
@@ -132,42 +135,56 @@ function ProjectRow({
   to,
   title,
   about,
-  facts,
   indent,
   project,
   onOpen,
 }: {
   to: string;
   title: string;
-  about: string;
-  facts: string;
+  about: string | string[];
   indent: number;
   project: ProjectView;
   onOpen: () => void;
 }) {
+  const agents = project.row_agents;
+  const details = [
+    ...(Array.isArray(about) ? about.slice(1) : [about]),
+    project.description,
+  ].filter(Boolean);
+  const hasDetails = details.length > 0 || agents.length > 2;
   return (
-    <li data-indent={indent} style={indent > 0 ? { paddingLeft: indent * INDENT_PX } : undefined}>
-      <Go
-        to={to}
-        onGo={onOpen}
-        className="flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-0.5 rounded-aui px-2 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-      >
-        <span className="relative shrink-0">
-          <FolderIcon size={18} className="text-aui-muted" />
-          {project.unread > 0 && <span role="img" aria-label={words.unreadUpdates} className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-aui-accent" />}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-aui-sm font-medium text-aui-fg">{title}</span>
-          <span className="block truncate text-aui-xs text-aui-muted">{about}</span>
-        </span>
-        {project.initiative && <span className="text-aui-2xs text-aui-muted">{defaultCopy.projectTemplates.initiative}</span>}
-        {project.row_agents.length > 0 && (
-          <span className="flex max-w-28 flex-wrap items-center gap-1.5">
-            {project.row_agents.map((name) => <span key={name} role="img" aria-label={name} title={name}><AgentMark name={name} size={14} /></span>)}
+    <li data-indent={indent} style={indent > 0 ? { marginLeft: indent * INDENT_PX } : undefined} className="rounded-aui-lg border border-aui-border bg-aui-surface">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5">
+        <Go to={to} onGo={onOpen} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-aui text-left hover:text-aui-accent focus-visible:outline-2 focus-visible:outline-aui-accent">
+          <span className="relative shrink-0">
+            <FolderIcon size={18} className="text-aui-muted" />
+            {project.unread > 0 && <span role="img" aria-label={words.unreadUpdates} className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-aui-accent" />}
           </span>
-        )}
-        <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums max-sm:w-full max-sm:pl-[30px]">{facts}</span>
-      </Go>
+          <span className="min-w-0">
+            <span className="block break-words text-aui-sm font-medium text-aui-fg">{title}</span>
+            {project.account?.customer && <span className="block text-aui-xs text-aui-muted">{project.account.customer}</span>}
+          </span>
+        </Go>
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 pl-[30px] sm:ml-auto sm:w-auto sm:max-w-[60%] sm:justify-end sm:pl-0">
+          {project.initiative && <Badge variant="secondary">{defaultCopy.projectTemplates.initiative}</Badge>}
+          {agents.slice(0, 2).map((name) => <Badge key={name} variant="outline" className="max-w-full gap-1.5 whitespace-normal text-xs font-normal"><AgentMark name={name} size={12} /><span className="min-w-0 break-all">{name}</span></Badge>)}
+          {project.active > 0 && <Badge variant="secondary">{words.count.running(project.active)}</Badge>}
+          {project.proposed > 0 && <Badge variant="secondary">{words.count.review(project.proposed)}</Badge>}
+          {project.conversations > 0 && <span className="px-1 text-aui-xs text-aui-muted tabular-nums">{words.count.tasks(project.conversations)}</span>}
+          {project.active_at && <time dateTime={project.active_at} className="px-1 text-aui-xs text-aui-muted">{words.count.active(ago(project.active_at))}</time>}
+        </div>
+      </div>
+      {hasDetails && <details className="group/project-details border-aui-border border-t px-3 text-aui-xs text-aui-muted">
+        <summary className="flex min-h-8 pointer-coarse:min-h-11 w-fit cursor-pointer list-none items-center gap-3 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+          <span className="flex w-[18px] shrink-0 justify-center"><ChevronDownIcon size={14} className="-rotate-90 transition-transform group-open/project-details:rotate-0 motion-reduce:transition-none" /></span>
+          <span>{words.details}</span>
+          {agents.length > 2 && <span className="tabular-nums">· {words.moreAgents(agents.length - 2)}</span>}
+        </summary>
+        <div className="max-w-[70ch] space-y-3 pb-3 pl-[30px] leading-5">
+          <p>{details.join(". ")}</p>
+          {agents.length > 2 && <div className="flex flex-wrap gap-1.5">{agents.slice(2).map(name => <Badge key={name} variant="outline" className="gap-1.5 whitespace-normal font-normal"><AgentMark name={name} size={12} /><span className="break-all">{name}</span></Badge>)}</div>}
+        </div>
+      </details>}
     </li>
   );
 }
@@ -258,14 +275,13 @@ export function ProjectsPage({
             <h2 id={`projects-${g.kind}`} className="text-aui-xs font-medium text-aui-muted">
               {g.title}
             </h2>
-            <ul className={rows}>
+            <ul className="flex flex-col gap-2">
               {g.kind === "company" && showRoot && root && (
                 <ProjectRow
                   to={projectHref("")}
                   title={workspaceName}
-                  about={`${words.workspace} · ${words.workspaceHint}`}
+                  about={words.workspaceHint}
                   project={root}
-                  facts={factsOf(root)}
                   indent={0}
                   onOpen={() => onOpen("")}
                 />
@@ -277,7 +293,6 @@ export function ProjectsPage({
                   title={titleOf(r.project)}
                   about={aboutOf(r.project, r.path, kinds)}
                   project={r.project}
-                  facts={factsOf(r.project)}
                   indent={r.indent}
                   onOpen={() => onOpen(r.project.name)}
                 />
@@ -741,15 +756,14 @@ function SubProjects({
       {detail.children.length === 0 ? (
         <p className="text-aui-sm text-aui-muted">{here.depth >= MAX_DEPTH ? words.deepest : words.noSubProjects}</p>
       ) : (
-        <ul className={rows}>
+        <ul className="flex flex-col gap-2">
           {detail.children.map((c) => (
             <ProjectRow
               key={c.name}
               to={projectHref(c.name)}
               title={titleOf(c)}
-              about={[aboutOf(c, [], kinds), c.children > 0 ? words.count.below(c.children) : null].filter(Boolean).join(" · ")}
+              about={[...aboutOf(c, [], kinds), ...(c.children > 0 ? [words.count.below(c.children)] : [])]}
               project={c}
-              facts={factsOf(c)}
               indent={0}
               onOpen={() => onOpen(c.name)}
             />

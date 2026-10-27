@@ -14,6 +14,14 @@ func (p *Platform) MarkPrivateContext(tenant, run string) error {
 }
 
 func (p *Platform) runNeedsSummary(ctx context.Context, run runs.Run, destination string) bool {
+	// A source name can be deleted and recreated with different authority.
+	// Publication also checks retained query-time proofs so a later local
+	// collection cannot relabel external or unknown historical evidence.
+	for _, proof := range p.SourceEvidence.ForRun(run.Tenant, run.ID) {
+		if proof.Provider != "manual" {
+			return true
+		}
+	}
 	if run.UsesPrivateContext() || run.Tag().Meta[MetaPersonalMemoryContext] == "true" || run.Tag().Meta[MetaPrivateLibraryContext] == "true" || p.ContextFlags.Has(run.Tenant, run.ID) || p.RunUsesPersonalSources(ctx, run) {
 		return true
 	}

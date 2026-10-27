@@ -2,7 +2,8 @@ import { builtinAgentKey } from "./legacy.ts";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
 import { BanIcon, CheckIcon, ChevronDownIcon, SearchIcon, ShieldIcon, Tooltip, XIcon } from "@humagen/render-web";
 import { defaultCopy } from "@humagen/components";
-import { AgentOrb, type OrbState } from "@humagen/web";
+import { AgentOrb, type OrbState, usePresence } from "@humagen/web";
+export { usePresence, Presence } from "@humagen/web";
 import { buttonVariants } from "@humagen/render-web/ui/button";
 import { inputClass } from "@humagen/render-web/ui/input";
 import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -608,7 +609,7 @@ export function Segmented<T extends string>({
 }: {
   label: string;
   value: T;
-  options: { id: T; label: string }[];
+  options: { id: T; label: string; icon?: ReactNode }[];
   onChange: (next: T) => void;
 }) {
   const strip = useStrip<HTMLDivElement>(value);
@@ -624,8 +625,9 @@ export function Segmented<T extends string>({
             type="button"
             aria-pressed={value === o.id}
             onClick={() => onChange(o.id)}
-            className="h-7 shrink-0 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg"
+            className="inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg motion-reduce:transition-none"
           >
+            {o.icon}
             {o.label}
           </button>
         ))}
@@ -1129,31 +1131,6 @@ export function SearchField({
       )}
     </div>
   );
-}
-
-/**
- * Keeps something on screen for as long as its leaving takes. `mounted` says
- * whether to render it, and `leaving` is true for the moment between being
- * closed and being gone: set it as data-leaving so the motion classes play out.
- * The timer is cleared if the thing reopens or the component goes away.
- */
-export function usePresence(open: boolean, ms = 110): { mounted: boolean; leaving: boolean } {
-  const [held, setHeld] = useState(open);
-  useEffect(() => {
-    if (open) {
-      setHeld(true);
-      return;
-    }
-    const timer = window.setTimeout(() => setHeld(false), ms);
-    return () => window.clearTimeout(timer);
-  }, [open, ms]);
-  return { mounted: open || held, leaving: !open && held };
-}
-
-/** Renders its children while `when` is true and for `ms` after, telling them when they are leaving. */
-export function Presence({ when, ms, children }: { when: boolean; ms?: number; children: (leaving: boolean) => ReactNode }) {
-  const { mounted, leaving } = usePresence(when, ms);
-  return mounted ? children(leaving) : null;
 }
 
 export type Flash = { text: string; bad: boolean };

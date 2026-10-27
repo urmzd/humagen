@@ -1,4 +1,4 @@
-import { FolderIcon } from "@humagen/render-web";
+import { CheckIcon, FolderIcon } from "@humagen/render-web";
 import { Button } from "@humagen/render-web/ui/button";
 import { type ReactNode, useState } from "react";
 import { Inspector } from "./Inspector.tsx";
@@ -78,6 +78,7 @@ export function ResourceBrowser({
                   {scope.count}
                 </span>
               )}
+              {scope.id === selectedScope && <CheckIcon size={14} />}
             </button>
           </li>
         ))}

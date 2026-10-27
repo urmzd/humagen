@@ -56,7 +56,11 @@ func (p *Platform) enrichCitation(e envelope.Event) envelope.Event {
 	return e
 }
 func (p *Platform) citationEvidenceVisible(who auth.Principal, proof knowledge.CitationEvidence) bool {
-	if !who.Can(auth.KnowledgeRead) {
+	// Retained provider excerpts need a current per-file authorizer. These
+	// network-free projections cannot establish that authority from a project
+	// role, query-time access, or a saved owner credential. Legacy unknown
+	// authority is withheld too, including after a source name is recreated.
+	if !who.Can(auth.KnowledgeRead) || proof.Provider != "manual" {
 		return false
 	}
 	if proof.Person != "" && (who.Kind == auth.Machine || who.Subject != proof.Person) {
@@ -65,46 +69,34 @@ func (p *Platform) citationEvidenceVisible(who auth.Principal, proof knowledge.C
 	if proof.Project != "" && !p.Sees(who, Place{Project: proof.Project}) {
 		return false
 	}
-	if _, err := p.Knowledge.Get(who.Tenant, proof.Source); err == nil {
-		return p.SourceVisible(who, proof.Source)
-	}
-	// Deleted metadata cannot erase its retained query-time scope.
-	return true
+	src, err := p.Knowledge.Get(who.Tenant, proof.Source)
+	return err == nil && !src.RequiresUpstreamRead() && p.sourceRecordVisible(who, src)
 }
 func (p *Platform) CitationEventVisible(who auth.Principal, e envelope.Event) bool {
 	if e.Kind != envelope.KindCitation {
 		return true
 	}
-	if !who.Can(auth.KnowledgeRead) {
+	if who.Tenant != e.Tenant || !who.Can(auth.KnowledgeRead) {
 		return false
 	}
 	if _, proof, ok := p.trustedCitation(e); ok {
 		return p.citationEvidenceVisible(who, proof)
 	}
-	if run, err := p.Runs.Get(who.Tenant, e.RunID); err == nil {
-		shown := p.ShownRun(who.Tenant, run)
-		if shown.Project != run.Project || shown.Channel != run.Channel {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 // ShownRunAs clears denied evidence explicitly, including citations already
-// streamed before a reader's access changed. It retains historical unknowns.
+// streamed before a reader's access changed. Unknown authority is withheld.
 func (p *Platform) ShownRunAs(who auth.Principal, run runs.Run) runs.Run {
 	original := run
 	run = p.ShownRun(who.Tenant, run)
 	run.Citations = []runs.Citation{}
-	if !who.Can(auth.KnowledgeRead) || !p.Seer(who).Run(original) {
+	if original.Tenant != who.Tenant || !who.Can(auth.KnowledgeRead) || !p.Seer(who).Run(original) {
 		return run
 	}
 	for _, citation := range original.Citations {
-		if proof, ok := p.SourceCitationEvidence(who.Tenant, original.ID, citation.ID, ""); ok {
-			if !p.citationEvidenceVisible(who, proof) {
-				continue
-			}
-		} else if run.Project != original.Project || run.Channel != original.Channel {
+		proof, ok := p.SourceCitationEvidence(who.Tenant, original.ID, citation.ID, "")
+		if !ok || !p.citationEvidenceVisible(who, proof) {
 			continue
 		}
 		run.Citations = append(run.Citations, runs.CloneCitations([]runs.Citation{citation})[0])
@@ -131,14 +123,16 @@ func (p *Platform) recordSourceToolCitations(req runtime.Request, src knowledge.
 	entries := []knowledge.CitationEvidence{}
 	for _, hit := range hits {
 		project := ""
+		provider := "manual"
 		if src.Lifecycle != nil {
 			project = src.Lifecycle.Project
+			provider = src.Lifecycle.Provider
 		}
 		reader := ""
 		if hit.Mode == knowledge.Live {
 			reader = person
 		}
-		entries = append(entries, knowledge.CitationEvidence{Source: hit.Source, Project: project, Person: reader, DocumentID: hit.DocumentID, Index: hit.Index, Title: hit.Title, URI: hit.URI, Text: hit.Text, Mode: hit.Mode, CopyAt: hit.CopyAt, RefreshFailed: hit.RefreshFailed})
+		entries = append(entries, knowledge.CitationEvidence{Source: hit.Source, Provider: provider, Project: project, Person: reader, DocumentID: hit.DocumentID, Index: hit.Index, Title: hit.Title, URI: hit.URI, Text: hit.Text, Mode: hit.Mode, CopyAt: hit.CopyAt, RefreshFailed: hit.RefreshFailed})
 	}
 	evidence, err := p.SourceEvidence.RecordQuery(req.Tenant, req.RunID, "search:"+hex.EncodeToString(nonce[:]), entries)
 	if err != nil {

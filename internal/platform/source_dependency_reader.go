@@ -103,6 +103,6 @@ func (p *Platform) ordinarySourceDependencyRuns(who auth.Principal, name string)
 	}
 	return p.SourceEvidence.RunReferences(who.Tenant, name, 200, func(id string, proof knowledge.CitationEvidence) bool {
 		run, err := p.Runs.Get(who.Tenant, id)
-		return err == nil && ordinary.Run(run) && (proof.Person == "" || proof.Person == who.Subject) && (proof.Project == "" || ordinary.Place(Place{Project: proof.Project}))
+		return err == nil && p.citationEvidenceVisible(who, proof) && ordinary.Run(run) && (proof.Person == "" || proof.Person == who.Subject) && (proof.Project == "" || ordinary.Place(Place{Project: proof.Project}))
 	})
 }

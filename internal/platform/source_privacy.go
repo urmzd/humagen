@@ -55,7 +55,17 @@ func (p *Platform) SourceAs(who auth.Principal, name string) (knowledge.Source, 
 	if err != nil || !p.sourceRecordVisible(who, src) {
 		return knowledge.Source{}, knowledge.ErrNotFound
 	}
-	return src.HealthAt(p.now()), nil
+	return ShownSource(src.HealthAt(p.now())), nil
+}
+
+// ShownSource withholds derived external file inventory from public responses.
+// Saved collection IDs remain configuration; variant exclusions come from
+// retained provider inventory and cannot establish a reader's current access.
+func ShownSource(src knowledge.Source) knowledge.Source {
+	if src.RequiresUpstreamRead() {
+		src.Variants = []knowledge.Variant{}
+	}
+	return src
 }
 
 func (p *Platform) runtimeSourceAllowed(tenant, name, project string) bool {
@@ -98,6 +108,9 @@ func (p *Platform) RunUsesPersonalSources(ctx context.Context, run runs.Run) boo
 func (p *Platform) SourceMayPublishIn(tenant, name, destinationProject string) bool {
 	src, err := p.Knowledge.Get(tenant, name)
 	if err != nil {
+		return false
+	}
+	if src.RequiresUpstreamRead() {
 		return false
 	}
 	return src.Lifecycle == nil || src.Lifecycle.Project == "" || src.Lifecycle.Project == projects.NameOf(destinationProject)

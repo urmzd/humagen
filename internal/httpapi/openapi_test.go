@@ -1578,6 +1578,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/contract-copy/credential", `{"ref":"op://People/ana/contract-source"}`, http.StatusOK)
 	c.call(ana, "GET", "/api/knowledge/{name}/resources", "/api/knowledge/contract-copy/resources", "", http.StatusOK)
 	c.call(ana, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/contract-copy/sync", "", http.StatusOK)
+	c.call(ana, "GET", "/api/knowledge/{name}/documents", "/api/knowledge/contract-copy/documents", "", http.StatusBadRequest)
 	c.call(ana, "POST", "/api/knowledge/{name}/snapshot", "/api/knowledge/contract-copy/snapshot", "", http.StatusOK)
 	c.call(ana, "POST", "/api/knowledge/{name}/replace", "/api/knowledge/contract-copy/replace", "", http.StatusOK)
 	frozenAttempt, err := f.p.Knowledge.BeginSync("acme", "contract-copy", time.Now())
