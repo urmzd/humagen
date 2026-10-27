@@ -119,7 +119,7 @@ func (p *Platform) ForkProject(ctx context.Context, who auth.Principal, source s
 	if err := p.MayFileIn(who, in.Parent); err != nil {
 		return ProjectForkOperation{}, err
 	}
-	mu := p.moves.of(who.Tenant, "project-fork:"+in.Name)
+	mu := p.projectForkLocks.of(who.Tenant, "project-fork:"+in.Name)
 	mu.Lock()
 	defer mu.Unlock()
 	record, err := p.ProjectForks.Get(who.Tenant, in.Name, who.Subject)
