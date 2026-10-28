@@ -119,22 +119,13 @@ endpoint also accepts the structured contract under `input`.
 
 ## Runtime dependency
 
-Humagen depends on the fiber release `v0.20.0`. It carries:
-- the call extension (PR #17);
-- model fallbacks with `fallback_on`, and per-call approvals
-  (`agentrt.Approving`, PRs #32 and #33);
-- `mcp:<provider>[:write]` grants from the tool provider store (PR #35);
+fiber lives at `fiber/` in this module, so there is no fiber version to pin
+and no `go.work` to link. It carries:
+- the call extension;
+- model fallbacks with `fallback_on`, and per-call approvals through
+  `native.Approving` (`github.com/urmzd/humagen/fiber/pkg/turn/native`);
+- `mcp:<provider>[:write]` grants from the tool provider store;
 - unavailable tools and tool groups dropped with a warning rather than
-  failing the run (PRs #27 and #37).
+  failing the run.
 
-Builds need no local worktree.
-
-For runtime development, an ignored `go.work` can link the matching worktree:
-
-```sh
-go work init . ../fiber/.worktrees/helper-call-input
-make test
-```
-
-Use `GOWORK=off go test -race ./...` to validate the pinned dependency instead
-of a local override.
+`make test` covers fiber and Humagen together.

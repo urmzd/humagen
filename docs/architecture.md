@@ -169,7 +169,7 @@ against limits, and stops what goes over.
 
 | Source | When | Key | What it adds |
 |--------|------|-----|--------------|
-| `usage.call` on a run's stream | As each call completes | The runtime's `accounting_id` | The call, to the usage ledger, under the run's place |
+| `run.usage.v1` on a run's stream | As each call completes | The runtime's `accounting_id` | The call, to the usage ledger, under the run's place |
 | The run's total (`run.completed.v1` or `run.stopped.v1`, else the ledger's output, else `runtime.RecordedUsage` for a failed run) | When the run ends | `run:<id>` | Only what the calls already counted for the run do not cover: a call whose event was missed |
 
 The platform's observer sees every event (a subscription with no kind filter
@@ -326,7 +326,7 @@ refused, not parked. See the status table.
 
 A call the callee's policy holds for a person is decided by `callApproval` in
 `internal/platform/call_policy.go`. The `call_agent` tool is an
-`agentrt.Approving` tool built on it: the runtime parks the caller on an
+`native.Approving` tool (`fiber/pkg/turn/native`) built on it: the runtime parks the caller on an
 approval addressed to the policy's approvers (`role:manager` and `role:admin`
 when it names nobody, so a held call is never open to the whole workspace).
 The call goes through only when a person approved that very tool call;
@@ -596,7 +596,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | In-repo deploy, on [the spec](spec.md): a container image (`Dockerfile`: the console and a static `humagen`, non-root, `/var/lib/warp` volume, `serve -f /etc/warp`), a compose stack (`deploy/compose`: a mounted `humagen.yaml` with System and Platform documents, secrets in `.env` named by references, Postgres and a MinIO profile, a dev override on host networking, `make up`/`make down`), a Helm chart (`deploy/helm/humagen`: `system` and `platforms` values rendered into one `humagen.yaml`, one replica with `Recreate`, `existingSecret`, a workspace PVC; refuses loopback-only sign-in) and an example Flux setup (`deploy/flux`). See [deploy](deploy.md) | Written. `make chart-check` lints and renders the chart, runs `kubeconform -strict` on the renders and `humagen config check` on each rendered `humagen.yaml` and on both compose specs. The compose files pass `docker compose config`; the dev spec, with memory stores, was started and served the console. The Flux manifests pass `kubeconform` after `kustomize build`. `config check` lists env references the shell has not set; it does not read keychains or named files, so those fail only at start. The root image builds and runs as both command names; a default Postgres release upgrades in place from the last pre-rename chart through Helm and Flux on kind, with the Deployment, PVC contents, Secret data and container name retained ([rename verification](rename-verification.md)). The memory-slot edge in [issue #62](https://github.com/urmzd/humagen/issues/62) remains open. No image is published by releases |
 | Call policies: each agent says which agents may call it (`anyone`, `listed`, `none`) and which calls wait for a person. `GET`/`PUT /api/agents/{name}/call-policy` (`agents:read`/`agents:write`), enforced in the call path beside the caller's spawn allowlist, and the `call_agent` tool offers only callees that admit the caller | Built, tested. Kept with `-state=postgres`. Per tenant, at most 1,000 policies and 100 names per list. The console edits one on the agent's page |
 | Discoverability: `GET /api/agents/{name}/reachable` says, for that agent as a caller, whether each other agent admits it, is in its spawn allowlist, and needs approval, with a reason | Built, tested. One page of up to 500 agents, with `truncated` |
-| Per-call approval held by the callee's policy: `call_agent` implements `agentrt.Approving`, the question carries the policy's approvers and self-approval, the inbox addresses it to them, and only a call a person approved goes through | Built, unit tested. End to end it waits on fiber's host call tool wrapper forwarding `Approving`; until then the call is refused (fail closed), which the end-to-end test checks and then skips. `expires_seconds` is not applied yet |
+| Per-call approval held by the callee's policy: `call_agent` implements `native.Approving` (`fiber/pkg/turn/native`), the question carries the policy's approvers and self-approval, the inbox addresses it to them, and only a call a person approved goes through | Built, unit tested. End to end it waits on fiber's host call tool wrapper forwarding `Approving`; until then the call is refused (fail closed), which the end-to-end test checks and then skips. `expires_seconds` is not applied yet |
 | An agent's approval queue: approval questions about calling an agent carry it as `source.target`, and `GET /api/inbox?kind=approval&agent=X&state=open` lists what was raised by or would call `X`. It offers a note only where the run takes one from the viewer (`steered_for`), and says when a call acts as the person | Built, tested, the queue's notes in happy-dom (`governance.dom.test.tsx`) |
 | Built-in `manager` role: everything an operator has, and writing agents (their call policies among them) and knowledge. Granted by `-manager-group` (`humagen-managers`); mock persona `mock-manager` | Built, tested |
 
