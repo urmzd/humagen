@@ -19,6 +19,8 @@ import (
 var wholeFiles = []struct{ pattern, why string }{
 	{"CHANGELOG.md", "release history, never edited"},
 	{"docs/renaming.md", "the history of names"},
+	{"fiber/CHANGELOG.md", "fiber's release history, never edited"},
+	{"fiber/docs/renaming.md", "fiber's history of names"},
 	{"docs/upgrading-from-warp.md", "what changed, for operators"},
 	{"internal/legacy/*", "the one Go package that reads old names"},
 	{"apps/*/src/legacy.ts", "the one module per app that reads old names"},

@@ -1,4 +1,4 @@
-.PHONY: all init build test lint fmt check start dev dev-signin web screens up down chart-check image client client-check spec-lint oag-install
+.PHONY: all init build test integration lint fmt check start dev dev-signin web screens up down chart-check image client client-check spec-lint oag-install
 
 BIN := humagen
 
@@ -28,6 +28,14 @@ build:
 
 test:
 	go test ./... -race
+
+# fiber's backend conformance suites against Postgres (pgvector) and Redis
+# from the compose integration profile. Without these variables they skip.
+integration:
+	$(COMPOSE) --profile integration up -d --wait fiber-postgres redis
+	FIBER_POSTGRES_TEST_URL=postgres://fiber:fiber@localhost:$${FIBER_POSTGRES_PORT:-5433}/fiber?sslmode=disable \
+	FIBER_REDIS_ADDR=localhost:$${FIBER_REDIS_PORT:-6379} \
+	go test -race -count=1 ./fiber/...
 
 lint:
 	golangci-lint run
