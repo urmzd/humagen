@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
@@ -24,7 +25,7 @@ func TestOutcomeSourceDependenciesBoundInputsAndVisibleRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Runs.Record("visible-origin", envelope.Tag{ID: "visible-origin", Tenant: "tenant", Agent: "worker", Meta: map[string]string{runs.MetaProject: "Secret"}}, 1); err != nil {
+	if err := p.Runs.Record("visible-origin", wire.NewEvent(wire.Raise{ID: "visible-origin", Tenant: "tenant", Agent: "worker", Context: map[string]string{runs.MetaProject: "Secret"}}), 1); err != nil {
 		t.Fatal(err)
 	}
 	who := auth.Principal{Tenant: "tenant", Subject: "owner", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead, auth.RunsRead, auth.ProjectsRead}}

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -59,7 +59,7 @@ func askingOlu(t *testing.T, cfg platform.Config) (*platform.Platform, runs.Run,
 		case <-time.After(20 * time.Second):
 		}
 	})
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}

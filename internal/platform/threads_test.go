@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/internal/wire"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -111,7 +111,7 @@ func TestATaggedAgentAnswersSeeingTheRoomUpToTheMessage(t *testing.T) {
 		t.Fatalf("the second message started %+v", second)
 	}
 	for _, r := range second.Runs {
-		text := r.Tag().Text
+		text := wire.TextOf(r.Tag())
 		order := []string{"Conversation so far,", "\nopal (person 1): @helper what is the renewal date?\n", "helper (agent): " + answered.Answer + "\n", "from ada (person 2).\n\n@lead @helper check what was said"}
 		at := 0
 		for _, want := range order {
@@ -174,7 +174,7 @@ func TestAnUntaggedAPITurnIsAnsweredByTheDefaultItsThreadInherits(t *testing.T) 
 		t.Fatalf("an untagged follow-up in #renewals is %+v", api)
 	}
 	order := []string{"\nopal (person 1): FIRST-QUESTION @helper\n", "helper (agent): " + r1.Answer + "\n", "opal (person 1): SECOND-QUESTION @helper\n", "helper (agent): " + r2.Answer + "\n", "from someone (acting for nobody).\n\nTHIRD-QUESTION"}
-	text, at := api.Tag().Text, 0
+	text, at := wire.TextOf(api.Tag()), 0
 	for _, want := range order {
 		i := strings.Index(text[at:], want)
 		if i < 0 {
@@ -193,7 +193,7 @@ func TestAnUntaggedAPITurnIsAnsweredByTheDefaultItsThreadInherits(t *testing.T) 
 		t.Fatalf("an untagged follow-up went to %s, not the thread's default", again.Agent)
 	}
 	later := post(t, p, operator, room.Thread.ID, platform.MessageInput{Text: "@lead sum it up"})
-	if text := later.Runs[0].Tag().Text; !strings.Contains(text, "someone (acting for nobody): THIRD-QUESTION\nlead (agent): "+api.Answer) || !strings.Contains(text, "someone (acting for nobody): FOURTH-QUESTION\n") {
+	if text := wire.TextOf(later.Runs[0].Tag()); !strings.Contains(text, "someone (acting for nobody): THIRD-QUESTION\nlead (agent): "+api.Answer) || !strings.Contains(text, "someone (acting for nobody): FOURTH-QUESTION\n") {
 		t.Fatalf("the room's next agent was not sent the follow-ups:\n%s", text)
 	}
 }
@@ -214,7 +214,7 @@ func TestNoOneInTheRoomPutsWordsInThePostersMouth(t *testing.T) {
 	if len(got.Runs) != 1 || got.Runs[0].Actor.User != "ada" {
 		t.Fatalf("ada's message started %+v", got.Runs)
 	}
-	text := got.Runs[0].Tag().Text
+	text := wire.TextOf(got.Runs[0].Tag())
 	for _, line := range strings.Split(text, "\n") {
 		if strings.HasPrefix(line, "Ada") && line != "Ada (@ada): @helper any open bugs?" {
 			t.Fatalf("a line ahead of ada's words reads as hers, %q:\n%s", line, text)
@@ -255,7 +255,7 @@ func TestAFollowUpInARoomNamesWhoAskedEachTurn(t *testing.T) {
 	opals := turn("t-opal", "OPAL-FOLLOWUP", first.ID, operator)
 	machines := turn("t-machine", "MACHINE-FOLLOWUP", opals.ID, auth.Principal{Subject: "svc-bot", Tenant: tenant, Kind: auth.Machine})
 	adas := turn("t-ada", "ADA-FOLLOWUP", machines.ID, admin)
-	text := adas.Tag().Text
+	text := wire.TextOf(adas.Tag())
 	for _, want := range []string{
 		"Opal (@opal): OPAL-FOLLOWUP\nhelper (agent): ",
 		"svc-bot (acting for nobody): MACHINE-FOLLOWUP\nhelper (agent): ",
@@ -338,10 +338,10 @@ func TestTheConsoleRunsOnlyWhatAMessageTags(t *testing.T) {
 	if asked.Rule != threads.RuleTagged || len(asked.Runs) != 1 || asked.Runs[0].Agent != "helper" {
 		t.Fatalf("a tagged message started %+v", asked)
 	}
-	if text := asked.Runs[0].Tag().Text; !strings.Contains(text, "when does it renew?\n") {
+	if text := wire.TextOf(asked.Runs[0].Tag()); !strings.Contains(text, "when does it renew?\n") {
 		t.Fatalf("the run was not sent the conversation so far:\n%s", text)
 	}
-	if text := asked.Runs[0].Tag().Text; !strings.Contains(text, "This conversation is in #renewals. Its purpose: Renewal work") {
+	if text := wire.TextOf(asked.Runs[0].Tag()); !strings.Contains(text, "This conversation is in #renewals. Its purpose: Renewal work") {
 		t.Fatalf("the channel's purpose was not sent:\n%s", text)
 	}
 	if d, _, err := p.DefaultFor(tenant, got.Thread.ID, "", ""); err != nil || d != (threads.Default{Agent: "helper", From: threads.FromChannel}) {
@@ -373,7 +373,7 @@ func TestAutoTagsNobody(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Globex", operator)
-	for _, spec := range []agentspec.AgentSpec{
+	for _, spec := range []wire.AgentSpec{
 		{Name: "invoices", Model: "offline", Provider: "offline", SystemPrompt: "Billing.", Description: "invoices and billing disputes"},
 		{Name: "contracts", Model: "offline", Provider: "offline", SystemPrompt: "Contracts.", Description: "invoices and contract terms"},
 	} {
@@ -426,7 +426,7 @@ func TestRetiredExpertTagsNeitherNotifyNorInjectPrompts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := r.Tag().Text; strings.Contains(text, "Experts here:") || strings.Contains(text, "asked_of sme:") {
+	if text := wire.TextOf(r.Tag()); strings.Contains(text, "Experts here:") || strings.Contains(text, "asked_of sme:") {
 		t.Fatalf("retired routing was injected:\n%s", text)
 	}
 }
@@ -479,7 +479,7 @@ func TestAQuestionForExpertsReachesThemAndAnAnswerInTheThreadResumesTheRun(t *te
 	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "olu", Topics: []string{"billing"}}}}); err != nil {
 		t.Fatal(err)
 	}
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,7 +528,7 @@ func TestAThreadSaysWhomAQuestionIsForAndOffersItOnlyToThem(t *testing.T) {
 	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "olu", Topics: []string{"billing"}}}}); err != nil {
 		t.Fatal(err)
 	}
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "Draft the credit note", Project: "Globex", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "Draft the credit note", Project: "Globex", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,7 +599,7 @@ func TestAViewerAnswersOnceAndTagsNoOne(t *testing.T) {
 	if _, access, err := p.ProjectRole(olu, "Globex", projects.Viewer); err != nil || access.Role != projects.Viewer {
 		t.Fatalf("olu is %+v in Globex (%v), want a viewer", access, err)
 	}
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -669,7 +669,7 @@ grant operator to subject "grace"
 		t.Fatal(err)
 	}
 	machine := auth.Principal{Subject: "svc-slack", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(pol)
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -705,17 +705,17 @@ grant operator to subject "grace"
 func TestAConversationsPeopleAreWhomItsRunsActedFor(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
-	slack := func(id string, actor envelope.Actor) runs.Run {
+	slack := func(id string, actor event.Actor) runs.Run {
 		t.Helper()
 		// What a Slack client's connector sends once its surface stamped it.
-		r, err := p.Invoke(ctx, envelope.Tag{ID: id, Tenant: tenant, Agent: "lead", Origin: "slack", Text: "hello", Actor: actor})
+		r, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: "lead", Origin: "slack", Text: "hello", Actor: actor}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		return await(t, p, r.ID, runs.Completed)
 	}
-	mapped := slack("slack-mapped", envelope.Actor{ID: "U0HUMAN1", Display: "Opal", User: "opal"})
-	stranger := slack("slack-stranger", envelope.Actor{ID: "U0STRANGER", Display: "Stranger"})
+	mapped := slack("slack-mapped", event.Actor{ID: "U0HUMAN1", Display: "Opal", User: "opal"})
+	stranger := slack("slack-stranger", event.Actor{ID: "U0STRANGER", Display: "Stranger"})
 	follow, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ada", Agent: "lead", Text: "and then?", After: stranger.ID, Actor: platform.ActorOf(admin)})
 	if err != nil {
 		t.Fatal(err)
@@ -769,7 +769,7 @@ func TestAConversationsPeopleAreWhomItsRunsActedFor(t *testing.T) {
 func TestAConversationFromBeforeThreadsGainsItsRecordWhenSomeonePosts(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
-	old, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-old", Agent: "lead", Text: "OLD-QUESTION", Project: "Field", Actor: envelope.Actor{ID: "opal"}})
+	old, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-old", Agent: "lead", Text: "OLD-QUESTION", Project: "Field", Actor: event.Actor{ID: "opal"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -788,7 +788,7 @@ func TestAConversationFromBeforeThreadsGainsItsRecordWhenSomeonePosts(t *testing
 	if got.Thread.Version != 1 || got.Message.Prev != old.ID || len(got.Runs) != 1 {
 		t.Fatalf("posting in it did %+v", got)
 	}
-	if text := got.Runs[0].Tag().Text; !strings.Contains(text, "\nopal (person 1): OLD-QUESTION\nlead (agent): "+old.Answer+"\n") || !strings.HasSuffix(text, "from ada (person 2).\n\n@helper and then?") {
+	if text := wire.TextOf(got.Runs[0].Tag()); !strings.Contains(text, "\nopal (person 1): OLD-QUESTION\nlead (agent): "+old.Answer+"\n") || !strings.HasSuffix(text, "from ada (person 2).\n\n@helper and then?") {
 		t.Fatalf("the agent was sent:\n%s", text)
 	}
 	_, turns, next, err := p.ThreadTurns(tenant, old.Thread, "", 0)
@@ -804,7 +804,7 @@ func TestAConversationFromBeforeThreadsGainsItsRecordWhenSomeonePosts(t *testing
 func TestAConversationAMachineStartedIsOwnedByThePersonWhoFirstPosts(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
-	run, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-ci", Agent: "lead", Text: "nightly report", Project: "Field", Actor: envelope.Actor{ID: "svc-ci", Bot: true}})
+	run, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-ci", Agent: "lead", Text: "nightly report", Project: "Field", Actor: event.Actor{ID: "svc-ci", Bot: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -841,7 +841,7 @@ func TestOnlyAMemberBecomesTheOwnerOfAConversationNobodyAskedIn(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	run, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-bot", Agent: "lead", Text: "Go", Project: "Globex", Actor: envelope.Actor{ID: "svc-bot", Bot: true}})
+	run, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-bot", Agent: "lead", Text: "Go", Project: "Globex", Actor: event.Actor{ID: "svc-bot", Bot: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1057,7 +1057,7 @@ func TestAQuestionForExpertsWithNoExpertGoesToTheNearestOwners(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1121,7 +1121,7 @@ func TestAQuestionForExpertsSkipsOwnersWhoCannotReadTheRun(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1188,7 +1188,7 @@ func TestAQuestionForExpertsReachesAnOwnerLetInByARole(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}

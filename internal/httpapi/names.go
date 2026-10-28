@@ -3,10 +3,10 @@ package httpapi
 import (
 	"encoding/json"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
-	"github.com/urmzd/humagen/internal/wire"
 )
 
 // How a run's events call the people in them.
@@ -20,8 +20,8 @@ import (
 // shownEvent is an event as it is handed out: a resumed run's answer with
 // what whoever answered is called. Any other event, and one whose body does
 // not read as the runtime writes it, is handed out as it is.
-func shownEvent(names platform.Names, e envelope.Event) envelope.Event {
-	if e.Kind != wire.KindResumed || len(e.Payload) == 0 {
+func shownEvent(names platform.Names, e legacy.V1Event) legacy.V1Event {
+	if resumed, _ := legacy.KindOf(event.TypeResumed); e.Kind != resumed || len(e.Payload) == 0 {
 		return e
 	}
 	var body map[string]json.RawMessage
@@ -55,8 +55,8 @@ func shownEvent(names platform.Names, e envelope.Event) envelope.Event {
 }
 
 // shownEvents is a run's events as they are handed out (shownEvent).
-func shownEvents(names platform.Names, events []envelope.Event) []envelope.Event {
-	out := make([]envelope.Event, len(events))
+func shownEvents(names platform.Names, events []legacy.V1Event) []legacy.V1Event {
+	out := make([]legacy.V1Event, len(events))
 	for i, e := range events {
 		out[i] = shownEvent(names, e)
 	}

@@ -21,9 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/textindex"
 	"github.com/urmzd/humagen/internal/wire"
@@ -66,9 +65,9 @@ const (
 	MetaProject = "warp.project"
 	// MetaRouted is how a thread's selected agents started the run, when
 	// they did: "join" (or "best_fit", written before) or "all". It is private
-	// (envelope.PrivateMetaPrefix): the run's record says it, and fiber
+	// (wire.PrivateMetaPrefix): the run's record says it, and fiber
 	// keeps it out of the prompt and the journal.
-	MetaRouted = envelope.PrivateMetaPrefix + "warp.routed"
+	MetaRouted = wire.PrivateMetaPrefix + "warp.routed"
 )
 
 // Keys the platform's API writes into a tag's Meta to place a run in a
@@ -91,8 +90,8 @@ const DefaultChannel = "general"
 const MetaWithin = "warp.within"
 
 // WithinOf returns the ancestors a tag's run was admitted within.
-func WithinOf(tag envelope.Tag) []string {
-	v := tag.Meta[MetaWithin]
+func WithinOf(tag event.Envelope) []string {
+	v := wire.Meta(tag)[MetaWithin]
 	if v == "" {
 		return nil
 	}
@@ -105,9 +104,9 @@ func WithinOf(tag envelope.Tag) []string {
 // overwritten whatever a caller put there, so it is believed from every
 // origin, and every attempt of the run is grounded in the same sources
 // whatever the projects name later. It is a private key (it starts with
-// envelope.PrivateMetaPrefix), so fiber keeps it out of everything a model is
+// wire.PrivateMetaPrefix), so fiber keeps it out of everything a model is
 // sent: the model is grounded in the sources without being told their names.
-const MetaSources = envelope.PrivateMetaPrefix + "warp.sources"
+const MetaSources = wire.PrivateMetaPrefix + "warp.sources"
 
 // MetaSourcesV0 is the key a run accepted before MetaSources was private was
 // pinned with. It is still read, so such a run keeps its sources, and the
@@ -134,10 +133,10 @@ func SourcesOf(meta map[string]string) []string {
 // declare later. Admission drops it from every tag but a root run started
 // through the platform's API (OriginAPI), which only the platform raises, so
 // no connector, schedule or caller can put instructions in a run. It is
-// private (envelope.PrivateMetaPrefix), so fiber keeps it out of the prompt
+// private (wire.PrivateMetaPrefix), so fiber keeps it out of the prompt
 // and out of what it journals, a run stopped before its attempt starts
 // included.
-const MetaSkills = envelope.PrivateMetaPrefix + "warp.skills"
+const MetaSkills = wire.PrivateMetaPrefix + "warp.skills"
 
 // MetaClient is the key the platform's ingress writes into a tag's Meta to
 // say which external client raised it. Ingress overwrites whatever a
@@ -166,9 +165,9 @@ func AskedBy(r Run) string {
 }
 
 // ClientOf returns the external client that raised a tag, or "".
-func ClientOf(tag envelope.Tag) string {
-	if tag.Origin == "slack" || tag.Origin == "github" {
-		return tag.Meta[MetaClient]
+func ClientOf(tag event.Envelope) string {
+	if wire.Origin(tag) == "slack" || wire.Origin(tag) == "github" {
+		return wire.Meta(tag)[MetaClient]
 	}
 	return ""
 }
@@ -179,10 +178,10 @@ func ClientOf(tag envelope.Tag) string {
 // run-now, an eval (filed where the agent it tries lives), and Slack and
 // GitHub, whose ingress writes it from the client's binding over whatever a
 // connector said.
-func ProjectOf(tag envelope.Tag) string {
-	switch tag.Origin {
+func ProjectOf(tag event.Envelope) string {
+	switch wire.Origin(tag) {
 	case OriginAPI, "cron", OriginManual, OriginEval, OriginSlack, OriginGitHub:
-		return tag.Meta[MetaProject]
+		return wire.Meta(tag)[MetaProject]
 	}
 	return ""
 }
@@ -252,7 +251,7 @@ type Run struct {
 	Text   string `json:"text"`
 	// Input keeps the exact helper messages and original references.
 	Input *call.Prepared `json:"input,omitempty"`
-	Actor envelope.Actor `json:"actor,omitzero"`
+	Actor event.Actor    `json:"actor,omitzero"`
 
 	// Root, Parent, Depth and Mode are the edge the run was called with.
 	Root   string    `json:"root"`
@@ -309,7 +308,7 @@ type Run struct {
 	// its latest call. While the run works it is the calls reported so far.
 	// Once it has ended it is the runtime's record. Absent until the first
 	// model call.
-	Usage *payload.RunUsage `json:"usage,omitempty"`
+	Usage *event.RunUsage `json:"usage,omitempty"`
 	// Calls is how many calls the run has made.
 	Calls int `json:"calls"`
 
@@ -329,7 +328,7 @@ type Run struct {
 	Reason string `json:"reason,omitempty"`
 	// Question is what a parked run is waiting on a person for. It is gone
 	// once the run resumes or ends.
-	Question *payload.Question `json:"question,omitempty"`
+	Question *event.Question `json:"question,omitempty"`
 	// Cause says why a stopped run was stopped.
 	Cause string `json:"cause,omitempty"`
 	// Stopping is true from the moment someone asks a run to stop until the
@@ -348,13 +347,13 @@ type Run struct {
 
 	// tag is what the run was accepted with. A call from this run is built
 	// from it.
-	tag envelope.Tag
+	tag event.Envelope
 	// requesters are every name the person who asked for the run went by
 	// when it was accepted, pinned so a mapping removed later still counts.
 	requesters []string
 	// tally sums the usage reported while the run works. final is set once
 	// the runtime's own figure has replaced it.
-	tally *payload.Tally
+	tally *event.Tally
 	final bool
 	// closed is set once the run's own spending is settled, after which
 	// Spend changes nothing. settledUp is set once its spend has been
@@ -378,7 +377,7 @@ func (x *Index) PinRequesters(runID string, names []string) {
 }
 
 // Tag returns the tag the run was accepted with.
-func (r Run) Tag() envelope.Tag { return r.tag }
+func (r Run) Tag() event.Envelope { return r.tag }
 
 // State is what the run has used so far, for call.New: what it spent and what
 // it has leased to calls still working.
@@ -431,7 +430,7 @@ func (x *Index) SetTitle(tenant, thread, title string) {
 
 // Record adds an accepted run. Recording a run that is already known changes
 // nothing, because accepting the same tag twice joins the existing run.
-func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
+func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 	edge, err := call.EdgeOf(tag)
 	if err != nil {
 		return err
@@ -456,7 +455,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	// Only the cron trigger and the platform's own "run now" set this key. A
 	// tag from anywhere else does not get to claim a schedule.
 	schedule := ""
-	if tag.Origin == "cron" || tag.Origin == OriginManual {
+	if wire.Origin(tag) == "cron" || wire.Origin(tag) == OriginManual {
 		schedule = wire.SurfaceOf(tag).CronSchedule
 	}
 	// A run is its own conversation unless the API placed it in one. A run
@@ -466,21 +465,21 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	// A schedule's project is written by the server when the schedule is
 	// created, so the cron trigger and a person's run-now are believed too.
 	project, within := ProjectOf(tag), WithinOf(tag)
-	if tag.Origin == OriginAPI {
-		if v := tag.Meta[MetaThread]; v != "" {
+	if wire.Origin(tag) == OriginAPI {
+		if v := wire.Meta(tag)[MetaThread]; v != "" {
 			thread = v
 		}
-		prev, picked, routed = tag.Meta[MetaPrev], tag.Meta[MetaPicked], tag.Meta[MetaRouted]
-		channel, message = tag.Meta[MetaChannel], tag.Meta[MetaMessage]
+		prev, picked, routed = wire.Meta(tag)[MetaPrev], wire.Meta(tag)[MetaPicked], wire.Meta(tag)[MetaRouted]
+		channel, message = wire.Meta(tag)[MetaChannel], wire.Meta(tag)[MetaMessage]
 	}
 	// Slack and GitHub ingress writes the channel from the client's binding.
-	if tag.Origin == OriginSlack || tag.Origin == OriginGitHub {
-		channel = tag.Meta[MetaChannel]
+	if wire.Origin(tag) == OriginSlack || wire.Origin(tag) == OriginGitHub {
+		channel = wire.Meta(tag)[MetaChannel]
 	}
 	// The agent is sent the conversation so far, or a schedule's text with
 	// its project's context. What was actually asked is kept apart, and is
 	// what the record shows. The platform writes it for these origins.
-	if v := tag.Meta[MetaAsk]; v != "" && (tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual || tag.Origin == OriginAssignment) {
+	if v := wire.Meta(tag)[MetaAsk]; v != "" && (wire.Origin(tag) == OriginAPI || wire.Origin(tag) == "cron" || wire.Origin(tag) == OriginManual || wire.Origin(tag) == OriginAssignment) {
 		text = v
 	}
 	if top, ok := x.runs[root]; ok && parent != "" && top.Tenant == tag.Tenant {
@@ -488,12 +487,12 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	}
 	r := &Run{
 		Citations: []Citation{},
-		ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: tag.Agent, Rev: rev, Origin: tag.Origin,
-		Text: text, Input: input, Actor: tag.Actor, Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
+		ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: wire.AgentOf(tag), Rev: rev, Origin: wire.Origin(tag),
+		Text: text, Input: input, Actor: wire.ActorOf(tag), Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
 		Channel: channel, Message: message,
 		Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
 		Lease: edge.Lease, Schedule: schedule,
-		Status: Accepted, CreatedAt: tag.At, UpdatedAt: tag.At,
+		Status: Accepted, CreatedAt: tag.Time, UpdatedAt: tag.Time,
 		tag: tag,
 	}
 	if err := x.recorded(r); err != nil {
@@ -521,62 +520,57 @@ func (x *Index) Called(runID string, lease int64) {
 // run as it now stands and whether this event is the one that ended it, so a
 // caller can react to an ending exactly once. Other kinds, and events for runs
 // this index never recorded, change nothing.
-func (x *Index) Observe(e envelope.Event) (Run, bool) {
-	if e.Kind == wire.KindActionTaken {
+func (x *Index) Observe(e event.Envelope) (Run, bool) {
+	if e.Type == event.TypeAction {
 		return x.observeDetail(e), false
 	}
-	if e.Kind.Family() != "lifecycle" {
-		return Run{}, false
-	}
-	body, err := wire.LifecycleOf(e)
-	if err != nil {
+	if !wire.IsLifecycle(e.Type) {
 		return Run{}, false
 	}
 	x.mu.Lock()
 	defer x.mu.Unlock()
-	r, ok := x.runs[e.RunID]
+	r, ok := x.runs[e.Run]
 	if !ok || r.Tenant != e.Tenant || r.Status.Terminal() {
 		return Run{}, false
 	}
 	defer x.recount(r)
 	x.touch(r.ID)
-	r.UpdatedAt = e.At
-	switch e.Kind {
-	case wire.KindStarted, wire.KindResumed:
+	r.UpdatedAt = e.Time
+	switch b := e.Data.(type) {
+	case event.Started, event.Resumed:
 		r.Status, r.Reason, r.Question = Running, "", nil
-	case wire.KindParked:
-		r.Status, r.Reason, r.Question = Parked, body.Reason, body.Question
-		if body.Question != nil {
+	case event.Parked:
+		r.Status, r.Reason, r.Question = Parked, b.Reason, b.Question
+		if b.Question != nil {
 			x.neededPerson(r)
 		}
-	case wire.KindCompleted:
-		r.Answer = body.Text
-		if body.Usage != nil {
-			u := *body.Usage
+	case event.Completed:
+		r.Answer = b.Text
+		if b.Usage != nil {
+			u := *b.Usage
 			r.Usage, r.final = &u, true
 		}
 		if x.hold(r) {
 			return citationSnapshot(r), false
 		}
 		r.Status = Completed
-	case wire.KindFailed:
+	case event.Failed:
 		// A failed attempt may still be retried. Only a terminal failure
 		// ends the run.
-		r.Error = body.Error
-		if body.Terminal {
+		r.Error = b.Error
+		if b.Terminal {
 			r.Status = Failed
 		}
-	case wire.KindStopped:
+	case event.Stopped:
 		// The runtime says the run wrapped up on request. What it had said
 		// is the answer people saw, and is kept. A stopped run is not held
 		// open for what is attached to it: those are stopped with it.
-		stopped, _ := wire.StoppedOf(e)
-		r.Answer, r.Status, r.Finishing, r.Reason = stopped.Text, Stopped, false, ""
-		if stopped.Usage != nil {
-			u := *stopped.Usage
+		r.Answer, r.Status, r.Finishing, r.Reason = b.Text, Stopped, false, ""
+		if b.Usage != nil {
+			u := *b.Usage
 			r.Usage, r.final = &u, true
 		}
-		r.Cause = causeOf(stopped.Reason, stopped.By)
+		r.Cause = causeOf(b.Reason, b.By)
 	}
 	if r.Status.Terminal() {
 		x.finishAssistance(r)
@@ -590,13 +584,13 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 // report is counted once by its AccountingID, so a redelivered event changes
 // nothing. It returns the run as it now stands, and false for any other kind,
 // a run this index does not hold, or another tenant's.
-func (x *Index) ObserveUsage(e envelope.Event) (Run, bool) {
-	if e.Kind != wire.KindUsageCall && e.Kind != wire.KindUsageChild {
+func (x *Index) ObserveUsage(e event.Envelope) (Run, bool) {
+	if e.Type != event.TypeUsageCall && e.Type != event.TypeUsageChild {
 		return Run{}, false
 	}
 	x.mu.Lock()
 	defer x.mu.Unlock()
-	r, ok := x.runs[e.RunID]
+	r, ok := x.runs[e.Run]
 	if !ok || r.Tenant != e.Tenant {
 		return Run{}, false
 	}
@@ -607,16 +601,15 @@ func (x *Index) ObserveUsage(e envelope.Event) (Run, bool) {
 	}
 	x.touch(r.ID)
 	if r.tally == nil {
-		r.tally = &payload.Tally{}
+		r.tally = &event.Tally{}
 	}
-	byCall, child, err := wire.UsageOf(e)
-	if err != nil {
+	switch b := e.Data.(type) {
+	case event.UsageCall:
+		r.tally.Call(b)
+	case event.UsageChild:
+		r.tally.Child(b)
+	default:
 		return Run{}, false
-	}
-	if byCall != nil {
-		r.tally.Call(*byCall)
-	} else {
-		r.tally.Child(*child)
 	}
 	u := r.tally.Usage()
 	r.Usage = &u
@@ -628,7 +621,7 @@ func (x *Index) ObserveUsage(e envelope.Event) (Run, bool) {
 // the micro-USD its settlement added beyond the calls already spent joins
 // Spent, in one step. Nothing changes a closed run's usage or Spent after
 // that but the calls it made, as they settle with it. A run is closed once.
-func (x *Index) SetUsage(runID string, u *payload.RunUsage, micros int64) {
+func (x *Index) SetUsage(runID string, u *event.RunUsage, micros int64) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 	r, ok := x.runs[runID]

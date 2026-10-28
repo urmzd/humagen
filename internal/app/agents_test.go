@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -17,7 +17,7 @@ import (
 )
 
 func fileAgent(name, project string) spec.Agent {
-	return spec.Agent{Project: project, Spec: &agentspec.AgentSpec{Name: name, Provider: "offline", Model: "offline", SystemPrompt: name + "."}}
+	return spec.Agent{Project: project, Spec: &wire.AgentSpec{Name: name, Provider: "offline", Model: "offline", SystemPrompt: name + "."}}
 }
 
 // The file's agent lists and homes land in order (the workspace, the

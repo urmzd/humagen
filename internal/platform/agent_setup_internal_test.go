@@ -9,11 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -28,7 +27,7 @@ func TestSetupCapabilityUsesAuthoritativeAdmissionBeforeRunProjection(t *testing
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
-	rev, err := p.Agents.Create(t.Context(), "t", agentspec.AgentSpec{Name: "draft", Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Test the exact capability"}, "ada")
+	rev, err := p.Agents.Create(t.Context(), "t", wire.AgentSpec{Name: "draft", Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Test the exact capability"}, "ada")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,12 +35,12 @@ func TestSetupCapabilityUsesAuthoritativeAdmissionBeforeRunProjection(t *testing
 	if err := p.setups.put("t", record); err != nil {
 		t.Fatal(err)
 	}
-	req := runtime.Request{Tenant: "t", RunID: runtime.RunID("t", record.TestTag), Meta: map[string]string{operations.MetaForceAsk: "true"}, Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "draft"}, Rev: rev.Rev, Hash: rev.Hash}}
+	req := runtime.Request{Tenant: "t", RunID: runtime.RunID("t", record.TestTag), Meta: map[string]string{operations.MetaForceAsk: "true"}, Definition: native.Revision{Spec: native.Spec{Name: "draft"}, Version: wire.VersionOf(rev.Rev), Digest: rev.Hash}}
 	gate := setupGate{p: p}
 	if gate.AllowRequest(req) {
 		t.Fatal("missing actor context admitted a draft test")
 	}
-	admission := admitted{tenant: "t", actor: envelope.Actor{ID: "ada", User: "ada"}, operationMeta: map[string]string{operations.MetaForceAsk: "true"}}
+	admission := admitted{tenant: "t", actor: event.Actor{ID: "ada", User: "ada"}, operationMeta: map[string]string{operations.MetaForceAsk: "true"}}
 	p.admitting.Store(req.RunID, admission)
 	if !gate.AllowRequest(req) {
 		t.Fatal("immediate executor could not join its exact persisted test capability before Runs.Record")
@@ -50,7 +49,7 @@ func TestSetupCapabilityUsesAuthoritativeAdmissionBeforeRunProjection(t *testing
 		t.Fatalf("central admission=%v", err)
 	}
 	wrong := req
-	wrong.Revision.Hash = "different"
+	wrong.Definition.Version = wire.VersionOf(rev.Rev + 1)
 	if gate.AllowRequest(wrong) {
 		t.Fatal("wrong revision reused test capability")
 	}
@@ -82,19 +81,19 @@ func TestSetupCapabilityUsesAuthoritativeAdmissionBeforeRunProjection(t *testing
 }
 
 func amendmentPlan(name string) AgentSetupPlan {
-	return AgentSetupPlan{Spec: agentspec.AgentSpec{Name: name, Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Original reviewed configuration."}, Project: "~", Rules: map[operations.Category]operations.Level{operations.Other: operations.Ask}}
+	return AgentSetupPlan{Spec: wire.AgentSpec{Name: name, Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Original reviewed configuration."}, Project: "~", Rules: map[operations.Category]operations.Level{operations.Other: operations.Ask}}
 }
 func amendmentOwner() auth.Principal {
 	return auth.Principal{Tenant: "t", Subject: "owner", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
 }
 
 type amendmentRegistry struct {
-	registry.Store
+	wire.AgentStore
 	revised func()
 }
 
-func (s amendmentRegistry) Revise(ctx context.Context, tenant string, spec agentspec.AgentSpec, expected int, by string) (agentspec.Revision, error) {
-	rev, err := s.Store.Revise(ctx, tenant, spec, expected, by)
+func (s amendmentRegistry) Revise(ctx context.Context, tenant string, spec wire.AgentSpec, expected int, by string) (wire.Revision, error) {
+	rev, err := s.AgentStore.Revise(ctx, tenant, spec, expected, by)
 	if err == nil && s.revised != nil {
 		s.revised()
 	}
@@ -117,7 +116,7 @@ func TestSetupAmendmentInvalidatesOldTestAndRecoversPartialRegistryWrite(t *test
 		old := saved
 		old.TestTag = "old-completed-test"
 		old.TestRun = runtime.RunID("t", old.TestTag)
-		tag := envelope.Tag{ID: old.TestTag, Tenant: "t", Agent: old.Name, Origin: runs.OriginAPI, Text: "test", Actor: envelope.Actor{ID: who.Subject, User: who.Subject}, At: time.Now()}
+		tag := wire.NewEvent(wire.Raise{ID: old.TestTag, Tenant: "t", Agent: old.Name, Origin: runs.OriginAPI, Text: "test", Actor: event.Actor{ID: who.Subject, User: who.Subject}, At: time.Now()})
 		if err := p.Runs.Record(old.TestRun, tag, old.Revision); err != nil {
 			t.Fatal(err)
 		}
@@ -139,7 +138,7 @@ func TestSetupAmendmentInvalidatesOldTestAndRecoversPartialRegistryWrite(t *test
 			t.Fatal("failed intent changed the prior setup")
 		}
 		underlying := p.Agents
-		p.Agents = amendmentRegistry{Store: underlying, revised: func() {
+		p.Agents = amendmentRegistry{AgentStore: underlying, revised: func() {
 			if p.agentReady("t", old.Name) {
 				t.Fatal("amendment exposed an active agent window")
 			}
@@ -204,14 +203,14 @@ func TestSetupAmendmentChecksOwnerVersionInFlightAndExactHome(t *testing.T) {
 			t.Fatalf("stale amendment=%v", err)
 		}
 		unknown := plan
-		unknown.Spec.Sources = []agentspec.Source{{Name: "not-readable", URI: "knowledge://not-readable"}}
+		unknown.Spec.Sources = []wire.Source{{Name: "not-readable", URI: "knowledge://not-readable"}}
 		if _, err := p.AmendAgentSetup(t.Context(), who, saved.Name, unknown, saved.Version); err == nil {
 			t.Fatal("amendment granted an unreadable source")
 		}
 		live, _ := p.setups.get("t", saved.Name)
 		live.TestTag = "in-flight-test"
 		live.TestRun = runtime.RunID("t", live.TestTag)
-		if err := p.Runs.Record(live.TestRun, envelope.Tag{ID: live.TestTag, Tenant: "t", Agent: live.Name, Origin: runs.OriginAPI, Text: "test", At: time.Now()}, live.Revision); err != nil {
+		if err := p.Runs.Record(live.TestRun, wire.NewEvent(wire.Raise{ID: live.TestTag, Tenant: "t", Agent: live.Name, Origin: runs.OriginAPI, Text: "test", At: time.Now()}), live.Revision); err != nil {
 			t.Fatal(err)
 		}
 		if err := p.setups.put("t", live); err != nil {
@@ -262,7 +261,7 @@ func TestReviewedSetupRejectsOfflinePolicyAndFallback(t *testing.T) {
 	defer func() { _ = p.Close() }()
 	who := amendmentOwner()
 	policy := p.Settings("t")
-	policy.ModelPolicies = []ModelPolicy{{Name: "offline-fallback", Models: []agentspec.ModelRef{{Provider: "openai", Model: "gpt-4o-mini"}, {Provider: "offline", Model: "offline"}}}}
+	policy.ModelPolicies = []ModelPolicy{{Name: "offline-fallback", Models: []wire.ModelRef{{Provider: "openai", Model: "gpt-4o-mini"}, {Provider: "offline", Model: "offline"}}}}
 	if err := p.SetSettings(t.Context(), "t", policy); err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +271,7 @@ func TestReviewedSetupRejectsOfflinePolicyAndFallback(t *testing.T) {
 			plan.Spec.Provider = PolicyProvider
 			plan.Spec.Model = "offline-fallback"
 		} else {
-			plan.Spec.Fallbacks = []agentspec.ModelRef{{Provider: "offline", Model: "offline"}}
+			plan.Spec.Fallbacks = []wire.ModelRef{{Provider: "offline", Model: "offline"}}
 		}
 		if _, err := p.CreateAgentSetup(t.Context(), who, plan); err == nil {
 			t.Fatal("offline fallback was accepted as a reviewed real-model setup")
@@ -294,7 +293,7 @@ func TestReviewedSetupCannotActivateAnOfflineNoticeWithoutAModelCall(t *testing.
 	record, _ := p.setups.get("t", saved.Name)
 	record.TestTag = "notice"
 	record.TestRun = runtime.RunID("t", record.TestTag)
-	if err := p.Runs.Record(record.TestRun, envelope.Tag{ID: record.TestTag, Tenant: "t", Agent: record.Name, Origin: runs.OriginAPI, Text: "test", At: time.Now()}, record.Revision); err != nil {
+	if err := p.Runs.Record(record.TestRun, wire.NewEvent(wire.Raise{ID: record.TestTag, Tenant: "t", Agent: record.Name, Origin: runs.OriginAPI, Text: "test", At: time.Now()}), record.Revision); err != nil {
 		t.Fatal(err)
 	}
 	p.Runs.End(record.TestRun, runs.Completed, "Offline notice", "", time.Now())
@@ -308,8 +307,8 @@ func TestReviewedSetupCannotActivateAnOfflineNoticeWithoutAModelCall(t *testing.
 
 type setupStrictApprovalProbe struct{ *saigetypes.ToolFunc }
 
-func (*setupStrictApprovalProbe) Approval(saigetypes.ToolCallPart) (agentrt.ApprovalRequest, bool) {
-	return agentrt.ApprovalRequest{Prompt: "Stricter tool policy", Approvers: []string{"strict-reviewer"}, SelfApproval: false}, true
+func (*setupStrictApprovalProbe) Approval(saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
+	return native.ApprovalRequest{Prompt: "Stricter tool policy", Approvers: []string{"strict-reviewer"}, SelfApproval: false}, true
 }
 func TestSetupAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *testing.T) {
 	p, err := New(Config{Workspace: t.TempDir()})
@@ -317,7 +316,7 @@ func TestSetupAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
-	req := runtime.Request{Tenant: "t", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a", Approvers: []string{"designated-reviewer"}, SelfApproval: true}}}
+	req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a", Approvers: []string{"designated-reviewer"}, SelfApproval: true}}}
 	if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.Other: operations.Ask}}, 0, "owner", time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -327,12 +326,12 @@ func TestSetupAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 	calls := 0
 	base := &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "action"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}
 	tool := p.operationTool(req, base, operations.Other)
-	approval, needed := tool.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
+	approval, needed := tool.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || !approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"designated-reviewer"}) {
 		t.Fatalf("declared approval audience widened: %+v", approval)
 	}
 	strict := p.operationTool(req, &setupStrictApprovalProbe{ToolFunc: base}, operations.Other)
-	approval, needed = strict.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
+	approval, needed = strict.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"strict-reviewer"}) {
 		t.Fatalf("underlying tool approval weakened: %+v", approval)
 	}

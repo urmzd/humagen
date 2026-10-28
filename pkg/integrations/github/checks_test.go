@@ -9,9 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/connectors/mention"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
@@ -24,7 +25,7 @@ func TestChecksStreamAndKeepTheirPinnedCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := address.MustParse("github://acme/repo/pull/42").WithParam("head_sha", commitSHA)
-	events := []envelope.Event{event(1, envelope.KindAccepted, `{}`), event(2, envelope.KindStarted, `{}`), event(3, envelope.KindToolCall, `{"id":"t1","name":"github_read_context"}`), event(4, envelope.KindCompleted, `{"text":"Review complete. Tests not run."}`)}
+	events := []event.Envelope{runEvent(1, event.TypeAccepted, `{}`), runEvent(2, event.TypeStarted, `{}`), runEvent(3, event.TypeToolCall, `{"id":"t1","name":"github_read_context"}`), runEvent(4, event.TypeCompleted, `{"text":"Review complete. Tests not run."}`)}
 	for _, e := range events {
 		for range 2 {
 			if err := c.Deliver(context.Background(), target, e); err != nil {
@@ -58,7 +59,7 @@ func TestCheckConclusionReflectsReviewErrorsAndMalformedReports(t *testing.T) {
 		fake := github.NewFake()
 		c, _ := github.New(github.Config{API: fake, Checks: true})
 		p, _ := json.Marshal(map[string]string{"text": tc.text})
-		if err := c.Deliver(context.Background(), address.MustParse("github://acme/repo/pull/1").WithParam("head_sha", commitSHA), event(1, envelope.KindCompleted, string(p))); err != nil {
+		if err := c.Deliver(context.Background(), address.MustParse("github://acme/repo/pull/1").WithParam("head_sha", commitSHA), runEvent(1, event.TypeCompleted, string(p))); err != nil {
 			t.Fatal(err)
 		}
 		if got := fake.Checks()[0].Check.Conclusion; got != tc.conclusion {
@@ -120,7 +121,7 @@ func TestLabeledPRCommitsTriggerPinnedReviews(t *testing.T) {
 			}
 			select {
 			case tag := <-tags:
-				if !tc.want || tag.Source.Params["head_sha"] != commitSHA || tag.Meta["github_head_sha"] != commitSHA || !strings.Contains(tag.Text, commitSHA) {
+				if !tc.want || wire.SurfaceAddress(tag).Params["head_sha"] != commitSHA || wire.Meta(tag)["github_head_sha"] != commitSHA || !strings.Contains(wire.TextOf(tag), commitSHA) {
 					t.Fatalf("tag %+v", tag)
 				}
 			default:
@@ -148,7 +149,7 @@ func TestPRCommentPinsTheHeadBeforeAcceptance(t *testing.T) {
 	}
 	select {
 	case tag := <-tags:
-		if tag.Source.Params["head_sha"] != commitSHA {
+		if wire.SurfaceAddress(tag).Params["head_sha"] != commitSHA {
 			t.Fatalf("unpinned tag %+v", tag)
 		}
 	default:
@@ -174,7 +175,7 @@ func TestPinnedReviewCannotReadEvidenceFromANewerCommit(t *testing.T) {
 func TestIssuesDoNotCreateCommitChecks(t *testing.T) {
 	fake := github.NewFake()
 	c, _ := github.New(github.Config{API: fake, Checks: true})
-	if err := c.Deliver(context.Background(), address.MustParse("github://acme/repo/issues/1"), event(1, envelope.KindStarted, `{}`)); err != nil {
+	if err := c.Deliver(context.Background(), address.MustParse("github://acme/repo/issues/1"), runEvent(1, event.TypeStarted, `{}`)); err != nil {
 		t.Fatal(err)
 	}
 	if len(fake.Checks()) != 0 || len(fake.Comments()) != 1 {

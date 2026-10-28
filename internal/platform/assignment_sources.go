@@ -6,7 +6,6 @@ import (
 
 	"strconv"
 
-	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -110,7 +109,7 @@ func (p *Platform) pollSourceAssignments(ctx context.Context, tenant string) {
 			continue
 		}
 		tagID := "assignment-source-" + assignmentSchedule(tenant, a.ID) + "-" + strconv.FormatUint(version, 10)
-		_, err := p.Invoke(ctx, wire.NewInput(envelope.Tag{ID: tagID, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(version, 10), runs.MetaProject: a.Project}}, a.Goal+"\nDone when: "+a.DoneWhen))
+		_, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: tagID, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Context: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(version, 10), runs.MetaProject: a.Project}, Text: a.Goal + "\nDone when: " + a.DoneWhen}))
 		if err != nil {
 			if blockErr := p.Operations.BlockAssignment(tenant, a.ID, "The source-change run could not be admitted. A person must review it before resuming.", p.now()); blockErr != nil {
 				p.log.Error("platform: source-trigger admission refusal could not be kept", "error", blockErr)

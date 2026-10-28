@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -29,8 +29,8 @@ const patSubject = "tailscale:pat@example.com"
 // under it Ana's. An agent on the "ollama" provider asks Pat a question.
 func namesFixture(t *testing.T) (f *fixture, ana, pat string) {
 	t.Helper()
-	f = newFixtureWith(t, platform.Config{AgentOptions: []agentrt.Option{
-		agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) {
+	f = newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
+		native.WithProvider(native.ProviderOllama, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
 				agenttest.ToolCallResponse("call-ask", "ask_person", map[string]any{"question": "Which colour?", "options": []any{"red", "blue"}}),
 				agenttest.TextResponse("Red."),

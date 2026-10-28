@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -142,16 +142,16 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 	entries := s.P.Journal.Query(journal.Query{
 		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
-		ProjectEvent: func(e envelope.Event) envelope.Event { return s.P.ShownEvent(who, e) },
-		Visible: func(e envelope.Event) bool {
+		ProjectEvent: func(e event.Envelope) event.Envelope { return s.P.ShownEvent(who, e) },
+		Visible: func(e event.Envelope) bool {
 			if !s.P.CitationEventVisible(who, e) {
 				return false
 			}
 			seer := s.P.Seer(who)
-			if e.RunID == "" {
+			if e.Run == "" {
 				return seer.Agent(e.Agent)
 			}
-			return seer.RunID(e.RunID)
+			return seer.RunID(e.Run)
 		},
 	})
 	// An event of a run the caller may not read is left out, as is one of
@@ -195,17 +195,23 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	events := slices.DeleteFunc(s.P.Journal.Events(who.Tenant, []string{run.ID}), func(e envelope.Event) bool { return !s.P.CitationEventVisible(who, e) })
-	for i, event := range events {
-		events[i] = s.P.ShownEvent(who, event)
+	held := s.P.Journal.Events(who.Tenant, []string{run.ID})
+	events := make([]legacy.V1Event, 0, len(held))
+	for _, e := range held {
+		if !s.P.CitationEventVisible(who, e) {
+			continue
+		}
+		if v, shown := s.P.ShownV1(who, e); shown {
+			events = append(events, v)
+		}
 	}
-	ok(w, http.StatusOK, map[string]any{"events": shownEvents(s.P.Names(who.Tenant), events), "complete": complete(events)})
+	ok(w, http.StatusOK, map[string]any{"events": shownEvents(s.P.Names(who.Tenant), events), "complete": complete(held)})
 }
 
 // complete reports whether a run's events are all still held: the first one
 // kept is the first one published.
-func complete(events []envelope.Event) bool {
-	return len(events) > 0 && events[0].Kind == wire.KindAccepted
+func complete(events []event.Envelope) bool {
+	return len(events) > 0 && events[0].Type == event.TypeAccepted
 }
 
 // manifest is one document that says everything the platform recorded about a
@@ -217,10 +223,10 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		s.problem(w, err)
 		return
 	}
-	type event struct {
+	type item struct {
 		Seq  uint64          `json:"seq"`
 		At   time.Time       `json:"at"`
-		Kind envelope.Kind   `json:"kind"`
+		Kind string          `json:"kind"`
 		Body json.RawMessage `json:"body,omitempty"`
 	}
 	type entry struct {
@@ -234,7 +240,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		// Definition is the agent revision the run was pinned to.
 		Definition *wire.Revision `json:"definition,omitempty"`
 		DurationMs int64          `json:"duration_ms"`
-		Events     []event        `json:"events"`
+		Events     []item         `json:"events"`
 		// Complete is false when the run's first events are no longer held.
 		Complete bool `json:"complete"`
 	}
@@ -244,7 +250,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 	out := make([]entry, 0, len(tree))
 	seer := s.P.Seer(who)
 	for _, run := range tree {
-		e := entry{Run: s.P.ShownRunAs(who, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
+		e := entry{Run: s.P.ShownRunAs(who, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []item{}}
 		if run.Stopping {
 			e.State = "stopping"
 		}
@@ -266,12 +272,15 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 			if !s.P.CitationEventVisible(who, ev) {
 				continue
 			}
-			ev = s.P.ShownEvent(who, ev)
-			item := event{Seq: ev.Seq, At: ev.At, Kind: ev.Kind}
-			if json.Valid(ev.Payload) {
-				item.Body = ev.Payload
+			v, shown := s.P.ShownV1(who, ev)
+			if !shown {
+				continue
 			}
-			e.Events = append(e.Events, item)
+			one := item{Seq: v.Seq, At: v.At, Kind: v.Kind}
+			if json.Valid(v.Payload) {
+				one.Body = v.Payload
+			}
+			e.Events = append(e.Events, one)
 		}
 		out = append(out, e)
 	}
@@ -290,8 +299,8 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 // treeUsage is what every run in a tree used of its own. Each run's own calls
 // are counted in it once, so the sum is the tree's, attached and delegated
 // runs alike, with nothing counted twice.
-func treeUsage(tree []runs.Run) payload.Usage {
-	var total payload.Usage
+func treeUsage(tree []runs.Run) event.Usage {
+	var total event.Usage
 	for _, r := range tree {
 		if r.Usage != nil {
 			total = total.Add(r.Usage.Own)

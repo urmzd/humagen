@@ -4,28 +4,31 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/connector"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 	saigetypes "github.com/urmzd/saige/agent/types"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
 )
 
 type capabilityPeer struct{ writes int }
 
 func (p *capabilityPeer) Name() string { return "slack" }
-func (p *capabilityPeer) Ingest(ctx context.Context, _ chan<- envelope.Tag) error {
+func (p *capabilityPeer) Ingest(ctx context.Context, _ connector.Publish) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -35,7 +38,7 @@ func (p *capabilityPeer) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	p.writes++
 	w.WriteHeader(200)
 }
-func (p *capabilityPeer) Deliver(context.Context, address.Address, envelope.Event) error {
+func (p *capabilityPeer) Deliver(context.Context, address.Address, event.Envelope) error {
 	p.writes++
 	return nil
 }
@@ -74,7 +77,7 @@ func TestInstallationCapabilitiesRecheckAtInvocationAndPersist(t *testing.T) {
 		if err != nil || len(inventory.Actions) != 1 || !inventory.Legacy {
 			t.Fatal(inventory, err)
 		}
-		req := runtime.Request{Tenant: "t", RunID: "run", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}}
+		req := runtime.Request{Tenant: "t", RunID: "run", Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 		pinned := capabilityActor{p: p, st: station, req: req}.Actions()[0]
 		changed, err := p.SetClientCapabilities(t.Context(), who, "app", inventory.Version, clients.Capabilities{Events: []string{}, Actions: []string{}, DeliverOutcomes: false})
 		if err != nil {
@@ -128,7 +131,7 @@ func TestNativeGitHubAndSlackEffectsRespectExternalMessagesPolicy(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	req := runtime.Request{Tenant: "t", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}}
+	req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 	policy(operations.Never, operations.Allow)
 	for _, name := range []string{"github_comment", "github_request_review", "github_add_labels", "github_apply_changes", "slack_add_reaction", "slack_post_message"} {
 		tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name}, Fn: func(context.Context, map[string]any) (string, error) {
@@ -141,7 +144,7 @@ func TestNativeGitHubAndSlackEffectsRespectExternalMessagesPolicy(t *testing.T) 
 	}
 	policy(operations.Allow, operations.Ask)
 	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "github_apply_changes"}}, categoryOf("github_apply_changes"))
-	if _, needed := tool.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "github_apply_changes"}); !needed {
+	if _, needed := tool.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "github_apply_changes"}); !needed {
 		t.Fatal("file-write Ask did not use native approval")
 	}
 	policy(operations.Allow, operations.Never)
@@ -162,13 +165,13 @@ func TestGitHubPersonUsesOnlyExactVerifiedInstallationMapping(t *testing.T) {
 		bot  bool
 		want string
 	}{{"octocat", false, "ada"}, {"Octocat", false, ""}, {" octocat", false, ""}, {"other", false, ""}, {"octocat", true, ""}} {
-		got := p.surfacePerson(c, envelope.Tag{Actor: envelope.Actor{ID: test.id, Bot: test.bot}})
+		got := p.surfacePerson(c, wire.NewEvent(wire.Raise{Actor: event.Actor{ID: test.id, Bot: test.bot}}))
 		if got != test.want {
 			t.Fatalf("person(%q,bot=%v)=%q want%q", test.id, test.bot, got, test.want)
 		}
 	}
 	c.Enabled = false
-	if got := p.surfacePerson(c, envelope.Tag{Actor: envelope.Actor{ID: "octocat"}}); got != "" {
+	if got := p.surfacePerson(c, wire.NewEvent(wire.Raise{Actor: event.Actor{ID: "octocat"}})); got != "" {
 		t.Fatal("disabled client mapped person", got)
 	}
 }

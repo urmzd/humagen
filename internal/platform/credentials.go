@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/mcptools"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -75,8 +76,8 @@ var errPersonRef = fmt.Errorf("%w: that reference cannot be used by this workspa
 // ActorOf is who a run a signed-in caller asks for acts for. A person acts
 // for themselves. A machine acts for nobody: it holds no person's
 // credentials, and asks for a person only through act_as.
-func ActorOf(who auth.Principal) envelope.Actor {
-	a := envelope.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine}
+func ActorOf(who auth.Principal) event.Actor {
+	a := event.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine}
 	if who.Kind != auth.Machine {
 		a.User = who.Subject
 	}
@@ -90,7 +91,7 @@ func ActorOf(who auth.Principal) envelope.Actor {
 // person the directory has not recorded keeps the name they were given,
 // unless it is their subject or an address. A caller that acts for nobody
 // is named as it named itself.
-func (p *Platform) namedActor(tenant string, a envelope.Actor) envelope.Actor {
+func (p *Platform) namedActor(tenant string, a event.Actor) event.Actor {
 	person := personOf(a)
 	if person == "" {
 		return a
@@ -106,7 +107,7 @@ func (p *Platform) namedActor(tenant string, a envelope.Actor) envelope.Actor {
 
 // personOf is the person an actor acts for, as personCredential reads it:
 // their subject, or "" for nobody. A bot acts for nobody, whatever it names.
-func personOf(a envelope.Actor) string {
+func personOf(a event.Actor) string {
 	if a.Bot {
 		return ""
 	}
@@ -154,8 +155,8 @@ func (p *Platform) steeredFor(ctx context.Context, run runs.Run) string {
 
 // PersonActor is the actor of a run a surface asks for a person its client
 // maps to subject (see ActsFor).
-func PersonActor(subject string) envelope.Actor {
-	return envelope.Actor{ID: subject, Display: subject, User: subject}
+func PersonActor(subject string) event.Actor {
+	return event.Actor{ID: subject, Display: subject, User: subject}
 }
 
 // surfacePerson is the person a tag a client's connector raised acts for:
@@ -165,15 +166,15 @@ func PersonActor(subject string) envelope.Actor {
 // built on the API holds it). No mapping, or two clients mapping the user to
 // different people, is nobody. GitHub uses only its own installation’s exact
 // verified login map. A bot always acts for nobody.
-func (p *Platform) surfacePerson(c clients.Client, tag envelope.Tag) string {
-	id := strings.TrimSpace(tag.Actor.ID)
+func (p *Platform) surfacePerson(c clients.Client, tag event.Envelope) string {
+	id := strings.TrimSpace(wire.ActorOf(tag).ID)
 	if c.Surface == clients.GitHub {
-		if !c.Enabled || tag.Actor.Bot || c.GitHub == nil {
+		if !c.Enabled || wire.ActorOf(tag).Bot || c.GitHub == nil {
 			return ""
 		}
-		return c.GitHub.People[tag.Actor.ID]
+		return c.GitHub.People[wire.ActorOf(tag).ID]
 	}
-	if c.Surface != clients.Slack || tag.Actor.Bot || id == "" || c.Identity.Team == "" {
+	if c.Surface != clients.Slack || wire.ActorOf(tag).Bot || id == "" || c.Identity.Team == "" {
 		return ""
 	}
 	person := ""
@@ -234,7 +235,7 @@ func (p *Platform) ownStarts(tenant, subject string) []string {
 // expansion, and answers with the person's own or with nothing. The rules
 // are checked here as well as when the credential was given, so one the
 // workspace no longer allows is not used, however it was kept.
-func (p *Platform) personCredential(_ context.Context, tenant string, prov toolprovider.Provider, actor envelope.Actor) (mcptools.PersonCredential, error) {
+func (p *Platform) personCredential(_ context.Context, tenant string, prov toolprovider.Provider, actor event.Actor) (mcptools.PersonCredential, error) {
 	// Native source consent is not consent to an MCP endpoint.
 	if strings.HasPrefix(prov.Name, "hsrc-") {
 		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential

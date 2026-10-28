@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -164,7 +164,7 @@ func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names
 	scheds := p.Schedules.List(tenant)
 	slices.SortFunc(scheds, func(a, b cron.Schedule) int { return strings.Compare(a.Name, b.Name) })
 	for _, sc := range scheds {
-		if at := sc.Meta[runs.MetaProject]; moved[at] && lost(at, sc.Agent) {
+		if at := sc.Context[runs.MetaProject]; moved[at] && lost(at, sc.Agent) {
 			out = append(out, fmt.Sprintf("the schedule %s, which runs %s in %s, would be refused every time", sc.Name, sc.Agent, at))
 		}
 	}

@@ -6,7 +6,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -23,7 +24,7 @@ func (p *Platform) readPinnedSkillFile(req runtime.Request, requested string) (s
 		return "", fmt.Errorf("%w: no pinned skill file", ErrSandbox)
 	}
 	var pinned []pinnedSkill
-	raw := run.Tag().Meta[runs.MetaSkills]
+	raw := wire.Meta(run.Tag())[runs.MetaSkills]
 	if len(raw) > 2<<20 || json.Unmarshal([]byte(raw), &pinned) != nil || len(pinned) > 64 {
 		return "", fmt.Errorf("%w: invalid pinned skills", ErrSandbox)
 	}

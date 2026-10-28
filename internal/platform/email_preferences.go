@@ -2,11 +2,12 @@ package platform
 
 import (
 	"fmt"
+	"hash/fnv"
+	"strconv"
+
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/prefs"
-	"hash/fnv"
-	"strconv"
 )
 
 // SavePreferences applies the caller's own preferences and records email opt-in

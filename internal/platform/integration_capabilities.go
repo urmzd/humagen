@@ -3,10 +3,11 @@ package platform
 import (
 	"context"
 	"fmt"
+	"slices"
+
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
-	"slices"
 )
 
 type InstallationEvent struct {

@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -269,7 +270,7 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 	var bound, homed runs.Run
 	eventually(t, "both mentions were answered", func() bool {
 		for _, r := range p.Runs.List(tenant, 20) {
-			switch r.Tag().Meta["slack_channel"] {
+			switch wire.Meta(r.Tag())["slack_channel"] {
 			case "C01":
 				bound = r
 			case "C09":
@@ -334,7 +335,7 @@ func TestAConnectorsRunIsHeldToThePersonItActsFor(t *testing.T) {
 	})
 	who := map[string]string{}
 	for _, r := range got {
-		who[r.Tag().Meta["slack_channel"]+" "+r.Actor.ID] = r.Project + " for " + cmp.Or(r.Actor.User, "nobody")
+		who[wire.Meta(r.Tag())["slack_channel"]+" "+r.Actor.ID] = r.Project + " for " + cmp.Or(r.Actor.User, "nobody")
 	}
 	want := map[string]string{"C0VAULT U0ADA": "Vault for ada", "C09 U0NOBODY": " for nobody"}
 	if len(got) != 2 || who["C0VAULT U0ADA"] != want["C0VAULT U0ADA"] || who["C09 U0NOBODY"] != want["C09 U0NOBODY"] {
@@ -398,7 +399,7 @@ func TestAReplyInTheThreadSettlesTheMention(t *testing.T) {
 // lives. A viewer of the project stops nobody else's run.
 func TestAViewerStopsOnlyWhatTheyAskedFor(t *testing.T) {
 	p, machine := slackRoom(t, nil)
-	asked := runs.Run{ID: "r-1", Tenant: tenant, Project: "Globex", Actor: envelope.Actor{ID: "ana"}, Client: "app"}
+	asked := runs.Run{ID: "r-1", Tenant: tenant, Project: "Globex", Actor: event.Actor{ID: "ana"}, Client: "app"}
 	viewer := func(subject string) auth.Principal {
 		return auth.Principal{Subject: subject, Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
 	}
@@ -410,10 +411,10 @@ func TestAViewerStopsOnlyWhatTheyAskedFor(t *testing.T) {
 		{viewer("ana"), asked, true},
 		{viewer("vic"), asked, false},
 		{machine, asked, true},
-		{machine, runs.Run{ID: "r-2", Tenant: tenant, Project: "Globex", Actor: envelope.Actor{ID: "ana"}}, false},
+		{machine, runs.Run{ID: "r-2", Tenant: tenant, Project: "Globex", Actor: event.Actor{ID: "ana"}}, false},
 		{auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User}, asked, true},
 		// An agent called the run; a person who shares its name asked nothing.
-		{viewer("lead"), runs.Run{ID: "r-3", Tenant: tenant, Project: "Globex", Actor: envelope.Actor{ID: "lead", Bot: true}}, false},
+		{viewer("lead"), runs.Run{ID: "r-3", Tenant: tenant, Project: "Globex", Actor: event.Actor{ID: "lead", Bot: true}}, false},
 	} {
 		err := p.MayStop(tc.who, tc.run)
 		if (err == nil) != tc.want {

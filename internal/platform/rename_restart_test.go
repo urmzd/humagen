@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
@@ -34,7 +33,7 @@ func TestWhatWasStoredBeforeTheRenameSurvivesARestart(t *testing.T) {
 		before.Env = env(map[string]string{"WARP_SLACK_TOKEN_DOCS": "token-docs", "WARP_SLACK_SECRET_DOCS": "secret-docs"})
 		before.SecretRefs = map[string][]string{tenant: {"WARP_SLACK_TOKEN_DOCS", "WARP_SLACK_SECRET_DOCS"}}
 		p, stop := runningWith(t, before)
-		if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
+		if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
 			t.Fatal(err)
 		}
 		create(t, p, tenant, byRef(slackClient("docs", "A0DOCS", team, "lead"), "env:WARP_SLACK_TOKEN_DOCS", "env:WARP_SLACK_SECRET_DOCS"))
@@ -44,7 +43,7 @@ func TestWhatWasStoredBeforeTheRenameSurvivesARestart(t *testing.T) {
 		if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Launch"}); err != nil {
 			t.Fatal(err)
 		}
-		run := envelope.Tag{ID: "run-old", Tenant: tenant, Agent: "lead", Origin: "api", Text: "hello", Meta: map[string]string{"warp.project": "Launch"}}
+		run := wire.NewEvent(wire.Raise{ID: "run-old", Tenant: tenant, Agent: "lead", Origin: "api", Text: "hello", Context: map[string]string{"warp.project": "Launch"}})
 		r, err := p.Invoke(ctx, run)
 		if err != nil {
 			t.Fatal(err)

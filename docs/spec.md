@@ -683,13 +683,33 @@ when a run uses it, so there is nothing to read or pass when deploying:
 | `system.blobs` | disk, memory, s3 | a `blob.Store` |
 | `system.bus` | memory, postgres | a `bus.Bus` |
 | `system.extensions[]` | none | something with `Run(ctx) error`, run beside the server |
-| `platform.models[]` | anthropic, openai, ollama | an `agentrt.ProviderFunc` |
+| `platform.models[]` | anthropic, openai, ollama | a `native.ProviderFunc` |
 | `platform.tools[]` | mcp | a `runtime.Catalog` |
 
 `humagen.WithKind(slot, name, factory)` registers one. The factory is given its
 block as JSON and decodes it strictly itself, so its fields get the same
 unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.
+
+### Since fiber moved into this repository
+
+fiber now lives in this module, at `fiber/`, and a program built on the
+`humagen` package imports it from `github.com/urmzd/humagen/fiber/...`. It
+drops `github.com/urmzd/fiber` from its `go.mod`. This is a breaking change for
+such a program, not for a file:
+
+| Before | Now |
+|--------|-----|
+| `github.com/urmzd/fiber/pkg/agentrt` | `github.com/urmzd/humagen/fiber/pkg/turn/native` (`native.ProviderFunc`, `native.Option`) |
+| `envelope.Tag`, `envelope.Event` | one `event.Envelope`, with a typed body per event type |
+| a kind (`delta.text`) and a payload | a type (`run.delta.text.v1`) and its body |
+| `router`, `registry`, `agentspec`, topics | `egress`, `definition` over `pkg/agents`, channels per tenant |
+| a cron schedule's `Meta` and `Routes` | its `Context`; where a run answers is its channel |
+
+Nothing a file says changes, and stored data is read as it was written: a run
+recorded before keeps its trigger, and a schedule keeps its context
+([upgrading-from-warp.md](upgrading-from-warp.md)). The API still sends a run's
+events as kinds with a payload.
 
 
 ## Managed source records

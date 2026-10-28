@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -19,7 +18,7 @@ import (
 func TestCitationProjectionRetainsQueryTimeFactsAndClearsRevokedEvidence(t *testing.T) {
 	p := sourceGroundingPlatform(t)
 	p.Threads = threads.NewStore()
-	tag := envelope.Tag{ID: "turn", Tenant: "tenant", Agent: "worker", Text: "ask", At: p.now(), Meta: map[string]string{runs.MetaProject: "Secret"}}
+	tag := wire.NewEvent(wire.Raise{ID: "turn", Tenant: "tenant", Agent: "worker", Text: "ask", At: p.now(), Context: map[string]string{runs.MetaProject: "Secret"}})
 	if err := p.Runs.Record("run1", tag, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -29,12 +28,12 @@ func TestCitationProjectionRetainsQueryTimeFactsAndClearsRevokedEvidence(t *test
 		t.Fatal(err)
 	}
 	raw := json.RawMessage(`{"label":"[1]","text":"private text","source":{"document_uuid":"doc","document_title":"Runbook"},"mode":"live","refresh_failed":true}`)
-	event := envelope.Event{Tenant: "tenant", RunID: "run1", Kind: envelope.KindCitation, Payload: raw}
-	metadata, _, ok := p.trustedCitation(event)
+	cited := event.Envelope{Tenant: "tenant", Run: "run1", Type: event.TypeCitation, Data: wire.BodyOf(event.TypeCitation, raw)}
+	metadata, _, ok := p.trustedCitation(cited)
 	if !ok {
 		t.Fatal("actual query not recognized", evidence)
 	}
-	if err := p.Runs.RecordCitation(event, metadata); err != nil {
+	if err := p.Runs.RecordCitation(cited, metadata); err != nil {
 		t.Fatal(err)
 	}
 	owner := auth.Principal{Tenant: "tenant", Subject: "owner", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead}}
@@ -43,13 +42,13 @@ func TestCitationProjectionRetainsQueryTimeFactsAndClearsRevokedEvidence(t *test
 	if len(shown.Citations) != 1 || shown.Citations[0].Mode != "indexed" || *shown.Citations[0].RefreshFailed {
 		t.Fatal("model claimed live facts", shown.Citations)
 	}
-	rawShown, _ := json.Marshal(p.enrichCitation(event))
+	rawShown := p.citationPayload(cited)
 	if !json.Valid(rawShown) {
 		t.Fatal("bad projected event")
 	}
 	outsider := owner
 	outsider.Subject = "peer"
-	if p.CitationEventVisible(outsider, event) {
+	if p.CitationEventVisible(outsider, cited) {
 		t.Fatal("private citation event visible")
 	}
 	denied := p.ShownRunAs(outsider, run)
@@ -61,17 +60,17 @@ func TestCitationProjectionRetainsQueryTimeFactsAndClearsRevokedEvidence(t *test
 	}
 	noKnowledge := owner
 	noKnowledge.Scopes = nil
-	if p.CitationEventVisible(noKnowledge, event) || len(p.ShownRunAs(noKnowledge, run).Citations) != 0 {
+	if p.CitationEventVisible(noKnowledge, cited) || len(p.ShownRunAs(noKnowledge, run).Citations) != 0 {
 		t.Fatal("knowledge permission revocation retained evidence")
 	}
-	forged := event
-	forged.Payload = json.RawMessage(`{"label":"[1]","text":"forged text","source":{"document_uuid":"doc","document_title":"Runbook"},"mode":"live"}`)
+	forged := cited
+	forged.Data = wire.BodyOf(event.TypeCitation, json.RawMessage(`{"label":"[1]","text":"forged text","source":{"document_uuid":"doc","document_title":"Runbook"},"mode":"live"}`))
 	if _, _, ok := p.trustedCitation(forged); ok {
 		t.Fatal("label alone authorized forged metadata")
 	}
-	malformed := event
-	malformed.Payload = json.RawMessage(`{"label":"[1]","source":"invalid","mode":"live"}`)
-	if p.enrichCitation(malformed).Payload != nil {
+	malformed := cited
+	malformed.Data = wire.BodyOf(event.TypeCitation, json.RawMessage(`{"label":"[1]","source":"invalid","mode":"live"}`))
+	if p.citationPayload(malformed) != nil {
 		t.Fatal("malformed raw event retained model-claimed facts")
 	}
 }
@@ -106,9 +105,9 @@ func TestRetainedCitationAuthorityFailsClosedAcrossReplayAndSourceRecreation(t *
 			{id: "missing", source: "missing", provider: "manual"},
 			{id: "unproven", source: "private", provider: "manual"},
 		}
-		events := map[string]envelope.Event{}
+		events := map[string]event.Envelope{}
 		for _, test := range cases {
-			tag := envelope.Tag{ID: test.id, Tenant: "tenant", Agent: "worker", Text: "ask", At: p.now(), Meta: map[string]string{runs.MetaProject: "Secret"}}
+			tag := wire.NewEvent(wire.Raise{ID: test.id, Tenant: "tenant", Agent: "worker", Text: "ask", At: p.now(), Context: map[string]string{runs.MetaProject: "Secret"}})
 			if err := p.Runs.Record(test.id, tag, 1); err != nil {
 				t.Fatal(err)
 			}
@@ -118,14 +117,14 @@ func TestRetainedCitationAuthorityFailsClosedAcrossReplayAndSourceRecreation(t *
 					t.Fatal(err)
 				}
 			}
-			body := payload.Citation{Label: "[1]", Text: proof.Text, Source: payload.Provenance{DocumentUUID: proof.DocumentID, DocumentTitle: proof.Title}}
+			body := event.Citation{Label: "[1]", Text: proof.Text, Source: event.Provenance{DocumentUUID: proof.DocumentID, DocumentTitle: proof.Title}}
 			raw, _ := json.Marshal(body)
-			event := envelope.Event{Tenant: "tenant", RunID: test.id, Kind: envelope.KindCitation, Payload: raw}
-			metadata, _, _ := p.trustedCitation(event)
-			if err := p.Runs.RecordCitation(event, metadata); err != nil {
+			cited := event.Envelope{Tenant: "tenant", Run: test.id, Type: event.TypeCitation, Data: wire.BodyOf(event.TypeCitation, raw)}
+			metadata, _, _ := p.trustedCitation(cited)
+			if err := p.Runs.RecordCitation(cited, metadata); err != nil {
 				t.Fatal(err)
 			}
-			events[test.id] = event
+			events[test.id] = cited
 		}
 		check := func() {
 			t.Helper()
@@ -189,7 +188,7 @@ func TestSourceToolEvidenceKeepsNativeProviderAuthority(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			p := sourceGroundingPlatform(t)
 			p.Threads = threads.NewStore()
-			tag := envelope.Tag{ID: "tool", Tenant: "tenant", Agent: "worker", At: p.now(), Meta: map[string]string{runs.MetaProject: "Secret"}}
+			tag := wire.NewEvent(wire.Raise{ID: "tool", Tenant: "tenant", Agent: "worker", At: p.now(), Context: map[string]string{runs.MetaProject: "Secret"}})
 			if err := p.Runs.Record("run1", tag, 1); err != nil {
 				t.Fatal(err)
 			}
@@ -222,7 +221,7 @@ func TestRecordedSourceAuthoritySurvivesRecreationForPublication(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Agents.Create(t.Context(), "tenant", agentspec.AgentSpec{Name: "worker", Provider: "offline", Model: "offline", SystemPrompt: "Answer."}, "owner"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), "tenant", wire.AgentSpec{Name: "worker", Provider: "offline", Model: "offline", SystemPrompt: "Answer."}, "owner"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.Knowledge.Create("tenant", "copy", "", "owner", p.now()); err != nil {
@@ -240,7 +239,7 @@ func TestRecordedSourceAuthoritySurvivesRecreationForPublication(t *testing.T) {
 			{id: "unknown", source: "copy"},
 			{id: "local", provider: "manual", source: "local-copy"},
 		} {
-			tag := envelope.Tag{ID: test.id, Tenant: "tenant", Agent: "worker", Text: "ask", At: p.now(), Meta: map[string]string{runs.MetaSources: test.source}}
+			tag := wire.NewEvent(wire.Raise{ID: test.id, Tenant: "tenant", Agent: "worker", Text: "ask", At: p.now(), Context: map[string]string{runs.MetaSources: test.source}})
 			if err := p.Runs.Record(test.id, tag, 1); err != nil {
 				t.Fatal(err)
 			}

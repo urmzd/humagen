@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	transport "github.com/urmzd/fiber/pkg/connectors/github"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
 )
 
 // GuideBody renders the pull request guide for one page of evidence: the

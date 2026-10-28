@@ -1,11 +1,12 @@
 package platform
 
 import (
+	"testing"
+	"time"
+
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
-	"testing"
-	"time"
 )
 
 func TestRuntimeSourcePrivacyFailsClosedWithoutAuthoritativeAccess(t *testing.T) {

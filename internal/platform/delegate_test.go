@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -50,7 +51,7 @@ type cast struct {
 	once    map[string]*sync.Once
 	// shape sets anything else on an agent's spec: what waits for approval,
 	// and who may answer.
-	shape map[string]func(*agentspec.AgentSpec)
+	shape map[string]func(*wire.AgentSpec)
 	// continues keeps one script per agent across the models built for it,
 	// so a run that parks and resumes in a new attempt carries on where its
 	// script left off rather than starting it again.
@@ -171,7 +172,7 @@ func stage(t *testing.T, c *cast, cfg platform.Config) *platform.Platform {
 	if cfg.StopGrace == 0 {
 		cfg.StopGrace = 2 * time.Second
 	}
-	cfg.AgentOptions = []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(spec agentrt.Spec) (saigetypes.Provider, error) {
+	cfg.AgentOptions = []native.Option{native.WithProvider(native.ProviderOffline, func(spec native.Spec) (saigetypes.Provider, error) {
 		c.mu.Lock()
 		c.instances[spec.Name]++
 		first := c.instances[spec.Name] == 1
@@ -223,9 +224,9 @@ func stage(t *testing.T, c *cast, cfg platform.Config) *platform.Platform {
 		if platform.IsBuiltin(name) {
 			continue
 		}
-		spec := agentspec.AgentSpec{
+		spec := wire.AgentSpec{
 			Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x",
-			Tools: c.tools[name], Access: agentspec.Access{Spawn: c.spawn[name]},
+			Tools: c.tools[name], Access: wire.Access{Spawn: c.spawn[name]},
 		}
 		if shape := c.shape[name]; shape != nil {
 			shape(&spec)
@@ -287,7 +288,7 @@ func TestATaggedAgentIsARunOfItsOwn(t *testing.T) {
 	}
 	named := false
 	for _, e := range p.Journal.Events(tenant, []string{lead.ID}) {
-		named = named || (e.Kind == "action.taken" && strings.Contains(string(e.Payload), helper.ID))
+		named = named || (e.Type == event.TypeAction && strings.Contains(wire.JSONOf(e), helper.ID))
 	}
 	if !named {
 		t.Fatal("the caller's stream never said which run it started")

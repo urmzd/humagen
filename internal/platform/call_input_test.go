@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/call"
@@ -59,8 +61,8 @@ func TestHelperReceivesConstructedMessagesAndReturnsOneResultToItsCaller(t *test
 		}
 	}
 	matchedCall := false
-	for _, event := range p.Journal.Events(tenant, []string{lead.ID}) {
-		matchedCall = matchedCall || (event.Kind == envelope.KindActionTaken && strings.Contains(string(event.Payload), `"tool_call_id":"helper-call"`))
+	for _, e := range p.Journal.Events(tenant, []string{lead.ID}) {
+		matchedCall = matchedCall || (e.Type == event.TypeAction && strings.Contains(wire.JSONOf(e), `"tool_call_id":"helper-call"`))
 	}
 	if !matchedCall {
 		t.Fatal("helper run was not correlated with its tool call ID")
@@ -121,8 +123,8 @@ func TestInvalidHelperResultFailsWithoutPublishingAnAnswer(t *testing.T) {
 		t.Fatalf("helper error = %q", helper.Error)
 	}
 	for _, e := range p.Journal.Events(tenant, []string{helper.ID}) {
-		if e.Kind == envelope.KindText || e.Kind == envelope.KindCompleted {
-			t.Fatalf("invalid answer published as %s", e.Kind)
+		if e.Type == event.TypeText || e.Type == event.TypeCompleted {
+			t.Fatalf("invalid answer published as %s", e.Type)
 		}
 	}
 }
@@ -152,7 +154,7 @@ func TestCallReferencesAreTenantScopedAndFrozenBeforeExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	await(t, p, parent.ID, runs.Running)
-	if err := p.Runs.Record("foreign", envelope.Tag{ID: "foreign", Tenant: "other", Agent: "source", Origin: runs.OriginAPI, Text: "OTHER TENANT SECRET"}, 1); err != nil {
+	if err := p.Runs.Record("foreign", wire.NewEvent(wire.Raise{ID: "foreign", Tenant: "other", Agent: "source", Origin: runs.OriginAPI, Text: "OTHER TENANT SECRET"}), 1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Artifacts.Publish("other", artifacts.Artifact{ID: "foreign-artifact", Key: "secret.txt", Title: "secret.txt", Thread: "foreign", Kind: artifacts.Document}); err != nil {
@@ -226,7 +228,7 @@ func TestCallReferencesAreTenantScopedAndFrozenBeforeExecution(t *testing.T) {
 		}
 	}
 	var frozen call.Prepared
-	if err := json.Unmarshal([]byte(child.Tag().Meta[call.MetaInput]), &frozen); err != nil {
+	if err := json.Unmarshal([]byte(wire.Meta(child.Tag())[call.MetaInput]), &frozen); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := frozen.Input.Messages[0].Content[3].(call.ArtifactPart); !ok {
@@ -234,4 +236,49 @@ func TestCallReferencesAreTenantScopedAndFrozenBeforeExecution(t *testing.T) {
 	}
 	c.release("lead")
 	await(t, p, parent.ID, runs.Completed)
+}
+
+// A call is idempotent on its key: the same key under the same caller joins
+// the run it started, however often it is made, and starts no second run.
+func TestTheSameCallKeyJoinsTheSameRun(t *testing.T) {
+	c := &cast{
+		says:  map[string][][]saigetypes.Delta{"lead": {say("Parent answer")}, "helper": {say("Once")}},
+		spawn: map[string][]string{"lead": {"helper"}},
+		gates: map[string]chan struct{}{"lead": make(chan struct{}), "helper": make(chan struct{})},
+	}
+	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 2}})
+	parent, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "idempotent-parent", Agent: "lead", Text: "Start"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, parent.ID, runs.Running)
+	request := call.Request{Key: "once", Agent: "helper", Mode: call.Subagent, Text: "Do it once"}
+	first, err := p.Call(t.Context(), tenant, parent.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		again, err := p.Call(t.Context(), tenant, parent.ID, request)
+		if err != nil || again.ID != first.ID {
+			t.Fatalf("call %d with the same key = %q, %v, want %q", i+2, again.ID, err, first.ID)
+		}
+	}
+	other, err := p.Call(t.Context(), tenant, parent.ID, call.Request{Key: "twice", Agent: "helper", Mode: call.Subagent, Text: "Do it once"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.ID == first.ID {
+		t.Fatal("a different key joined the first call's run")
+	}
+	children := 0
+	for _, r := range p.Runs.List(tenant, 50) {
+		if r.Parent == parent.ID && r.Agent == "helper" {
+			children++
+		}
+	}
+	if children != 2 {
+		t.Fatalf("the caller has %d helper runs, want 2: one per key", children)
+	}
+	c.release("helper")
+	await(t, p, first.ID, runs.Completed)
 }

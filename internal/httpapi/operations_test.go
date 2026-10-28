@@ -11,7 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -113,7 +114,7 @@ func TestStandingAssignmentPausesWhenOwnerLosesProjectAccess(t *testing.T) {
 	}
 	want(t, f, owner, "POST", "/api/schedules/"+schedule+"/run", "", http.StatusForbidden)
 	want(t, f, owner, "PUT", "/api/projects/Duty/members", `{"version":1,"members":[{"who":"another-owner","role":"owner"}]}`, http.StatusOK)
-	_, err = f.p.Invoke(t.Context(), envelope.Tag{ID: "cron-occurrence", Tenant: "acme", Agent: sc.Agent, Origin: "cron", Text: sc.Text, Meta: maps.Clone(sc.Meta)})
+	_, err = f.p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: "cron-occurrence", Tenant: "acme", Agent: sc.Agent, Origin: "cron", Text: sc.Text, Context: maps.Clone(sc.Context)}))
 	if !errors.Is(err, operations.ErrDenied) {
 		t.Fatalf("revoked owner's standing work admitted: %v", err)
 	}

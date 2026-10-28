@@ -16,11 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
@@ -34,7 +34,7 @@ import (
 
 // Factory builds a registered kind from its block. What it returns depends on
 // the slot: a blob.Store for blobs, a bus.Bus for bus, an
-// agentrt.ProviderFunc for models, a runtime.Catalog for tools, and an
+// native.ProviderFunc for models, a runtime.Catalog for tools, and an
 // Extension for extensions.
 type Factory func(ctx context.Context, block json.RawMessage) (any, error)
 
@@ -295,7 +295,7 @@ func openBus(ctx context.Context, o Options, l loaded, kind string, backends pla
 // fileExtensions are the Platform documents' models and tools, as the
 // platform takes them.
 func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credref.Resolver) (platform.Extensions, error) {
-	ext := platform.Extensions{Providers: map[string]agentrt.ProviderFunc{}}
+	ext := platform.Extensions{Providers: map[string]native.ProviderFunc{}}
 	for _, p := range cfg.Platforms {
 		tenant := p.Metadata.Name
 		for _, m := range p.Spec.Models {
@@ -310,7 +310,7 @@ func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credre
 				}
 				ext.Providers[m.Name] = modelProvider(m.Kind, m.Name, b, keys)
 			default:
-				fn, err := build[agentrt.ProviderFunc](ctx, o, spec.SlotModels, m.Slot)
+				fn, err := build[native.ProviderFunc](ctx, o, spec.SlotModels, m.Slot)
 				if err != nil {
 					return ext, err
 				}
@@ -355,7 +355,7 @@ func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credre
 // tenantOnly answers for one workspace's turns, so a tool one workspace
 // declared is not another's.
 func tenantOnly(tenant string, c runtime.Catalog) runtime.Catalog {
-	return func(req runtime.Request, action func(payload.Action) error) (agentrt.Tools, error) {
+	return func(req runtime.Request, action func(event.Action) error) (native.Tools, error) {
 		if req.Tenant != tenant {
 			return nil, nil
 		}

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -46,7 +46,7 @@ func scheduleIn(t *testing.T, p *platform.Platform, project, name string) {
 	t.Helper()
 	sc := cron.Schedule{
 		Name: name, Expression: "41 8 * * 1", Agent: "lead", Text: "What changed?", Tenant: tenant,
-		Meta: map[string]string{runs.MetaProject: project, "created_by": "ada"},
+		Context: map[string]string{runs.MetaProject: project, "created_by": "ada"},
 	}
 	if err := p.Schedules.Add(sc, platform.About{CreatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
@@ -424,7 +424,7 @@ func TestARecapNamesPeopleAndNeverAnAddress(t *testing.T) {
 	for name, about := range map[string]platform.About{"made": {CreatedAt: now}, "edited": {CreatedAt: now, UpdatedAt: now, UpdatedBy: bob}} {
 		sc := cron.Schedule{
 			Name: name, Expression: "41 8 * * 1", Agent: "lead", Text: "What changed?", Tenant: tenant,
-			Meta: map[string]string{runs.MetaProject: "Field", "created_by": ada},
+			Context: map[string]string{runs.MetaProject: "Field", "created_by": ada},
 		}
 		if err := p.Schedules.Add(sc, about); err != nil {
 			t.Fatal(err)

@@ -7,9 +7,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
@@ -48,21 +49,21 @@ func sourceURI(name string) string { return "knowledge://" + name }
 // none: it is filed at the workspace whatever turn it serves.
 const metaForkSources = "_humagen.fork_sources"
 
-func (p *Platform) sourcesFor(tag envelope.Tag, edge call.Edge, project string) []string {
-	if tag.Origin == runs.OriginSystem {
+func (p *Platform) sourcesFor(tag event.Envelope, edge call.Edge, project string) []string {
+	if wire.Origin(tag) == runs.OriginSystem {
 		return nil
 	}
 	if edge.Parent != "" {
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
-			return runs.SourcesOf(root.Tag().Meta)
+			return runs.SourcesOf(wire.Meta(root.Tag()))
 		}
 	}
-	if names := p.forkSourceSelection(tag.Tenant, tag.Meta[runs.MetaThread]); names != nil {
+	if names := p.forkSourceSelection(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); names != nil {
 		return *names
 	}
 	var out []string
-	channel := tag.Meta[runs.MetaChannel]
-	if thread := tag.Meta[runs.MetaThread]; thread != "" && tag.Origin == runs.OriginAPI {
+	channel := wire.Meta(tag)[runs.MetaChannel]
+	if thread := wire.Meta(tag)[runs.MetaThread]; thread != "" && wire.Origin(tag) == runs.OriginAPI {
 		if current, err := p.Threads.Get(tag.Tenant, thread); err == nil {
 			channel = current.Channel
 		}
@@ -99,7 +100,7 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if level := p.operationDecision(req, operations.ReadContext); level == operations.Ask || level == operations.Never {
 		// Grounding cannot ask for consent. Only an already granted, wrapped
 		// source_search tool may perform an approved read.
-		req.Revision.Spec.Sources = nil
+		req.Definition.Spec.Sources = nil
 	} else {
 		req, err = p.withSourceGrounding(req, project, person)
 	}
@@ -132,19 +133,19 @@ func withSources(req runtime.Request) runtime.Request {
 	if len(pinned) == 0 && !selected {
 		return req
 	}
-	spec := req.Revision.Spec
+	spec := req.Definition.Spec
 	sources := slices.Clone(spec.Sources)
 	if selected {
 		names := strings.Split(selection, ",")
-		sources = slices.DeleteFunc(sources, func(source agentrt.Source) bool { return !slices.Contains(names, source.Name) })
+		sources = slices.DeleteFunc(sources, func(source native.Source) bool { return !slices.Contains(names, source.Name) })
 	}
 	for _, name := range pinned {
-		if !slices.ContainsFunc(sources, func(s agentrt.Source) bool { return s.Name == name }) {
-			sources = append(sources, agentrt.Source{Name: name, URI: sourceURI(name)})
+		if !slices.ContainsFunc(sources, func(s native.Source) bool { return s.Name == name }) {
+			sources = append(sources, native.Source{Name: name, URI: sourceURI(name)})
 		}
 	}
 	spec.Sources = sources
-	req.Revision.Spec = spec
+	req.Definition.Spec = spec
 	return req
 }
 

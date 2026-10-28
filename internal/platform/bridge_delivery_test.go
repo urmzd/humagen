@@ -1,7 +1,10 @@
 package platform_test
 
 import (
-	"github.com/urmzd/fiber/pkg/runtime"
+	"testing"
+	"time"
+
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
@@ -10,8 +13,6 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
-	"testing"
-	"time"
 )
 
 func TestBridgeDeliveryRechecksPolicyDirectionAndPrivateContext(t *testing.T) {

@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -20,7 +22,7 @@ func TestCitationRetentionUsesOnlyTrustedMetadataAndWritesThrough(t *testing.T) 
 		}
 		record(t, x, "acme", "r1", "lead", "api", 0, nil)
 		raw := json.RawMessage(`{"label":"[1]","text":"actual text","source":{"document_title":"Runbook","source_uri":"https://example.test"},"mode":"live","refresh_failed":true}`)
-		event := envelope.Event{Tenant: "acme", RunID: "r1", Kind: envelope.KindCitation, Payload: raw}
+		event := event.Envelope{Tenant: "acme", Run: "r1", Type: event.TypeCitation, Data: wire.BodyOf(event.TypeCitation, raw)}
 		if err := x.RecordCitation(event, nil); err != nil {
 			t.Fatal(err)
 		}

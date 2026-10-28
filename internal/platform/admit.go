@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/call"
@@ -38,11 +39,11 @@ func (e *Denied) Error() string { return "platform: " + e.Decision.Reason }
 // A run counts toward its project and every ancestor it is within, and is
 // refused by the strictest of their limits, so nothing below a project escapes
 // the project's limit.
-func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project string, within []string, client string) error {
+func (p *Platform) admit(tag event.Envelope, edge call.Edge, project string, within []string, client string) error {
 	if err := p.operationAdmissionTag(tag); err != nil {
 		return err
 	}
-	if th, err := p.Threads.Get(tag.Tenant, tag.Meta[runs.MetaThread]); err == nil && th.ReadOnly {
+	if th, err := p.Threads.Get(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); err == nil && th.ReadOnly {
 		return ErrForbidden
 	}
 	tree := p.Projects.Tree(tag.Tenant)
@@ -52,7 +53,7 @@ func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project string, withi
 	if home, ok := tree.Home(tag.Agent); ok && tree.PendingFork(home) {
 		return projects.ErrNotFound
 	}
-	if tag.Origin == runs.OriginSystem {
+	if wire.Origin(tag) == runs.OriginSystem {
 		return nil
 	}
 	// The agent must be available where the run is filed, before any limit
@@ -122,7 +123,7 @@ func (p *Platform) applied(tenant string, chain []string, agent, client string, 
 // there would count toward none of the limits it was under: it fails closed
 // with ErrProjectDeleted. That covers the next turn of a conversation whose
 // project was deleted, and a turn racing the delete of its project.
-func (p *Platform) placeOf(tag envelope.Tag, edge call.Edge) (project string, within []string, client string, err error) {
+func (p *Platform) placeOf(tag event.Envelope, edge call.Edge) (project string, within []string, client string, err error) {
 	project, client = runs.ProjectOf(tag), runs.ClientOf(tag)
 	if edge.Parent != "" {
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {

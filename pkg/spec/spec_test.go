@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // The reference's own examples load, so docs/spec.md cannot drift from the
@@ -133,7 +133,7 @@ func TestAKindIsOneTheBinaryHas(t *testing.T) {
 func TestWhatHumagenWritesItReads(t *testing.T) {
 	cfg := Config{Platforms: []Platform{{Metadata: Metadata{Name: "default"}, Spec: PlatformSpec{
 		Workspace: Workspace{Agents: &Agents{Enable: []string{EveryAgent}, Default: "lead"}},
-		Agents:    []Agent{{Spec: &agentspec.AgentSpec{Name: "lead", Provider: "anthropic", Model: "m", SystemPrompt: "Lead."}}},
+		Agents:    []Agent{{Spec: &wire.AgentSpec{Name: "lead", Provider: "anthropic", Model: "m", SystemPrompt: "Lead."}}},
 		Models:    []Model{{Slot: Slot{Kind: "anthropic", Block: MustJSON(ModelBlock{Key: &Ref{Ref: "env:ANTHROPIC_API_KEY"}})}, ModelShared: ModelShared{Name: "anthropic"}}},
 		Surfaces:  Surfaces{Slack: &Slack{Enabled: true, Team: "T1", BotToken: &Ref{Ref: "env:B"}, AppToken: &Ref{Ref: "keychain:humagen/slack"}}},
 	}}}}

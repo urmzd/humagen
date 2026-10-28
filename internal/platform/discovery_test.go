@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -25,7 +25,7 @@ func TestDiscoveryReturnsOnlyPermittedReadableWorkWithinBounds(t *testing.T) {
 			t.Fatal(err)
 		}
 		agent := strings.ToLower(name)
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: agent, Model: "offline", Provider: "offline", SystemPrompt: "Work.", Description: "needle worker"}, admin.Subject); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: agent, Model: "offline", Provider: "offline", SystemPrompt: "Work.", Description: "needle worker"}, admin.Subject); err != nil {
 			t.Fatal(err)
 		}
 		if err := p.Projects.SetHome(tenant, agent, name, govern, time.Now(), nil); err != nil {

@@ -4,8 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	transportslack "github.com/urmzd/fiber/pkg/connectors/slack"
+	transportslack "github.com/urmzd/humagen/fiber/pkg/connectors/slack"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -32,7 +33,7 @@ func TestSlackAttachmentsComeFromTheActualPostersMessage(t *testing.T) {
 	if len(got.Message.Attachments) != 1 || got.Message.Attachments[0].Unread == "" {
 		t.Fatalf("files lost: %+v", got.Message)
 	}
-	if len(got.Runs) != 1 || len(got.Runs[0].Tag().Attachments) != 1 {
+	if len(got.Runs) != 1 || len(wire.AttachmentsOf(got.Runs[0].Tag())) != 1 {
 		t.Fatalf("run lost files: %+v", got.Runs)
 	}
 	await(t, p, got.Runs[0].ID, runs.Completed)

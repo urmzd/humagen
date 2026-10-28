@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -26,12 +26,12 @@ func (p *Platform) checkOperationCall(ctx context.Context, parent runs.Run, req 
 	} else if restricted && !slices.Contains(allowed, ToolCallAgent) && !slices.Contains(allowed, ToolDelegate) && !slices.Contains(allowed, tagTool+req.Agent) {
 		return operations.ErrDenied
 	}
-	if err := p.operationAdmissionRequest(runtime.Request{Tenant: parent.Tenant, RunID: parent.ID, Origin: parent.Origin, Meta: parent.Tag().Meta, Revision: agentrt.Revision{Rev: parent.Rev, Spec: agentrt.Spec{Name: parent.Agent}}}); err != nil {
+	if err := p.operationAdmissionRequest(runtime.Request{Tenant: parent.Tenant, RunID: parent.ID, Origin: parent.Origin, Meta: wire.Meta(parent.Tag()), Definition: native.Revision{Name: parent.Agent, Version: wire.VersionOf(parent.Rev), Spec: native.Spec{Name: parent.Agent}}}); err != nil {
 		return err
 	}
 	person := p.operationPerson(parent)
 	level := p.ActionDecision(parent.Tenant, p.RunPlace(parent.Tenant, parent).Project, parent.Agent, person, operations.CallAgents)
-	if parent.Tag().Meta[operations.MetaForceAsk] == "true" && level != operations.Never {
+	if wire.Meta(parent.Tag())[operations.MetaForceAsk] == "true" && level != operations.Never {
 		level = operations.Ask
 	}
 	if level == operations.Never {
@@ -46,7 +46,7 @@ func (p *Platform) checkOperationCall(ctx context.Context, parent runs.Run, req 
 			}
 		}
 		if r, ok := ctx.Value(operationRequestKey{}).(runtime.Request); ok && r.Resume != nil {
-			if a, ok := r.Resume.Answers[info.ID]; ok && a.Decision == payload.DecisionApprove {
+			if a, ok := r.Resume.Answers[info.ID]; ok && a.Decision == event.DecisionApprove {
 				approved = true
 			}
 		}
@@ -56,7 +56,7 @@ func (p *Platform) checkOperationCall(ctx context.Context, parent runs.Run, req 
 	}
 	return nil
 }
-func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag envelope.Tag, prepared call.Prepared) (operations.Handoff, error) {
+func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag event.Envelope, prepared call.Prepared) (operations.Handoff, error) {
 	p.admission.Lock()
 	defer p.admission.Unlock()
 	id := runtime.RunID(parent.Tenant, tag.ID)
@@ -185,19 +185,19 @@ func (p *Platform) sameHandoffTerms(run runs.Run, terms *call.Contract) bool {
 	return ok && h.Goal == terms.Goal && h.DoneWhen == terms.DoneWhen && h.DueAt.Equal(terms.DueAt)
 }
 
-func (p *Platform) operationTagPerson(tag envelope.Tag, edge call.Edge) string {
+func (p *Platform) operationTagPerson(tag event.Envelope, edge call.Edge) string {
 	if edge.Parent != "" {
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
 			return p.operationPerson(root)
 		}
 	}
-	if id := tag.Meta[metaAssignment]; id != "" {
+	if id := wire.Meta(tag)[metaAssignment]; id != "" {
 		if a, ok := p.Operations.Assignment(tag.Tenant, id); ok {
 			return a.Owner
 		}
 	}
-	if tag.Origin == runs.OriginAPI && !tag.Actor.Bot && tag.Actor.User == "" {
-		return tag.Actor.ID
+	if wire.Origin(tag) == runs.OriginAPI && !wire.ActorOf(tag).Bot && wire.ActorOf(tag).User == "" {
+		return wire.ActorOf(tag).ID
 	}
-	return personOf(tag.Actor)
+	return personOf(wire.ActorOf(tag))
 }

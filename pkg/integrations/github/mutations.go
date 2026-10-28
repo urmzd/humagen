@@ -8,15 +8,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/connector"
-	transport "github.com/urmzd/fiber/pkg/connectors/github"
-	"github.com/urmzd/fiber/pkg/connectors/mention"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/wire"
 )
@@ -35,12 +36,17 @@ func (c *Connector) mutationMAC(target address.Address) []byte {
 	return mac.Sum(nil)
 }
 
-func (c *Connector) grantMutation(ctx context.Context, tag *envelope.Tag) error {
-	if !c.cfg.Mutations || tag.Source.Path[1] != "pull" || tag.Actor.Bot {
+func (c *Connector) grantMutation(ctx context.Context, tag *event.Envelope) error {
+	source, err := sourceOf(*tag)
+	if err != nil {
+		return err
+	}
+	actor := wire.ActorOf(*tag)
+	if !c.cfg.Mutations || source.Path[1] != "pull" || actor.Bot {
 		return nil
 	}
-	event := wire.SurfaceOf(*tag).GitHubEvent
-	if event != "issue_comment" && event != "pull_request_review_comment" {
+	kind := wire.SurfaceOf(*tag).GitHubEvent
+	if kind != "issue_comment" && kind != "pull_request_review_comment" {
 		return nil
 	}
 	command := strings.Fields(wire.TextOf(*tag))
@@ -50,14 +56,14 @@ func (c *Connector) grantMutation(ctx context.Context, tag *envelope.Tag) error 
 	// The grant names the run this tag becomes: the runtime's id for the
 	// tenant and the delivery id together, which is what the run's tools are
 	// bound to. Refuse synthetic or malformed delivery ids.
-	if !mention.Valid(tag.ID) || !transport.ValidSHA(tag.Source.Params["head_sha"]) {
+	if !mention.Valid(tag.ID) || !transport.ValidSHA(source.Params["head_sha"]) {
 		return fmt.Errorf("github: fix request needs delivery ID and pinned head")
 	}
-	ref, err := c.Reference(tag.Source)
+	ref, err := c.Reference(source)
 	if err != nil {
 		return err
 	}
-	allowed, err := c.cfg.API.(MutationAPI).CanWrite(ctx, ref, tag.Actor.ID)
+	allowed, err := c.cfg.API.(MutationAPI).CanWrite(ctx, ref, actor.ID)
 	if err != nil {
 		return err
 	}
@@ -65,7 +71,7 @@ func (c *Connector) grantMutation(ctx context.Context, tag *envelope.Tag) error 
 		return nil
 	} // The agent can still explain the denied capability.
 	operation := strings.TrimPrefix(command[0], "/")
-	source := tag.Source.WithParam("write_actor", tag.Actor.ID).WithParam("write_run", runtime.RunID(c.cfg.Tenant, tag.ID)).WithParam("write_operation", operation)
+	source = source.WithParam("write_actor", actor.ID).WithParam("write_run", runtime.RunID(c.cfg.Tenant, tag.ID)).WithParam("write_operation", operation)
 	if operation == "check" {
 		if len(command) < 2 {
 			return nil
@@ -87,7 +93,7 @@ func (c *Connector) grantMutation(ctx context.Context, tag *envelope.Tag) error 
 		}
 		source = source.WithParam("write_workflow", strconv.FormatInt(id, 10)).WithParam("write_attempt", strconv.Itoa(run.Attempt))
 	}
-	tag.Source = source.WithParam("write_grant", hex.EncodeToString(c.mutationMAC(source)))
+	setSource(tag, source.WithParam("write_grant", hex.EncodeToString(c.mutationMAC(source))))
 	return nil
 }
 

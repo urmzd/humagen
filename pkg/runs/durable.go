@@ -2,12 +2,14 @@ package runs
 
 import (
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 	"sync"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/internal/legacy"
 
 	"github.com/urmzd/humagen/pkg/state"
 )
@@ -43,16 +45,37 @@ type persisted struct {
 type storedRun struct {
 	PrivateContext bool `json:"private_context,omitempty"`
 	Run
-	Seq        int64        `json:"seq"`
-	Tag        envelope.Tag `json:"tag"`
-	Requesters []string     `json:"requesters,omitempty"`
-	Final      bool         `json:"final,omitempty"`
-	Closed     bool         `json:"closed,omitempty"`
-	SettledUp  bool         `json:"settled_up,omitempty"`
+	Seq int64 `json:"seq"`
+	// Trigger is the event the run was accepted with.
+	Trigger *event.Envelope `json:"trigger,omitempty"`
+	// Tag is what a run accepted before the event union was accepted with.
+	// It is read through legacy.DecodeTag and never written.
+	Tag        json.RawMessage `json:"tag,omitempty"`
+	Requesters []string        `json:"requesters,omitempty"`
+	Final      bool            `json:"final,omitempty"`
+	Closed     bool            `json:"closed,omitempty"`
+	SettledUp  bool            `json:"settled_up,omitempty"`
+}
+
+// trigger is the event the run was accepted with, read from an old tag for a
+// run accepted before the event union.
+func (s storedRun) trigger() (event.Envelope, error) {
+	switch {
+	case s.Trigger != nil:
+		return *s.Trigger, nil
+	case len(s.Tag) > 0 && string(s.Tag) != "null":
+		return legacy.DecodeTag(s.Tag)
+	}
+	return event.Envelope{}, nil
 }
 
 func (p *persisted) record(r *Run) storedRun {
-	return storedRun{PrivateContext: r.privateContext, Run: *r, Seq: p.seqs[r.ID], Tag: r.tag, Requesters: r.requesters, Final: r.final, Closed: r.closed, SettledUp: r.settledUp}
+	out := storedRun{PrivateContext: r.privateContext, Run: *r, Seq: p.seqs[r.ID], Requesters: r.requesters, Final: r.final, Closed: r.closed, SettledUp: r.settledUp}
+	if r.tag.Type != "" {
+		t := r.tag
+		out.Trigger = &t
+	}
+	return out
 }
 
 // Open returns an index that keeps its runs and conversation titles in st,
@@ -80,7 +103,11 @@ func Open(st state.Store) (*Index, error) {
 			r.Citations = []Citation{}
 		}
 		r.privateContext = s.PrivateContext
-		r.tag, r.requesters, r.final, r.closed, r.settledUp = s.Tag, s.Requesters, s.Final, s.Closed, s.SettledUp
+		trigger, err := s.trigger()
+		if err != nil {
+			return nil, fmt.Errorf("runs: load %s: %w", r.ID, err)
+		}
+		r.tag, r.requesters, r.final, r.closed, r.settledUp = trigger, s.Requesters, s.Final, s.Closed, s.SettledUp
 		x.runs[r.ID] = &r
 		x.order = append(x.order, r.ID)
 		x.count(&r)

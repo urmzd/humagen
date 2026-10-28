@@ -1,10 +1,12 @@
 package runs
 
 import (
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/humagen/pkg/state"
 	"testing"
 	"time"
+
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 func TestSearchAnswersReplayWithoutPreparedContext(t *testing.T) {
@@ -13,7 +15,7 @@ func TestSearchAnswersReplayWithoutPreparedContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tag := envelope.Tag{ID: "search", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "confidential prepared context", Meta: map[string]string{MetaAsk: "Visible request"}, At: t0}
+	tag := wire.NewEvent(wire.Raise{ID: "search", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "confidential prepared context", Context: map[string]string{MetaAsk: "Visible request"}, At: t0})
 	if err := x.Record("r-search", tag, 1); err != nil {
 		t.Fatal(err)
 	}

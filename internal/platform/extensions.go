@@ -10,11 +10,11 @@ import (
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/mcptools"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/pkg/knowledge"
 )
 
@@ -26,7 +26,7 @@ type Extensions struct {
 	// Providers are model providers by name. A spec whose provider is the
 	// name runs on what the function builds, and a built-in of the same name
 	// is replaced.
-	Providers map[string]agentrt.ProviderFunc
+	Providers map[string]native.ProviderFunc
 	// Catalogs resolve tool names no connector or built-in tool does, in order.
 	Catalogs []runtime.Catalog
 	// ToolProviders are MCP servers recorded at startup, each with the tools
@@ -60,7 +60,7 @@ func (e Extensions) Merge(o Extensions) (Extensions, error) {
 		ToolStore:       e.ToolStore, Resolver: e.Resolver,
 	}
 	if out.Providers == nil {
-		out.Providers = map[string]agentrt.ProviderFunc{}
+		out.Providers = map[string]native.ProviderFunc{}
 	}
 	for name, fn := range o.Providers {
 		if _, dup := out.Providers[name]; dup {
@@ -104,10 +104,10 @@ func (e Extensions) Merge(o Extensions) (Extensions, error) {
 
 // agentOptions are the extension providers as agent options. They come after
 // the built-ins, so one named like a built-in replaces it.
-func (e Extensions) agentOptions() []agentrt.Option {
-	var out []agentrt.Option
+func (e Extensions) agentOptions() []native.Option {
+	var out []native.Option
 	for _, name := range e.ProviderNames() {
-		out = append(out, agentrt.WithProvider(name, e.Providers[name]))
+		out = append(out, native.WithProvider(name, e.Providers[name]))
 	}
 	return out
 }
@@ -119,8 +119,8 @@ func (e Extensions) catalog(base runtime.Catalog) runtime.Catalog {
 		return base
 	}
 	all := slices.Concat([]runtime.Catalog{base}, e.Catalogs)
-	return func(req runtime.Request, action func(payload.Action) error) (agentrt.Tools, error) {
-		var chain []agentrt.Tools
+	return func(req runtime.Request, action func(event.Action) error) (native.Tools, error) {
+		var chain []native.Tools
 		for _, c := range all {
 			if c == nil {
 				continue
@@ -133,17 +133,17 @@ func (e Extensions) catalog(base runtime.Catalog) runtime.Catalog {
 				chain = append(chain, t)
 			}
 		}
-		return agentrt.ToolsFunc(func(name string) (saigetypes.Tool, error) {
+		return native.ToolsFunc(func(name string) (saigetypes.Tool, error) {
 			for _, t := range chain {
 				tool, err := t.Lookup(name)
 				if err == nil {
 					return tool, nil
 				}
-				if !errors.Is(err, agentrt.ErrNoSuchTool) {
+				if !errors.Is(err, native.ErrNoSuchTool) {
 					return nil, err
 				}
 			}
-			return nil, fmt.Errorf("%w: %q", agentrt.ErrNoSuchTool, name)
+			return nil, fmt.Errorf("%w: %q", native.ErrNoSuchTool, name)
 		}), nil
 	}
 }

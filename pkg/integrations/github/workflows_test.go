@@ -9,10 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/connector"
-	"github.com/urmzd/fiber/pkg/connectors/mention"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
@@ -47,7 +48,7 @@ func TestCheckRequestRerunsOnlyTheAuthorizedAttemptAndPollsRealResults(t *testin
 	if w.Code != 200 {
 		t.Fatalf("status %d: %s", w.Code, w.Body.String())
 	}
-	var tag envelope.Tag
+	var tag event.Envelope
 	select {
 	case tag = <-tags:
 	default:
@@ -55,12 +56,12 @@ func TestCheckRequestRerunsOnlyTheAuthorizedAttemptAndPollsRealResults(t *testin
 	}
 	ctx := connector.WithRunID(context.Background(), runtime.RunID(testTenant, tag.ID))
 	execute := workflowAction(t, c, "github_run_checks")
-	result, err := execute.Invoke(ctx, tag.Source, json.RawMessage(`{}`))
+	result, err := execute.Invoke(ctx, wire.SurfaceAddress(tag), json.RawMessage(`{}`))
 	if err != nil || !strings.Contains(result.Summary, "Execution has not been verified") {
 		t.Fatalf("result %+v err=%v", result, err)
 	}
 	for range 2 {
-		if _, err := execute.Invoke(ctx, tag.Source, json.RawMessage(`{}`)); err != nil {
+		if _, err := execute.Invoke(ctx, wire.SurfaceAddress(tag), json.RawMessage(`{}`)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -69,7 +70,7 @@ func TestCheckRequestRerunsOnlyTheAuthorizedAttemptAndPollsRealResults(t *testin
 		t.Fatalf("invented completion or duplicate rerun: %+v", current)
 	}
 	poll := workflowAction(t, c, "github_workflow_status")
-	result, err = poll.Invoke(ctx, tag.Source, json.RawMessage(`{"run_id":123}`))
+	result, err = poll.Invoke(ctx, wire.SurfaceAddress(tag), json.RawMessage(`{"run_id":123}`))
 	if err != nil || !strings.Contains(result.Summary, `"status":"queued"`) {
 		t.Fatalf("poll %+v %v", result, err)
 	}
@@ -79,7 +80,7 @@ func TestCheckRequestRerunsOnlyTheAuthorizedAttemptAndPollsRealResults(t *testin
 		t.Fatal(err)
 	}
 	// Retrying the original authorized attempt after completion must not rerun it again.
-	if _, err := execute.Invoke(ctx, tag.Source, json.RawMessage(`{}`)); err != nil {
+	if _, err := execute.Invoke(ctx, wire.SurfaceAddress(tag), json.RawMessage(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	final, _ := fake.WorkflowRun(ctx, ref, 123)
@@ -87,11 +88,11 @@ func TestCheckRequestRerunsOnlyTheAuthorizedAttemptAndPollsRealResults(t *testin
 		t.Fatal("completed retry started another attempt")
 	}
 	for key, value := range map[string]string{"write_workflow": "456", "write_attempt": "2", "head_sha": strings.Repeat("b", 40)} {
-		if _, err := execute.Invoke(ctx, tag.Source.WithParam(key, value), json.RawMessage(`{}`)); err == nil {
+		if _, err := execute.Invoke(ctx, wire.SurfaceAddress(tag).WithParam(key, value), json.RawMessage(`{}`)); err == nil {
 			t.Fatalf("altered %s allowed", key)
 		}
 	}
-	if _, err := execute.Invoke(connector.WithRunID(ctx, "other-run"), tag.Source, json.RawMessage(`{}`)); err == nil {
+	if _, err := execute.Invoke(connector.WithRunID(ctx, "other-run"), wire.SurfaceAddress(tag), json.RawMessage(`{}`)); err == nil {
 		t.Fatal("cross-run check grant accepted")
 	}
 }

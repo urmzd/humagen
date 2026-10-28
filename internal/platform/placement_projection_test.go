@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -34,7 +34,7 @@ func TestMovedHistoryDoesNotRevealPrivatePlacementMetadata(t *testing.T) {
 			t.Fatal(err)
 		}
 		id := runtime.RunID(tenant, "private-run")
-		tag := envelope.Tag{ID: "private-run", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: personal.Name, Meta: map[string]string{runs.MetaProject: personal.Name, runs.MetaThread: th.ID, runs.MetaSources: "private-source"}, At: time.Now()}
+		tag := wire.NewEvent(wire.Raise{ID: "private-run", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: personal.Name, Context: map[string]string{runs.MetaProject: personal.Name, runs.MetaThread: th.ID, runs.MetaSources: "private-source"}, At: time.Now()})
 		if err := p.Runs.Record(id, tag, 1); err != nil {
 			t.Fatal(err)
 		}
@@ -70,13 +70,13 @@ func TestMovedHistoryDoesNotRevealPrivatePlacementMetadata(t *testing.T) {
 		if raw.Outcome.Summary != "Review "+personal.Name || raw.Outcome.Decisions[0] != "Use private-source" || len(raw.Citations) != 1 {
 			t.Fatal("projection mutated original authored outcome/evidence")
 		}
-		payload, _ := json.Marshal(map[string]any{"project": personal.Name, "meta": tag.Meta, "text": "finished private-source", "input": map[string]any{"context": personal.Name}})
-		event := p.ShownEvent(who, envelope.Event{Tenant: tenant, RunID: id, Kind: envelope.KindCompleted, Payload: payload})
-		if !json.Valid(event.Payload) || strings.Contains(string(event.Payload), personal.Name) || strings.Contains(string(event.Payload), "private-source") {
-			t.Fatalf("private provenance in decoded event: %s", event.Payload)
+		payload, _ := json.Marshal(map[string]any{"project": personal.Name, "meta": wire.Meta(tag), "text": "finished private-source", "input": map[string]any{"context": personal.Name}})
+		shownJSON := wire.JSONOf(p.ShownEvent(who, event.Envelope{Tenant: tenant, Run: id, Type: event.TypeCompleted, Data: wire.BodyOf(event.TypeCompleted, payload)}))
+		if !json.Valid([]byte(shownJSON)) || strings.Contains(shownJSON, personal.Name) || strings.Contains(shownJSON, "private-source") {
+			t.Fatalf("private provenance in decoded event: %s", shownJSON)
 		}
 		after, _ := p.Runs.Get(tenant, id)
-		if after.Project != personal.Name || after.Tag().Meta[runs.MetaSources] != "private-source" {
+		if after.Project != personal.Name || wire.Meta(after.Tag())[runs.MetaSources] != "private-source" {
 			t.Fatal("projection changed immutable execution attribution")
 		}
 	})
@@ -97,7 +97,7 @@ func TestCompletedConversationPublicationRequiresCurrentPreview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help."}, "ada"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help."}, "ada"); err != nil {
 			t.Fatal(err)
 		}
 		th, _, err := p.Threads.Start(tenant, threads.Thread{Project: personal.Name, Channel: "general", Visibility: threads.Private}, threads.Message{By: "ada", Name: "Ada", Text: "a draft"}, time.Now())
@@ -105,14 +105,14 @@ func TestCompletedConversationPublicationRequiresCurrentPreview(t *testing.T) {
 			t.Fatal(err)
 		}
 		id := runtime.RunID(tenant, "publish-run")
-		tag := envelope.Tag{ID: "publish-run", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "draft", Meta: map[string]string{runs.MetaProject: personal.Name, runs.MetaThread: th.ID}, At: time.Now()}
+		tag := wire.NewEvent(wire.Raise{ID: "publish-run", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "draft", Context: map[string]string{runs.MetaProject: personal.Name, runs.MetaThread: th.ID}, At: time.Now()})
 		if err := p.Runs.Record(id, tag, 1); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.PreviewPlacement(t.Context(), who, th.ID, "Field", "general"); err == nil {
 			t.Fatal("active work could be published")
 		}
-		p.Runs.Observe(envelope.Event{Tenant: tenant, RunID: id, Kind: envelope.KindCompleted, Payload: []byte(`{"text":"finished"}`), At: time.Now()})
+		p.Runs.Observe(event.Envelope{Tenant: tenant, Run: id, Type: event.TypeCompleted, Data: wire.BodyOf(event.TypeCompleted, []byte(`{"text":"finished"}`)), Time: time.Now()})
 		preview, err := p.PreviewPlacement(t.Context(), who, th.ID, "Field", "general")
 		if err != nil {
 			t.Fatal(err)
@@ -162,7 +162,7 @@ func TestPrivateSourceHistoryPublishesOnlyReviewedSummaryCopy(t *testing.T) {
 		if _, err := p.Projects.Create(tenant, projects.Project{Name: "Field"}, projects.Writer{By: "ada"}, time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help.", Tools: []string{"source_search"}}, "ada"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help.", Tools: []string{"source_search"}}, "ada"); err != nil {
 			t.Fatal(err)
 		}
 		th, _, err := p.Threads.Start(tenant, threads.Thread{Project: "Field", Channel: "general", Visibility: threads.Private}, threads.Message{By: "ada", Name: "Ada", Text: "PRIVATE-SOURCE-MARKER"}, time.Now())
@@ -170,11 +170,11 @@ func TestPrivateSourceHistoryPublishesOnlyReviewedSummaryCopy(t *testing.T) {
 			t.Fatal(err)
 		}
 		id := runtime.RunID(tenant, "private-connected")
-		tag := envelope.Tag{ID: "private-connected", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "PRIVATE-SOURCE-MARKER", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: th.ID}, At: time.Now()}
+		tag := wire.NewEvent(wire.Raise{ID: "private-connected", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "PRIVATE-SOURCE-MARKER", Context: map[string]string{runs.MetaProject: "Field", runs.MetaThread: th.ID}, At: time.Now()})
 		if err := p.Runs.Record(id, tag, 1); err != nil {
 			t.Fatal(err)
 		}
-		p.Runs.Observe(envelope.Event{Tenant: tenant, RunID: id, Kind: envelope.KindCompleted, Payload: []byte(`{"text":"PRIVATE-SOURCE-MARKER"}`), At: time.Now()})
+		p.Runs.Observe(event.Envelope{Tenant: tenant, Run: id, Type: event.TypeCompleted, Data: wire.BodyOf(event.TypeCompleted, []byte(`{"text":"PRIVATE-SOURCE-MARKER"}`)), Time: time.Now()})
 		preview, err := p.PreviewPlacement(t.Context(), who, th.ID, "Field", "general")
 		if err != nil || !preview.SummaryRequired {
 			t.Fatalf("private source classification: %+v %v", preview, err)

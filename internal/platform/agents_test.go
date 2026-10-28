@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -34,7 +33,7 @@ import (
 func globexHelper(t *testing.T, p *platform.Platform) {
 	t.Helper()
 	field(t, p)
-	if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{
+	if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{
 		Name: "globex-helper", Model: "offline", Provider: "offline", SystemPrompt: "You know the Globex account.",
 		Description: "Globex renewals and billing",
 	}, "test"); err != nil {
@@ -133,7 +132,7 @@ func TestHousekeepingIsNotAskedWhereItRuns(t *testing.T) {
 	field(t, p)
 	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
 	tg := inProject("hk", "helper", "Globex")
-	tg.Origin = runs.OriginSystem
+	tg.Source = wire.SourceOf(runs.OriginSystem, tg.Tenant)
 	if _, err := p.Invoke(t.Context(), tg); err != nil {
 		t.Fatalf("housekeeping was refused: %v", err)
 	}
@@ -145,7 +144,8 @@ func TestAScheduleWhoseAgentStoppedBeingAvailableIsRefusedAndRaisedOnce(t *testi
 	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
 	for i, id := range []string{"tick-1", "tick-2"} {
 		tg := inProject(id, "helper", "Initech")
-		tg.Origin, tg.Meta["cron_schedule"] = "cron", "nightly"
+		tg.Source = wire.SourceOf("cron", tg.Tenant)
+		wire.SetMeta(&tg, "cron_schedule", "nightly")
 		if _, err := p.Invoke(t.Context(), tg); !errors.Is(err, platform.ErrNotAvailable) {
 			t.Fatalf("occurrence %d = %v", i, err)
 		}
@@ -300,7 +300,7 @@ func TestADefaultThatStoppedBeingAvailableIsNotPassedOver(t *testing.T) {
 func TestOnlyAgentsAvailableWhereAMessageIsPostedAreAskedToJoin(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
-	for _, spec := range []agentspec.AgentSpec{
+	for _, spec := range []wire.AgentSpec{
 		{Name: "biller", Model: "offline", Provider: "offline", SystemPrompt: "Bills.", Description: "billing and invoices"},
 	} {
 		if _, err := p.Agents.Create(t.Context(), tenant, spec, "test"); err != nil {
@@ -353,7 +353,7 @@ func TestEveryAgentThatJoinsAnswersAndNoTakersStartsNothing(t *testing.T) {
 // An agent whose spec is tagged_only is never asked.
 func TestATaggedOnlyAgentIsNeverAskedToJoin(t *testing.T) {
 	p := start(t, call.Limits{})
-	if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{
+	if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{
 		Name: "quiet", Model: "offline", Provider: "offline", SystemPrompt: "Quiet.", TaggedOnly: true,
 	}, "test"); err != nil {
 		t.Fatal(err)
@@ -369,7 +369,7 @@ func TestHomingAnAgentIsRefusedWhileSomethingElsewhereUsesIt(t *testing.T) {
 	field(t, p)
 	setAgents(t, p, "Initech", platform.AgentsInput{Enable: []string{}, Default: "helper"})
 	if err := p.Schedules.Add(cron.Schedule{Name: "nightly", Expression: "0 3 * * *", Agent: "helper", Text: "sum", Tenant: tenant,
-		Meta: map[string]string{runs.MetaProject: "Field"}}, platform.About{}); err != nil {
+		Context: map[string]string{runs.MetaProject: "Field"}}, platform.About{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.Alerts.AddRule(tenant, alerts.Rule{Name: "slow-helper", Kind: alerts.RunFailed, Severity: alerts.Warning, Agent: "helper", Project: "Initech", CreatedBy: "ada"}); err != nil {
@@ -744,7 +744,7 @@ func TestAClientsMessageIsOfferedOnlyToWhatTheClientMayRoute(t *testing.T) {
 
 func TestATurnCannotRunOpenItself(t *testing.T) {
 	p := start(t, call.Limits{})
-	if _, err := p.Invoke(t.Context(), envelope.Tag{ID: "a", Tenant: tenant, Agent: "*", Origin: "api", Text: "hi"}); !errors.Is(err, platform.ErrNotAvailable) {
+	if _, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: "a", Tenant: tenant, Agent: "*", Origin: "api", Text: "hi"})); !errors.Is(err, platform.ErrNotAvailable) {
 		t.Fatalf("a run of open itself = %v", err)
 	}
 }
@@ -757,7 +757,7 @@ func TestJoiningThroughAClientAsksOnlyItsAgents(t *testing.T) {
 	f := &fakes{}
 	p := startWith(t, f.config())
 	ctx := t.Context()
-	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{
 		Name: "releaser", Model: "offline", Provider: "offline", SystemPrompt: "x", Description: "Cuts releases and tags versions.",
 	}, "test"); err != nil {
 		t.Fatal(err)
@@ -792,7 +792,7 @@ func TestAMoveNeverLeavesWhatItsProjectsRunWithoutTheirAgent(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
 	w := projects.Writer{By: "ada", Govern: true}
-	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "scout", Model: "offline", Provider: "offline", SystemPrompt: "Scout."}, "test"); err != nil {
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "scout", Model: "offline", Provider: "offline", SystemPrompt: "Scout."}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	for _, in := range []platform.ProjectInput{{Name: "A"}, {Name: "B"}, {Name: "X", Parent: "A"}} {
@@ -812,7 +812,7 @@ func TestAMoveNeverLeavesWhatItsProjectsRunWithoutTheirAgent(t *testing.T) {
 	}
 	th := startThread(t, p, admin, platform.ThreadInput{Project: "X", Title: "Renewal", Default: "lead", Text: "hello", PostOnly: true}).Thread
 	if err := p.Schedules.Add(cron.Schedule{Name: "nightly", Expression: "0 3 * * *", Agent: "lead", Text: "sum", Tenant: tenant,
-		Meta: map[string]string{runs.MetaProject: "X"}}, platform.About{}); err != nil {
+		Context: map[string]string{runs.MetaProject: "X"}}, platform.About{}); err != nil {
 		t.Fatal(err)
 	}
 	move := func(want ...string) {

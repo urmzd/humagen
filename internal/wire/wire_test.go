@@ -7,18 +7,18 @@ import (
 	"go/token"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 )
 
 func TestText(t *testing.T) {
-	tag := NewInput(envelope.Tag{ID: "t1"}, "hello")
+	tag := NewEvent(Raise{ID: "t1", Text: "hello"})
 	if TextOf(tag) != "hello" || tag.ID != "t1" {
-		t.Fatalf("NewInput = %+v", tag)
+		t.Fatalf("NewEvent = %+v", tag)
 	}
 	SetText(&tag, "again")
 	if TextOf(tag) != "again" {
@@ -27,11 +27,11 @@ func TestText(t *testing.T) {
 }
 
 func TestSurfaceOf(t *testing.T) {
-	tag := envelope.Tag{Meta: map[string]string{
+	tag := NewEvent(Raise{Context: map[string]string{
 		"slack_event": "app_mention", "slack_channel": "C1", "slack_command": "/ask",
 		"github_event": "issue_comment", "github_owner": "o", "github_repo": "r",
 		"github_labels": "a,b", "github_author": "u", "cron_schedule": "daily",
-	}}
+	}})
 	SetGitHubHeadSHA(&tag, "abc")
 	want := Surface{
 		SlackEvent: "app_mention", SlackChannel: "C1", SlackCommand: "/ask",
@@ -41,22 +41,22 @@ func TestSurfaceOf(t *testing.T) {
 	if got := SurfaceOf(tag); got != want {
 		t.Fatalf("SurfaceOf = %+v, want %+v", got, want)
 	}
-	if got := SurfaceOf(envelope.Tag{}); got != (Surface{}) {
+	if got := SurfaceOf(event.Envelope{}); got != (Surface{}) {
 		t.Fatalf("SurfaceOf(empty) = %+v", got)
 	}
 }
 
 func TestKinds(t *testing.T) {
-	for k, want := range map[Kind][3]bool{
-		KindCompleted:   {true, false, false},
-		KindFailed:      {true, false, false},
-		KindStopped:     {true, false, false},
-		KindParked:      {false, true, false},
-		KindChildParked: {false, true, false},
-		KindAccepted:    {false, false, true},
-		KindStarted:     {false, false, true},
-		KindResumed:     {false, false, true},
-		KindText:        {false, false, false},
+	for k, want := range map[string][3]bool{
+		event.TypeCompleted:   {true, false, false},
+		event.TypeFailed:      {true, false, false},
+		event.TypeStopped:     {true, false, false},
+		event.TypeParked:      {false, true, false},
+		event.TypeChildParked: {false, true, false},
+		event.TypeAccepted:    {false, false, true},
+		event.TypeStarted:     {false, false, true},
+		event.TypeResumed:     {false, false, true},
+		event.TypeText:        {false, false, false},
 	} {
 		if got := [3]bool{IsTerminal(k), IsParked(k), IsActive(k)}; got != want {
 			t.Errorf("%s: terminal, parked, active = %v, want %v", k, got, want)
@@ -65,20 +65,20 @@ func TestKinds(t *testing.T) {
 }
 
 func TestUsageOf(t *testing.T) {
-	raw, _ := json.Marshal(payload.UsageCall{AccountingID: "a1"})
-	c, child, err := UsageOf(envelope.Event{Kind: KindUsageCall, Payload: raw})
+	raw, _ := json.Marshal(event.UsageCall{AccountingID: "a1"})
+	c, child, err := UsageOf(event.Envelope{Type: event.TypeUsageCall, Data: BodyOf(event.TypeUsageCall, raw)})
 	if err != nil || c == nil || child != nil || c.AccountingID != "a1" {
 		t.Fatalf("usage.call = %v %v %v", c, child, err)
 	}
-	raw, _ = json.Marshal(payload.UsageChild{AccountingID: "a2"})
-	c, child, err = UsageOf(envelope.Event{Kind: KindUsageChild, Payload: raw})
+	raw, _ = json.Marshal(event.UsageChild{AccountingID: "a2"})
+	c, child, err = UsageOf(event.Envelope{Type: event.TypeUsageChild, Data: BodyOf(event.TypeUsageChild, raw)})
 	if err != nil || c != nil || child == nil || child.AccountingID != "a2" {
 		t.Fatalf("usage.child = %v %v %v", c, child, err)
 	}
-	if _, _, err := UsageOf(envelope.Event{Kind: KindText}); err == nil {
+	if _, _, err := UsageOf(event.Envelope{Type: event.TypeText}); err == nil {
 		t.Fatal("a text delta read as usage")
 	}
-	if _, _, err := UsageOf(envelope.Event{Kind: KindUsageCall, Payload: []byte("{")}); err == nil {
+	if _, _, err := UsageOf(event.Envelope{Type: event.TypeUsageCall, Data: BodyOf(event.TypeUsageCall, []byte("{"))}); err == nil {
 		t.Fatal("a malformed usage body read")
 	}
 }
@@ -104,8 +104,14 @@ func TestSeam(t *testing.T) {
 		t.Fatalf("git ls-files: %v", err)
 	}
 	banned := map[string]bool{
-		"github.com/urmzd/fiber/pkg/registry":  true,
-		"github.com/urmzd/fiber/pkg/agentspec": true,
+		"github.com/urmzd/humagen/fiber/pkg/definition":   true,
+		"github.com/urmzd/humagen/fiber/pkg/event/legacy": true,
+	}
+	// Who else may import them: the store of definitions, and the one home
+	// of names from before the union.
+	allowed := map[string][]string{
+		"github.com/urmzd/humagen/fiber/pkg/definition":   {"pkg/agents/", "internal/legacy/"},
+		"github.com/urmzd/humagen/fiber/pkg/event/legacy": {"internal/legacy/"},
 	}
 	keys := map[string]bool{}
 	for _, k := range []string{MetaSlackEvent, MetaSlackChannel, MetaSlackCommand, MetaGitHubEvent, MetaGitHubOwner, MetaGitHubRepo, MetaGitHubLabels, MetaGitHubAuthor, MetaGitHubHeadSHA, MetaCronSchedule, MetaCronExpression} {
@@ -124,11 +130,11 @@ func TestSeam(t *testing.T) {
 		payloadName := ""
 		for _, im := range f.Imports {
 			path, _ := strconv.Unquote(im.Path.Value)
-			if banned[path] {
+			if banned[path] && !slices.ContainsFunc(allowed[path], func(dir string) bool { return strings.HasPrefix(p, dir) }) {
 				bad = append(bad, fset.Position(im.Pos()).String()+": imports "+path)
 			}
-			if path == "github.com/urmzd/fiber/pkg/agentrt/payload" {
-				payloadName = "payload"
+			if path == "github.com/urmzd/humagen/fiber/pkg/event" {
+				payloadName = "event"
 				if im.Name != nil {
 					payloadName = im.Name.Name
 				}
@@ -137,8 +143,8 @@ func TestSeam(t *testing.T) {
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.SelectorExpr:
-				if id, ok := x.X.(*ast.Ident); ok && payloadName != "" && id.Name == payloadName && (x.Sel.Name == "Decode" || x.Sel.Name == "Of") {
-					bad = append(bad, fset.Position(x.Pos()).String()+": payload."+x.Sel.Name)
+				if id, ok := x.X.(*ast.Ident); ok && payloadName != "" && id.Name == payloadName && (x.Sel.Name == "Decode") {
+					bad = append(bad, fset.Position(x.Pos()).String()+": event."+x.Sel.Name)
 				}
 			case *ast.BasicLit:
 				if x.Kind == token.STRING {

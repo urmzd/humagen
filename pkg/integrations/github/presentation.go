@@ -1,7 +1,7 @@
 package github
 
 import (
-	transport "github.com/urmzd/fiber/pkg/connectors/github"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 )
 

@@ -15,13 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/connector"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -45,7 +43,7 @@ import (
 // A surface never decides who a request is from. It offers the request to the
 // clients whose identity the request states, and the first whose own secret
 // verifies the bytes takes it. The tenant, the client and the agents it may
-// reach all come from that client's record, never from the payload.
+// reach all come from that client's record, never from the event.
 
 // Peer is one client's connector: a trigger, a sink and an actor behind a
 // signature-verifying HTTP handler.
@@ -104,9 +102,9 @@ type surface struct {
 	mu sync.RWMutex
 	// seats are oldest first, which is the order requests are offered in.
 	seats []*seat
-	// ctx and out are set while Ingest runs.
-	ctx context.Context
-	out chan<- envelope.Tag
+	// ctx and publish are set while Ingest runs.
+	ctx     context.Context
+	publish connector.Publish
 }
 
 var (
@@ -119,13 +117,13 @@ func (s *surface) Name() string { return s.name }
 
 // Ingest runs every client's trigger and stamps what each raises. It parks
 // until ctx is done, and clients added while it runs start at once.
-func (s *surface) Ingest(ctx context.Context, out chan<- envelope.Tag) error {
+func (s *surface) Ingest(ctx context.Context, publish connector.Publish) error {
 	s.mu.Lock()
-	if s.out != nil {
+	if s.publish != nil {
 		s.mu.Unlock()
 		return fmt.Errorf("platform: surface %s is already ingesting", s.name)
 	}
-	s.ctx, s.out = ctx, out
+	s.ctx, s.publish = ctx, publish
 	for _, st := range s.seats {
 		s.start(st)
 	}
@@ -133,7 +131,7 @@ func (s *surface) Ingest(ctx context.Context, out chan<- envelope.Tag) error {
 
 	<-ctx.Done()
 	s.mu.Lock()
-	s.ctx, s.out = nil, nil
+	s.ctx, s.publish = nil, nil
 	seats := slices.Clone(s.seats)
 	s.mu.Unlock()
 	for _, st := range seats {
@@ -149,7 +147,7 @@ func (s *surface) start(st *seat) {
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	st.cancel, st.done = cancel, make(chan struct{})
-	go s.pump(ctx, st, s.out)
+	go s.pump(ctx, st, s.publish)
 }
 
 func (st *seat) stop() {
@@ -160,72 +158,62 @@ func (st *seat) stop() {
 	<-st.done
 }
 
-// pump carries one client's tags to the platform, stamped with where they
+// pump carries one client's events to the platform, stamped with where they
 // came from.
-func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
+func (s *surface) pump(ctx context.Context, st *seat, publish connector.Publish) {
 	defer close(st.done)
-	tags := make(chan envelope.Tag)
-	failed := make(chan error, 1)
-	go func() { failed <- st.peer.Ingest(ctx, tags) }()
-	wait := func() {
-		if err := <-failed; err != nil && !errors.Is(err, context.Canceled) {
-			s.p.log.Error("platform: client trigger shutdown failed", "surface", s.name, "tenant", st.client.Tenant, "client", st.client.ID, "error", err)
-		}
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			wait()
-			return
-		case err := <-failed:
-			if err != nil && ctx.Err() == nil {
-				s.p.log.Error("platform: client trigger stopped", "surface", s.name, "tenant", st.client.Tenant, "client", st.client.ID, "error", err)
-			}
-			return
-		case tag := <-tags:
-			for _, tag := range s.stamp(ctx, st, tag) {
-				select {
-				case out <- tag:
-				case <-ctx.Done():
-					wait()
-					return
-				}
+	err := st.peer.Ingest(ctx, func(ctx context.Context, e event.Envelope) error {
+		for _, t := range s.stamp(ctx, st, e) {
+			if err := publish(ctx, t); err != nil {
+				return err
 			}
 		}
+		return nil
+	})
+	switch {
+	case err == nil, errors.Is(err, context.Canceled):
+	case ctx.Err() == nil:
+		s.p.log.Error("platform: client trigger stopped", "surface", s.name, "tenant", st.client.Tenant, "client", st.client.ID, "error", err)
+	default:
+		s.p.log.Error("platform: client trigger shutdown failed", "surface", s.name, "tenant", st.client.Tenant, "client", st.client.ID, "error", err)
 	}
 }
 
-// stamp binds a tag to the client that raised it. Whatever the connector or
-// the payload said about tenant, origin or client is overwritten here, and a
-// tag for an agent the client may not route to goes no further.
+// stamp binds an event to the client that raised it. Whatever the connector
+// or the payload said about tenant or client is overwritten here, an event
+// from another surface is dropped, and an event for an agent the client may
+// not route to goes no further.
 //
 // stamp also files the run: in the channel its Slack channel is bound to, or
 // in the client's home, written over whatever the connector said.
 //
-// A message that named no agent reaches stamp as untagged, and the place it
-// is filed in decides who answers it (untaggedFor). That default may be
-// open, and a connector may ask for it too: then every agent available where
-// the run is filed that the client may route to is asked whether it takes
-// the message, and each that does gets a tag of its own, so they answer in
-// the same thread side by side, each posted and streamed on its own. With
-// none that takes it, or no default anywhere, nothing goes further and the
-// message waits for a person.
+// A message that named no agent is untagged, and the place it is filed in
+// decides who answers it (untaggedFor). That default may be open: then every
+// agent available where the run is filed that the client may route to is
+// asked whether it takes the message, and each that does gets an event of its
+// own, so they answer in the same thread side by side, each posted and
+// streamed on its own. With none that takes it, or no default anywhere,
+// nothing goes further and the message waits for a person.
 //
 // The run acts for the person the client's team maps the surface's user to,
 // so it is held to what that person may do where it is filed (mayRaise),
 // and goes no further when they may not.
-func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) []envelope.Tag {
+func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []event.Envelope {
 	c := st.client
+	if wire.Origin(tag) != s.name {
+		s.p.log.Warn("platform: dropped an event from another surface", "surface", s.name, "client", c.ID, "event", tag.ID, "origin", wire.Origin(tag))
+		return nil
+	}
 	current, enabled := s.p.currentInstallation(c)
 	if !enabled {
 		return nil
 	}
 	from := wire.SurfaceOf(tag)
-	event := from.SlackEvent
+	kind := from.SlackEvent
 	if c.Surface == clients.GitHub {
-		event = from.GitHubEvent
+		kind = from.GitHubEvent
 	}
-	if !current.AllowsEvent(event) {
+	if !current.AllowsEvent(kind) {
 		return nil
 	}
 	if direction, bound := s.p.bridgeDirection(current, from.SlackChannel); bound && direction != projects.BridgeTwoWay {
@@ -248,21 +236,22 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) []envel
 
 	person := s.p.surfacePerson(c, tag)
 	if err := s.p.mayRaise(c, person, project, bound); err != nil {
-		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "person", person, "tag", tag.ID, "why", err.Error())
+		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "person", person, "event", tag.ID, "why", err.Error())
 		return nil
 	}
-	if tag.Agent == untagged {
-		if tag.Agent = s.p.untaggedFor(c, project, channel, from.SlackChannel); tag.Agent == "" {
-			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "tag", tag.ID)
+	agent := wire.AgentOf(tag)
+	if agent == "" {
+		if agent = s.p.untaggedFor(c, project, channel, from.SlackChannel); agent == "" {
+			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "event", tag.ID)
 			return nil
 		}
 	}
 	type answer struct{ agent, id, picked string }
-	who := []answer{{agent: tag.Agent, id: tag.ID}}
-	if tag.Agent == Open {
+	who := []answer{{agent: agent, id: tag.ID}}
+	if agent == Open {
 		joined, err := s.p.joinFor(ctx, c, s.p.clientPlace(c, project, channel, from.SlackChannel), wire.TextOf(tag))
 		if err != nil {
-			s.p.log.Info("platform: no agent took a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "tag", tag.ID, "why", err.Error())
+			s.p.log.Info("platform: no agent took a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "event", tag.ID, "why", err.Error())
 			return nil
 		}
 		who = who[:0]
@@ -270,29 +259,31 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) []envel
 			who = append(who, answer{agent: d.Agent, id: joinedTagID(tag.ID, d.Agent), picked: joinedReason(d)})
 		}
 	}
-	var out []envelope.Tag
+	var out []event.Envelope
 	for _, a := range who {
 		if !c.Routes(a.agent) {
-			s.p.log.Warn("platform: client may not route to that agent", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "agent", a.agent, "tag", a.id)
+			s.p.log.Warn("platform: client may not route to that agent", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "agent", a.agent, "event", a.id)
 			continue
 		}
-		meta := make(map[string]string, len(tag.Meta)+4)
-		for k, v := range tag.Meta {
-			meta[k] = v
-		}
-		meta[runs.MetaClient] = c.ID
+		t := wire.Clone(tag)
+		t.ID, t.Tenant = a.id, c.Tenant
+		wire.SetAgent(&t, a.agent)
+		wire.SetMeta(&t, runs.MetaClient, c.ID)
 		// Where the run is filed is the binding's: the channel a Slack
 		// channel is bound to, or else the client's home. What the connector
 		// said is overwritten, and runs.ProjectOf believes only this.
-		meta[runs.MetaProject], meta[runs.MetaChannel] = project, channel
+		wire.SetMeta(&t, runs.MetaProject, project)
+		wire.SetMeta(&t, runs.MetaChannel, channel)
 		if a.picked != "" {
-			meta[runs.MetaPicked] = a.picked
+			wire.SetMeta(&t, runs.MetaPicked, a.picked)
+		} else {
+			wire.DeleteMeta(&t, runs.MetaPicked)
 		}
-		t := tag
-		t.ID, t.Agent, t.Tenant, t.Origin, t.Meta = a.id, a.agent, c.Tenant, s.name, meta
 		// Who the run acts for is the person the client's team maps the
 		// surface's user to, whatever the connector said.
-		t.Actor.User = person
+		actor := wire.ActorOf(t)
+		actor.User = person
+		wire.SetActor(&t, actor)
 		out = append(out, t)
 	}
 	return out
@@ -330,12 +321,6 @@ func (p *Platform) byPolicy(tenant, subject string) auth.Principal {
 	}
 	return auth.Principal{Subject: subject, Name: subject, Tenant: tenant, Kind: auth.User, Roles: pol.Roles(authz.Identity{Subject: subject, Tenant: tenant})}.WithPolicy(pol)
 }
-
-// untagged is the default agent a client's in-process Slack connector is
-// given: a name no agent can have (fiber keeps it for control topics), so a
-// message that named no agent reaches stamp as one, and the place it is
-// filed in decides who answers, never the connector.
-const untagged = topic.ControlName
 
 // untaggedFor is who answers a message a client's in-process connector
 // raised naming no agent, where its run is filed: in a bound channel the
@@ -565,7 +550,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 }
 
 // Deliver gives a run's event to the client that carries it.
-func (s *surface) Deliver(ctx context.Context, to address.Address, e envelope.Event) error {
+func (s *surface) Deliver(ctx context.Context, to address.Address, e event.Envelope) error {
 	st, err := s.carrier(to, e)
 	if err != nil {
 		return err
@@ -577,17 +562,17 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e envelope.Ev
 	}
 
 	if current.Surface == clients.GitHub {
-		run, err := s.p.Runs.Get(e.Tenant, e.RunID)
+		run, err := s.p.Runs.Get(e.Tenant, e.Run)
 		if err == nil && s.p.RunRequiresReviewedSummary(ctx, run, s.p.RunPlace(e.Tenant, run).Project) {
 			return nil
 		}
 	}
 	if current.Surface == clients.Slack && len(to.Path) > 0 {
 		if _, bound := s.p.bridgeDirection(current, to.Path[0]); bound {
-			if !wire.IsTerminal(e.Kind) && !wire.IsParked(e.Kind) {
+			if !wire.IsTerminal(e.Type) && !wire.IsParked(e.Type) {
 				return nil
 			}
-			run, err := s.p.Runs.Get(e.Tenant, e.RunID)
+			run, err := s.p.Runs.Get(e.Tenant, e.Run)
 			if err != nil || !s.p.bridgeMayDeliver(ctx, current, to.Path[0], run) {
 				return nil
 			}
@@ -601,11 +586,11 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e envelope.Ev
 // raised the run when that client is on this surface. Otherwise it is the one
 // client in the run's tenant that serves the address and may route to the
 // run's agent. No such client, or more than one, and the event goes nowhere.
-func (s *surface) carrier(to address.Address, e envelope.Event) (*seat, error) {
+func (s *surface) carrier(to address.Address, e event.Envelope) (*seat, error) {
 	if e.Tenant == "" {
 		return nil, fmt.Errorf("%w: event has no tenant", connector.ErrUndeliverable)
 	}
-	if id := s.p.clientOf(e.Tenant, e.RunID); id != "" {
+	if id := s.p.clientOf(e.Tenant, e.Run); id != "" {
 		if st := s.seat(e.Tenant, id); st != nil {
 			return st, nil
 		}
@@ -650,7 +635,7 @@ func (s *surface) actor(tenant, client, agent string) *seat {
 
 // Webhook serves a surface's signed endpoint. What authorizes a request is a
 // client's own secret, independent of browser sessions and of anything in the
-// payload.
+// event.
 func (p *Platform) Webhook(name string) http.Handler {
 	if s, ok := p.surfaces[name]; ok {
 		return s
@@ -687,7 +672,7 @@ func (p *Platform) IngressHandler() http.Handler {
 
 // connectorTools gives a turn the actions of its tenant's clients, at most one
 // client per surface, and none of another tenant's.
-func (p *Platform) connectorTools(req runtime.Request, emit func(payload.Action) error) (agentrt.Tools, error) {
+func (p *Platform) connectorTools(req runtime.Request, emit func(event.Action) error) (native.Tools, error) {
 	reg := connector.NewRegistry()
 	client := p.clientOf(req.Tenant, req.RunID)
 	for _, surface := range clients.Surfaces() {
@@ -725,8 +710,9 @@ func (p *Platform) clientOf(tenant, runID string) string {
 type admitted struct {
 	person         string
 	operationMeta  map[string]string
-	actor          envelope.Actor
+	actor          event.Actor
 	tenant, client string
+	origin         string
 	place          Place
 }
 

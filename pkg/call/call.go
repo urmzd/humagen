@@ -25,10 +25,11 @@
 //
 // # Trust
 //
-// The edge travels in Tag.Meta, which triggers also write. EdgeOf therefore
-// honors lineage only on a tag whose Origin is this package's, and treats every
-// other tag as a root. The server must set Origin itself for that to hold, the
-// same way it sets Tenant.
+// The edge travels in the event's request context, which triggers also
+// write. EdgeOf therefore honors lineage only on an event whose origin (its
+// source's scheme) is this package's, and treats every other event as a root.
+// The server must set the source itself for that to hold, the same way it
+// sets Tenant.
 package call
 
 import (
@@ -41,15 +42,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/internal/wire"
 )
 
-// Origin marks a tag raised by an agent rather than by a trigger.
+// Origin marks an event raised by an agent rather than by a trigger.
 const Origin = "agent"
 
-// metaPrefix namespaces the edge inside Tag.Meta.
+// metaPrefix namespaces the edge inside the request context.
 const metaPrefix = "warp."
 
 const (
@@ -106,16 +107,18 @@ type Edge struct {
 // IsRoot reports whether the run was raised by a trigger rather than an agent.
 func (e Edge) IsRoot() bool { return e.Parent == "" }
 
-// EdgeOf reads a tag's edge. A tag raised by a trigger is a root, whatever its
-// Meta claims. A tag raised by an agent must carry a complete edge.
-func EdgeOf(t envelope.Tag) (Edge, error) {
-	if t.Origin != Origin {
+// EdgeOf reads an event's edge. An event raised by a trigger is a root,
+// whatever its context claims. An event raised by an agent must carry a
+// complete edge.
+func EdgeOf(t event.Envelope) (Edge, error) {
+	if wire.Origin(t) != Origin {
 		return Edge{Root: t.ID}, nil
 	}
+	meta := wire.Meta(t)
 	e := Edge{
-		Root:   t.Meta[metaRoot],
-		Parent: t.Meta[metaParent],
-		Mode:   Mode(t.Meta[metaMode]),
+		Root:   meta[metaRoot],
+		Parent: meta[metaParent],
+		Mode:   Mode(meta[metaMode]),
 	}
 	if e.Root == "" || e.Parent == "" {
 		return Edge{}, fmt.Errorf("%w: tag %q is from an agent but names no root or parent", ErrInvalid, t.ID)
@@ -123,14 +126,14 @@ func EdgeOf(t envelope.Tag) (Edge, error) {
 	if !e.Mode.valid() {
 		return Edge{}, fmt.Errorf("%w: tag %q has mode %q", ErrInvalid, t.ID, e.Mode)
 	}
-	depth, err := strconv.Atoi(t.Meta[metaDepth])
+	depth, err := strconv.Atoi(meta[metaDepth])
 	if err != nil || depth < 1 {
-		return Edge{}, fmt.Errorf("%w: tag %q has depth %q", ErrInvalid, t.ID, t.Meta[metaDepth])
+		return Edge{}, fmt.Errorf("%w: tag %q has depth %q", ErrInvalid, t.ID, meta[metaDepth])
 	}
 	e.Depth = depth
-	lease, err := strconv.ParseInt(t.Meta[metaLease], 10, 64)
+	lease, err := strconv.ParseInt(meta[metaLease], 10, 64)
 	if err != nil || lease < 0 {
-		return Edge{}, fmt.Errorf("%w: tag %q has lease %q", ErrInvalid, t.ID, t.Meta[metaLease])
+		return Edge{}, fmt.Errorf("%w: tag %q has lease %q", ErrInvalid, t.ID, meta[metaLease])
 	}
 	e.Lease = lease
 	return e, nil
@@ -189,70 +192,74 @@ type Request struct {
 	Lease int64
 }
 
-// New builds the tag that starts the child run, or refuses the call.
-func New(parent envelope.Tag, req Request, st State, lim Limits, at time.Time) (envelope.Tag, error) {
+// New builds the event that starts the child run, or refuses the call. The
+// child is one hop further from what started the tree than its parent.
+func New(parent event.Envelope, req Request, st State, lim Limits, at time.Time) (event.Envelope, error) {
 	switch {
 	case strings.TrimSpace(req.Key) == "":
-		return envelope.Tag{}, fmt.Errorf("%w: call has no key, which is its idempotency key", ErrInvalid)
+		return event.Envelope{}, fmt.Errorf("%w: call has no key, which is its idempotency key", ErrInvalid)
 	case req.Agent == "":
-		return envelope.Tag{}, fmt.Errorf("%w: call names no agent", ErrInvalid)
+		return event.Envelope{}, fmt.Errorf("%w: call names no agent", ErrInvalid)
 	case !req.Mode.valid():
-		return envelope.Tag{}, fmt.Errorf("%w: call has mode %q", ErrInvalid, req.Mode)
+		return event.Envelope{}, fmt.Errorf("%w: call has mode %q", ErrInvalid, req.Mode)
 	case req.Lease < 0:
-		return envelope.Tag{}, fmt.Errorf("%w: call has a negative lease", ErrInvalid)
+		return event.Envelope{}, fmt.Errorf("%w: call has a negative lease", ErrInvalid)
 	}
 	if req.Contract != nil {
 		if err := req.Contract.Validate(); err != nil {
-			return envelope.Tag{}, err
+			return event.Envelope{}, err
 		}
 	}
 	if req.Input != nil {
 		if req.Text != "" {
-			return envelope.Tag{}, fmt.Errorf("%w: use input or text, not both", ErrInvalid)
+			return event.Envelope{}, fmt.Errorf("%w: use input or text, not both", ErrInvalid)
 		}
 		if err := req.Input.Validate(); err != nil {
-			return envelope.Tag{}, err
+			return event.Envelope{}, err
 		}
 	}
 	edge, err := EdgeOf(parent)
 	if err != nil {
-		return envelope.Tag{}, err
+		return event.Envelope{}, err
 	}
 	if edge.Depth+1 > lim.MaxDepth {
-		return envelope.Tag{}, fmt.Errorf("%w: %q is at depth %d of %d", ErrDepth, parent.Agent, edge.Depth, lim.MaxDepth)
+		return event.Envelope{}, fmt.Errorf("%w: %q is at depth %d of %d", ErrDepth, wire.AgentOf(parent), edge.Depth, lim.MaxDepth)
 	}
 	if st.Calls >= lim.MaxFanOut {
-		return envelope.Tag{}, fmt.Errorf("%w: %q has made %d of %d calls", ErrFanOut, parent.Agent, st.Calls, lim.MaxFanOut)
+		return event.Envelope{}, fmt.Errorf("%w: %q has made %d of %d calls", ErrFanOut, wire.AgentOf(parent), st.Calls, lim.MaxFanOut)
 	}
 	if edge.Lease > 0 {
 		left := edge.Lease - st.Spent
 		if req.Lease == 0 {
-			return envelope.Tag{}, fmt.Errorf("%w: %q is metered, so its calls must carry a lease", ErrBudget, parent.Agent)
+			return event.Envelope{}, fmt.Errorf("%w: %q is metered, so its calls must carry a lease", ErrBudget, wire.AgentOf(parent))
 		}
 		if req.Lease > left {
-			return envelope.Tag{}, fmt.Errorf("%w: %q asked to grant %d with %d left", ErrBudget, parent.Agent, req.Lease, left)
+			return event.Envelope{}, fmt.Errorf("%w: %q asked to grant %d with %d left", ErrBudget, wire.AgentOf(parent), req.Lease, left)
 		}
 	}
 
-	child := wire.NewInput(envelope.Tag{
-		ID:     childID(parent.ID, req.Key),
-		Tenant: parent.Tenant,
-		Agent:  req.Agent,
-		Origin: Origin,
-		Actor:  envelope.Actor{ID: parent.Agent, Display: parent.Agent, Bot: true},
-		Meta:   map[string]string{},
-		At:     at,
-	}, req.Text)
-	if req.Mode == Handoff {
-		child.Source = parent.Source
-		child.Deliver = parent.Deliver
-		maps.Copy(child.Meta, parent.Meta)
+	agent := wire.AgentOf(parent)
+	raise := wire.Raise{
+		ID:      childID(parent.ID, req.Key),
+		Tenant:  parent.Tenant,
+		Origin:  Origin,
+		Agent:   req.Agent,
+		Text:    req.Text,
+		Actor:   event.Actor{ID: agent, Display: agent, Bot: true},
+		Context: map[string]string{},
+		At:      at,
+		Hops:    parent.Hops + 1,
 	}
-	child.Meta[metaRoot] = edge.Root
-	child.Meta[metaParent] = parent.ID
-	child.Meta[metaDepth] = strconv.Itoa(edge.Depth + 1)
-	child.Meta[metaMode] = string(req.Mode)
-	child.Meta[metaLease] = strconv.FormatInt(req.Lease, 10)
+	if req.Mode == Handoff {
+		raise.Channel = parent.Channel
+		maps.Copy(raise.Context, wire.Meta(parent))
+	}
+	raise.Context[metaRoot] = edge.Root
+	raise.Context[metaParent] = parent.ID
+	raise.Context[metaDepth] = strconv.Itoa(edge.Depth + 1)
+	raise.Context[metaMode] = string(req.Mode)
+	raise.Context[metaLease] = strconv.FormatInt(req.Lease, 10)
+	child := wire.NewEvent(raise)
 	return child, nil
 }
 
@@ -273,3 +280,7 @@ func childID(parentID, key string) string {
 // TagID is the deterministic identity of a call within its parent's run.
 // Hosts use it to join an accepted call before resolving its references again.
 func TagID(parentID, key string) string { return childID(parentID, key) }
+
+func metaOf(e event.Envelope) map[string]string { return wire.Meta(e) }
+
+func originOf(e event.Envelope) string { return wire.Origin(e) }

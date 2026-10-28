@@ -8,8 +8,8 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -17,11 +17,11 @@ import (
 
 func TestAnExtensionProviderRunsAnAgent(t *testing.T) {
 	model := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("from the house model")}}
-	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{
-		"house": func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil },
+	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
+		"house": func(native.Spec) (saigetypes.Provider, error) { return model, nil },
 	}}})
 	ctx := t.Context()
-	spec := agentspec.AgentSpec{Name: "housed", Provider: "house", Model: "h1", SystemPrompt: "Answer."}
+	spec := wire.AgentSpec{Name: "housed", Provider: "house", Model: "h1", SystemPrompt: "Answer."}
 	if _, err := p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
 		t.Fatalf("a spec naming an extension provider was refused: %v", err)
 	}
@@ -35,8 +35,8 @@ func TestAnExtensionProviderRunsAnAgent(t *testing.T) {
 }
 
 func TestAProviderNameIsDeclaredOnce(t *testing.T) {
-	fn := func(agentrt.Spec) (saigetypes.Provider, error) { return nil, errors.New("unused") }
-	a := platform.Extensions{Providers: map[string]agentrt.ProviderFunc{"house": fn}}
+	fn := func(native.Spec) (saigetypes.Provider, error) { return nil, errors.New("unused") }
+	a := platform.Extensions{Providers: map[string]native.ProviderFunc{"house": fn}}
 	if _, err := a.Merge(a); err == nil {
 		t.Fatal("the same provider from a file and an option merged")
 	}

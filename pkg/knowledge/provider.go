@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
 )
 
 // Provider imports one explicitly selected resource with the current reader's credential.

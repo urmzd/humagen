@@ -295,6 +295,23 @@ func (s *Store) Retire(_ context.Context, tenant, name, by string) error {
 	return nil
 }
 
+// Revive lifts a name's retirement, so new versions may be written under it
+// again. Every version written before stays as it was: a revived agent
+// continues its versions rather than starting over.
+func (s *Store) Revive(_ context.Context, tenant, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.entry(tenant, name, false)
+	if e == nil || e.retired == nil {
+		return nil
+	}
+	if err := s.retired.Delete(tenant, name); err != nil {
+		return fmt.Errorf("agents: lift retirement: %w", err)
+	}
+	e.retired = nil
+	return nil
+}
+
 // Retired reports who retired a name, and whether it is retired.
 func (s *Store) Retired(tenant, name string) (Retirement, bool) {
 	s.mu.RLock()

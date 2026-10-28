@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -87,11 +86,11 @@ func questionKey(run, id string) string { return "question:" + run + ":" + id }
 // questionParts maps a question's kind to its part and message kinds.
 func questionParts(kind string) (inbox.PartType, inbox.Kind, bool) {
 	switch kind {
-	case payload.QuestionApproval:
+	case event.QuestionApproval:
 		return inbox.PartApproval, inbox.KindApproval, true
-	case payload.QuestionChoice:
+	case event.QuestionChoice:
 		return inbox.PartChoice, inbox.KindClarification, true
-	case payload.QuestionReply:
+	case event.QuestionReply:
 		return inbox.PartReply, inbox.KindClarification, true
 	}
 	return "", "", false
@@ -148,25 +147,25 @@ func (p *Platform) requesterNames(run runs.Run) []string {
 }
 
 // resolveRequester is every name a tag's actor goes by now.
-func (p *Platform) resolveRequester(tenant string, tag envelope.Tag, client string) []string {
-	id := strings.TrimSpace(tag.Actor.ID)
+func (p *Platform) resolveRequester(tenant string, tag event.Envelope, client string) []string {
+	id := strings.TrimSpace(wire.ActorOf(tag).ID)
 	if id == "" {
 		return nil
 	}
 	out := []string{id}
-	if tag.Origin != "" {
-		out = append(out, tag.Origin+":"+id)
+	if wire.Origin(tag) != "" {
+		out = append(out, wire.Origin(tag)+":"+id)
 	}
 	// The person the run acts for asked for it, by whatever name.
-	if u := strings.TrimSpace(tag.Actor.User); u != "" && !slices.Contains(out, u) {
+	if u := strings.TrimSpace(wire.ActorOf(tag).User); u != "" && !slices.Contains(out, u) {
 		out = append(out, u)
 	}
-	if tag.Origin != string(clients.Slack) {
+	if wire.Origin(tag) != string(clients.Slack) {
 		return out
 	}
 	team := ""
-	if tag.Source.Connector == string(clients.Slack) {
-		team = tag.Source.Workspace
+	if src := wire.SurfaceAddress(tag); src.Connector == string(clients.Slack) {
+		team = src.Workspace
 	}
 	if team == "" && client != "" {
 		if c, err := p.Clients.Get(tenant, client); err == nil {
@@ -242,13 +241,13 @@ type addressee struct {
 // addressOf decides who a question is for: the people who may answer it,
 // narrowed to whom the agent asked when that is one of them. to says whom
 // that is, in a way a surface can say it.
-func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Question) (audience, excluded []string, to addressee) {
+func (p *Platform) addressOf(ctx context.Context, run runs.Run, q event.Question) (audience, excluded []string, to addressee) {
 	rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
 	if err != nil {
 		p.log.Warn("platform: a question's rules could not be read, so it is addressed to nobody", "run", run.ID, "question", q.ID, "error", err)
 		return []string{nobody}, nil, addressee{kind: ForNobody}
 	}
-	if q.Kind != payload.QuestionApproval {
+	if q.Kind != event.QuestionApproval {
 		// A reply or a choice steers the run, and its callers, so one whose
 		// answer may reach a person's own credential asks them alone
 		// (maySteer), even when it asks the experts: an expert's words
@@ -308,7 +307,7 @@ func addresseeOf(audience []string) addressee {
 // asked_of "sme:<topic>" names the experts for the topic, and "sme" any
 // expert, of the nearest project on the run's chain that lists one. asked is
 // false for a question that asks someone else.
-func (p *Platform) expertsAsked(run runs.Run, q payload.Question) (experts []string, topic string, asked bool) {
+func (p *Platform) expertsAsked(run runs.Run, q event.Question) (experts []string, topic string, asked bool) {
 	who := strings.TrimSpace(q.AskedOf)
 	topic, ok := strings.CutPrefix(who, threads.SMEName+":")
 	switch {
@@ -389,7 +388,7 @@ func expertAudience(allowed, experts []string) []string {
 
 // audienceOf is who a question is addressed to: allowed, narrowed to whom
 // the agent asked when that is one of them, or whom it asked when anyone may.
-func audienceOf(allowed []string, q payload.Question) (audience []string) {
+func audienceOf(allowed []string, q event.Question) (audience []string) {
 	var hint []string
 	if who := strings.TrimSpace(q.AskedOf); who != "" {
 		hint = []string{who}
@@ -419,7 +418,7 @@ func audienceOf(allowed []string, q payload.Question) (audience []string) {
 // returns its message. via is the run whose stream showed it, when that is
 // not the run that asked. A question no person answers is inbox.ErrNotFound,
 // and a message the inbox could not keep is the inbox's error.
-func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Question, via string) (inbox.Message, error) {
+func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q event.Question, via string) (inbox.Message, error) {
 	if _, _, ok := questionParts(q.Kind); !ok || q.ID == "" {
 		return inbox.Message{}, fmt.Errorf("%w: question %q is not one a person answers", inbox.ErrNotFound, q.ID)
 	}
@@ -462,7 +461,7 @@ func (p *Platform) askedMessage(ctx context.Context, run runs.Run, questionID st
 	}
 	// The event announces the question a moment before the runtime's
 	// record of it is written, so the run's own report is used first.
-	q, pending := payload.Question{}, false
+	q, pending := event.Question{}, false
 	if run.Question != nil && run.Question.ID == questionID {
 		q, pending = *run.Question, true
 	} else if got, ok, err := p.rt.PendingQuestion(ctx, run.Tenant, run.ID); err == nil && ok {
@@ -479,7 +478,7 @@ func (p *Platform) askedMessage(ctx context.Context, run runs.Run, questionID st
 
 // questionMessage is the inbox message a question is raised as, addressed
 // to the people it is for, and whom that is.
-func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q payload.Question, via string) (inbox.Message, addressee) {
+func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q event.Question, via string) (inbox.Message, addressee) {
 	partType, kind, _ := questionParts(q.Kind)
 	part := &inbox.QuestionPart{
 		Run: run.ID, ID: q.ID, Kind: q.Kind, Agent: run.Agent, Prompt: q.Prompt, Options: slices.Clone(q.Options),
@@ -502,8 +501,8 @@ func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q payload.
 		}
 	}
 	switch {
-	case q.Kind == payload.QuestionApproval:
-		part.Default = payload.DecisionDeny
+	case q.Kind == event.QuestionApproval:
+		part.Default = event.DecisionDeny
 	case q.Default != nil && q.Default.Choice != "":
 		part.Default = q.Default.Choice
 	case q.Default != nil:
@@ -524,7 +523,7 @@ func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q payload.
 	}
 	subject := part.Agent + asks + headline(q.Prompt, maxQuestionSubject)
 	severity := inbox.Info
-	if q.Kind == payload.QuestionApproval {
+	if q.Kind == event.QuestionApproval {
 		severity = inbox.Warning
 		if q.Tool != nil {
 			subject = part.Agent + " wants to run " + q.Tool.Name
@@ -576,7 +575,7 @@ const expiryGrace = 50 * time.Millisecond
 // run is woken only if it is still waiting on that question. Waking a run
 // early would hold its place in the queue past the answer that should wake
 // it, so it is never enqueued ahead of time.
-func (p *Platform) wakeAtExpiry(tenant, runID string, q payload.Question) {
+func (p *Platform) wakeAtExpiry(tenant, runID string, q event.Question) {
 	if q.ExpiresAt.IsZero() || p.queue == nil {
 		return
 	}
@@ -621,18 +620,18 @@ func (p *Platform) stopWakers() {
 // observeQuestion folds the lifecycle events that concern questions into the
 // inbox: a question raised, a question answered, and a run that ended while
 // one was open.
-func (p *Platform) observeQuestion(ctx context.Context, e envelope.Event) {
-	switch e.Kind {
-	case wire.KindParked:
+func (p *Platform) observeQuestion(ctx context.Context, e event.Envelope) {
+	switch e.Type {
+	case event.TypeParked:
 		body, err := wire.LifecycleOf(e)
 		if err != nil || body.Question == nil {
 			return
 		}
-		if run, err := p.Runs.Get(e.Tenant, e.RunID); err == nil {
+		if run, err := p.Runs.Get(e.Tenant, e.Run); err == nil {
 			// What could not be kept is logged where it was tried.
 			_, _ = p.raiseQuestion(ctx, run, *body.Question, "")
 		}
-	case wire.KindChildParked:
+	case event.TypeChildParked:
 		// A run waiting on a run it called shows that run's question. The
 		// question is the child's, and so is its message.
 		cq, err := wire.ChildQuestionOf(e)
@@ -640,21 +639,21 @@ func (p *Platform) observeQuestion(ctx context.Context, e envelope.Event) {
 			return
 		}
 		if child, err := p.Runs.Get(e.Tenant, cq.RunID); err == nil {
-			_, _ = p.raiseQuestion(ctx, child, cq.Question, e.RunID)
+			_, _ = p.raiseQuestion(ctx, child, cq.Question, e.Run)
 		}
-	case wire.KindResumed:
+	case event.TypeResumed:
 		p.answers.Lock()
 		defer p.answers.Unlock()
 		body, err := wire.LifecycleOf(e)
 		if err != nil || body.Answer == nil {
 			return
 		}
-		p.settleQuestion(e.Tenant, e.RunID, body.Answer.QuestionID, outcomeOf(*body.Answer, p.now()), "")
+		p.settleQuestion(e.Tenant, e.Run, body.Answer.QuestionID, outcomeOf(*body.Answer, p.now()), "")
 	}
 }
 
 // outcomeOf is how an answer settles its part.
-func outcomeOf(a payload.Answer, now time.Time) inbox.Outcome {
+func outcomeOf(a event.Answer, now time.Time) inbox.Outcome {
 	at := a.At
 	if at.IsZero() {
 		at = now
@@ -664,7 +663,7 @@ func outcomeOf(a payload.Answer, now time.Time) inbox.Outcome {
 	case a.Expired:
 		o.Action, o.By = OutcomeExpired, "system"
 		switch {
-		case a.Decision == payload.DecisionDeny:
+		case a.Decision == event.DecisionDeny:
 			o.Note = "Nobody answered in time, so it was denied"
 		case a.Choice != "":
 			o.Note = "Nobody answered in time, so it went with " + a.Choice
@@ -673,12 +672,12 @@ func outcomeOf(a payload.Answer, now time.Time) inbox.Outcome {
 		default:
 			o.Note = "Nobody answered in time"
 		}
-	case a.Decision == payload.DecisionApprove:
+	case a.Decision == event.DecisionApprove:
 		o.Action = ActApprove
 		if len(bytes.TrimSpace(a.Arguments)) > 0 {
 			o.Note = strings.TrimSpace("With edited arguments. " + a.Note)
 		}
-	case a.Decision == payload.DecisionDeny:
+	case a.Decision == event.DecisionDeny:
 		o.Action = ActDeny
 	case a.Choice != "":
 		o.Action, o.Note = ActChoose, a.Choice
@@ -735,33 +734,33 @@ func (p *Platform) settleQuestionsOf(run runs.Run) {
 
 // questionOf is the question a part holds, as the runtime checks an answer
 // against it.
-func questionOf(q inbox.QuestionPart) payload.Question {
-	out := payload.Question{ID: q.ID, Kind: q.Kind, Prompt: q.Prompt, Options: q.Options}
+func questionOf(q inbox.QuestionPart) event.Question {
+	out := event.Question{ID: q.ID, Kind: q.Kind, Prompt: q.Prompt, Options: q.Options}
 	if q.Tool != nil {
-		out.Tool = &payload.QuestionTool{Name: q.Tool.Name, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema, ActsForPerson: q.Tool.ActsForPerson}
+		out.Tool = &event.QuestionTool{Name: q.Tool.Name, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema, ActsForPerson: q.Tool.ActsForPerson}
 	}
 	return out
 }
 
 // answerOf turns what a person said into the runtime's answer, and checks it
 // fits the question before anything is recorded.
-func answerOf(q inbox.QuestionPart, a QuestionAnswer) (payload.Answer, error) {
-	var out payload.Answer
+func answerOf(q inbox.QuestionPart, a QuestionAnswer) (event.Answer, error) {
+	var out event.Answer
 	if args := bytes.TrimSpace(a.Arguments); len(args) == 0 || string(args) == "null" {
 		a.Arguments = nil
 	}
 	switch {
-	case q.Kind == payload.QuestionApproval && (a.Action == ActApprove || a.Action == ActDeny):
-		out = payload.Answer{Decision: a.Action, Arguments: a.Arguments, Note: a.Note}
-	case q.Kind == payload.QuestionChoice && a.Action == ActChoose:
-		out = payload.Answer{Choice: a.Choice, Note: a.Note}
-	case q.Kind == payload.QuestionReply && a.Action == ActReply:
+	case q.Kind == event.QuestionApproval && (a.Action == ActApprove || a.Action == ActDeny):
+		out = event.Answer{Decision: a.Action, Arguments: a.Arguments, Note: a.Note}
+	case q.Kind == event.QuestionChoice && a.Action == ActChoose:
+		out = event.Answer{Choice: a.Choice, Note: a.Note}
+	case q.Kind == event.QuestionReply && a.Action == ActReply:
 		text := a.Text
 		if text == "" {
 			// The mailbox's reply control sends its words as a note.
 			text = a.Note
 		}
-		out = payload.Answer{Text: text}
+		out = event.Answer{Text: text}
 	default:
 		return out, fmt.Errorf("%w: a %s question does not take %q", ErrAction, q.Kind, a.Action)
 	}
@@ -843,7 +842,7 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.Qu
 func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.QuestionPart, a QuestionAnswer, by string) error {
 	args := bytes.TrimSpace(a.Arguments)
 	edited := len(args) > 0 && string(args) != "null"
-	if q.Kind == payload.QuestionApproval && strings.TrimSpace(a.Note) == "" && !edited {
+	if q.Kind == event.QuestionApproval && strings.TrimSpace(a.Note) == "" && !edited {
 		return nil
 	}
 	run, err := p.Runs.Get(tenant, q.Run)
@@ -855,7 +854,7 @@ func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.Question
 		return nil
 	case person == nobody:
 		return fmt.Errorf("%w: the run that called this one cannot be read, so nobody may answer what it asks", ErrForbidden)
-	case q.Kind == payload.QuestionApproval:
+	case q.Kind == event.QuestionApproval:
 		name := p.NameOf(tenant, person)
 		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may edit its calls or add a note the agent reads; approve or deny it as asked", ErrForbidden, name, name)
 	default:
@@ -903,7 +902,7 @@ func (p *Platform) checkAnswer(ctx context.Context, who auth.Principal, reader i
 	if !p.readerSeer(who, reader).Message(m) {
 		return fmt.Errorf("%w: message %q", inbox.ErrNotFound, m.ID)
 	}
-	if q.Kind == payload.QuestionApproval {
+	if q.Kind == event.QuestionApproval {
 		// Checked here, from the run as it stands, not only from whom the
 		// message was addressed to when it was raised: the runtime does not
 		// know a requester by the names a client maps them to, nor who
@@ -982,7 +981,7 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 	// because the runtime wakes the run, and the call it lets through checks
 	// for the note. It is dropped again unless this approval is the one
 	// recorded.
-	approved := ans.Decision == payload.DecisionApprove && p.noteApprovedCall(who.Tenant, q, ans)
+	approved := ans.Decision == event.DecisionApprove && p.noteApprovedCall(who.Tenant, q, ans)
 	got, first, err := p.rt.Answer(actx, req)
 	// A question answered the moment it is announced may not be recorded yet.
 	// It is asked again for a short while, never past the request. The note
@@ -996,7 +995,7 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 			got, first, err = p.rt.Answer(actx, req)
 		}
 	}
-	if approved && (err != nil || got.Decision != payload.DecisionApprove) {
+	if approved && (err != nil || got.Decision != event.DecisionApprove) {
 		p.dropApprovedCall(who.Tenant, q)
 	}
 	switch {

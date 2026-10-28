@@ -28,19 +28,19 @@ import (
 	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/mcptools"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"go.yaml.in/yaml/v4"
 
-	"github.com/urmzd/fiber/pkg/attachment"
+	"github.com/urmzd/humagen/fiber/pkg/attachment"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -596,9 +596,9 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		written bool
 	}
 	shapes := map[string]shape{
-		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
-		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
-		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
+		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
+		"AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
+		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
@@ -660,21 +660,25 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ClientIdentity": {typ: clients.Identity{}}, "SecretRef": {typ: clients.SecretRef{}}, "SecretInput": {typ: clients.SecretInput{}},
 		"SlackCommand": {typ: clients.Command{}}, "SlackOptions": {typ: clients.SlackOptions{}}, "GitHubOptions": {typ: clients.GitHubOptions{}},
 		"ClientView": {typ: clientView{}}, "ClientCaps": {typ: clients.Caps{}}, "ClientInput": {typ: clientBody{}, written: true},
-		"TextPayload": {typ: payload.Text{}}, "ThinkingPayload": {typ: payload.Thinking{}}, "ToolCallPayload": {typ: payload.ToolCall{}},
-		"ToolDonePayload": {typ: payload.ToolDone{}}, "Provenance": {typ: payload.Provenance{}}, "CitationPayload": {typ: runs.CitationPayload{}},
-		"LifecyclePayload": {typ: payload.Lifecycle{}}, "Question": {typ: payload.Question{}}, "Answer": {typ: struct {
-			payload.Answer
+		"TextPayload": {typ: event.Text{}}, "ThinkingPayload": {typ: event.Thinking{}}, "ToolCallPayload": {typ: event.ToolCall{}},
+		"ToolDonePayload": {typ: event.ToolDone{}}, "Provenance": {typ: event.Provenance{}}, "CitationPayload": {typ: runs.CitationPayload{}},
+		"LifecyclePayload": {typ: v1Lifecycle{}}, "Question": {typ: event.Question{}}, "Answer": {typ: struct {
+			event.Answer
 			// What a route hands out beside the subject (shownEvent).
 			ByName string `json:"by_name,omitempty"`
 		}{}},
-		"QuestionTool": {typ: payload.QuestionTool{}}, "ChildQuestion": {typ: payload.ChildQuestion{}}, "ActAs": {typ: platform.ActAs{}}, "ActionPayload": {typ: payload.Action{}},
-		"StoppedPayload": {typ: payload.Stopped{}}, "Cost": {typ: payload.Cost{}}, "Usage": {typ: payload.Usage{}},
-		"ContextUsage": {typ: payload.ContextUsage{}}, "RunUsage": {typ: payload.RunUsage{}},
-		"UsageCallPayload": {typ: payload.UsageCall{}}, "UsageChildPayload": {typ: payload.UsageChild{}},
+		"QuestionTool": {typ: event.QuestionTool{}}, "ChildQuestion": {typ: event.ChildParked{}}, "ActAs": {typ: platform.ActAs{}}, "ActionPayload": {typ: event.Action{}},
+		"StoppedPayload": {typ: struct {
+			event.Stopped
+			// V1Of adds the run's revision to a lifecycle payload.
+			Rev int `json:"rev,omitempty"`
+		}{}}, "Cost": {typ: event.Cost{}}, "Usage": {typ: event.Usage{}},
+		"ContextUsage": {typ: event.ContextUsage{}}, "RunUsage": {typ: event.RunUsage{}},
+		"UsageCallPayload": {typ: event.UsageCall{}}, "UsageChildPayload": {typ: event.UsageChild{}},
 		"PolicyCost": {typ: policy.Cost{}}, "UsageSpend": {typ: usage.Spend{}}, "SpendMeasure": {typ: spendMeasure{}},
-		"AnalyticsUsage": {typ: runs.GroupUsage{}}, "UsageCallEvent": {typ: envelope.Event{}},
+		"AnalyticsUsage": {typ: runs.GroupUsage{}}, "UsageCallEvent": {typ: legacy.V1Event{}},
 		// Every variant of the event union is the same Go struct.
-		"TextDeltaEvent": {typ: envelope.Event{}}, "RunCompletedEvent": {typ: envelope.Event{}}, "ActionTakenEvent": {typ: envelope.Event{}},
+		"TextDeltaEvent": {typ: legacy.V1Event{}}, "RunCompletedEvent": {typ: legacy.V1Event{}}, "ActionTakenEvent": {typ: legacy.V1Event{}},
 	}
 	schemas := obj(obj(s.doc["components"])["schemas"])
 	for name, sh := range shapes {
@@ -709,13 +713,21 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	for _, v := range obj(schemas["EventKind"])["enum"].([]any) {
 		kinds = append(kinds, v.(string))
 	}
-	declared := []string{
-		string(envelope.KindText), string(envelope.KindThinking), string(envelope.KindToolCall), string(envelope.KindToolDone),
-		string(envelope.KindCitation), string(envelope.KindAccepted), string(envelope.KindStarted), string(envelope.KindParked),
-		string(envelope.KindResumed), string(envelope.KindCompleted), string(envelope.KindFailed), string(envelope.KindChildParked), string(envelope.KindStopped), string(envelope.KindActionTaken),
-		string(envelope.KindUsageCall), string(envelope.KindUsageChild),
-		string(envelope.KindAgentCreated), string(envelope.KindAgentRevised), string(envelope.KindAgentDeleted),
+	var declared []string
+	for _, typ := range []string{
+		event.TypeText, event.TypeThinking, event.TypeToolCall, event.TypeToolDone,
+		event.TypeCitation, event.TypeAccepted, event.TypeStarted, event.TypeParked,
+		event.TypeResumed, event.TypeCompleted, event.TypeFailed, event.TypeChildParked, event.TypeStopped, event.TypeAction,
+		event.TypeUsageCall, event.TypeUsageChild,
+	} {
+		kind, ok := legacy.KindOf(typ)
+		if !ok {
+			t.Fatalf("%s has no kind on the API", typ)
+		}
+		declared = append(declared, kind)
 	}
+	// The agent kinds are declared and not published.
+	declared = append(declared, "control.created", "control.revised", "control.deleted")
 	if !slices.Equal(kinds, declared) {
 		t.Errorf("EventKind is %v, the runtime declares %v", kinds, declared)
 	}
@@ -895,11 +907,11 @@ func (c *contract) settled(tok, id string) reply {
 func TestResponsesMatchTheSpec(t *testing.T) {
 	// An agent on the "ollama" provider asks a person, so a run can park on
 	// a question here. Every other agent is offline.
-	f := newFixtureWith(t, platform.Config{AgentOptions: []agentrt.Option{
-		agentrt.WithProvider(agentrt.ProviderOpenAI, func(agentrt.Spec) (saigetypes.Provider, error) {
+	f := newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
+		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
-		agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) {
+		native.WithProvider(native.ProviderOllama, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
 				agenttest.ToolCallResponse("call-ask", "ask_person", map[string]any{"question": "Which colour?", "options": []any{"red", "blue"}}),
 				agenttest.TextResponse("Red."),
@@ -1505,7 +1517,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/ghost", `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`, http.StatusNotFound)
 	// One the platform file declares is changed and deleted in the file.
 	if _, err := f.p.Schedules.Declare(cron.Schedule{Name: "from-file", Expression: "41 8 * * 1", Agent: "helper", Text: "Recap.", Tenant: "acme",
-		Meta: map[string]string{runs.MetaProject: "Launch", platform.MetaDeliver: platform.DeliverProject}}, "", time.Now()); err != nil {
+		Context: map[string]string{runs.MetaProject: "Launch", platform.MetaDeliver: platform.DeliverProject}}, "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if listed := c.call(acme, "GET", "/api/schedules", "/api/schedules", "", http.StatusOK); !strings.Contains(string(listed.raw), `"managed":"file"`) {
@@ -1826,7 +1838,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "GET", placementRoute, "/api/threads/"+draftID+"/placement", "", http.StatusBadRequest)
 	activeDraft := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"preview only"}`, http.StatusCreated)
 	activeID := obj(activeDraft.field("thread"))["id"].(string)
-	activeTag := envelope.Tag{ID: "placement-active", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "active", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: activeID}, At: time.Now()}
+	activeTag := wire.NewEvent(wire.Raise{ID: "placement-active", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "active", Context: map[string]string{runs.MetaProject: "Field", runs.MetaThread: activeID}, At: time.Now()})
 	if err := c.f.p.Runs.Record(runtime.RunID("acme", activeTag.ID), activeTag, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -2001,13 +2013,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatal(err)
 	}
 	learningID := runtime.RunID("acme", "contract-learning")
-	if err := f.p.Runs.Record(learningID, envelope.Tag{ID: "contract-learning", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "Review the plan", Meta: map[string]string{runs.MetaThread: learningThread.ID}, At: time.Now()}, 1); err != nil {
+	if err := f.p.Runs.Record(learningID, wire.NewEvent(wire.Raise{ID: "contract-learning", Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, Text: "Review the plan", Context: map[string]string{runs.MetaThread: learningThread.ID}, At: time.Now()}), 1); err != nil {
 		t.Fatal(err)
 	}
-	learningAction, _ := payload.Encode(payload.Action{Name: platform.ToolOutcome, Data: json.RawMessage(`{"kind":"decision","summary":"Use the reviewed plan","decisions":["Keep the Tuesday launch"]}`)})
-	f.p.Runs.Observe(envelope.Event{Tenant: "acme", RunID: learningID, Kind: envelope.KindActionTaken, Payload: learningAction, At: time.Now()})
-	learningEnd, _ := payload.Encode(payload.Lifecycle{Text: "The decision is ready."})
-	f.p.Runs.Observe(envelope.Event{Tenant: "acme", RunID: learningID, Kind: envelope.KindCompleted, Payload: learningEnd, At: time.Now()})
+	learningAction, _ := json.Marshal(event.Action{Name: platform.ToolOutcome, Data: json.RawMessage(`{"kind":"decision","summary":"Use the reviewed plan","decisions":["Keep the Tuesday launch"]}`)})
+	f.p.Runs.Observe(event.Envelope{Tenant: "acme", Run: learningID, Type: event.TypeAction, Data: wire.BodyOf(event.TypeAction, learningAction), Time: time.Now()})
+	learningEnd, _ := json.Marshal(wire.Lifecycle{Text: "The decision is ready."})
+	f.p.Runs.Observe(event.Envelope{Tenant: "acme", Run: learningID, Type: event.TypeCompleted, Data: wire.BodyOf(event.TypeCompleted, learningEnd), Time: time.Now()})
 	if err := f.p.Runs.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -2598,4 +2610,18 @@ func TestClosedSchemasRejectUnknownProperties(t *testing.T) {
 	if event.Validate(base) == nil {
 		t.Error("an unknown property on an allOf variant is accepted")
 	}
+}
+
+// v1Lifecycle is every lifecycle body's fields together, as the API sends
+// them, with the revision V1Of adds.
+type v1Lifecycle struct {
+	Attempt  int             `json:"attempt,omitempty"`
+	Rev      int             `json:"rev,omitempty"`
+	Error    string          `json:"error,omitempty"`
+	Terminal bool            `json:"terminal,omitempty"`
+	Reason   string          `json:"reason,omitempty"`
+	Text     string          `json:"text,omitempty"`
+	Usage    *event.RunUsage `json:"usage,omitempty"`
+	Question *event.Question `json:"question,omitempty"`
+	Answer   *event.Answer   `json:"answer,omitempty"`
 }

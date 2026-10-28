@@ -9,9 +9,9 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -24,8 +24,8 @@ func TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant(t *testing.T) {
 		agenttest.TextResponse("Refunds take five days [1]."),
 		agenttest.TextResponse("I do not know."),
 	}}
-	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{
-		"scripted": func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil },
+	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
+		"scripted": func(native.Spec) (saigetypes.Provider, error) { return model, nil },
 	}}})
 	ctx := t.Context()
 	now := time.Now()
@@ -33,7 +33,7 @@ func TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant(t *testing.T) {
 		if _, err := p.Knowledge.Create(tn, "handbook", "", "test", now); err != nil {
 			t.Fatal(err)
 		}
-		spec := agentspec.AgentSpec{Name: "support", Provider: "scripted", Model: "m", SystemPrompt: "Answer.", Sources: []agentspec.Source{{Name: "handbook", URI: "humagen://knowledge/handbook"}}}
+		spec := wire.AgentSpec{Name: "support", Provider: "scripted", Model: "m", SystemPrompt: "Answer.", Sources: []wire.Source{{Name: "handbook", URI: "humagen://knowledge/handbook"}}}
 		if _, err := p.Agents.Create(ctx, tn, spec, "test"); err != nil {
 			t.Fatal(err)
 		}
@@ -43,7 +43,7 @@ func TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant(t *testing.T) {
 	}
 
 	ask := func(tn, id string) runs.Run {
-		r, err := p.Invoke(ctx, envelope.Tag{ID: id, Tenant: tn, Agent: "support", Origin: "api", Text: "How long do refunds take?"})
+		r, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: id, Tenant: tn, Agent: "support", Origin: "api", Text: "How long do refunds take?"}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +76,7 @@ func TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant(t *testing.T) {
 
 func TestScopedSourcesGroundRealTurnsWithoutPersistingInternalHandles(t *testing.T) {
 	model := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Use the release runbook [1].")}}
-	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{"scripted": func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil }}}})
+	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{"scripted": func(native.Spec) (saigetypes.Provider, error) { return model, nil }}}})
 	ctx := t.Context()
 	at := time.Now()
 	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "owner", Govern: true}, platform.ProjectInput{Name: "Secret", Members: []projects.Entry{{Who: "owner", Role: projects.Owner}}}); err != nil {
@@ -87,11 +87,11 @@ func TestScopedSourcesGroundRealTurnsWithoutPersistingInternalHandles(t *testing
 		t.Fatal(err)
 	}
 	_, _ = p.Knowledge.Add(tenant, "private", "Runbook", "", "release canary instructions", "owner", at)
-	spec := agentspec.AgentSpec{Name: "worker", Provider: "scripted", Model: "m", SystemPrompt: "Answer.", Sources: []agentspec.Source{{Name: "private", URI: "knowledge://private"}}}
+	spec := wire.AgentSpec{Name: "worker", Provider: "scripted", Model: "m", SystemPrompt: "Answer.", Sources: []wire.Source{{Name: "private", URI: "knowledge://private"}}}
 	if _, err := p.Agents.Create(ctx, tenant, spec, "owner"); err != nil {
 		t.Fatal(err)
 	}
-	started, err := p.Invoke(ctx, envelope.Tag{ID: "private-grounding", Tenant: tenant, Agent: "worker", Origin: "api", Actor: envelope.Actor{ID: "owner", User: "owner"}, Text: "What are the release instructions?", Meta: map[string]string{runs.MetaProject: "Secret"}})
+	started, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "private-grounding", Tenant: tenant, Agent: "worker", Origin: "api", Actor: event.Actor{ID: "owner", User: "owner"}, Text: "What are the release instructions?", Context: map[string]string{runs.MetaProject: "Secret"}}))
 	if err != nil {
 		t.Fatal(err)
 	}

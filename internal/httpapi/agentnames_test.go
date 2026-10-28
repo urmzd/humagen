@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -543,7 +543,7 @@ func TestASpecAndItsCallPolicyNameOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	}
 	_, list := read(t, f, writer, "/api/agents")
 	shown := revOf(list)
-	var spec agentspec.AgentSpec
+	var spec wire.AgentSpec
 	if err := json.Unmarshal([]byte(mustJSON(t, shown["spec"])), &spec); err != nil {
 		t.Fatal(err)
 	}
@@ -826,7 +826,7 @@ func TestASpecWhoseEveryApprovalIsHiddenNamesNoApprovers(t *testing.T) {
 	if raw := mustJSON(t, page); strings.Contains(raw, "spy") || strings.Contains(raw, "role:admin") || shown["self_approval"] == true {
 		t.Fatalf("the writer reads lead as %s", raw)
 	}
-	var got agentspec.AgentSpec
+	var got wire.AgentSpec
 	if err := json.Unmarshal([]byte(mustJSON(t, shown)), &got); err != nil {
 		t.Fatal(err)
 	}

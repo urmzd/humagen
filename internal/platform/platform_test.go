@@ -11,10 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -55,8 +54,8 @@ func startWith(t *testing.T, cfg platform.Config) *platform.Platform {
 		}
 	})
 
-	for _, spec := range []agentspec.AgentSpec{
-		{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead.", Access: agentspec.Access{Spawn: []string{"helper"}}},
+	for _, spec := range []wire.AgentSpec{
+		{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead.", Access: wire.Access{Spawn: []string{"helper"}}},
 		{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help."},
 	} {
 		if _, err := p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
@@ -66,8 +65,8 @@ func startWith(t *testing.T, cfg platform.Config) *platform.Platform {
 	return p
 }
 
-func tag(id, agent string) envelope.Tag {
-	return envelope.Tag{ID: id, Tenant: tenant, Agent: agent, Origin: "api", Text: "hello"}
+func tag(id, agent string) event.Envelope {
+	return wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: agent, Origin: "api", Text: "hello"})
 }
 
 // await waits for a run to reach a status, and returns as soon as it does.
@@ -90,11 +89,7 @@ func TestARunCompletesAndStreams(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
 
-	lead, err := topic.Agent("lead")
-	if err != nil {
-		t.Fatal(err)
-	}
-	stream, err := p.Subscribe(ctx, tenant, envelope.Subscription{Topic: lead})
+	stream, err := p.Subscribe(ctx, tenant, "lead", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,8 +115,8 @@ func TestARunCompletesAndStreams(t *testing.T) {
 		if err != nil {
 			t.Fatalf("stream ended early: %v", err)
 		}
-		sawText = sawText || e.Kind == envelope.KindText
-		sawDone = e.Kind == envelope.KindCompleted
+		sawText = sawText || e.Type == event.TypeText
+		sawDone = e.Type == event.TypeCompleted
 	}
 	if !sawText {
 		t.Error("stream carried no text")
@@ -132,7 +127,7 @@ func TestAnotherTenantSeesNothing(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
 
-	stream, err := p.Subscribe(ctx, "globex", envelope.Subscription{Topic: topic.All()})
+	stream, err := p.Subscribe(ctx, "globex", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +148,7 @@ func TestAnotherTenantSeesNothing(t *testing.T) {
 	recvCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 	defer cancel()
 	if e, err := stream.Recv(recvCtx); err == nil {
-		t.Fatalf("other tenant received %s for run %s", e.Kind, e.RunID)
+		t.Fatalf("other tenant received %s for run %s", e.Type, e.Run)
 	}
 }
 
@@ -244,7 +239,7 @@ func TestCallIsRefused(t *testing.T) {
 func TestTriggerTagCannotClaimAgentOrigin(t *testing.T) {
 	p := start(t, call.Limits{MaxDepth: 2, MaxFanOut: 2})
 	forged := tag("run-1", "lead")
-	forged.Origin = call.Origin
+	forged.Source = wire.SourceOf(call.Origin, forged.Tenant)
 	if _, err := p.Invoke(t.Context(), forged); !errors.Is(err, call.ErrInvalid) {
 		t.Fatalf("got %v, want ErrInvalid", err)
 	}
@@ -257,7 +252,7 @@ func TestARunThatExhaustsItsRetriesEnds(t *testing.T) {
 	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:1")
 	p := start(t, call.Limits{})
 	ctx := t.Context()
-	broken := agentspec.AgentSpec{Name: "broken", Model: "none", Provider: "ollama", SystemPrompt: "x"}
+	broken := wire.AgentSpec{Name: "broken", Model: "none", Provider: "ollama", SystemPrompt: "x"}
 	if _, err := p.Agents.Create(ctx, tenant, broken, "test"); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +303,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 		}
 	}()
 	for _, name := range []string{"lead", "scribe"} {
-		spec := agentspec.AgentSpec{Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x"}
+		spec := wire.AgentSpec{Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x"}
 		if _, err := p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
 			t.Fatal(err)
 		}
@@ -375,7 +370,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := unapproved.Tag().Text; strings.Contains(got, "What you remember") {
+	if got := wire.TextOf(unapproved.Tag()); strings.Contains(got, "What you remember") {
 		t.Fatalf("an unapproved proposal reached the agent: %q", got)
 	}
 	var ids []string
@@ -389,7 +384,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := second.Tag().Text; !strings.Contains(got, "What you remember from earlier conversations:") {
+	if got := wire.TextOf(second.Tag()); !strings.Contains(got, "What you remember from earlier conversations:") {
 		t.Fatalf("the prompt carries no memory: %q", got)
 	}
 	if second.Text != "And then?" {
@@ -548,7 +543,7 @@ func TestSchedules(t *testing.T) {
 func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
 	ctx := context.Background()
 	var s platform.Schedules
-	daily := cron.Schedule{Name: "nightly", Expression: "0 2 * * *", Agent: "lead", Text: "report", Tenant: tenant, Meta: map[string]string{"created_by": "ada"}}
+	daily := cron.Schedule{Name: "nightly", Expression: "0 2 * * *", Agent: "lead", Text: "report", Tenant: tenant, Context: map[string]string{"created_by": "ada"}}
 	if err := s.Add(daily, platform.About{Description: "The nightly report"}); err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +575,7 @@ func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, paused, _ := s.Get(tenant, "nightly")
-	if got.Expression != "* * * * *" || got.Text != "status" || !paused || got.Meta["created_by"] != "ada" {
+	if got.Expression != "* * * * *" || got.Text != "status" || !paused || got.Context["created_by"] != "ada" {
 		t.Fatalf("after the edit: %+v, paused %v", got, paused)
 	}
 	if a := s.About("nightly"); a.UpdatedBy != "bob" || a.Description != "" {

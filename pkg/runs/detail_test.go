@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -21,13 +22,13 @@ func TestOutcomeAndCitationsSurviveRestartWithoutJournal(t *testing.T) {
 		}
 		record(t, index, "acme", "r1", "lead", OriginAPI, 0, nil)
 		outcome := []byte(`{"kind":"recommendation","summary":"Renew the agreement.","decisions":["Keep the current term"],"next_action":"Confirm the owner"}`)
-		action, _ := payload.Encode(payload.Action{Name: "record_outcome", Data: json.RawMessage(outcome)})
-		index.Observe(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindActionTaken, Payload: action, At: t0.Add(time.Second)})
-		citation, _ := payload.Encode(payload.Citation{Label: "[1]", Text: "The source passage", Source: payload.Provenance{DocumentTitle: "Agreement", SourceURI: "https://example.test/agreement"}})
-		if err := index.RecordCitation(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindCitation, Payload: citation, At: t0.Add(time.Second)}, nil); err != nil {
+		action, _ := json.Marshal(event.Action{Name: "record_outcome", Data: json.RawMessage(outcome)})
+		index.Observe(event.Envelope{Run: "r1", Tenant: "acme", Type: event.TypeAction, Data: wire.BodyOf(event.TypeAction, action), Time: t0.Add(time.Second)})
+		citation, _ := json.Marshal(event.Citation{Label: "[1]", Text: "The source passage", Source: event.Provenance{DocumentTitle: "Agreement", SourceURI: "https://example.test/agreement"}})
+		if err := index.RecordCitation(event.Envelope{Run: "r1", Tenant: "acme", Type: event.TypeCitation, Data: wire.BodyOf(event.TypeCitation, citation), Time: t0.Add(time.Second)}, nil); err != nil {
 			t.Fatal(err)
 		}
-		end(t, index, "acme", "r1", 2*time.Second, envelope.KindCompleted, payload.Lifecycle{Text: "Renew it. [[1]]"})
+		end(t, index, "acme", "r1", 2*time.Second, event.TypeCompleted, wire.Lifecycle{Text: "Renew it. [[1]]"})
 		if err := index.Flush(); err != nil {
 			t.Fatal(err)
 		}
@@ -49,15 +50,15 @@ func TestOutcomeAndEvidenceProjectionIsBoundedAndTenantConfined(t *testing.T) {
 	index := NewIndex()
 	record(t, index, "acme", "r1", "lead", OriginAPI, 0, nil)
 	for i := range 100 {
-		citation, _ := payload.Encode(payload.Citation{Label: fmt.Sprintf("[%d]", i), Text: "source"})
-		if err := index.RecordCitation(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindCitation, Payload: citation, At: t0}, nil); err != nil {
+		citation, _ := json.Marshal(event.Citation{Label: fmt.Sprintf("[%d]", i), Text: "source"})
+		if err := index.RecordCitation(event.Envelope{Run: "r1", Tenant: "acme", Type: event.TypeCitation, Data: wire.BodyOf(event.TypeCitation, citation), Time: t0}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	bad, _ := payload.Encode(payload.Action{Name: "record_outcome", Data: json.RawMessage(`{"kind":"executed","summary":"I approved myself"}`)})
-	index.Observe(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindActionTaken, Payload: bad, At: t0})
-	good, _ := payload.Encode(payload.Action{Name: "record_outcome", Data: json.RawMessage(`{"kind":"recommendation","summary":"hidden"}`)})
-	index.Observe(envelope.Event{RunID: "r1", Tenant: "other", Kind: envelope.KindActionTaken, Payload: good, At: t0})
+	bad, _ := json.Marshal(event.Action{Name: "record_outcome", Data: json.RawMessage(`{"kind":"executed","summary":"I approved myself"}`)})
+	index.Observe(event.Envelope{Run: "r1", Tenant: "acme", Type: event.TypeAction, Data: wire.BodyOf(event.TypeAction, bad), Time: t0})
+	good, _ := json.Marshal(event.Action{Name: "record_outcome", Data: json.RawMessage(`{"kind":"recommendation","summary":"hidden"}`)})
+	index.Observe(event.Envelope{Run: "r1", Tenant: "other", Type: event.TypeAction, Data: wire.BodyOf(event.TypeAction, good), Time: t0})
 	got, _ := index.Get("acme", "r1")
 	if got.Outcome != nil || len(got.Citations) != MaxCitations {
 		t.Fatalf("projection bounds: %+v", got)

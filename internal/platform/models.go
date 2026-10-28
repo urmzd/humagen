@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/wire"
 )
@@ -149,7 +149,7 @@ func (p *Platform) policyUsers(ctx context.Context, tenant, name string) []strin
 // is read as it stands when the call starts, which is what lets a workspace
 // move every agent off a failing provider at once.
 func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
-	spec := req.Revision.Spec
+	spec := req.Definition.Spec
 	if spec.Provider != PolicyProvider {
 		return req, nil
 	}
@@ -159,14 +159,14 @@ func (p *Platform) resolveModel(req runtime.Request) (runtime.Request, error) {
 	}
 	resolved := m.spec(spec.Name)
 	spec.Provider, spec.Model, spec.FallbackOn = resolved.Provider, resolved.Model, resolved.FallbackOn
-	spec.Fallbacks = make([]agentrt.ModelRef, 0, len(resolved.Fallbacks))
+	spec.Fallbacks = make([]native.ModelRef, 0, len(resolved.Fallbacks))
 	for _, f := range resolved.Fallbacks {
-		spec.Fallbacks = append(spec.Fallbacks, agentrt.ModelRef{Provider: f.Provider, Model: f.Model})
+		spec.Fallbacks = append(spec.Fallbacks, native.ModelRef{Provider: f.Provider, Model: f.Model})
 	}
 	if len(spec.Fallbacks) == 0 {
 		spec.Fallbacks = nil
 	}
-	req.Revision.Spec = spec
+	req.Definition.Spec = spec
 	return req, nil
 }
 

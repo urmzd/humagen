@@ -8,9 +8,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urmzd/anchor/pkg/ledger"
 	dqueue "github.com/urmzd/anchor/pkg/queue"
-	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/durable"
+	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/humagen/fiber/pkg/durable"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -62,7 +63,8 @@ type Backends struct {
 	// artifacts, the run index, the usage ledger, knowledge and workspace
 	// settings. Nil keeps them in memory.
 	State state.Store
-	// Agents is fiber's agent registry. Nil means fiber's in memory.
+	// Agents is where agent definitions are kept, as saige definitions.
+	// Nil keeps them in memory.
 	Agents wire.AgentStore
 	// Ledger and Queue are anchor's run ledger and queue, which a run in
 	// flight survives a restart in. Nil means anchor's in memory. Set both
@@ -76,7 +78,7 @@ type Backends struct {
 }
 
 // OpenPostgres puts every backend on one Postgres database: humagen's state
-// (pkg/state), fiber's agent registry, anchor's run ledger and queue
+// (pkg/state), agent definitions (pkg/agents, on the same state), anchor's run ledger and queue
 // (fiber's pkg/durable), and fiber's Postgres event bus. Each migrates its own tables, idempotently. The
 // caller owns the pool and closes it after calling release.
 //
@@ -96,8 +98,16 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 			_ = st.Close()
 		}
 	}()
-	agents := wire.NewPostgresAgents(pool, append(providers(), providerNames...)...)
-	if err := agents.Migrate(ctx); err != nil {
+	names := append(providers(), providerNames...)
+	defs, err := wire.OpenAgents(st, names...)
+	if err != nil {
+		return Backends{}, nil, err
+	}
+	// Agents fiber's registry kept move into the store once. A platform
+	// agent that cannot be moved fails the start.
+	if _, err := legacy.ConvertAgents(ctx, st, defs.Source(), legacy.PostgresOldAgents{Pool: pool}, legacy.ConvertOptions{
+		Builtin: func(name string) bool { return IsBuiltin(name) || legacy.IsBuiltinAgent(name) },
+	}); err != nil {
 		return Backends{}, nil, err
 	}
 	l, q, err := durable.Open(ctx, pool)
@@ -108,7 +118,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err := events.Migrate(ctx); err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Agents: agents, Ledger: l, Queue: q, Bus: events}, st.Close, nil
+	return Backends{State: st, Agents: defs, Ledger: l, Queue: q, Bus: events}, st.Close, nil
 }
 
 func (b Backends) check() error {

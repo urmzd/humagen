@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -93,7 +93,7 @@ func outcomeOf(t *testing.T, p *platform.Platform, id string) *inbox.Outcome {
 
 func ask(t *testing.T, p *platform.Platform, id, agent string) runs.Run {
 	t.Helper()
-	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: id, Agent: agent, Text: "Go", Actor: envelope.Actor{ID: admin.Subject}})
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: id, Agent: agent, Text: "Go", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,11 +111,11 @@ func TestEachQuestionKindReachesOnlyThoseWhoMayAnswer(t *testing.T) {
 			"asker":    {asked(map[string]any{"question": "What is the ticket?", "asked_of": "oncall"}), say("Done.")},
 		},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}, "picker": {"ask_person"}, "asker": {"ask_person"}},
-		shape: map[string]func(*agentspec.AgentSpec){
-			"deployer": func(s *agentspec.AgentSpec) {
+		shape: map[string]func(*wire.AgentSpec){
+			"deployer": func(s *wire.AgentSpec) {
 				s.Approvals, s.Approvers = []string{platform.ToolFileWrite}, []string{"role:operator", "ada"}
 			},
-			"picker": func(s *agentspec.AgentSpec) { s.Answerers = []string{"grace"} },
+			"picker": func(s *wire.AgentSpec) { s.Answerers = []string{"grace"} },
 		},
 	}, platform.Config{})
 
@@ -172,8 +172,8 @@ func TestAnsweringResumesTheRunAndSettlesTheMessage(t *testing.T) {
 			"asker":    {asking("What is the ticket?"), say("Filed.")},
 		},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}, "picker": {"ask_person"}, "asker": {"ask_person"}},
-		shape: map[string]func(*agentspec.AgentSpec){
-			"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} },
+		shape: map[string]func(*wire.AgentSpec){
+			"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} },
 		},
 	}
 	p := stage(t, c, platform.Config{})
@@ -206,7 +206,7 @@ func TestAnsweringResumesTheRunAndSettlesTheMessage(t *testing.T) {
 			}
 			resumed := false
 			for _, e := range p.Journal.Events(tenant, []string{run.ID}) {
-				resumed = resumed || (e.Kind == envelope.KindResumed && strings.Contains(string(e.Payload), `"by":"olu"`))
+				resumed = resumed || (e.Type == event.TypeResumed && strings.Contains(wire.JSONOf(e), `"by":"olu"`))
 			}
 			if !resumed {
 				t.Fatal("the run's stream has no lifecycle.resumed with the answer")
@@ -233,7 +233,7 @@ func TestARequesterCannotApproveTheirOwnCall(t *testing.T) {
 	p := stage(t, &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"deployer": {writing("plan.md", "ship"), say("Written.")}},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}},
-		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+		shape: map[string]func(*wire.AgentSpec){"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
 	}, platform.Config{})
 	ctx := t.Context()
 	run := ask(t, p, "api-1", "deployer")
@@ -264,7 +264,7 @@ func TestADisallowedPersonIsRefusedAndNothingChanges(t *testing.T) {
 	p := stage(t, &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"picker": {asking("Which colour?", "red", "blue"), say("Done.")}},
 		tools: map[string][]string{"picker": {"ask_person"}},
-		shape: map[string]func(*agentspec.AgentSpec){"picker": func(s *agentspec.AgentSpec) { s.Answerers = []string{"grace", "vic"} }},
+		shape: map[string]func(*wire.AgentSpec){"picker": func(s *wire.AgentSpec) { s.Answerers = []string{"grace", "vic"} }},
 	}, platform.Config{})
 	ctx := t.Context()
 	run := ask(t, p, "api-1", "picker")
@@ -347,7 +347,7 @@ func TestAnExpiredQuestionSettlesAsNobodyAnsweredAndTheRunContinues(t *testing.T
 			"deployer": {writing("plan.md", "ship"), say("Not written.")},
 		},
 		tools: map[string][]string{"picker": {"ask_person"}, "deployer": {platform.ToolFileWrite}},
-		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+		shape: map[string]func(*wire.AgentSpec){"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
 	}
 	p := stage(t, c, platform.Config{QuestionTTL: 300 * time.Millisecond})
 
@@ -407,10 +407,10 @@ func TestADelegatedChildsQuestionReachesTheRightInbox(t *testing.T) {
 		},
 		spawn: map[string][]string{"lead": {"helper"}},
 		tools: map[string][]string{"helper": {"ask_person"}},
-		shape: map[string]func(*agentspec.AgentSpec){"helper": func(s *agentspec.AgentSpec) { s.Answerers = []string{"grace"} }},
+		shape: map[string]func(*wire.AgentSpec){"helper": func(s *wire.AgentSpec) { s.Answerers = []string{"grace"} }},
 	}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	ctx := t.Context()
-	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Go", Actor: envelope.Actor{ID: admin.Subject}})
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Go", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestADelegatedChildsQuestionReachesTheRightInbox(t *testing.T) {
 	}
 	within(t, "the caller's stream shows the question", func() bool {
 		for _, e := range p.Journal.Events(tenant, []string{first.ID}) {
-			if e.Kind == envelope.KindChildParked && strings.Contains(string(e.Payload), helper.ID) {
+			if e.Type == event.TypeChildParked && strings.Contains(wire.JSONOf(e), helper.ID) {
 				return true
 			}
 		}
@@ -437,7 +437,7 @@ func TestADelegatedChildsQuestionReachesTheRightInbox(t *testing.T) {
 	}
 	children := 0
 	for _, e := range p.Journal.Events(tenant, []string{first.ID}) {
-		if e.Kind == envelope.KindUsageChild {
+		if e.Type == event.TypeUsageChild {
 			children++
 		}
 	}
@@ -465,7 +465,7 @@ func TestUsageIsCountedOnceAcrossAPark(t *testing.T) {
 	}
 	calls := 0
 	for _, e := range p.Journal.Events(tenant, []string{run.ID}) {
-		if e.Kind == envelope.KindUsageCall {
+		if e.Type == event.TypeUsageCall {
 			calls++
 		}
 	}
@@ -506,7 +506,7 @@ func TestASurfaceAnswersOnlyForAMappedPerson(t *testing.T) {
 	p := stage(t, &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"picker": {asking("Which colour?", "red", "blue"), say("Done.")}},
 		tools: map[string][]string{"picker": {"ask_person"}},
-		shape: map[string]func(*agentspec.AgentSpec){"picker": func(s *agentspec.AgentSpec) { s.Answerers = []string{"role:operator"} }},
+		shape: map[string]func(*wire.AgentSpec){"picker": func(s *wire.AgentSpec) { s.Answerers = []string{"role:operator"} }},
 	}, cfg)
 	in := slackClient("app", "A0APP", team, "picker")
 	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0OLU": "olu", "U0VIC": "vic"}
@@ -569,11 +569,11 @@ func TestPublishingWaitsForApproval(t *testing.T) {
 			say("Done."),
 		}
 	}
-	approvals := func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolPublish} }
+	approvals := func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolPublish} }
 	p := stage(t, &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"writer": script("a"), "other": script("b")},
 		tools: map[string][]string{"writer": {platform.ToolFileWrite, platform.ToolPublish}, "other": {platform.ToolFileWrite, platform.ToolPublish}},
-		shape: map[string]func(*agentspec.AgentSpec){"writer": approvals, "other": approvals},
+		shape: map[string]func(*wire.AgentSpec){"writer": approvals, "other": approvals},
 	}, platform.Config{})
 	ctx := t.Context()
 	for _, c := range []struct {
@@ -608,7 +608,7 @@ func TestAnApproverCanChangeWhatIsPublished(t *testing.T) {
 			say("Done."),
 		}},
 		tools: map[string][]string{"writer": {platform.ToolFileWrite, platform.ToolPublish}},
-		shape: map[string]func(*agentspec.AgentSpec){"writer": func(s *agentspec.AgentSpec) {
+		shape: map[string]func(*wire.AgentSpec){"writer": func(s *wire.AgentSpec) {
 			s.Approvals, s.Approvers = []string{platform.ToolPublish}, []string{"olu"}
 		}},
 	}, platform.Config{})
@@ -642,7 +642,7 @@ func TestAMappedPersonNeedsTheirOwnRightToAnswer(t *testing.T) {
 	p := stage(t, &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"deployer": {writing("plan.md", "ship"), say("Written.")}},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}},
-		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+		shape: map[string]func(*wire.AgentSpec){"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
 	}, f.config())
 	in := slackClient("app", "A0APP", team, "deployer")
 	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0OLU": "olu", "U0VIC": "vic"}
@@ -697,7 +697,7 @@ func TestAMappedPersonAnswersOnlyWhatTheyMayRead(t *testing.T) {
 	p := stage(t, &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"deployer": {writing("plan.md", "ship"), say("Written.")}},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}},
-		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+		shape: map[string]func(*wire.AgentSpec){"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
 	}, f.config())
 	in := slackClient("app", "A0APP", team, "deployer")
 	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0ADA": "ada", "U0OLU": "olu"}
@@ -766,7 +766,7 @@ func TestAConnectorRunsRequesterIsKnownByTheirMappedName(t *testing.T) {
 	p := stage(t, &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"deployer": {writing("plan.md", "ship"), say("Written.")}},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}},
-		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+		shape: map[string]func(*wire.AgentSpec){"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
 	}, cfg)
 	in := slackClient("app", "A0APP", team, "deployer")
 	// mentionOf's Slack user is U0HUMAN1: ada, in this workspace.
@@ -817,10 +817,10 @@ func TestThePersonWhoStartedTheTreeCannotApproveInIt(t *testing.T) {
 		},
 		spawn: map[string][]string{"lead": {"helper"}},
 		tools: map[string][]string{"helper": {platform.ToolFileWrite}},
-		shape: map[string]func(*agentspec.AgentSpec){"helper": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+		shape: map[string]func(*wire.AgentSpec){"helper": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
 	}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	ctx := t.Context()
-	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Go", Actor: envelope.Actor{ID: admin.Subject}})
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Go", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -853,7 +853,7 @@ func TestAConnectorRunsRequesterIsKnownThroughAnyClientOfTheTeam(t *testing.T) {
 	c := &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"deployer": {writing("plan.md", "ship"), say("Written.")}},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}},
-		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+		shape: map[string]func(*wire.AgentSpec){"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
 		gates: map[string]chan struct{}{"deployer": make(chan struct{})},
 	}
 	cfg := f.config()
@@ -928,9 +928,9 @@ func TestARefusedAnswerNamesThePersonByName(t *testing.T) {
 			"picker":   {asking("Which colour?", "red", "blue"), say("Done.")},
 		},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}, "picker": {"ask_person"}},
-		shape: map[string]func(*agentspec.AgentSpec){
-			"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} },
-			"picker":   func(s *agentspec.AgentSpec) { s.Answerers = []string{"grace"} },
+		shape: map[string]func(*wire.AgentSpec){
+			"deployer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} },
+			"picker":   func(s *wire.AgentSpec) { s.Answerers = []string{"grace"} },
 		},
 	}, platform.Config{})
 	ctx := t.Context()

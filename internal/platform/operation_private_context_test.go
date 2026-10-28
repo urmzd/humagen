@@ -6,9 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -42,12 +44,12 @@ func TestPersonScopedOperationPersistsPrivacyBeforeExecuting(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				tag := envelope.Tag{ID: "person-tool", Tenant: "t", Agent: "a", Origin: runs.OriginAPI, Text: "work", At: time.Now()}
+				tag := wire.NewEvent(wire.Raise{ID: "person-tool", Tenant: "t", Agent: "a", Origin: runs.OriginAPI, Text: "work", At: time.Now()})
 				id := runtime.RunID(tag.Tenant, tag.ID)
 				if err := p.Runs.Record(id, tag, 1); err != nil {
 					t.Fatal(err)
 				}
-				req := runtime.Request{Tenant: "t", RunID: id, Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}}
+				req := runtime.Request{Tenant: "t", RunID: id, Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 				calls := 0
 				verify := func() {
 					t.Helper()
@@ -95,12 +97,12 @@ func TestPrivateParentClassifiesStandaloneHelperAfterRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		parent := envelope.Tag{ID: "parent", Tenant: "t", Agent: "a", Origin: runs.OriginAPI, Text: "work", At: time.Now()}
+		parent := wire.NewEvent(wire.Raise{ID: "parent", Tenant: "t", Agent: "a", Origin: runs.OriginAPI, Text: "work", At: time.Now()})
 		child, err := call.New(parent, call.Request{Key: "helper", Agent: "b", Text: "help", Mode: call.Subagent}, call.State{}, call.Limits{MaxDepth: 3, MaxFanOut: 4}, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, tag := range []envelope.Tag{parent, child} {
+		for _, tag := range []event.Envelope{parent, child} {
 			if err := index.Record(runtime.RunID("t", tag.ID), tag, 1); err != nil {
 				t.Fatal(err)
 			}

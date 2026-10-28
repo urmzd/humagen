@@ -20,9 +20,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/textindex"
@@ -485,8 +485,8 @@ func schema(required []string, props map[string]string) saigetypes.ParameterSche
 // fileTools is the catalog of file tools for one turn. An agent has a tool
 // only if its spec names it; this decides what the tool does, not who has it.
 func (p *Platform) fileTools(base runtime.Catalog) runtime.Catalog {
-	return func(req runtime.Request, action func(payload.Action) error) (agentrt.Tools, error) {
-		var inner agentrt.Tools
+	return func(req runtime.Request, action func(event.Action) error) (native.Tools, error) {
+		var inner native.Tools
 		if base != nil {
 			b, err := base(req, action)
 			if err != nil {
@@ -501,19 +501,19 @@ func (p *Platform) fileTools(base runtime.Catalog) runtime.Catalog {
 		for name, t := range p.builtinTools(req) {
 			tools[name] = t
 		}
-		return agentrt.ToolsFunc(func(name string) (saigetypes.Tool, error) {
+		return native.ToolsFunc(func(name string) (saigetypes.Tool, error) {
 			if t, ok := tools[name]; ok {
 				return t, nil
 			}
 			if inner == nil {
-				return nil, fmt.Errorf("%w: %q", agentrt.ErrNoSuchTool, name)
+				return nil, fmt.Errorf("%w: %q", native.ErrNoSuchTool, name)
 			}
 			return inner.Lookup(name)
 		}), nil
 	}
 }
 
-func (p *Platform) turnFileTools(req runtime.Request, action func(payload.Action) error) map[string]saigetypes.Tool {
+func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) error) map[string]saigetypes.Tool {
 	// The conversation is looked up when a tool is used, not when the turn
 	// starts. A turn delegated by another agent inside its own turn has no
 	// run of its own, so it has no conversation and no files.
@@ -559,7 +559,7 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(payload.Action
 				if action == nil {
 					return "", fmt.Errorf("outcome: recording is unavailable")
 				}
-				if err := action(payload.Action{Name: ToolOutcome, Summary: "Recorded authored outcome", Data: data}); err != nil {
+				if err := action(event.Action{Name: ToolOutcome, Summary: "Recorded authored outcome", Data: data}); err != nil {
 					return "", err
 				}
 				return "Recorded the authored outcome. This granted no approval and executed no external action.", nil
@@ -680,11 +680,11 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(payload.Action
 				if err != nil {
 					// The failure goes on the run's stream as well as back to
 					// the model, so the conversation shows a file that failed.
-					_ = action(payload.Action{Name: ToolPublish, Summary: arg(args, "title"), Error: err.Error()})
+					_ = action(event.Action{Name: ToolPublish, Summary: arg(args, "title"), Error: err.Error()})
 					return "", err
 				}
 				data, _ := json.Marshal(a)
-				_ = action(payload.Action{Name: ToolPublish, Summary: fmt.Sprintf("Published %s, version %d", a.Title, a.Version), Data: data})
+				_ = action(event.Action{Name: ToolPublish, Summary: fmt.Sprintf("Published %s, version %d", a.Title, a.Version), Data: data})
 				return fmt.Sprintf("Published %s as version %d (%d bytes). The person can open it now.", a.Title, a.Version, a.Size), nil
 			}),
 	}

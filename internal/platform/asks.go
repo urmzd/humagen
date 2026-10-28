@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"context"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -58,7 +58,7 @@ func (p *Platform) AsksIn(ctx context.Context, who auth.Principal, turns []Threa
 
 // askOf is the question a run waits on, as who stands to it. ok is false for
 // a question no person answers, such as a delegation.
-func (p *Platform) askOf(ctx context.Context, who auth.Principal, run runs.Run, q payload.Question, s *shower) (Ask, bool) {
+func (p *Platform) askOf(ctx context.Context, who auth.Principal, run runs.Run, q event.Question, s *shower) (Ask, bool) {
 	if _, _, ok := questionParts(q.Kind); !ok || q.ID == "" {
 		return Ask{}, false
 	}
@@ -92,9 +92,9 @@ func (p *Platform) askOf(ctx context.Context, who auth.Principal, run runs.Run, 
 	// a choice of its first option, or words.
 	a := QuestionAnswer{Action: ActReply, Text: "?"}
 	switch q.Kind {
-	case payload.QuestionApproval:
+	case event.QuestionApproval:
 		a = QuestionAnswer{Action: ActApprove}
-	case payload.QuestionChoice:
+	case event.QuestionChoice:
 		a = QuestionAnswer{Action: ActChoose, Choice: firstOf(q.Options)}
 	}
 	ask.Yours = p.checkAnswer(ctx, who, readerOf(who), m, *m.Parts[i].Question, a, false) == nil

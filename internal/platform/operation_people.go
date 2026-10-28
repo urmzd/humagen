@@ -1,8 +1,9 @@
 package platform
 
 import (
-	"github.com/urmzd/humagen/pkg/operations"
 	"strings"
+
+	"github.com/urmzd/humagen/pkg/operations"
 )
 
 func (p *Platform) operationPersonSubject(tenant, value string) (string, error) {

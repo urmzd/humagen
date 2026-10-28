@@ -15,10 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
@@ -52,7 +51,7 @@ func (s *setupFault) Write(ctx context.Context, namespace string, ops ...state.O
 	return s.Store.Write(ctx, namespace, ops...)
 }
 func setupPlan(name string) platform.AgentSetupPlan {
-	return platform.AgentSetupPlan{Spec: agentspec.AgentSpec{Name: name, Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Help the company."}, Project: "~", Rules: map[operations.Category]operations.Level{operations.Other: operations.Ask}}
+	return platform.AgentSetupPlan{Spec: wire.AgentSpec{Name: name, Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Help the company."}, Project: "~", Rules: map[operations.Category]operations.Level{operations.Other: operations.Ask}}
 }
 func publishedSetupSkill(t *testing.T, p *platform.Platform, tools []string) platform.AgentSkillRef {
 	t.Helper()
@@ -122,7 +121,7 @@ func TestAgentSetupResumesAfterRegistryCreationAndNeverHijacksExistingNames(t *t
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.CreateAgentSetup(t.Context(), admin, setupPlan("existing")); !errors.Is(err, registry.ErrConflict) {
+		if _, err := p.CreateAgentSetup(t.Context(), admin, setupPlan("existing")); !errors.Is(err, wire.ErrConflict) {
 			t.Fatalf("existing name=%v", err)
 		}
 		kept, _ := p.Agents.Get(t.Context(), tenant, "existing", 0)
@@ -206,7 +205,7 @@ func TestAgentSetupDryRunUsesRealAdapterAndApprovalBeforeActivation(t *testing.T
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer server.Close()
-	p, err := platform.New(platform.Config{Workspace: t.TempDir(), Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{"local-real": func(spec agentrt.Spec) (saigetypes.Provider, error) {
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{"local-real": func(spec native.Spec) (saigetypes.Provider, error) {
 		return openai.New(openai.Config{APIKey: "isolated-fixture", Model: saigetypes.ModelID(spec.Model)}, openai.WithBaseURL(server.URL+"/v1"))
 	}}}})
 	if err != nil {
@@ -313,7 +312,7 @@ func TestAgentSetupReadOmitsSourcesWhoseAudienceChanged(t *testing.T) {
 		}
 		plan := setupPlan("source-draft")
 		plan.Project = "Owned"
-		plan.Spec.Sources = []agentspec.Source{{Name: "retained-source", URI: "https://private.example.test/source"}}
+		plan.Spec.Sources = []wire.Source{{Name: "retained-source", URI: "https://private.example.test/source"}}
 		saved, err := p.CreateAgentSetup(t.Context(), admin, plan)
 		if err != nil || saved.Phase != "configured" {
 			t.Fatalf("saved=%+v,%v", saved, err)
@@ -352,12 +351,12 @@ func TestAgentSetupReadOmitsSourcesWhoseAudienceChanged(t *testing.T) {
 }
 
 type observedSetupRegistry struct {
-	registry.Store
-	after func(agentspec.Revision)
+	wire.AgentStore
+	after func(wire.Revision)
 }
 
-func (s *observedSetupRegistry) Create(ctx context.Context, tenant string, spec agentspec.AgentSpec, by string) (agentspec.Revision, error) {
-	rev, err := s.Store.Create(ctx, tenant, spec, by)
+func (s *observedSetupRegistry) Create(ctx context.Context, tenant string, spec wire.AgentSpec, by string) (wire.Revision, error) {
+	rev, err := s.AgentStore.Create(ctx, tenant, spec, by)
 	if err == nil && s.after != nil {
 		s.after(rev)
 	}
@@ -365,7 +364,7 @@ func (s *observedSetupRegistry) Create(ctx context.Context, tenant string, spec 
 }
 func TestAgentSetupReservesPrivateHomeBeforeRegistryVisibility(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
-		store := &observedSetupRegistry{Store: registry.NewMemory()}
+		store := &observedSetupRegistry{AgentStore: wire.NewMemoryAgents()}
 		p, err := platform.New(platform.Config{Workspace: t.TempDir(), Backends: platform.Backends{State: open(t), Agents: store}})
 		if err != nil {
 			t.Fatal(err)
@@ -376,7 +375,7 @@ func TestAgentSetupReservesPrivateHomeBeforeRegistryVisibility(t *testing.T) {
 			t.Fatal(err)
 		}
 		observed := false
-		store.after = func(rev agentspec.Revision) {
+		store.after = func(rev wire.Revision) {
 			if rev.Spec.Name != "private-draft" {
 				return
 			}
@@ -400,12 +399,12 @@ func TestAgentSetupReservesPrivateHomeBeforeRegistryVisibility(t *testing.T) {
 }
 
 type setupAmendRegistry struct {
-	registry.Store
+	wire.AgentStore
 	afterRevise func()
 }
 
-func (r setupAmendRegistry) Revise(ctx context.Context, tenant string, spec agentspec.AgentSpec, expected int, by string) (agentspec.Revision, error) {
-	revision, err := r.Store.Revise(ctx, tenant, spec, expected, by)
+func (r setupAmendRegistry) Revise(ctx context.Context, tenant string, spec wire.AgentSpec, expected int, by string) (wire.Revision, error) {
+	revision, err := r.AgentStore.Revise(ctx, tenant, spec, expected, by)
 	if err == nil && r.afterRevise != nil {
 		r.afterRevise()
 	}
@@ -424,7 +423,7 @@ func TestAgentSetupAmendmentRestartsAcrossRealRegistryAndStateBackends(t *testin
 		corrected := saved.Plan
 		corrected.Spec.Model = "gpt-4o"
 		corrected.Spec.SystemPrompt = "Reviewed corrected configuration."
-		p.Agents = setupAmendRegistry{Store: p.Agents, afterRevise: func() { fault.Fail(statetest.ErrInjected) }}
+		p.Agents = setupAmendRegistry{AgentStore: p.Agents, afterRevise: func() { fault.Fail(statetest.ErrInjected) }}
 		if _, err := p.AmendAgentSetup(t.Context(), admin, saved.Name, corrected, saved.Version); !errors.Is(err, statetest.ErrInjected) {
 			t.Fatalf("partial registry/state failure=%v", err)
 		}

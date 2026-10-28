@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -44,8 +44,8 @@ func (holding) Stream(ctx context.Context, _ saigetypes.Request) (<-chan saigety
 // and cause, once the runtime confirms it. Another tenant gets a 404, and a
 // second stop is a 200 that changes nothing.
 func TestStoppingARunIsAcceptedThenConfirmed(t *testing.T) {
-	f := newFixtureWith(t, platform.Config{AgentOptions: []agentrt.Option{
-		agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return holding{}, nil }),
+	f := newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
+		native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return holding{}, nil }),
 	}})
 	all := []string{"humagen:agents:write", "humagen:runs:read", "humagen:runs:write"}
 	acme, globex := f.machine(t, "acme", all...), f.machine(t, "globex", all...)
@@ -118,8 +118,8 @@ func TestStoppingARunIsAcceptedThenConfirmed(t *testing.T) {
 // and the run is left stopping, so it starts nothing more.
 func TestAStopTheRuntimeCannotCarryIsA503(t *testing.T) {
 	f := newFixtureWith(t, platform.Config{
-		AgentOptions: []agentrt.Option{
-			agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return holding{}, nil }),
+		AgentOptions: []native.Option{
+			native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return holding{}, nil }),
 		},
 		Stops: func(context.Context, runtime.StopRequest) error { return runtime.ErrStopUnavailable },
 	})

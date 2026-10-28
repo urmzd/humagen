@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/memory"
@@ -119,7 +119,7 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 		meta := map[string]string{}
 		if run.Project != "" && p.HasProject(run.Tenant, run.Project) {
 			owner = memory.ProjectOwner(run.Project)
-			if keeps := run.Tag().Meta[metaKeepsNotes]; keeps != "" {
+			if keeps := wire.Meta(run.Tag())[metaKeepsNotes]; keeps != "" {
 				meta[metaKeepsNotes] = keeps
 			}
 		}
@@ -232,7 +232,7 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 	contextMeta := map[string]string{}
 
 	for _, key := range []string{MetaPersonalMemoryContext, MetaPrivateLibraryContext} {
-		if turn.Tag().Meta[key] == "true" {
+		if wire.Meta(turn.Tag())[key] == "true" {
 			contextMeta[key] = "true"
 		}
 	}
@@ -240,16 +240,17 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 	if _, personal := memory.OwnerPerson(target); personal {
 		contextMeta["_humagen.context.personal_memory"] = "true"
 	}
-	_, err = p.Invoke(ctx, wire.NewInput(envelope.Tag{
+	_, err = p.Invoke(ctx, wire.NewEvent(wire.Raise{
 		ID:     fmt.Sprintf("sys-%s-%s", hook, turn.ID),
 		Tenant: turn.Tenant,
 		Agent:  agent,
 		Origin: runs.OriginSystem,
-		Actor:  envelope.Actor{ID: "system:" + hook, Display: "platform " + hook, Bot: true},
+		Actor:  event.Actor{ID: "system:" + hook, Display: "platform " + hook, Bot: true},
 		// The housekeeping run is sent the turn's words, so it is read
 		// where the turn is: in its project and its conversation.
-		Meta: hookMeta(hook, target, append([]map[string]string{{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}, contextMeta}, extra...)...),
-	}, prompt))
+		Context: hookMeta(hook, target, append([]map[string]string{{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}, contextMeta}, extra...)...),
+		Text:    prompt,
+	}))
 	if err != nil {
 		p.log.Warn("platform: housekeeping run could not start", "hook", hook, "error", err)
 	}
@@ -275,7 +276,7 @@ func (p *Platform) fileHook(run runs.Run) {
 	if run.Status != runs.Completed {
 		return
 	}
-	meta := run.Tag().Meta
+	meta := wire.Meta(run.Tag())
 	target := meta[metaFor]
 	switch meta[metaHook] {
 	case hookTitle:

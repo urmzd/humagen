@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
@@ -502,7 +502,7 @@ func seedFiles(ctx context.Context, p *platform.Platform, tenant string) error {
 	}
 	run, err := p.Converse(ctx, tenant, platform.Turn{
 		ID: "seed-files", Agent: "lead", Text: "Draft the launch checklist", Project: "Launch",
-		Actor: envelope.Actor{ID: "seed", Display: "Seed", Bot: true},
+		Actor: event.Actor{ID: "seed", Display: "Seed", Bot: true},
 	})
 	if err != nil {
 		return err

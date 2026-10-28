@@ -12,10 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/humagen/fiber/pkg/signature"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
 	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
@@ -40,22 +39,22 @@ func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *test
 				body = `{"tenant":"evil","action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"@helper explain"}}`
 			} else {
 				api := slackflow.NewFake()
-				c, err := slackflow.New(slackflow.Config{API: api, Verifier: signature.NewSlack(secret), Team: "T01", DefaultAgent: "helper", Interval: -1, Sessions: true})
+				c, err := slackflow.New(slackflow.Config{API: api, Verifier: signature.NewSlack(secret), Team: "T01", Bots: map[string]string{"U0HELPER": "helper"}, Interval: -1, Sessions: true})
 				if err != nil {
 					t.Fatal(err)
 				}
 				peer = c
 				replies = func() int { return len(api.Messages()) }
 				path = "/connectors/slack"
-				body = `{"tenant":"evil","type":"event_callback","event_id":"slack-1","team_id":"T01","event":{"type":"app_mention","user":"U01","channel":"C01","ts":"1700000000.000100","text":"explain"}}`
+				body = `{"tenant":"evil","type":"event_callback","event_id":"slack-1","team_id":"T01","event":{"type":"app_mention","user":"U01","channel":"C01","ts":"1700000000.000100","text":"<@U0HELPER> explain"}}`
 			}
-			p, err := platform.New(platform.Config{Workspace: t.TempDir(), Connections: func(registry.Store) ([]platform.Connection, error) {
+			p, err := platform.New(platform.Config{Workspace: t.TempDir(), Connections: func(wire.AgentStore) ([]platform.Connection, error) {
 				return []platform.Connection{{Tenant: "acme", Peer: peer}}, nil
 			}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := p.Agents.Create(context.Background(), "acme", agentspec.AgentSpec{Name: "helper", Provider: "offline", Model: "offline", SystemPrompt: "Answer questions."}, "test"); err != nil {
+			if _, err := p.Agents.Create(context.Background(), "acme", wire.AgentSpec{Name: "helper", Provider: "offline", Model: "offline", SystemPrompt: "Answer questions."}, "test"); err != nil {
 				t.Fatal(err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

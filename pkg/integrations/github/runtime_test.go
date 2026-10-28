@@ -30,21 +30,19 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/connector"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/router"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/egress"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/signature"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
 // githubIntegrationBus preserves the real bus and records the runtime's output.
-// Readiness comes from the actual router subscription, not an arbitrary sleep.
+// Readiness comes from the actual egress subscription, not an arbitrary sleep.
 type githubIntegrationBus struct {
 	bus.Bus
 	subscribed chan struct{}
@@ -52,21 +50,21 @@ type githubIntegrationBus struct {
 	observed   recorder
 }
 
-func (b *githubIntegrationBus) Subscribe(ctx context.Context, sub envelope.Subscription) (bus.Stream, error) {
+func (b *githubIntegrationBus) Subscribe(ctx context.Context, sub bus.Subscription) (bus.Stream, error) {
 	stream, err := b.Bus.Subscribe(ctx, sub)
 	if err == nil {
 		b.once.Do(func() { close(b.subscribed) })
 	}
 	return stream, err
 }
-func (b *githubIntegrationBus) Publish(ctx context.Context, event envelope.Event) error {
-	if err := b.Bus.Publish(ctx, event); err != nil {
+func (b *githubIntegrationBus) Publish(ctx context.Context, e event.Envelope) error {
+	if err := b.Bus.Publish(ctx, e); err != nil {
 		return err
 	}
-	return b.observed.Publish(ctx, event)
+	return b.observed.Publish(ctx, e)
 }
 
-func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
+func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -95,17 +93,17 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 	if err := connectors.Register(gh); err != nil {
 		t.Fatal(err)
 	}
-	store := registry.NewMemory()
+	store := wire.NewMemoryAgents()
 	raw, err := os.ReadFile("../../../examples/github-review/fixer.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var spec agentspec.AgentSpec
+	var spec wire.AgentSpec
 	if err := json.Unmarshal(raw, &spec); err != nil {
 		t.Fatal(err)
 	}
 	spec.Name = "github-agent"
-	spec.Provider = agentrt.ProviderOffline
+	spec.Provider = native.ProviderOffline
 	spec.Model = "scripted"
 	if _, err := store.Create(ctx, "acme", spec, "test"); err != nil {
 		t.Fatal(err)
@@ -126,7 +124,7 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 	}
 	var scriptMu sync.Mutex
 	scriptIndex := 0
-	provider := agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) {
+	provider := native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) {
 		scriptMu.Lock()
 		defer scriptMu.Unlock()
 		if scriptIndex >= len(scripts) {
@@ -142,25 +140,33 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 	}
 	tools := tool.NewRegistry()
 	plane := controlplane.NewMemory(inproc.NewFactory(tools, ws), metrics.Nop())
-	history := registry.NewSpecs(store)
-	sandbox, err := runtime.NewSandbox(plane, tools, history, runtime.WithCatalog(runtime.Connectors(connectors)), runtime.WithAgentOptions(provider), runtime.WithSandboxLogger(quiet))
+	sandbox, err := runtime.NewSandbox(plane, tools, store.Resolver(), runtime.WithCatalog(runtime.Connectors(connectors)), runtime.WithAgentOptions(provider), runtime.WithSandboxLogger(quiet))
 	if err != nil {
 		t.Fatal(err)
 	}
 	broker := &githubIntegrationBus{Bus: bus.NewMemory(), subscribed: make(chan struct{})}
 	lgr, q := ledger.NewMemory(), dqueue.NewMemory()
-	durable, err := runtime.New(anchor.New(lgr, q), history, broker, sandbox, runtime.WithLogger(quiet))
+	durable, err := runtime.New(anchor.New(lgr, q), store.Resolver(), broker, runtime.WithRuntime(sandbox), runtime.WithLogger(quiet))
 	if err != nil {
 		t.Fatal(err)
 	}
-	routing := router.New(broker, connectors, router.WithLogger(quiet))
+	routing := egress.New(broker, connectors, egress.WithLogger(quiet))
 	routerDone, workerDone, ingestDone := make(chan error, 1), make(chan error, 1), make(chan error, 1)
-	tags := make(chan envelope.Tag, 8)
-	go func() { routerDone <- routing.Run(ctx) }()
+	tags := make(chan event.Envelope, 8)
+	go func() { routerDone <- routing.Run(ctx, "acme") }()
 	go func() {
 		workerDone <- worker.New(lgr, q, worker.WithRegistry(durable.Registry()), worker.WithConcurrency(1), worker.WithJanitorEvery(0), worker.WithLogger(quiet)).Run(ctx)
 	}()
-	go func() { ingestDone <- gh.Ingest(ctx, tags) }()
+	go func() {
+		ingestDone <- gh.Ingest(ctx, func(ctx context.Context, e event.Envelope) error {
+			select {
+			case tags <- e:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	}()
 	t.Cleanup(func() {
 		cancel()
 		for _, done := range []<-chan error{routerDone, workerDone, ingestDone} {
@@ -187,13 +193,13 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 		}
 	}
 	wait(gh.Ingesting)
-	webhook := func(event, id, action, sha, body string) envelope.Tag {
+	webhook := func(kind, id, action, sha, body string) event.Envelope {
 		t.Helper()
 		data := map[string]any{"action": action, "repository": map[string]any{"name": "service", "owner": map[string]string{"login": "acme"}}, "sender": map[string]string{"login": "maintainer", "type": "User"}, "pull_request": map[string]any{"number": 42, "state": "open", "head": map[string]string{"sha": sha}, "labels": []map[string]string{{"name": "agent:auto"}}}, "label": map[string]string{"name": "agent:auto"}}
-		if event == "pull_request_review_comment" {
+		if kind == "pull_request_review_comment" {
 			data["comment"] = map[string]any{"id": 92, "in_reply_to_id": 91, "body": body}
 		}
-		if event == "issue_comment" {
+		if kind == "issue_comment" {
 			delete(data, "pull_request")
 			data["issue"] = map[string]any{"number": 42, "pull_request": map[string]string{"url": "https://api.github.com/repos/acme/service/pulls/42"}}
 			data["comment"] = map[string]any{"id": 101, "body": body}
@@ -205,7 +211,7 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 		mac := hmac.New(sha256.New, []byte(secret))
 		_, _ = mac.Write(encoded)
 		request := httptest.NewRequest(http.MethodPost, "/github", strings.NewReader(string(encoded)))
-		request.Header.Set(github.HeaderEvent, event)
+		request.Header.Set(github.HeaderEvent, kind)
 		request.Header.Set(github.HeaderDelivery, id)
 		request.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
 		response := httptest.NewRecorder()
@@ -216,22 +222,20 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 		select {
 		case tag := <-tags:
 			tag.Tenant = "acme"
+			wire.SetAgent(&tag, wire.AgentOf(tag))
 			return tag
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
-			return envelope.Tag{}
+			return event.Envelope{}
 		}
 	}
-	run := func(tag envelope.Tag) string {
+	run := func(tag event.Envelope) string {
 		t.Helper()
-		id := runtime.RunID(tag.Tenant, tag.ID)
-		if err := routing.Register(id, tag.Routes()); err != nil {
-			t.Fatal(err)
-		}
-		accepted, err := durable.Accept(ctx, tag)
+		accepted, err := durable.AcceptOwn(ctx, tag, wire.AgentOf(tag))
 		if err != nil {
 			t.Fatal(err)
 		}
+		id := accepted.RunID
 		if _, err := durable.Result(ctx, accepted.RunID); err != nil {
 			t.Fatal(err)
 		}
@@ -247,13 +251,13 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 	}
 	assertAction := func(runID, name, contains string) {
 		t.Helper()
-		for _, event := range broker.observed.ofKind(envelope.KindActionTaken) {
-			if event.RunID != runID {
+		for _, e := range broker.observed.ofKind(event.TypeAction) {
+			if e.Run != runID {
 				continue
 			}
-			action, err := payload.Decode[payload.Action](event)
-			if err != nil {
-				t.Fatal(err)
+			action, ok := e.Data.(event.Action)
+			if !ok {
+				t.Fatalf("action body %T", e.Data)
 			}
 			if action.Name == name {
 				if action.Error != "" || !strings.Contains(action.Summary, contains) {
@@ -324,21 +328,21 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 
 type recorder struct {
 	mu     sync.Mutex
-	events []envelope.Event
+	events []event.Envelope
 }
 
-func (r *recorder) Publish(_ context.Context, e envelope.Event) error {
+func (r *recorder) Publish(_ context.Context, e event.Envelope) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.events = append(r.events, e)
 	return nil
 }
-func (r *recorder) ofKind(k envelope.Kind) []envelope.Event {
+func (r *recorder) ofKind(k string) []event.Envelope {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var out []envelope.Event
+	var out []event.Envelope
 	for _, e := range r.events {
-		if e.Kind == k {
+		if e.Type == k {
 			out = append(out, e)
 		}
 	}

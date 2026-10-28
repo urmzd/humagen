@@ -3,13 +3,14 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"strings"
+
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
-	"net/http"
-	"strings"
 )
 
 func (p *Platform) currentInstallation(c clients.Client) (clients.Client, bool) {

@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -41,7 +40,7 @@ func TestAPrivateThreadsHousekeepingStaysInIt(t *testing.T) {
 		}
 	})
 	for _, name := range []string{"lead", "scribe"} {
-		if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
+		if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -298,7 +297,7 @@ func TestCountsNeverTellOfAConversationOpenedWhileTheyAreRead(t *testing.T) {
 				return
 			}
 			id := fmt.Sprintf("api-private-%d", i)
-			tg := envelope.Tag{ID: id, Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "plan the launch", At: time.Now(), Meta: map[string]string{runs.MetaThread: th.ID, runs.MetaProject: "Field"}}
+			tg := wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "plan the launch", At: time.Now(), Context: map[string]string{runs.MetaThread: th.ID, runs.MetaProject: "Field"}})
 			if err := p.Runs.Record(runtime.RunID(tenant, id), tg, 1); err != nil {
 				t.Error(err)
 				return

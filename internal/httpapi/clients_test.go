@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/humagen/fiber/pkg/signature"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/clients"
 	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"

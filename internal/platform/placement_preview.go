@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -80,10 +81,10 @@ func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th 
 			if !run.Status.Terminal() {
 				return PlacementPreview{}, fmt.Errorf("%w: wait for active and waiting work to finish before publishing", threads.ErrVersion)
 			}
-			if run.Client != "" || len(run.Tag().Routes()) > 0 {
+			if run.Client != "" || !wire.SurfaceAddress(run.Tag()).IsZero() {
 				return PlacementPreview{}, fmt.Errorf("%w: externally delivered work stays on its original surface", threads.ErrInvalid)
 			}
-			if run.Tag().Meta[MetaPersonalMemoryContext] == "true" {
+			if wire.Meta(run.Tag())[MetaPersonalMemoryContext] == "true" {
 				personalMemory = true
 			}
 			if p.runNeedsSummary(ctx, run, project) {

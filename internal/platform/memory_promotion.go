@@ -3,12 +3,13 @@ package platform
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
-	"strings"
 )
 
 // MemoryPromotion selects an existing reviewed note. It cannot replace its

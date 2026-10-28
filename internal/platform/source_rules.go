@@ -3,6 +3,7 @@ package platform
 import (
 	"crypto/rand"
 	"encoding/hex"
+
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"

@@ -14,9 +14,9 @@ import (
 	"time"
 
 	anchorrun "github.com/urmzd/anchor/pkg/run"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -632,9 +632,9 @@ func (g setupGate) Ready(tenant, name string) bool {
 	}
 	return first.CreatedBy != record.Owner || first.Hash != record.RevisionHash
 }
-func (g setupGate) AllowTag(tag envelope.Tag) bool {
+func (g setupGate) AllowTag(tag event.Envelope) bool {
 	record, ok := g.p.setups.get(tag.Tenant, tag.Agent)
-	if !ok || record.TestTag == "" || record.TestTag != tag.ID || record.Owner != tag.Actor.User || tag.Actor.Bot || tag.Origin != runs.OriginAPI || record.Phase != "configured" {
+	if !ok || record.TestTag == "" || record.TestTag != tag.ID || record.Owner != wire.ActorOf(tag).User || wire.ActorOf(tag).Bot || wire.Origin(tag) != runs.OriginAPI || record.Phase != "configured" {
 		return false
 	}
 	rev, err := g.p.Catalog().Get(context.Background(), tag.Tenant, tag.Agent, 0)
@@ -645,7 +645,11 @@ func (g setupGate) AllowRequest(req runtime.Request) bool {
 	if !ok || record.TestTag == "" || req.RunID != runtime.RunID(req.Tenant, record.TestTag) || record.Phase != "configured" {
 		return false
 	}
-	if req.Revision.Rev != record.Revision || req.Revision.Hash != record.RevisionHash || !g.p.setupSkillsMatch(req.Tenant, record) {
+	if wire.RevOf(req.Definition.Version) != record.Revision || !g.p.setupSkillsMatch(req.Tenant, record) {
+		return false
+	}
+	// The pinned version must hold the content the setup reviewed.
+	if pinned, err := g.p.Catalog().Get(context.Background(), req.Tenant, req.Agent(), record.Revision); err != nil || pinned.Hash != record.RevisionHash {
 		return false
 	}
 
@@ -698,7 +702,7 @@ func (p *Platform) TestAgentSetup(ctx context.Context, who auth.Principal, name,
 	if err := p.saveSetup(who.Tenant, &record, "configured"); err != nil {
 		return AgentSetup{}, err
 	}
-	_, err = p.Converse(ctx, who.Tenant, Turn{ID: record.TestTag, Agent: name, Project: record.Plan.Project, Text: text, Actor: envelope.Actor{ID: who.Subject, User: who.Subject, Display: p.NameOf(who.Tenant, who.Subject)}, ForceAsk: true, Sees: p.Seer(who).Agent})
+	_, err = p.Converse(ctx, who.Tenant, Turn{ID: record.TestTag, Agent: name, Project: record.Plan.Project, Text: text, Actor: event.Actor{ID: who.Subject, User: who.Subject, Display: p.NameOf(who.Tenant, who.Subject)}, ForceAsk: true, Sees: p.Seer(who).Agent})
 	if err != nil {
 		return p.failSetup(who.Tenant, record, err)
 	}

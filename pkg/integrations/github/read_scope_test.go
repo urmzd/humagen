@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/address"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 

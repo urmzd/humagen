@@ -2,7 +2,10 @@ package platform
 
 import (
 	"fmt"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"slices"
+	"strings"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -10,8 +13,6 @@ import (
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
-	"slices"
-	"strings"
 )
 
 func (p *Platform) sourceSuggestionVisible(who auth.Principal, row sourcelinks.Suggestion) bool {
@@ -110,7 +111,7 @@ func (p *Platform) observeKnowledgeSource(tenant string, src knowledge.Source) e
 	_, err = p.SourceSuggestions.Observe(tenant, "", src.Name, sourceResource(src), matches, p.now())
 	return err
 }
-func clientResource(c clients.Client, tag envelope.Tag) (sourcelinks.Resource, bool) {
+func clientResource(c clients.Client, tag event.Envelope) (sourcelinks.Resource, bool) {
 	from := wire.SurfaceOf(tag)
 	if c.Surface == clients.Slack {
 		return slackResource(from.SlackChannel)

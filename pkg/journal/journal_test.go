@@ -1,40 +1,33 @@
 package journal
 
 import (
+	"github.com/urmzd/humagen/internal/wire"
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 )
 
 var t0 = time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 
-func ev(t *testing.T, tenant, run string, at int, kind envelope.Kind, body any) envelope.Event {
+func ev(t *testing.T, tenant, run string, at int, body event.Body) event.Envelope {
 	t.Helper()
-	b, err := payload.Encode(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return envelope.Event{
-		Seq: uint64(at), RunID: run, Tenant: tenant, Agent: "lead", Rev: 1, Origin: "api",
-		Kind: kind, Payload: b, At: t0.Add(time.Duration(at) * time.Second),
-	}
+	return event.Envelope{Seq: uint64(at), Run: run, Tenant: tenant, Agent: "lead", Version: wire.VersionOf(1), Type: body.Type(), Data: body, Time: t0.Add(time.Duration(at) * time.Second)}
 }
 
 func filled(t *testing.T) *Journal {
 	j := New(0)
-	for _, e := range []envelope.Event{
-		ev(t, "acme", "r1", 0, envelope.KindAccepted, payload.Lifecycle{Rev: 1}),
-		ev(t, "acme", "r1", 1, envelope.KindStarted, payload.Lifecycle{Attempt: 1}),
-		ev(t, "acme", "r1", 2, envelope.KindToolCall, payload.ToolCall{ID: "t1", Name: "github.comment", Phase: payload.PhaseRequested}),
-		ev(t, "acme", "r1", 5, envelope.KindToolDone, payload.ToolDone{ID: "t1", Name: "github.comment", Error: "rate limited"}),
-		ev(t, "acme", "r1", 6, envelope.KindText, payload.Text{Text: "Posted the comment."}),
-		ev(t, "acme", "r1", 8, envelope.KindText, payload.Text{Text: " Done."}),
-		ev(t, "acme", "r1", 9, envelope.KindCompleted, payload.Lifecycle{Text: "Posted the comment. Done."}),
-		ev(t, "globex", "r9", 3, envelope.KindText, payload.Text{Text: "secret"}),
+	for _, e := range []event.Envelope{
+		ev(t, "acme", "r1", 0, event.Accepted{}),
+		ev(t, "acme", "r1", 1, event.Started{Attempt: 1}),
+		ev(t, "acme", "r1", 2, event.ToolCall{ID: "t1", Name: "github.comment", Phase: event.PhaseRequested}),
+		ev(t, "acme", "r1", 5, event.ToolDone{ID: "t1", Name: "github.comment", Error: "rate limited"}),
+		ev(t, "acme", "r1", 6, event.Text{Text: "Posted the comment."}),
+		ev(t, "acme", "r1", 8, event.Text{Text: " Done."}),
+		ev(t, "acme", "r1", 9, event.Completed{Text: "Posted the comment. Done."}),
+		ev(t, "globex", "r9", 3, event.Text{Text: "secret"}),
 	} {
-		j.Append(e)
+		j.Append(e, "slack")
 	}
 	return j
 }
@@ -42,7 +35,7 @@ func filled(t *testing.T) *Journal {
 func TestQueryIsNewestFirstAndConfinedToATenant(t *testing.T) {
 	j := filled(t)
 	got := j.Query(Query{Tenant: "acme"})
-	if len(got) != 7 || got[0].Kind != envelope.KindCompleted || got[6].Kind != envelope.KindAccepted {
+	if len(got) != 7 || got[0].Kind != "lifecycle.completed" || got[6].Kind != "lifecycle.accepted" {
 		t.Fatalf("got %d entries, first %s", len(got), got[0].Kind)
 	}
 	for _, e := range got {
@@ -100,9 +93,9 @@ func TestTraceRebuildsSpans(t *testing.T) {
 
 func TestARetriedFailureDoesNotEndTheRun(t *testing.T) {
 	j := New(0)
-	j.Append(ev(t, "acme", "r1", 0, envelope.KindAccepted, payload.Lifecycle{}))
-	j.Append(ev(t, "acme", "r1", 1, envelope.KindStarted, payload.Lifecycle{Attempt: 1}))
-	j.Append(ev(t, "acme", "r1", 2, envelope.KindFailed, payload.Lifecycle{Error: "timeout"}))
+	j.Append(ev(t, "acme", "r1", 0, event.Accepted{}), "slack")
+	j.Append(ev(t, "acme", "r1", 1, event.Started{Attempt: 1}), "slack")
+	j.Append(ev(t, "acme", "r1", 2, event.Failed{Error: "timeout"}), "slack")
 	for _, s := range j.Trace("acme", []string{"r1"}) {
 		if s.Kind == SpanRun && !s.End.IsZero() {
 			t.Fatal("the run span closed on a failure that will be retried")
@@ -116,7 +109,7 @@ func TestARetriedFailureDoesNotEndTheRun(t *testing.T) {
 func TestTheRingDropsTheOldest(t *testing.T) {
 	j := New(3)
 	for i := range 5 {
-		j.Append(ev(t, "acme", "r1", i, envelope.KindText, payload.Text{Text: "x"}))
+		j.Append(ev(t, "acme", "r1", i, event.Text{Text: "x"}), "slack")
 	}
 	got := j.Query(Query{Tenant: "acme"})
 	if len(got) != 3 || got[0].Seq != 4 || got[2].Seq != 2 {
@@ -130,7 +123,7 @@ func TestDetailIsClippedOnARuneBoundary(t *testing.T) {
 		long += "é"
 	}
 	j := New(0)
-	j.Append(ev(t, "acme", "r1", 0, envelope.KindText, payload.Text{Text: long}))
+	j.Append(ev(t, "acme", "r1", 0, event.Text{Text: long}), "slack")
 	d := j.Query(Query{Tenant: "acme"})[0].Detail
 	if len(d) > maxDetail+4 || []rune(d)[len([]rune(d))-2] != 'é' {
 		t.Fatalf("clipped badly: %d bytes", len(d))

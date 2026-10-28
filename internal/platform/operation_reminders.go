@@ -2,10 +2,11 @@ package platform
 
 import (
 	"context"
-	"github.com/urmzd/humagen/pkg/inbox"
-	"github.com/urmzd/humagen/pkg/operations"
 	"strconv"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/operations"
 )
 
 func reminderSetting(value *int) string {

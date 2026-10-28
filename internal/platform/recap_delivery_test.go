@@ -9,9 +9,9 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -25,8 +25,8 @@ import (
 // is answer, and a project, Field, that ada created and so owns.
 func recapping(t *testing.T, answer string) *platform.Platform {
 	t.Helper()
-	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{
-		"says": func(agentrt.Spec) (saigetypes.Provider, error) {
+	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
+		"says": func(native.Spec) (saigetypes.Provider, error) {
 			out := make([][]saigetypes.Delta, 8)
 			for i := range out {
 				out[i] = agenttest.TextResponse(answer)
@@ -34,7 +34,7 @@ func recapping(t *testing.T, answer string) *platform.Platform {
 			return &agenttest.ScriptedProvider{Responses: out}, nil
 		},
 	}}})
-	if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "recapper", Provider: "says", Model: "m", SystemPrompt: "Recap."}, "test"); err != nil {
+	if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "recapper", Provider: "says", Model: "m", SystemPrompt: "Recap."}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Field"}); err != nil {
@@ -47,14 +47,10 @@ func recapping(t *testing.T, answer string) *platform.Platform {
 // and delivered there, and waits for it to end.
 func recap(t *testing.T, p *platform.Platform, id, project string) runs.Run {
 	t.Helper()
-	run, err := p.Invoke(t.Context(), envelope.Tag{
-		ID: id, Tenant: tenant, Agent: "recapper", Origin: runs.OriginManual, Text: "What changed?",
-		Actor: envelope.Actor{ID: "bob"},
-		Meta: map[string]string{
-			"cron_schedule": "field-recap", "cron_expression": "41 8 * * 1", "created_by": "ada",
-			runs.MetaProject: project, platform.MetaDeliver: platform.DeliverProject,
-		},
-	})
+	run, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: "recapper", Origin: runs.OriginManual, Text: "What changed?", Actor: event.Actor{ID: "bob"}, Context: map[string]string{
+		"cron_schedule": "field-recap", "cron_expression": "41 8 * * 1", "created_by": "ada",
+		runs.MetaProject: project, platform.MetaDeliver: platform.DeliverProject,
+	}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,15 +231,12 @@ func TestAScheduledAnswerThatMayHoldAPersonsCredentialIsTheirsAlone(t *testing.T
 		t.Fatal(err)
 	}
 	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
-	scheduled := func(id, deliver string, actor envelope.Actor) runs.Run {
+	scheduled := func(id, deliver string, actor event.Actor) runs.Run {
 		t.Helper()
-		run, err := w.p.Invoke(ctx, envelope.Tag{
-			ID: id, Tenant: tenant, Agent: "worker", Origin: runs.OriginManual, Text: "Any open bugs?", Actor: actor,
-			Meta: map[string]string{
-				"cron_schedule": "launch-recap", "cron_expression": "41 8 * * 1", "created_by": "ada",
-				runs.MetaProject: "Launch", platform.MetaDeliver: deliver,
-			},
-		})
+		run, err := w.p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: "worker", Origin: runs.OriginManual, Text: "Any open bugs?", Actor: actor, Context: map[string]string{
+			"cron_schedule": "launch-recap", "cron_expression": "41 8 * * 1", "created_by": "ada",
+			runs.MetaProject: "Launch", platform.MetaDeliver: deliver,
+		}}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,7 +263,7 @@ func TestAScheduledAnswerThatMayHoldAPersonsCredentialIsTheirsAlone(t *testing.T
 		}
 	}
 	// Run for nobody, the schedule posts in the project as it says.
-	run := scheduled("manual-nobody", platform.DeliverProject, envelope.Actor{ID: "cron", Bot: true})
+	run := scheduled("manual-nobody", platform.DeliverProject, event.Actor{ID: "cron", Bot: true})
 	eventually(t, "the answer was posted", func() bool {
 		got := results(run.ID)
 		return len(got) == 1 && got[0].Kind == inbox.KindAnnouncement && got[0].Source.Project == "Launch"

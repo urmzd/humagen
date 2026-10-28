@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -106,8 +106,8 @@ func onChain(tree *projects.Tree, project, name string) bool {
 // (evalCase), so it is checked as any run there is. A scheduled run refused
 // here keeps firing and is refused each time, and the refusal is raised
 // once, as an alert, until someone acknowledges it.
-func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
-	if tag.Origin == runs.OriginSystem {
+func (p *Platform) admitAgent(tag event.Envelope, project string) error {
+	if wire.Origin(tag) == runs.OriginSystem {
 		return nil
 	}
 	tree := p.Projects.Tree(tag.Tenant)
@@ -120,10 +120,10 @@ func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
 		return projectDeleted(at)
 	}
 	err := p.notAvailable(tag.Tenant, tree, at, tag.Agent)
-	p.log.Warn("platform: run refused: agent not available", "tenant", tag.Tenant, "agent", tag.Agent, "project", at, "origin", tag.Origin)
+	p.log.Warn("platform: run refused: agent not available", "tenant", tag.Tenant, "agent", tag.Agent, "project", at, "origin", wire.Origin(tag))
 	// A person running a schedule now is told at once; the clock has nobody
 	// to tell.
-	if schedule := wire.SurfaceOf(tag).CronSchedule; schedule != "" && tag.Origin == "cron" {
+	if schedule := wire.SurfaceOf(tag).CronSchedule; schedule != "" && wire.Origin(tag) == "cron" {
 		p.unavailableAlert(tag.Tenant, schedule, tag.Agent, project, err)
 	}
 	return err
@@ -213,7 +213,7 @@ func (p *Platform) asker(tenant string) join.Asker {
 	if !r.Enabled || fn == nil {
 		return nil
 	}
-	prov, err := fn(agentrt.Spec{Name: "join", Provider: r.Provider, Model: r.Model})
+	prov, err := fn(native.Spec{Name: "join", Provider: r.Provider, Model: r.Model})
 	if err != nil {
 		p.log.Warn("platform: the router's model could not be built", "tenant", tenant, "provider", r.Provider, "error", err)
 		return nil
@@ -627,7 +627,7 @@ func (p *Platform) homeUsers(tenant, agent string, before, after *projects.Tree)
 		out = append(out, "the agent default skills")
 	}
 	for _, sc := range p.Schedules.List(tenant) {
-		if sc.Agent == agent && lost(sc.Meta[runs.MetaProject]) {
+		if sc.Agent == agent && lost(sc.Context[runs.MetaProject]) {
 			out = append(out, "the schedule "+sc.Name)
 		}
 	}

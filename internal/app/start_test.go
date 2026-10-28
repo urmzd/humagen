@@ -18,7 +18,7 @@ import (
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/pkg/spec"
 )
@@ -390,7 +390,7 @@ spec:
 	var gotBlock string
 	o := Options{Kinds: map[string]map[string]Factory{spec.SlotModels: {"house-model": func(_ context.Context, b json.RawMessage) (any, error) {
 		gotBlock = string(b)
-		return agentrt.ProviderFunc(func(agentrt.Spec) (saigetypes.Provider, error) { return nil, nil }), nil
+		return native.ProviderFunc(func(native.Spec) (saigetypes.Provider, error) { return nil, nil }), nil
 	}}}}
 	// The file says 127.0.0.1:1; the flag wins.
 	addr := serveFor(t, o, "-f", path, "-addr", "127.0.0.1:0")

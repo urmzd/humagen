@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
@@ -33,7 +33,7 @@ func applySchedules(p *platform.Platform, tenant string, w spec.Workspace) error
 			if d.Deliver != "" {
 				meta[platform.MetaDeliver] = d.Deliver
 			}
-			sc := cron.Schedule{Name: d.Name, Expression: d.Cron, Agent: agent, Text: d.Text, Tenant: tenant, Meta: meta}
+			sc := cron.Schedule{Name: d.Name, Expression: d.Cron, Agent: agent, Text: d.Text, Tenant: tenant, Context: meta}
 			if err := p.InProject(tenant, pr.Name, func() error {
 				_, err := p.Schedules.Declare(sc, d.Description, now)
 				return err

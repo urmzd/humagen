@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -97,17 +97,17 @@ func TestNoOneWritesALineThatReadsAsSomeoneElses(t *testing.T) {
 // it answers are named the same way.
 func TestATurnThatAnswersNoMessageNamesWhoAskedIt(t *testing.T) {
 	turns := []threads.Turn{
-		threads.RunTurn(runs.Run{Agent: "ignite", Text: "What changed?", Status: runs.Completed, Answer: "Two things.", Actor: envelope.Actor{ID: "okta|ben", User: "okta|ben"}}),
-		threads.RunTurn(runs.Run{Agent: "ignite", Text: "Which?", Status: runs.Completed, Answer: "These.", Actor: envelope.Actor{ID: "svc-slack", Display: "Slack app", Bot: true, User: "okta|ana"}}),
-		threads.RunTurn(runs.Run{Agent: "ignite", Text: "Why?", Status: runs.Completed, Answer: "Because.", Actor: envelope.Actor{ID: "U0HUMAN1", Display: "Ana"}}),
+		threads.RunTurn(runs.Run{Agent: "ignite", Text: "What changed?", Status: runs.Completed, Answer: "Two things.", Actor: event.Actor{ID: "okta|ben", User: "okta|ben"}}),
+		threads.RunTurn(runs.Run{Agent: "ignite", Text: "Which?", Status: runs.Completed, Answer: "These.", Actor: event.Actor{ID: "svc-slack", Display: "Slack app", Bot: true, User: "okta|ana"}}),
+		threads.RunTurn(runs.Run{Agent: "ignite", Text: "Why?", Status: runs.Completed, Answer: "Because.", Actor: event.Actor{ID: "U0HUMAN1", Display: "Ana"}}),
 		threads.MessageTurn(threads.Message{By: "okta|dana", Name: "Dana", Text: "Which two?"}),
-		threads.RunTurn(runs.Run{Agent: "ignite", Text: "Where?", Status: runs.Completed, Answer: "Here.", Actor: envelope.Actor{ID: "okta|cyd", Display: "Cyd", User: "okta|cyd"}}),
+		threads.RunTurn(runs.Run{Agent: "ignite", Text: "Where?", Status: runs.Completed, Answer: "Here.", Actor: event.Actor{ID: "okta|cyd", Display: "Cyd", User: "okta|cyd"}}),
 		// Asked through the API before runs kept whom they act for: the
 		// person by the actor's id, as every such run named them.
-		threads.RunTurn(runs.Run{Agent: "ignite", Origin: runs.OriginAPI, TagID: "api-r-1", Text: "When?", Status: runs.Completed, Answer: "Now.", Actor: envelope.Actor{ID: "okta|dana", Display: "Dana"}}),
+		threads.RunTurn(runs.Run{Agent: "ignite", Origin: runs.OriginAPI, TagID: "api-r-1", Text: "When?", Status: runs.Completed, Answer: "Now.", Actor: event.Actor{ID: "okta|dana", Display: "Dana"}}),
 		// A retry asked for nobody names whoever pressed it, whose words they
 		// were not.
-		threads.RunTurn(runs.Run{Agent: "ignite", Origin: runs.OriginAPI, TagID: "api-retry-8-okta|ben-r1", Text: "When?", Status: runs.Completed, Answer: "Now.", Actor: envelope.Actor{ID: "okta|ben", Display: "Ben"}}),
+		threads.RunTurn(runs.Run{Agent: "ignite", Origin: runs.OriginAPI, TagID: "api-retry-8-okta|ben-r1", Text: "When?", Status: runs.Completed, Answer: "Now.", Actor: event.Actor{ID: "okta|ben", Display: "Ben"}}),
 	}
 	want := strings.Join([]string{
 		opens,
@@ -128,7 +128,7 @@ func TestATurnThatAnswersNoMessageNamesWhoAskedIt(t *testing.T) {
 		"",
 		"And then?",
 	}, "\n")
-	if got := threads.Ask(turns, 10_000, people, threads.AskerOf(envelope.Actor{ID: "okta|cyd", Display: "Cyd", User: "okta|cyd"}), "And then?"); got != want {
+	if got := threads.Ask(turns, 10_000, people, threads.AskerOf(event.Actor{ID: "okta|cyd", Display: "Cyd", User: "okta|cyd"}), "And then?"); got != want {
 		t.Fatalf("transcript =\n%s\nwant\n%s", got, want)
 	}
 	// With nothing before it, the words are sent alone.

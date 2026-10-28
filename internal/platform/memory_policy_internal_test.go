@@ -1,11 +1,12 @@
 package platform
 
 import (
-	"github.com/urmzd/humagen/pkg/memory"
-	"github.com/urmzd/humagen/pkg/operations"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/operations"
 )
 
 func TestAutomaticNotesRespectReadContextPolicy(t *testing.T) {

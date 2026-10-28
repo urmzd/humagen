@@ -8,10 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/call"
@@ -21,7 +20,7 @@ import (
 
 // as is a tool request from a run of one agent.
 func as(run runs.Run, agent string) runtime.Request {
-	return runtime.Request{RunID: run.ID, Tenant: tenant, Revision: agentrt.Revision{Spec: agentrt.Spec{Name: agent}, Rev: 1}}
+	return runtime.Request{RunID: run.ID, Tenant: tenant, Definition: native.Revision{Spec: native.Spec{Name: agent}, Version: wire.VersionOf(1)}}
 }
 
 // The analyst and the builder exist once a model is given, stay at their first
@@ -164,7 +163,7 @@ func TestTheBuilderNeverReadsOrRevisesAnAgentOutsideItsReach(t *testing.T) {
 	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "olu"}, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "spy", Model: "offline", Provider: "offline", SystemPrompt: "SECRET-PROMPT"}, "olu"); err != nil {
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "spy", Model: "offline", Provider: "offline", SystemPrompt: "SECRET-PROMPT"}, "olu"); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.SetAgentHome(ctx, tenant, "spy", "Vault", projects.Writer{By: "olu"}); err != nil {
@@ -176,7 +175,7 @@ func TestTheBuilderNeverReadsOrRevisesAnAgentOutsideItsReach(t *testing.T) {
 	if out, err := use(t, p, req, platform.ToolListAgents, nil); err != nil || strings.Contains(out, "spy") || !strings.Contains(out, "lead") {
 		t.Fatalf("list_agents from outside = %s, %v", out, err)
 	}
-	if out, err := use(t, p, req, platform.ToolReadAgent, map[string]any{"name": "spy"}); !errors.Is(err, registry.ErrNotFound) || strings.Contains(out, "SECRET") {
+	if out, err := use(t, p, req, platform.ToolReadAgent, map[string]any{"name": "spy"}); !errors.Is(err, wire.ErrNotFound) || strings.Contains(out, "SECRET") {
 		t.Fatalf("read_agent from outside = %q, %v", out, err)
 	}
 	if out, err := use(t, p, as(inside, platform.BuiltinBuilder), platform.ToolReadAgent, map[string]any{"name": "spy"}); err != nil || !strings.Contains(out, "SECRET-PROMPT") {

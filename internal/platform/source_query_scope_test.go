@@ -9,10 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/mcptools"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -94,14 +96,14 @@ func newSourceQueryFixture(t *testing.T, mode knowledge.Mode, provider knowledge
 	if _, err := p.Threads.Create("tenant", threads.Thread{ID: "th-0000000000000001", Project: "Secret", Channel: "general", Visibility: threads.Private, CreatedBy: "owner", Participants: []threads.Participant{{Kind: threads.Person, Name: "owner", Owner: true}}}, p.now()); err != nil {
 		t.Fatal(err)
 	}
-	tag := envelope.Tag{ID: "tool", Origin: runs.OriginAPI, Tenant: "tenant", Agent: "worker", Actor: envelope.Actor{ID: "owner", User: "owner"}, At: p.now(), Meta: map[string]string{runs.MetaProject: "Secret", runs.MetaThread: "th-0000000000000001"}}
+	tag := wire.NewEvent(wire.Raise{ID: "tool", Origin: runs.OriginAPI, Tenant: "tenant", Agent: "worker", Actor: event.Actor{ID: "owner", User: "owner"}, At: p.now(), Context: map[string]string{runs.MetaProject: "Secret", runs.MetaThread: "th-0000000000000001"}})
 	if err := p.Runs.Record("query-run", tag, 1); err != nil {
 		t.Fatal(err)
 	}
 	return sourceQueryFixture{
 		p: p, src: src,
 		who: auth.Principal{Tenant: "tenant", Subject: "owner", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead}},
-		req: runtime.Request{Tenant: "tenant", RunID: "query-run", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "worker", Sources: []agentrt.Source{{Name: "external"}}}}},
+		req: runtime.Request{Tenant: "tenant", RunID: "query-run", Definition: native.Revision{Spec: native.Spec{Name: "worker", Sources: []native.Source{{Name: "external"}}}}},
 	}
 }
 

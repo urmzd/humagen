@@ -2,12 +2,13 @@ package platform
 
 import (
 	"fmt"
+	"slices"
+
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
-	"slices"
 )
 
 type KnowledgeAttachment struct {

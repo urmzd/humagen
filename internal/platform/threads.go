@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -1029,7 +1029,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	// poster's own credentials (credentials.go), though each run is sent
 	// what others said in the room, fenced off ahead of the poster's words
 	// (threads.Ask).
-	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
+	actor := event.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) ([]runs.Run, error) {
 		// A run the selection starts says how: one of the selected agents
@@ -1161,7 +1161,7 @@ func answerTagID(thread, message, agent string) string {
 // keeps pins that the person it acts for may change the project's notes, as
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
 // one they may not read is never asked.
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
@@ -1213,10 +1213,11 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 			mt = maps.Clone(meta)
 			mt[runs.MetaPicked] = a.picked
 		}
-		run, err := p.Invoke(ctx, wire.NewInput(envelope.Tag{
+		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
 			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI,
-			Attachments: m.Attachments, Actor: actor, Meta: mt,
-		}, p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, body, mt)))
+			Attachments: m.Attachments, Actor: actor, Context: mt,
+			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, body, mt),
+		}))
 		if err != nil {
 			firstErr = cmp.Or(firstErr, err)
 			continue

@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/library"
@@ -44,8 +45,8 @@ func TestPinnedSkillResourcesUseTheSelectedImmutablePackageAndTenant(t *testing.
 		t.Fatalf("start skill: %v", err)
 	}
 	run := await(t, p, posted.Runs[0].ID, runs.Completed)
-	req := runtime.Request{RunID: run.ID, Tenant: tenant, Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "lead"}, Rev: 1}}
-	if !strings.Contains(run.Tag().Meta[runs.MetaSkills], "references/style.md") {
+	req := runtime.Request{RunID: run.ID, Tenant: tenant, Definition: native.Revision{Spec: native.Spec{Name: "lead"}, Version: wire.VersionOf(1)}}
+	if !strings.Contains(wire.Meta(run.Tag())[runs.MetaSkills], "references/style.md") {
 		t.Fatal("resource manifest was not pinned")
 	}
 	d.Files[1].Data = []byte("Unpublished changed resource")

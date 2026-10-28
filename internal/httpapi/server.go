@@ -21,11 +21,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -863,23 +863,19 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request, who auth.Princi
 // topic narrows it: "agent" is everything, "agent:<name>" one agent,
 // "agent:<name>:<run>" one run. from resumes after a sequence number.
 func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	t := topic.All()
-	if raw := r.URL.Query().Get("topic"); raw != "" {
-		parsed, err := topic.Parse(raw)
-		if err != nil {
-			fail(w, http.StatusBadRequest, "topic is not valid")
-			return
-		}
-		t = parsed
+	agent, run, err := legacy.Topic(r.URL.Query().Get("topic"))
+	if err != nil {
+		fail(w, http.StatusBadRequest, "topic is not valid")
+		return
 	}
-	sub := envelope.Subscription{Topic: t}
+	var from uint64
 	if raw := r.URL.Query().Get("from"); raw != "" {
-		if _, err := fmt.Sscan(raw, &sub.From); err != nil {
+		if _, err := fmt.Sscan(raw, &from); err != nil {
 			fail(w, http.StatusBadRequest, "from is not a sequence number")
 			return
 		}
 	}
-	stream, err := s.P.Subscribe(r.Context(), who.Tenant, sub)
+	stream, err := s.P.Subscribe(r.Context(), who.Tenant, agent, run, from)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -905,7 +901,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	w.WriteHeader(http.StatusOK)
 	_ = rc.Flush()
 
-	out := make(chan envelope.Event)
+	out := make(chan event.Envelope)
 	go func() {
 		defer close(out)
 		for {
@@ -978,15 +974,16 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// behind is ended here rather than fed a gap.
 				return
 			}
-			if !gate.seen(e.RunID) || !s.P.CitationEventVisible(who, e) {
+			if !gate.seen(e.Run) || !s.P.CitationEventVisible(who, e) {
 				continue
 			}
-			e = s.P.ShownEvent(who, e)
-			// Who answered a question is called by name (shownEvent).
-			if e.Kind == wire.KindResumed {
-				e = shownEvent(s.P.Names(who.Tenant), e)
+			v, shown := s.P.ShownV1(who, e)
+			if !shown {
+				continue
 			}
-			b, err := json.Marshal(e)
+			// Who answered a question is called by name (shownEvent).
+			v = shownEvent(s.P.Names(who.Tenant), v)
+			b, err := json.Marshal(v)
 			if err != nil {
 				continue
 			}
@@ -1122,7 +1119,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		errors.Is(err, platform.ErrBusy):
 		fail(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, call.ErrInvalid), errors.Is(err, wire.ErrInvalidPage), errors.Is(err, wire.ErrInvalidAgent),
-		errors.Is(err, envelope.ErrInvalid), errors.Is(err, cron.ErrSchedule),
+		errors.Is(err, event.ErrInvalid), errors.Is(err, cron.ErrSchedule),
 		errors.Is(err, alerts.ErrInvalid), errors.Is(err, knowledge.ErrInvalid), errors.Is(err, evals.ErrInvalid),
 		errors.Is(err, prefs.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid),
 		errors.Is(err, inbox.ErrInvalid), errors.Is(err, platform.ErrAction):

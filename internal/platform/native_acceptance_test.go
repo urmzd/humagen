@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -68,7 +68,7 @@ func TestNativeAgentOfficeRevisionAcceptance(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.ext, func(t *testing.T) {
 			name := "launch." + tc.ext
-			c := &cast{continues: true, shape: map[string]func(*agentspec.AgentSpec){"writer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolPublish} }}, says: map[string][][]saigetypes.Delta{"writer": {
+			c := &cast{continues: true, shape: map[string]func(*wire.AgentSpec){"writer": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolPublish} }}, says: map[string][][]saigetypes.Delta{"writer": {
 				agenttest.ToolCallResponse("write1", platform.ToolFileWrite, map[string]any{"path": name, "format": "native", "content": tc.original}),
 				agenttest.ToolCallResponse("publish1", platform.ToolPublish, map[string]any{"path": name}),
 				agenttest.ToolCallResponse("read", platform.ToolFileRead, map[string]any{"path": name}),

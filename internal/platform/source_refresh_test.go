@@ -2,11 +2,12 @@ package platform
 
 import (
 	"context"
-	"github.com/urmzd/fiber/pkg/mcptools"
-	"github.com/urmzd/humagen/pkg/auth"
-	"github.com/urmzd/humagen/pkg/knowledge"
 	"testing"
 	"time"
+
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/knowledge"
 )
 
 type scheduledSourceBoundary struct {

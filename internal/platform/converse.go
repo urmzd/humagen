@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -296,7 +296,7 @@ type Turn struct {
 	// Project files a new conversation. A follow-up keeps its conversation's
 	// project, whatever is passed here.
 	Project string
-	Actor   envelope.Actor
+	Actor   event.Actor
 	// Client is the client a surface's credential sends the turn through,
 	// when it acts for a person (act_as): its default is nearer than the
 	// channel's, and only the agents it may route to are asked.
@@ -424,9 +424,10 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		run, err := p.Runs.Get(tenant, runtime.RunID(tenant, id))
 		if err != nil {
-			run, err = p.Invoke(ctx, wire.NewInput(envelope.Tag{
-				ID: id, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAPI, Actor: t.Actor, Meta: m,
-			}, p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, body, m)))
+			run, err = p.Invoke(ctx, wire.NewEvent(wire.Raise{
+				ID: id, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAPI, Actor: t.Actor, Context: m,
+				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, body, m),
+			}))
 		}
 		if err != nil {
 			if i == 0 {

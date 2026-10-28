@@ -5,10 +5,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/pkg/auth"
@@ -21,9 +22,9 @@ import (
 
 // UseTool calls one of a turn's file tools the way the agent loop would, and
 // returns what the tool reported on the run's stream.
-func (p *Platform) UseTool(ctx context.Context, req runtime.Request, name string, args map[string]any) (string, []payload.Action, error) {
-	var reported []payload.Action
-	tools, err := p.fileTools(nil)(req, func(a payload.Action) error {
+func (p *Platform) UseTool(ctx context.Context, req runtime.Request, name string, args map[string]any) (string, []event.Action, error) {
+	var reported []event.Action
+	tools, err := p.fileTools(nil)(req, func(a event.Action) error {
 		reported = append(reported, a)
 		return nil
 	})
@@ -50,12 +51,12 @@ func (p *Platform) Age(tenant, thread string, at time.Time) error {
 }
 
 // ConnectorTools is the client actions a turn would be given.
-func (p *Platform) ConnectorTools(req runtime.Request) (agentrt.Tools, error) {
-	return p.connectorTools(req, func(payload.Action) error { return nil })
+func (p *Platform) ConnectorTools(req runtime.Request) (native.Tools, error) {
+	return p.connectorTools(req, func(event.Action) error { return nil })
 }
 
 // Redeliver hands the platform an event again, as the bus may.
-func (p *Platform) Redeliver(ctx context.Context, e envelope.Event) { p.observe(ctx, e) }
+func (p *Platform) Redeliver(ctx context.Context, e event.Envelope) { p.observe(ctx, e) }
 
 // Reconcile runs one pass of the ledger reconciler now.
 func (p *Platform) Reconcile(ctx context.Context) { p.reconcile(ctx) }
@@ -88,9 +89,9 @@ func (p *Platform) CallTargets(tenant, runID, caller string, spawn []string) []s
 
 // CallToolApproval asks the call tool a turn would get whether a call needs
 // approval, as the runtime's approval gate does.
-func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (agentrt.ApprovalRequest, bool) {
-	t := p.callAgentTool(req, func(payload.Action) error { return nil })
-	return t.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: ToolCallAgent, Arguments: args})
+func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (native.ApprovalRequest, bool) {
+	t := p.callAgentTool(req, func(event.Action) error { return nil })
+	return t.(native.Approving).Approval(saigetypes.ToolCallPart{Name: ToolCallAgent, Arguments: args})
 }
 
 // JoinFor is who takes a message a client raised, as stamp asks, in the
@@ -104,12 +105,12 @@ func (p *Platform) JoinFor(ctx context.Context, c clients.Client, text string) (
 // a loaded machine can, so what a run does at once comes first. It is set
 // before any run starts.
 func (p *Platform) DelayRecord(d time.Duration) {
-	p.afterAccept = func(envelope.Tag) { time.Sleep(d) }
+	p.afterAccept = func(event.Envelope) { time.Sleep(d) }
 }
 
-// Untagged is the agent a client's in-process connector raises a message
-// that names no agent for, which stamp resolves where the run is filed.
-const Untagged = untagged
+// Untagged is the agent of a message a client's in-process connector raises
+// naming no agent: none, which stamp resolves where the run is filed.
+const Untagged = ""
 
 // SeatPeer puts a connector of the test's own in place of the one a
 // client's record built, as the platform runs a connector in process.
@@ -125,11 +126,8 @@ func (p *Platform) SeatPeer(tenant, id string, peer Peer) error {
 
 // HousekeepingTag is what a hook sends for a turn at a place: a run of
 // origin system, read where the turn is.
-func HousekeepingTag(tenant, id, agent string, turn Place) envelope.Tag {
-	return envelope.Tag{
-		ID: id, Tenant: tenant, Agent: agent, Origin: runs.OriginSystem, Text: "title it", At: time.Now(),
-		Meta: map[string]string{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread},
-	}
+func HousekeepingTag(tenant, id, agent string, turn Place) event.Envelope {
+	return wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: agent, Origin: runs.OriginSystem, Text: "title it", At: time.Now(), Context: map[string]string{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}})
 }
 
 // RetainInbox runs one pass of inbox retention, as the platform's loop does

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/callpolicy"
@@ -21,7 +21,7 @@ import (
 // its spawn allowlist, and the callee's call policy admits the caller. Either
 // can refuse, and the refusal says which. The callee's policy also says which
 // admitted calls wait for a person, and who that person may be: callApproval
-// is that decision. The call_agent tool is an agentrt.Approving tool, so the
+// is that decision. The call_agent tool is an native.Approving tool, so the
 // runtime asks callApproval's approvers before the call runs, and parks the
 // run while they decide. A call that needs approval goes through only when a
 // person approved that very tool call (approvals); anything else is refused,
@@ -109,8 +109,8 @@ type approvalKey struct{ tenant, run, call string }
 // reports whether it did. Only questions about call_agent are noted. The
 // callee is read from the arguments approved: edited ones when the person
 // edited them.
-func (p *Platform) noteApprovedCall(tenant string, q inbox.QuestionPart, ans payload.Answer) bool {
-	if q.Kind != payload.QuestionApproval || q.Tool == nil || q.Tool.CallID == "" {
+func (p *Platform) noteApprovedCall(tenant string, q inbox.QuestionPart, ans event.Answer) bool {
+	if q.Kind != event.QuestionApproval || q.Tool == nil || q.Tool.CallID == "" {
 		return false
 	}
 	args := q.Tool.Arguments
@@ -261,7 +261,7 @@ func (p *Platform) Reachable(ctx context.Context, tenant, caller string) (out []
 
 // questionTarget is the agent a question's tool call would call, when the
 // tool calls agents and its arguments name one.
-func questionTarget(q payload.Question) string {
+func questionTarget(q event.Question) string {
 	if q.Tool == nil || (q.Tool.Name != ToolCallAgent && q.Tool.Name != ToolDelegate) {
 		return ""
 	}

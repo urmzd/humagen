@@ -4,8 +4,8 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -17,9 +17,9 @@ func TestPinnedSourcesReachTheRevisionUnderEitherKey(t *testing.T) {
 	for _, key := range []string{runs.MetaSources, runs.MetaSourcesV0} {
 		tagMeta := map[string]string{key: "playbook,guide", "warp.project": "Field"}
 		before := maps.Clone(tagMeta)
-		req := withSources(runtime.Request{Meta: tagMeta, Revision: agentrt.Revision{}})
+		req := withSources(runtime.Request{Meta: tagMeta, Definition: native.Revision{}})
 		var names []string
-		for _, s := range req.Revision.Spec.Sources {
+		for _, s := range req.Definition.Spec.Sources {
 			names = append(names, s.Name+"="+s.URI)
 		}
 		if len(names) != 2 || names[0] != "playbook=knowledge://playbook" || names[1] != "guide=knowledge://guide" {
@@ -36,18 +36,18 @@ func TestPinnedSourcesReachTheRevisionUnderEitherKey(t *testing.T) {
 
 func TestAForkSourceSelectionNarrowsAgentAndInheritedSources(t *testing.T) {
 	for _, selection := range []string{"", "guide"} {
-		req := runtime.Request{Meta: map[string]string{metaForkSources: selection, runs.MetaSources: selection}, Revision: agentrt.Revision{Spec: agentrt.Spec{Sources: []agentrt.Source{{Name: "secret", URI: "knowledge://secret"}, {Name: "guide", URI: "knowledge://guide"}}}}}
+		req := runtime.Request{Meta: map[string]string{metaForkSources: selection, runs.MetaSources: selection}, Definition: native.Revision{Spec: native.Spec{Sources: []native.Source{{Name: "secret", URI: "knowledge://secret"}, {Name: "guide", URI: "knowledge://guide"}}}}}
 		got := withSources(req)
-		if selection == "" && len(got.Revision.Spec.Sources) != 0 {
-			t.Fatalf("empty selection kept agent sources: %+v", got.Revision.Spec.Sources)
+		if selection == "" && len(got.Definition.Spec.Sources) != 0 {
+			t.Fatalf("empty selection kept agent sources: %+v", got.Definition.Spec.Sources)
 		}
-		if selection == "guide" && (len(got.Revision.Spec.Sources) != 1 || got.Revision.Spec.Sources[0].Name != "guide") {
-			t.Fatalf("selection did not confine sources: %+v", got.Revision.Spec.Sources)
+		if selection == "guide" && (len(got.Definition.Spec.Sources) != 1 || got.Definition.Spec.Sources[0].Name != "guide") {
+			t.Fatalf("selection did not confine sources: %+v", got.Definition.Spec.Sources)
 		}
 		if _, ok := got.Meta[metaForkSources]; ok {
 			t.Fatal("private source selection reached model metadata")
 		}
-		if len(req.Revision.Spec.Sources) != 2 {
+		if len(req.Definition.Spec.Sources) != 2 {
 			t.Fatal("changed pinned agent revision")
 		}
 	}

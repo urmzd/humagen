@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -22,8 +23,8 @@ func (p *Platform) sourceTools(req runtime.Request) map[string]saigetypes.Tool {
 	allowed := p.sourceNamesForTools(req)
 	// Automatic grounding may be withheld by Ask/Never. The durable revision
 	// and admission pin retain explicit source grants for the policy-wrapped tool.
-	if p.Agents != nil && req.Revision.Rev > 0 {
-		if rev, err := p.Catalog().Get(context.Background(), req.Tenant, req.Agent(), req.Revision.Rev); err == nil && rev.Rev == req.Revision.Rev {
+	if p.Agents != nil && wire.RevOf(req.Definition.Version) > 0 {
+		if rev, err := p.Catalog().Get(context.Background(), req.Tenant, req.Agent(), wire.RevOf(req.Definition.Version)); err == nil && rev.Rev == wire.RevOf(req.Definition.Version) {
 			for _, source := range rev.Spec.Sources {
 				if !slices.Contains(allowed, source.Name) {
 					allowed = append(allowed, source.Name)
@@ -32,7 +33,7 @@ func (p *Platform) sourceTools(req runtime.Request) map[string]saigetypes.Tool {
 		}
 	}
 	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
-		for _, name := range runs.SourcesOf(run.Tag().Meta) {
+		for _, name := range runs.SourcesOf(wire.Meta(run.Tag())) {
 			if !slices.Contains(allowed, name) {
 				allowed = append(allowed, name)
 			}

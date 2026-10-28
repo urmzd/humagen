@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/pkg/auth"
@@ -83,23 +83,23 @@ type calledRun struct {
 	Lifecycle  runs.Lifecycle `json:"lifecycle"`
 }
 
-func tell(ctx context.Context, report func(payload.Action) error, tool string, child runs.Run, summary string) {
+func tell(ctx context.Context, report func(event.Action) error, tool string, child runs.Run, summary string) {
 	info, _ := saigetypes.ToolCallInfoFromContext(ctx)
 	data, _ := json.Marshal(calledRun{Run: child.ID, Agent: child.Agent, Lifecycle: child.Lifecycle, ToolCallID: info.ID})
 	// Saying which run was started is a courtesy to whoever is watching. The
 	// call stands whether or not it is heard.
-	_ = report(payload.Action{Name: tool, Summary: clip(summary, 200), Address: "run:" + child.ID, Data: data})
+	_ = report(event.Action{Name: tool, Summary: clip(summary, 200), Address: "run:" + child.ID, Data: data})
 }
 
 // attach is the runtime's Delegator: a turn tagged another agent and is
 // waiting for its answer. The agent runs as a run attached to the caller.
-func (p *Platform) attach(ctx context.Context, parent runtime.Request, target, text string, report func(payload.Action) error) (string, error) {
+func (p *Platform) attach(ctx context.Context, parent runtime.Request, target, text string, report func(event.Action) error) (string, error) {
 	return p.waitForCall(ctx, parent, call.Request{
 		Key: callKey("attach", target, text), Agent: target, Text: text, Mode: call.Subagent,
 	}, runtime.DelegateToolName(target), report)
 }
 
-func (p *Platform) waitForCall(ctx context.Context, parent runtime.Request, req call.Request, tool string, report func(payload.Action) error) (string, error) {
+func (p *Platform) waitForCall(ctx context.Context, parent runtime.Request, req call.Request, tool string, report func(event.Action) error) (string, error) {
 	// Keep one execution slot for work that can answer waiting callers.
 	if int(p.waiting.Add(1)) >= p.slots() {
 		p.waiting.Add(-1)
@@ -215,7 +215,7 @@ func (p *Platform) rollUp(ctx context.Context, childID string) {
 
 // delegateTool is the tool an agent hands work to another agent with, without
 // waiting for it.
-func (p *Platform) delegateTool(req runtime.Request, action func(payload.Action) error) saigetypes.Tool {
+func (p *Platform) delegateTool(req runtime.Request, action func(event.Action) error) saigetypes.Tool {
 	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{
 			Name: ToolDelegate,

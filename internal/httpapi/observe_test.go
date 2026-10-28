@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -521,7 +522,7 @@ func TestProjects(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return r.Tag().Text
+		return wire.TextOf(r.Tag())
 	}
 	if !strings.Contains(sent(inside["id"]), "first Tuesday of November") {
 		t.Fatalf("a turn in the project was not sent its shared memory: %q", sent(inside["id"]))

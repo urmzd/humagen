@@ -1,7 +1,8 @@
-// Package platform assembles the system: fiber's registry, bus, router and
-// durable runtime, the cron trigger, and this repo's run index and call path.
+// Package platform assembles the system: fiber's connector registry, bus,
+// egress and durable runtime, the cron trigger, and this repo's run index and
+// call path.
 //
-//	trigger or API  →  Invoke  →  runtime  →  bus  →  router  →  sinks
+//	trigger or API  →  Invoke  →  runtime  →  bus  →  egress  →  sinks
 //	                     ↓                     ↓
 //	                 run index  ←──────────  observer
 //
@@ -27,17 +28,17 @@ import (
 	dqueue "github.com/urmzd/anchor/pkg/queue"
 	drun "github.com/urmzd/anchor/pkg/run"
 	"github.com/urmzd/anchor/pkg/worker"
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/attachment/resolve"
-	filesblob "github.com/urmzd/fiber/pkg/blob"
-	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/connector"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/router"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/toolprovider"
-	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/humagen/fiber/pkg/attachment/resolve"
+	filesblob "github.com/urmzd/humagen/fiber/pkg/blob"
+	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/egress"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/playscape/pkg/controlplane"
 	"github.com/urmzd/playscape/pkg/metrics"
 	"github.com/urmzd/playscape/pkg/node/inproc"
@@ -187,7 +188,7 @@ type Config struct {
 	BuiltinModel    string
 	// AgentOptions are passed to every agent the sandbox builds. A test
 	// uses them to script a model.
-	AgentOptions []agentrt.Option
+	AgentOptions []native.Option
 	Log          *slog.Logger
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
@@ -292,8 +293,10 @@ type Platform struct {
 
 	broker  bus.Bus
 	sinks   *connector.Registry
-	deliver *router.Router
-	rt      *runtime.Runtime
+	deliver *egress.Engine
+	// watching is the tenants whose events are observed and delivered.
+	watching tenants
+	rt       *runtime.Runtime
 	// stops is how a run is asked to stop: the runtime, unless a test
 	// stands in for it.
 	stops stopper
@@ -320,7 +323,7 @@ type Platform struct {
 	projectForkLocks threadLocks
 	// afterAccept, when set, runs between a run's acceptance and its record.
 	// Only tests set it, to stand for a loaded machine.
-	afterAccept func(envelope.Tag)
+	afterAccept func(event.Envelope)
 	// beforeCarryOut, when set, runs after a message is posted and before
 	// what it starts is decided. Only tests set it, to move a thread then.
 	beforeCarryOut func()
@@ -478,8 +481,9 @@ func New(cfg Config) (*Platform, error) {
 	}
 	p.restore()
 
-	p.deliver = router.New(p.broker, p.sinks, router.WithLogger(log))
-	p.reroute()
+	// Delivery follows the channel: a run's events go to the sink of its
+	// trigger's surface, rendered where the trigger came from.
+	p.deliver = egress.New(p.broker, p.sinks, egress.WithLogger(log))
 
 	// External tools: "mcp:<provider>[:write]" grants expand, per tenant,
 	// into the tools accepted from that provider. Declared providers are
@@ -499,9 +503,9 @@ func New(cfg Config) (*Platform, error) {
 	}
 	rt, err := runtime.New(
 		anchor.New(p.ledger, p.queue),
-		wire.Specs(p.Agents),
+		p.Agents.Resolver(),
 		p.broker,
-		exec,
+		runtime.WithRuntime(exec),
 		runtime.WithLogger(log),
 		runtime.WithStopGrace(cfg.StopGrace),
 		// The ledger is where a stop is recorded, so a request made while a
@@ -528,7 +532,7 @@ func New(cfg Config) (*Platform, error) {
 
 // executor builds the sandbox every turn runs in: a playscape task under the
 // NGAC policy compiled from the pinned revision's access grant.
-func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, error) {
+func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error) {
 	dir := p.cfg.Workspace
 	if dir == "" {
 		dir = defaultWorkspace()
@@ -547,7 +551,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	}
 	tools := tool.NewRegistry()
 	plane := controlplane.NewMemory(inproc.NewFactory(tools, ws), metrics.Nop())
-	exec, err := runtime.NewSandbox(plane, tools, wire.Specs(p.Agents),
+	exec, err := runtime.NewSandbox(plane, tools, p.Agents.Resolver(),
 		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
 
 		runtime.WithDelegator(p.attach),
@@ -558,7 +562,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions, []agentrt.Option{agentrt.WithAttachments(resolve.New(p.files))})...),
+		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {
@@ -567,29 +571,18 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
 }
 
-// reroute registers the routes of every run the index holds that has not
-// ended, from the tag it was accepted with. The router keeps routes only in
-// memory, and a run accepted before a restart is resumed from the ledger by
-// the worker: without its routes, what it says after the restart would reach
-// no surface. It runs before the worker can resume anything.
-func (p *Platform) reroute() {
-	for _, run := range p.Runs.Unfinished() {
-		routes := run.Tag().Routes()
-		if len(routes) == 0 {
-			continue
-		}
-		if err := p.deliver.Register(run.ID, routes); err != nil {
-			p.log.Error("platform: the routes of a run accepted before the restart could not be registered", "tenant", run.Tenant, "run", run.ID, "error", err)
-		}
+// Invoke accepts an event for the one agent it names and starts its run. The
+// tenant's events are watched before the run is accepted, because accepting
+// publishes the run's first event.
+func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, error) {
+	if tag.Time.IsZero() {
+		tag.Time = p.now()
 	}
-}
-
-// Invoke accepts a tag and starts its run. Routes are registered before the run
-// is accepted, because accepting publishes the run's first event.
-func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, error) {
-	if tag.At.IsZero() {
-		tag.At = p.now()
+	agent := wire.AgentOf(tag)
+	if agent == "" {
+		return runs.Run{}, fmt.Errorf("%w: event %q names no agent", runtime.ErrInvalid, tag.ID)
 	}
+	wire.SetAgent(&tag, agent)
 	// Fail before anything is registered if the tag claims to come from an
 	// agent but carries no usable edge.
 	edge, err := call.EdgeOf(tag)
@@ -625,7 +618,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
-	if tag.Meta[MetaPersonalMemoryContext] == "true" || tag.Meta[MetaPrivateLibraryContext] == "true" {
+	if wire.Meta(tag)[MetaPersonalMemoryContext] == "true" || wire.Meta(tag)[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
 			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
 			return runs.Run{}, err
@@ -633,13 +626,12 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	}
 	// Accepting publishes the run's first event before the run is recorded,
 	// and delivering that event needs to know which client raised it.
-	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, actor: tag.Actor, person: p.operationTagPerson(tag, edge), operationMeta: operationMetaOf(tag.Meta), place: p.placeAdmitted(tag, edge, runID, project)})
+	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, origin: wire.Origin(tag), actor: wire.ActorOf(tag), person: p.operationTagPerson(tag, edge), operationMeta: operationMetaOf(wire.Meta(tag)), place: p.placeAdmitted(tag, edge, runID, project)})
 	defer p.admitting.Delete(runID)
-	if err := p.deliver.Register(runID, tag.Routes()); err != nil {
-		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
-		return runs.Run{}, fmt.Errorf("platform: register routes: %w", err)
-	}
-	acc, err := p.rt.Accept(ctx, tag)
+	p.watch(tag.Tenant)
+	// The run id is RunID(tenant, event id): Humagen raises one event per
+	// agent, so the event id already names the subscriber.
+	acc, err := p.rt.AcceptOwn(ctx, tag, agent)
 	if err != nil {
 		// It never started, so it holds no place.
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -648,7 +640,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if p.afterAccept != nil {
 		p.afterAccept(tag)
 	}
-	if err := p.Runs.Record(acc.RunID, tag, acc.Rev); err != nil {
+	if err := p.Runs.Record(acc.RunID, tag, wire.RevOf(acc.Version)); err != nil {
 		return runs.Run{}, err
 	}
 	p.recordContextUse(tag, project)
@@ -665,15 +657,19 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 // run-now run its project's context ahead of the schedule's text, which the
 // run's record keeps as what was asked. A called run keeps its explicit
 // input.
-func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within, sources []string) envelope.Tag {
-	tag.Actor = p.namedActor(tag.Tenant, tag.Actor)
-	meta := make(map[string]string, len(tag.Meta)+3)
-	maps.Copy(meta, tag.Meta)
+func (p *Platform) pin(tag event.Envelope, edge call.Edge, project string, within, sources []string) event.Envelope {
+	wire.SetActor(&tag, p.namedActor(tag.Tenant, wire.ActorOf(tag)))
+	// What the platform pins is written to the request's context; the
+	// body's typed fields are the trigger's and stay as they are.
+	meta := wire.ContextOf(tag)
+	if meta == nil {
+		meta = map[string]string{}
+	}
 	if edge.Parent != "" {
 
 		if parent, err := p.Runs.Get(tag.Tenant, edge.Parent); err == nil {
 			for _, key := range []string{MetaPersonalMemoryContext, MetaPrivateLibraryContext} {
-				if parent.Tag().Meta[key] == "true" {
+				if wire.Meta(parent.Tag())[key] == "true" {
 					meta[key] = "true"
 				}
 			}
@@ -692,23 +688,26 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	delete(meta, metaForkSources)
 	if edge.Parent != "" {
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
-			if names, ok := root.Tag().Meta[metaForkSources]; ok {
+			if names, ok := wire.Meta(root.Tag())[metaForkSources]; ok {
 				meta[metaForkSources] = names
 			}
 		}
-	} else if names := p.forkSourceSelection(tag.Tenant, tag.Meta[runs.MetaThread]); names != nil {
+	} else if names := p.forkSourceSelection(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); names != nil {
 		meta[metaForkSources] = strings.Join(*names, ",")
 	}
 	// Only the platform pins skills, on a person's message (answerMessage):
 	// any other tag that carries the key is not believed.
-	if tag.Origin != runs.OriginAPI || edge.Parent != "" {
+	if wire.Origin(tag) != runs.OriginAPI || edge.Parent != "" {
 		delete(meta, runs.MetaSkills)
 	}
-	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual || tag.Origin == runs.OriginAssignment) && edge.Parent == "" {
+	scheduled := (wire.Origin(tag) == cron.Name || wire.Origin(tag) == runs.OriginManual || wire.Origin(tag) == runs.OriginAssignment) && edge.Parent == ""
+	if scheduled {
 		meta[runs.MetaAsk] = wire.TextOf(tag)
-		wire.SetText(&tag, p.turnContext(tag.Tenant, project, "", tag.Agent, personOf(tag.Actor), wire.TextOf(tag), meta))
 	}
-	tag.Meta = meta
+	wire.SetContext(&tag, meta)
+	if scheduled {
+		wire.SetText(&tag, p.turnContext(tag.Tenant, project, "", tag.Agent, personOf(wire.ActorOf(tag)), wire.TextOf(tag), wire.Meta(tag)))
+	}
 	return tag
 }
 
@@ -810,14 +809,16 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, err
 	}
-	if err := freezeInput(tag.Meta, prepared); err != nil {
+	var frozen error
+	wire.EditMeta(&tag, func(m map[string]string) { frozen = freezeInput(m, prepared) })
+	if err := frozen; err != nil {
 		return runs.Run{}, err
 	}
-	if parent.Tag().Meta[operations.MetaForceAsk] == "true" {
-		tag.Meta[operations.MetaForceAsk] = "true"
+	if wire.Meta(parent.Tag())[operations.MetaForceAsk] == "true" {
+		wire.SetMeta(&tag, operations.MetaForceAsk, "true")
 	}
-	if allowed, ok := parent.Tag().Meta[operations.MetaTools]; ok {
-		tag.Meta[operations.MetaTools] = allowed
+	if allowed, ok := wire.Meta(parent.Tag())[operations.MetaTools]; ok {
+		wire.SetMeta(&tag, operations.MetaTools, allowed)
 	}
 	wire.SetText(&tag, prepared.Messages[len(prepared.Messages)-1].Text)
 	if _, err := p.recordHandoff(parent, req, tag, prepared); err != nil {
@@ -923,19 +924,19 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 // run index, and what runs spend. The bus delivers at least once, so it is
 // safe to see an event twice: the index ends a run once, and the usage ledger
 // counts a call once.
-func (p *Platform) observe(ctx context.Context, e envelope.Event) {
-	if e.Topic.IsControl() {
-		// A request addressed to a run, such as a stop, not something a run
-		// did. The run's own events say what came of it.
+func (p *Platform) observe(ctx context.Context, e event.Envelope) {
+	if event.IsControl(e.Channel) || event.Family(e.Type) != "run" {
+		// A request addressed to a run, such as a stop, or an event no run
+		// published. The run's own events say what came of it.
 		return
 	}
-	p.Journal.Append(e)
-	if e.Kind.Family() == "usage" {
+	p.Journal.Append(e, p.originOf(e.Tenant, e.Run))
+	if event.HasPrefix(e.Type, "run.usage") {
 		p.observeUsage(ctx, e)
 		return
 	}
 	p.admission.Lock()
-	if e.Kind == wire.KindCitation {
+	if e.Type == event.TypeCitation {
 		metadata, _, _ := p.trustedCitation(e)
 		if err := p.Runs.RecordCitation(e, metadata); err != nil {
 			p.log.Error("citation could not be retained", "error", err)
@@ -970,36 +971,75 @@ func (p *Platform) raise(run runs.Run) {
 	}
 }
 
-// Subscribe opens a stream of a tenant's events. The tenant is applied here,
-// after the bus, because a subscriber never names a tenant: it is the caller's
-// scope, not part of the address.
-func (p *Platform) Subscribe(ctx context.Context, tenant string, sub envelope.Subscription) (*Stream, error) {
-	s, err := p.broker.Subscribe(ctx, sub)
+// RunTypes are the type prefixes the platform observes: every run event,
+// the opt-in usage and compaction families among them.
+var RunTypes = []string{"run", "run.usage", "run.context"}
+
+// channels are the channel roots every run publishes under: one per
+// registered connector's scheme, and the channel of a run Humagen raises
+// itself.
+func (p *Platform) channels() []string {
+	out := []string{wire.ChannelScheme + "://"}
+	for _, name := range p.sinks.Names() {
+		out = append(out, name+"://")
+	}
+	return out
+}
+
+// RunSubscription is what a reader of a tenant's runs subscribes to: the run
+// events of every channel in tenant, narrowed to one run when run is set,
+// resuming after from.
+func (p *Platform) RunSubscription(tenant, run string, from uint64) bus.Subscription {
+	return bus.Subscription{Tenant: tenant, Channels: p.channels(), Types: slices.Clone(RunTypes), Run: run, From: from}
+}
+
+// Subscribe opens a stream of a tenant's run events, narrowed to one agent
+// when agent is set and one run when run is set. The tenant is the caller's
+// scope, never part of what a request names.
+func (p *Platform) Subscribe(ctx context.Context, tenant, agent, run string, from uint64) (*Stream, error) {
+	if tenant == "" {
+		return nil, fmt.Errorf("%w: no tenant", bus.ErrInvalid)
+	}
+	s, err := p.broker.Subscribe(ctx, p.RunSubscription(tenant, run, from))
 	if err != nil {
 		return nil, err
 	}
-	return &Stream{inner: s, tenant: tenant}, nil
+	return &Stream{inner: s, tenant: tenant, agent: agent}, nil
 }
 
 // Stream is one tenant's view of the bus.
 type Stream struct {
 	inner  bus.Stream
 	tenant string
+	agent  string
 }
 
 // Recv returns the next event in the stream's tenant.
-func (s *Stream) Recv(ctx context.Context) (envelope.Event, error) {
+func (s *Stream) Recv(ctx context.Context) (event.Envelope, error) {
 	for {
 		e, err := s.inner.Recv(ctx)
 		if err != nil {
-			return envelope.Event{}, err
+			return event.Envelope{}, err
 		}
 		// Requests addressed to runs are the runtime's traffic, not events
 		// a reader of runs is owed.
-		if e.Tenant == s.tenant && !e.Topic.IsControl() {
+		if e.Tenant == s.tenant && !event.IsControl(e.Channel) && (s.agent == "" || e.Agent == s.agent) {
 			return e, nil
 		}
 	}
+}
+
+// originOf is the origin of a run: the path its trigger came through.
+func (p *Platform) originOf(tenant, runID string) string {
+	if a, ok := p.admitting.Load(runID); ok {
+		if a := a.(admitted); a.tenant == tenant {
+			return a.origin
+		}
+	}
+	if run, err := p.Runs.Get(tenant, runID); err == nil {
+		return run.Origin
+	}
+	return ""
 }
 
 // Close ends the stream.
@@ -1010,17 +1050,6 @@ func (p *Platform) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer p.stopWakers()
-
-	// Subscribe before anything can publish, so the journal and the index
-	// never miss the first event of the first run.
-	everything := envelope.Subscription{Topic: topic.All()}
-	observed, err := p.broker.Subscribe(ctx, everything)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
-		return fmt.Errorf("platform: observe: %w", err)
-	}
 
 	var wg sync.WaitGroup
 	errc := make(chan error, 8)
@@ -1033,7 +1062,30 @@ func (p *Platform) Run(ctx context.Context) error {
 		})
 	}
 
-	loop("router", func() error { return p.deliver.Run(ctx) })
+	// Each tenant's events are observed and delivered on their own: the bus
+	// has no subscription across tenants. A tenant is watched from the first
+	// run accepted for it, and at start from every run that had not ended.
+	// Its observer subscribes before the watch returns, so the journal and
+	// the index never miss a run's first event.
+	for _, run := range p.Runs.Unfinished() {
+		p.watch(run.Tenant)
+	}
+	p.watching.begin(func(tenant string) {
+		sub := p.RunSubscription(tenant, "", 0)
+		observed, err := p.broker.Subscribe(ctx, sub)
+		if err != nil {
+			if ctx.Err() == nil {
+				select {
+				case errc <- fmt.Errorf("platform: observe %s: %w", tenant, err):
+				default:
+				}
+				cancel()
+			}
+			return
+		}
+		loop("observer "+tenant, func() error { return p.observeTenant(ctx, sub, observed) })
+		loop("egress "+tenant, func() error { return p.deliver.Run(ctx, tenant) })
+	})
 	loop("state flush", func() error {
 		tick := time.NewTicker(flushEvery)
 		defer tick.Stop()
@@ -1084,32 +1136,6 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 		return worker.New(p.ledger, p.queue, opts...).Run(ctx)
 	})
-	loop("observer", func() error {
-		defer func() { _ = observed.Close() }()
-		for {
-			e, err := observed.Recv(ctx)
-			switch {
-			case ctx.Err() != nil:
-				return nil
-			case errors.Is(err, bus.ErrSlowConsumer):
-				// The bus cut this subscriber off rather than hold events
-				// for it. Rejoin and carry on: the journal has a gap, which
-				// is logged, and the platform keeps running.
-				p.log.Warn("platform: observer fell behind and missed events")
-				_ = observed.Close()
-				if observed, err = p.broker.Subscribe(ctx, everything); err != nil {
-					return err
-				}
-				continue
-			case errors.Is(err, bus.ErrClosed):
-				return nil
-			case err != nil:
-				return err
-			}
-			p.observe(ctx, e)
-		}
-	})
-
 	loop("reconciler", func() error {
 		tick := time.NewTicker(reconcileEvery)
 		defer tick.Stop()
@@ -1123,9 +1149,18 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 
-	tags := make(chan envelope.Tag)
+	// Ingress adapters publish into one queue, read in order by one loop.
+	tags := make(chan event.Envelope)
+	publish := func(ctx context.Context, e event.Envelope) error {
+		select {
+		case tags <- e:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	for _, t := range p.sinks.Triggers() {
-		loop("trigger "+t.Name(), func() error { return t.Ingest(ctx, tags) })
+		loop("trigger "+t.Name(), func() error { return t.Ingest(ctx, publish) })
 	}
 	loop("tags", func() error {
 		for {
@@ -1133,34 +1168,123 @@ func (p *Platform) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				return nil
 			case tag := <-tags:
-				// A trigger's tag cannot claim an origin the platform keeps
-				// for itself. Lineage is only ever minted by Call, and the
-				// rest carry keys the index believes.
-				if reserved(tag.Origin) {
-					p.log.Warn("platform: dropped a trigger tag claiming a reserved origin", "tag", tag.ID, "origin", tag.Origin)
-					continue
-				}
-				// Who a run acts for is named only by a surface's stamp,
-				// from its clients' people maps. Any other trigger's run,
-				// a schedule's, acts for nobody.
-				if _, stamped := p.surfaces[tag.Origin]; !stamped {
-					tag.Actor.User = ""
-				}
-				if r, err := p.Invoke(ctx, tag); err != nil {
-					p.log.Error("platform: accept tag", "tag", tag.ID, "agent", tag.Agent, "error", err)
-				} else {
-					p.log.Info("platform: accepted", "run", r.ID, "agent", r.Agent, "origin", r.Origin)
-				}
+				p.ingest(ctx, tag)
 			}
 		}
 	})
 
+	<-ctx.Done()
+	// No tenant starts being watched once the loops are winding down.
+	p.watching.end()
 	wg.Wait()
 	// What changed last is written once every loop has stopped, so nothing
 	// the observer folded in while the platform stopped is left unwritten.
 	p.flush()
 	close(errc)
 	return <-errc
+}
+
+// ingest accepts an event an ingress adapter published.
+func (p *Platform) ingest(ctx context.Context, tag event.Envelope) {
+	// A trigger's event cannot claim an origin the platform keeps for
+	// itself. Lineage is only ever minted by Call, and the rest carry keys
+	// the index believes.
+	if reserved(wire.Origin(tag)) {
+		p.log.Warn("platform: dropped a trigger event claiming a reserved origin", "event", tag.ID, "origin", wire.Origin(tag))
+		return
+	}
+	// Who a run acts for is named only by a surface's stamp, from its
+	// clients' people maps. Any other trigger's run, a schedule's, acts for
+	// nobody.
+	if _, stamped := p.surfaces[wire.Origin(tag)]; !stamped {
+		actor := wire.ActorOf(tag)
+		actor.User = ""
+		wire.SetActor(&tag, actor)
+	}
+	// A tick names no agent: the schedule it fires does.
+	if tick, ok := tag.Data.(event.CronTick); ok && wire.AgentOf(tag) == "" {
+		if sc, found, err := p.Schedules.Get(tag.Tenant, tick.Schedule); err == nil && found {
+			wire.SetAgent(&tag, sc.Agent)
+		}
+	}
+	if r, err := p.Invoke(ctx, tag); err != nil {
+		p.log.Error("platform: accept event", "event", tag.ID, "type", tag.Type, "agent", wire.AgentOf(tag), "error", err)
+	} else {
+		p.log.Info("platform: accepted", "run", r.ID, "agent", r.Agent, "origin", r.Origin)
+	}
+}
+
+// observeTenant folds one tenant's run events into the platform until ctx is
+// done. A subscriber the bus cut off for falling behind rejoins: the journal
+// has a gap, which is logged, and the platform keeps running.
+func (p *Platform) observeTenant(ctx context.Context, sub bus.Subscription, observed bus.Stream) error {
+	defer func() { _ = observed.Close() }()
+	for {
+		e, err := observed.Recv(ctx)
+		switch {
+		case ctx.Err() != nil:
+			return nil
+		case errors.Is(err, bus.ErrSlowConsumer):
+			p.log.Warn("platform: observer fell behind and missed events", "tenant", sub.Tenant)
+			_ = observed.Close()
+			if observed, err = p.broker.Subscribe(ctx, sub); err != nil {
+				return err
+			}
+			continue
+		case errors.Is(err, bus.ErrClosed):
+			return nil
+		case err != nil:
+			return err
+		}
+		p.observe(ctx, e)
+	}
+}
+
+// tenants is the set of tenants whose events the platform watches.
+type tenants struct {
+	mu      sync.Mutex
+	seen    map[string]bool
+	pending []string
+	start   func(tenant string)
+	ended   bool
+}
+
+// watch has the platform observe and deliver a tenant's events, once. Before
+// Run it is remembered and started when Run begins.
+func (p *Platform) watch(tenant string) {
+	w := &p.watching
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if tenant == "" || w.seen[tenant] || w.ended {
+		return
+	}
+	if w.seen == nil {
+		w.seen = map[string]bool{}
+	}
+	w.seen[tenant] = true
+	if w.start == nil {
+		w.pending = append(w.pending, tenant)
+		return
+	}
+	w.start(tenant)
+}
+
+// begin starts every tenant remembered so far, and every one after.
+func (w *tenants) begin(start func(tenant string)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.start = start
+	for _, t := range w.pending {
+		start(t)
+	}
+	w.pending = nil
+}
+
+// end stops starting tenants.
+func (w *tenants) end() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.start, w.ended = nil, true
 }
 
 // defaultWorkspace is where agents write their files when nothing is set:

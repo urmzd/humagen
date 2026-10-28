@@ -1,7 +1,8 @@
 // Package wire is Humagen's one seam onto fiber's run model.
 //
-// It is the only code that reads or writes a tag's text, the surface keys a
-// connector writes into a tag's meta, the event kinds a run publishes and the
-// bodies they carry, and the agent definitions fiber's registry keeps. Every
-// other package goes through it, so the run model can change in one place.
+// It reads and writes what a run is raised with (an event's request, its
+// context and the surface fields a connector typed), the lifecycle bodies a
+// run publishes, and the agent definitions Humagen keeps as saige
+// definitions. Every other package goes through it, so the run model can
+// change in one place.
 package wire

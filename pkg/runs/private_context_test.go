@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -21,7 +22,7 @@ func TestPrivateContextMarkerWritesThroughWithoutChangingAcceptedTag(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		tag := envelope.Tag{ID: "private-tool", Tenant: "acme", Agent: "helper", Origin: OriginAPI, Text: "work", At: t0}
+		tag := wire.NewEvent(wire.Raise{ID: "private-tool", Tenant: "acme", Agent: "helper", Origin: OriginAPI, Text: "work", At: t0})
 		id := runtime.RunID(tag.Tenant, tag.ID)
 		if err := index.Record(id, tag, 1); err != nil {
 			t.Fatal(err)

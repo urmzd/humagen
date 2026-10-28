@@ -5,8 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/contextflags"
@@ -42,10 +43,10 @@ func TestLibraryUsesPublishedRevisionThroughRealPinnedSkillComposition(t *testin
 		t.Fatal(err)
 	}
 	completed := await(t, p, test.ID, runs.Completed)
-	if completed.Tag().Meta[operations.MetaForceAsk] != "true" || completed.Tag().Meta[operations.MetaTools] != "[]" {
-		t.Fatalf("test escaped policy: %+v", completed.Tag().Meta)
+	if wire.Meta(completed.Tag())[operations.MetaForceAsk] != "true" || wire.Meta(completed.Tag())[operations.MetaTools] != "[]" {
+		t.Fatalf("test escaped policy: %+v", wire.Meta(completed.Tag()))
 	}
-	if !strings.Contains(completed.Tag().Meta[runs.MetaSkills], definition.Instructions) {
+	if !strings.Contains(wire.Meta(completed.Tag())[runs.MetaSkills], definition.Instructions) {
 		t.Fatal("test did not pin exact draft")
 	}
 	if _, err := p.PublishSkill(who, first.ID, 1); err != nil {
@@ -63,11 +64,11 @@ func TestLibraryUsesPublishedRevisionThroughRealPinnedSkillComposition(t *testin
 		t.Fatalf("skill did not start selected agent: %+v", posted)
 	}
 	normal := await(t, p, posted.Runs[0].ID, runs.Completed)
-	raw := normal.Tag().Meta[runs.MetaSkills]
+	raw := wire.Meta(normal.Tag())[runs.MetaSkills]
 	if !strings.Contains(raw, first.Instructions) || strings.Contains(raw, definition.Instructions) {
 		t.Fatalf("live run used draft: %s", raw)
 	}
-	if normal.Tag().Meta[operations.MetaTools] != "[]" {
+	if wire.Meta(normal.Tag())[operations.MetaTools] != "[]" {
 		t.Fatal("published skill lost tool restriction")
 	}
 }
@@ -119,7 +120,7 @@ func TestPersonalSkillClassifiedBeforeDispatchAndSurvivesReplay(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := &faultyIn{Store: open(t)}
 		provider := &privateContextWitness{Provider: script(say("Done.")), calls: make(chan struct{}, 10)}
-		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}, AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return provider, nil })}})
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}, AgentOptions: []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return provider, nil })}})
 		who := auth.Principal{Kind: auth.User, Tenant: tenant, Subject: "ada", Roles: []auth.Role{auth.Admin}}
 		home, err := p.PersonalProject(who)
 		if err != nil {
@@ -146,13 +147,13 @@ func TestPersonalSkillClassifiedBeforeDispatchAndSurvivesReplay(t *testing.T) {
 			t.Fatal(err)
 		}
 		completed := await(t, p, accepted.ID, runs.Completed)
-		if completed.Tag().Meta[platform.MetaPrivateLibraryContext] != "true" || !p.ContextFlags.Has(tenant, completed.ID) || !p.RunRequiresReviewedSummary(t.Context(), completed, "") {
+		if wire.Meta(completed.Tag())[platform.MetaPrivateLibraryContext] != "true" || !p.ContextFlags.Has(tenant, completed.ID) || !p.RunRequiresReviewedSummary(t.Context(), completed, "") {
 			t.Fatal("private library context was publishable")
 		}
 		turn.TestSkill = nil
 		turn.Text = "Changed retry"
 		same, err := p.Converse(t.Context(), tenant, turn)
-		if err != nil || same.ID != completed.ID || same.Tag().Meta[platform.MetaPrivateLibraryContext] != "true" {
+		if err != nil || same.ID != completed.ID || wire.Meta(same.Tag())[platform.MetaPrivateLibraryContext] != "true" {
 			t.Fatal("retry changed private classification")
 		}
 		again, err := contextflags.Open(st)
@@ -166,7 +167,7 @@ func TestPersonalSkillRunsThroughOwnedPersonalAgentWithoutBroadeningScope(t *tes
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := &faultyIn{Store: open(t)}
 		provider := &privateContextWitness{Provider: script(say("Private skill test complete.")), calls: make(chan struct{}, 10)}
-		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}, AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return provider, nil })}})
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}, AgentOptions: []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return provider, nil })}})
 		who := auth.Principal{Kind: auth.User, Tenant: tenant, Subject: "ada", Roles: []auth.Role{auth.Admin}}
 		home, err := p.PersonalProject(who)
 		if err != nil {
@@ -208,10 +209,10 @@ func TestPersonalSkillRunsThroughOwnedPersonalAgentWithoutBroadeningScope(t *tes
 		default:
 			t.Fatal("actual configured adapter was never called")
 		}
-		if p.RunPlace(tenant, completed).Project != home.Name || completed.Tag().Meta[operations.MetaForceAsk] != "true" || completed.Tag().Meta[operations.MetaTools] != "[]" || completed.Tag().Meta[platform.MetaPrivateLibraryContext] != "true" {
+		if p.RunPlace(tenant, completed).Project != home.Name || wire.Meta(completed.Tag())[operations.MetaForceAsk] != "true" || wire.Meta(completed.Tag())[operations.MetaTools] != "[]" || wire.Meta(completed.Tag())[platform.MetaPrivateLibraryContext] != "true" {
 			t.Fatal("personal test lost placement or private action bounds", completed.Tag())
 		}
-		if !strings.Contains(completed.Tag().Meta[runs.MetaSkills], definition.Instructions) || !p.ContextFlags.Has(tenant, completed.ID) {
+		if !strings.Contains(wire.Meta(completed.Tag())[runs.MetaSkills], definition.Instructions) || !p.ContextFlags.Has(tenant, completed.ID) {
 			t.Fatal("exact private skill not durably pinned")
 		}
 		again, err := library.Open(st)

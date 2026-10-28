@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/urmzd/fiber/pkg/topic"
-
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 )
@@ -58,14 +56,14 @@ type Agents struct {
 
 // ValidAgent reports whether a name can stand for an agent in a project's
 // lists, as a default or as an agent with a home: a fiber agent name in its
-// canonical form. OpenDefault is no agent, and neither is fiber's control segment.
+// canonical form. OpenDefault is no agent, and neither is the runtime's
+// reserved name (wire.Reserved).
 func ValidAgent(name string) bool {
 	if name == "" || name != wire.NormalizeName(name) || len(name) > wire.MaxNameLen ||
-		name == OpenDefault || name == legacy.AutoDefault || name == topic.ControlName {
+		name == OpenDefault || name == legacy.AutoDefault || name == wire.Reserved {
 		return false
 	}
-	_, err := topic.Agent(name)
-	return err == nil
+	return wire.Addressable(name) == nil
 }
 
 func (a Agents) clone() Agents {

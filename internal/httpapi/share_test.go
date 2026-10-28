@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // The console's chat: a conversation starts private, nothing runs until an
@@ -70,7 +72,7 @@ func TestAConversationIsPrivateUntilShared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := run.Tag().Text; !strings.Contains(text, "FIRST-THOUGHT") || !strings.Contains(text, "SECOND-THOUGHT") {
+	if text := wire.TextOf(run.Tag()); !strings.Contains(text, "FIRST-THOUGHT") || !strings.Contains(text, "SECOND-THOUGHT") {
 		t.Errorf("the tagged agent was not sent the conversation so far: %s", text)
 	}
 	// Once a run is filed, the conversation stays in its project.

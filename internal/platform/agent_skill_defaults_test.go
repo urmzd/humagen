@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/contextflags"
@@ -84,8 +85,8 @@ func TestAgentDefaultSkillsUseExactPublishedRevisionInEveryTurn(t *testing.T) {
 			t.Fatal(err)
 		}
 		run = await(t, p, run.ID, runs.Completed)
-		raw := run.Tag().Meta[runs.MetaSkills]
-		if !strings.Contains(raw, first.Instructions) || strings.Contains(raw, definition.Instructions) || run.Tag().Meta[operations.MetaTools] != "[]" {
+		raw := wire.Meta(run.Tag())[runs.MetaSkills]
+		if !strings.Contains(raw, first.Instructions) || strings.Contains(raw, definition.Instructions) || wire.Meta(run.Tag())[operations.MetaTools] != "[]" {
 			t.Fatalf("default was not compiled by normal skill path: %s", raw)
 		}
 
@@ -123,7 +124,7 @@ func TestAgentDefaultSkillsUseExactPublishedRevisionInEveryTurn(t *testing.T) {
 			t.Fatal(err)
 		}
 		same, err := p.Converse(t.Context(), tenant, turn)
-		if err != nil || same.ID != run.ID || same.Tag().Meta[runs.MetaSkills] != raw {
+		if err != nil || same.ID != run.ID || wire.Meta(same.Tag())[runs.MetaSkills] != raw {
 			t.Fatal("same-ID replay changed pinned defaults", err)
 		}
 	})
@@ -133,7 +134,7 @@ func TestPersonalDefaultSkillsRequirePrivateHomeAndPreventPublicMove(t *testing.
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := &faultyIn{Store: open(t)}
 		provider := &privateContextWitness{Provider: script(say("Done.")), calls: make(chan struct{}, 10)}
-		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}, AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return provider, nil })}})
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}, AgentOptions: []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return provider, nil })}})
 		who := auth.Principal{Kind: auth.User, Tenant: tenant, Subject: "ada", Roles: []auth.Role{auth.Admin}}
 		home, err := p.PersonalProject(who)
 		if err != nil {
@@ -197,7 +198,7 @@ func TestPersonalDefaultSkillsRequirePrivateHomeAndPreventPublicMove(t *testing.
 			t.Fatal(err)
 		}
 		run = await(t, p, run.ID, runs.Completed)
-		if run.Tag().Meta[platform.MetaPrivateLibraryContext] != "true" || !p.ContextFlags.Has(tenant, run.ID) || !p.RunRequiresReviewedSummary(t.Context(), run, projects.Root) {
+		if wire.Meta(run.Tag())[platform.MetaPrivateLibraryContext] != "true" || !p.ContextFlags.Has(tenant, run.ID) || !p.RunRequiresReviewedSummary(t.Context(), run, projects.Root) {
 			t.Fatal("private default lacked durable classification")
 		}
 		reopened, err := contextflags.Open(st)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -108,14 +108,15 @@ func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suit
 	if home, ok := p.Projects.Tree(tenant).Home(suite.Subject); ok {
 		meta[runs.MetaProject] = home
 	}
-	started, err := p.Invoke(ctx, wire.NewInput(envelope.Tag{
-		ID:     fmt.Sprintf("eval-%s-%s-%s", tenant, evalID, c.ID),
-		Tenant: tenant,
-		Agent:  suite.Subject,
-		Origin: OriginEval,
-		Actor:  envelope.Actor{ID: "eval:" + suite.Name, Display: "eval " + suite.Name, Bot: true},
-		Meta:   meta,
-	}, c.Input))
+	started, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
+		ID:      fmt.Sprintf("eval-%s-%s-%s", tenant, evalID, c.ID),
+		Tenant:  tenant,
+		Agent:   suite.Subject,
+		Origin:  OriginEval,
+		Actor:   event.Actor{ID: "eval:" + suite.Name, Display: "eval " + suite.Name, Bot: true},
+		Context: meta,
+		Text:    c.Input,
+	}))
 	if err != nil {
 		return failed("the run could not be started: "+err.Error(), runs.Run{})
 	}

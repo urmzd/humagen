@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/pkg/credref"
 )

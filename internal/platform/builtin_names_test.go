@@ -5,9 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/projects"
 )
 
@@ -23,7 +22,7 @@ func TestBuiltinNamesUseHumagen(t *testing.T) {
 	if err := p.EnsureBuiltins(context.Background(), "acme"); err != nil {
 		t.Fatal(err)
 	}
-	revs, _, err := p.AgentDirectory(context.Background(), "acme", registry.Page{Size: 100})
+	revs, _, err := p.AgentDirectory(context.Background(), "acme", wire.Page{Size: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +41,7 @@ func TestBuiltinNamesUseHumagen(t *testing.T) {
 func TestBuiltinCompatibilitySurvivesRestart(t *testing.T) {
 	eachBackend(t, func(t *testing.T, first platform.Backends, again func() platform.Backends) {
 		ctx := context.Background()
-		original, err := first.Agents.Create(ctx, "acme", agentspec.AgentSpec{Name: "warp-analyst", Provider: "offline", Model: "offline", SystemPrompt: "Old instructions"}, "platform")
+		original, err := first.Agents.Create(ctx, "acme", wire.AgentSpec{Name: "warp-analyst", Provider: "offline", Model: "offline", SystemPrompt: "Old instructions"}, "platform")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +77,7 @@ func TestBuiltinCompatibilitySurvivesRestart(t *testing.T) {
 		if err != nil || pinned.Hash != original.Hash {
 			t.Fatalf("pinned revision after restart: %+v, %v", pinned, err)
 		}
-		rows, _, err := p.AgentDirectory(ctx, "acme", registry.Page{Size: 100})
+		rows, _, err := p.AgentDirectory(ctx, "acme", wire.Page{Size: 100})
 		if err != nil || len(rows) != 3 {
 			t.Fatalf("directory after restart = %v, %v", rows, err)
 		}
@@ -87,8 +86,8 @@ func TestBuiltinCompatibilitySurvivesRestart(t *testing.T) {
 
 func TestBuiltinRenameNeverOverwritesACustomAgent(t *testing.T) {
 	ctx := context.Background()
-	store := registry.NewMemory()
-	old, err := store.Create(ctx, "acme", agentspec.AgentSpec{Name: "humagen-analyst", Provider: "offline", Model: "offline", SystemPrompt: "My custom work"}, "ada")
+	store := wire.NewMemoryAgents()
+	old, err := store.Create(ctx, "acme", wire.AgentSpec{Name: "humagen-analyst", Provider: "offline", Model: "offline", SystemPrompt: "My custom work"}, "ada")
 	if err != nil {
 		t.Fatal(err)
 	}

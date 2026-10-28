@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -48,7 +49,7 @@ func TestSourceDependenciesUseActualConfinedEvidenceAfterRestart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tag := envelope.Tag{ID: item.id, Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Meta: map[string]string{runs.MetaThread: item.id, runs.MetaProject: "Secret"}}
+			tag := wire.NewEvent(wire.Raise{ID: item.id, Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Context: map[string]string{runs.MetaThread: item.id, runs.MetaProject: "Secret"}})
 			if err := p.Runs.Record(item.id, tag, 1); err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +64,7 @@ func TestSourceDependenciesUseActualConfinedEvidenceAfterRestart(t *testing.T) {
 		}
 
 		// A declared source grant alone proves no retrieval or publication relation.
-		unproven := envelope.Tag{ID: "unproven", Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Meta: map[string]string{runs.MetaThread: "th-0000000000000002", runs.MetaProject: "Secret", runs.MetaSources: "public"}}
+		unproven := wire.NewEvent(wire.Raise{ID: "unproven", Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Context: map[string]string{runs.MetaThread: "th-0000000000000002", runs.MetaProject: "Secret", runs.MetaSources: "public"}})
 		if err := p.Runs.Record("unproven", unproven, 1); err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +183,7 @@ func TestSourceDependencyReaderRejectsUnprovenOriginAndUnsafeLinks(t *testing.T)
 func TestExtraSourceGraphRequiresOrdinaryHumanSourceAccess(t *testing.T) {
 	p := sourceGroundingPlatform(t)
 	p.Threads = threads.NewStore()
-	tag := envelope.Tag{ID: "retrieved", Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Meta: map[string]string{runs.MetaProject: "Secret"}}
+	tag := wire.NewEvent(wire.Raise{ID: "retrieved", Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Context: map[string]string{runs.MetaProject: "Secret"}})
 	if err := p.Runs.Record("run1", tag, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +197,7 @@ func TestExtraSourceGraphRequiresOrdinaryHumanSourceAccess(t *testing.T) {
 	}
 	for _, provider := range []string{"", "drive"} {
 		id := "historical-" + provider
-		tag := envelope.Tag{ID: id, Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Meta: map[string]string{runs.MetaProject: "Secret"}}
+		tag := wire.NewEvent(wire.Raise{ID: id, Tenant: "tenant", Agent: "worker", Origin: runs.OriginAPI, At: p.now(), Context: map[string]string{runs.MetaProject: "Secret"}})
 		if err := p.Runs.Record(id, tag, 1); err != nil {
 			t.Fatal(err)
 		}

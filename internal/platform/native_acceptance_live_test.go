@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/nativefiles"
@@ -31,7 +31,7 @@ func TestLiveNativeOfficeAcceptance(t *testing.T) {
 	if model == "" || ref == "" {
 		t.Fatal("set HUMAGEN_LIVE_OFFICE_MODEL and HUMAGEN_LIVE_OFFICE_KEY_REF")
 	}
-	p, err := platform.New(platform.Config{Workspace: t.TempDir(), Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{"live-office": func(s agentrt.Spec) (saigetypes.Provider, error) {
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{"live-office": func(s native.Spec) (saigetypes.Provider, error) {
 		key, err := (credref.Resolver{}).Resolve(context.Background(), ref)
 		if err != nil {
 			return nil, err
@@ -50,7 +50,7 @@ func TestLiveNativeOfficeAcceptance(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	_, err = p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "live-writer", Provider: "live-office", Model: model, SystemPrompt: "Follow the user's file instructions exactly. Use the native file tools sequentially.", Tools: platform.FileTools()}, "test")
+	_, err = p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "live-writer", Provider: "live-office", Model: model, SystemPrompt: "Follow the user's file instructions exactly. Use the native file tools sequentially.", Tools: platform.FileTools()}, "test")
 	if err != nil {
 		t.Fatal(err)
 	}

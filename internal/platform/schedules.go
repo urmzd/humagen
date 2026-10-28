@@ -3,6 +3,7 @@ package platform
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -11,8 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 )
@@ -61,7 +63,7 @@ type About struct {
 // authorOf is who wrote what a schedule runs (About.WrittenBy).
 func authorOf(sc cron.Schedule, about About) string {
 	if about.UpdatedBy == "" {
-		return sc.Meta["created_by"]
+		return sc.Context["created_by"]
 	}
 	return about.WrittenBy
 }
@@ -101,6 +103,34 @@ type storedSchedule struct {
 	Schedule cron.Schedule `json:"schedule"`
 	Paused   bool          `json:"paused,omitempty"`
 	About    About         `json:"about"`
+}
+
+// UnmarshalJSON reads a stored schedule, one written before the event union
+// among them: its context was then kept as Meta (legacy.ScheduleContext).
+func (r *storedSchedule) UnmarshalJSON(b []byte) error {
+	type plain storedSchedule
+	var w struct {
+		plain
+		Schedule json.RawMessage `json:"schedule"`
+	}
+	if err := json.Unmarshal(b, &w); err != nil {
+		return err
+	}
+	*r = storedSchedule(w.plain)
+	if len(w.Schedule) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(w.Schedule, &r.Schedule); err != nil {
+		return err
+	}
+	if r.Schedule.Context == nil {
+		old, err := legacy.ScheduleContext(w.Schedule)
+		if err != nil {
+			return err
+		}
+		r.Schedule.Context = old
+	}
+	return nil
 }
 
 // OpenSchedules returns schedules kept in st, holding what st already has. A
@@ -337,7 +367,7 @@ func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	switch {
 	case sc.Text != old.Text:
 		author = about.UpdatedBy
-	case (sc.Agent != old.Agent || sc.Meta[runs.MetaProject] != old.Meta[runs.MetaProject]) && author != about.UpdatedBy:
+	case (sc.Agent != old.Agent || sc.Context[runs.MetaProject] != old.Context[runs.MetaProject]) && author != about.UpdatedBy:
 		author = ""
 	}
 	about.WrittenBy = author
@@ -420,7 +450,6 @@ func (s *Schedules) Declare(sc cron.Schedule, description string, at time.Time) 
 		return false, fmt.Errorf("%w: %q is another workspace's", ErrScheduleExists, sc.Name)
 	}
 	about.CreatedAt, about.UpdatedBy, about.UpdatedAt = was.CreatedAt, was.UpdatedBy, was.UpdatedAt
-	sc.Routes = have.Routes
 	if was == about && sameSchedule(have, sc) {
 		return false, nil
 	}
@@ -461,5 +490,5 @@ func (s *Schedules) Release(tenant, name string) error {
 
 func sameSchedule(a, b cron.Schedule) bool {
 	return a.Name == b.Name && a.Expression == b.Expression && a.Agent == b.Agent && a.Text == b.Text &&
-		a.Tenant == b.Tenant && maps.Equal(a.Meta, b.Meta)
+		a.Tenant == b.Tenant && maps.Equal(a.Context, b.Context)
 }

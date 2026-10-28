@@ -10,9 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -122,7 +122,7 @@ func steeredWorld(t *testing.T, cfg platform.Config) (*platform.Platform, *mcpfa
 	}}.MCP()
 	cfg.CredentialRefs = map[string][]string{tenant: {"env:HUMAGEN_PERSON_{subject}_"}}
 	cfg.Log = slog.New(slog.DiscardHandler)
-	cfg.AgentOptions = []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(spec agentrt.Spec) (saigetypes.Provider, error) {
+	cfg.AgentOptions = []native.Option{native.WithProvider(native.ProviderOffline, func(spec native.Spec) (saigetypes.Provider, error) {
 		return model.agent(spec.Name), nil
 	})}
 	p := startWith(t, cfg)
@@ -132,15 +132,15 @@ func steeredWorld(t *testing.T, cfg platform.Config) (*platform.Platform, *mcpfa
 			t.Fatal(err)
 		}
 	}
-	for _, spec := range []agentspec.AgentSpec{
+	for _, spec := range []wire.AgentSpec{
 		{Name: "split", Tools: []string{"mcp:issues", "mcp:tracker"}, Approvals: []string{searchTool}},
 		{Name: "open", Tools: []string{"mcp:wiki"}, Approvals: []string{"wiki__search"}},
 		{Name: "mixed", Tools: []string{"mcp:issues", "mcp:wiki"}, Approvals: []string{"wiki__search"}},
-		{Name: "boss", Tools: []string{"mcp:issues"}, Access: agentspec.Access{Spawn: []string{"aide"}}},
-		{Name: "chief", Tools: []string{"mcp:issues"}, Access: agentspec.Access{Spawn: []string{"gate"}}},
+		{Name: "boss", Tools: []string{"mcp:issues"}, Access: wire.Access{Spawn: []string{"aide"}}},
+		{Name: "chief", Tools: []string{"mcp:issues"}, Access: wire.Access{Spawn: []string{"gate"}}},
 		{Name: "aide", Tools: []string{"ask_person"}},
 		{Name: "gate", Tools: []string{"mcp:wiki"}, Approvals: []string{"wiki__search"}},
-		{Name: "envoy", Tools: []string{"mcp:issues"}, Access: agentspec.Access{Spawn: []string{"scout"}}},
+		{Name: "envoy", Tools: []string{"mcp:issues"}, Access: wire.Access{Spawn: []string{"scout"}}},
 		{Name: "scout", Tools: []string{"ask_person"}},
 	} {
 		spec.Model, spec.Provider, spec.SystemPrompt = "offline", "offline", workerPrompt
@@ -332,7 +332,7 @@ func TestAnswerersThatLeaveOutThePersonLeaveNobodyToAnswer(t *testing.T) {
 	w := newWorld(t, platform.Config{})
 	ctx := t.Context()
 	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
-	spec := agentspec.AgentSpec{Name: "asker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt,
+	spec := wire.AgentSpec{Name: "asker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt,
 		Tools: []string{"mcp:issues", "ask_person"}, Answerers: []string{"ben"}}
 	if _, err := w.p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
 		t.Fatal(err)

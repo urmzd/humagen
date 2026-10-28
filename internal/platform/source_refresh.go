@@ -2,8 +2,9 @@ package platform
 
 import (
 	"context"
-	"github.com/urmzd/humagen/pkg/knowledge"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/knowledge"
 )
 
 // refreshSourceOnce uses current standing subject policy, never remembered

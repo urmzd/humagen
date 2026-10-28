@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/address"
 )
 
 // A /fix grant signed before the rename must still verify after it, so the

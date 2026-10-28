@@ -57,7 +57,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/state"
@@ -97,7 +97,7 @@ const USD = "USD"
 // terms: dollars in Micros, any other currency in Other, and no price at all
 // in Unpriced. A call saige answered from its response cache cost nothing and
 // is not unpriced.
-func OfCall(c payload.UsageCall) Spend {
+func OfCall(c event.UsageCall) Spend {
 	s := Spend{ModelCalls: 1, Tokens: int64(c.PromptTokens + c.CompletionTokens)}
 	switch {
 	case c.Cost != nil && c.Cost.Currency == USD:
@@ -113,11 +113,11 @@ func OfCall(c payload.UsageCall) Spend {
 // Of is what a sum of calls used, in the ledger's terms. Dollars are read
 // wherever the runtime put them: in Cost when the first priced call was in
 // dollars, in OtherCosts when it was not.
-func Of(u payload.Usage) Spend {
+func Of(u event.Usage) Spend {
 	s := Spend{ModelCalls: u.ModelCalls, Tokens: int64(u.PromptTokens + u.CompletionTokens), Unpriced: u.UnpricedCalls}
 	costs := u.OtherCosts
 	if u.Cost != nil {
-		costs = append([]payload.Cost{*u.Cost}, costs...)
+		costs = append([]event.Cost{*u.Cost}, costs...)
 	}
 	for _, c := range costs {
 		if c.Currency == USD {

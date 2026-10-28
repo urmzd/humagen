@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/state"
@@ -69,17 +70,17 @@ func busy(t *testing.T, x *Index, tenant string) {
 			meta[MetaThread], meta[MetaPrev] = thread, thread
 		}
 		runID := runtime.RunID(tenant, id)
-		if err := x.Record(runID, envelope.Tag{ID: id, Tenant: tenant, Agent: "lead", Origin: OriginAPI, Text: "go", Meta: meta, At: at(s)}, 1); err != nil {
+		if err := x.Record(runID, wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: "lead", Origin: OriginAPI, Text: "go", Context: meta, At: at(s)}), 1); err != nil {
 			t.Fatal(err)
 		}
 		return runID
 	}
-	event := func(runID string, kind envelope.Kind, body payload.Lifecycle, s int) {
-		b, err := payload.Encode(body)
+	observe := func(runID string, kind string, body wire.Lifecycle, s int) {
+		b, err := wire.LifecycleBody(kind, body)
 		if err != nil {
 			t.Fatal(err)
 		}
-		x.Observe(envelope.Event{RunID: runID, Tenant: tenant, Kind: kind, Payload: b, At: at(s)})
+		x.Observe(event.Envelope{Run: runID, Tenant: tenant, Type: kind, Data: b, Time: at(s)})
 	}
 	root := api("a", "", "", 1)
 	launch := api("b", "Launch", "", 2)
@@ -87,7 +88,7 @@ func busy(t *testing.T, x *Index, tenant string) {
 	field := api("d", "Field", "", 4)
 	parked := api("e", "Field", "", 5)
 
-	caller := envelope.Tag{ID: "d", Tenant: tenant, Agent: "lead", Origin: OriginAPI, Text: "go", Meta: map[string]string{MetaProject: "Field"}, At: at(4)}
+	caller := wire.NewEvent(wire.Raise{ID: "d", Tenant: tenant, Agent: "lead", Origin: OriginAPI, Text: "go", Context: map[string]string{MetaProject: "Field"}, At: at(4)})
 	called, err := call.New(caller, call.Request{Key: "k1", Agent: "helper", Text: "help", Mode: call.Subagent}, call.State{}, call.Limits{MaxDepth: 2, MaxFanOut: 2}, at(6))
 	if err != nil {
 		t.Fatal(err)
@@ -97,16 +98,16 @@ func busy(t *testing.T, x *Index, tenant string) {
 		t.Fatal(err)
 	}
 
-	event(root, envelope.KindStarted, payload.Lifecycle{}, 7)
-	event(root, envelope.KindCompleted, payload.Lifecycle{Text: "done"}, 8)
-	event(launch, envelope.KindStarted, payload.Lifecycle{}, 9)
-	event(launch, envelope.KindFailed, payload.Lifecycle{Error: "x", Terminal: true}, 10)
+	observe(root, event.TypeStarted, wire.Lifecycle{}, 7)
+	observe(root, event.TypeCompleted, wire.Lifecycle{Text: "done"}, 8)
+	observe(launch, event.TypeStarted, wire.Lifecycle{}, 9)
+	observe(launch, event.TypeFailed, wire.Lifecycle{Error: "x", Terminal: true}, 10)
 	x.AskStop(followUp, at(11))
 	x.Stop(followUp, "partial", "", at(12))
-	event(parked, envelope.KindParked, payload.Lifecycle{Reason: "a question"}, 13)
+	observe(parked, event.TypeParked, wire.Lifecycle{Reason: "a question"}, 13)
 	// The caller answers while its call still works, so it is held open,
 	// then settles once the call is done.
-	event(field, envelope.KindCompleted, payload.Lifecycle{Text: "done"}, 14)
+	observe(field, event.TypeCompleted, wire.Lifecycle{Text: "done"}, 14)
 	x.End(child, Completed, "helped", "", at(15))
 	x.Settle(field, at(16))
 }
@@ -194,7 +195,7 @@ func TestSystemThreadsAreTheConversationsSystemRunsOpened(t *testing.T) {
 		record := func(tenant, id, origin string, meta map[string]string) string {
 			t.Helper()
 			runID := runtime.RunID(tenant, id)
-			if err := x.Record(runID, envelope.Tag{ID: id, Tenant: tenant, Agent: "scribe", Origin: origin, Text: "title it", Meta: meta, At: t0.Add(time.Minute)}, 1); err != nil {
+			if err := x.Record(runID, wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: "scribe", Origin: origin, Text: "title it", Context: meta, At: t0.Add(time.Minute)}), 1); err != nil {
 				t.Fatal(err)
 			}
 			return runID
@@ -247,7 +248,7 @@ func TestProjectCountsAreReadAsOfAMark(t *testing.T) {
 		record := func(id string, meta map[string]string, s int) string {
 			t.Helper()
 			runID := runtime.RunID("acme", id)
-			if err := x.Record(runID, envelope.Tag{ID: id, Tenant: "acme", Agent: "scribe", Origin: OriginSystem, Text: "title it", Meta: meta, At: t0.Add(time.Duration(s) * time.Minute)}, 1); err != nil {
+			if err := x.Record(runID, wire.NewEvent(wire.Raise{ID: id, Tenant: "acme", Agent: "scribe", Origin: OriginSystem, Text: "title it", Context: meta, At: t0.Add(time.Duration(s) * time.Minute)}), 1); err != nil {
 				t.Fatal(err)
 			}
 			return runID
@@ -256,7 +257,7 @@ func TestProjectCountsAreReadAsOfAMark(t *testing.T) {
 		// another in Field, and one more conversation in Launch.
 		title := record("sys-title-late", nil, 1)
 		record("sys-memory-late", map[string]string{MetaProject: "Field"}, 2)
-		if err := x.Record(runtime.RunID("acme", "late"), envelope.Tag{ID: "late", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", Meta: map[string]string{MetaProject: "Launch"}, At: t0.Add(3 * time.Minute)}, 1); err != nil {
+		if err := x.Record(runtime.RunID("acme", "late"), wire.NewEvent(wire.Raise{ID: "late", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", Context: map[string]string{MetaProject: "Launch"}, At: t0.Add(3 * time.Minute)}), 1); err != nil {
 			t.Fatal(err)
 		}
 		equalCounts(t, "as of the mark", x.ProjectCountsWhere("acme", mark, nil), before)
@@ -275,7 +276,7 @@ func TestProjectCountsAreReadAsOfAMark(t *testing.T) {
 		// A run that joins a conversation opened before the mark is counted
 		// in it.
 		joined := runtime.RunID("acme", "a")
-		if err := x.Record(runtime.RunID("acme", "again"), envelope.Tag{ID: "again", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "and", Meta: map[string]string{MetaThread: joined, MetaPrev: joined}, At: t0.Add(4 * time.Minute)}, 1); err != nil {
+		if err := x.Record(runtime.RunID("acme", "again"), wire.NewEvent(wire.Raise{ID: "again", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "and", Context: map[string]string{MetaThread: joined, MetaPrev: joined}, At: t0.Add(4 * time.Minute)}), 1); err != nil {
 			t.Fatal(err)
 		}
 		if got := x.ProjectCountsWhere("acme", mark, nil)[""]; got.Threads != 1 || got.Active != 1 || !got.ActiveAt.Equal(t0.Add(4*time.Minute)) {
@@ -309,8 +310,7 @@ func TestProjectCountsHoldUnderRacingRunsAndReaders(t *testing.T) {
 			id := fmt.Sprintf("r%d", i)
 			project := []string{"", "Launch", "Field"}[i%3]
 			runID := runtime.RunID("acme", id)
-			tag := envelope.Tag{ID: id, Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go",
-				Meta: map[string]string{MetaProject: project}, At: t0.Add(time.Duration(i) * time.Millisecond)}
+			tag := wire.NewEvent(wire.Raise{ID: id, Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", Context: map[string]string{MetaProject: project}, At: t0.Add(time.Duration(i) * time.Millisecond)})
 			if err := x.Record(runID, tag, 1); err != nil {
 				t.Error(err)
 				return
@@ -378,7 +378,7 @@ func TestThreadPageKeepsTheProjectsAsked(t *testing.T) {
 func TestCurrentPlacementCountsKeepExecutionAttribution(t *testing.T) {
 	x := NewIndex()
 	id := runtime.RunID("acme", "move")
-	if err := x.Record(id, envelope.Tag{ID: "move", Tenant: "acme", Agent: "helper", Origin: OriginAPI, Text: "hi", Meta: map[string]string{MetaProject: "personal-opaque"}, At: t0}, 1); err != nil {
+	if err := x.Record(id, wire.NewEvent(wire.Raise{ID: "move", Tenant: "acme", Agent: "helper", Origin: OriginAPI, Text: "hi", Context: map[string]string{MetaProject: "personal-opaque"}, At: t0}), 1); err != nil {
 		t.Fatal(err)
 	}
 	got := x.ProjectCountsPlaced("acme", x.Opened("acme"), nil, func(thread, original string) string {

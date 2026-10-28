@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/mcptools"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -58,11 +60,11 @@ func TestApprovedHybridToolUsesCurrentReaderAccessAndNeverFallsBack(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	tag := envelope.Tag{ID: "tool", Origin: runs.OriginAPI, Tenant: "tenant", Agent: "worker", Actor: envelope.Actor{ID: "owner", User: "owner"}, At: p.now(), Meta: map[string]string{runs.MetaProject: "Secret", runs.MetaThread: "th-0000000000000001"}}
+	tag := wire.NewEvent(wire.Raise{ID: "tool", Origin: runs.OriginAPI, Tenant: "tenant", Agent: "worker", Actor: event.Actor{ID: "owner", User: "owner"}, At: p.now(), Context: map[string]string{runs.MetaProject: "Secret", runs.MetaThread: "th-0000000000000001"}})
 	if err := p.Runs.Record("run1", tag, 1); err != nil {
 		t.Fatal(err)
 	}
-	req := runtime.Request{Tenant: "tenant", RunID: "run1", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "worker", Sources: []agentrt.Source{{Name: "hybrid"}}}}}
+	req := runtime.Request{Tenant: "tenant", RunID: "run1", Definition: native.Revision{Spec: native.Spec{Name: "worker", Sources: []native.Source{{Name: "hybrid"}}}}}
 	execute := func() struct {
 		Hits      []knowledge.Hit       `json:"hits"`
 		Citations []runs.Citation       `json:"citations"`

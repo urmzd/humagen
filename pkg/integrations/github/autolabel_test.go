@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
@@ -48,7 +49,7 @@ func TestAutomaticLabelsAreExplicitAndRepositoryScoped(t *testing.T) {
 				if !tc.want {
 					t.Fatalf("unexpected tag: %+v", tag)
 				}
-				if tag.Agent != "reviewer" || tag.ID != tc.delivery || tag.Text != "Review this\n\nContext" {
+				if wire.AgentOf(tag) != "reviewer" || tag.ID != tc.delivery || wire.TextOf(tag) != "Review this\n\nContext" {
 					t.Fatalf("incorrect tag: %+v", tag)
 				}
 			default:

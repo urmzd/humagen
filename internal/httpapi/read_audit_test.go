@@ -1,12 +1,13 @@
 package httpapi
 
 import (
-	"github.com/urmzd/humagen/internal/platform"
-	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/urmzd/humagen/internal/platform"
+	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
 )
 
 func TestBreakGlassReadsAreRecordedAndAdminOnly(t *testing.T) {

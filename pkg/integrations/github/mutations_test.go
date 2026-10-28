@@ -10,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/connector"
-	"github.com/urmzd/fiber/pkg/connectors/mention"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
@@ -24,7 +25,7 @@ const testTenant = "acme"
 
 const fixArgs = `{"message":"fix: correct value","files":[{"path":"main.go","content":"package main\n"}]}`
 
-func fixRequest(t *testing.T, canWrite bool, command string) (*github.Connector, *github.Fake, envelope.Tag) {
+func fixRequest(t *testing.T, canWrite bool, command string) (*github.Connector, *github.Fake, event.Envelope) {
 	t.Helper()
 	fake := github.NewFake()
 	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 42}
@@ -49,7 +50,7 @@ func fixRequest(t *testing.T, canWrite bool, command string) (*github.Connector,
 		return c, fake, tag
 	default:
 		t.Fatal("missing tag")
-		return nil, nil, envelope.Tag{}
+		return nil, nil, event.Envelope{}
 	}
 }
 
@@ -71,7 +72,7 @@ func TestExplicitFixCreatesOneAtomicCommitAndRecoversRetries(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The same binding is used by the durable runtime. A model cannot provide it.
-	tools := agentrt.ConnectorToolsForRun(reg, tag.Source, runtime.RunID(testTenant, tag.ID), nil)
+	tools := native.ConnectorToolsForRun(reg, wire.SurfaceAddress(tag), runtime.RunID(testTenant, tag.ID), nil)
 	tool, err := tools.Lookup("github_apply_changes")
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +123,7 @@ func TestMutationGrantCannotMoveBetweenRunsActorsRepositoriesOrHeads(t *testing.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, fake, tag := fixRequest(t, true, "/fix correct the value")
-			_, err := mutation(t, c).Invoke(connector.WithRunID(context.Background(), tc.run), tc.alter(tag.Source), json.RawMessage(fixArgs))
+			_, err := mutation(t, c).Invoke(connector.WithRunID(context.Background(), tc.run), tc.alter(wire.SurfaceAddress(tag)), json.RawMessage(fixArgs))
 			if err == nil || len(fake.Commits()) != 0 {
 				t.Fatalf("escaped grant: %v", err)
 			}
@@ -144,7 +145,7 @@ func TestReadOnlyMentionsAndRevokedCollaboratorsCannotCommit(t *testing.T) {
 			if tc.revoke {
 				fake.SetWritePermission(github.Ref{Owner: "acme", Repo: "repo", Number: 42}, "human", false)
 			}
-			_, err := mutation(t, c).Invoke(connector.WithRunID(context.Background(), runtime.RunID(testTenant, tag.ID)), tag.Source, json.RawMessage(fixArgs))
+			_, err := mutation(t, c).Invoke(connector.WithRunID(context.Background(), runtime.RunID(testTenant, tag.ID)), wire.SurfaceAddress(tag), json.RawMessage(fixArgs))
 			if err == nil || len(fake.Commits()) != 0 {
 				t.Fatalf("write allowed: %v", err)
 			}
@@ -161,7 +162,7 @@ func TestCommitValidationAndAtomicityPreserveTheOriginalFiles(t *testing.T) {
 		`{"message":"fix","branch":"other","files":[{"path":"main.go","content":"bad"}]}`,
 		`{"message":"fix","files":[{"path":"main.go","content":"bad"},{"path":"missing","delete":true}]}`,
 	} {
-		if _, err := mutation(t, c).Invoke(connector.WithRunID(context.Background(), runtime.RunID(testTenant, tag.ID)), tag.Source, json.RawMessage(raw)); err == nil {
+		if _, err := mutation(t, c).Invoke(connector.WithRunID(context.Background(), runtime.RunID(testTenant, tag.ID)), wire.SurfaceAddress(tag), json.RawMessage(raw)); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
 	}

@@ -10,8 +10,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -64,7 +65,7 @@ func (p *Platform) grantSource(req runtime.Request, src knowledge.Source, projec
 	if !legacy {
 		cfg = src.Lifecycle.SourceConfig
 	}
-	p.grounding.grants[token] = sourceGrant{Agent: req.Agent(), Meta: operationMetaOf(req.Meta), Query: sourceRetrievalQuery(req), Revision: req.Revision.Rev, Hash: req.Revision.Hash, Tenant: req.Tenant, Run: req.RunID, Name: src.Name, Project: project, Person: person, Config: cfg, Legacy: legacy, Attempt: req.Attempt, Expires: at.Add(sourceGrantTTL)}
+	p.grounding.grants[token] = sourceGrant{Agent: req.Agent(), Meta: operationMetaOf(req.Meta), Query: sourceRetrievalQuery(req), Revision: wire.RevOf(req.Definition.Version), Hash: req.Definition.Digest, Tenant: req.Tenant, Run: req.RunID, Name: src.Name, Project: project, Person: person, Config: cfg, Legacy: legacy, Attempt: req.Attempt, Expires: at.Add(sourceGrantTTL)}
 	return token, nil
 }
 func (p *Platform) sourceGrant(tenant, token string, take bool) (sourceGrant, bool) {
@@ -88,7 +89,7 @@ func (p *Platform) sourceGrant(tenant, token string, take bool) (sourceGrant, bo
 }
 func (p *Platform) sourceNamesForTools(req runtime.Request) []string {
 	names := []string{}
-	for _, src := range req.Revision.Spec.Sources {
+	for _, src := range req.Definition.Spec.Sources {
 		name := src.Name
 		if grant, ok := p.sourceGrant(req.Tenant, name, false); ok {
 			if grant.Run != req.RunID {
@@ -101,9 +102,9 @@ func (p *Platform) sourceNamesForTools(req runtime.Request) []string {
 	return names
 }
 func (p *Platform) withSourceGrounding(req runtime.Request, project, person string) (runtime.Request, error) {
-	spec := req.Revision.Spec
+	spec := req.Definition.Spec
 	spec.Sources = slices.Clone(spec.Sources)
-	out := []agentrt.Source{}
+	out := []native.Source{}
 	minted := []string{}
 	cleanup := func() {
 		p.grounding.mu.Lock()
@@ -129,7 +130,7 @@ func (p *Platform) withSourceGrounding(req runtime.Request, project, person stri
 		out = append(out, declared)
 	}
 	spec.Sources = out
-	req.Revision.Spec = spec
+	req.Definition.Spec = spec
 	return req, nil
 }
 
@@ -138,7 +139,7 @@ func (p *Platform) withSourceGrounding(req runtime.Request, project, person stri
 func (p *Platform) releaseSourceGrounding(req runtime.Request) {
 	p.grounding.mu.Lock()
 	defer p.grounding.mu.Unlock()
-	for _, source := range req.Revision.Spec.Sources {
+	for _, source := range req.Definition.Spec.Sources {
 		grant, ok := p.grounding.grants[source.Name]
 		if ok && grant.Tenant == req.Tenant && grant.Run == req.RunID {
 			delete(p.grounding.grants, source.Name)
