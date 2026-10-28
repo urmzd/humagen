@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.31.1 (2026-10-28)
+
+### Bug Fixes
+
+- **github**: render reviews the agent wraps in a json code fence (#104) ([9e54c40](https://github.com/urmzd/humagen/commit/9e54c4054d06e48d097f730e2b5be98e9125e7c8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.31.0...v0.31.1)
+
+
 ## 0.30.0 (2026-10-27)
 
 ### Features
