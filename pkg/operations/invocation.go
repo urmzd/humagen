@@ -7,12 +7,14 @@ import (
 
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 const MetaAssignment = "humagen.assignment"
 
 func validInvocation(t string, a Assignment, tag envelope.Tag) bool {
-	return tag.Tenant == t && tag.Origin == "cron" && tag.Agent == a.Agent && a.Cron != "" && tag.Meta[MetaAssignment] == a.ID && tag.Meta["cron_schedule"] == a.Schedule && tag.Validate() == nil
+	return tag.Tenant == t && tag.Origin == "cron" && tag.Agent == a.Agent && a.Cron != "" && tag.Meta[MetaAssignment] == a.ID && wire.SurfaceOf(tag).CronSchedule == a.Schedule && tag.Validate() == nil
 }
 
 func cloneInvocation(tag envelope.Tag) envelope.Tag {

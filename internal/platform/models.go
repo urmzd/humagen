@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/runtime"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // PolicyProvider is the provider an agent names to run on one of its
@@ -37,23 +37,23 @@ var validPolicyName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 // ModelPolicy is a named, ordered list of models and the errors that move a
 // call from one to the next. The first model answers; the rest are fallbacks.
 type ModelPolicy struct {
-	Name        string               `json:"name"`
-	Description string               `json:"description,omitempty"`
-	Models      []agentspec.ModelRef `json:"models"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Models      []wire.ModelRef `json:"models"`
 	// FallbackOn names the classes of error that move a call on (see
-	// agentspec.FallbackConditions). Empty falls through on any error another
+	// wire.FallbackConditions). Empty falls through on any error another
 	// model could get past.
 	FallbackOn []string `json:"fallback_on,omitempty"`
 }
 
 // providers is what an agent spec may name on this platform: fiber's built-in
 // providers, and a workspace model policy.
-func providers() []string { return append(agentspec.KnownProviders(), PolicyProvider) }
+func providers() []string { return append(wire.KnownProviders(), PolicyProvider) }
 
 // spec is the policy written as the agent fields fiber runs, so fiber's own
 // rules check it.
-func (m ModelPolicy) spec(agent string) agentspec.AgentSpec {
-	s := agentspec.AgentSpec{Name: agent, SystemPrompt: "-"}
+func (m ModelPolicy) spec(agent string) wire.AgentSpec {
+	s := wire.AgentSpec{Name: agent, SystemPrompt: "-"}
 	if len(m.Models) > 0 {
 		s.Provider, s.Model = m.Models[0].Provider, m.Models[0].Model
 		if len(m.Models) > 1 {
@@ -89,7 +89,7 @@ func checkModelPolicies(list []ModelPolicy) error {
 		}
 		seen[m.Name] = true
 		// A policy is checked exactly as fiber checks the agent fields it becomes.
-		if err := m.spec("policy-" + m.Name).ValidateWith(agentspec.KnownProviders()); err != nil {
+		if err := m.spec("policy-" + m.Name).ValidateWith(wire.KnownProviders()); err != nil {
 			return fmt.Errorf("%w: %q: %v", ErrModelPolicy, m.Name, err)
 		}
 	}
@@ -108,7 +108,7 @@ func policyIn(list []ModelPolicy, name string) (ModelPolicy, bool) {
 // CheckAgentModel refuses a spec that names a model policy the workspace does
 // not have, or that names its own fallbacks on top of one. It runs before a
 // spec is saved, so an agent is never left pointing at nothing.
-func (p *Platform) CheckAgentModel(tenant string, spec agentspec.AgentSpec) error {
+func (p *Platform) CheckAgentModel(tenant string, spec wire.AgentSpec) error {
 	if spec.Provider != PolicyProvider {
 		return nil
 	}
@@ -124,10 +124,10 @@ func (p *Platform) CheckAgentModel(tenant string, spec agentspec.AgentSpec) erro
 // policyUsers lists the agents whose latest revision runs on a policy.
 func (p *Platform) policyUsers(ctx context.Context, tenant, name string) []string {
 	var users []string
-	page := registry.Page{}
+	page := wire.Page{}
 	// Agents are listed a page at a time, up to a bound.
 	for range 100 {
-		all, next, err := p.Agents.List(ctx, tenant, page)
+		all, next, err := p.Catalog().List(ctx, tenant, page)
 		if err != nil {
 			return users
 		}

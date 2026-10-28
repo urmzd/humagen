@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/inbox"
 )
 
@@ -371,10 +371,10 @@ type ModelBlock struct {
 
 // ModelPolicy is a named, ordered list of models and when a call moves on.
 type ModelPolicy struct {
-	Name        string               `json:"name"`
-	Description string               `json:"description,omitempty"`
-	Models      []agentspec.ModelRef `json:"models"`
-	FallbackOn  []string             `json:"fallback_on,omitempty"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Models      []wire.ModelRef `json:"models"`
+	FallbackOn  []string        `json:"fallback_on,omitempty"`
 }
 
 // Tool is a tool provider agents reach with an "mcp:<name>" grant: a slot
@@ -437,8 +437,8 @@ type AcceptTool struct {
 // Agent is one agent, from a file or written inline in the agent JSON fiber
 // reads (docs/agents.md).
 type Agent struct {
-	File string               `json:"file,omitempty"`
-	Spec *agentspec.AgentSpec `json:"spec,omitempty"`
+	File string          `json:"file,omitempty"`
+	Spec *wire.AgentSpec `json:"spec,omitempty"`
 	// Project is where the agent lives: a project in this file. It is
 	// available there and below, and nowhere else. Left out, it is a
 	// platform agent, available wherever it is enabled.
@@ -619,8 +619,8 @@ func (p Platform) check(kinds Kinds) error {
 		if (a.File == "") == (a.Spec == nil) {
 			return fmt.Errorf("%s: agents[%d]: file or spec, exactly one", where, i)
 		}
-		if a.Spec != nil && slices.Contains(ReservedNames, agentspec.NormalizeName(a.Spec.Name)) {
-			return fmt.Errorf("%s: agents[%d].spec.name: @%s is reserved: it is never an agent's name", where, i, agentspec.NormalizeName(a.Spec.Name))
+		if a.Spec != nil && slices.Contains(ReservedNames, wire.NormalizeName(a.Spec.Name)) {
+			return fmt.Errorf("%s: agents[%d].spec.name: @%s is reserved: it is never an agent's name", where, i, wire.NormalizeName(a.Spec.Name))
 		}
 	}
 	if s := sp.Surfaces.Slack; s != nil && s.Enabled {

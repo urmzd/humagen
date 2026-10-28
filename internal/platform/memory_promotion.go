@@ -43,7 +43,7 @@ func (p *Platform) PromoteMemory(who auth.Principal, in MemoryPromotion) (memory
 		if !who.Can(auth.AgentsRead) || in.Owner == "" {
 			return memory.Note{}, memory.ErrNotFound
 		}
-		if _, err := p.Agents.Get(context.Background(), who.Tenant, in.Owner, 0); err != nil {
+		if _, err := p.Catalog().Get(context.Background(), who.Tenant, in.Owner, 0); err != nil {
 			return memory.Note{}, memory.ErrNotFound
 		}
 		owner = in.Owner

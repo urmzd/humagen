@@ -8,6 +8,8 @@ import (
 	"github.com/urmzd/fiber/pkg/address"
 	transport "github.com/urmzd/fiber/pkg/connectors/slack"
 	"github.com/urmzd/fiber/pkg/envelope"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // StopFunc asks one run to stop at the request of the Slack user who pressed
@@ -60,7 +62,7 @@ func (l *live) track(to address.Address, e envelope.Event) (stopping bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	switch e.Kind {
-	case envelope.KindAccepted, envelope.KindStarted, envelope.KindResumed, envelope.KindParked:
+	case wire.KindAccepted, wire.KindStarted, wire.KindResumed, wire.KindParked:
 		if l.asked[e.RunID] {
 			return true
 		}
@@ -68,7 +70,7 @@ func (l *live) track(to address.Address, e envelope.Event) (stopping bool) {
 			clear(l.open)
 		}
 		l.open[e.RunID] = sessionOf(to)
-	case envelope.KindCompleted, envelope.KindFailed, envelope.KindStopped:
+	case wire.KindCompleted, wire.KindFailed, wire.KindStopped:
 		delete(l.open, e.RunID)
 		delete(l.asked, e.RunID)
 	}

@@ -6,8 +6,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/envelope"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // Outcome is the agent's authored result, never an action approval or proof
@@ -43,8 +44,8 @@ func (x *Index) observeDetail(e envelope.Event) Run {
 		return Run{}
 	}
 	switch e.Kind {
-	case envelope.KindActionTaken:
-		action, err := payload.Decode[payload.Action](e)
+	case wire.KindActionTaken:
+		action, err := wire.ActionOf(e)
 		if err != nil || action.Name != "record_outcome" || action.Error != "" || len(action.Data) > 30000 {
 			return Run{}
 		}

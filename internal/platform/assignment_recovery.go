@@ -7,6 +7,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -20,7 +21,7 @@ func (p *Platform) recoverAssignmentInvocation(ctx context.Context, tenant strin
 		}
 		tag = invocation
 	} else if a.Trigger == operations.SourceTrigger && a.TagID != "" && a.RunID == runtime.RunID(tenant, a.TagID) {
-		tag = envelope.Tag{ID: a.TagID, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Text: a.Goal + "\nDone when: " + a.DoneWhen, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}}
+		tag = wire.NewInput(envelope.Tag{ID: a.TagID, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}}, a.Goal+"\nDone when: "+a.DoneWhen)
 	} else if a.Cron != "" {
 		// Legacy manual reservations have a known deterministic console identity.
 		// An old clock reservation without its exact tag must never be guessed.

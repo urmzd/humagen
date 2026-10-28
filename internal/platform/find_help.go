@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 )
@@ -49,7 +49,7 @@ func (p *Platform) FindHelp(ctx context.Context, who auth.Principal, description
 		score int
 	}
 	ranked := []scored{}
-	page := registry.Page{Size: 100}
+	page := wire.Page{Size: 100}
 	for {
 		agents, next, err := p.AgentDirectory(ctx, who.Tenant, page)
 		if err != nil {

@@ -11,10 +11,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/memory"
@@ -116,7 +116,7 @@ func (p *Platform) agentsEveryoneReads(tenant, own string) func(agent string) bo
 	tree := p.ProjectTree(tenant)
 	reads := p.everyoneReads(tenant, own)
 	return func(agent string) bool {
-		home, homed := tree.Home(agentspec.NormalizeName(agent))
+		home, homed := tree.Home(wire.NormalizeName(agent))
 		return !homed || reads(home)
 	}
 }

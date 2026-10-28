@@ -10,6 +10,8 @@ import (
 
 	"github.com/urmzd/fiber/pkg/address"
 	"github.com/urmzd/fiber/pkg/envelope"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // MaxCommands is Slack's limit on commands in one code channel. The limit is
@@ -34,11 +36,11 @@ const maxChannels = 4096
 // is still a conversation the human can continue.
 func statusFor(k envelope.Kind) (Status, bool) {
 	switch k {
-	case envelope.KindAccepted, envelope.KindStarted, envelope.KindResumed:
+	case wire.KindAccepted, wire.KindStarted, wire.KindResumed:
 		return StatusProcessing, true
-	case envelope.KindParked:
+	case wire.KindParked:
 		return StatusSuspended, true
-	case envelope.KindCompleted, envelope.KindFailed, envelope.KindStopped:
+	case wire.KindCompleted, wire.KindFailed, wire.KindStopped:
 		return StatusActive, true
 	}
 	return "", false
@@ -53,7 +55,7 @@ func statusFor(k envelope.Kind) (Status, bool) {
 // workspace without the agent feature would retry every run forever. A
 // transport failure is returned, because that one a retry can fix.
 func (c *Connector) session(ctx context.Context, target address.Address, e envelope.Event) error {
-	if e.Kind == envelope.KindAccepted && len(c.cfg.Commands) > 0 {
+	if e.Kind == wire.KindAccepted && len(c.cfg.Commands) > 0 {
 		if err := c.offerCommands(ctx, target); err != nil {
 			return err
 		}

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/registry"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/inbox"
 )
@@ -32,9 +32,9 @@ import (
 var ErrCallRefused = fmt.Errorf("%w: refused by the callee", ErrForbidden)
 
 // CallPolicy is an agent's call policy: the stored one, or the default.
-// Another tenant's agent, or none, is registry.ErrNotFound.
+// Another tenant's agent, or none, is wire.ErrNotFound.
 func (p *Platform) CallPolicy(ctx context.Context, tenant, agent string) (callpolicy.Policy, error) {
-	if _, err := p.Agents.Get(ctx, tenant, agent, 0); err != nil {
+	if _, err := p.Catalog().Get(ctx, tenant, agent, 0); err != nil {
 		return callpolicy.Policy{}, err
 	}
 	pol, _ := p.CallPolicies.Get(tenant, agent)
@@ -44,12 +44,12 @@ func (p *Platform) CallPolicy(ctx context.Context, tenant, agent string) (callpo
 // SetCallPolicy stores an agent's call policy. Every agent it names must be
 // one of the tenant's.
 func (p *Platform) SetCallPolicy(ctx context.Context, tenant, agent, by string, pol callpolicy.Policy) (callpolicy.Policy, error) {
-	if _, err := p.Agents.Get(ctx, tenant, agent, 0); err != nil {
+	if _, err := p.Catalog().Get(ctx, tenant, agent, 0); err != nil {
 		return callpolicy.Policy{}, err
 	}
 	pol.Agent = agent
 	known := func(name string) bool {
-		_, err := p.Agents.Get(ctx, tenant, name, 0)
+		_, err := p.Catalog().Get(ctx, tenant, name, 0)
 		return err == nil
 	}
 	return p.CallPolicies.Put(tenant, pol, known, by, p.now())
@@ -217,17 +217,17 @@ type Reach struct {
 }
 
 // MaxReachable is the most agents Reachable reports on.
-const MaxReachable = registry.MaxPageSize
+const MaxReachable = wire.MaxPageSize
 
 // Reachable reports, for every other agent in the caller's tenant, whether the
 // caller may call it and why. truncated is true when the tenant has more
 // agents than MaxReachable.
 func (p *Platform) Reachable(ctx context.Context, tenant, caller string) (out []Reach, truncated bool, err error) {
-	rev, err := p.Agents.Get(ctx, tenant, caller, 0)
+	rev, err := p.Catalog().Get(ctx, tenant, caller, 0)
 	if err != nil {
 		return nil, false, err
 	}
-	revs, next, err := p.Agents.List(ctx, tenant, registry.Page{Size: MaxReachable})
+	revs, next, err := p.Catalog().List(ctx, tenant, wire.Page{Size: MaxReachable})
 	if err != nil {
 		return nil, false, err
 	}
@@ -238,7 +238,7 @@ func (p *Platform) Reachable(ctx context.Context, tenant, caller string) (out []
 			continue
 		}
 		pol, _ := p.CallPolicies.Get(tenant, callee)
-		r := Reach{Agent: callee, Admits: pol.Admits(caller), InSpawn: slices.Contains(rev.Spec.Access.Spawn, callee), Approval: "never"}
+		r := Reach{Agent: callee, Admits: pol.Admits(caller), InSpawn: slices.Contains(wire.PolicyOf(rev.Spec).Access.Spawn, callee), Approval: "never"}
 		if needed, _, _, _ := p.callApproval(tenant, caller, callee); needed {
 			r.Approval = "required"
 		}

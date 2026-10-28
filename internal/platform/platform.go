@@ -34,7 +34,6 @@ import (
 	"github.com/urmzd/fiber/pkg/connector"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/router"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/toolprovider"
@@ -46,6 +45,7 @@ import (
 	"github.com/urmzd/playscape/pkg/workspace"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
@@ -104,7 +104,7 @@ type Config struct {
 	Backends Backends
 	// Connections seats connectors the embedding program built itself, after
 	// the registry exists. Clients created through CreateClient need none.
-	Connections func(registry.Store) ([]Connection, error)
+	Connections func(wire.AgentStore) ([]Connection, error)
 	// Clients keeps client records, and Secrets the secret values written for
 	// them. Nil means on Backends.State, or in memory without one. Enabled
 	// clients already in the store are started by New.
@@ -218,7 +218,8 @@ type Platform struct {
 	sourceDependencyMu     sync.RWMutex
 	sourceDependencyReader SourceDependencyReader
 
-	Agents               registry.Store
+	// Agents keeps agent definitions. Read them through Catalog.
+	Agents               wire.AgentStore
 	Runs                 *runs.Index
 	Schedules            *Schedules
 	Journal              *journal.Journal
@@ -402,7 +403,7 @@ func New(cfg Config) (*Platform, error) {
 		queue:  cfg.Backends.Queue,
 	}
 	if p.Agents == nil {
-		p.Agents = registry.NewMemory(registry.WithProviders(append(providers(), cfg.Ext.ProviderNames()...)...))
+		p.Agents = wire.NewMemoryAgents(append(providers(), cfg.Ext.ProviderNames()...)...)
 	}
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
@@ -498,7 +499,7 @@ func New(cfg Config) (*Platform, error) {
 	}
 	rt, err := runtime.New(
 		anchor.New(p.ledger, p.queue),
-		registry.NewSpecs(p.Agents),
+		wire.Specs(p.Agents),
 		p.broker,
 		exec,
 		runtime.WithLogger(log),
@@ -546,7 +547,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	}
 	tools := tool.NewRegistry()
 	plane := controlplane.NewMemory(inproc.NewFactory(tools, ws), metrics.Nop())
-	exec, err := runtime.NewSandbox(plane, tools, registry.NewSpecs(p.Agents),
+	exec, err := runtime.NewSandbox(plane, tools, wire.Specs(p.Agents),
 		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
 
 		runtime.WithDelegator(p.attach),
@@ -704,8 +705,8 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 		delete(meta, runs.MetaSkills)
 	}
 	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual || tag.Origin == runs.OriginAssignment) && edge.Parent == "" {
-		meta[runs.MetaAsk] = tag.Text
-		tag.Text = p.turnContext(tag.Tenant, project, "", tag.Agent, personOf(tag.Actor), tag.Text, meta)
+		meta[runs.MetaAsk] = wire.TextOf(tag)
+		wire.SetText(&tag, p.turnContext(tag.Tenant, project, "", tag.Agent, personOf(tag.Actor), wire.TextOf(tag), meta))
 	}
 	tag.Meta = meta
 	return tag
@@ -747,7 +748,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, err
 	}
-	rev, err := p.Agents.Get(ctx, tenant, parent.Agent, parent.Rev)
+	rev, err := p.Catalog().Get(ctx, tenant, parent.Agent, parent.Rev)
 	if err != nil {
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
 	}
@@ -818,7 +819,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if allowed, ok := parent.Tag().Meta[operations.MetaTools]; ok {
 		tag.Meta[operations.MetaTools] = allowed
 	}
-	tag.Text = prepared.Messages[len(prepared.Messages)-1].Text
+	wire.SetText(&tag, prepared.Messages[len(prepared.Messages)-1].Text)
 	if _, err := p.recordHandoff(parent, req, tag, prepared); err != nil {
 		return runs.Run{}, err
 	}
@@ -934,7 +935,7 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 		return
 	}
 	p.admission.Lock()
-	if e.Kind == envelope.KindCitation {
+	if e.Kind == wire.KindCitation {
 		metadata, _, _ := p.trustedCitation(e)
 		if err := p.Runs.RecordCitation(e, metadata); err != nil {
 			p.log.Error("citation could not be retained", "error", err)

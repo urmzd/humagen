@@ -9,10 +9,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // postgresURLEnv names the database everything is kept in with
@@ -81,9 +80,9 @@ func openState(ctx context.Context, f stateFlags, getenv func(string) string, lo
 // registerSpec puts an agent spec from a file in the registry: a new agent,
 // or the next revision of one a kept registry already holds. A spec that has
 // not changed adds no revision.
-func registerSpec(ctx context.Context, agents registry.Store, tenant string, spec agentspec.AgentSpec) error {
+func registerSpec(ctx context.Context, agents wire.AgentStore, tenant string, spec wire.AgentSpec) error {
 	_, err := agents.Create(ctx, tenant, spec, "startup")
-	if !errors.Is(err, registry.ErrExists) {
+	if !errors.Is(err, wire.ErrExists) {
 		return err
 	}
 	head, err := agents.Get(ctx, tenant, spec.Name, 0)

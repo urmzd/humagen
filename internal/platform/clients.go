@@ -11,10 +11,10 @@ import (
 
 	"github.com/urmzd/fiber/pkg/connectors"
 	"github.com/urmzd/fiber/pkg/connectors/mention"
-	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/signature"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -450,7 +450,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 // clientAgents is the agents a client may name in text: those in its tenant's
 // registry that it may route to.
 type clientAgents struct {
-	store  registry.Store
+	store  wire.AgentStore
 	client clients.Client
 }
 

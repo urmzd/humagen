@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -205,7 +205,7 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 // complete reports whether a run's events are all still held: the first one
 // kept is the first one published.
 func complete(events []envelope.Event) bool {
-	return len(events) > 0 && events[0].Kind == envelope.KindAccepted
+	return len(events) > 0 && events[0].Kind == wire.KindAccepted
 }
 
 // manifest is one document that says everything the platform recorded about a
@@ -232,9 +232,9 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		// Cause is why a failed run failed, in one line.
 		Cause string `json:"cause,omitempty"`
 		// Definition is the agent revision the run was pinned to.
-		Definition *agentspec.Revision `json:"definition,omitempty"`
-		DurationMs int64               `json:"duration_ms"`
-		Events     []event             `json:"events"`
+		Definition *wire.Revision `json:"definition,omitempty"`
+		DurationMs int64          `json:"duration_ms"`
+		Events     []event        `json:"events"`
 		// Complete is false when the run's first events are no longer held.
 		Complete bool `json:"complete"`
 	}
@@ -256,7 +256,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		}
 		// The definition of an agent the caller may not read, one moved
 		// since into a project they may not read, is left out.
-		if rev, err := s.P.Agents.Get(r.Context(), who.Tenant, run.Agent, run.Rev); err == nil && seer.Agent(run.Agent) {
+		if rev, err := s.P.Catalog().Get(r.Context(), who.Tenant, run.Agent, run.Rev); err == nil && seer.Agent(run.Agent) {
 			shown := seer.Revision(rev)
 			e.Definition = &shown
 		}
@@ -424,7 +424,7 @@ func (s *Server) ruleScopeExists(w http.ResponseWriter, r *http.Request, who aut
 	rule.Project = projects.NameOf(rule.Project)
 	seer := s.P.Seer(who)
 	if rule.Agent != "" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil || !seer.Agent(rule.Agent) {
+		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil || !seer.Agent(rule.Agent) {
 			notFound(w)
 			return false
 		}
@@ -657,7 +657,7 @@ func (s *Server) putSuite(replace bool) handler {
 				return
 			}
 			if err = s.P.MayTry(who, suite.Subject); err == nil {
-				_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
+				_, err = s.P.Catalog().Get(r.Context(), who.Tenant, suite.Subject, 0)
 			}
 		case evals.Knowledge:
 			if !s.P.SourceVisible(who, suite.Subject) {

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/spec"
 )
@@ -25,7 +25,7 @@ func applySchedules(p *platform.Platform, tenant string, w spec.Workspace) error
 	for i, pr := range w.Projects {
 		for j, d := range pr.Schedules {
 			at := fmt.Sprintf("platform %q: workspace.projects[%d].schedules[%d]", tenant, i, j)
-			agent := agentspec.NormalizeName(d.Agent)
+			agent := wire.NormalizeName(d.Agent)
 			if err := p.Available(tenant, pr.Name, agent); err != nil {
 				return fmt.Errorf("%s.agent: %w", at, err)
 			}

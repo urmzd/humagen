@@ -23,6 +23,7 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/topic"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/authz"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -219,14 +220,15 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) []envel
 	if !enabled {
 		return nil
 	}
-	event := tag.Meta["slack_event"]
+	from := wire.SurfaceOf(tag)
+	event := from.SlackEvent
 	if c.Surface == clients.GitHub {
-		event = tag.Meta["github_event"]
+		event = from.GitHubEvent
 	}
 	if !current.AllowsEvent(event) {
 		return nil
 	}
-	if direction, bound := s.p.bridgeDirection(current, tag.Meta["slack_channel"]); bound && direction != projects.BridgeTwoWay {
+	if direction, bound := s.p.bridgeDirection(current, from.SlackChannel); bound && direction != projects.BridgeTwoWay {
 		return nil
 	}
 	c = current
@@ -237,7 +239,7 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) []envel
 			return nil
 		}
 	}
-	project, channel, bound := s.p.filedFor(c.Tenant, c, tag.Meta["slack_channel"])
+	project, channel, bound := s.p.filedFor(c.Tenant, c, from.SlackChannel)
 	if hasResource && !bound {
 		if target, targetChannel, linked := s.p.linkedClientResource(c, resource); linked {
 			project, channel, bound = target, targetChannel, true
@@ -250,7 +252,7 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) []envel
 		return nil
 	}
 	if tag.Agent == untagged {
-		if tag.Agent = s.p.untaggedFor(c, project, channel, tag.Meta["slack_channel"]); tag.Agent == "" {
+		if tag.Agent = s.p.untaggedFor(c, project, channel, from.SlackChannel); tag.Agent == "" {
 			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "tag", tag.ID)
 			return nil
 		}
@@ -258,7 +260,7 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) []envel
 	type answer struct{ agent, id, picked string }
 	who := []answer{{agent: tag.Agent, id: tag.ID}}
 	if tag.Agent == Open {
-		joined, err := s.p.joinFor(ctx, c, s.p.clientPlace(c, project, channel, tag.Meta["slack_channel"]), tag.Text)
+		joined, err := s.p.joinFor(ctx, c, s.p.clientPlace(c, project, channel, from.SlackChannel), wire.TextOf(tag))
 		if err != nil {
 			s.p.log.Info("platform: no agent took a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "tag", tag.ID, "why", err.Error())
 			return nil
@@ -582,7 +584,7 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e envelope.Ev
 	}
 	if current.Surface == clients.Slack && len(to.Path) > 0 {
 		if _, bound := s.p.bridgeDirection(current, to.Path[0]); bound {
-			if e.Kind != envelope.KindCompleted && e.Kind != envelope.KindFailed && e.Kind != envelope.KindStopped && e.Kind != envelope.KindParked && e.Kind != envelope.KindChildParked {
+			if !wire.IsTerminal(e.Kind) && !wire.IsParked(e.Kind) {
 				return nil
 			}
 			run, err := s.p.Runs.Get(e.Tenant, e.RunID)

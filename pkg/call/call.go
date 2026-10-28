@@ -42,6 +42,8 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // Origin marks a tag raised by an agent rather than by a trigger.
@@ -232,16 +234,15 @@ func New(parent envelope.Tag, req Request, st State, lim Limits, at time.Time) (
 		}
 	}
 
-	child := envelope.Tag{
+	child := wire.NewInput(envelope.Tag{
 		ID:     childID(parent.ID, req.Key),
 		Tenant: parent.Tenant,
 		Agent:  req.Agent,
 		Origin: Origin,
-		Text:   req.Text,
 		Actor:  envelope.Actor{ID: parent.Agent, Display: parent.Agent, Bot: true},
 		Meta:   map[string]string{},
 		At:     at,
-	}
+	}, req.Text)
 	if req.Mode == Handoff {
 		child.Source = parent.Source
 		child.Deliver = parent.Deliver

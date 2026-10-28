@@ -17,6 +17,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 func (c *Connector) mutationAction() connector.Action {
@@ -37,11 +39,11 @@ func (c *Connector) grantMutation(ctx context.Context, tag *envelope.Tag) error 
 	if !c.cfg.Mutations || tag.Source.Path[1] != "pull" || tag.Actor.Bot {
 		return nil
 	}
-	event := tag.Meta["github_event"]
+	event := wire.SurfaceOf(*tag).GitHubEvent
 	if event != "issue_comment" && event != "pull_request_review_comment" {
 		return nil
 	}
-	command := strings.Fields(tag.Text)
+	command := strings.Fields(wire.TextOf(*tag))
 	if len(command) == 0 || (command[0] != "/fix" && command[0] != "/check") {
 		return nil
 	}

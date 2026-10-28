@@ -10,8 +10,8 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/join"
@@ -123,7 +123,7 @@ func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
 	p.log.Warn("platform: run refused: agent not available", "tenant", tag.Tenant, "agent", tag.Agent, "project", at, "origin", tag.Origin)
 	// A person running a schedule now is told at once; the clock has nobody
 	// to tell.
-	if schedule := tag.Meta["cron_schedule"]; schedule != "" && tag.Origin == "cron" {
+	if schedule := wire.SurfaceOf(tag).CronSchedule; schedule != "" && tag.Origin == "cron" {
 		p.unavailableAlert(tag.Tenant, schedule, tag.Agent, project, err)
 	}
 	return err
@@ -151,14 +151,14 @@ func (p *Platform) unavailableAlert(tenant, schedule, agent, project string, err
 // every one. An agent whose spec is tagged_only is never asked.
 func (p *Platform) candidates(ctx context.Context, tenant string, tree *projects.Tree, project string, keep func(string) bool) ([]join.Candidate, error) {
 	var out []join.Candidate
-	page := registry.Page{Size: 100}
+	page := wire.Page{Size: 100}
 	for {
-		revs, next, err := p.Agents.List(ctx, tenant, page)
+		revs, next, err := p.Catalog().List(ctx, tenant, page)
 		if err != nil {
 			return nil, err
 		}
 		for _, r := range revs {
-			if r.Spec.TaggedOnly || !tree.IsAvailable(project, r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
+			if wire.PolicyOf(r.Spec).TaggedOnly || !tree.IsAvailable(project, r.Spec.Name) || (keep != nil && !keep(r.Spec.Name)) {
 				continue
 			}
 			out = append(out, join.Candidate{Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt})
@@ -543,7 +543,7 @@ func (p *Platform) SetProjectAgents(ctx context.Context, tenant, name string, w 
 		if n == "" || n == projects.Everyone || n == Open {
 			continue
 		}
-		if _, err := p.Agents.Get(ctx, tenant, n, 0); err != nil {
+		if _, err := p.Catalog().Get(ctx, tenant, n, 0); err != nil {
 			return ProjectAgents{}, fmt.Errorf("%w: there is no agent called %q", projects.ErrInvalid, n)
 		}
 	}
@@ -608,7 +608,7 @@ func (p *Platform) setAgentHome(ctx context.Context, tenant, agent, project stri
 	if IsBuiltin(agent) && projects.NameOf(project) != projects.Root {
 		return fmt.Errorf("%w: built-in agents live in Company", projects.ErrInvalid)
 	}
-	if _, err := p.Agents.Get(ctx, tenant, agent, 0); err != nil {
+	if _, err := p.Catalog().Get(ctx, tenant, agent, 0); err != nil {
 		return err
 	}
 	return p.Projects.SetHome(tenant, agent, projects.NameOf(project), w, p.now(), func(before, after *projects.Tree) []string {
@@ -645,3 +645,6 @@ func (p *Platform) homeUsers(tenant, agent string, before, after *projects.Tree)
 	}
 	return out
 }
+
+// Catalog is where the platform reads agent definitions.
+func (p *Platform) Catalog() wire.AgentCatalog { return p.Agents }

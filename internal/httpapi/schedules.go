@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -183,7 +184,7 @@ func (s *Server) filedBy(w http.ResponseWriter, who auth.Principal, sc cron.Sche
 // conversation there does. An agent the caller may not read is one that is
 // not there.
 func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.Principal, body schedule, meta map[string]string) (map[string]string, bool) {
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
+	if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
 		s.problem(w, err)
 		return nil, false
 	}
@@ -296,22 +297,21 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		actor.User = ""
 	}
 	now := time.Now()
-	run, err := s.P.Invoke(r.Context(), envelope.Tag{
+	run, err := s.P.Invoke(r.Context(), wire.NewInput(envelope.Tag{
 		ID:     "manual-" + token()[:22],
 		Tenant: who.Tenant,
 		Agent:  sc.Agent,
 		Origin: runs.OriginManual,
-		Text:   sc.Text,
 		Actor:  actor,
 		// The run carries what its schedule says now, as a run the clock
 		// raises does: its project, where its answer goes, and its creator.
 		Meta: map[string]string{
-			"cron_schedule": sc.Name, "cron_expression": sc.Expression,
+			wire.MetaCronSchedule: sc.Name, wire.MetaCronExpression: sc.Expression,
 			runs.MetaProject: sc.Meta[runs.MetaProject], platform.MetaDeliver: sc.Meta[platform.MetaDeliver],
 			"created_by": sc.Meta["created_by"],
 		},
 		At: now,
-	})
+	}, sc.Text))
 	if err != nil {
 		s.problem(w, err)
 		return

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
@@ -42,10 +42,10 @@ type ProjectCopy struct {
 	Rules    []sourcelinks.Rule `json:"rules,omitempty"`
 }
 type AgentCopy struct {
-	Source  string              `json:"source"`
-	Name    string              `json:"name"`
-	Project string              `json:"project"`
-	Spec    agentspec.AgentSpec `json:"spec"`
+	Source  string         `json:"source"`
+	Name    string         `json:"name"`
+	Project string         `json:"project"`
+	Spec    wire.AgentSpec `json:"spec"`
 }
 type ArchiveCopy struct {
 	SourceThread string             `json:"source_thread"`

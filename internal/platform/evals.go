@@ -7,6 +7,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/envelope"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -31,7 +32,7 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 	case evals.Agent:
 		// Pin the revision now, so the run records what it actually tested
 		// even if the agent is revised while the cases are in flight.
-		r, err := p.Agents.Get(ctx, tenant, suite.Subject, 0)
+		r, err := p.Catalog().Get(ctx, tenant, suite.Subject, 0)
 		if err != nil {
 			return evals.Run{}, fmt.Errorf("the suite's agent: %w", err)
 		}
@@ -107,15 +108,14 @@ func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suit
 	if home, ok := p.Projects.Tree(tenant).Home(suite.Subject); ok {
 		meta[runs.MetaProject] = home
 	}
-	started, err := p.Invoke(ctx, envelope.Tag{
+	started, err := p.Invoke(ctx, wire.NewInput(envelope.Tag{
 		ID:     fmt.Sprintf("eval-%s-%s-%s", tenant, evalID, c.ID),
 		Tenant: tenant,
 		Agent:  suite.Subject,
 		Origin: OriginEval,
-		Text:   c.Input,
 		Actor:  envelope.Actor{ID: "eval:" + suite.Name, Display: "eval " + suite.Name, Bot: true},
 		Meta:   meta,
-	})
+	}, c.Input))
 	if err != nil {
 		return failed("the run could not be started: "+err.Error(), runs.Run{})
 	}

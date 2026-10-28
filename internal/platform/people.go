@@ -7,8 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/people"
@@ -29,7 +28,7 @@ func (p *Platform) agentTaken(tenant, handle string) bool {
 	if IsBuiltin(handle) {
 		return true
 	}
-	_, err := p.Agents.Get(context.Background(), tenant, handle, 0)
+	_, err := p.Catalog().Get(context.Background(), tenant, handle, 0)
 	return err == nil
 }
 
@@ -90,7 +89,7 @@ func (p *Platform) SeeGranted(tenant string, grants []Grant) error {
 // the experts' tag, and any handle a person in the workspace goes by, since a
 // tag must name one of them.
 func (p *Platform) CheckAgentName(tenant, name string) error {
-	name = agentspec.NormalizeName(strings.TrimSpace(name))
+	name = wire.NormalizeName(strings.TrimSpace(name))
 	if people.IsReserved(name) {
 		return fmt.Errorf("%w: @%s is reserved: it is never an agent's name", ErrNameTaken, name)
 	}

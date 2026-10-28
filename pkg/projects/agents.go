@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/topic"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // OpenDefault is the default that names no agent: every agent available
@@ -60,7 +60,7 @@ type Agents struct {
 // lists, as a default or as an agent with a home: a fiber agent name in its
 // canonical form. OpenDefault is no agent, and neither is fiber's control segment.
 func ValidAgent(name string) bool {
-	if name == "" || name != agentspec.NormalizeName(name) || len(name) > agentspec.MaxNameLen ||
+	if name == "" || name != wire.NormalizeName(name) || len(name) > wire.MaxNameLen ||
 		name == OpenDefault || name == legacy.AutoDefault || name == topic.ControlName {
 		return false
 	}
@@ -87,7 +87,7 @@ func (a Agents) listed() Agents {
 // each list sorted, and enable never nil. A set allow list stays set, even
 // empty, so validate can refuse it rather than widen it to nil.
 func (a Agents) canonical() Agents {
-	out := Agents{Enable: canonicalNames(a.Enable), Default: legacy.Default(agentspec.NormalizeName(a.Default))}
+	out := Agents{Enable: canonicalNames(a.Enable), Default: legacy.Default(wire.NormalizeName(a.Default))}
 	if out.Enable == nil {
 		out.Enable = []string{}
 	}
@@ -106,7 +106,7 @@ func canonicalNames(names []string) []string {
 	}
 	out := make([]string, len(names))
 	for i, n := range names {
-		out[i] = agentspec.NormalizeName(n)
+		out[i] = wire.NormalizeName(n)
 	}
 	slices.Sort(out)
 	return out
@@ -178,7 +178,7 @@ type Availability struct {
 // Home returns the project an agent lives in, by any spelling of its name,
 // as the registry finds an agent by any. Company is an explicit root home.
 func (t *Tree) Home(agent string) (string, bool) {
-	p, ok := t.homes[agentspec.NormalizeName(agent)]
+	p, ok := t.homes[wire.NormalizeName(agent)]
 	return p, ok
 }
 

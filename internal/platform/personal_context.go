@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/memory"
 )
 
@@ -64,7 +65,7 @@ func (p *Platform) recordContextUse(tag envelope.Tag, project string) {
 		owners = append(owners, memory.PersonalOwner(subject))
 	}
 	for _, owner := range owners {
-		if err := p.Memory.UsedRendered(tag.Tenant, owner, tag.Text, p.now()); err != nil {
+		if err := p.Memory.UsedRendered(tag.Tenant, owner, wire.TextOf(tag), p.now()); err != nil {
 			p.log.Warn("platform: memory use could not be recorded", "error", err)
 		}
 	}

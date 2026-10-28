@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/memory"
@@ -354,7 +354,7 @@ func (p *Platform) MayFileIn(who auth.Principal, project string) error {
 // of its home, as any run filed there does. A platform agent asks nothing
 // more than the route's permission.
 func (p *Platform) MayTry(who auth.Principal, agent string) error {
-	home, homed := p.Projects.Tree(who.Tenant).Home(agentspec.NormalizeName(agent))
+	home, homed := p.Projects.Tree(who.Tenant).Home(wire.NormalizeName(agent))
 	if !homed || home == projects.Root {
 		return nil
 	}
@@ -402,7 +402,7 @@ func (p *Platform) ownsHome(tree *projects.Tree, who auth.Principal, agent strin
 	// Homes are kept by the agent's canonical name, which is what the
 	// registry and every store resolve a name to, so a name in another
 	// case or with spaces around it is the same agent here too.
-	home, homed := tree.Home(agentspec.NormalizeName(agent))
+	home, homed := tree.Home(wire.NormalizeName(agent))
 	if !homed || home == projects.Root {
 		return nil
 	}

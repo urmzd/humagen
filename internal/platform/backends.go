@@ -10,8 +10,8 @@ import (
 	dqueue "github.com/urmzd/anchor/pkg/queue"
 	"github.com/urmzd/fiber/pkg/bus"
 	"github.com/urmzd/fiber/pkg/durable"
-	"github.com/urmzd/fiber/pkg/registry"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
@@ -63,7 +63,7 @@ type Backends struct {
 	// settings. Nil keeps them in memory.
 	State state.Store
 	// Agents is fiber's agent registry. Nil means fiber's in memory.
-	Agents registry.Store
+	Agents wire.AgentStore
 	// Ledger and Queue are anchor's run ledger and queue, which a run in
 	// flight survives a restart in. Nil means anchor's in memory. Set both
 	// or neither.
@@ -96,7 +96,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 			_ = st.Close()
 		}
 	}()
-	agents := registry.NewPostgres(pool, registry.WithProviders(append(providers(), providerNames...)...))
+	agents := wire.NewPostgresAgents(pool, append(providers(), providerNames...)...)
 	if err := agents.Migrate(ctx); err != nil {
 		return Backends{}, nil, err
 	}

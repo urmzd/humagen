@@ -25,7 +25,7 @@ func (p *Platform) runNeedsSummary(ctx context.Context, run runs.Run, destinatio
 	if run.UsesPrivateContext() || run.Tag().Meta[MetaPersonalMemoryContext] == "true" || run.Tag().Meta[MetaPrivateLibraryContext] == "true" || p.ContextFlags.Has(run.Tenant, run.ID) || p.RunUsesPersonalSources(ctx, run) {
 		return true
 	}
-	revision, err := p.Agents.Get(ctx, run.Tenant, run.Agent, run.Rev)
+	revision, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
 	if err != nil || p.grantsPersonScoped(ctx, run.Tenant, revision.Spec.Tools, run.CreatedAt) {
 		return true
 	}

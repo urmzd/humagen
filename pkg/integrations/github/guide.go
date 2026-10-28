@@ -6,6 +6,7 @@ import (
 	transport "github.com/urmzd/fiber/pkg/connectors/github"
 	"github.com/urmzd/fiber/pkg/envelope"
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
+	"github.com/urmzd/humagen/internal/wire"
 	"sort"
 	"strings"
 )
@@ -47,6 +48,6 @@ func (c *Connector) prepareGuide(ctx context.Context, tag *envelope.Tag) error {
 		return fmt.Errorf("github: stale PR guide trigger")
 	}
 	tag.Source = tag.Source.WithParam("head_sha", head)
-	tag.Meta["github_head_sha"] = head
+	wire.SetGitHubHeadSHA(tag, head)
 	return c.cfg.API.(GuideAPI).UpdateGuide(ctx, ref, Guide{Agent: tag.Agent, BotLogin: login, HeadSHA: head, Body: presentation.GuideBody(evidence, tag.Agent, login, c.cfg.Mutations)})
 }

@@ -98,7 +98,7 @@ func (p *Platform) runtimeSourceRecordAllowed(tenant string, src knowledge.Sourc
 }
 
 func (p *Platform) RunUsesPersonalSources(ctx context.Context, run runs.Run) bool {
-	revision, err := p.Agents.Get(ctx, run.Tenant, run.Agent, run.Rev)
+	revision, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
 	return err != nil || slices.Contains(revision.Spec.Tools, ToolSourceSearch)
 }
 

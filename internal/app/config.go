@@ -18,14 +18,13 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credref"
@@ -368,7 +367,7 @@ func tenantOnly(tenant string, c runtime.Catalog) runtime.Catalog {
 // reserved word or a person's handle, as the API does: a tag must name one of
 // them. An agent the workspace already has keeps its name.
 func checkNewAgentName(ctx context.Context, p *platform.Platform, tenant, name string) error {
-	if _, err := p.Agents.Get(ctx, tenant, name, 0); !errors.Is(err, registry.ErrNotFound) {
+	if _, err := p.Agents.Get(ctx, tenant, name, 0); !errors.Is(err, wire.ErrNotFound) {
 		return nil
 	}
 	return p.CheckAgentName(tenant, name)
@@ -395,7 +394,7 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 				if err != nil {
 					return fmt.Errorf("platform %q: agents[%d]: %w", tenant, i, err)
 				}
-				var fromFile agentspec.AgentSpec
+				var fromFile wire.AgentSpec
 				if err := decodeStrict(raw, &fromFile); err != nil {
 					return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
 				}
@@ -408,7 +407,7 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 				return fmt.Errorf("platform %q: agents[%d] %q: %w", tenant, i, s.Name, err)
 			}
 			_, err := p.Agents.Create(ctx, tenant, *s, "file")
-			if errors.Is(err, registry.ErrExists) {
+			if errors.Is(err, wire.ErrExists) {
 				_, err = p.Agents.Revise(ctx, tenant, *s, 0, "file")
 			}
 			if err != nil {
@@ -599,7 +598,7 @@ func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) er
 		if a.Spec == nil || a.Project == "" || a.Project == spec.RootParent {
 			continue
 		}
-		if err := p.SetAgentHome(ctx, tenant, agentspec.NormalizeName(a.Spec.Name), a.Project, projects.Writer{By: fileWriter, Govern: true}); err != nil {
+		if err := p.SetAgentHome(ctx, tenant, wire.NormalizeName(a.Spec.Name), a.Project, projects.Writer{By: fileWriter, Govern: true}); err != nil {
 			return fmt.Errorf("platform %q: agents[%d].project: %w", tenant, i, err)
 		}
 	}

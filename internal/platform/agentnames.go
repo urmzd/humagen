@@ -10,10 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
-
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -176,7 +174,7 @@ func (p *Platform) ClientWrittenBy(ctx context.Context, who auth.Principal, old 
 		if held[a] || a == Open || a == legacy.AutoDefault {
 			continue
 		}
-		rev, err := p.Agents.Get(ctx, who.Tenant, a, 0)
+		rev, err := p.Catalog().Get(ctx, who.Tenant, a, 0)
 		if err != nil || rev.Spec.Name != a || !seer.Agent(a) {
 			return clients.Client{}, noAgent(clients.ErrInvalid, a)
 		}
@@ -320,7 +318,7 @@ func (p *Platform) ProjectAgentsWrittenBy(ctx context.Context, who auth.Principa
 		if n == "" || n == projects.Everyone || n == legacy.AutoDefault {
 			continue
 		}
-		if _, err := p.Agents.Get(ctx, who.Tenant, n, 0); err != nil || !seer.Agent(n) {
+		if _, err := p.Catalog().Get(ctx, who.Tenant, n, 0); err != nil || !seer.Agent(n) {
 			return AgentsInput{}, noAgent(projects.ErrInvalid, n)
 		}
 	}
@@ -330,7 +328,7 @@ func (p *Platform) ProjectAgentsWrittenBy(ctx context.Context, who auth.Principa
 	}
 	in.Allow = slices.Clone(in.Allow)
 	for _, a := range pr.Agents.Allow {
-		if _, err := p.Agents.Get(ctx, who.Tenant, a, 0); err == nil && !seer.Agent(a) {
+		if _, err := p.Catalog().Get(ctx, who.Tenant, a, 0); err == nil && !seer.Agent(a) {
 			in.Allow = append(in.Allow, a)
 		}
 	}
@@ -360,7 +358,7 @@ func (p *Platform) SetSettingsBy(ctx context.Context, who auth.Principal, next S
 		if name == "" {
 			continue
 		}
-		if _, err := p.Agents.Get(ctx, who.Tenant, name, 0); err != nil || !seer.Agent(name) {
+		if _, err := p.Catalog().Get(ctx, who.Tenant, name, 0); err != nil || !seer.Agent(name) {
 			return fmt.Errorf("%w: %q", ErrNoBaseline, name)
 		}
 	}
@@ -384,9 +382,9 @@ const tagTool = "tag_"
 // (approvers, self_approval) too when every approval is. When anything is left
 // out, its hash is the hash of what is shown, so it confirms no guess at what
 // is not.
-func (s *Seer) Revision(rev agentspec.Revision) agentspec.Revision {
+func (s *Seer) Revision(rev wire.Revision) wire.Revision {
 	rev = revisionShown(rev, s.Agent)
-	sources := slices.DeleteFunc(slices.Clone(rev.Spec.Sources), func(src agentspec.Source) bool { return !s.p.SourceVisible(s.who, src.Name) })
+	sources := slices.DeleteFunc(slices.Clone(rev.Spec.Sources), func(src wire.Source) bool { return !s.p.SourceVisible(s.who, src.Name) })
 	if len(sources) != len(rev.Spec.Sources) {
 		rev = rev.Clone()
 		rev.Spec.Sources = sources
@@ -397,7 +395,7 @@ func (s *Seer) Revision(rev agentspec.Revision) agentspec.Revision {
 
 // revisionShown is a revision with every agent that shown does not keep left
 // out of its spawn list and its approvals, hashed as Seer.Revision says.
-func revisionShown(rev agentspec.Revision, shown func(string) bool) agentspec.Revision {
+func revisionShown(rev wire.Revision, shown func(string) bool) wire.Revision {
 	spawn := rev.Spec.Access.Spawn
 	if spawn != nil {
 		spawn = slices.DeleteFunc(slices.Clone(spawn), func(a string) bool { return !shown(a) })
@@ -424,8 +422,8 @@ func revisionShown(rev agentspec.Revision, shown func(string) bool) agentspec.Re
 }
 
 // Revisions is Revision of each.
-func (s *Seer) Revisions(revs []agentspec.Revision) []agentspec.Revision {
-	out := make([]agentspec.Revision, len(revs))
+func (s *Seer) Revisions(revs []wire.Revision) []wire.Revision {
+	out := make([]wire.Revision, len(revs))
 	for i, rev := range revs {
 		out[i] = s.Revision(rev)
 	}
@@ -437,7 +435,7 @@ func (s *Seer) Revisions(revs []agentspec.Revision) []agentspec.Revision {
 //
 // Every agent its spawn list names must be one that exists and that who may
 // read, or one old already names that who is shown; any other is refused
-// with agentspec.ErrInvalid, as no agent, whether it lives in a project who
+// with wire.ErrInvalidAgent, as no agent, whether it lives in a project who
 // may not read or does not exist. The spec as written must then hold on its
 // own, so an approval of a call to an agent who may not read is refused as
 // one of a call the spec does not grant, as it is for an agent that does
@@ -446,19 +444,19 @@ func (s *Seer) Revisions(revs []agentspec.Revision) []agentspec.Revision {
 // (approvers and self_approval) when who was shown none of the approvals or
 // wrote none, unless the spec written names approvers or self_approval of
 // its own. The spec as kept is validated again.
-func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *agentspec.Revision, spec agentspec.AgentSpec) (agentspec.AgentSpec, error) {
+func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *wire.Revision, spec wire.AgentSpec) (wire.AgentSpec, error) {
 	// An editor can retain unread references already present, but cannot probe
 	// or newly grant a source they cannot read.
 	sources := slices.Clone(spec.Sources)
 	for _, src := range sources {
-		previously := old != nil && slices.ContainsFunc(old.Spec.Sources, func(prior agentspec.Source) bool { return reflect.DeepEqual(prior, src) })
+		previously := old != nil && slices.ContainsFunc(old.Spec.Sources, func(prior wire.Source) bool { return reflect.DeepEqual(prior, src) })
 		if !previously && !p.SourceVisible(who, src.Name) {
-			return agentspec.AgentSpec{}, knowledge.ErrNotFound
+			return wire.AgentSpec{}, knowledge.ErrNotFound
 		}
 	}
 	if old != nil {
 		for _, src := range old.Spec.Sources {
-			if !p.SourceVisible(who, src.Name) && !slices.ContainsFunc(sources, func(candidate agentspec.Source) bool { return reflect.DeepEqual(candidate, src) }) {
+			if !p.SourceVisible(who, src.Name) && !slices.ContainsFunc(sources, func(candidate wire.Source) bool { return reflect.DeepEqual(candidate, src) }) {
 				sources = append(sources, src)
 			}
 		}
@@ -481,17 +479,17 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *a
 		p.log.Warn("platform: built-in agents", "error", err)
 	}
 	for _, written := range spec.Access.Spawn {
-		a := agentspec.NormalizeName(written)
+		a := wire.NormalizeName(written)
 		if shown[a] {
 			continue
 		}
-		if _, err := p.Agents.Get(ctx, who.Tenant, a, 0); err != nil || !seer.Agent(a) {
-			return agentspec.AgentSpec{}, noAgent(agentspec.ErrInvalid, written)
+		if _, err := p.Catalog().Get(ctx, who.Tenant, a, 0); err != nil || !seer.Agent(a) {
+			return wire.AgentSpec{}, noAgent(wire.ErrInvalidAgent, written)
 		}
 		shown[a] = true
 	}
 	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
-		return agentspec.AgentSpec{}, err
+		return wire.AgentSpec{}, err
 	}
 	if len(hidden) == 0 {
 		return spec, nil
@@ -517,7 +515,7 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *a
 	}
 	// The spec as written held on its own; the spec as kept must too.
 	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
-		return agentspec.AgentSpec{}, err
+		return wire.AgentSpec{}, err
 	}
 	return spec, nil
 }
@@ -545,14 +543,14 @@ func (s *Seer) CallPolicy(pol callpolicy.Policy) callpolicy.Policy {
 // it lists, and in trusted while it holds every caller it does not trust. A
 // policy that admits anyone, or no one, reaches them too.
 func (p *Platform) SetCallPolicyBy(ctx context.Context, who auth.Principal, agent string, pol callpolicy.Policy) (callpolicy.Policy, error) {
-	if _, err := p.Agents.Get(ctx, who.Tenant, agent, 0); err != nil {
+	if _, err := p.Catalog().Get(ctx, who.Tenant, agent, 0); err != nil {
 		return callpolicy.Policy{}, err
 	}
 	seer := p.Seer(who)
 	pol.Agent = agent
 	written := pol.Normalize()
 	if err := written.ValidateShape(func(name string) bool {
-		_, err := p.Agents.Get(ctx, who.Tenant, name, 0)
+		_, err := p.Catalog().Get(ctx, who.Tenant, name, 0)
 		return err == nil && seer.Agent(name)
 	}); err != nil {
 		return callpolicy.Policy{}, err
@@ -567,7 +565,7 @@ func (p *Platform) SetCallPolicyBy(ctx context.Context, who auth.Principal, agen
 	isHidden := func(a string) bool {
 		h, known := hiddenName[a]
 		if !known {
-			_, err := p.Agents.Get(ctx, who.Tenant, a, 0)
+			_, err := p.Catalog().Get(ctx, who.Tenant, a, 0)
 			h = err == nil && !seer.Agent(a)
 			hiddenName[a] = h
 		}
@@ -587,7 +585,7 @@ func (p *Platform) SetCallPolicyBy(ctx context.Context, who auth.Principal, agen
 		return out
 	}
 	known := func(name string) bool {
-		_, err := p.Agents.Get(ctx, who.Tenant, name, 0)
+		_, err := p.Catalog().Get(ctx, who.Tenant, name, 0)
 		return err == nil
 	}
 	return p.CallPolicies.PutKeeping(who.Tenant, written, known, func(stored callpolicy.Policy) ([]string, []string) {
@@ -766,32 +764,32 @@ const maxMerges = 3
 // SpecWrittenBy against the latest revision. That revision is the one the
 // write expects, so a hidden entry another writer adds between the read and
 // the write is never lost: with expectedRev set, the write is refused
-// (registry.ErrConflict) unless it is the latest, as for any revision; with
+// (wire.ErrConflict) unless it is the latest, as for any revision; with
 // expectedRev 0, which takes whatever is latest, the spec is merged again
 // with the newer one.
-func (p *Platform) ReviseBy(ctx context.Context, who auth.Principal, spec agentspec.AgentSpec, expectedRev int) (agentspec.Revision, error) {
+func (p *Platform) ReviseBy(ctx context.Context, who auth.Principal, spec wire.AgentSpec, expectedRev int) (wire.Revision, error) {
 	unlock, err := p.lockSetupRevision(who.Tenant, spec.Name)
 	if err != nil {
-		return agentspec.Revision{}, err
+		return wire.Revision{}, err
 	}
 	defer unlock()
 	p.skillDefaultsMu.Lock()
 	defer p.skillDefaultsMu.Unlock()
 	for merges := 0; ; merges++ {
-		old, err := p.Agents.Get(ctx, who.Tenant, spec.Name, 0)
+		old, err := p.Catalog().Get(ctx, who.Tenant, spec.Name, 0)
 		if err != nil {
-			return agentspec.Revision{}, err
+			return wire.Revision{}, err
 		}
 		kept, err := p.SpecWrittenBy(ctx, who, &old, spec)
 		if err != nil {
-			return agentspec.Revision{}, err
+			return wire.Revision{}, err
 		}
 		expect := expectedRev
 		if expect == 0 {
 			expect = old.Rev
 		}
 		rev, err := p.Agents.Revise(ctx, who.Tenant, kept, expect, who.Subject)
-		if expectedRev == 0 && errors.Is(err, registry.ErrConflict) && merges < maxMerges {
+		if expectedRev == 0 && errors.Is(err, wire.ErrConflict) && merges < maxMerges {
 			continue
 		}
 		return rev, err

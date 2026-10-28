@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -52,14 +53,15 @@ func money(micros int64) string {
 // observeUsage handles a usage event the observer saw.
 func (p *Platform) observeUsage(ctx context.Context, e envelope.Event) {
 	run, ok := p.Runs.ObserveUsage(e)
-	if !ok || e.Kind != envelope.KindUsageCall {
+	if !ok || e.Kind != wire.KindUsageCall {
 		return
 	}
-	c, err := payload.Decode[payload.UsageCall](e)
+	got, _, err := wire.UsageOf(e)
 	if err != nil {
 		p.log.Warn("platform: a usage report could not be read", "run", e.RunID, "error", err)
 		return
 	}
+	c := *got
 	key := c.AccountingID
 	if key == "" {
 		// A call with no key of its own is told apart by where it was

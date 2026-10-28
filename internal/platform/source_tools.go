@@ -23,7 +23,7 @@ func (p *Platform) sourceTools(req runtime.Request) map[string]saigetypes.Tool {
 	// Automatic grounding may be withheld by Ask/Never. The durable revision
 	// and admission pin retain explicit source grants for the policy-wrapped tool.
 	if p.Agents != nil && req.Revision.Rev > 0 {
-		if rev, err := p.Agents.Get(context.Background(), req.Tenant, req.Agent(), req.Revision.Rev); err == nil && rev.Rev == req.Revision.Rev {
+		if rev, err := p.Catalog().Get(context.Background(), req.Tenant, req.Agent(), req.Revision.Rev); err == nil && rev.Rev == req.Revision.Rev {
 			for _, source := range rev.Spec.Sources {
 				if !slices.Contains(allowed, source.Name) {
 					allowed = append(allowed, source.Name)

@@ -26,6 +26,7 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/textindex"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -456,11 +457,11 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	// tag from anywhere else does not get to claim a schedule.
 	schedule := ""
 	if tag.Origin == "cron" || tag.Origin == OriginManual {
-		schedule = tag.Meta["cron_schedule"]
+		schedule = wire.SurfaceOf(tag).CronSchedule
 	}
 	// A run is its own conversation unless the API placed it in one. A run
 	// called by an agent belongs to its root's conversation.
-	thread, prev, picked, routed, text, project, client := runID, "", "", "", tag.Text, "", ClientOf(tag)
+	thread, prev, picked, routed, text, project, client := runID, "", "", "", wire.TextOf(tag), "", ClientOf(tag)
 	channel, message := "", ""
 	// A schedule's project is written by the server when the schedule is
 	// created, so the cron trigger and a person's run-now are believed too.
@@ -521,13 +522,13 @@ func (x *Index) Called(runID string, lease int64) {
 // caller can react to an ending exactly once. Other kinds, and events for runs
 // this index never recorded, change nothing.
 func (x *Index) Observe(e envelope.Event) (Run, bool) {
-	if e.Kind == envelope.KindActionTaken {
+	if e.Kind == wire.KindActionTaken {
 		return x.observeDetail(e), false
 	}
 	if e.Kind.Family() != "lifecycle" {
 		return Run{}, false
 	}
-	body, err := payload.Decode[payload.Lifecycle](e)
+	body, err := wire.LifecycleOf(e)
 	if err != nil {
 		return Run{}, false
 	}
@@ -541,14 +542,14 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 	x.touch(r.ID)
 	r.UpdatedAt = e.At
 	switch e.Kind {
-	case envelope.KindStarted, envelope.KindResumed:
+	case wire.KindStarted, wire.KindResumed:
 		r.Status, r.Reason, r.Question = Running, "", nil
-	case envelope.KindParked:
+	case wire.KindParked:
 		r.Status, r.Reason, r.Question = Parked, body.Reason, body.Question
 		if body.Question != nil {
 			x.neededPerson(r)
 		}
-	case envelope.KindCompleted:
+	case wire.KindCompleted:
 		r.Answer = body.Text
 		if body.Usage != nil {
 			u := *body.Usage
@@ -558,18 +559,18 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 			return citationSnapshot(r), false
 		}
 		r.Status = Completed
-	case envelope.KindFailed:
+	case wire.KindFailed:
 		// A failed attempt may still be retried. Only a terminal failure
 		// ends the run.
 		r.Error = body.Error
 		if body.Terminal {
 			r.Status = Failed
 		}
-	case envelope.KindStopped:
+	case wire.KindStopped:
 		// The runtime says the run wrapped up on request. What it had said
 		// is the answer people saw, and is kept. A stopped run is not held
 		// open for what is attached to it: those are stopped with it.
-		stopped, _ := payload.Decode[payload.Stopped](e)
+		stopped, _ := wire.StoppedOf(e)
 		r.Answer, r.Status, r.Finishing, r.Reason = stopped.Text, Stopped, false, ""
 		if stopped.Usage != nil {
 			u := *stopped.Usage
@@ -590,7 +591,7 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 // nothing. It returns the run as it now stands, and false for any other kind,
 // a run this index does not hold, or another tenant's.
 func (x *Index) ObserveUsage(e envelope.Event) (Run, bool) {
-	if e.Kind != envelope.KindUsageCall && e.Kind != envelope.KindUsageChild {
+	if e.Kind != wire.KindUsageCall && e.Kind != wire.KindUsageChild {
 		return Run{}, false
 	}
 	x.mu.Lock()
@@ -608,19 +609,14 @@ func (x *Index) ObserveUsage(e envelope.Event) (Run, bool) {
 	if r.tally == nil {
 		r.tally = &payload.Tally{}
 	}
-	switch e.Kind {
-	case envelope.KindUsageCall:
-		c, err := payload.Decode[payload.UsageCall](e)
-		if err != nil {
-			return Run{}, false
-		}
-		r.tally.Call(c)
-	case envelope.KindUsageChild:
-		c, err := payload.Decode[payload.UsageChild](e)
-		if err != nil {
-			return Run{}, false
-		}
-		r.tally.Child(c)
+	byCall, child, err := wire.UsageOf(e)
+	if err != nil {
+		return Run{}, false
+	}
+	if byCall != nil {
+		r.tally.Call(*byCall)
+	} else {
+		r.tally.Child(*child)
 	}
 	u := r.tally.Usage()
 	r.Usage = &u

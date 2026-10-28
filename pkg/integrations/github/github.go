@@ -12,6 +12,7 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/topic"
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
+	"github.com/urmzd/humagen/internal/wire"
 	"sort"
 	"strings"
 	"sync"
@@ -146,7 +147,7 @@ func (c *Connector) prepare(ctx context.Context, tag *envelope.Tag) error {
 				return fmt.Errorf("github: missing pinned head")
 			}
 			tag.Source = tag.Source.WithParam("head_sha", evidence.Subject.Head.SHA)
-			tag.Meta["github_head_sha"] = evidence.Subject.Head.SHA
+			wire.SetGitHubHeadSHA(tag, evidence.Subject.Head.SHA)
 		}
 	}
 	return c.grantMutation(ctx, tag)

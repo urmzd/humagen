@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/authz"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -242,7 +243,7 @@ type addressee struct {
 // narrowed to whom the agent asked when that is one of them. to says whom
 // that is, in a way a surface can say it.
 func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Question) (audience, excluded []string, to addressee) {
-	rev, err := p.Agents.Get(ctx, run.Tenant, run.Agent, run.Rev)
+	rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
 	if err != nil {
 		p.log.Warn("platform: a question's rules could not be read, so it is addressed to nobody", "run", run.ID, "question", q.ID, "error", err)
 		return []string{nobody}, nil, addressee{kind: ForNobody}
@@ -622,8 +623,8 @@ func (p *Platform) stopWakers() {
 // one was open.
 func (p *Platform) observeQuestion(ctx context.Context, e envelope.Event) {
 	switch e.Kind {
-	case envelope.KindParked:
-		body, err := payload.Decode[payload.Lifecycle](e)
+	case wire.KindParked:
+		body, err := wire.LifecycleOf(e)
 		if err != nil || body.Question == nil {
 			return
 		}
@@ -631,20 +632,20 @@ func (p *Platform) observeQuestion(ctx context.Context, e envelope.Event) {
 			// What could not be kept is logged where it was tried.
 			_, _ = p.raiseQuestion(ctx, run, *body.Question, "")
 		}
-	case envelope.KindChildParked:
+	case wire.KindChildParked:
 		// A run waiting on a run it called shows that run's question. The
 		// question is the child's, and so is its message.
-		cq, err := payload.Decode[payload.ChildQuestion](e)
+		cq, err := wire.ChildQuestionOf(e)
 		if err != nil || cq.RunID == "" {
 			return
 		}
 		if child, err := p.Runs.Get(e.Tenant, cq.RunID); err == nil {
 			_, _ = p.raiseQuestion(ctx, child, cq.Question, e.RunID)
 		}
-	case envelope.KindResumed:
+	case wire.KindResumed:
 		p.answers.Lock()
 		defer p.answers.Unlock()
-		body, err := payload.Decode[payload.Lifecycle](e)
+		body, err := wire.LifecycleOf(e)
 		if err != nil || body.Answer == nil {
 			return
 		}
@@ -814,7 +815,7 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.Qu
 	if err != nil {
 		return false, err
 	}
-	rev, err := p.Agents.Get(ctx, tenant, run.Agent, run.Rev)
+	rev, err := p.Catalog().Get(ctx, tenant, run.Agent, run.Rev)
 	if err != nil {
 		return false, fmt.Errorf("%w: the rules of this run cannot be read, so nobody approves its calls", ErrForbidden)
 	}

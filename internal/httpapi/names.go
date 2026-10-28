@@ -6,6 +6,7 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // How a run's events call the people in them.
@@ -20,7 +21,7 @@ import (
 // what whoever answered is called. Any other event, and one whose body does
 // not read as the runtime writes it, is handed out as it is.
 func shownEvent(names platform.Names, e envelope.Event) envelope.Event {
-	if e.Kind != envelope.KindResumed || len(e.Payload) == 0 {
+	if e.Kind != wire.KindResumed || len(e.Payload) == 0 {
 		return e
 	}
 	var body map[string]json.RawMessage

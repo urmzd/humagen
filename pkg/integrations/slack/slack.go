@@ -15,6 +15,8 @@ import (
 	"github.com/urmzd/fiber/pkg/connectors/mention"
 	transport "github.com/urmzd/fiber/pkg/connectors/slack"
 	"github.com/urmzd/fiber/pkg/envelope"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 type Config struct {
@@ -59,11 +61,12 @@ func New(cfg Config) (*Connector, error) {
 	c.live.open, c.live.asked = map[string]session{}, map[string]bool{}
 	base := transport.Config{Tenant: cfg.Tenant, Files: cfg.Files, FileToken: cfg.FileToken, AppID: cfg.AppID, API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Agents: cfg.Agents, DefaultAgent: cfg.DefaultAgent, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.Prepare = func(_ context.Context, tag *envelope.Tag) error {
-		if tag.Meta["slack_event"] != "slash_command" {
+		from := wire.SurfaceOf(*tag)
+		if from.SlackEvent != "slash_command" {
 			return nil
 		}
 		for _, cmd := range cfg.Commands {
-			if cmd.Name == strings.TrimPrefix(tag.Meta["slack_command"], "/") {
+			if cmd.Name == strings.TrimPrefix(from.SlackCommand, "/") {
 				return nil
 			}
 		}

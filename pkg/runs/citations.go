@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 	"unicode/utf8"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 const MaxCitations = 64
@@ -58,10 +60,10 @@ func CloneCitations(in []Citation) []Citation {
 // RecordCitation writes through, so a successful citation never depends on
 // bounded journal retention or a later dirty-index flush.
 func (x *Index) RecordCitation(e envelope.Event, metadata *CitationMetadata) error {
-	if e.Kind != envelope.KindCitation {
+	if e.Kind != wire.KindCitation {
 		return nil
 	}
-	body, err := payload.Decode[payload.Citation](e)
+	body, err := wire.CitationOf(e)
 	if err != nil {
 		return err
 	}

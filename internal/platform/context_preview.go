@@ -67,7 +67,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 	if len(agent) == 0 || len(agent) > 63 || len(channel) > 63 {
 		return out, fmt.Errorf("%w: choose an agent", projects.ErrInvalid)
 	}
-	rev, err := p.Agents.Get(ctx, who.Tenant, agent, 0)
+	rev, err := p.Catalog().Get(ctx, who.Tenant, agent, 0)
 	if err != nil {
 		return missing()
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
@@ -64,7 +65,7 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 	if a.Cron != "" && !p.standingOwner(who.Tenant, a.Project, a.Owner) {
 		return operations.Assignment{}, fmt.Errorf("%w: standing work needs an owner with current project membership", operations.ErrDenied)
 	}
-	if _, err := p.Agents.Get(ctx, who.Tenant, a.Agent, 0); err != nil {
+	if _, err := p.Catalog().Get(ctx, who.Tenant, a.Agent, 0); err != nil {
 		return operations.Assignment{}, err
 	}
 	if err := p.MayPost(who, Place{Project: a.Project, Thread: a.Thread}); err != nil {
@@ -213,7 +214,7 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 		if a.Trigger == operations.SourceTrigger && a.TagID != "" && a.RunID == runtime.RunID(who.Tenant, a.TagID) {
 			// The source cursor and exact trigger identity were committed together.
 			// Retry that invocation, never reinterpret it as a new console turn.
-			return p.Invoke(ctx, envelope.Tag{ID: a.TagID, Tenant: who.Tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Text: a.Goal + "\nDone when: " + a.DoneWhen, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}})
+			return p.Invoke(ctx, wire.NewInput(envelope.Tag{ID: a.TagID, Tenant: who.Tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}}, a.Goal+"\nDone when: "+a.DoneWhen))
 		}
 		manualTagID := "assignment-" + assignmentSchedule(who.Tenant, id) + "-" + strconv.Itoa(a.Version-1)
 		if a.Cron != "" && a.RunID != runtime.RunID(who.Tenant, manualTagID) {
@@ -300,7 +301,7 @@ func (p *Platform) admitAssignment(tag envelope.Tag) error {
 		// Admission receives the composed request. Keep the original ask so a
 		// retry passes through the same composer exactly once.
 		invocation := tag
-		invocation.Text = tag.Meta[runs.MetaAsk]
+		wire.SetText(&invocation, tag.Meta[runs.MetaAsk])
 		_, err := p.Operations.ReserveInvocation(tag.Tenant, id, invocation, a.Version, p.now())
 		return err
 	}

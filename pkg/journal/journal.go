@@ -24,9 +24,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/envelope"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -305,33 +305,33 @@ func entryOf(e envelope.Event) Entry {
 // detail says what an event's body means, in a line.
 func detail(e envelope.Event) string {
 	switch e.Kind {
-	case envelope.KindText:
-		b, _ := payload.Decode[payload.Text](e)
+	case wire.KindText:
+		b, _ := wire.TextDeltaOf(e)
 		return b.Text
-	case envelope.KindThinking:
-		b, _ := payload.Decode[payload.Thinking](e)
+	case wire.KindThinking:
+		b, _ := wire.ThinkingOf(e)
 		return b.Text
-	case envelope.KindToolCall:
-		b, _ := payload.Decode[payload.ToolCall](e)
+	case wire.KindToolCall:
+		b, _ := wire.ToolCallOf(e)
 		return b.Name + " " + b.Phase
-	case envelope.KindToolDone:
-		b, _ := payload.Decode[payload.ToolDone](e)
+	case wire.KindToolDone:
+		b, _ := wire.ToolDoneOf(e)
 		if b.Error != "" {
 			return b.Name + " failed: " + b.Error
 		}
 		return b.Name + " done"
-	case envelope.KindCitation:
-		b, _ := payload.Decode[payload.Citation](e)
+	case wire.KindCitation:
+		b, _ := wire.CitationOf(e)
 		return b.Source.DocumentTitle
-	case envelope.KindActionTaken:
-		b, _ := payload.Decode[payload.Action](e)
+	case wire.KindActionTaken:
+		b, _ := wire.ActionOf(e)
 		if b.Error != "" {
 			return b.Name + " failed: " + b.Error
 		}
 		return b.Name + " " + b.Summary
 	}
 	if e.Kind.Family() == "lifecycle" {
-		b, _ := payload.Decode[payload.Lifecycle](e)
+		b, _ := wire.LifecycleOf(e)
 		switch {
 		case b.Error != "":
 			return Cause(b.Error)
@@ -428,27 +428,27 @@ func (j *Journal) Trace(tenant string, runIDs []string) []Span {
 			o = &open{tools: map[string]*Span{}}
 			state[e.RunID] = o
 		}
-		if o.run == nil && e.Kind != envelope.KindAccepted {
+		if o.run == nil && e.Kind != wire.KindAccepted {
 			// The accepted event fell out of the journal. Open the run at
 			// the first event still held, rather than drop the run.
 			o.run = start(e, SpanRun, e.Agent)
 		}
 		switch e.Kind {
-		case envelope.KindAccepted:
+		case wire.KindAccepted:
 			if o.run == nil {
 				o.run = start(e, SpanRun, e.Agent)
 			}
-		case envelope.KindStarted, envelope.KindResumed:
+		case wire.KindStarted, wire.KindResumed:
 			end(&o.parked, e.At, "")
 			end(&o.attempt, e.At, "")
-			b, _ := payload.Decode[payload.Lifecycle](e)
+			b, _ := wire.LifecycleOf(e)
 			name := "attempt"
 			if b.Attempt > 0 {
 				name = "attempt " + itoa(b.Attempt)
 			}
 			o.attempt = start(e, SpanAttempt, name)
-		case envelope.KindParked:
-			b, _ := payload.Decode[payload.Lifecycle](e)
+		case wire.KindParked:
+			b, _ := wire.LifecycleOf(e)
 			end(&o.output, e.At, "")
 			end(&o.attempt, e.At, "")
 			name := "waiting"
@@ -456,29 +456,29 @@ func (j *Journal) Trace(tenant string, runIDs []string) []Span {
 				name = "waiting: " + b.Reason
 			}
 			o.parked = start(e, SpanParked, name)
-		case envelope.KindText:
+		case wire.KindText:
 			if o.output == nil {
 				o.output = start(e, SpanOutput, "answer")
 			}
 			o.output.End = e.At
-		case envelope.KindToolCall:
-			b, _ := payload.Decode[payload.ToolCall](e)
+		case wire.KindToolCall:
+			b, _ := wire.ToolCallOf(e)
 			if _, seen := o.tools[b.ID]; !seen && b.ID != "" {
 				o.tools[b.ID] = start(e, SpanTool, b.Name)
 			}
-		case envelope.KindToolDone:
-			b, _ := payload.Decode[payload.ToolDone](e)
+		case wire.KindToolDone:
+			b, _ := wire.ToolDoneOf(e)
 			if s := o.tools[b.ID]; s != nil {
 				s.End, s.Error = e.At, b.Error
 				delete(o.tools, b.ID)
 			}
-		case envelope.KindCompleted, envelope.KindFailed, envelope.KindStopped:
-			b, _ := payload.Decode[payload.Lifecycle](e)
+		case wire.KindCompleted, wire.KindFailed, wire.KindStopped:
+			b, _ := wire.LifecycleOf(e)
 			o.output = nil
 			end(&o.attempt, e.At, b.Error)
 			// A failed attempt that will be retried does not end the run. A
 			// stopped one ends it, without an error: nothing went wrong.
-			if e.Kind != envelope.KindFailed || b.Terminal {
+			if e.Kind != wire.KindFailed || b.Terminal {
 				for id, s := range o.tools {
 					s.End = e.At
 					delete(o.tools, id)

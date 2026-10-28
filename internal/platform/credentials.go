@@ -123,7 +123,7 @@ func (p *Platform) ownCredentialOf(ctx context.Context, run runs.Run) string {
 	if person == "" {
 		return ""
 	}
-	rev, err := p.Agents.Get(ctx, run.Tenant, run.Agent, run.Rev)
+	rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
 	if err != nil || p.grantsPersonScoped(ctx, run.Tenant, rev.Spec.Tools, time.Time{}) {
 		return person
 	}

@@ -11,11 +11,11 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -41,7 +41,7 @@ func (p *Platform) AgentControl(tenant, agent string) operations.Control {
 }
 func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operations.Control, version int) (result operations.Control, resultErr error) {
 	if agent != "" {
-		if _, err := p.Agents.Get(context.Background(), who.Tenant, agent, 0); err != nil {
+		if _, err := p.Catalog().Get(context.Background(), who.Tenant, agent, 0); err != nil {
 			return operations.Control{}, err
 		}
 		if !p.Seer(who).Agent(agent) {
@@ -310,7 +310,7 @@ var _ saigetypes.RichTool = (*operationTool)(nil)
 func (p *Platform) SetActionPolicy(who auth.Principal, scope operations.Scope, rules map[operations.Category]operations.Level, version int) (result operations.Policy, resultErr error) {
 	switch scope.Kind {
 	case "agent":
-		if _, err := p.Agents.Get(context.Background(), who.Tenant, scope.Name, 0); err != nil {
+		if _, err := p.Catalog().Get(context.Background(), who.Tenant, scope.Name, 0); err != nil {
 			return operations.Policy{}, err
 		}
 		if !p.Seer(who).Agent(scope.Name) {
@@ -611,9 +611,9 @@ func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView
 	view := AgentControlView{Control: c, State: "ready", EffectivePaused: p.Operations.Paused(who.Tenant, legacy.BuiltinAgent(agent)) || !p.agentReady(who.Tenant, agent), ManagerName: p.NameOf(who.Tenant, c.Manager)}
 
 	if agent != "" && who.Can(auth.AgentsRead) && p.Seer(who).Agent(agent) {
-		binding := p.AgentSkillDefaults.Get(who.Tenant, agentspec.NormalizeName(legacy.BuiltinAgent(agent)))
+		binding := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(legacy.BuiltinAgent(agent)))
 		if len(binding.Skills) > 0 {
-			revision, err := p.Agents.Get(context.Background(), who.Tenant, agent, 0)
+			revision, err := p.Catalog().Get(context.Background(), who.Tenant, agent, 0)
 			home, homed := p.Projects.Tree(who.Tenant).Home(agent)
 			view.NeedsSkillReview = err != nil || binding.AgentRevision != revision.Rev || !homed || !p.defaultSkillsFitHome(who.Tenant, agent, home, p.Projects.Tree(who.Tenant))
 			if view.NeedsSkillReview {
