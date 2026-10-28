@@ -53,6 +53,7 @@ func TestCheckConclusionReflectsReviewErrorsAndMalformedReports(t *testing.T) {
 	for _, tc := range []struct{ text, conclusion string }{
 		{`{"format":"humagen.github.review.v1","summary":"Found a bug","findings":[{"severity":"error","title":"Bug","suggestion":"Fix it","evidence":[{"observation":"Failure","source":"test.go:1"}],"prompt":"Add a regression test"}]}`, "failure"},
 		{`{"format":"humagen.github.review.v1","summary":"Missing evidence","findings":[{"severity":"error"}]}`, "action_required"},
+		{"```json\n" + `{"format":"humagen.github.review.v1","summary":"Found a bug","findings":[{"severity":"error","title":"Bug","suggestion":"Fix it","evidence":[{"observation":"Failure","source":"test.go:1"}],"prompt":"Add a regression test"}]}` + "\n```", "failure"},
 	} {
 		fake := github.NewFake()
 		c, _ := github.New(github.Config{API: fake, Checks: true})

@@ -28,6 +28,23 @@ func NamesReviewFormat(text string) bool {
 	return strings.Contains(text, ReviewFormat) || strings.Contains(text, legacy.ReviewFormat)
 }
 
+// ReviewJSON returns the agent's answer with surrounding space and one
+// Markdown code fence removed, since models often wrap the report in
+// ```json ... ```. A fence still streaming has no closing line yet.
+func ReviewJSON(text string) string {
+	text = strings.TrimSpace(text)
+	if !strings.HasPrefix(text, "```") {
+		return text
+	}
+	open, body, ok := strings.Cut(text, "\n")
+	if !ok || strings.Contains(open[3:], "`") {
+		return text
+	}
+	body = strings.TrimSpace(body)
+	body = strings.TrimSuffix(body, "```")
+	return strings.TrimSpace(body)
+}
+
 // ReviewReport is the agent's evidence-backed final answer. Counts are derived
 // from findings, never supplied by the model. Evidence is cited, not verified
 // by the formatter; the agent must obtain it from tools before making claims.
@@ -150,7 +167,7 @@ func reviewPointer(source string) string {
 func RenderReview(v transport.View) string {
 	// Structured agent output stays out of the comment until it is a complete
 	// report. Progress still comes from lifecycle and tool events.
-	text := strings.TrimSpace(v.Text)
+	text := ReviewJSON(v.Text)
 	var report ReviewReport
 	structured := json.Unmarshal([]byte(text), &report) == nil && IsReviewFormat(report.Format)
 	pending := strings.HasPrefix(text, "{") && NamesReviewFormat(text)

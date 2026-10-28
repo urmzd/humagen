@@ -102,3 +102,29 @@ func TestAReviewUnderTheOldFormatIDStillRenders(t *testing.T) {
 		t.Fatal("another format id rendered as a review")
 	}
 }
+
+// A model often wraps its report in a ```json fence. The fenced report is
+// held back while it streams and renders as a review once complete.
+func TestAFencedReviewRendersAsAReview(t *testing.T) {
+	encoded, _ := json.Marshal(testReport())
+	fenced := "```json\n" + string(encoded) + "\n```"
+	v := render.View{Agent: "reviewer", Status: render.StatusRunning, Text: fenced[:90]}
+	if body := RenderReview(v); strings.Contains(body, ReviewFormat) || !strings.Contains(body, "Preparing") {
+		t.Fatal(body)
+	}
+	v.Status, v.Text = render.StatusDone, fenced
+	if body := RenderReview(v); !strings.Contains(body, "🔴 **1 error**") || strings.Contains(body, ReviewFormat) {
+		t.Fatal(body)
+	}
+	for in, want := range map[string]string{
+		"  {\"a\":1}  ":           `{"a":1}`,
+		"```\n{\"a\":1}\n```":     `{"a":1}`,
+		"```json\n{\"a\":1}":      `{"a":1}`,
+		"```inline``` text":       "```inline``` text",
+		"plain answer\n```\ncode": "plain answer\n```\ncode",
+	} {
+		if got := ReviewJSON(in); got != want {
+			t.Errorf("ReviewJSON(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
