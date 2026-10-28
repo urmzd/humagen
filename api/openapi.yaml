@@ -13033,7 +13033,10 @@ components:
       type: object
       required: [version, generated_at, root, runs, usage]
       properties:
-        version: {type: integer, const: 1}
+        version:
+          description: 2 since events became RunEvent (type and data). Version 1 held kind and body.
+          type: integer
+          const: 2
         generated_at: {type: string, format: date-time}
         root: {type: string}
         runs:

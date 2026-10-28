@@ -87,12 +87,16 @@ type OldAgentRows []OldAgent
 // LoadOldAgents implements OldAgents.
 func (r OldAgentRows) LoadOldAgents(context.Context) ([]OldAgent, error) { return r, nil }
 
-// PostgresOldAgents reads fiber's registry tables. A database that never had
-// them holds no old agents.
+// PostgresOldAgents reads fiber's registry tables, first renaming them from
+// the prefix before the rename. A database that never had them holds no old
+// agents.
 type PostgresOldAgents struct{ Pool *pgxpool.Pool }
 
 // LoadOldAgents implements OldAgents.
 func (p PostgresOldAgents) LoadOldAgents(ctx context.Context) ([]OldAgent, error) {
+	if _, err := p.Pool.Exec(ctx, FiberTablesSQL("agents", "agent_revisions")); err != nil {
+		return nil, fmt.Errorf("legacy: rename old agent tables: %w", err)
+	}
 	var present bool
 	if err := p.Pool.QueryRow(ctx,
 		`SELECT to_regclass('fiber_agents') IS NOT NULL AND to_regclass('fiber_agent_revisions') IS NOT NULL`,

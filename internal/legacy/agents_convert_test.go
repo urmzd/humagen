@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/urmzd/humagen/fiber/pkg/definition"
@@ -206,7 +207,7 @@ func TestPostgresOldAgents(t *testing.T) {
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("no tables = %v, %v", empty, err)
 	}
-	createOldTables(t, pool)
+	createOldTables(t, pool, "fiber_")
 	got, err := legacy.PostgresOldAgents{Pool: pool}.LoadOldAgents(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -222,21 +223,44 @@ func TestPostgresOldAgents(t *testing.T) {
 	}
 }
 
-// createOldTables writes oldRows into fiber's registry schema of v0.25.
-func createOldTables(t *testing.T, pool *pgxpool.Pool) {
+// A database still carrying the prefix from before the rename moves its
+// agents too, and the tables are renamed on the way.
+func TestPostgresOldAgentsUnderTheOldPrefix(t *testing.T) {
+	ctx := context.Background()
+	pool := statetest.Pool(t)
+	createOldTables(t, pool, legacy.FiberPrefixBeforeRename)
+	st := state.NewMemory()
+	fromPG, report := convert(t, st, legacy.PostgresOldAgents{Pool: pool}, legacy.ConvertOptions{})
+	if report.Converted != 3 {
+		t.Fatalf("report = %+v", report)
+	}
+	fromRows, _ := convert(t, state.NewMemory(), oldRows(t), legacy.ConvertOptions{})
+	if !reflect.DeepEqual(dump(t, fromPG), dump(t, fromRows)) {
+		t.Fatal("the move from the old prefix differs from the move from rows")
+	}
+	var renamed bool
+	if err := pool.QueryRow(ctx, `SELECT to_regclass('fiber_agents') IS NOT NULL AND to_regclass('fiber_agent_revisions') IS NOT NULL`).Scan(&renamed); err != nil || !renamed {
+		t.Fatalf("tables renamed = %v, %v", renamed, err)
+	}
+}
+
+// createOldTables writes oldRows into fiber's registry schema of v0.25, its
+// tables named with prefix.
+func createOldTables(t *testing.T, pool *pgxpool.Pool, prefix string) {
 	t.Helper()
 	ctx := context.Background()
+	agentsT, revsT := pgx.Identifier{prefix + "agents"}.Sanitize(), pgx.Identifier{prefix + "agent_revisions"}.Sanitize()
 	if _, err := pool.Exec(ctx, `
-CREATE TABLE fiber_agents (tenant text NOT NULL, name text COLLATE "C" NOT NULL, head integer NOT NULL, deleted boolean NOT NULL, PRIMARY KEY (tenant, name));
-CREATE TABLE fiber_agent_revisions (tenant text NOT NULL, name text COLLATE "C" NOT NULL, rev integer NOT NULL, hash text NOT NULL, spec jsonb NOT NULL, created_at timestamptz NOT NULL, created_by text NOT NULL, PRIMARY KEY (tenant, name, rev));`); err != nil {
+CREATE TABLE `+agentsT+` (tenant text NOT NULL, name text COLLATE "C" NOT NULL, head integer NOT NULL, deleted boolean NOT NULL, PRIMARY KEY (tenant, name));
+CREATE TABLE `+revsT+` (tenant text NOT NULL, name text COLLATE "C" NOT NULL, rev integer NOT NULL, hash text NOT NULL, spec jsonb NOT NULL, created_at timestamptz NOT NULL, created_by text NOT NULL, PRIMARY KEY (tenant, name, rev));`); err != nil {
 		t.Fatal(err)
 	}
 	for _, a := range oldRows(t) {
-		if _, err := pool.Exec(ctx, `INSERT INTO fiber_agents VALUES ($1, $2, $3, $4)`, a.Tenant, a.Name, len(a.Revisions), a.Deleted); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO `+agentsT+` VALUES ($1, $2, $3, $4)`, a.Tenant, a.Name, len(a.Revisions), a.Deleted); err != nil {
 			t.Fatal(err)
 		}
 		for _, r := range a.Revisions {
-			if _, err := pool.Exec(ctx, `INSERT INTO fiber_agent_revisions VALUES ($1, $2, $3, 'h', $4, $5, $6)`, a.Tenant, a.Name, r.Rev, string(r.Spec), r.CreatedAt, r.CreatedBy); err != nil {
+			if _, err := pool.Exec(ctx, `INSERT INTO `+revsT+` VALUES ($1, $2, $3, 'h', $4, $5, $6)`, a.Tenant, a.Name, r.Rev, string(r.Spec), r.CreatedAt, r.CreatedBy); err != nil {
 				t.Fatal(err)
 			}
 		}

@@ -3743,7 +3743,8 @@ export interface ManifestRun {
 
 /** One document that says everything the platform recorded about a run and every run under the same root. */
 export interface Manifest {
-  version: 1;
+  /** 2 since events became RunEvent (type and data). Version 1 held kind and body. */
+  version: 2;
   generated_at: string;
   root: string;
   runs: ManifestRun[];

@@ -279,7 +279,8 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 	}
 	s.Log.Info("httpapi: run exported", "tenant", who.Tenant, "run", r.PathValue("id"), "runs", len(out), "by", who.Subject)
 	ok(w, http.StatusOK, map[string]any{
-		"version":      1,
+		// 2: events are the union's RunEvent (type, data), not kind and body.
+		"version":      2,
 		"generated_at": time.Now().UTC(),
 		"root":         tree[0].Root,
 		"runs":         out,

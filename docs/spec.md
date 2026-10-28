@@ -93,7 +93,7 @@ spec:
   execution:
     workspace: ""           # agents' files. Empty is the user cache directory
     concurrency: 1
-    max_depth: 4
+    max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
     max_fan_out: 16
     builtin: {provider: "", model: ""}       # the platform's own agents
 

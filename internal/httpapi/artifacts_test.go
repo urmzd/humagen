@@ -333,7 +333,7 @@ func TestRunManifest(t *testing.T) {
 	}
 
 	res, m := f.do(t, nil, "GET", "/api/runs/"+id+"/manifest", acme, "")
-	if res.StatusCode != http.StatusOK || m["root"] != id || m["version"].(float64) != 1 {
+	if res.StatusCode != http.StatusOK || m["root"] != id || m["version"].(float64) != 2 {
 		t.Fatalf("manifest = %d %v", res.StatusCode, m)
 	}
 	entry := m["runs"].([]any)[0].(map[string]any)

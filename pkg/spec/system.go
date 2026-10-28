@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/urmzd/humagen/fiber/pkg/bus"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/credentials"
 )
@@ -303,6 +304,11 @@ func (s System) check(kinds Kinds) error {
 			name string
 			slot Slot
 		}{SlotExtensions, e})
+	}
+	// A child at depth d triggers with d hops and its run events carry one
+	// more, so the deepest child must stay within the bus's hop limit.
+	if d := sp.Execution.MaxDepth; d < 0 || d > bus.DefaultMaxHops-1 {
+		return fmt.Errorf("system: execution.max_depth: %d is outside 1 to %d, the bus's hop limit less one", d, bus.DefaultMaxHops-1)
 	}
 	if sp.Bus.Kind == "redis" {
 		return errors.New("system: bus: the redis bus was removed; use kind: postgres, which shares the stores' database, or leave bus out")
