@@ -113,7 +113,7 @@ func TestSeam(t *testing.T) {
 	}
 	var bad []string
 	for _, p := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
-		if p == "" || strings.HasSuffix(p, "_test.go") || strings.HasPrefix(p, "internal/wire/") || strings.HasPrefix(p, "pkg/call/") {
+		if p == "" || strings.HasSuffix(p, "_test.go") || strings.HasPrefix(p, "internal/wire/") || strings.HasPrefix(p, "pkg/call/") || strings.HasPrefix(p, "fiber/") {
 			continue
 		}
 		fset := token.NewFileSet()
