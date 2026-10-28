@@ -184,7 +184,7 @@ func (c *Connector) automatic(h transport.Hook) (string, string, bool) {
 
 func conclusion(v transport.View) string {
 	var r presentation.ReviewReport
-	if json.Unmarshal([]byte(v.Text), &r) == nil && presentation.IsReviewFormat(r.Format) {
+	if json.Unmarshal([]byte(presentation.ReviewJSON(v.Text)), &r) == nil && presentation.IsReviewFormat(r.Format) {
 		if _, err := presentation.FormatReview(r); err != nil {
 			return "action_required"
 		}
