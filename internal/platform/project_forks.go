@@ -10,8 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/memory"
@@ -235,14 +234,14 @@ func (p *Platform) planProjectFork(ctx context.Context, who auth.Principal, sour
 			if !projects.ValidAgent(dest) {
 				return plan, projects.ErrInvalid
 			}
-			if _, err := p.Agents.Get(ctx, who.Tenant, dest, 0); !errors.Is(err, registry.ErrNotFound) {
+			if _, err := p.Catalog().Get(ctx, who.Tenant, dest, 0); !errors.Is(err, wire.ErrNotFound) {
 				if err != nil {
 					return plan, err
 				}
 				return plan, projects.ErrExists
 			}
 			agentNames[agent] = dest
-			rev, err := p.Agents.Get(ctx, who.Tenant, agent, 0)
+			rev, err := p.Catalog().Get(ctx, who.Tenant, agent, 0)
 			if err != nil {
 				return plan, err
 			}
@@ -271,7 +270,7 @@ func (p *Platform) planProjectFork(ctx context.Context, who auth.Principal, sour
 		// selected knowledge references cross; credentials are reconnected later.
 		cp.Spec.Sources = nil
 		for _, name := range in.Sources {
-			cp.Spec.Sources = append(cp.Spec.Sources, agentspec.Source{Name: name, URI: sourceURI(name)})
+			cp.Spec.Sources = append(cp.Spec.Sources, wire.Source{Name: name, URI: sourceURI(name)})
 		}
 		cp.Spec = cp.Spec.Normalize()
 	}
@@ -378,14 +377,14 @@ func (p *Platform) copyProjectFork(ctx context.Context, who auth.Principal, reco
 		if err := p.Projects.SetHome(who.Tenant, copy.Name, copy.Project, w, p.now(), nil); err != nil {
 			return err
 		}
-		current, err := p.Agents.Get(ctx, who.Tenant, copy.Name, 0)
+		current, err := p.Catalog().Get(ctx, who.Tenant, copy.Name, 0)
 		if err == nil {
 			if !reflect.DeepEqual(current.Spec.Normalize(), copy.Spec.Normalize()) {
-				return registry.ErrConflict
+				return wire.ErrConflict
 			}
 			continue
 		}
-		if !errors.Is(err, registry.ErrNotFound) {
+		if !errors.Is(err, wire.ErrNotFound) {
 			return err
 		}
 		if _, err := p.Agents.Create(ctx, who.Tenant, copy.Spec, who.Subject); err != nil {

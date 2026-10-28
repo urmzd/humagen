@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { follow, settled } from "./fold.ts";
-import { turnOf, type BusEvent, type Run } from "./run.ts";
+import { turnOf, type RunEvent, type Run } from "./run.ts";
 
 const run = (over: Partial<Run> = {}): Run => ({
   id: "r1",
@@ -23,23 +23,28 @@ const run = (over: Partial<Run> = {}): Run => ({
 });
 
 let seq = 0;
-const ev = (kind: string, payload?: unknown): BusEvent => ({
-  seq: ++seq,
-  topic: "agent:lead:r1",
-  run_id: "r1",
-  tenant: "acme",
-  agent: "lead",
-  rev: 1,
-  origin: "api",
-  kind,
-  payload: payload === undefined ? undefined : Buffer.from(JSON.stringify(payload)).toString("base64"),
-  at: "2026-10-09T00:00:01Z",
-});
+const ev = (type: string, data: unknown = {}): RunEvent => {
+  const n = ++seq;
+  return {
+    id: `e${n}`,
+    source: "humagen:acme",
+    type,
+    channel: "humagen://acme",
+    time: "2026-10-09T00:00:01Z",
+    hops: 0,
+    tenant: "acme",
+    run: "r1",
+    seq: n,
+    agent: "lead",
+    version: "1.0.0",
+    data,
+  } as RunEvent;
+};
 
 const streamed = (text: string) => {
   const f = follow(run());
-  f.apply(ev("lifecycle.accepted"));
-  f.apply(ev("delta.text", { text }));
+  f.apply(ev("run.accepted.v1"));
+  f.apply(ev("run.delta.text.v1", { text }));
   return f;
 };
 
@@ -64,7 +69,7 @@ test("a record with no answer leaves the streamed text alone", () => {
 
 test("a turn that already ended is not moved by its record", () => {
   const f = streamed("Done.");
-  f.apply(ev("lifecycle.completed", { text: "Done." }));
+  f.apply(ev("run.completed.v1", { text: "Done." }));
   assert.deepEqual(settled(f.turn, run({ status: "failed", error: "late" })), []);
   assert.equal(f.settle(run({ status: "completed", answer: "Something else" })).text, "Done.");
 });
@@ -90,7 +95,7 @@ test("the conversation link survives streaming and settling for a run in an exis
   const record = run({ id: "second", thread: "thread/one" });
   const f = follow(record, { href: (path) => `https://humagen.test${path}` });
   assert.equal(f.turn.sessionUrl, "https://humagen.test/conversations/thread%2Fone");
-  f.apply(ev("lifecycle.accepted"));
+  f.apply(ev("run.accepted.v1"));
   assert.equal(f.turn.sessionUrl, "https://humagen.test/conversations/thread%2Fone");
   assert.equal(f.settle({ ...record, status: "completed", answer: "Done" }).sessionUrl, f.turn.sessionUrl);
 });

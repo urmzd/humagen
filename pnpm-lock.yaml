@@ -243,6 +243,9 @@ importers:
 
   packages/adapter:
     dependencies:
+      '@humagen/client':
+        specifier: workspace:*
+        version: link:../client
       '@humagen/core':
         specifier: workspace:*
         version: link:../core

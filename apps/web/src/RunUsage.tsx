@@ -36,7 +36,16 @@ export function RunUsageSummary({ run }: { run: Run }) {
           <dt className="text-aui-muted">Context</dt>
           <dd className="flex flex-col gap-1 tabular-nums text-aui-fg">
             {contextWords(u)}
-            {fill && <UsageMeter size="mini" label="Context" spent={fill.used} limit={fill.limit} format={count} testId="run-usage-context" />}
+            {fill && (
+              <UsageMeter
+                size="mini"
+                label="Context"
+                spent={fill.used}
+                limit={fill.limit}
+                format={count}
+                testId="run-usage-context"
+              />
+            )}
           </dd>
         </dl>
       )}

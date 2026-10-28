@@ -127,9 +127,9 @@ test("branding: the ask form and every answer carry the brand", async () => {
   assert.equal(view.title.text, "Ask Acme Help");
 
   await deliver(w, mention("ping", "1700000000.000100"));
-  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
+  w.humagen.emit(w.humagen.last.id, "run.accepted.v1");
   await settle();
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "pong" });
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "pong" });
   await settle();
   await w.app.idle();
   const final = JSON.stringify(w.slack.of("chat.stopStream").at(-1)?.blocks ?? []);
@@ -140,9 +140,9 @@ test("branding: the ask form and every answer carry the brand", async () => {
 test("branding: a name alone puts the brand in the default disclaimer", async () => {
   const w = world({ branding: parseBranding({ name: "Acme Help" }) });
   await deliver(w, mention("ping", "1700000000.000200"));
-  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
+  w.humagen.emit(w.humagen.last.id, "run.accepted.v1");
   await settle();
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "pong" });
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "pong" });
   await settle();
   await w.app.idle();
   const final = JSON.stringify(w.slack.of("chat.stopStream").at(-1)?.blocks ?? []);

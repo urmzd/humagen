@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -39,8 +41,8 @@ func within(t *testing.T, what string, ok func() bool) {
 func streamed(p *platform.Platform, runID, s string) bool {
 	text := ""
 	for _, e := range p.Journal.Events(tenant, []string{runID}) {
-		if e.Kind == envelope.KindText {
-			text += string(e.Payload)
+		if e.Type == event.TypeText {
+			text += wire.JSONOf(e)
 		}
 	}
 	return strings.Contains(text, s)
@@ -64,7 +66,7 @@ func endings(p *platform.Platform, runID string) (events, freed int) {
 
 func countEndings(p *platform.Platform, runID string) (events, freed int) {
 	for _, e := range p.Journal.Events(tenant, []string{runID}) {
-		if e.Kind == envelope.KindCompleted || e.Kind == envelope.KindStopped || (e.Kind == envelope.KindFailed && strings.Contains(string(e.Payload), `"terminal":true`)) {
+		if e.Type == event.TypeCompleted || e.Type == event.TypeStopped || (e.Type == event.TypeFailed && strings.Contains(wire.JSONOf(e), `"terminal":true`)) {
 			events++
 		}
 	}
@@ -111,7 +113,7 @@ func TestStopInterruptsTheModelCallAndKeepsThePartialAnswer(t *testing.T) {
 	}
 	stoppedEvent := false
 	for _, e := range p.Journal.Events(tenant, []string{first.ID}) {
-		stoppedEvent = stoppedEvent || (e.Kind == envelope.KindStopped && strings.Contains(string(e.Payload), "Half an ans"))
+		stoppedEvent = stoppedEvent || (e.Type == event.TypeStopped && strings.Contains(wire.JSONOf(e), "Half an ans"))
 	}
 	if !stoppedEvent {
 		t.Fatal("the run's stream has no lifecycle.stopped with its partial answer")
@@ -308,11 +310,11 @@ func TestAStopForAnotherTenantsRunDoesNothing(t *testing.T) {
 	agent(t, p, "globex", "helper")
 	ctx := t.Context()
 
-	mine, err := p.Invoke(ctx, envelope.Tag{ID: "same-id", Tenant: tenant, Agent: "lead", Origin: "api", Text: "hi"})
+	mine, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "same-id", Tenant: tenant, Agent: "lead", Origin: "api", Text: "hi"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	theirs, err := p.Invoke(ctx, envelope.Tag{ID: "same-id", Tenant: "globex", Agent: "helper", Origin: "api", Text: "hi"})
+	theirs, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "same-id", Tenant: "globex", Agent: "helper", Origin: "api", Text: "hi"}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,7 @@ package knowledge
 
 import (
 	"context"
-	"github.com/urmzd/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
 	"net/url"
 	"slices"
 	"strings"

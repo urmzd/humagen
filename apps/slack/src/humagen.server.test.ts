@@ -93,8 +93,8 @@ async function finish(c: Humagen, run: { id: string; agent: string }, patience =
   const f = follow(run);
   const kinds: string[] = [];
   for await (const item of c.runEvents(run, { signal: stop.signal })) {
-    if (item.type !== "event" || item.event.run_id !== run.id) continue;
-    kinds.push(item.event.kind);
+    if (item.type !== "event" || item.event.run !== run.id) continue;
+    kinds.push(item.event.type);
     f.apply(item.event);
     if (["done", "failed", "stopped"].includes(f.turn.status)) break;
   }
@@ -123,8 +123,8 @@ test("the stand-in client against the real routes", { skip: !enabled }, async ()
   assert.equal(again.id, run.id, "the same key joins the run it started");
 
   const { turn, kinds } = await finish(c, run);
-  assert.equal(kinds[0], "lifecycle.accepted");
-  assert.equal(kinds.at(-1), "lifecycle.completed");
+  assert.equal(kinds[0], "run.accepted.v1");
+  assert.equal(kinds.at(-1), "run.completed.v1");
   assert.equal(turn.status, "done");
   assert.match(turn.text, /offline provider/);
 
@@ -272,7 +272,7 @@ test(
     }
     assert.equal(record?.status, "failed");
     const { turn, kinds } = await finish(c, run, 1_000);
-    assert.ok(kinds.includes("lifecycle.failed"));
+    assert.ok(kinds.includes("run.failed.v1"));
     assert.equal(turn.status, "working", "the events alone never end the turn");
     assert.equal(
       follow(run).settle(record as NonNullable<typeof record>).status,

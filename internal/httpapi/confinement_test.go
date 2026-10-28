@@ -14,8 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -1273,7 +1274,7 @@ func streamOf(t *testing.T, f *fixture, owner, outsider, tenant string, h hidden
 			if v["tenant"] != tenant {
 				t.Errorf("the outsider's stream carried an event of %v", v["tenant"])
 			}
-			if v["run_id"] == controlRun && v["kind"] == "lifecycle.completed" {
+			if v["run"] == controlRun && v["type"] == event.TypeCompleted {
 				sawControl = true
 			}
 		}
@@ -1295,7 +1296,7 @@ func seedHiddenSetup(t *testing.T, f *fixture) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := f.p.CreateAgentSetup(t.Context(), who, platform.AgentSetupPlan{Spec: agentspec.AgentSpec{Name: "setup-" + marker, Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Private setup " + marker}, Project: project.Name})
+	saved, err := f.p.CreateAgentSetup(t.Context(), who, platform.AgentSetupPlan{Spec: wire.AgentSpec{Name: "setup-" + marker, Provider: "openai", Model: "gpt-4o-mini", SystemPrompt: "Private setup " + marker}, Project: project.Name})
 	if err != nil || saved.Phase != "configured" {
 		t.Fatalf("hidden setup=%+v,%v", saved, err)
 	}

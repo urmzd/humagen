@@ -13,10 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
@@ -35,7 +36,7 @@ func turn(t *testing.T, p *platform.Platform, id, project string) (runs.Run, run
 		t.Fatal(err)
 	}
 	await(t, p, run.ID, runs.Completed)
-	return run, runtime.Request{RunID: run.ID, Tenant: tenant, Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "lead"}, Rev: 1}}
+	return run, runtime.Request{RunID: run.ID, Tenant: tenant, Definition: native.Revision{Spec: native.Spec{Name: "lead"}, Version: wire.VersionOf(1)}}
 }
 
 func use(t *testing.T, p *platform.Platform, req runtime.Request, name string, args map[string]any) (string, error) {

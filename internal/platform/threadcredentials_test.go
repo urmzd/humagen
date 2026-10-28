@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -61,7 +61,7 @@ func TestARunAMessageStartsActsForThePersonWhoPostedIt(t *testing.T) {
 		t.Fatalf("ben's tag in ana's thread reached the server with %q", got)
 	}
 	// The room went with it: ana's words, then his.
-	if text := run.Tag().Text; !strings.Contains(text, "@worker any open bugs?") || !strings.Contains(text, "@worker and the ones assigned to me?") {
+	if text := wire.TextOf(run.Tag()); !strings.Contains(text, "@worker any open bugs?") || !strings.Contains(text, "@worker and the ones assigned to me?") {
 		t.Fatalf("ben's run was not sent the room:\n%s", text)
 	}
 
@@ -98,7 +98,7 @@ func TestAnExpertDoesNotAnswerWhatARunAsksWithAnotherPersonsCredential(t *testin
 	ctx := t.Context()
 	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
 	w.connect(t, ben, credentials.Input{Value: benValue})
-	for _, spec := range []agentspec.AgentSpec{
+	for _, spec := range []wire.AgentSpec{
 		{Name: "asker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"mcp:issues", "ask_person"}},
 		{Name: "chatty", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"ask_person"}},
 	} {
@@ -310,7 +310,7 @@ func TestWhatAPersonsCredentialReachedInARoomIsNotTaughtToMemory(t *testing.T) {
 	w.model.recall = true
 	w.model.mu.Unlock()
 	ctx := t.Context()
-	if _, err := w.p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "scribe", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
+	if _, err := w.p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "scribe", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe", MemoryAutoApprove: true}); err != nil {

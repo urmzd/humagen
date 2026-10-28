@@ -1,11 +1,30 @@
 import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useState } from "react";
 import type { Run } from "./adapter.ts";
-import { inWords, presets } from "./cron.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
+import { inWords, presets } from "./cron.ts";
 import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import { deliverFor, deliverOptions } from "./recap.ts";
-import { AgentMark, agentOptions, ago, button, card, Chip, Confirm, Empty, field, Label, Menu, Page, PageActions, Problem, primary, rows, Section, textLink } from "./ui.tsx";
+import {
+  AgentMark,
+  agentOptions,
+  ago,
+  button,
+  Chip,
+  Confirm,
+  card,
+  Empty,
+  field,
+  Label,
+  Menu,
+  Page,
+  PageActions,
+  Problem,
+  primary,
+  rows,
+  Section,
+  textLink,
+} from "./ui.tsx";
 
 /** In UTC, because that is the zone the expression is written in. */
 function when(iso: string): string {
@@ -45,15 +64,15 @@ function History({ runs, onOpenRun }: { runs: Run[]; onOpenRun?: (id: string) =>
         {ordered.map((r) => (
           <li key={r.id} className="flex h-full items-end">
             {onOpenRun ? (
-            <button
-              type="button"
-              onClick={() => onOpenRun(r.id)}
-              title={`${outcome[r.status].word}, ${ago(r.created_at)}`}
-              aria-label={`Run ${ago(r.created_at)}, ${outcome[r.status].word}`}
-              className={`w-1.5 rounded-t-sm ${outcome[r.status].fill} ${
-                r.status === "failed" ? "h-full" : "h-3"
-              } hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-aui-accent`}
-            />
+              <button
+                type="button"
+                onClick={() => onOpenRun(r.id)}
+                title={`${outcome[r.status].word}, ${ago(r.created_at)}`}
+                aria-label={`Run ${ago(r.created_at)}, ${outcome[r.status].word}`}
+                className={`w-1.5 rounded-t-sm ${outcome[r.status].fill} ${
+                  r.status === "failed" ? "h-full" : "h-3"
+                } hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-aui-accent`}
+              />
             ) : (
               <span
                 title={`${outcome[r.status].word}, ${ago(r.created_at)}`}
@@ -108,34 +127,73 @@ function ScheduleForm({
     e.preventDefault();
     setProblem(null);
     setSaving(true);
-    const body = { ...draft, agent, project: draft.project || undefined, description: draft.description?.trim() || undefined };
+    const body = {
+      ...draft,
+      agent,
+      project: draft.project || undefined,
+      description: draft.description?.trim() || undefined,
+    };
     (editing ? saveSchedule(editing.name, body) : api.createSchedule(body))
       .then(() => onSaved(body.name))
-      .catch((err) => setProblem(err instanceof ApiError ? err.message : "The schedule could not be saved."))
+      .catch((err) =>
+        setProblem(err instanceof ApiError ? err.message : "The schedule could not be saved."),
+      )
       .finally(() => setSaving(false));
   };
 
   return (
     <form onSubmit={submit} className={`${card} flex flex-col gap-4`}>
-      <h2 className="text-aui-base font-medium text-aui-fg">{editing ? `Change ${editing.name}` : "New schedule"}</h2>
+      <h2 className="text-aui-base font-medium text-aui-fg">
+        {editing ? `Change ${editing.name}` : "New schedule"}
+      </h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Label text="Name" hint={editing ? "A schedule's name cannot change." : "Letters, digits, dashes."}>
-          <input className={field} value={draft.name} required disabled={!!editing} onChange={(e) => set({ name: e.target.value })} />
+        <Label
+          text="Name"
+          hint={editing ? "A schedule's name cannot change." : "Letters, digits, dashes."}
+        >
+          <input
+            className={field}
+            value={draft.name}
+            required
+            disabled={!!editing}
+            onChange={(e) => set({ name: e.target.value })}
+          />
         </Label>
         <Label text="Agent" hint="Who gets the request.">
-          <Menu label="Agent" value={agent} options={agentOptions(agents.map((a) => a.spec.name))} onChange={(next) => set({ agent: next })} />
+          <Menu
+            label="Agent"
+            value={agent}
+            options={agentOptions(agents.map((a) => a.spec.name))}
+            onChange={(next) => set({ agent: next })}
+          />
         </Label>
-        <Label text="Project" hint="Where its conversations are filed. A project's shared memory is sent with each one.">
+        <Label
+          text="Project"
+          hint="Where its conversations are filed. A project's shared memory is sent with each one."
+        >
           <Menu
             label="Project"
             value={draft.project ?? ""}
             options={[{ value: "", label: "No project" }, ...projectOptions(projects)]}
-            onChange={(next) => set({ project: next || undefined, deliver: deliverFor(next || undefined, draft.deliver) })}
+            onChange={(next) =>
+              set({
+                project: next || undefined,
+                deliver: deliverFor(next || undefined, draft.deliver),
+              })
+            }
           />
         </Label>
       </div>
-      <Label text="When" hint={`${inWords(draft.expression)}. Fields: minute hour day month weekday, in UTC.`}>
-        <input className={`${field} font-aui-mono`} value={draft.expression} required onChange={(e) => set({ expression: e.target.value })} />
+      <Label
+        text="When"
+        hint={`${inWords(draft.expression)}. Fields: minute hour day month weekday, in UTC.`}
+      >
+        <input
+          className={`${field} font-aui-mono`}
+          value={draft.expression}
+          required
+          onChange={(e) => set({ expression: e.target.value })}
+        />
       </Label>
       <div className="-mt-2 flex flex-wrap gap-1.5">
         {presets.map((p) => (
@@ -150,18 +208,36 @@ function ScheduleForm({
           </button>
         ))}
       </div>
-      <Label text="What to ask" hint="Nobody is typing when a schedule fires, so this is the whole message the agent gets.">
-        <textarea className={`${field} min-h-20`} value={draft.text} required onChange={(e) => set({ text: e.target.value })} />
+      <Label
+        text="What to ask"
+        hint="Nobody is typing when a schedule fires, so this is the whole message the agent gets."
+      >
+        <textarea
+          className={`${field} min-h-20`}
+          value={draft.text}
+          required
+          onChange={(e) => set({ text: e.target.value })}
+        />
       </Label>
-      <Label text="Description" hint="Why it exists, for the people reading this page. The agent is not shown it.">
-        <input className={field} maxLength={500} value={draft.description ?? ""} onChange={(e) => set({ description: e.target.value })} />
+      <Label
+        text="Description"
+        hint="Why it exists, for the people reading this page. The agent is not shown it."
+      >
+        <input
+          className={field}
+          maxLength={500}
+          value={draft.description ?? ""}
+          onChange={(e) => set({ description: e.target.value })}
+        />
       </Label>
       <Label text={copy.deliver} hint={copy.deliverHint}>
         <Menu
           label={copy.deliver}
           value={draft.deliver ?? ""}
           options={deliverOptions(draft.project, copy, !editing)}
-          onChange={(next) => set({ deliver: next === "inbox" || next === "project" ? next : undefined })}
+          onChange={(next) =>
+            set({ deliver: next === "inbox" || next === "project" ? next : undefined })
+          }
         />
       </Label>
       <Problem message={problem} />
@@ -225,7 +301,8 @@ export function Schedules({
     else setOwn(name);
   };
 
-  const fail = (fallback: string) => (e: unknown) => setProblem(e instanceof ApiError ? e.message : fallback);
+  const fail = (fallback: string) => (e: unknown) =>
+    setProblem(e instanceof ApiError ? e.message : fallback);
   const act = (p: Promise<unknown>, fallback: string, after?: () => void) => {
     setProblem(null);
     p.then(() => {
@@ -248,7 +325,11 @@ export function Schedules({
     const s = schedules.find((x) => x.name === open);
     if (!s) {
       return (
-        <Page title={`No schedule named ${open}`} lede="It may have been deleted." back={{ label: "All schedules", onClick: () => select(null) }}>
+        <Page
+          title={`No schedule named ${open}`}
+          lede="It may have been deleted."
+          back={{ label: "All schedules", onClick: () => select(null) }}
+        >
           {null}
         </Page>
       );
@@ -271,10 +352,13 @@ export function Schedules({
             <PageActions
               primary={{ label: "Run Now", onSelect: () => runNow(s) }}
               actions={[
-                ...(!editing && !s.managed ? [{ label: "Edit", onSelect: () => setEditing(true) }] : []),
+                ...(!editing && !s.managed
+                  ? [{ label: "Edit", onSelect: () => setEditing(true) }]
+                  : []),
                 {
                   label: s.paused ? "Resume" : "Pause",
-                  onSelect: () => act(api.pauseSchedule(s.name, !s.paused), "The schedule could not be changed."),
+                  onSelect: () =>
+                    act(api.pauseSchedule(s.name, !s.paused), "The schedule could not be changed."),
                 },
                 ...(!s.managed
                   ? [
@@ -297,7 +381,9 @@ export function Schedules({
             action="Delete Schedule"
             onConfirm={() => {
               setDeleting(null);
-              act(api.deleteSchedule(s.name), "The schedule could not be deleted.", () => select(null));
+              act(api.deleteSchedule(s.name), "The schedule could not be deleted.", () =>
+                select(null),
+              );
             }}
             onKeep={() => setDeleting(null)}
           />
@@ -315,7 +401,9 @@ export function Schedules({
             }}
           />
         ) : (
-          <dl className={`${card} grid grid-cols-1 gap-x-8 gap-y-3 text-aui-sm sm:grid-cols-[8rem_1fr]`}>
+          <dl
+            className={`${card} grid grid-cols-1 gap-x-8 gap-y-3 text-aui-sm sm:grid-cols-[8rem_1fr]`}
+          >
             <dt className="text-aui-xs text-aui-muted">Agent</dt>
             <dd className="flex items-center gap-2 text-aui-fg">
               <AgentMark name={s.agent} size={14} />
@@ -328,10 +416,17 @@ export function Schedules({
               )}
             </dd>
             <dt className="text-aui-xs text-aui-muted">Project</dt>
-            <dd className="text-aui-fg">{s.project ? titleIn(projects, s.project) : <span className="text-aui-muted">None</span>}</dd>
+            <dd className="text-aui-fg">
+              {s.project ? (
+                titleIn(projects, s.project)
+              ) : (
+                <span className="text-aui-muted">None</span>
+              )}
+            </dd>
             <dt className="text-aui-xs text-aui-muted">When</dt>
             <dd className="text-aui-fg">
-              {inWords(s.expression)} <code className="font-aui-mono text-aui-xs text-aui-muted">{s.expression}</code>
+              {inWords(s.expression)}{" "}
+              <code className="font-aui-mono text-aui-xs text-aui-muted">{s.expression}</code>
             </dd>
             <dt className="text-aui-xs text-aui-muted">Asks</dt>
             <dd className="whitespace-pre-wrap text-aui-fg">{s.text}</dd>
@@ -352,7 +447,11 @@ export function Schedules({
         </Section>
         <Section
           title="Recent runs"
-          hint={s.recent.length > 0 ? `Last ${s.recent.length}: ${s.recent.length - failed} ok, ${failed} failed. Each opens the conversation it ran in.` : undefined}
+          hint={
+            s.recent.length > 0
+              ? `Last ${s.recent.length}: ${s.recent.length - failed} ok, ${failed} failed. Each opens the conversation it ran in.`
+              : undefined
+          }
         >
           {s.recent.length === 0 ? (
             <p className="text-aui-sm text-aui-muted">Has not run yet.</p>
@@ -365,9 +464,14 @@ export function Schedules({
                     onClick={() => onOpenRun(r.id)}
                     className="flex w-full items-center gap-3 px-1 py-2 text-left text-aui-sm hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                   >
-                    <span aria-hidden className={`size-2 shrink-0 rounded-full ${outcome[r.status].fill}`} />
+                    <span
+                      aria-hidden
+                      className={`size-2 shrink-0 rounded-full ${outcome[r.status].fill}`}
+                    />
                     <span className="w-20 shrink-0 text-aui-fg">{outcome[r.status].word}</span>
-                    <span className="min-w-0 flex-1 truncate text-aui-muted">{when(r.created_at)}</span>
+                    <span className="min-w-0 flex-1 truncate text-aui-muted">
+                      {when(r.created_at)}
+                    </span>
                     <span className="shrink-0 text-aui-xs text-aui-muted">{ago(r.created_at)}</span>
                   </button>
                 </li>
@@ -406,7 +510,9 @@ export function Schedules({
       )}
 
       {schedules.length === 0 && !adding ? (
-        <Empty title="No schedules">{agents.length === 0 ? "Define an agent first." : "Nothing runs on a timer yet."}</Empty>
+        <Empty title="No schedules">
+          {agents.length === 0 ? "Define an agent first." : "Nothing runs on a timer yet."}
+        </Empty>
       ) : (
         <ul className={rows} aria-label="Schedules">
           {schedules.map((s) => (
@@ -426,7 +532,11 @@ export function Schedules({
                 <span className="flex min-w-0 items-center gap-2 text-aui-sm text-aui-fg">
                   <AgentMark name={s.agent} size={12} />
                   <span className="truncate">{s.agent}</span>
-                  {s.project && <span className="truncate text-aui-xs text-aui-muted">in {titleIn(projects, s.project)}</span>}
+                  {s.project && (
+                    <span className="truncate text-aui-xs text-aui-muted">
+                      in {titleIn(projects, s.project)}
+                    </span>
+                  )}
                 </span>
                 <span className="min-w-0 text-aui-sm">
                   <span className="block truncate text-aui-fg">{inWords(s.expression)}</span>

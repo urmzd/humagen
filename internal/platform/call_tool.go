@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/pkg/call"
 	saigetypes "github.com/urmzd/saige/agent/types"
 )
@@ -51,16 +51,16 @@ func callParameters(targets []string) saigetypes.ParameterSchema {
 	}}
 }
 
-func (p *Platform) callAgentTool(parent runtime.Request, report func(payload.Action) error) saigetypes.Tool {
+func (p *Platform) callAgentTool(parent runtime.Request, report func(event.Action) error) saigetypes.Tool {
 	// Offered are the agents both sides agree to: the caller's spawn
 	// allowlist, narrowed to the callees whose policy admits it. An agent
 	// that would refuse is never offered.
-	targets := p.callTargets(parent.Tenant, parent.RunID, parent.Revision.Spec.Name, parent.Revision.Spec.Access.Spawn)
+	targets := p.callTargets(parent.Tenant, parent.RunID, parent.Definition.Spec.Name, parent.Definition.Spec.Access.Spawn)
 	described := "Targets: " + strings.Join(targets, ", ")
 	if len(targets) == 0 {
 		described = "No agent accepts calls from you right now, so any call will be refused."
 	}
-	caller := parent.Revision.Spec.Name
+	caller := parent.Definition.Spec.Name
 	return &callTool{p: p, tenant: parent.Tenant, caller: caller, ToolFunc: &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{Name: ToolCallAgent, Description: "Ask an allowed agent to perform helper work. Construct its complete input from ordered messages, examples and references. Choose the result format you need. You retain ownership of the user-facing answer. Use subagent to receive its result, or delegate for background work. " + described, Parameters: callParameters(targets)},
 		Fn: func(ctx context.Context, args map[string]any) (string, error) {
@@ -129,7 +129,7 @@ func (p *Platform) callAgentTool(parent runtime.Request, report func(payload.Act
 	}}
 }
 
-// callTool is call_agent. It is an agentrt.Approving tool: a call the
+// callTool is call_agent. It is an native.Approving tool: a call the
 // callee's policy holds for a person parks the run on an approval question
 // addressed to the policy's approvers.
 type callTool struct {
@@ -142,29 +142,29 @@ type callTool struct {
 // maxExcerpt bounds how much of a call's request its approval prompt quotes.
 const maxExcerpt = 200
 
-// Approval is agentrt.Approving. It reads only the call's arguments and the
+// Approval is native.Approving. It reads only the call's arguments and the
 // callee's stored policy, so it answers the same for the same arguments.
-func (t *callTool) Approval(c saigetypes.ToolCallPart) (agentrt.ApprovalRequest, bool) {
+func (t *callTool) Approval(c saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
 	callee, _ := c.Arguments["agent"].(string)
 	if callee == "" {
-		return agentrt.ApprovalRequest{}, false
+		return native.ApprovalRequest{}, false
 	}
 	pol, _ := t.p.CallPolicies.Get(t.tenant, callee)
 	if !pol.Admits(t.caller) {
 		// Refused when it runs, with the callee's reason. Nobody is asked
 		// about a call that cannot happen.
-		return agentrt.ApprovalRequest{}, false
+		return native.ApprovalRequest{}, false
 	}
 	needed, approvers, self, expires := t.p.callApproval(t.tenant, t.caller, callee)
 	if !needed {
-		return agentrt.ApprovalRequest{}, false
+		return native.ApprovalRequest{}, false
 	}
 	prompt := fmt.Sprintf("Allow %s to call %s?", t.caller, callee)
 	if excerpt := requestExcerpt(c.Arguments); excerpt != "" {
 		prompt += " It asks: " + excerpt
 	}
 	// The callee's policy says how long a held call waits before it is denied.
-	return agentrt.ApprovalRequest{Prompt: prompt, Approvers: approvers, SelfApproval: self, ExpiresIn: expires}, true
+	return native.ApprovalRequest{Prompt: prompt, Approvers: approvers, SelfApproval: self, ExpiresIn: expires}, true
 }
 
 // requestExcerpt is the last text the call sends, on one line and clipped.
@@ -189,4 +189,4 @@ func requestExcerpt(args map[string]any) string {
 	return text
 }
 
-var _ agentrt.Approving = (*callTool)(nil)
+var _ native.Approving = (*callTool)(nil)

@@ -32,7 +32,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/state"

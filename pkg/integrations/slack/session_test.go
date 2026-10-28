@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
 )
 
@@ -18,7 +18,7 @@ var commands = []slack.Command{
 func TestReplayedLifecycleDoesNotRegressTheSessionStatus(t *testing.T) {
 	api := slack.NewFake()
 	c := sessionConnector(t, api, slack.Config{Sessions: true})
-	deliver(t, c, target, event(1, envelope.KindAccepted, ""), event(3, envelope.KindCompleted, ""), event(2, envelope.KindStarted, ""), event(3, envelope.KindCompleted, ""))
+	deliver(t, c, target, runEvent(1, event.TypeAccepted, ""), runEvent(3, event.TypeCompleted, ""), runEvent(2, event.TypeStarted, ""), runEvent(3, event.TypeCompleted, ""))
 	statuses := api.Statuses()
 	if len(statuses) != 2 || statuses[1].Status != slack.StatusActive {
 		t.Fatalf("statuses: %+v", statuses)
@@ -35,11 +35,11 @@ func sessionConnector(t *testing.T, api slack.API, cfg slack.Config) *slack.Conn
 	return c
 }
 
-func deliver(t *testing.T, c *slack.Connector, to address.Address, events ...envelope.Event) {
+func deliver(t *testing.T, c *slack.Connector, to address.Address, events ...event.Envelope) {
 	t.Helper()
 	for _, e := range events {
 		if err := c.Deliver(context.Background(), to, e); err != nil {
-			t.Fatalf("Deliver(seq %d, %s): %v", e.Seq, e.Kind, err)
+			t.Fatalf("Deliver(seq %d, %s): %v", e.Seq, e.Type, err)
 		}
 	}
 }
@@ -49,13 +49,13 @@ func TestARunsLifecycleIsReportedAsItsSessionStatus(t *testing.T) {
 	c := sessionConnector(t, fake, slack.Config{Sessions: true})
 
 	deliver(t, c, target,
-		event(1, envelope.KindAccepted, ""),
-		event(2, envelope.KindStarted, ""),
+		runEvent(1, event.TypeAccepted, ""),
+		runEvent(2, event.TypeStarted, ""),
 		textEvent(3, "Which branch?"),
-		event(4, envelope.KindParked, ""),
-		event(5, envelope.KindResumed, ""),
+		runEvent(4, event.TypeParked, ""),
+		runEvent(5, event.TypeResumed, ""),
 		textEvent(6, " Done."),
-		event(7, envelope.KindCompleted, ""),
+		runEvent(7, event.TypeCompleted, ""),
 	)
 
 	want := []slack.Status{
@@ -81,8 +81,8 @@ func TestAFailedRunLeavesItsSessionReadyForTheNextPrompt(t *testing.T) {
 	c := sessionConnector(t, fake, slack.Config{Sessions: true})
 
 	deliver(t, c, target,
-		event(1, envelope.KindAccepted, ""),
-		event(2, envelope.KindFailed, `{"error":"model overloaded"}`),
+		runEvent(1, event.TypeAccepted, ""),
+		runEvent(2, event.TypeFailed, `{"error":"model overloaded"}`),
 	)
 
 	got := fake.Statuses()
@@ -95,7 +95,7 @@ func TestSessionsAreNotReportedUnlessAskedFor(t *testing.T) {
 	fake := slack.NewFake()
 	c := sessionConnector(t, fake, slack.Config{})
 
-	deliver(t, c, target, event(1, envelope.KindAccepted, ""), event(2, envelope.KindCompleted, ""))
+	deliver(t, c, target, runEvent(1, event.TypeAccepted, ""), runEvent(2, event.TypeCompleted, ""))
 
 	if got := fake.Statuses(); len(got) != 0 {
 		t.Errorf("an app that is not an agent made %d session calls: %+v", len(got), got)
@@ -109,7 +109,7 @@ func TestACodeChannelsSessionIsTheChannelNotAThread(t *testing.T) {
 
 	// A mention inside a code channel is threaded by the trigger like any
 	// other, and Slack refuses a thread there.
-	deliver(t, c, target, event(1, envelope.KindAccepted, ""))
+	deliver(t, c, target, runEvent(1, event.TypeAccepted, ""))
 
 	got := fake.Statuses()
 	if len(got) != 1 || got[0].ThreadTS != "" || got[0].Status != slack.StatusProcessing {
@@ -123,7 +123,7 @@ func TestASlackRefusalOfStatusDoesNotFailADeliveredMessage(t *testing.T) {
 	// A top-level target in an ordinary channel has no session to report on.
 	channel := address.MustParse("slack://T01ABCDEF/C02CHANNEL")
 
-	deliver(t, c, channel, event(1, envelope.KindAccepted, ""), textEvent(2, "hello"), event(3, envelope.KindCompleted, ""))
+	deliver(t, c, channel, runEvent(1, event.TypeAccepted, ""), textEvent(2, "hello"), runEvent(3, event.TypeCompleted, ""))
 
 	if n := len(fake.Messages()); n != 1 {
 		t.Errorf("slack holds %d messages, want the answer delivered regardless", n)
@@ -139,7 +139,7 @@ func TestATransportFailureOfStatusIsRetried(t *testing.T) {
 	}
 
 	fake.Err = errors.New("connection reset")
-	if err := c.Deliver(ctx, target, event(2, envelope.KindStarted, "")); err == nil {
+	if err := c.Deliver(ctx, target, runEvent(2, event.TypeStarted, "")); err == nil {
 		t.Fatal("Deliver succeeded with Slack unreachable; the router would never retry")
 	}
 }
@@ -158,7 +158,7 @@ func TestTransientSlackStatusErrorsRemainRetryableAfterMessageDelivery(t *testin
 		t.Run(code, func(t *testing.T) {
 			api := &statusErrorAPI{Fake: slack.NewFake(), code: code}
 			c := sessionConnector(t, api, slack.Config{Sessions: true})
-			err := c.Deliver(context.Background(), target, event(1, envelope.KindStarted, ""))
+			err := c.Deliver(context.Background(), target, runEvent(1, event.TypeStarted, ""))
 			if (err != nil) != (code != "missing_scope") {
 				t.Fatalf("status error: %v", err)
 			}
@@ -186,8 +186,8 @@ func TestCommandsAreOfferedOnceInACodeChannel(t *testing.T) {
 	c := sessionConnector(t, api, slack.Config{Commands: commands})
 
 	for _, run := range []string{"run_1", "run_2", "run_3"} {
-		e := event(1, envelope.KindAccepted, "")
-		e.RunID = run
+		e := runEvent(1, event.TypeAccepted, "")
+		e.Run = run
 		deliver(t, c, target, e)
 	}
 
@@ -204,7 +204,7 @@ func TestAnOrdinaryChannelIsNotOfferedCommands(t *testing.T) {
 	fake := slack.NewFake()
 	c := sessionConnector(t, fake, slack.Config{Commands: commands})
 
-	deliver(t, c, target, event(1, envelope.KindAccepted, ""), textEvent(2, "hi"), event(3, envelope.KindCompleted, ""))
+	deliver(t, c, target, runEvent(1, event.TypeAccepted, ""), textEvent(2, "hi"), runEvent(3, event.TypeCompleted, ""))
 
 	if got := fake.Commands("C02CHANNEL"); len(got) != 0 {
 		t.Errorf("an ordinary channel holds commands: %+v", got)

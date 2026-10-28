@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/runs"
 
@@ -77,7 +77,7 @@ type Asker struct {
 
 // AskerOf is who asks through an actor: the person it acts for (a bot acts
 // for nobody, whatever it names), or the caller it names.
-func AskerOf(a envelope.Actor) Asker {
+func AskerOf(a event.Actor) Asker {
 	if !a.Bot && a.User != "" {
 		return Asker{Person: a.User, Name: a.Display}
 	}

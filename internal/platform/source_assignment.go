@@ -4,7 +4,8 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -22,13 +23,13 @@ func (p *Platform) CheckAssignmentSourceHealth(req runtime.Request) error {
 	}
 	names := runs.SourcesOf(req.Meta)
 	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
-		for _, name := range runs.SourcesOf(run.Tag().Meta) {
+		for _, name := range runs.SourcesOf(wire.Meta(run.Tag())) {
 			if !slices.Contains(names, name) {
 				names = append(names, name)
 			}
 		}
 	}
-	for _, source := range req.Revision.Spec.Sources {
+	for _, source := range req.Definition.Spec.Sources {
 		if !slices.Contains(names, source.Name) {
 			names = append(names, source.Name)
 		}

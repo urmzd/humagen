@@ -1,12 +1,16 @@
 import { messageState, resolveMessage, type UiAction } from "@humagen/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type PlatformMessage, type Transport, toRequest, transport as platform } from "./mail.ts";
+import { type PlatformMessage, transport as platform, type Transport, toRequest } from "./mail.ts";
 import { within } from "./timeout.ts";
 
 const PAGE = 30;
 
 /** The first page laid over what is loaded: fresh rows first, then older pages already asked for. */
-export function merge(loaded: PlatformMessage[], fresh: PlatformMessage[], end: boolean): PlatformMessage[] {
+export function merge(
+  loaded: PlatformMessage[],
+  fresh: PlatformMessage[],
+  end: boolean,
+): PlatformMessage[] {
   if (end || fresh.length === 0) return fresh;
   const seen = new Set(fresh.map((m) => m.id));
   const edge = fresh[fresh.length - 1]?.at ?? "";
@@ -21,7 +25,12 @@ export function merge(loaded: PlatformMessage[], fresh: PlatformMessage[], end: 
  * `messages` is the list with it, `missing` says a linked one could not be
  * read, and `keep` takes the platform's answer to an action on it.
  */
-export function useHeld(list: PlatformMessage[], selected: string | null | undefined, loading: boolean, via: Transport) {
+export function useHeld(
+  list: PlatformMessage[],
+  selected: string | null | undefined,
+  loading: boolean,
+  via: Transport,
+) {
   const [held, setHeld] = useState<PlatformMessage | null>(null);
   const [missing, setMissing] = useState(false);
   const found = list.find((m) => m.id === selected);
@@ -66,7 +75,13 @@ export function after(message: PlatformMessage, action: UiAction, by: string): P
  * - A click shows at once. If the platform refuses, the message goes back to
  *   how it was and `problem` says why.
  */
-export function useInbox(kind: string, show: "open" | "resolved" | "all", signal: unknown, via: Transport = platform, viewer = "You") {
+export function useInbox(
+  kind: string,
+  show: "open" | "resolved" | "all",
+  signal: unknown,
+  via: Transport = platform,
+  viewer = "You",
+) {
   const [messages, setMessages] = useState<PlatformMessage[]>([]);
   const [next, setNext] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
@@ -135,7 +150,6 @@ export function useInbox(kind: string, show: "open" | "resolved" | "all", signal
       .finally(() => {
         if (current.current === key) setLoading(null);
       });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the query follows key
   }, [key, next, loading, via]);
 
   /**
@@ -148,7 +162,8 @@ export function useInbox(kind: string, show: "open" | "resolved" | "all", signal
       const request = toRequest(message, action);
       if (!request) return Promise.resolve(null);
       const shown = after(message, action, viewer);
-      const put = (m: PlatformMessage) => setMessages((all) => all.map((x) => (x.id === m.id ? m : x)));
+      const put = (m: PlatformMessage) =>
+        setMessages((all) => all.map((x) => (x.id === m.id ? m : x)));
       const wasUnread = Boolean(message.unread) && !shown.unread;
       const closed = messageState(message) === "open" && messageState(shown) !== "open";
       put(shown);
@@ -165,7 +180,10 @@ export function useInbox(kind: string, show: "open" | "resolved" | "all", signal
           put(message);
           if (wasUnread) setUnread((n) => n + 1);
           if (closed) setOpen((n) => n + 1);
-          const sorry = request.call === "read" ? "Could not mark the message as read." : "That did not go through.";
+          const sorry =
+            request.call === "read"
+              ? "Could not mark the message as read."
+              : "That did not go through.";
           setProblem(e instanceof Error && e.message ? `${sorry} ${e.message}` : sorry);
           return null;
         });
@@ -173,5 +191,16 @@ export function useInbox(kind: string, show: "open" | "resolved" | "all", signal
     [via, viewer],
   );
 
-  return { messages, hasMore: next !== null, unread, open, loading, failed, moreFailed, problem, more, act };
+  return {
+    messages,
+    hasMore: next !== null,
+    unread,
+    open,
+    loading,
+    failed,
+    moreFailed,
+    problem,
+    more,
+    act,
+  };
 }

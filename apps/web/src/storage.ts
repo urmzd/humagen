@@ -5,7 +5,16 @@ import { within } from "./timeout.ts";
 export interface Stored {
   id: string;
   title: string;
-  kind: "document" | "spreadsheet" | "presentation" | "image" | "pdf" | "html" | "code" | "data" | "archive";
+  kind:
+    | "document"
+    | "spreadsheet"
+    | "presentation"
+    | "image"
+    | "pdf"
+    | "html"
+    | "code"
+    | "data"
+    | "archive";
   mime: string;
   size: number;
   sha256: string;
@@ -30,11 +39,18 @@ export interface StorageUse {
   by_agent: { name: string; bytes: number; count: number }[];
 }
 
-export type Filter = { project: string; agent: string; kind: string; /** Part of a title. */ q: string };
+export type Filter = {
+  project: string;
+  agent: string;
+  kind: string /** Part of a title. */;
+  q: string;
+};
 
 /** Everything the storage page asks of the platform. Tests and the gallery pass their own. */
 export interface StorageTransport {
-  list(q: Filter & { limit: number; before?: string }): Promise<{ artifacts: Stored[]; next: string | null }>;
+  list(
+    q: Filter & { limit: number; before?: string },
+  ): Promise<{ artifacts: Stored[]; next: string | null }>;
   versions(id: string): Promise<Stored[]>;
   remove(id: string): Promise<void>;
   use(): Promise<StorageUse>;
@@ -53,19 +69,25 @@ const at = (id: string) => `/api/artifacts/${encodeURIComponent(id)}`;
 export const transport: StorageTransport = {
   list: (q) => {
     const params = new URLSearchParams({ limit: String(q.limit) });
-    for (const k of ["project", "agent", "kind", "q", "before"] as const) if (q[k]) params.set(k, q[k] as string);
-    return http<{ artifacts: Stored[]; next: string | null }>("GET", `/api/artifacts?${params}`).then((r) => ({
+    for (const k of ["project", "agent", "kind", "q", "before"] as const)
+      if (q[k]) params.set(k, q[k] as string);
+    return http<{ artifacts: Stored[]; next: string | null }>(
+      "GET",
+      `/api/artifacts?${params}`,
+    ).then((r) => ({
       artifacts: r.artifacts ?? [],
       next: r.next ?? null,
     }));
   },
-  versions: (id) => http<{ versions: Stored[] }>("GET", `${at(id)}/versions`).then((r) => r.versions ?? []),
+  versions: (id) =>
+    http<{ versions: Stored[] }>("GET", `${at(id)}/versions`).then((r) => r.versions ?? []),
   remove: (id) => http<void>("DELETE", at(id)),
   use: () => http<StorageUse>("GET", "/api/storage"),
 };
 
 /** Where a file's bytes are. A download, unless `inline` is asked for and the type is safe to show. */
-export const contentUrl = (id: string, inline = false) => `${at(id)}/content${inline ? "?inline=1" : ""}`;
+export const contentUrl = (id: string, inline = false) =>
+  `${at(id)}/content${inline ? "?inline=1" : ""}`;
 
 /** Types the platform will serve inline. Everything else, HTML and SVG included, is a download. */
 const INLINE = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -92,13 +114,17 @@ export function matches(file: Stored, query: string): boolean {
 }
 
 /** True when a workspace holds more than its limit. No limit is never over. */
-export const overLimit = (use: StorageUse) => use.limit_bytes !== null && use.limit_bytes > 0 && use.used_bytes > use.limit_bytes;
+export const overLimit = (use: StorageUse) =>
+  use.limit_bytes !== null && use.limit_bytes > 0 && use.used_bytes > use.limit_bytes;
 
-export const OVER_LIMIT = "Storage is over its limit. Agents cannot publish new artifacts until some are deleted or the limit is raised in Settings.";
+export const OVER_LIMIT =
+  "Storage is over its limit. Agents cannot publish new artifacts until some are deleted or the limit is raised in Settings.";
 
 /** What a failed delete says, with the platform's reason when it gave one. */
 export const deleteProblem = (e: unknown) =>
-  e instanceof Error && e.message ? `The artifact could not be deleted. ${e.message}` : "The artifact could not be deleted.";
+  e instanceof Error && e.message
+    ? `The artifact could not be deleted. ${e.message}`
+    : "The artifact could not be deleted.";
 
 /** A later page added to what is loaded. A file already shown is not shown twice. */
 export function appendPage(old: Stored[], page: Stored[]): Stored[] {
@@ -172,8 +198,16 @@ export function useStorage(filter: Filter, signal: unknown, via: StorageTranspor
       .finally(() => {
         if (current.current === key) setLoading(null);
       });
-    // biome-ignore lint/correctness/useExhaustiveDependencies: the filter follows key
   }, [key, next, loading, via]);
 
-  return { files, hasMore: next !== null, use, loading, failed, moreFailed, more, reload: () => setBump((n) => n + 1) };
+  return {
+    files,
+    hasMore: next !== null,
+    use,
+    loading,
+    failed,
+    moreFailed,
+    more,
+    reload: () => setBump((n) => n + 1),
+  };
 }

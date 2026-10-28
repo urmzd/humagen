@@ -1,9 +1,23 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { ApiError, api, type ProjectAgentsView, type ProjectView, type Revision } from "./api.ts";
-import { AUTO, availableOf, EVERYONE, defaultFrom, losing, offerWords } from "./availability.ts";
+import { AUTO, availableOf, defaultFrom, EVERYONE, losing, offerWords } from "./availability.ts";
 import { titleOf } from "./projects.ts";
-import { AgentMark, Chip, FlashNote, Label, Menu, PickMany, Problem, primary, rows, Section, SkeletonRows, Switch, useFlash } from "./ui.tsx";
+import {
+  AgentMark,
+  Chip,
+  FlashNote,
+  Label,
+  Menu,
+  PickMany,
+  Problem,
+  primary,
+  rows,
+  Section,
+  SkeletonRows,
+  Switch,
+  useFlash,
+} from "./ui.tsx";
 
 const words = defaultCopy.projects.agents;
 const place = defaultCopy.agentPlace;
@@ -86,9 +100,11 @@ export function ProjectAgentsTab({
   const editable = canWrite && !managed;
   const every = enable.includes(EVERYONE);
   const platform = agents.map((a) => a.spec.name).filter((a) => !homes[a]);
-  const options = (names: string[]) => names.map((n) => ({ value: n, label: n, mark: <AgentMark name={n} size={14} /> }));
+  const options = (names: string[]) =>
+    names.map((n) => ({ value: n, label: n, mark: <AgentMark name={n} size={14} /> }));
   const dirty =
-    JSON.stringify([enable, allow, fallback]) !== JSON.stringify([view.enable, view.allow ?? null, view.default ?? ""]);
+    JSON.stringify([enable, allow, fallback]) !==
+    JSON.stringify([view.enable, view.allow ?? null, view.default ?? ""]);
   // Who could be the default: whatever may answer here.
   const available = availableOf(
     agents.map((a) => a.spec.name),
@@ -145,12 +161,22 @@ export function ProjectAgentsTab({
               const whence = offerWords(o, name, title);
               return (
                 <li key={o.agent} className="flex items-center gap-3 py-2">
-                  {o.agent === EVERYONE ? <span className="w-[18px]" aria-hidden /> : <AgentMark name={o.agent} size={18} />}
+                  {o.agent === EVERYONE ? (
+                    <span className="w-[18px]" aria-hidden />
+                  ) : (
+                    <AgentMark name={o.agent} size={18} />
+                  )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-aui-sm text-aui-fg">{o.agent === EVERYONE ? words.everyPlatform : o.agent}</span>
-                    {whence && <span className="block truncate text-aui-xs text-aui-muted">{whence}</span>}
+                    <span className="block truncate text-aui-sm text-aui-fg">
+                      {o.agent === EVERYONE ? words.everyPlatform : o.agent}
+                    </span>
+                    {whence && (
+                      <span className="block truncate text-aui-xs text-aui-muted">{whence}</span>
+                    )}
                   </span>
-                  {o.agent !== EVERYONE && view.default_resolved?.agent === o.agent && <Chip>{defaultCopy.auto.defaultChip}</Chip>}
+                  {o.agent !== EVERYONE && view.default_resolved?.agent === o.agent && (
+                    <Chip>{defaultCopy.auto.defaultChip}</Chip>
+                  )}
                 </li>
               );
             })}
@@ -207,7 +233,12 @@ export function ProjectAgentsTab({
       </Section>
 
       <Section title={words.allow} hint={words.allowHint}>
-        <Switch label={words.allow} checked={allow !== null} disabled={!editable} onChange={(on) => setAllow(on ? [] : null)} />
+        <Switch
+          label={words.allow}
+          checked={allow !== null}
+          disabled={!editable}
+          onChange={(on) => setAllow(on ? [] : null)}
+        />
         {allow !== null && (
           <PickMany
             label={words.allow}
@@ -223,7 +254,12 @@ export function ProjectAgentsTab({
 
       {editable && (
         <div className="flex items-center gap-3">
-          <button type="button" className={primary} disabled={!dirty || saving || (allow !== null && allow.length === 0)} onClick={save}>
+          <button
+            type="button"
+            className={primary}
+            disabled={!dirty || saving || (allow !== null && allow.length === 0)}
+            onClick={save}
+          >
             {words.save}
           </button>
           <FlashNote flash={flash} align="left" />
@@ -243,7 +279,12 @@ export function ProjectAgentsTab({
               .filter((a) => !homes[a] || homes[a] === name)
               .map((a) => {
                 const n = losing(name, enabledIn[a] ?? [], projects);
-                return { value: a, label: a, hint: n > 0 ? place.loses(n) : undefined, mark: <AgentMark name={a} size={14} /> };
+                return {
+                  value: a,
+                  label: a,
+                  hint: n > 0 ? place.loses(n) : undefined,
+                  mark: <AgentMark name={a} size={14} />,
+                };
               })}
             onChange={(next) => {
               const added = next.find((a) => !view.homes.includes(a));

@@ -3,6 +3,10 @@ package platform_test
 import (
 	"encoding/json"
 	"errors"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -10,9 +14,6 @@ import (
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestSourceRulesConfinePreviewAndRetainDisabledForkRules(t *testing.T) {

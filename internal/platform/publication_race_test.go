@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -60,7 +60,7 @@ func TestPublicationCommitSerializesWithDestinationMembership(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help."}, "ada"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help."}, "ada"); err != nil {
 			t.Fatal(err)
 		}
 		th, _, err := p.Threads.Start(tenant, threads.Thread{Project: personal.Name, Channel: "general", Visibility: threads.Private}, threads.Message{By: "ada", Name: "Ada", Text: "Reviewed work"}, time.Now())
@@ -68,10 +68,10 @@ func TestPublicationCommitSerializesWithDestinationMembership(t *testing.T) {
 			t.Fatal(err)
 		}
 		id := runtime.RunID(tenant, "membership-race")
-		if err := p.Runs.Record(id, envelope.Tag{ID: "membership-race", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "work", Meta: map[string]string{runs.MetaProject: personal.Name, runs.MetaThread: th.ID}, At: time.Now()}, 1); err != nil {
+		if err := p.Runs.Record(id, wire.NewEvent(wire.Raise{ID: "membership-race", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "work", Context: map[string]string{runs.MetaProject: personal.Name, runs.MetaThread: th.ID}, At: time.Now()}), 1); err != nil {
 			t.Fatal(err)
 		}
-		p.Runs.Observe(envelope.Event{Tenant: tenant, RunID: id, Kind: envelope.KindCompleted, Payload: []byte(`{"text":"ready"}`), At: time.Now()})
+		p.Runs.Observe(event.Envelope{Tenant: tenant, Run: id, Type: event.TypeCompleted, Data: wire.BodyOf(event.TypeCompleted, []byte(`{"text":"ready"}`)), Time: time.Now()})
 		preview, err := p.PreviewPlacement(t.Context(), who, th.ID, "Field", "general")
 		if err != nil {
 			t.Fatal(err)

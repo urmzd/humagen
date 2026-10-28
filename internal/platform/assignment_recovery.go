@@ -5,22 +5,23 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
 func (p *Platform) recoverAssignmentInvocation(ctx context.Context, tenant string, a operations.Assignment) {
-	var tag envelope.Tag
+	var tag event.Envelope
 	if invocation, ok := p.Operations.Invocation(tenant, a.ID); ok {
-		if invocation.Meta[metaAssignment] != a.ID || runs.ProjectOf(invocation) != a.Project || invocation.Agent != a.Agent || runtime.RunID(tenant, invocation.ID) != a.RunID {
+		if wire.Meta(invocation)[metaAssignment] != a.ID || runs.ProjectOf(invocation) != a.Project || invocation.Agent != a.Agent || runtime.RunID(tenant, invocation.ID) != a.RunID {
 			p.blockUnknownAssignment(tenant, a.ID, "The reserved invocation does not match its assignment. Its owner must review it.")
 			return
 		}
 		tag = invocation
 	} else if a.Trigger == operations.SourceTrigger && a.TagID != "" && a.RunID == runtime.RunID(tenant, a.TagID) {
-		tag = envelope.Tag{ID: a.TagID, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Text: a.Goal + "\nDone when: " + a.DoneWhen, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}}
+		tag = wire.NewEvent(wire.Raise{ID: a.TagID, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Context: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}, Text: a.Goal + "\nDone when: " + a.DoneWhen})
 	} else if a.Cron != "" {
 		// Legacy manual reservations have a known deterministic console identity.
 		// An old clock reservation without its exact tag must never be guessed.

@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -101,7 +100,7 @@ func metered(t *testing.T, cfg platform.Config, agents map[string]agentModel) *p
 	if cfg.StopGrace == 0 {
 		cfg.StopGrace = time.Second
 	}
-	cfg.AgentOptions = []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(spec agentrt.Spec) (saigetypes.Provider, error) {
+	cfg.AgentOptions = []native.Option{native.WithProvider(native.ProviderOffline, func(spec native.Spec) (saigetypes.Provider, error) {
 		mu.Lock()
 		made[spec.Name]++
 		n := made[spec.Name]
@@ -123,9 +122,9 @@ func metered(t *testing.T, cfg platform.Config, agents map[string]agentModel) *p
 	})
 	for _, tenantName := range []string{tenant, "globex"} {
 		for name, a := range agents {
-			spec := agentspec.AgentSpec{
+			spec := wire.AgentSpec{
 				Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x",
-				Tools: a.tools, Access: agentspec.Access{Spawn: a.spawn},
+				Tools: a.tools, Access: wire.Access{Spawn: a.spawn},
 			}
 			if _, err := p.Agents.Create(ctx, tenantName, spec, "test"); err != nil {
 				t.Fatal(err)
@@ -295,7 +294,7 @@ func TestChildrenRollUpExactlyOnceThroughTheDelegator(t *testing.T) {
 	}
 	reports := 0
 	for _, e := range p.Journal.Events(tenant, []string{lead.ID}) {
-		if e.Kind == envelope.KindUsageChild {
+		if e.Type == event.TypeUsageChild {
 			reports++
 		}
 	}
@@ -337,7 +336,7 @@ func TestAdmissionRefusesAtTheSpendLimit(t *testing.T) {
 		t.Fatalf("the second run was not refused at the spend limit: %v", err)
 	}
 	// Another workspace's limit is its own.
-	if _, err := p.Invoke(ctx, envelope.Tag{ID: "evt-2", Tenant: "globex", Agent: "lead", Origin: "api", Text: "hello"}); err != nil {
+	if _, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "evt-2", Tenant: "globex", Agent: "lead", Origin: "api", Text: "hello"})); err != nil {
 		t.Fatalf("another workspace was refused: %v", err)
 	}
 }
@@ -370,7 +369,7 @@ func TestARunCrossingTheHardLimitMidRunIsStoppedThroughTheRuntime(t *testing.T) 
 	}
 	stoppedEvent := false
 	for _, e := range p.Journal.Events(tenant, []string{r.ID}) {
-		stoppedEvent = stoppedEvent || (e.Kind == envelope.KindStopped && strings.Contains(string(e.Payload), platform.StoppedByLimit))
+		stoppedEvent = stoppedEvent || (e.Type == event.TypeStopped && strings.Contains(wire.JSONOf(e), platform.StoppedByLimit))
 	}
 	if !stoppedEvent {
 		t.Fatal("the runtime did not publish lifecycle.stopped for the limit")
@@ -458,7 +457,7 @@ func TestUnpricedAndNonUSDCallsFollowTheRule(t *testing.T) {
 	}, "ada", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range []envelope.Tag{tag("evt-1", "plain"), tag("evt-2", "euro")} {
+	for _, r := range []event.Envelope{tag("evt-1", "plain"), tag("evt-2", "euro")} {
 		got, err := p.Invoke(ctx, r)
 		if err != nil {
 			t.Fatalf("%s was refused: %v", r.Agent, err)
@@ -508,7 +507,7 @@ func TestAnotherTenantsUsageNeverAffectsALimit(t *testing.T) {
 	}, "ada", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	theirs, err := p.Invoke(ctx, envelope.Tag{ID: "evt-1", Tenant: "globex", Agent: "lead", Origin: "api", Text: "hello"})
+	theirs, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "evt-1", Tenant: "globex", Agent: "lead", Origin: "api", Text: "hello"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,20 +598,18 @@ func TestACallReportedAfterItsRunSettledDoesNotInflateSpent(t *testing.T) {
 
 	// The helper's call again, under a key never seen: the shape of a call
 	// whose event was missed and arrives after settlement.
-	var late envelope.Event
+	var late event.Envelope
 	for _, e := range p.Journal.Events(tenant, []string{helper.ID}) {
-		if e.Kind == envelope.KindUsageCall {
+		if e.Type == event.TypeUsageCall {
 			late = e
 		}
 	}
-	c, err := payload.Decode[payload.UsageCall](late)
-	if err != nil {
-		t.Fatal(err)
+	c, ok := late.Data.(event.UsageCall)
+	if !ok {
+		t.Fatalf("usage call body %T", late.Data)
 	}
 	c.AccountingID += "-late"
-	if late.Payload, err = payload.Encode(c); err != nil {
-		t.Fatal(err)
-	}
+	late.Data = c
 	p.Redeliver(ctx, late)
 
 	if l, _ := p.Runs.Get(tenant, r.ID); l.Spent != lead.Spent {

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/urmzd/fiber/pkg/address"
-	transport "github.com/urmzd/fiber/pkg/connectors/slack"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/slack"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 )
 
 // StopFunc asks one run to stop at the request of the Slack user who pressed
@@ -56,23 +56,23 @@ func (c *Connector) OnStop(fn StopFunc) {
 // track records a run's lifecycle. It reports whether the run has been asked
 // to stop from Slack and has not ended, in which case the event may still be
 // rendered but must not move the session's status off active.
-func (l *live) track(to address.Address, e envelope.Event) (stopping bool) {
+func (l *live) track(to address.Address, e event.Envelope) (stopping bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	switch e.Kind {
-	case envelope.KindAccepted, envelope.KindStarted, envelope.KindResumed, envelope.KindParked:
-		if l.asked[e.RunID] {
+	switch e.Type {
+	case event.TypeAccepted, event.TypeStarted, event.TypeResumed, event.TypeParked:
+		if l.asked[e.Run] {
 			return true
 		}
 		if len(l.open) >= maxRuns {
 			clear(l.open)
 		}
-		l.open[e.RunID] = sessionOf(to)
-	case envelope.KindCompleted, envelope.KindFailed, envelope.KindStopped:
-		delete(l.open, e.RunID)
-		delete(l.asked, e.RunID)
+		l.open[e.Run] = sessionOf(to)
+	case event.TypeCompleted, event.TypeFailed, event.TypeStopped:
+		delete(l.open, e.Run)
+		delete(l.asked, e.Run)
 	}
-	return l.asked[e.RunID]
+	return l.asked[e.Run]
 }
 
 // in lists the runs open in a session. A code channel is one session, so a
@@ -109,7 +109,22 @@ func (l *live) settle(runID string) {
 // rendered by the sink as stopped, under the partial answer. A run is marked
 // asked only once the platform accepted the request, so a failure leaves it
 // stoppable and Slack's redelivery tries again.
-func (c *Connector) stopped(ctx context.Context, s transport.Stop) error {
+// stopRequest is a person pressing stop on a session.
+type stopRequest struct {
+	Session address.Address
+	User    string
+}
+
+// stopOf reads a stop from the event the trigger raises for it.
+func stopOf(b event.SlackSessionStopped) stopRequest {
+	at := address.Address{Connector: transport.Name, Workspace: b.Team, Path: []string{b.Channel}}
+	if b.ThreadTS != "" {
+		at = at.WithParam("thread", b.ThreadTS)
+	}
+	return stopRequest{Session: at, User: b.User}
+}
+
+func (c *Connector) stopped(ctx context.Context, s stopRequest) error {
 	at := sessionOf(s.Session)
 	c.live.mu.Lock()
 	stop := c.live.stop

@@ -3,7 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/internal/platform"
 )
@@ -14,17 +14,17 @@ import (
 // them, by subject, and an event keeps it so: it is the record. A console
 // shows a name, and never a subject that holds an address, so an event a
 // route hands out carries what the answerer is called beside the subject
-// (answer.by_name on lifecycle.resumed). The journal is not changed.
+// (answer.by_name on run.resumed.v1). The journal is not changed.
 
 // shownEvent is an event as it is handed out: a resumed run's answer with
 // what whoever answered is called. Any other event, and one whose body does
 // not read as the runtime writes it, is handed out as it is.
-func shownEvent(names platform.Names, e envelope.Event) envelope.Event {
-	if e.Kind != envelope.KindResumed || len(e.Payload) == 0 {
+func shownEvent(names platform.Names, e platform.APIEvent) platform.APIEvent {
+	if e.Type != event.TypeResumed || len(e.Data) == 0 {
 		return e
 	}
 	var body map[string]json.RawMessage
-	if err := json.Unmarshal(e.Payload, &body); err != nil || len(body["answer"]) == 0 {
+	if err := json.Unmarshal(e.Data, &body); err != nil || len(body["answer"]) == 0 {
 		return e
 	}
 	var answer map[string]json.RawMessage
@@ -45,17 +45,17 @@ func shownEvent(names platform.Names, e envelope.Event) envelope.Event {
 		return e
 	}
 	body["answer"] = raw
-	payload, err := json.Marshal(body)
+	data, err := json.Marshal(body)
 	if err != nil {
 		return e
 	}
-	e.Payload = payload
+	e.Data = data
 	return e
 }
 
 // shownEvents is a run's events as they are handed out (shownEvent).
-func shownEvents(names platform.Names, events []envelope.Event) []envelope.Event {
-	out := make([]envelope.Event, len(events))
+func shownEvents(names platform.Names, events []platform.APIEvent) []platform.APIEvent {
+	out := make([]platform.APIEvent, len(events))
 	for i, e := range events {
 		out[i] = shownEvent(names, e)
 	}

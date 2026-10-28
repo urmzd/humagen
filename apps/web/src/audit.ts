@@ -22,5 +22,5 @@ export function auditCSV(rows: AuditRecord[], columns: string[]): string {
       row.after ? JSON.stringify(row.after) : "",
     ]),
   ];
-  return lines.map((row) => row.map(cell).join(",")).join("\r\n") + "\r\n";
+  return `${lines.map((row) => row.map(cell).join(",")).join("\r\n")}\r\n`;
 }

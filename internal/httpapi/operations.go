@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -24,7 +24,7 @@ type controlInput struct {
 
 func (s *Server) getOperationControl(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	if name := r.PathValue("name"); name != "" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, name, 0); err != nil {
+		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, name, 0); err != nil {
 			s.problem(w, err)
 			return
 		}
@@ -33,7 +33,7 @@ func (s *Server) getOperationControl(w http.ResponseWriter, r *http.Request, who
 }
 func (s *Server) putOperationControl(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	if name := r.PathValue("name"); name != "" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, name, 0); err != nil {
+		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, name, 0); err != nil {
 			s.problem(w, err)
 			return
 		}
@@ -64,7 +64,7 @@ func operationScope(r *http.Request, who auth.Principal) operations.Scope {
 func (s *Server) getActionPolicy(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	scope := operationScope(r, who)
 	if scope.Kind == "agent" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, scope.Name, 0); err != nil {
+		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, scope.Name, 0); err != nil {
 			s.problem(w, err)
 			return
 		}
@@ -78,7 +78,7 @@ func (s *Server) getActionPolicy(w http.ResponseWriter, r *http.Request, who aut
 func (s *Server) putActionPolicy(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	scope := operationScope(r, who)
 	if scope.Kind == "agent" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, scope.Name, 0); err != nil {
+		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, scope.Name, 0); err != nil {
 			s.problem(w, err)
 			return
 		}
@@ -124,7 +124,7 @@ func (s *Server) listAssignments(w http.ResponseWriter, r *http.Request, who aut
 		return
 	}
 	if agent != "" {
-		agent = agentspec.NormalizeName(agent)
+		agent = wire.NormalizeName(agent)
 	}
 	items := s.P.Assignments(who, limit, agent)
 	views := make([]assignmentView, len(items))
@@ -243,11 +243,11 @@ func (s *Server) agentRoster(w http.ResponseWriter, r *http.Request, who auth.Pr
 	controls := map[string]platform.AgentControlView{}
 	seer := s.P.Seer(who)
 	for _, name := range names {
-		if name == "" || len(name) > 63 || agentspec.NormalizeName(name) != name {
+		if name == "" || len(name) > 63 || wire.NormalizeName(name) != name {
 			fail(w, http.StatusBadRequest, "invalid agent name")
 			return
 		}
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, name, 0); err == nil && seer.Agent(name) {
+		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, name, 0); err == nil && seer.Agent(name) {
 			controls[name] = s.P.AgentState(who, name)
 		}
 	}

@@ -12,7 +12,20 @@ import {
   type Reach,
   type Revision,
 } from "./api.ts";
-import { AgentMark, ago, button, card, field, Label, PickMany, Problem, primary, rows, Section, Switch } from "./ui.tsx";
+import {
+  AgentMark,
+  ago,
+  button,
+  card,
+  field,
+  Label,
+  PickMany,
+  Problem,
+  primary,
+  rows,
+  Section,
+  Switch,
+} from "./ui.tsx";
 
 /** The roles a workspace ships with, offered first when choosing approvers. */
 const ROLES = [
@@ -22,7 +35,10 @@ const ROLES = [
 ];
 
 const HOURS = [1, 4, 24, 72, 168];
-const waitWords = (seconds: number) => (seconds % 86400 === 0 ? `${seconds / 86400} ${seconds === 86400 ? "day" : "days"}` : `${seconds / 3600} hours`);
+const waitWords = (seconds: number) =>
+  seconds % 86400 === 0
+    ? `${seconds / 86400} ${seconds === 86400 ? "day" : "days"}`
+    : `${seconds / 3600} hours`;
 
 /** A policy as the form edits it. */
 function inputOf(p: CallPolicy): CallPolicyInput {
@@ -45,17 +61,33 @@ function bodyOf(p: CallPolicyInput): CallPolicyInput {
     approval: p.callers === "none" ? "never" : p.approval,
     ...(p.callers !== "none" && p.approval === "unlisted" ? { trusted: p.trusted ?? [] } : {}),
     ...(p.callers !== "none" && p.approval !== "never"
-      ? { approvers: p.approvers ?? [], self_approval: p.self_approval ?? false, expires_seconds: p.expires_seconds ?? 86400 }
+      ? {
+          approvers: p.approvers ?? [],
+          self_approval: p.self_approval ?? false,
+          expires_seconds: p.expires_seconds ?? 86400,
+        }
       : {}),
   };
 }
 
 /** What a policy means, in a sentence. */
 export function policyWords(p: CallPolicyInput): string {
-  const who = p.callers === "none" ? "No agent may call it." : p.callers === "listed" ? `Only ${(p.allow ?? []).join(", ") || "the agents listed"} may call it.` : "Any agent that lists it may call it.";
-  if (p.callers === "none" || p.approval === "never") return `${who} Calls run without asking anyone.`;
-  const approvers = (p.approvers ?? []).length === 0 ? "a manager or an admin" : (p.approvers ?? []).map((a) => ROLES.find((r) => r.value === a)?.label ?? a).join(", ");
-  const which = p.approval === "always" ? "Every call" : `A call from anyone but ${(p.trusted ?? []).join(", ") || "its trusted callers"}`;
+  const who =
+    p.callers === "none"
+      ? "No agent may call it."
+      : p.callers === "listed"
+        ? `Only ${(p.allow ?? []).join(", ") || "the agents listed"} may call it.`
+        : "Any agent that lists it may call it.";
+  if (p.callers === "none" || p.approval === "never")
+    return `${who} Calls run without asking anyone.`;
+  const approvers =
+    (p.approvers ?? []).length === 0
+      ? "a manager or an admin"
+      : (p.approvers ?? []).map((a) => ROLES.find((r) => r.value === a)?.label ?? a).join(", ");
+  const which =
+    p.approval === "always"
+      ? "Every call"
+      : `A call from anyone but ${(p.trusted ?? []).join(", ") || "its trusted callers"}`;
   return `${who} ${which} waits for ${approvers} to approve it, for up to ${waitWords(p.expires_seconds ?? 86400)}.`;
 }
 
@@ -65,7 +97,15 @@ export function policyWords(p: CallPolicyInput): string {
  * applies to calls from the moment it is saved, not with the agent's next
  * revision.
  */
-export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; agents: Revision[]; canWrite: boolean }) {
+export function CallPolicyEditor({
+  agent,
+  agents,
+  canWrite,
+}: {
+  agent: string;
+  agents: Revision[];
+  canWrite: boolean;
+}) {
   const [saved, setSaved] = useState<CallPolicy | null>(null);
   const [draft, setDraft] = useState<CallPolicyInput | null>(null);
   const [people, setPeople] = useState("");
@@ -82,7 +122,11 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
         setDraft(inputOf(p));
         setPeople((p.approvers ?? []).filter((a) => !ROLES.some((r) => r.value === a)).join("\n"));
       })
-      .catch((e) => live && setProblem(e instanceof ApiError ? e.message : "The call policy could not be read."));
+      .catch(
+        (e) =>
+          live &&
+          setProblem(e instanceof ApiError ? e.message : "The call policy could not be read."),
+      );
     return () => {
       live = false;
     };
@@ -91,15 +135,20 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
   if (!draft || !saved) return <Problem message={problem} />;
   const set = (patch: Partial<CallPolicyInput>) => setDraft((d) => (d ? { ...d, ...patch } : d));
   const roles = (draft.approvers ?? []).filter((a) => ROLES.some((r) => r.value === a));
-  const named = people.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+  const named = people
+    .split(/[\n,]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
   const next = bodyOf({ ...draft, approvers: [...new Set([...roles, ...named])] });
   const dirty = JSON.stringify(next) !== JSON.stringify(bodyOf(inputOf(saved)));
-  const others = agents.filter((a) => a.spec.name !== agent).map((a) => ({
-    value: a.spec.name,
-    label: a.spec.name,
-    hint: a.spec.description || undefined,
-    mark: <AgentMark name={a.spec.name} size={14} />,
-  }));
+  const others = agents
+    .filter((a) => a.spec.name !== agent)
+    .map((a) => ({
+      value: a.spec.name,
+      label: a.spec.name,
+      hint: a.spec.description || undefined,
+      mark: <AgentMark name={a.spec.name} size={14} />,
+    }));
 
   const save = () => {
     setSaving(true);
@@ -110,13 +159,29 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
         setSaved(p);
         setDraft(inputOf(p));
       })
-      .catch((e) => setProblem(e instanceof ApiError ? e.message : "The call policy could not be saved."))
+      .catch((e) =>
+        setProblem(e instanceof ApiError ? e.message : "The call policy could not be saved."),
+      )
       .finally(() => setSaving(false));
   };
 
-  const radio = <T extends string>(name: string, value: T, current: T, label: string, hint: string, onPick: (v: T) => void) => (
+  const radio = <T extends string>(
+    name: string,
+    value: T,
+    current: T,
+    label: string,
+    hint: string,
+    onPick: (v: T) => void,
+  ) => (
     <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-      <input type="radio" name={name} className="mt-1" disabled={!canWrite} checked={current === value} onChange={() => onPick(value)} />
+      <input
+        type="radio"
+        name={name}
+        className="mt-1"
+        disabled={!canWrite}
+        checked={current === value}
+        onChange={() => onPick(value)}
+      />
       <span>
         {label}
         <span className="block text-aui-xs text-aui-muted">{hint}</span>
@@ -132,28 +197,86 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
       <fieldset className={`${card} flex flex-col gap-3`}>
         <legend className="sr-only">Who may call {agent}</legend>
         <p className="text-aui-sm font-medium text-aui-fg">Who may call it</p>
-        {radio<CallCallers>(`callers-${agent}`, "anyone", draft.callers, "Any agent", "Any agent whose own setup lists this one.", (callers) => set({ callers }))}
-        {radio<CallCallers>(`callers-${agent}`, "listed", draft.callers, "Only these agents", "Others do not see it as something they can call.", (callers) => set({ callers }))}
+        {radio<CallCallers>(
+          `callers-${agent}`,
+          "anyone",
+          draft.callers,
+          "Any agent",
+          "Any agent whose own setup lists this one.",
+          (callers) => set({ callers }),
+        )}
+        {radio<CallCallers>(
+          `callers-${agent}`,
+          "listed",
+          draft.callers,
+          "Only these agents",
+          "Others do not see it as something they can call.",
+          (callers) => set({ callers }),
+        )}
         {draft.callers === "listed" && (
           <div className="pl-6">
-            <PickMany label={`Agents that may call ${agent}`} add="Add Agent" disabled={!canWrite} empty="None yet, so nobody can call it." value={draft.allow ?? []} options={others} onChange={(allow) => set({ allow })} />
+            <PickMany
+              label={`Agents that may call ${agent}`}
+              add="Add Agent"
+              disabled={!canWrite}
+              empty="None yet, so nobody can call it."
+              value={draft.allow ?? []}
+              options={others}
+              onChange={(allow) => set({ allow })}
+            />
           </div>
         )}
-        {radio<CallCallers>(`callers-${agent}`, "none", draft.callers, "No agent", "It only answers people and schedules.", (callers) => set({ callers }))}
+        {radio<CallCallers>(
+          `callers-${agent}`,
+          "none",
+          draft.callers,
+          "No agent",
+          "It only answers people and schedules.",
+          (callers) => set({ callers }),
+        )}
       </fieldset>
 
       {draft.callers !== "none" && (
         <fieldset className={`${card} flex flex-col gap-3`}>
           <legend className="sr-only">When a call waits for a person</legend>
           <p className="text-aui-sm font-medium text-aui-fg">When a call waits for a person</p>
-          {radio<CallApproval>(`approval-${agent}`, "never", draft.approval, "Never", "Calls run as soon as they are made.", (approval) => set({ approval }))}
-          {radio<CallApproval>(`approval-${agent}`, "unlisted", draft.approval, "Unless the caller is trusted", "Trusted callers go straight through; every other call waits.", (approval) => set({ approval }))}
+          {radio<CallApproval>(
+            `approval-${agent}`,
+            "never",
+            draft.approval,
+            "Never",
+            "Calls run as soon as they are made.",
+            (approval) => set({ approval }),
+          )}
+          {radio<CallApproval>(
+            `approval-${agent}`,
+            "unlisted",
+            draft.approval,
+            "Unless the caller is trusted",
+            "Trusted callers go straight through; every other call waits.",
+            (approval) => set({ approval }),
+          )}
           {draft.approval === "unlisted" && (
             <div className="pl-6">
-              <PickMany label={`Callers ${agent} trusts`} add="Add Agent" disabled={!canWrite} empty="None yet, so every call waits." value={draft.trusted ?? []} options={others} onChange={(trusted) => set({ trusted })} />
+              <PickMany
+                label={`Callers ${agent} trusts`}
+                add="Add Agent"
+                disabled={!canWrite}
+                empty="None yet, so every call waits."
+                value={draft.trusted ?? []}
+                options={others}
+                onChange={(trusted) => set({ trusted })}
+              />
             </div>
           )}
-          {radio<CallApproval>(`approval-${agent}`, "always", draft.approval, "Always", "Every call waits, whoever makes it.", (approval) => set({ approval }))}
+          {radio<CallApproval>(
+            `approval-${agent}`,
+            "always",
+            draft.approval,
+            "Always",
+            "Every call waits, whoever makes it.",
+            (approval) => set({ approval }),
+          )}
 
           {draft.approval !== "never" && (
             <div className="flex flex-col gap-3 border-aui-border border-t pt-3">
@@ -167,15 +290,30 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
                       aria-pressed={roles.includes(r.value)}
                       disabled={!canWrite}
                       className={`${button} h-7 px-2.5 text-aui-xs aria-pressed:border-aui-accent aria-pressed:bg-aui-accent-soft`}
-                      onClick={() => set({ approvers: roles.includes(r.value) ? roles.filter((x) => x !== r.value) : [...roles, r.value] })}
+                      onClick={() =>
+                        set({
+                          approvers: roles.includes(r.value)
+                            ? roles.filter((x) => x !== r.value)
+                            : [...roles, r.value],
+                        })
+                      }
                     >
                       {r.label}
                     </button>
                   ))}
                 </span>
               </div>
-              <Label text="And these people" hint="Sign-in subjects, one per line. With nobody chosen, managers and admins approve.">
-                <textarea className={`${field} min-h-14 font-aui-mono text-aui-sm`} spellCheck={false} disabled={!canWrite} value={people} onChange={(e) => setPeople(e.target.value)} />
+              <Label
+                text="And these people"
+                hint="Sign-in subjects, one per line. With nobody chosen, managers and admins approve."
+              >
+                <textarea
+                  className={`${field} min-h-14 font-aui-mono text-aui-sm`}
+                  spellCheck={false}
+                  disabled={!canWrite}
+                  value={people}
+                  onChange={(e) => setPeople(e.target.value)}
+                />
               </Label>
               <Switch
                 label="The person who started the conversation may approve"
@@ -208,7 +346,9 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
       <Problem message={problem} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-aui-xs text-aui-muted">
-          {saved.version === 0 ? "Not set yet: any agent that lists it may call it." : `Saved ${saved.updated_at ? ago(saved.updated_at) : ""}${saved.updated_by ? ` by ${saved.updated_by_name || saved.updated_by}` : ""}. Applies to calls from now on.`}
+          {saved.version === 0
+            ? "Not set yet: any agent that lists it may call it."
+            : `Saved ${saved.updated_at ? ago(saved.updated_at) : ""}${saved.updated_by ? ` by ${saved.updated_by_name || saved.updated_by}` : ""}. Applies to calls from now on.`}
         </span>
         {canWrite && (
           <span className="flex gap-2">
@@ -307,7 +447,13 @@ export function ApprovalQueue({
       actions={
         <span className="flex gap-1.5">
           {(["open", "resolved"] as const).map((s) => (
-            <button key={s} type="button" aria-pressed={state === s} className={`${button} h-7 px-2.5 text-aui-xs aria-pressed:border-aui-accent`} onClick={() => setState(s)}>
+            <button
+              key={s}
+              type="button"
+              aria-pressed={state === s}
+              className={`${button} h-7 px-2.5 text-aui-xs aria-pressed:border-aui-accent`}
+              onClick={() => setState(s)}
+            >
               {s === "open" ? "Waiting" : "Answered"}
             </button>
           ))}
@@ -316,7 +462,9 @@ export function ApprovalQueue({
     >
       <Problem message={problem} />
       {items === null ? null : items.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">{state === "open" ? "Nothing is waiting on you here." : "Nothing answered yet."}</p>
+        <p className="text-aui-sm text-aui-muted">
+          {state === "open" ? "Nothing is waiting on you here." : "Nothing answered yet."}
+        </p>
       ) : (
         <ul className={rows} aria-label={`Approvals for ${agent}`}>
           {items.map((m) => {
@@ -335,12 +483,20 @@ export function ApprovalQueue({
                       <span className="font-medium">{callee}</span>
                     </>
                   )}
-                  {m.source.project && <span className="text-aui-xs text-aui-muted">in {m.source.project}</span>}
+                  {m.source.project && (
+                    <span className="text-aui-xs text-aui-muted">in {m.source.project}</span>
+                  )}
                 </div>
-                <p className="whitespace-pre-wrap text-aui-sm text-aui-muted">{q?.prompt ?? m.subject}</p>
+                <p className="whitespace-pre-wrap text-aui-sm text-aui-muted">
+                  {q?.prompt ?? m.subject}
+                </p>
                 <div className="flex flex-wrap items-center gap-2">
                   {m.source.thread && onOpenTask && (
-                    <button type="button" className={button} onClick={() => onOpenTask(m.source.thread as string)}>
+                    <button
+                      type="button"
+                      className={button}
+                      onClick={() => onOpenTask(m.source.thread as string)}
+                    >
                       Open Conversation
                     </button>
                   )}
@@ -355,21 +511,40 @@ export function ApprovalQueue({
                           onChange={(e) => setNotes((n) => ({ ...n, [m.id]: e.target.value }))}
                         />
                       )}
-                      <button type="button" className={button} disabled={busy === m.id} onClick={() => decide(m, "deny")}>
+                      <button
+                        type="button"
+                        className={button}
+                        disabled={busy === m.id}
+                        onClick={() => decide(m, "deny")}
+                      >
                         Deny
                       </button>
-                      <button type="button" className={primary} disabled={busy === m.id} onClick={() => decide(m, "approve")}>
+                      <button
+                        type="button"
+                        className={primary}
+                        disabled={busy === m.id}
+                        onClick={() => decide(m, "approve")}
+                      >
                         Approve
                       </button>
                     </>
                   )}
-                  {q?.expires_at && state === "open" && <span className="text-aui-xs text-aui-muted">Denied {ago(q.expires_at)} if nobody answers</span>}
-                  {state === "resolved" && <span className="text-aui-xs text-aui-muted">{m.state}</span>}
+                  {q?.expires_at && state === "open" && (
+                    <span className="text-aui-xs text-aui-muted">
+                      Denied {ago(q.expires_at)} if nobody answers
+                    </span>
+                  )}
+                  {state === "resolved" && (
+                    <span className="text-aui-xs text-aui-muted">{m.state}</span>
+                  )}
                 </div>
-                {q?.tool?.acts_for_person && <p className="text-aui-xs text-aui-muted">{defaultCopy.actsForPerson}</p>}
+                {q?.tool?.acts_for_person && (
+                  <p className="text-aui-xs text-aui-muted">{defaultCopy.actsForPerson}</p>
+                )}
                 {state === "open" && q && !mayNote(q) && (
                   <p className="text-aui-xs text-aui-muted">
-                    Only {q.steered_for_name || "the person it acts for"} may add a note: this run uses their own credentials. Approve or deny it as asked.
+                    Only {q.steered_for_name || "the person it acts for"} may add a note: this run
+                    uses their own credentials. Approve or deny it as asked.
                   </p>
                 )}
               </li>

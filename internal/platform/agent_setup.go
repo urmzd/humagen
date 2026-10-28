@@ -14,11 +14,10 @@ import (
 	"time"
 
 	anchorrun "github.com/urmzd/anchor/pkg/run"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -38,7 +37,7 @@ type SetupAssignment struct {
 }
 type AgentSetupPlan struct {
 	Skills     []AgentSkillRef                          `json:"skills,omitempty"`
-	Spec       agentspec.AgentSpec                      `json:"spec"`
+	Spec       wire.AgentSpec                           `json:"spec"`
 	Project    string                                   `json:"project"`
 	Manager    string                                   `json:"manager,omitempty"`
 	StopRules  string                                   `json:"stop_rules,omitempty"`
@@ -121,10 +120,10 @@ func (s *agentSetups) lock(tenant, name string) *sync.Mutex {
 
 // CreateAgentBy serializes public creation with wizard reservations. A failed
 // setup never attaches its admission gate to an unrelated same-name agent.
-func (p *Platform) CreateAgentBy(ctx context.Context, who auth.Principal, spec agentspec.AgentSpec) (agentspec.Revision, error) {
+func (p *Platform) CreateAgentBy(ctx context.Context, who auth.Principal, spec wire.AgentSpec) (wire.Revision, error) {
 	spec, err := p.checkSetupSpec(ctx, who, spec)
 	if err != nil {
-		return agentspec.Revision{}, err
+		return wire.Revision{}, err
 	}
 	lock := p.setups.lock(who.Tenant, spec.Name)
 	lock.Lock()
@@ -132,25 +131,25 @@ func (p *Platform) CreateAgentBy(ctx context.Context, who auth.Principal, spec a
 	p.admission.Lock()
 	defer p.admission.Unlock()
 	if record, ok := p.setups.get(who.Tenant, spec.Name); ok && record.Phase != "ready" {
-		return agentspec.Revision{}, operations.ErrConflict
+		return wire.Revision{}, operations.ErrConflict
 	}
 	return p.Agents.Create(ctx, who.Tenant, spec, who.Subject)
 }
-func (p *Platform) checkSetupSpec(ctx context.Context, who auth.Principal, spec agentspec.AgentSpec, old ...*agentspec.Revision) (agentspec.AgentSpec, error) {
-	spec.Name = agentspec.NormalizeName(spec.Name)
+func (p *Platform) checkSetupSpec(ctx context.Context, who auth.Principal, spec wire.AgentSpec, old ...*wire.Revision) (wire.AgentSpec, error) {
+	spec.Name = wire.NormalizeName(spec.Name)
 	if !who.Can(auth.AgentsWrite) {
-		return agentspec.AgentSpec{}, auth.ErrForbidden
+		return wire.AgentSpec{}, auth.ErrForbidden
 	}
 	if IsBuiltin(spec.Name) {
-		return agentspec.AgentSpec{}, auth.ErrForbidden
+		return wire.AgentSpec{}, auth.ErrForbidden
 	}
 	if err := p.CheckAgentName(who.Tenant, spec.Name); err != nil {
-		return agentspec.AgentSpec{}, err
+		return wire.AgentSpec{}, err
 	}
 	if err := p.CheckAgentModel(who.Tenant, spec); err != nil {
-		return agentspec.AgentSpec{}, err
+		return wire.AgentSpec{}, err
 	}
-	var previous *agentspec.Revision
+	var previous *wire.Revision
 	if len(old) > 0 {
 		previous = old[0]
 	}
@@ -166,10 +165,10 @@ func (p *Platform) AgentSetup(who auth.Principal, name string) (AgentSetup, erro
 		return AgentSetup{}, operations.ErrNotFound
 	}
 	seer := p.Seer(who)
-	if _, err := p.Agents.Get(context.Background(), who.Tenant, name, 0); err == nil && !seer.Agent(name) {
+	if _, err := p.Catalog().Get(context.Background(), who.Tenant, name, 0); err == nil && !seer.Agent(name) {
 		return AgentSetup{}, operations.ErrNotFound
 	}
-	shown := seer.Revision(agentspec.Revision{Spec: record.Plan.Spec, Rev: record.Revision, Hash: record.RevisionHash})
+	shown := seer.Revision(wire.Revision{Spec: record.Plan.Spec, Rev: record.Revision, Hash: record.RevisionHash})
 	record.Plan.Spec = shown.Spec
 	record.RevisionHash = shown.Hash
 	if record.Plan.Assignment != nil && record.Plan.Assignment.Source != "" && !p.SourceVisible(who, record.Plan.Assignment.Source) {
@@ -207,8 +206,8 @@ func (p *Platform) failSetup(tenant string, record AgentSetup, cause error) (Age
 
 // Reviewed setup cannot treat the offline notice adapter, directly or through
 // a fallback policy, as evidence that a real configured provider works.
-func (p *Platform) checkSetupRealModels(tenant string, spec agentspec.AgentSpec) error {
-	refs := append([]agentspec.ModelRef{{Provider: spec.Provider, Model: spec.Model}}, spec.Fallbacks...)
+func (p *Platform) checkSetupRealModels(tenant string, spec wire.AgentSpec) error {
+	refs := append([]wire.ModelRef{{Provider: spec.Provider, Model: spec.Model}}, spec.Fallbacks...)
 	if spec.Provider == PolicyProvider {
 		policy, ok := policyIn(p.Settings(tenant).ModelPolicies, spec.Model)
 		if !ok {
@@ -224,12 +223,12 @@ func (p *Platform) checkSetupRealModels(tenant string, spec agentspec.AgentSpec)
 	return nil
 }
 
-func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, plan AgentSetupPlan, old ...*agentspec.Revision) (AgentSetupPlan, error) {
+func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, plan AgentSetupPlan, old ...*wire.Revision) (AgentSetupPlan, error) {
 	spec, err := p.checkSetupSpec(ctx, who, plan.Spec, old...)
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}
-	canonical, err := agentspec.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders())
+	canonical, err := wire.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders())
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}
@@ -304,10 +303,10 @@ func (p *Platform) CreateAgentSetup(ctx context.Context, who auth.Principal, pla
 		return p.resumeAgentSetup(ctx, who, old)
 	}
 	p.admission.Lock()
-	if _, err := p.Agents.Get(ctx, who.Tenant, spec.Name, 0); err == nil {
+	if _, err := p.Catalog().Get(ctx, who.Tenant, spec.Name, 0); err == nil {
 		p.admission.Unlock()
-		return AgentSetup{}, registry.ErrConflict
-	} else if !errors.Is(err, registry.ErrNotFound) {
+		return AgentSetup{}, wire.ErrConflict
+	} else if !errors.Is(err, wire.ErrNotFound) {
 		p.admission.Unlock()
 		return AgentSetup{}, err
 	}
@@ -341,7 +340,7 @@ func (p *Platform) AmendAgentSetup(ctx context.Context, who auth.Principal, name
 		return AgentSetup{}, operations.ErrConflict
 	}
 	p.admission.Lock()
-	plan, err := p.validateSetupPlan(ctx, who, plan, &agentspec.Revision{Spec: record.Plan.Spec})
+	plan, err := p.validateSetupPlan(ctx, who, plan, &wire.Revision{Spec: record.Plan.Spec})
 	if err != nil {
 		p.admission.Unlock()
 		return AgentSetup{}, err
@@ -361,14 +360,14 @@ func (p *Platform) AmendAgentSetup(ctx context.Context, who auth.Principal, name
 		p.admission.Unlock()
 		return AgentSetup{}, operations.ErrConflict
 	}
-	current, getErr := p.Agents.Get(ctx, who.Tenant, name, 0)
+	current, getErr := p.Catalog().Get(ctx, who.Tenant, name, 0)
 	if getErr == nil {
 		if current.CreatedBy != record.Owner || (record.Revision != 0 && (current.Rev != record.Revision || current.Hash != record.RevisionHash)) || (record.Revision == 0 && !reflect.DeepEqual(current.Spec, record.Plan.Spec)) {
 			p.admission.Unlock()
 			return AgentSetup{}, operations.ErrConflict
 		}
 		record.Revision, record.RevisionHash = current.Rev, current.Hash
-	} else if !errors.Is(getErr, registry.ErrNotFound) || record.Revision != 0 {
+	} else if !errors.Is(getErr, wire.ErrNotFound) || record.Revision != 0 {
 		p.admission.Unlock()
 		return AgentSetup{}, operations.ErrConflict
 	}
@@ -409,7 +408,7 @@ func (p *Platform) setupTestSettled(ctx context.Context, tenant string, record A
 func (p *Platform) applySetupAmendment(ctx context.Context, who auth.Principal, record *AgentSetup) error {
 	p.admission.Lock()
 	defer p.admission.Unlock()
-	plan, err := p.validateSetupPlan(ctx, who, record.Plan, &agentspec.Revision{Spec: record.Plan.Spec})
+	plan, err := p.validateSetupPlan(ctx, who, record.Plan, &wire.Revision{Spec: record.Plan.Spec})
 	if err != nil {
 		return err
 	}
@@ -432,10 +431,10 @@ func (p *Platform) applySetupAmendment(ctx context.Context, who auth.Principal, 
 			return err
 		}
 	}
-	current, err := p.Agents.Get(ctx, who.Tenant, record.Name, 0)
-	var revision agentspec.Revision
+	current, err := p.Catalog().Get(ctx, who.Tenant, record.Name, 0)
+	var revision wire.Revision
 	switch {
-	case errors.Is(err, registry.ErrNotFound) && record.Revision == 0:
+	case errors.Is(err, wire.ErrNotFound) && record.Revision == 0:
 		revision, err = p.Agents.Create(ctx, who.Tenant, record.Plan.Spec, who.Subject)
 	case err != nil:
 		return err
@@ -444,7 +443,7 @@ func (p *Platform) applySetupAmendment(ctx context.Context, who auth.Principal, 
 	case current.Rev == record.Revision && current.Hash == record.RevisionHash && current.CreatedBy == record.Owner:
 		revision, err = p.Agents.Revise(ctx, who.Tenant, record.Plan.Spec, record.Revision, who.Subject)
 	case current.Rev == record.Revision+1 && current.CreatedBy == record.Owner && reflect.DeepEqual(current.Spec, record.Plan.Spec):
-		prior, priorErr := p.Agents.Get(ctx, who.Tenant, record.Name, record.Revision)
+		prior, priorErr := p.Catalog().Get(ctx, who.Tenant, record.Name, record.Revision)
 		if priorErr != nil || prior.Hash != record.RevisionHash {
 			return operations.ErrConflict
 		}
@@ -493,11 +492,11 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 			p.admission.Lock()
 			defer p.admission.Unlock()
 
-			existing, getErr := p.Agents.Get(ctx, who.Tenant, name, 0)
+			existing, getErr := p.Catalog().Get(ctx, who.Tenant, name, 0)
 			if getErr == nil && (existing.CreatedBy != who.Subject || !reflect.DeepEqual(existing.Spec, record.Plan.Spec)) {
-				return registry.ErrConflict
+				return wire.ErrConflict
 			}
-			if getErr != nil && !errors.Is(getErr, registry.ErrNotFound) {
+			if getErr != nil && !errors.Is(getErr, wire.ErrNotFound) {
 				return getErr
 			}
 			if home, ok := p.Projects.Tree(who.Tenant).Home(name); ok && home != record.Plan.Project {
@@ -516,7 +515,7 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 			}
 			rev, e := p.Agents.Create(ctx, who.Tenant, record.Plan.Spec, who.Subject)
 			if e != nil {
-				existing, getErr := p.Agents.Get(ctx, who.Tenant, name, 0)
+				existing, getErr := p.Catalog().Get(ctx, who.Tenant, name, 0)
 				if getErr != nil || existing.CreatedBy != who.Subject || !reflect.DeepEqual(existing.Spec, record.Plan.Spec) {
 					return e
 				}
@@ -618,7 +617,7 @@ func (g setupGate) Ready(tenant, name string) bool {
 	if !ok || record.Phase == "ready" || record.Phase == "activating" {
 		return true
 	}
-	rev, err := g.p.Agents.Get(context.Background(), tenant, name, 0)
+	rev, err := g.p.Catalog().Get(context.Background(), tenant, name, 0)
 	if err != nil {
 		return false
 	}
@@ -627,18 +626,18 @@ func (g setupGate) Ready(tenant, name string) bool {
 	if record.Revision == 0 {
 		return rev.CreatedBy != record.Owner || !reflect.DeepEqual(rev.Spec, record.Plan.Spec)
 	}
-	first, err := g.p.Agents.Get(context.Background(), tenant, name, record.Revision)
+	first, err := g.p.Catalog().Get(context.Background(), tenant, name, record.Revision)
 	if err != nil {
 		return false
 	}
 	return first.CreatedBy != record.Owner || first.Hash != record.RevisionHash
 }
-func (g setupGate) AllowTag(tag envelope.Tag) bool {
+func (g setupGate) AllowTag(tag event.Envelope) bool {
 	record, ok := g.p.setups.get(tag.Tenant, tag.Agent)
-	if !ok || record.TestTag == "" || record.TestTag != tag.ID || record.Owner != tag.Actor.User || tag.Actor.Bot || tag.Origin != runs.OriginAPI || record.Phase != "configured" {
+	if !ok || record.TestTag == "" || record.TestTag != tag.ID || record.Owner != wire.ActorOf(tag).User || wire.ActorOf(tag).Bot || wire.Origin(tag) != runs.OriginAPI || record.Phase != "configured" {
 		return false
 	}
-	rev, err := g.p.Agents.Get(context.Background(), tag.Tenant, tag.Agent, 0)
+	rev, err := g.p.Catalog().Get(context.Background(), tag.Tenant, tag.Agent, 0)
 	return err == nil && rev.Rev == record.Revision && rev.Hash == record.RevisionHash && g.p.setupSkillsMatch(tag.Tenant, record)
 }
 func (g setupGate) AllowRequest(req runtime.Request) bool {
@@ -646,7 +645,11 @@ func (g setupGate) AllowRequest(req runtime.Request) bool {
 	if !ok || record.TestTag == "" || req.RunID != runtime.RunID(req.Tenant, record.TestTag) || record.Phase != "configured" {
 		return false
 	}
-	if req.Revision.Rev != record.Revision || req.Revision.Hash != record.RevisionHash || !g.p.setupSkillsMatch(req.Tenant, record) {
+	if wire.RevOf(req.Definition.Version) != record.Revision || !g.p.setupSkillsMatch(req.Tenant, record) {
+		return false
+	}
+	// The pinned version must hold the content the setup reviewed.
+	if pinned, err := g.p.Catalog().Get(context.Background(), req.Tenant, req.Agent(), record.Revision); err != nil || pinned.Hash != record.RevisionHash {
 		return false
 	}
 
@@ -699,7 +702,7 @@ func (p *Platform) TestAgentSetup(ctx context.Context, who auth.Principal, name,
 	if err := p.saveSetup(who.Tenant, &record, "configured"); err != nil {
 		return AgentSetup{}, err
 	}
-	_, err = p.Converse(ctx, who.Tenant, Turn{ID: record.TestTag, Agent: name, Project: record.Plan.Project, Text: text, Actor: envelope.Actor{ID: who.Subject, User: who.Subject, Display: p.NameOf(who.Tenant, who.Subject)}, ForceAsk: true, Sees: p.Seer(who).Agent})
+	_, err = p.Converse(ctx, who.Tenant, Turn{ID: record.TestTag, Agent: name, Project: record.Plan.Project, Text: text, Actor: event.Actor{ID: who.Subject, User: who.Subject, Display: p.NameOf(who.Tenant, who.Subject)}, ForceAsk: true, Sees: p.Seer(who).Agent})
 	if err != nil {
 		return p.failSetup(who.Tenant, record, err)
 	}
@@ -738,7 +741,7 @@ func (p *Platform) ActivateAgentSetup(ctx context.Context, who auth.Principal, n
 	if err := p.checkSetupRealModels(who.Tenant, record.Plan.Spec); err != nil {
 		return AgentSetup{}, err
 	}
-	rev, err := p.Agents.Get(ctx, who.Tenant, name, 0)
+	rev, err := p.Catalog().Get(ctx, who.Tenant, name, 0)
 	if err != nil || rev.Rev != record.Revision || rev.Hash != record.RevisionHash {
 		return AgentSetup{}, operations.ErrConflict
 	}
@@ -778,9 +781,9 @@ func (p *Platform) lockSetupRevision(tenant, name string) (func(), error) {
 	if p.setups == nil {
 		return func() {}, nil
 	}
-	lock := p.setups.lock(tenant, agentspec.NormalizeName(name))
+	lock := p.setups.lock(tenant, wire.NormalizeName(name))
 	lock.Lock()
-	if record, ok := p.setups.get(tenant, agentspec.NormalizeName(name)); ok && record.Phase != "ready" {
+	if record, ok := p.setups.get(tenant, wire.NormalizeName(name)); ok && record.Phase != "ready" {
 		lock.Unlock()
 		return nil, operations.ErrConflict
 	}

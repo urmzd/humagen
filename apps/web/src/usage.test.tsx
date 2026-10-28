@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Run, RunUsage } from "./adapter.ts";
 import { spendNote } from "./Analytics.tsx";
-import { reached, unitOf } from "./mail.ts";
+import type { Run, RunUsage } from "./adapter.ts";
 import type { ScopeUsage } from "./api.ts";
 import { lowerBound, Meters } from "./Billing.tsx";
+import { reached, unitOf } from "./mail.ts";
 import { RunUsageSummary } from "./RunUsage.tsx";
 import { SessionGaugeFor } from "./SessionGauge.tsx";
 import { contextFill, contextWords, costWords, money, tokenWords } from "./usage.ts";
@@ -15,8 +15,18 @@ const html = (el: ReactElement) => renderToStaticMarkup(el);
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 const usage: RunUsage = {
-  own: { model_calls: 2, prompt_tokens: 48_000, completion_tokens: 900, cost: { micros: 157_500, currency: "USD" } },
-  children: { model_calls: 1, prompt_tokens: 500, completion_tokens: 50, cost: { micros: 2_300, currency: "USD" } },
+  own: {
+    model_calls: 2,
+    prompt_tokens: 48_000,
+    completion_tokens: 900,
+    cost: { micros: 157_500, currency: "USD" },
+  },
+  children: {
+    model_calls: 1,
+    prompt_tokens: 500,
+    completion_tokens: 50,
+    cost: { micros: 2_300, currency: "USD" },
+  },
   total: {
     model_calls: 3,
     prompt_tokens: 48_500,
@@ -54,10 +64,28 @@ test("usage words: cost in its own currency, never converted, and calls with no 
   assert.equal(money({ micros: 12_340_000, currency: "USD" }), "$12.34");
   assert.equal(costWords({ cost: { micros: 4_500, currency: "USD" } }), "$0.0045");
   assert.equal(costWords({ unpriced_calls: 2 }), "No price: 2 calls with no price");
-  assert.match(costWords({ cost: { micros: 4_500, currency: "USD" }, unpriced_calls: 1 }), /^At least \$0\.0045: 1 call with no price$/);
-  assert.match(costWords({ cost: { micros: 4_500, currency: "USD" }, other_costs: [{ micros: 1_000_000, currency: "EUR" }] }), /\$0\.0045 and €1\.00/);
+  assert.match(
+    costWords({ cost: { micros: 4_500, currency: "USD" }, unpriced_calls: 1 }),
+    /^At least \$0\.0045: 1 call with no price$/,
+  );
+  assert.match(
+    costWords({
+      cost: { micros: 4_500, currency: "USD" },
+      other_costs: [{ micros: 1_000_000, currency: "EUR" }],
+    }),
+    /\$0\.0045 and €1\.00/,
+  );
   assert.match(money({ micros: 2_500_000, currency: "not a code" }), /^2\.50 not a code$/);
-  assert.match(lowerBound({ used: 0, limit: 1, metered: true, unpriced_calls: 0, other_costs: [{ micros: 1_000_000, currency: "XX1" }] }) ?? "", /1\.00 XX1 was not in US dollars/);
+  assert.match(
+    lowerBound({
+      used: 0,
+      limit: 1,
+      metered: true,
+      unpriced_calls: 0,
+      other_costs: [{ micros: 1_000_000, currency: "XX1" }],
+    }) ?? "",
+    /1\.00 XX1 was not in US dollars/,
+  );
   assert.equal(tokenWords(usage.total), "48,500 in (30,000 cached), 950 out");
   assert.equal(tokenWords(undefined), "None reported");
 });
@@ -79,7 +107,9 @@ test("RunUsageSummary: a run's calls, tokens, cost, the agents it waited on, and
   assert.match(out, /Of which agents it waited on \$0\.0023/);
   assert.match(out, /48,000 of 200,000 tokens, 24%/);
   assert.match(text(html(<RunUsageSummary run={run()} />)), /No model call reported yet/);
-  const leased = html(<RunUsageSummary run={run({ usage, lease: 1_000_000, spent: 400_000, granted: 100_000 })} />);
+  const leased = html(
+    <RunUsageSummary run={run({ usage, lease: 1_000_000, spent: 400_000, granted: 100_000 })} />,
+  );
   assert.match(leased, /data-testid="run-usage-budget"/);
 });
 
@@ -100,12 +130,21 @@ test("spend that cannot be counted in dollars is said to be a lower bound, and t
     action: "block",
     runs: { used: 0, limit: 0 },
     concurrent: { used: 0, limit: 0 },
-    spend: { used: 900_000, limit: 1_000_000, metered: true, unpriced_calls: 2, other_costs: [{ micros: 500_000, currency: "EUR" }] },
+    spend: {
+      used: 900_000,
+      limit: 1_000_000,
+      metered: true,
+      unpriced_calls: 2,
+      other_costs: [{ micros: 500_000, currency: "EUR" }],
+    },
     tokens: { used: 40_000, limit: 100_000 },
     max_lease: 0,
     state: "warn",
   };
-  assert.match(lowerBound(scope.spend) ?? "", /^At least this much: 2 calls had no price, €0\.50 was not in US dollars\. A token limit bounds every call\.$/);
+  assert.match(
+    lowerBound(scope.spend) ?? "",
+    /^At least this much: 2 calls had no price, €0\.50 was not in US dollars\. A token limit bounds every call\.$/,
+  );
   assert.equal(lowerBound({ ...scope.spend, unpriced_calls: 0, other_costs: [] }), null);
   const meters = html(<Meters usage={scope} />);
   assert.match(meters, /data-testid="spend-lower-bound"/);
@@ -114,16 +153,45 @@ test("spend that cannot be counted in dollars is said to be a lower bound, and t
 });
 
 test("Analytics: spend leaves out calls with no price and other currencies, and says so", () => {
-  const group = { name: "all", runs: 3, completed: 3, failed: 0, stopped: 0, active: 0, completed_alone: 0, needed_person: 0, human_help_unknown: 3, avg_ms: 0, handoffs_out: 0, p50_ms: 0, p95_ms: 0 };
-  assert.equal(spendNote({ ...group, usage: { model_calls: 3, tokens: 10, spend: 5, unpriced_calls: 0, other_currency_runs: 0 } }), "Priced in US dollars");
+  const group = {
+    name: "all",
+    runs: 3,
+    completed: 3,
+    failed: 0,
+    stopped: 0,
+    active: 0,
+    completed_alone: 0,
+    needed_person: 0,
+    human_help_unknown: 3,
+    avg_ms: 0,
+    handoffs_out: 0,
+    p50_ms: 0,
+    p95_ms: 0,
+  };
   assert.equal(
-    spendNote({ ...group, usage: { model_calls: 3, tokens: 10, spend: 5, unpriced_calls: 2, other_currency_runs: 1 } }),
+    spendNote({
+      ...group,
+      usage: { model_calls: 3, tokens: 10, spend: 5, unpriced_calls: 0, other_currency_runs: 0 },
+    }),
+    "Priced in US dollars",
+  );
+  assert.equal(
+    spendNote({
+      ...group,
+      usage: { model_calls: 3, tokens: 10, spend: 5, unpriced_calls: 2, other_currency_runs: 1 },
+    }),
     "At least this: 2 calls with no price, 1 run in another currency not counted",
   );
 });
 
 test("a token limit reached in the inbox raises the token limit, in tokens", () => {
-  const data = { scope: { kind: "tenant" }, which: "tokens" as const, period: "day" as const, current: { max_runs: 10, max_tokens: 50_000 }, refused: true };
+  const data = {
+    scope: { kind: "tenant" },
+    which: "tokens" as const,
+    period: "day" as const,
+    current: { max_runs: 10, max_tokens: 50_000 },
+    refused: true,
+  };
   assert.deepEqual(reached(data), { field: "max_tokens", value: 50_000 });
   assert.equal(unitOf("tokens"), "tokens");
 });

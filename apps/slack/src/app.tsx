@@ -1359,7 +1359,7 @@ export class App {
           return { turn: following.turn, stalled: false };
         }
         // Humagen took it and the run is stopping. It is followed on until
-        // lifecycle.stopped, or its record, says how it ended: stopped with
+        // run.stopped.v1, or its record, says how it ended: stopped with
         // what it had said, or completed if it finished first.
         following.push({ type: "stop.updated", stop: "acknowledged" });
         dirty = true;
@@ -1368,7 +1368,7 @@ export class App {
         seen = item.run.updated_at;
         progress = Date.now();
       }
-      if (item.type === "event" && item.event.run_id === run.id) {
+      if (item.type === "event" && item.event.run === run.id) {
         progress = Date.now();
         const before = following.turn;
         dirty = following.apply(item.event) !== before || dirty;

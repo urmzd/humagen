@@ -255,6 +255,41 @@ and GitHub's redirect; the old path's `@latest` fails with
 `module declares its path as: github.com/urmzd/humagen`, which names the new
 one. There is no deprecation release on the old path.
 
+## The event union and fiber's fold
+
+The release that folds fiber into this repository also moves every event onto
+one envelope with a typed body ([API contract](api.md#events)). Upgrade like
+this:
+
+- **Run one replica.** Stop the old process before the new one starts on the
+  same database. The agent move below runs once at start behind a marker, and
+  a second process on the schema is refused (`state.ErrLocked`), as always.
+- **Runs in flight fail terminally.** A run recorded under the old activity
+  names (`fiber.turn`, `fiber.turn.agent`, `fiber.turn.resume`) ends as
+  failed with a reason instead of replaying a turn the new code cannot
+  pin. Let runs finish, or start them again after the upgrade.
+- **Agents are converted.** The first start moves `fiber_agents` and
+  `fiber_agent_revisions` into the agent store (`pkg/agents`): revision N
+  becomes version N.0.0, keeping who wrote it and when. An agent whose name
+  breaks saige's rule is disabled: left out, logged at start, and kept in
+  the move's report (`legacy.AgentConversionOf`). A platform agent that
+  cannot be moved fails the start.
+- **The bus is new.** Events go to new bus tables (`fiber_events`,
+  `fiber_event_runs`); rows of the old bus age out within 24 hours. A run's
+  record and its events in the ledger are read as before.
+- **Webhook bodies are version 2.** fiber's outbound webhook connector,
+  which Humagen does not configure itself, now posts the envelope with
+  inline `data` and `Fiber-Event-Version: 2`. An endpoint's old kind
+  selector (`lifecycle.completed`) is read as its type; one it does not know
+  is a configuration error.
+- **The old SSE topic is translated.** `GET /api/events?topic=` still
+  takes `agent`, `agent:<name>` and `agent:<name>:<run>`, read as that
+  agent's or run's events through `internal/legacy`, and `GET
+  /api/journal?kind=` is read as a type. Both are deprecated; a client
+  regenerated from `api/openapi.yaml` uses `channel`, `type` and `run`.
+- **A program on the `humagen` package** imports fiber from
+  `github.com/urmzd/humagen/fiber/...` ([spec](spec.md#since-fiber-moved-into-this-repository)).
+
 ## Kept names
 
 | Name | Why it stays |
@@ -271,6 +306,13 @@ one. There is no deprecation release on the old path.
 | System `metadata.name` default and `humagen deploy`'s namespace default, `warp` | They name existing compose projects, Helm releases and their `<release>-env` Secrets |
 | Flux namespace, `HelmRelease`, `GitRepository`, `Kustomization` and `warp-env` Secret | The example prunes |
 | A warp chart release's resource names (`nameOverride: warp`) | Its volume and selector |
+| Fiber's Postgres tables `fiber_definitions`, `fiber_definition_retirements`, `fiber_events`, `fiber_event_runs`, `fiber_memberships`, `fiber_runs`, `fiber_run_records`, `fiber_run_queue`, `fiber_threads`, `fiber_thread_entries`, `fiber_knowledge_documents`, `fiber_knowledge_chunks`, `fiber_tool_providers`, `fiber_tool_snapshots`, with their indexes | Fiber now lives in this repository under `fiber/`; its stores keep their rows across the fold |
+| Durable activity names `fiber.turn.v2`, `fiber.turn.agent.v2`, `fiber.turn.resume.v2`, and the v1 names `fiber.turn`, `fiber.turn.agent`, `fiber.turn.resume` | Anchor's ledger stores runs under them. A run under a v1 name fails terminally with a reason instead of replaying |
+| Run record keys `fiber.stop`, `fiber.question.`, `fiber.answer.`, `fiber.child.`, `fiber.usage.a` | A run in flight reads its records back by these names |
+
+`internal/legacy/kept_test.go` pins every name in this table that code
+defines, and fails when a fiber store creates a table not listed here.
+Fiber's own earlier names are in [renaming.md](renaming.md#fiber).
 
 ## Choices the owner can flip
 

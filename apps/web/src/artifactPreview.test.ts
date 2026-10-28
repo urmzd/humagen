@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, test } from "node:test";
-import { zipSync, strToU8 } from "fflate";
 import { DOMParser as XMLParser } from "@xmldom/xmldom";
+import { strToU8, zipSync } from "fflate";
 import { csvPreview, MAX_PREVIEW_BYTES, previewOf, readPreviewBytes } from "./artifactPreview.ts";
 
 const previous = globalThis.DOMParser;
@@ -14,20 +14,48 @@ after(() => {
 test("DOCX previews keep actual table rows in document order and ignore retained-model phantom rows", () => {
   const w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
   const p = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
-  const preview = previewOf(zipSync({
-    "word/document.xml": strToU8(`<w:document xmlns:w="${w}"><w:body>${p("Report")}<w:tbl><w:tr><w:tc>${p("Check")}</w:tc><w:tc>${p("Result")}</w:tc></w:tr><w:tr><w:tc>${p("Document")}</w:tc><w:tc>${p("Completed")}</w:tc></w:tr></w:tbl>${p("After the table")}</w:body></w:document>`),
-    "humagen/revision.json": strToU8('{"rows":[["PHANTOM TABLE"]]}'),
-  }), "report.docx", "application/octet-stream");
+  const preview = previewOf(
+    zipSync({
+      "word/document.xml": strToU8(
+        `<w:document xmlns:w="${w}"><w:body>${p("Report")}<w:tbl><w:tr><w:tc>${p("Check")}</w:tc><w:tc>${p("Result")}</w:tc></w:tr><w:tr><w:tc>${p("Document")}</w:tc><w:tc>${p("Completed")}</w:tc></w:tr></w:tbl>${p("After the table")}</w:body></w:document>`,
+      ),
+      "humagen/revision.json": strToU8('{"rows":[["PHANTOM TABLE"]]}'),
+    }),
+    "report.docx",
+    "application/octet-stream",
+  );
   assert.equal(preview.kind, "document");
   if (preview.kind !== "document") return;
   assert.deepEqual(preview.paragraphs, ["Report", "After the table"]);
-  assert.deepEqual(preview.blocks, [{ kind: "paragraph", text: "Report" }, { kind: "table", rows: [["Check", "Result"], ["Document", "Completed"]] }, { kind: "paragraph", text: "After the table" }]);
+  assert.deepEqual(preview.blocks, [
+    { kind: "paragraph", text: "Report" },
+    {
+      kind: "table",
+      rows: [
+        ["Check", "Result"],
+        ["Document", "Completed"],
+      ],
+    },
+    { kind: "paragraph", text: "After the table" },
+  ]);
   assert.equal(preview.truncated, false);
 });
 
 test("DOCX table previews bound rows and columns and disclose truncation", () => {
-  const rows = Array.from({ length: 170 }, () => `<w:tr>${Array.from({ length: 45 }, () => '<w:tc><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc>').join("")}</w:tr>`).join("");
-  const preview = previewOf(zipSync({ "word/document.xml": strToU8(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl>${rows}</w:tbl></w:body></w:document>`) }), "large.docx", "application/octet-stream");
+  const rows = Array.from(
+    { length: 170 },
+    () =>
+      `<w:tr>${Array.from({ length: 45 }, () => "<w:tc><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc>").join("")}</w:tr>`,
+  ).join("");
+  const preview = previewOf(
+    zipSync({
+      "word/document.xml": strToU8(
+        `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl>${rows}</w:tbl></w:body></w:document>`,
+      ),
+    }),
+    "large.docx",
+    "application/octet-stream",
+  );
   if (preview.kind !== "document") return assert.fail("document preview expected");
   const table = preview.blocks?.find((block) => block.kind === "table");
   assert.ok(table?.kind === "table");

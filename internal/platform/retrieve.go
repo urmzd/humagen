@@ -9,9 +9,10 @@ import (
 
 	ragtypes "github.com/urmzd/saige/rag/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/operations"
 
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -24,7 +25,7 @@ const passagesPerTurn = 6
 // agent's pinned revision names, searched in the run's own tenant. fiber
 // calls it once per run, so a run never reads another tenant's corpus. An
 // agent that names no sources retrieves nothing.
-func (p *Platform) knowledgeFor(tenant string, sources []string) agentrt.Retriever {
+func (p *Platform) knowledgeFor(tenant string, sources []string) native.Retriever {
 	if len(sources) == 0 {
 		return nil
 	}
@@ -39,7 +40,7 @@ func (p *Platform) knowledgeFor(tenant string, sources []string) agentrt.Retriev
 			if r.request.Agent() != "" && r.request.Agent() != grant.Agent {
 				return nil
 			}
-			r.request = runtime.Request{Tenant: tenant, RunID: grant.Run, Attempt: grant.Attempt, Meta: grant.Meta, Revision: agentrt.Revision{Rev: grant.Revision, Hash: grant.Hash, Spec: agentrt.Spec{Name: grant.Agent}}}
+			r.request = runtime.Request{Tenant: tenant, RunID: grant.Run, Attempt: grant.Attempt, Meta: grant.Meta, Definition: native.Revision{Name: grant.Agent, Version: wire.VersionOf(grant.Revision), Digest: grant.Hash, Spec: native.Spec{Name: grant.Agent}}}
 			if grant.Legacy {
 				r.expected[grant.Name] = nil
 			} else {
@@ -96,9 +97,9 @@ type retriever struct {
 func (r retriever) Retrieve(ctx context.Context, query string) (*ragtypes.AssembledContext, error) {
 	if r.runID != "" {
 		request := r.request
-		request.Revision.Spec.Sources = []agentrt.Source{}
+		request.Definition.Spec.Sources = []native.Source{}
 		for _, name := range r.sources {
-			request.Revision.Spec.Sources = append(request.Revision.Spec.Sources, agentrt.Source{Name: name})
+			request.Definition.Spec.Sources = append(request.Definition.Spec.Sources, native.Source{Name: name})
 		}
 		if err := r.p.operationAdmissionRequest(request); err != nil {
 			return nil, err
@@ -115,7 +116,7 @@ func (r retriever) Retrieve(ctx context.Context, query string) (*ragtypes.Assemb
 	names := []string{}
 	for _, name := range r.sources {
 		if grant, ok := r.private[name]; ok {
-			actor, known := envelope.ActorFrom(ctx)
+			actor, known := event.ActorFrom(ctx)
 			snapshot := knowledge.Source{Name: grant.Name, Lifecycle: &knowledge.Lifecycle{SourceConfig: grant.Config}}
 			if !known || personOf(actor) != grant.Person || !r.p.runtimeSourceRecordAllowed(r.tenant, snapshot, grant.Project, grant.Person) {
 				continue

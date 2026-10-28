@@ -99,12 +99,12 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   assert.equal(opened?.recipient_user_id, USER);
   assert.equal(opened?.recipient_team_id, TEAM);
 
-  await emit(w, "lifecycle.accepted", { rev: 1 });
-  await emit(w, "lifecycle.started", { attempt: 1 });
-  await emit(w, "delta.tool.call", { id: "t1", name: "github.search", phase: "requested" });
-  await emit(w, "delta.tool.done", { id: "t1", result: "3 commits" });
-  await emit(w, "delta.text", { text: "Three commits " });
-  await emit(w, "delta.text", { text: "went out." });
+  await emit(w, "run.accepted.v1", { rev: 1 });
+  await emit(w, "run.started.v1", { attempt: 1 });
+  await emit(w, "run.delta.tool.call.v1", { id: "t1", name: "github.search", phase: "requested" });
+  await emit(w, "run.delta.tool.done.v1", { id: "t1", result: "3 commits" });
+  await emit(w, "run.delta.text.v1", { text: "Three commits " });
+  await emit(w, "run.delta.text.v1", { text: "went out." });
   assert.equal(w.slack.streamed, "Three commits went out.");
   const tasks = w.slack
     .of("chat.appendStream")
@@ -122,7 +122,7 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
     "the stream stays open until the run ends",
   );
 
-  await emit(w, "lifecycle.completed", { text: "Three commits went out." });
+  await emit(w, "run.completed.v1", { text: "Three commits went out." });
   await w.app.idle();
 
   // The whole conversation with Slack, in order.
@@ -153,8 +153,8 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
 test("a redelivery of the same Slack event starts no second run, before or after a restart", async () => {
   const w = world();
   await deliver(w, mention("ping", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "pong" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "pong" });
   await w.app.idle();
   const calls = w.slack.calls.length;
 
@@ -174,8 +174,8 @@ test("a redelivery of the same Slack event starts no second run, before or after
 test("a reply in the thread continues the conversation, also after a restart", async () => {
   const w = world();
   await deliver(w, mention("first", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "one" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "one" });
   await w.app.idle();
   const first = w.humagen.last.id;
 
@@ -186,8 +186,8 @@ test("a reply in the thread continues the conversation, also after a restart", a
   assert.equal(second?.idempotencyKey, `slack-${TEAM}-${CHANNEL}-1700000050-000200`);
   assert.equal(w.humagen.last.thread, first, "one Slack thread is one conversation");
   assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, TS);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "two" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "two" });
   await app.idle();
 });
 
@@ -196,15 +196,15 @@ test("a direct message is a conversation per thread", async () => {
   await deliver(w, direct("hello", "1700000100.000100"));
   assert.equal(w.humagen.started[0]?.idempotencyKey, `slack-${TEAM}-${DM}-1700000100-000100`);
   assert.equal(w.slack.of("chat.startStream")[0]?.thread_ts, "1700000100.000100");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "hi" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "hi" });
   await w.app.idle();
 
   // A new top-level message is a new conversation.
   await deliver(w, direct("something else", "1700000200.000100"));
   assert.equal(w.humagen.started[1]?.after, undefined);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
 });
 
@@ -243,8 +243,8 @@ test("stop mid-run stops the run, confirms in the thread, settles the session an
   const w = world();
   await deliver(w, mention("write a long report", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "Part one. " });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Part one. " });
 
   await deliver(w, stopPressed(TS));
   await w.app.idle();
@@ -260,8 +260,8 @@ test("stop mid-run stops the run, confirms in the thread, settles the session an
 
   // The run ended stopped with what it had said. Nothing it publishes later moves the turn.
   const before = w.slack.calls.length;
-  w.humagen.emit(run, "delta.text", { text: "Part two." });
-  w.humagen.emit(run, "lifecycle.completed", { text: "Part one. Part two." });
+  w.humagen.emit(run, "run.delta.text.v1", { text: "Part two." });
+  w.humagen.emit(run, "run.completed.v1", { text: "Part one. Part two." });
   await settle();
   assert.equal(w.slack.calls.length, before);
   assert.equal(w.slack.streamed, "Part one.");
@@ -271,8 +271,8 @@ test("stop mid-run stops the run, confirms in the thread, settles the session an
 test("a stop that loses the race to the answer shows the answer, and is not called stopped", async () => {
   const w = world();
   await deliver(w, mention("quick question", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "The whole answer." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "The whole answer." });
   w.humagen.stopsFinishFirst = true;
   await deliver(w, stopPressed(TS));
   await w.app.idle();
@@ -286,8 +286,8 @@ test("a stop that loses the race to the answer shows the answer, and is not call
 test("a stopped run this process does not follow is confirmed with what it had said", async () => {
   const w = world();
   const run = (await w.humagen.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.humagen.emit(run, "lifecycle.started");
-  w.humagen.emit(run, "delta.text", { text: "Half an answer" });
+  w.humagen.emit(run, "run.started.v1");
+  w.humagen.emit(run, "run.delta.text.v1", { text: "Half an answer" });
   await deliver(w, stopPressed(TS), w.app);
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
@@ -299,7 +299,7 @@ test("stop after a restart still finds the run, through humagen", async () => {
   const w = world();
   // A run an earlier process started and is no longer there to follow.
   const run = (await w.humagen.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.humagen.emit(run, "lifecycle.started");
+  w.humagen.emit(run, "run.started.v1");
 
   // This process follows nothing. The session still names the conversation.
   const app = w.app;
@@ -332,7 +332,7 @@ test("stop after a restart still finds the run, through humagen", async () => {
 test("a stop humagen does not confirm says so, and still renders nothing more", async () => {
   const w = world();
   await deliver(w, mention("question", TS));
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   w.humagen.stopFails = true;
   await deliver(w, stopPressed(TS));
   await w.app.idle();
@@ -347,7 +347,7 @@ test("a run stopped from the console ends in Slack, though it publishes no final
   const w = world();
   await deliver(w, mention("question", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   w.humagen.set(run, { status: "stopped", cause: "Stopped by dana" });
   await w.app.idle();
   assert.match(textIn(blocksOf(w.slack.of("chat.stopStream")[0])), new RegExp(defaultCopy.stopped));
@@ -357,9 +357,9 @@ test("a run stopped from the console ends in Slack, though it publishes no final
 test("a stopped event on the stream ends the turn, once the platform publishes one", async () => {
   const w = world();
   await deliver(w, mention("question", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "Half an answer." });
-  await emit(w, "lifecycle.stopped", { cause: "Stopped by dana" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Half an answer." });
+  await emit(w, "run.stopped.v1", { cause: "Stopped by dana" });
   await w.app.idle();
   const final = textIn(blocksOf(w.slack.of("chat.stopStream")[0]));
   assert.match(final, new RegExp(defaultCopy.stopped));
@@ -371,11 +371,11 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   const w = world();
   await deliver(w, mention("deploy it", TS));
   const failedRun = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   // An attempt the engine will retry is not the end of the turn.
-  await emit(w, "lifecycle.failed", { error: "timeout", terminal: false });
+  await emit(w, "run.failed.v1", { error: "timeout", terminal: false });
   assert.ok(!w.slack.methods.includes("chat.stopStream"));
-  await emit(w, "lifecycle.failed", {
+  await emit(w, "run.failed.v1", {
     error: "agent: step 2\nprovider: 529 overloaded",
     terminal: true,
   });
@@ -394,8 +394,8 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   assert.equal(retry?.agent, "lead");
   assert.equal(retry?.after, failedRun, "the retry stays in the thread's conversation");
   assert.equal(w.humagen.last.thread, failedRun);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Deployed." });
   await w.app.idle();
 
   // A second click joins the first retry.
@@ -408,11 +408,11 @@ test("a run whose retries ran out is ended by its record, as the ledger decides"
   const w = world();
   await deliver(w, mention("deploy it", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   // Each attempt reports a failure, and none says it was the last.
-  await emit(w, "lifecycle.failed", { error: "connection refused", attempt: 1 });
-  await emit(w, "lifecycle.resumed", { attempt: 2 });
-  await emit(w, "lifecycle.failed", { error: "connection refused", attempt: 2 });
+  await emit(w, "run.failed.v1", { error: "connection refused", attempt: 1 });
+  await emit(w, "run.resumed.v1", { attempt: 2 });
+  await emit(w, "run.failed.v1", { error: "connection refused", attempt: 2 });
   assert.ok(!w.slack.methods.includes("chat.stopStream"));
   w.humagen.set(run, {
     status: "failed",
@@ -429,8 +429,8 @@ test("a run whose retries ran out is ended by its record, as the ledger decides"
 async function failedTurn(w: World) {
   await deliver(w, mention("deploy it", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", { error: "provider: 529 overloaded", terminal: true });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream").at(-1);
   return { run, blocks: blocksOf(final), ts: String(final?.ts) };
@@ -457,8 +457,8 @@ test("a turn that acted for nobody is asked again, for nobody, by the person who
   assert.equal(w.humagen.started[1]?.act_as, undefined);
   const retried = w.humagen.last.id;
   assert.equal(w.humagen.last.prev ?? w.humagen.last.thread, run);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Deployed." });
   await w.app.idle();
 
   // So the person who asked can settle what the retried run raises, and the clicker who is not an operator cannot.
@@ -502,8 +502,8 @@ test("when the app's own credential is a person, as under dev sign-in, a turn it
   assert.equal(w.humagen.started.length, 2);
   assert.equal(w.humagen.started[1]?.act_as, undefined);
   assert.equal(w.humagen.last.actor?.user, SUBJECT);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Deployed." });
   await w.app.idle();
 
   // After a restart an operator may too, and anyone else is told no.
@@ -518,8 +518,8 @@ test("when the app's own credential is a person, as under dev sign-in, a turn it
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
   assert.equal(w.humagen.started.length, 3);
   assert.equal(w.humagen.started[2]?.act_as, undefined);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await app.idle();
 });
 
@@ -536,8 +536,8 @@ test("after a restart, who asked is not known, so only an operator may ask again
   );
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
   assert.equal(w.humagen.started.length, 2);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await app.idle();
 });
 
@@ -580,8 +580,8 @@ test("a turn that acted for a person is asked again only by them, as themselves,
   assert.equal(w.humagen.started.length, 2);
   assert.deepEqual(w.humagen.started[1]?.act_as, { client: CLIENT, user: USER });
   assert.equal(w.humagen.last.actor?.user, "ana");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Deployed." });
   await w.app.idle();
 
   // After a restart nobody here remembers who asked, and nothing changes:
@@ -602,8 +602,8 @@ test("a turn that acted for nobody is asked again for nobody, and each person's 
   await deliver(w, mention("deploy it", TS, { user: "U05UNMAPPED" }));
   const run = w.humagen.last.id;
   assert.equal(w.humagen.asked[0]?.act_as, undefined);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", { error: "provider: 529 overloaded", terminal: true });
   await w.app.idle();
 
   // After a restart, so who asked is not known: each operator's press is a
@@ -618,8 +618,8 @@ test("a turn that acted for nobody is asked again for nobody, and each person's 
   );
   assert.equal(w.humagen.last.actor?.bot, true);
   const first = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await app.idle();
   await deliver(w, pressed("resume", run, OPERATOR), app);
   assert.equal(
@@ -629,8 +629,8 @@ test("a turn that acted for nobody is asked again for nobody, and each person's 
   );
   assert.notEqual(w.humagen.last.id, first);
   assert.equal(w.humagen.started[2]?.act_as, undefined);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await app.idle();
 });
 
@@ -739,8 +739,8 @@ for (const where of ["home", "thread"] as const) {
     assert.deepEqual((w.humagen.resolved as { body: unknown }[]).at(-1)?.body, {
       action: "acknowledge",
     });
-    await emit(w, "lifecycle.accepted");
-    await emit(w, "lifecycle.completed", { text: "ok" });
+    await emit(w, "run.accepted.v1");
+    await emit(w, "run.completed.v1", { text: "ok" });
     await w.app.idle();
   });
 }
@@ -777,8 +777,8 @@ test("Retry on an inbox card of a person's failed turn is theirs, after a restar
   assert.deepEqual((w.humagen.resolved as { body: unknown }[]).at(-1)?.body, {
     action: "acknowledge",
   });
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await app.idle();
 });
 
@@ -809,13 +809,13 @@ test("a forged Retry on an inbox part that is not a failure is refused, and noth
 test("a Slack write that fails mid-turn still ends the turn: whole, and off processing", async () => {
   const w = world();
   await deliver(w, mention("long answer", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "First part. " });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "First part. " });
   // Slack starts refusing appends, as it does after its retries for a rate limit run out.
   w.slack.failing["chat.appendStream"] = "ratelimited";
-  await emit(w, "delta.text", { text: "Second part. " });
-  await emit(w, "delta.text", { text: "Third part." });
-  await emit(w, "lifecycle.completed", { text: "First part. Second part. Third part." });
+  await emit(w, "run.delta.text.v1", { text: "Second part. " });
+  await emit(w, "run.delta.text.v1", { text: "Third part." });
+  await emit(w, "run.completed.v1", { text: "First part. Second part. Third part." });
   await w.app.idle();
   const m = w.slack.methods;
   assert.equal(
@@ -837,12 +837,12 @@ test("a Slack write that fails mid-turn still ends the turn: whole, and off proc
 test("when the streamed message cannot take the turn at all, the turn is posted as a new one", async () => {
   const w = world();
   await deliver(w, mention("long answer", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "First part. " });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "First part. " });
   w.slack.failing["chat.appendStream"] = "ratelimited";
   w.slack.failing["chat.stopStream"] = (args) => (args.blocks ? "invalid_blocks" : undefined);
-  await emit(w, "delta.text", { text: "Second part." });
-  await emit(w, "lifecycle.completed", { text: "First part. Second part." });
+  await emit(w, "run.delta.text.v1", { text: "Second part." });
+  await emit(w, "run.completed.v1", { text: "First part. Second part." });
   await w.app.idle();
   const whole = w.slack.of("chat.postMessage");
   assert.equal(whole.length, 1);
@@ -855,10 +855,10 @@ test("when editing in place fails, the turn is still posted and the session sett
   w.slack.failing["chat.startStream"] = "unknown_method";
   w.slack.failing["chat.update"] = "ratelimited";
   await deliver(w, mention("hello", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "Hello " });
-  await emit(w, "delta.text", { text: "there." });
-  await emit(w, "lifecycle.completed", { text: "Hello there." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Hello " });
+  await emit(w, "run.delta.text.v1", { text: "there." });
+  await emit(w, "run.completed.v1", { text: "Hello there." });
   await w.app.idle();
   const posts = w.slack.of("chat.postMessage");
   assert.match(textIn(blocksOf(posts.at(-1))), /Hello there\./);
@@ -875,8 +875,8 @@ test("a long, silent tool call is not a failure: the stream closes and the answe
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("rebuild the index", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.tool.call", { id: "t1", name: "index.rebuild", phase: "requested" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.tool.call.v1", { id: "t1", name: "index.rebuild", phase: "requested" });
   await pause(120);
   // The stream is closed as it stands, still working: no failure, still processing.
   const closed = w.slack.of("chat.stopStream")[0];
@@ -900,8 +900,8 @@ test("a parked run is only waiting, and its end is posted when it comes", async 
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("ask the helper", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.parked", { reason: "waiting on helper" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.parked.v1", { reason: "waiting on helper" });
   await pause(120);
   assert.equal(w.slack.of("chat.stopStream").length, 1);
   assert.deepEqual(w.slack.statuses, ["processing"]);
@@ -915,15 +915,15 @@ test("a quiet run does not hold the thread, and the next message follows it as h
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   const first = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   await pause(120);
 
   await deliver(w, mention("meanwhile, a quick one", "1700000070.000100", { thread_ts: TS }));
   assert.equal(w.humagen.started.length, 2, "the queue was released");
   // Humagen takes a turn after one that is still running; its transcript says so.
   assert.equal(w.humagen.started[1]?.after, first);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Quick answer." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Quick answer." });
 
   w.humagen.set(first, { status: "completed", answer: "Long job done." });
   await w.app.idle();
@@ -934,7 +934,7 @@ test("stop on a quiet run confirms it once, and its end is not posted again", as
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   await pause(120);
   await deliver(w, stopPressed(TS));
   await w.app.idle();
@@ -950,8 +950,8 @@ test("a quiet run whose stop loses the race posts its answer, once", async () =>
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "Long job done." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Long job done." });
   await pause(120);
   w.humagen.stopsFinishFirst = true;
   await deliver(w, stopPressed(TS));
@@ -969,8 +969,8 @@ test("a quiet run whose stop loses the race posts its answer, once", async () =>
 test("a stop slower than the wait is confirmed when it lands, and the session waits for it", async () => {
   const w = world({ stopWaitMs: 100 });
   const run = (await w.humagen.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.humagen.emit(run, "lifecycle.started");
-  w.humagen.emit(run, "delta.text", { text: "Half an answer" });
+  w.humagen.emit(run, "run.started.v1");
+  w.humagen.emit(run, "run.delta.text.v1", { text: "Half an answer" });
   w.humagen.stopDelayMs = 400;
   await deliver(w, stopPressed(TS), w.app);
   await pause(200);
@@ -989,15 +989,15 @@ test("a slow follow and a late lifecycle.stopped post a quiet run's stopped end 
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "Partway there" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Partway there" });
   await pause(120);
   await deliver(w, stopPressed(TS));
   await w.app.idle();
   await pause(150);
   // A second press, and the event again: nothing more is posted.
   await deliver(w, stopPressed(TS));
-  w.humagen.emit(run, "lifecycle.stopped", { text: "Partway there", reason: "again" });
+  w.humagen.emit(run, "run.stopped.v1", { text: "Partway there", reason: "again" });
   await w.app.idle();
   await pause(150);
   assert.equal((await w.humagen.getRun(run))?.status, "stopped");
@@ -1011,7 +1011,7 @@ test("a slow follow and a late lifecycle.stopped post a quiet run's stopped end 
 test("on shutdown a quiet run stops being followed", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   await pause(120);
   w.app.close();
   await w.app.idle();
@@ -1024,8 +1024,8 @@ test("an inbox decision humagen refuses is explained in humagen's words, not the
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("remember this", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Noted." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Noted." });
   await w.app.idle();
   w.humagen.raise(memoryMail(run));
   await settle();
@@ -1048,8 +1048,8 @@ test("an inbox decision humagen refuses is explained in humagen's words, not the
 test("an answer that never streamed arrives whole when the run completes", async () => {
   const w = world();
   await deliver(w, mention("quick", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Done." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Done." });
   await w.app.idle();
   assert.equal(w.slack.streamed, "Done.");
 });
@@ -1058,10 +1058,10 @@ test("where native streaming is refused, the turn is posted once and edited", as
   const w = world();
   w.slack.failing["chat.startStream"] = "unknown_method";
   await deliver(w, mention("hello", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.text", { text: "Hello " });
-  await emit(w, "delta.text", { text: "there." });
-  await emit(w, "lifecycle.completed", { text: "Hello there." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Hello " });
+  await emit(w, "run.delta.text.v1", { text: "there." });
+  await emit(w, "run.completed.v1", { text: "Hello there." });
   await w.app.idle();
   const m = w.slack.methods;
   assert.equal(m.filter((x) => x === "chat.startStream").length, 1, "streaming is tried once");
@@ -1077,8 +1077,8 @@ test("where native streaming is refused, the turn is posted once and edited", as
 
   // The refusal is remembered: the next turn does not try to stream.
   await deliver(w, mention("again", "1700000300.000100"));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Yes." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Yes." });
   await w.app.idle();
   assert.equal(w.slack.methods.filter((x) => x === "chat.startStream").length, 1);
 });
@@ -1088,16 +1088,16 @@ test("an agent named in the message answers, when it exists and may be reached",
   await deliver(w, mention("@helper summarize this", TS));
   assert.equal(w.humagen.started[0]?.agent, "helper");
   assert.equal(w.humagen.started[0]?.text, "summarize this");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
 
   // A name that is not an agent is only a word.
   await deliver(w, mention("@nobody summarize this", "1700000400.000100"));
   assert.equal(w.humagen.started[1]?.agent, "lead");
   assert.equal(w.humagen.started[1]?.text, "@nobody summarize this");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
 });
 
@@ -1117,8 +1117,8 @@ test("as a client, the app routes only to its default agent and its list", async
     "helper",
     "a name outside the list is not read as an agent",
   );
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
 });
 
@@ -1159,8 +1159,8 @@ test("a message that names no agent leaves the choice to the platform's default"
   const w = world({ defaultAgent: undefined });
   await deliver(w, mention("what changed?", TS));
   assert.equal(w.humagen.asked[0]?.agent, "", "the app picks nobody itself");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
 });
 
@@ -1228,24 +1228,24 @@ test("a message sent while a turn is running waits its turn", async () => {
   const w = world();
   await deliver(w, mention("first", TS));
   const first = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   await deliver(w, mention("second", "1700000060.000100", { thread_ts: TS }));
   assert.equal(w.humagen.started.length, 1, "one turn at a time per thread");
   assert.equal(w.slack.of("reactions.add").at(-1)?.timestamp, "1700000060.000100");
 
-  await emit(w, "lifecycle.completed", { text: "one" }, first);
+  await emit(w, "run.completed.v1", { text: "one" }, first);
   await settle();
   assert.equal(w.humagen.started.length, 2);
   assert.equal(w.humagen.started[1]?.after, first);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "two" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "two" });
   await w.app.idle();
 });
 
 test("stop also drops what was waiting behind the stopped turn", async () => {
   const w = world();
   await deliver(w, mention("first", TS));
-  await emit(w, "lifecycle.accepted");
+  await emit(w, "run.accepted.v1");
   await deliver(w, mention("second", "1700000060.000100", { thread_ts: TS }));
   await deliver(w, stopPressed(TS));
   await w.app.idle();
@@ -1266,8 +1266,8 @@ test("/agent asks in a new thread, and /agent help lists who can be asked", asyn
   const rootTs = "1800000001.000100";
   assert.equal(w.humagen.started[0]?.idempotencyKey, `slack-${TEAM}-${CHANNEL}-1800000001-000100`);
   assert.equal(w.slack.of("chat.startStream")[0]?.thread_ts, rootTs);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Dana." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Dana." });
   await w.app.idle();
 
   await deliver(w, command("help"));
@@ -1305,8 +1305,8 @@ test("the shortcuts: a form for asking from anywhere, and a message as the quest
   assert.equal(w.slack.of("chat.postMessage")[0]?.channel, USER);
   assert.equal(w.humagen.started[0]?.text, "summarize my week");
   assert.match(String(w.humagen.started[0]?.idempotencyKey), new RegExp(`^slack-${TEAM}-${DM}-`));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Busy." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Busy." });
   await w.app.idle();
 
   await deliver(
@@ -1320,8 +1320,8 @@ test("the shortcuts: a form for asking from anywhere, and a message as the quest
   );
   assert.equal(w.humagen.started[1]?.text, "is the deploy safe to ship?");
   assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, "1700000500.000100");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Yes." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Yes." });
   await w.app.idle();
 });
 
@@ -1331,8 +1331,8 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("remember how we deploy", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Noted." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Noted." });
   await w.app.idle();
 
   w.humagen.raise(memoryMail(run));
@@ -1391,8 +1391,8 @@ test("an inbox item about a run in a humagen thread lands in the run's Slack thr
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("check the deploy", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "On it." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "On it." });
   await w.app.idle();
   const before = w.slack.of("chat.postMessage").length;
 
@@ -1412,8 +1412,8 @@ test("the Home tab shows a person what waits on them, and an operator the whole 
   const w = world({ operators: [OTHER_USER] });
   await deliver(w, mention("deploy it", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", { error: "provider: 529 overloaded", terminal: true });
   await w.app.idle();
   w.humagen.mailbox.set("m-failure", failureMail(run));
   w.humagen.mailbox.set("m-other", {
@@ -1463,8 +1463,8 @@ test("the Home tab shows a person what waits on them, and an operator the whole 
 test("a rating opens a comment modal and is saved even when skipped", async () => {
   const w = mapped();
   await deliver(w, mention("quick", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Done." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Done." });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream")[0];
   const before = w.slack.calls.length;
@@ -1505,8 +1505,8 @@ test("a rating opens a comment modal and is saved even when skipped", async () =
 test("like also opens the comment modal and saves the positive rating", async () => {
   const w = mapped();
   await deliver(w, mention("quick", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Done." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Done." });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream")[0];
   await deliver(
@@ -1524,8 +1524,8 @@ test("a file-only DM is ingested through its verified surface message", async ()
   assert.equal(w.humagen.posts.length, 1);
   assert.equal(w.humagen.posts[0]?.surface.files, true);
   assert.match(w.humagen.posts[0]?.text ?? "", /attached files/);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Read the file." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Read the file." });
   await w.app.idle();
 });
 
@@ -1540,13 +1540,13 @@ test("configured skills are registered, listed and invoked; unknown skills start
   assert.equal(w.humagen.started.length, 0);
   await deliver(w, mention("hello", TS));
   assert.equal(w.slack.of("agents.conversations.setCommands").length, 1);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Done." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Done." });
   await w.app.idle();
   await deliver(w, command("summarize this topic", { command: "/skill" }));
   assert.match(w.humagen.last.text, /summarize this topic/);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Summary." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Summary." });
   await w.app.idle();
 });
 
@@ -1582,8 +1582,8 @@ test("account controls load privately and submit as the mapped person", async ()
 test("a finished answer publishes as a canvas only in its own channel", async () => {
   const w = mapped();
   await deliver(w, mention("Explain", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "The answer." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The answer." });
   await w.app.idle();
   await deliver(w, command(`canvas ${w.humagen.last.id}`, { channel_id: "C0OTHER" }));
   assert.equal(w.slack.of("canvases.create").length, 0);
@@ -1645,8 +1645,8 @@ test("asking from the shortcut form cannot make the app notify a whole channel",
   assert.ok(root, "the question was posted");
   assert.ok(!String(root?.text).includes("<!channel>"), String(root?.text));
   // End the run, or the app keeps following it and the test never finishes.
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Nothing yet." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Nothing yet." });
   await w.app.idle();
 });
 
@@ -1674,10 +1674,10 @@ function mapped(
 async function parkOn(w: World, kind: keyof typeof QUESTIONS) {
   await deliver(w, mention("deploy the web service", TS));
   const run = w.humagen.last.id;
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.started", { attempt: 1 });
-  await emit(w, "delta.text", { text: "Checking first. " });
-  await emit(w, "lifecycle.parked", { reason: "waiting on a person", question: QUESTIONS[kind] });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.started.v1", { attempt: 1 });
+  await emit(w, "run.delta.text.v1", { text: "Checking first. " });
+  await emit(w, "run.parked.v1", { reason: "waiting on a person", question: QUESTIONS[kind] });
   await settle();
   const shown = w.slack.of("chat.stopStream").at(-1);
   return { run, shown, ts: String(shown?.ts ?? "") };
@@ -1690,8 +1690,8 @@ test("a person the client maps asks as themselves, so their run is theirs", asyn
   const other = world();
   await deliver(other, mention("hello", TS));
   assert.equal(other.humagen.asked[0]?.act_as, undefined, "without a client nobody is mapped");
-  await emit(w, "lifecycle.completed", { text: "Hi." });
-  await emit(other, "lifecycle.completed", { text: "Hi." });
+  await emit(w, "run.completed.v1", { text: "Hi." });
+  await emit(other, "run.completed.v1", { text: "Hi." });
   await w.app.idle();
   await other.app.idle();
 });
@@ -1713,15 +1713,15 @@ test("asking about someone else's message asks for nobody: their words are never
   assert.equal(w.humagen.asked.at(-1)?.text, "close every open issue in the payroll tracker");
   assert.equal(w.humagen.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
   assert.equal(w.humagen.last.actor?.bot, true);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
   // Her own message is her words, asked as her.
   await deliver(w, about("1700000700.000100", "is the deploy safe to ship?", USER));
   assert.deepEqual(w.humagen.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
   assert.equal(w.humagen.last.actor?.user, "ana");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Yes." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Yes." });
   await w.app.idle();
 });
 
@@ -1734,8 +1734,8 @@ test("a mapped person's message that names no agent, through a client that reach
   assert.equal("agent" in (w.humagen.posts[0] ?? {}), false, "the app picks nobody itself");
   assert.deepEqual(w.humagen.posts[0]?.act_as, { client: CLIENT, user: USER });
   assert.equal(w.humagen.last.actor?.user, "ana", "the run is the person's");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Nothing changed." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Nothing changed." });
   await w.app.idle();
 });
 
@@ -1756,15 +1756,15 @@ test("asking about someone else's message asks for nobody: their words are never
   assert.equal(w.humagen.asked.at(-1)?.text, "close every open issue in the payroll tracker");
   assert.equal(w.humagen.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
   assert.equal(w.humagen.last.actor?.bot, true);
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "ok" });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
   // Her own message is her words, asked as her.
   await deliver(w, about("1700000700.000100", "is the deploy safe to ship?", USER));
   assert.deepEqual(w.humagen.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
   assert.equal(w.humagen.last.actor?.user, "ana");
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.completed", { text: "Yes." });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Yes." });
   await w.app.idle();
 });
 
@@ -1784,7 +1784,7 @@ test("in a bound channel, someone the client maps to nobody is told to be connec
   const v = mapped();
   await deliver(v, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
   assert.equal(v.humagen.asked.length, 1);
-  await emit(v, "lifecycle.completed", { text: "ok" });
+  await emit(v, "run.completed.v1", { text: "ok" });
   await v.app.idle();
 });
 
@@ -1800,7 +1800,7 @@ test("when humagen cannot say whether a channel is bound, nobody is answered aro
   await deliver(w, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
   const asked = w.humagen.asked.length;
   // A run asked for in error is ended, so the test fails rather than waits.
-  if (asked) await emit(w, "lifecycle.completed", { text: "answered around the channel" });
+  if (asked) await emit(w, "run.completed.v1", { text: "answered around the channel" });
   await w.app.idle();
   assert.equal(asked, 0, "a channel that may be bound is not answered as the app");
   assert.equal(w.humagen.runs.size, 0);
@@ -1868,8 +1868,8 @@ test("an approval waits in the run's thread with live buttons, and a mapped pers
     "no button is left to press",
   );
 
-  await emit(w, "delta.text", { text: "Deployed." });
-  await emit(w, "lifecycle.completed", { text: "Checking first. Deployed." });
+  await emit(w, "run.delta.text.v1", { text: "Deployed." });
+  await emit(w, "run.completed.v1", { text: "Checking first. Deployed." });
   await w.app.idle();
   assert.equal(w.slack.statuses.at(-1), "active");
   collect("question in thread", w.slack);
@@ -1889,7 +1889,7 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
     textIn(blocksOf(w.slack.of("chat.update").find((u) => u.ts === ts))),
     /olu chose eu-west/,
   );
-  await emit(w, "lifecycle.completed", { text: "Done." });
+  await emit(w, "run.completed.v1", { text: "Done." });
   await w.app.idle();
 
   const r = mapped();
@@ -1947,10 +1947,10 @@ test("an answer humagen refuses is shown in humagen's words, and the card keeps 
 test("an approval of a call that acts as the person says so on its Slack card, and offers no edit", async () => {
   const w = mapped();
   await deliver(w, mention("file the flaky test", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "lifecycle.started", { attempt: 1 });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.started.v1", { attempt: 1 });
   const tool = { ...QUESTIONS.approval.tool, acts_for_person: true };
-  await emit(w, "lifecycle.parked", {
+  await emit(w, "run.parked.v1", {
     reason: "waiting on a person",
     question: { ...QUESTIONS.approval, tool },
   });
@@ -2008,16 +2008,16 @@ test("a bridge waits for the final outcome and strips Activity and private sourc
     { slack_channel: CHANNEL, project: "Field", channel: "general", direction: "two_way" },
   ]);
   await deliver(w, mention("@lead inspect", TS));
-  await emit(w, "lifecycle.accepted");
-  await emit(w, "delta.thinking", { text: "Private reasoning" });
-  await emit(w, "delta.tool.call", {
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.thinking.v1", { text: "Private reasoning" });
+  await emit(w, "run.delta.tool.call.v1", {
     id: "call-bridge",
     name: "source_search",
     input: { name: "private-folder" },
   });
   assert.equal(w.slack.of("chat.startStream").length, 0);
   assert.equal(w.slack.of("chat.postMessage").length, 0);
-  await emit(w, "lifecycle.completed", { text: "The reviewed result." });
+  await emit(w, "run.completed.v1", { text: "The reviewed result." });
   await w.app.idle();
   const rendered = JSON.stringify(w.slack.calls);
   assert.match(rendered, /The reviewed result/);
@@ -2030,7 +2030,7 @@ test("a server refusal to deliver private context prevents every native bridge o
   ]);
   w.humagen.deliveryAllowed = async () => false;
   await deliver(w, mention("@lead inspect private input", TS));
-  await emit(w, "lifecycle.completed", { text: "Private result must stay in Humagen" });
+  await emit(w, "run.completed.v1", { text: "Private result must stay in Humagen" });
   await w.app.idle();
   assert.equal(w.slack.of("chat.postMessage").length, 0);
   assert.equal(w.slack.of("chat.startStream").length, 0);

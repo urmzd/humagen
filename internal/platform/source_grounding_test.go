@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -36,7 +37,7 @@ func sourceGroundingPlatform(t *testing.T) *Platform {
 	return p
 }
 func sourceRequest() runtime.Request {
-	return runtime.Request{Tenant: "tenant", RunID: "run1", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "worker", Sources: []agentrt.Source{{Name: "private", URI: "knowledge://private"}}}}}
+	return runtime.Request{Tenant: "tenant", RunID: "run1", Definition: native.Revision{Spec: native.Spec{Name: "worker", Sources: []native.Source{{Name: "private", URI: "knowledge://private"}}}}}
 }
 
 func TestPrivateSourceGroundingBindsActorAndConsumesOpaqueGrant(t *testing.T) {
@@ -47,8 +48,8 @@ func TestPrivateSourceGroundingBindsActorAndConsumesOpaqueGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token := req.Revision.Spec.Sources[0].Name
-	if token == "private" || original.Revision.Spec.Sources[0].Name != "private" {
+	token := req.Definition.Spec.Sources[0].Name
+	if token == "private" || original.Definition.Spec.Sources[0].Name != "private" {
 		t.Fatal("stored source identity changed")
 	}
 	if names := p.sourceNamesForTools(req); len(names) != 1 || names[0] != "private" {
@@ -64,11 +65,11 @@ func TestPrivateSourceGroundingBindsActorAndConsumesOpaqueGrant(t *testing.T) {
 	if p.knowledgeFor("tenant", []string{token}) != nil {
 		t.Fatal("opaque grant reused")
 	}
-	wrong := envelope.WithActor(t.Context(), envelope.Actor{ID: "peer", User: "peer"})
+	wrong := event.WithActor(t.Context(), event.Actor{ID: "peer", User: "peer"})
 	if got, err := retriever.Retrieve(wrong, "canary"); err != nil || got != nil {
 		t.Fatal("personal source reached another actor", got, err)
 	}
-	owner := envelope.WithActor(t.Context(), envelope.Actor{ID: "owner", User: "owner"})
+	owner := event.WithActor(t.Context(), event.Actor{ID: "owner", User: "owner"})
 	got, err := retriever.Retrieve(owner, "canary")
 	if err != nil || got == nil || !strings.Contains(got.Prompt, "private canary") || strings.Contains(got.Prompt, token) {
 		t.Fatalf("bad grounding: %+v %v", got, err)
@@ -86,11 +87,11 @@ func TestPrivateSourceReconfigurationCannotSwapDataIntoAuthorizedTurn(t *testing
 		t.Fatal(err)
 	}
 	_, _ = p.Knowledge.Add("tenant", "private", "Other", "", "other-project canary", "owner", p.now())
-	retriever := p.knowledgeFor("tenant", []string{req.Revision.Spec.Sources[0].Name})
+	retriever := p.knowledgeFor("tenant", []string{req.Definition.Spec.Sources[0].Name})
 	if retriever == nil {
 		t.Fatal("request grant missing before scope check")
 	}
-	owner := envelope.WithActor(t.Context(), envelope.Actor{ID: "owner", User: "owner"})
+	owner := event.WithActor(t.Context(), event.Actor{ID: "owner", User: "owner"})
 	if got, err := retriever.Retrieve(owner, "canary"); err != nil || got != nil {
 		t.Fatal("changed source audience leaked", got, err)
 	}
@@ -98,8 +99,8 @@ func TestPrivateSourceReconfigurationCannotSwapDataIntoAuthorizedTurn(t *testing
 
 type canceledSourceExecutor struct{}
 
-func (canceledSourceExecutor) Execute(context.Context, runtime.Request, func(context.Context, agentrt.Chunk) error) (runtime.Outcome, error) {
-	return runtime.Outcome{}, context.Canceled
+func (canceledSourceExecutor) Turn(context.Context, turn.Pinned, turn.Input, func(context.Context, event.Body) error) (turn.Result, error) {
+	return turn.Result{}, context.Canceled
 }
 
 func TestSourceGrantsExpireAreBoundedAndReleaseOnEarlyExecutorFailure(t *testing.T) {
@@ -120,7 +121,7 @@ func TestSourceGrantsExpireAreBoundedAndReleaseOnEarlyExecutorFailure(t *testing
 	executor := callExecutor{inner: canceledSourceExecutor{}, resolve: func(req runtime.Request) (runtime.Request, error) {
 		return p.withSourceGrounding(req, "Secret", "owner")
 	}, release: p.releaseSourceGrounding}
-	if _, err := executor.Execute(t.Context(), sourceRequest(), nil); !errors.Is(err, context.Canceled) {
+	if _, err := executor.Turn(runtime.WithRequest(t.Context(), sourceRequest()), sourceRequest().Definition, turn.Input{}, nil); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	if len(p.grounding.grants) != 0 {
@@ -133,7 +134,7 @@ func TestSourceGrantsExpireAreBoundedAndReleaseOnEarlyExecutorFailure(t *testing
 		}
 		return resolved, fmt.Errorf("model unavailable")
 	}
-	if _, err := executor.Execute(t.Context(), sourceRequest(), nil); err == nil {
+	if _, err := executor.Turn(runtime.WithRequest(t.Context(), sourceRequest()), sourceRequest().Definition, turn.Input{}, nil); err == nil {
 		t.Fatal("model failure ignored")
 	}
 	if len(p.grounding.grants) != 0 {

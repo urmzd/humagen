@@ -1,11 +1,13 @@
 # The ecosystem
 
-Five repositories, one platform. Each layer builds on the one below and never
-redoes its work. Only the top one runs, and only the top one is configured.
+Four repositories, one platform. fiber, which was the fifth, now lives in the
+Humagen repository at `fiber/` and is still a layer of its own. Each layer
+builds on the one below and never redoes its work. Only the top one runs, and
+only the top one is configured.
 
 ```
 humagen        the platform: one process, API, console, Slack, the spec, deploy
-  fiber     agents on a bus: specs and revisions, connectors, routing, the durable turn
+  fiber     in humagen/fiber: the event union, the channel bus, connectors, definitions, the durable turn
     saige   the agent: model providers, the loop, tools, MCP, RAG, memory, evals
       playscape   where a turn runs: sandboxes, workspaces, NGAC access control
         anchor    durability: ledger, queue, worker, replay, Postgres plumbing
@@ -35,14 +37,14 @@ Today's state is from an audit of all five repositories (October 2026).
 | Durable runs: ledger, queue, worker, replay | anchor | saige `agent/durable/local` (1.5k lines, its own step log and locks) | delete saige's after a file ledger lands in anchor. Playscape's own queue and worker are gone (v0.7.0): it runs tasks on a bounded in-process pool |
 | Postgres plumbing: advisory-locked migrations, LISTEN/NOTIFY | anchor (a `pgkit` package in its Postgres adapter module) | eight migrate functions (six in fiber, saige, Humagen `pkg/state`), three LISTEN hubs | all call `pgkit` |
 | Sandboxes, workspaces, access control | playscape | saige `tools/exec` (its own subprocess and Docker code), saige `tools/fs` (a symlink check that can race), Humagen's file tools (bypass the agent's NGAC grant) | saige runs commands through a playscape executor; Humagen's file tools honour the grant |
-| Model providers, fallback, presets | saige `agent/provider` | fiber `agentrt/provider.go` and Humagen `internal/app/providers.go` each build adapters | fiber exposes one endpoint built on saige's `provider.Build`; Humagen's model kinds call it |
-| Agent definitions | saige `agent/definition` (Markdown and YAML, skills, subagents) | fiber `agentspec` (flat JSON, copied field by field into `agentrt.Spec`) | agentspec becomes the deployment envelope around a saige definition; Humagen loads `.md` agents |
+| Model providers, fallback, presets | saige `agent/provider` | fiber `pkg/turn/native` and Humagen `internal/app/providers.go` each build adapters | fiber exposes one endpoint built on saige's `provider.Build`; Humagen's model kinds call it |
+| Agent definitions | saige `agent/definition` (Markdown and YAML, skills, subagents) | none: fiber's `agentspec` and registry are gone. fiber stores saige definitions plus a policy (`fiber/pkg/definition`), Humagen keeps them per tenant (`pkg/agents`) and loads `.agent.md` agents from the spec | done |
 | MCP client | saige `agent/mcp` (reconnect, keepalive, OAuth, SSRF guard) | fiber `mcptools` talks to the MCP SDK directly | fiber keeps the pinned-snapshot policy and builds on saige's client |
 | SSRF dial guard | saige | three copies (saige `mcp`, saige `fetch`, fiber `attachment/intake`) | one exported guard |
 | Retrieval: chunking, embedding, hybrid search | saige `rag` | fiber `pkg/knowledge` (its own chunker, ranker and stores); Humagen `pkg/knowledge` (its own BM25) | fiber's becomes the tenant-scoped adapter over saige; Humagen keeps sources, exclusions and variants and stores documents in fiber's |
 | Memory | saige `agent/memory` | Humagen `pkg/memory` (notes injected as raw prompt text) | Humagen keeps its caps and approval queue on a saige store, injected the guarded way |
 | Evals | saige `eval` | Humagen `pkg/evals` (its own checks and pass rate) | Humagen keeps suite editing and the runner; scoring, assertions and storage are saige's |
-| Bus, connectors, routing, agent registry, threads, the durable turn | fiber | | |
+| Event union, channel bus, connectors, threads, the durable turn, the `Runtime` seam | fiber, in `humagen/fiber` | | |
 | Files (blobs) | fiber `pkg/blob` | Humagen `pkg/blob` (adds S3) | S3 moves into fiber, as its own module so the AWS SDK stays out of the core; Humagen keeps only the choice |
 | Agent-authoring tools | fiber `connectors/author` | Humagen's `list_agents`, `read_agent`, `save_agent` | Humagen's builder uses fiber's, with its grant filter |
 | Observability | one OpenTelemetry seam | playscape `metrics.Recorder` (set to a no-op), saige's two OpenTelemetry shapes, anchor logs only | Humagen builds the providers and every layer takes the API |
@@ -60,14 +62,14 @@ deployment are Humagen's.
 | **anchor** | Durable execution: a ledger of runs and their records, a queue with leases and fencing, a worker that resumes after a crash, replay | fiber's durable turn and saige's durable agent; anything that must finish once despite restarts | a ledger: list runs, show one run's records and status, replay it (`anchor inspect`, to build) |
 | **playscape** | Where work runs and what it may touch: sandboxes, workspaces, NGAC access control, local and Kubernetes runners | fiber, which runs each turn as a playscape task; saige's command and file tools | a command in the sandbox: `playscape run "go test ./..."` runs it under the same policy an agent gets and shows the exit code, output, denials and timeouts |
 | **saige** | The agent: model providers and fallback, the loop, tools, MCP, retrieval, memory, evals | fiber, and anyone building an agent in Go | an agent end to end, and first class: chat, evals, retrieval, an MCP server for editors (`saige`, `saige-mcp`) |
-| **fiber** | Agents on a bus: specs and revisions, connectors (Slack, GitHub, Jira, cron, webhooks), routing, the durable turn, threads, knowledge, tool providers | Humagen | an agent spec locally: run it against a message in one process and print its events (`fiber run`, to build) |
+| **fiber** (in `humagen/fiber`) | Agents on a bus: the event union, channels, saige definitions and their pins, connectors (Slack, GitHub, Jira, cron, webhooks), the durable turn behind a `Runtime` interface, threads, knowledge, tool providers | Humagen | an `.agent.md` locally: run it against a message in one process and print its events (`go run ./fiber/cmd/fiber run`) |
 | **Humagen** | The platform: one process with the API, console, Slack app, identity, tenancy, policies, usage; the spec; `humagen start` and `humagen deploy` | people and their workspaces | is the product |
 
 ## Services that should be libraries
 
 | Repository | Ships today | Becomes |
 |------------|-------------|---------|
-| fiber | nothing (the binary and server are gone) | a small `fiber run` CLI for local tests |
+| fiber | `fiber run`, in this repository | done: folded into Humagen |
 | playscape | since v0.7.0, a library with `playscape run` and an install script; the server, its HTTP API, its queue, the Dockerfile and the service's Kubernetes manifests are gone, and the k8s runner is its own module so importers don't inherit client-go | done |
 | saige | `cmd/saige` (a TUI, an HTTP server, ACP, 11.7k lines), `cmd/saige-mcp`, install script, Dockerfile | stays: its CLI is first class. Its reusable hosting code moves into library packages that return `http.Handler`s, so Humagen can host the same thing |
 | Humagen | `cmd/humagen`, and the Slack app as a separate Node process | the one binary; the Slack app is started and stopped by `humagen start` and talks only to Humagen's API |
@@ -78,7 +80,7 @@ Each step leaves every repository building and releasable.
 
 | # | Step | Repos | Size | State |
 |---|------|-------|------|-------|
-| 1 | Fiber is a library: no binary, no server, no mandatum.v1; conformance suites per store family | fiber | L | in review on the branch |
+| 1 | Fiber is a library: no binary, no server, no API of its own; conformance suites per store family | fiber | L | done |
 | 2 | Fiber's backends are chosen in code; its declarative config moves to Humagen | fiber, Humagen | M | in progress |
 | 3 | Humagen's stores on memory or Postgres, chosen by the spec | Humagen | L | done |
 | 4 | One spec, `humagen start`, `humagen deploy` (local, compose, Kubernetes) | Humagen | L | done |
@@ -94,7 +96,8 @@ Each step leaves every repository building and releasable.
 | 14 | Fiber's MCP tools on saige's client | fiber | M | |
 | 15 | Commands run through playscape executors; saige's Docker and process-group code goes | playscape, saige | M | |
 | 16 | A file ledger in anchor; saige's `durable/local` goes | anchor, saige | M | |
-| 17 | One agent definition: agentspec wraps a saige definition | saige, fiber, Humagen | L | |
+| 17 | One agent definition: saige's, plus a policy, pinned per run; agentspec and the registry are gone | saige, fiber, Humagen | L | done |
+| 20 | One event union on one channel bus, a `Runtime` interface, and fiber folded into Humagen | fiber, Humagen | L | done |
 | 18 | One OpenTelemetry seam, exporter chosen by Humagen | all | M | |
 | 19 | saige's binaries become library packages | saige | L | owner's call on the developer CLI |
 

@@ -21,14 +21,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/release"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
@@ -352,7 +351,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	if len(o.Connections) > 0 {
 		conns := o.Connections
-		cfg.Connections = func(registry.Store) ([]platform.Connection, error) { return conns, nil }
+		cfg.Connections = func(wire.AgentStore) ([]platform.Connection, error) { return conns, nil }
 	}
 	if o.Platform != nil {
 		if err := o.Platform(&cfg); err != nil {
@@ -369,7 +368,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		if err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
-		var spec agentspec.AgentSpec
+		var spec wire.AgentSpec
 		if err := json.Unmarshal(raw, &spec); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
@@ -503,7 +502,7 @@ func seedFiles(ctx context.Context, p *platform.Platform, tenant string) error {
 	}
 	run, err := p.Converse(ctx, tenant, platform.Turn{
 		ID: "seed-files", Agent: "lead", Text: "Draft the launch checklist", Project: "Launch",
-		Actor: envelope.Actor{ID: "seed", Display: "Seed", Bot: true},
+		Actor: event.Actor{ID: "seed", Display: "Seed", Bot: true},
 	})
 	if err != nil {
 		return err
@@ -542,11 +541,11 @@ func loopback(addr string) bool {
 // seedAgents creates two agents on fiber's offline provider, so the console
 // has something to run before a model key is configured.
 func seedAgents(ctx context.Context, p *platform.Platform, tenant string) error {
-	for _, spec := range []agentspec.AgentSpec{
+	for _, spec := range []wire.AgentSpec{
 		{
 			Name: "lead", Description: "Takes a request and may call the helper.",
 			Model: "offline", Provider: "offline", SystemPrompt: "You coordinate work.",
-			Access: agentspec.Access{Spawn: []string{"helper"}},
+			Access: wire.Access{Spawn: []string{"helper"}},
 		},
 		{
 			Name: "helper", Description: "Does one piece of work for the lead.",
@@ -554,7 +553,7 @@ func seedAgents(ctx context.Context, p *platform.Platform, tenant string) error 
 		},
 	} {
 		_, err := p.Agents.Create(ctx, tenant, spec, "seed")
-		if err != nil && !errors.Is(err, registry.ErrExists) {
+		if err != nil && !errors.Is(err, wire.ErrExists) {
 			return fmt.Errorf("seed %s: %w", spec.Name, err)
 		}
 	}

@@ -22,7 +22,10 @@ test("approvals, asking and who may answer are written to the spec, and left out
   assert.equal(withApproval(on, "file_write", false).approvals, undefined);
   assert.deepEqual(withAsking({ ...spec, tools: [] }, true).tools, ["ask_person"]);
   assert.deepEqual(withAsking(spec, false).tools, ["file_write"]);
-  assert.deepEqual(withNames(spec, "approvers", "ana, role:operator\nana").approvers, ["ana", "role:operator"]);
+  assert.deepEqual(withNames(spec, "approvers", "ana, role:operator\nana").approvers, [
+    "ana",
+    "role:operator",
+  ]);
   assert.equal(withNames(spec, "answerers", " , ").answerers, undefined);
   assert.deepEqual(namesOf("a,\n b"), ["a", "b"]);
 });

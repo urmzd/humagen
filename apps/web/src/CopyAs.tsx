@@ -71,7 +71,10 @@ export function CopyAs({
   };
 
   const list = loaded ? formats(loaded) : [];
-  const options: Option[] = list.length > 0 ? list.map((f) => ({ value: f.id, label: f.label, hint: f.hint })) : [{ value: "", label: "Loading" }];
+  const options: Option[] =
+    list.length > 0
+      ? list.map((f) => ({ value: f.id, label: f.label, hint: f.hint }))
+      : [{ value: "", label: "Loading" }];
 
   const pick = (id: string) => {
     const format = list.find((f) => f.id === id);
@@ -83,7 +86,12 @@ export function CopyAs({
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: fetches the item's data as the menu is about to open
-    <span data-testid={testId} className={`relative inline-flex ${className}`} onMouseDown={open} onFocus={open}>
+    <span
+      data-testid={testId}
+      className={`relative inline-flex ${className}`}
+      onMouseDown={open}
+      onFocus={open}
+    >
       <FlashNote flash={flash} align={align === "right" ? "right" : "center"} />
       <Menu
         quiet
@@ -92,7 +100,11 @@ export function CopyAs({
         value=""
         options={options}
         onChange={pick}
-        className={compact ? "[&>button]:size-6 [&>button]:justify-center [&>button]:gap-0 [&>button]:px-0 [&>button>svg:last-child]:hidden" : ""}
+        className={
+          compact
+            ? "[&>button]:size-6 [&>button]:justify-center [&>button]:gap-0 [&>button]:px-0 [&>button>svg:last-child]:hidden"
+            : ""
+        }
         // The control never changes: same icon, same label, same size. The confirmation is the note beside it.
         shows={
           compact ? (

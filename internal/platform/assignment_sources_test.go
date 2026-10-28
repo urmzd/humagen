@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
 )
@@ -48,7 +48,7 @@ func TestSourceChangeAssignmentsUseExistingRuntimeAndKeepCursorAfterRestart(t *t
 		if _, err := p.Knowledge.Add(tenant, "feed", "Initial", "", "retained initial source", "owner", time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "watcher", Model: "offline", Provider: "offline", SystemPrompt: "Review retained changes.", Sources: []agentspec.Source{{Name: "feed", URI: "knowledge://feed"}}}, "owner"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "watcher", Model: "offline", Provider: "offline", SystemPrompt: "Review retained changes.", Sources: []wire.Source{{Name: "feed", URI: "knowledge://feed"}}}, "owner"); err != nil {
 			t.Fatal(err)
 		}
 		who := auth.Principal{Tenant: tenant, Subject: "owner", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
@@ -107,7 +107,7 @@ func TestSourceChangeReservationRecoversExactTriggerAfterRestart(t *testing.T) {
 		if _, err := p.Knowledge.Add(tenant, "feed", "Initial", "", "retained initial source", "owner", time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "watcher", Model: "offline", Provider: "offline", SystemPrompt: "Review retained changes.", Sources: []agentspec.Source{{Name: "feed", URI: "knowledge://feed"}}}, "owner"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "watcher", Model: "offline", Provider: "offline", SystemPrompt: "Review retained changes.", Sources: []wire.Source{{Name: "feed", URI: "knowledge://feed"}}}, "owner"); err != nil {
 			t.Fatal(err)
 		}
 		who := auth.Principal{Tenant: tenant, Subject: "owner", Kind: auth.User, Roles: []auth.Role{auth.Admin}}

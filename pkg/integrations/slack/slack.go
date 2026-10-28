@@ -10,31 +10,35 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/connectors"
-	"github.com/urmzd/fiber/pkg/connectors/mention"
-	transport "github.com/urmzd/fiber/pkg/connectors/slack"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/connectors"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/slack"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 type Config struct {
-	Tenant       string
-	Files        connectors.Files
-	FileToken    string
-	AppID        string
-	API          transport.API
-	Verifier     transport.Verifier
-	Team         string
-	Bots         map[string]string
-	Agents       mention.Set
-	DefaultAgent string
-	Deliver      []envelope.Route
-	Interval     time.Duration
-	Clock        func() time.Time
-	MaxBody      int64
-	Sessions     bool
-	Commands     []transport.Command
-	Log          *slog.Logger
+	Tenant    string
+	Files     connectors.Files
+	FileToken string
+	AppID     string
+	API       transport.API
+	Verifier  transport.Verifier
+	Team      string
+	Bots      map[string]string
+	// Agents is the set of names a plain "@name" in a message may name. A
+	// message no bot mention addressed names the first of them it mentions.
+	// Nil reads no plain names.
+	Agents   mention.Set
+	Interval time.Duration
+	Clock    func() time.Time
+	MaxBody  int64
+	Sessions bool
+	Commands []transport.Command
+	Log      *slog.Logger
 }
 type Connector struct {
 	*transport.Connector
@@ -57,24 +61,42 @@ func New(cfg Config) (*Connector, error) {
 	cfg.Commands = append([]transport.Command(nil), cfg.Commands...)
 	c := &Connector{cfg: cfg, offered: offered{seen: map[string]bool{}}, statusSeq: map[string]uint64{}}
 	c.live.open, c.live.asked = map[string]session{}, map[string]bool{}
-	base := transport.Config{Tenant: cfg.Tenant, Files: cfg.Files, FileToken: cfg.FileToken, AppID: cfg.AppID, API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Agents: cfg.Agents, DefaultAgent: cfg.DefaultAgent, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
-	base.Prepare = func(_ context.Context, tag *envelope.Tag) error {
-		if tag.Meta["slack_event"] != "slash_command" {
+	base := transport.Config{Tenant: cfg.Tenant, Files: cfg.Files, FileToken: cfg.FileToken, AppID: cfg.AppID, API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base.Prepare = func(_ context.Context, tag *event.Envelope) error {
+		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {
+			if agent, stripped, ok := mention.Find(wire.TextOf(*tag), cfg.Agents); ok {
+				wire.SetAgent(tag, agent)
+				wire.SetText(tag, stripped)
+			}
+		}
+		from := wire.SurfaceOf(*tag)
+		if from.SlackEvent != "slash_command" {
 			return nil
 		}
 		for _, cmd := range cfg.Commands {
-			if cmd.Name == strings.TrimPrefix(tag.Meta["slack_command"], "/") {
+			if cmd.Name == strings.TrimPrefix(from.SlackCommand, "/") {
 				return nil
 			}
 		}
 		return fmt.Errorf("slack: command is not configured")
 	}
-	base.Stopped = c.stopped
 	var err error
 	c.Connector, err = transport.New(base)
 	return c, err
 }
-func (c *Connector) Deliver(ctx context.Context, to address.Address, e envelope.Event) error {
+
+// Ingest runs the Slack trigger. A person pressing stop on a session is
+// handled here, not published: it stops the runs answering in the session.
+func (c *Connector) Ingest(ctx context.Context, publish connector.Publish) error {
+	return c.Connector.Ingest(ctx, func(ctx context.Context, e event.Envelope) error {
+		if b, ok := e.Data.(event.SlackSessionStopped); ok {
+			return c.stopped(ctx, stopOf(b))
+		}
+		return publish(ctx, e)
+	})
+}
+
+func (c *Connector) Deliver(ctx context.Context, to address.Address, e event.Envelope) error {
 	// Everything a run publishes is rendered, a stopped run's last event
 	// included: the sink shows what the agent had said, marked stopped.
 	stopping := false
@@ -84,7 +106,7 @@ func (c *Connector) Deliver(ctx context.Context, to address.Address, e envelope.
 	if err := c.Connector.Deliver(ctx, to, e); err != nil {
 		return err
 	}
-	status, ok := statusFor(e.Kind)
+	status, ok := statusFor(e.Type)
 	if !ok {
 		return nil
 	}
@@ -98,7 +120,7 @@ func (c *Connector) Deliver(ctx context.Context, to address.Address, e envelope.
 	// A failed API call does not advance the cursor, so a retry still runs.
 	c.statusMu.Lock()
 	defer c.statusMu.Unlock()
-	key := e.RunID + "\x00" + to.String()
+	key := e.Run + "\x00" + to.String()
 	if seq, ok := c.statusSeq[key]; ok && e.Seq <= seq {
 		return nil
 	}

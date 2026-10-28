@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -104,7 +105,7 @@ func TestInitiativeRollupCountsCurrentPlacementAndLeavesPrivateWorkOut(t *testin
 		id, thread, project string
 		at                  time.Time
 	}{{"r33333333333333333333333333333333", public.Thread.ID, "Field", now}, {"r44444444444444444444444444444444", private.Thread.ID, "Child", now}} {
-		if err := p.Runs.Record(in.id, envelope.Tag{ID: in.id, Tenant: tenant, Agent: "helper", Origin: "api", Text: "work", At: in.at, Meta: map[string]string{runs.MetaProject: in.project, runs.MetaThread: in.thread}}, 1); err != nil {
+		if err := p.Runs.Record(in.id, wire.NewEvent(wire.Raise{ID: in.id, Tenant: tenant, Agent: "helper", Origin: "api", Text: "work", At: in.at, Context: map[string]string{runs.MetaProject: in.project, runs.MetaThread: in.thread}}), 1); err != nil {
 			t.Fatal(err)
 		}
 	}

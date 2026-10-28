@@ -1,9 +1,19 @@
 import { defaultCopy } from "@humagen/components";
 import { type FormEvent, type MouseEvent, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type ToolCredential, type ToolCredentials } from "./api.ts";
-import { CONNECT_PERMISSION, cannotConnect, destination, offers, standing, startsAllowed, type Way, ways, whereReferences } from "./connections.ts";
+import {
+  CONNECT_PERMISSION,
+  cannotConnect,
+  destination,
+  offers,
+  standing,
+  startsAllowed,
+  type Way,
+  ways,
+  whereReferences,
+} from "./connections.ts";
 import { href } from "./route.ts";
-import { button, card, Empty, field, Label, Page, primary, Problem, Segmented } from "./ui.tsx";
+import { button, card, Empty, field, Label, Page, Problem, primary, Segmented } from "./ui.tsx";
 
 /** A plain click goes there in place; a modified one is the browser's. */
 const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -34,12 +44,10 @@ export function YourConnections({
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const fail = (fallback: string) => (e: unknown) => setProblem(e instanceof ApiError ? e.message : fallback);
+  const fail = (fallback: string) => (e: unknown) =>
+    setProblem(e instanceof ApiError ? e.message : fallback);
   const reload = useCallback(() => {
-    api
-      .toolCredentials()
-      .then(setState)
-      .catch(fail("Your connections could not be loaded."));
+    api.toolCredentials().then(setState).catch(fail("Your connections could not be loaded."));
   }, []);
   useEffect(reload, [reload]);
 
@@ -85,7 +93,9 @@ export function YourConnections({
         </p>
       )}
       {state && state.providers.length === 0 && (
-        <Empty title="No tools here act as you">A tool acts as each person when the workspace declares it with credential_scope: person.</Empty>
+        <Empty title="No tools here act as you">
+          A tool acts as each person when the workspace declares it with credential_scope: person.
+        </Empty>
       )}
       {state?.providers.map((c) => (
         <ConnectionCard
@@ -137,13 +147,37 @@ export function ConnectionCard({
         <h2 className="text-aui-sm font-medium text-aui-fg">
           {c.provider} <span className="font-normal text-aui-muted">{offers(c)}</span>
         </h2>
-        <span className={`text-aui-xs ${c.connected ? "text-aui-fg" : "text-aui-muted"}`}>{c.connected ? "Connected" : "Not connected"}</span>
+        <span className={`text-aui-xs ${c.connected ? "text-aui-fg" : "text-aui-muted"}`}>
+          {c.connected ? "Connected" : "Not connected"}
+        </span>
       </div>
       <p className="text-aui-sm text-aui-muted">{standing(c)}</p>
       <p className="text-aui-xs text-aui-muted">{destination(c)}</p>
-      {c.connected&&<dl className="text-aui-xs text-aui-muted"><div><dt>{defaultCopy.personalPreferences.lastAgentUse}</dt><dd>{c.last_used_at?new Date(c.last_used_at).toLocaleString():defaultCopy.personalPreferences.neverUsed}</dd></div><div className="mt-2"><dt>{defaultCopy.personalPreferences.grantedScopes}</dt><dd>{defaultCopy.personalPreferences.scopesUnknown}</dd></div></dl>}
+      {c.connected && (
+        <dl className="text-aui-xs text-aui-muted">
+          <div>
+            <dt>{defaultCopy.personalPreferences.lastAgentUse}</dt>
+            <dd>
+              {c.last_used_at
+                ? new Date(c.last_used_at).toLocaleString()
+                : defaultCopy.personalPreferences.neverUsed}
+            </dd>
+          </div>
+          <div className="mt-2">
+            <dt>{defaultCopy.personalPreferences.grantedScopes}</dt>
+            <dd>{defaultCopy.personalPreferences.scopesUnknown}</dd>
+          </div>
+        </dl>
+      )}
       {!canConnect ? null : open ? (
-        <ConnectForm ways={ways} references={references} replacing={c.connected} busy={busy} onSave={onSave} onCancel={onCancel} />
+        <ConnectForm
+          ways={ways}
+          references={references}
+          replacing={c.connected}
+          busy={busy}
+          onSave={onSave}
+          onCancel={onCancel}
+        />
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           {ways.length > 0 && (
@@ -158,7 +192,8 @@ export function ConnectionCard({
           )}
           {ways.length === 0 && !c.connected && (
             <p className="text-aui-xs text-aui-muted">
-              This workspace lets nobody connect a credential yet: the operator has listed nowhere references may live, and stored values are off.
+              This workspace lets nobody connect a credential yet: the operator has listed nowhere
+              references may live, and stored values are off.
             </p>
           )}
         </div>
@@ -213,7 +248,14 @@ export function ConnectForm({
         />
       )}
       {way === "reference" ? (
-        <Label text="Reference" hint={outside ? "That is not somewhere this workspace lets references live." : whereReferences(references)}>
+        <Label
+          text="Reference"
+          hint={
+            outside
+              ? "That is not somewhere this workspace lets references live."
+              : whereReferences(references)
+          }
+        >
           <input
             className={field}
             value={text}
@@ -224,8 +266,18 @@ export function ConnectForm({
           />
         </Label>
       ) : (
-        <Label text="Value" hint="Stored with Humagen, in the store client secrets are kept in. It is never shown again.">
-          <input className={field} type="password" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" spellCheck={false} />
+        <Label
+          text="Value"
+          hint="Stored with Humagen, in the store client secrets are kept in. It is never shown again."
+        >
+          <input
+            className={field}
+            type="password"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
         </Label>
       )}
       <div className="flex flex-wrap items-center gap-2">

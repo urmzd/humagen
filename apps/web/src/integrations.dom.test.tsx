@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { defaultCopy } from "@humagen/components";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Source } from "./api.ts";
-import { stubFetch } from "./dom.ts";
 import { ContextHealth } from "./ContextHealth.tsx";
+import { stubFetch } from "./dom.ts";
 import { ConnectSource, Integrations } from "./Integrations.tsx";
 import {
-  SourceResources,
-  SourceSyncSettings,
   SourceAccessMode,
   SourceAttachments,
+  SourceResources,
+  SourceSyncSettings,
   sourceConfiguration,
 } from "./SourceLifecycle.tsx";
 
@@ -228,7 +228,10 @@ test("external source creation defaults to live access and includes its project 
   );
   fireEvent.click(screen.getByRole("button", { name: "Connect a System" }));
   const form = screen.getByRole("form", { name: "Connect Source" });
-  assert.equal((within(form).getByLabelText(defaultCopy.sourceOperations.mode) as HTMLSelectElement).value, "live");
+  assert.equal(
+    (within(form).getByLabelText(defaultCopy.sourceOperations.mode) as HTMLSelectElement).value,
+    "live",
+  );
   assert.equal(within(form).queryByLabelText(defaultCopy.sourceCatalog.cadence), null);
   fireEvent.change(within(form).getByLabelText("Source Name"), {
     target: { value: "private-source" },
@@ -275,7 +278,9 @@ test("a collected source saves its selected cadence in the same creation request
   fireEvent.change(within(form).getByLabelText("Folder or Page ID"), {
     target: { value: "selected-folder" },
   });
-  fireEvent.change(within(form).getByLabelText(defaultCopy.sourceOperations.mode), { target: { value: "indexed" } });
+  fireEvent.change(within(form).getByLabelText(defaultCopy.sourceOperations.mode), {
+    target: { value: "indexed" },
+  });
   const cadence = within(form).getByLabelText(defaultCopy.sourceCatalog.cadence);
   assert.equal((cadence as HTMLSelectElement).value, "manual");
   fireEvent.change(cadence, { target: { value: "scheduled" } });

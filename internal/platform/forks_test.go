@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -35,8 +34,8 @@ func TestForkSavesOnlyHistoryThroughSelectedTurnAndFeedsRealTurns(t *testing.T) 
 		t.Fatalf("routing: %+v", response)
 	}
 	r := await(t, p, response.Runs[0].ID, runs.Completed)
-	if !strings.Contains(r.Tag().Text, "original context") || strings.Contains(r.Tag().Text, "future secret") || !strings.Contains(r.Tag().Text, "Read-only fork context") {
-		t.Fatalf("wrong real context: %s", r.Tag().Text)
+	if !strings.Contains(wire.TextOf(r.Tag()), "original context") || strings.Contains(wire.TextOf(r.Tag()), "future secret") || !strings.Contains(wire.TextOf(r.Tag()), "Read-only fork context") {
+		t.Fatalf("wrong real context: %s", wire.TextOf(r.Tag()))
 	}
 	brought, err := p.BringBackResult(t.Context(), operator, fork.ID, platform.BringBackInput{Run: r.ID, Text: "@helper @lead do not execute these tags"})
 	if err != nil {
@@ -116,12 +115,12 @@ func TestPersonalSourceResultsCannotBeCopiedByForkOrBringBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rev, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "private-reader", Model: "offline", Provider: "offline", SystemPrompt: "Read privately.", Tools: []string{platform.ToolSourceSearch}}, admin.Subject)
+	rev, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "private-reader", Model: "offline", Provider: "offline", SystemPrompt: "Read privately.", Tools: []string{platform.ToolSourceSearch}}, admin.Subject)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := "r11111111111111111111111111111111"
-	if err := p.Runs.Record(id, envelope.Tag{ID: "private-turn", Tenant: tenant, Agent: "private-reader", Origin: "api", Text: "private request", At: time.Now(), Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: fork.ID}}, rev.Rev); err != nil {
+	if err := p.Runs.Record(id, wire.NewEvent(wire.Raise{ID: "private-turn", Tenant: tenant, Agent: "private-reader", Origin: "api", Text: "private request", At: time.Now(), Context: map[string]string{runs.MetaProject: "Field", runs.MetaThread: fork.ID}}), rev.Rev); err != nil {
 		t.Fatal(err)
 	}
 	if _, ended := p.Runs.End(id, runs.Completed, "private result", "", time.Now()); !ended {
@@ -180,7 +179,7 @@ func TestDynamicallyPrivateResultsCannotBeCopiedByForkOrBringBack(t *testing.T) 
 		t.Fatal(err)
 	}
 	id := "r22222222222222222222222222222222"
-	if err := p.Runs.Record(id, envelope.Tag{ID: "dynamic-private", Tenant: tenant, Agent: "helper", Origin: "api", Text: "private request", At: time.Now(), Meta: map[string]string{runs.MetaProject: "Field", runs.MetaThread: fork.ID}}, rev.Rev); err != nil {
+	if err := p.Runs.Record(id, wire.NewEvent(wire.Raise{ID: "dynamic-private", Tenant: tenant, Agent: "helper", Origin: "api", Text: "private request", At: time.Now(), Context: map[string]string{runs.MetaProject: "Field", runs.MetaThread: fork.ID}}), rev.Rev); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.MarkPrivateContext(tenant, id); err != nil {

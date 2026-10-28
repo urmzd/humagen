@@ -13,9 +13,9 @@ import (
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/humagen/fiber/pkg/signature"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -56,7 +56,7 @@ func TestStoppingASlackSessionStopsItsRun(t *testing.T) {
 	fake := slack.NewFake()
 	peer, err := slack.New(slack.Config{
 		API: fake, Verifier: signature.NewSlack(slackSecret), Team: "T01ABCDEF",
-		DefaultAgent: "lead", Sessions: true, Interval: -1,
+		Bots: map[string]string{"U08BOTID": "lead"}, Sessions: true, Interval: -1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestStoppingASlackSessionStopsItsRun(t *testing.T) {
 		says:  map[string][][]saigetypes.Delta{"lead": {say("Picked up again.")}},
 		talks: map[string]talk{"lead": {after: 0, text: "Partial answer so far"}},
 	}
-	p := stage(t, c, platform.Config{Connections: func(registry.Store) ([]platform.Connection, error) {
+	p := stage(t, c, platform.Config{Connections: func(wire.AgentStore) ([]platform.Connection, error) {
 		return []platform.Connection{{Tenant: tenant, Peer: peer}}, nil
 	}})
 	ingress := p.IngressHandler()

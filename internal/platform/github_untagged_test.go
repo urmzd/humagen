@@ -13,10 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/signature"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -30,25 +33,23 @@ import (
 // given to deliver.
 type raiser struct {
 	surfaceFake
-	tags chan envelope.Tag
+	tags chan event.Envelope
 }
 
-func (r *raiser) Ingest(ctx context.Context, out chan<- envelope.Tag) error {
+func (r *raiser) Ingest(ctx context.Context, publish connector.Publish) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case tag := <-r.tags:
-			select {
-			case out <- tag:
-			case <-ctx.Done():
+			if err := publish(ctx, tag); err != nil {
 				return nil
 			}
 		}
 	}
 }
 
-func (r *raiser) raise(t *testing.T, tag envelope.Tag) {
+func (r *raiser) raise(t *testing.T, tag event.Envelope) {
 	t.Helper()
 	select {
 	case r.tags <- tag:
@@ -58,18 +59,18 @@ func (r *raiser) raise(t *testing.T, tag envelope.Tag) {
 }
 
 // delivered reports whether anything was delivered for the tag's run.
-func (r *raiser) delivered(tag envelope.Tag) bool {
+func (r *raiser) delivered(tag event.Envelope) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, d := range r.sent {
-		if d.e.RunID == runIDOf(tag) {
+		if d.e.Run == runIDOf(tag) {
 			return true
 		}
 	}
 	return false
 }
 
-func runIDOf(tag envelope.Tag) string { return runtime.RunID(tenant, tag.ID) }
+func runIDOf(tag event.Envelope) string { return runtime.RunID(tenant, tag.ID) }
 
 // issue is the issue the comments in these tests are on.
 var issue = address.MustParse("github://acme/handbook/issues/7")
@@ -79,16 +80,12 @@ var issue = address.MustParse("github://acme/handbook/issues/7")
 // the name humagen's connectors are given for a message that names no agent.
 // It says things about its tenant and where it is filed that stamp writes
 // over.
-func fromGitHub(id, agent, text string) envelope.Tag {
-	return envelope.Tag{
-		ID: id, Agent: agent, Tenant: "globex", Origin: "github", Text: text, Source: issue,
-		Actor: envelope.Actor{ID: "octocat"}, At: time.Now(),
-		Meta: map[string]string{
-			"github_event": "issue_comment", "github_owner": "acme", "github_repo": "handbook",
-			"github_number": "7", "github_kind": "issue", "github_sender": "octocat",
-			runs.MetaProject: "Vault", runs.MetaChannel: "deals",
-		},
-	}
+func fromGitHub(id, agent, text string) event.Envelope {
+	return wire.NewEvent(wire.Raise{ID: id, Agent: agent, Tenant: "globex", Origin: "github", Text: text, Channel: issue.String(), Actor: event.Actor{ID: "octocat"}, At: time.Now(), Context: map[string]string{
+		"github_event": "issue_comment", "github_owner": "acme", "github_repo": "handbook",
+		"github_number": "7", "github_kind": "issue", "github_sender": "octocat",
+		runs.MetaProject: "Vault", runs.MetaChannel: "deals",
+	}})
 }
 
 // githubRoom is a platform whose GitHub client gh is answered by a
@@ -125,14 +122,14 @@ func githubRoom(t *testing.T, b platform.Backends, mutate func(*platform.ClientI
 		mutate(&in)
 	}
 	create(t, p, tenant, in)
-	r := &raiser{tags: make(chan envelope.Tag)}
+	r := &raiser{tags: make(chan event.Envelope)}
 	if err := p.SeatPeer(tenant, "gh", r); err != nil {
 		t.Fatal(err)
 	}
 	return p, r, said
 }
 
-func answered(t *testing.T, p *platform.Platform, r *raiser, tag envelope.Tag) runs.Run {
+func answered(t *testing.T, p *platform.Platform, r *raiser, tag event.Envelope) runs.Run {
 	t.Helper()
 	run := await(t, p, runIDOf(tag), runs.Completed)
 	eventually(t, "the answer reached the issue", func() bool {
@@ -156,7 +153,7 @@ func TestAGitHubCommentToTheAppIsTheClientsDefaults(t *testing.T) {
 		if run.Agent != "docs" || run.Project != "Launch" || run.Channel != projects.General || run.Tenant != tenant {
 			t.Fatalf("the untagged comment is %s's, filed at %s %q #%s", run.Agent, run.Tenant, run.Project, run.Channel)
 		}
-		if run.Actor.User != "" || run.Actor.ID != "octocat" || run.Tag().Meta[runs.MetaClient] != "gh" || run.Origin != "github" {
+		if run.Actor.User != "" || run.Actor.ID != "octocat" || wire.Meta(run.Tag())[runs.MetaClient] != "gh" || run.Origin != "github" {
 			t.Fatalf("the untagged comment's run is %+v for %q", run.Actor, cmp.Or(run.Actor.User, "nobody"))
 		}
 		tagged := fromGitHub("gh-tagged", "ops", "deploy it")

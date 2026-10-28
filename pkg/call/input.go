@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	saigeeval "github.com/urmzd/saige/eval"
 )
 
@@ -401,11 +401,11 @@ func (p Prepared) Validate() error {
 }
 
 // InputOf reads only platform-owned agent input, never trigger metadata.
-func InputOf(tag envelope.Tag) (*Prepared, error) {
-	if tag.Origin != Origin || tag.Meta[MetaInput] == "" {
+func InputOf(tag event.Envelope) (*Prepared, error) {
+	raw := metaOf(tag)[MetaInput]
+	if originOf(tag) != Origin || raw == "" {
 		return nil, nil
 	}
-	raw := tag.Meta[MetaInput]
 	if len(raw) > MaxInputBytes*12 {
 		return nil, fmt.Errorf("%w: prepared input is too large", ErrInvalid)
 	}

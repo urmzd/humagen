@@ -3,11 +3,13 @@ package github
 import (
 	"context"
 	"fmt"
-	transport "github.com/urmzd/fiber/pkg/connectors/github"
-	"github.com/urmzd/fiber/pkg/envelope"
-	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"sort"
 	"strings"
+
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	presentation "github.com/urmzd/humagen/internal/presentation/github"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 func (c *Connector) guideLogin(agent string) string {
@@ -24,14 +26,19 @@ func (c *Connector) guideLogin(agent string) string {
 	return names[0]
 }
 
-func (c *Connector) prepareGuide(ctx context.Context, tag *envelope.Tag) error {
+func (c *Connector) prepareGuide(ctx context.Context, tag *event.Envelope) error {
 	c.guideMu.Lock()
 	defer c.guideMu.Unlock()
-	login := c.guideLogin(tag.Agent)
+	agent := wire.AgentOf(*tag)
+	login := c.guideLogin(agent)
 	if login == "" {
-		return fmt.Errorf("github: no guide bot login for %s", tag.Agent)
+		return fmt.Errorf("github: no guide bot login for %s", agent)
 	}
-	ref, err := c.Reference(tag.Source)
+	source, err := sourceOf(*tag)
+	if err != nil {
+		return err
+	}
+	ref, err := c.Reference(source)
 	if err != nil {
 		return err
 	}
@@ -43,10 +50,10 @@ func (c *Connector) prepareGuide(ctx context.Context, tag *envelope.Tag) error {
 	if !transport.ValidSHA(head) {
 		return fmt.Errorf("github: guide needs a PR head SHA")
 	}
-	if pinned := tag.Source.Params["head_sha"]; pinned != "" && pinned != head {
+	if pinned := source.Params["head_sha"]; pinned != "" && pinned != head {
 		return fmt.Errorf("github: stale PR guide trigger")
 	}
-	tag.Source = tag.Source.WithParam("head_sha", head)
-	tag.Meta["github_head_sha"] = head
-	return c.cfg.API.(GuideAPI).UpdateGuide(ctx, ref, Guide{Agent: tag.Agent, BotLogin: login, HeadSHA: head, Body: presentation.GuideBody(evidence, tag.Agent, login, c.cfg.Mutations)})
+	setSource(tag, source.WithParam("head_sha", head))
+	wire.SetGitHubHeadSHA(tag, head)
+	return c.cfg.API.(GuideAPI).UpdateGuide(ctx, ref, Guide{Agent: agent, BotLogin: login, HeadSHA: head, Body: presentation.GuideBody(evidence, agent, login, c.cfg.Mutations)})
 }

@@ -5,8 +5,9 @@ go 1.26.10
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/redis/go-redis/v9 v9.21.0
 	github.com/urmzd/anchor v0.5.1
-	github.com/urmzd/fiber v0.25.0
+	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213
 	github.com/urmzd/playscape v0.7.0
 	github.com/urmzd/saige v0.41.0
 	golang.org/x/oauth2 v0.37.0
@@ -28,6 +29,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.4 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.10.3 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
@@ -49,7 +51,6 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.47.0 // indirect
@@ -77,5 +78,3 @@ require (
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0
 )
-
-require github.com/redis/go-redis/v9 v9.21.0 // indirect

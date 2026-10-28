@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // The reference's own examples load, so docs/spec.md cannot drift from the
@@ -99,8 +99,9 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a person reference that is nobody's own":      {sys + "  person_refs: {default: ['op://People/']}\n", "person_refs.default"},
 		"two workspaces' people in one place": {sys + "  person_refs: {default: ['op://People/{subject}/'], globex: ['op://People/{subject}/']}\n",
 			"could name one reference for two people"},
-		"an inbox kept less than a week": {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
-		"an inbox kept for no time":      {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
+		"an inbox kept less than a week":  {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
+		"a call depth past the hop limit": {sys + "  execution: {max_depth: 8}\n", "execution.max_depth: 8"},
+		"an inbox kept for no time":       {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
 	} {
 		path := filepath.Join(t.TempDir(), "humagen.yaml")
 		writeFile(t, path, tc.body)
@@ -133,7 +134,7 @@ func TestAKindIsOneTheBinaryHas(t *testing.T) {
 func TestWhatHumagenWritesItReads(t *testing.T) {
 	cfg := Config{Platforms: []Platform{{Metadata: Metadata{Name: "default"}, Spec: PlatformSpec{
 		Workspace: Workspace{Agents: &Agents{Enable: []string{EveryAgent}, Default: "lead"}},
-		Agents:    []Agent{{Spec: &agentspec.AgentSpec{Name: "lead", Provider: "anthropic", Model: "m", SystemPrompt: "Lead."}}},
+		Agents:    []Agent{{Spec: &wire.AgentSpec{Name: "lead", Provider: "anthropic", Model: "m", SystemPrompt: "Lead."}}},
 		Models:    []Model{{Slot: Slot{Kind: "anthropic", Block: MustJSON(ModelBlock{Key: &Ref{Ref: "env:ANTHROPIC_API_KEY"}})}, ModelShared: ModelShared{Name: "anthropic"}}},
 		Surfaces:  Surfaces{Slack: &Slack{Enabled: true, Team: "T1", BotToken: &Ref{Ref: "env:B"}, AppToken: &Ref{Ref: "keychain:humagen/slack"}}},
 	}}}}
@@ -270,5 +271,44 @@ func TestABusTheStoresCannotCarryIsRefused(t *testing.T) {
 	}
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("postgres bus on postgres stores: %v", err)
+	}
+}
+
+// A policy goes only with an .agent.md file, and never says what wakes the
+// agent.
+func TestAnAgentPolicyNeedsAnAgentMdFile(t *testing.T) {
+	plat := "api_version: humagen/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n"
+	for body, want := range map[string]string{
+		"  agents: [{file: a.json, policy: {tagged_only: true}}]\n":                                   "policy goes with an .agent.md file",
+		"  agents: [{file: a.agent.md, policy: {subscriptions: [{channel: x, types: [message]}]}}]\n": "the platform decides what wakes an agent",
+	} {
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		writeFile(t, path, plat+body)
+		cfg, err := Load(path)
+		if err == nil {
+			err = cfg.Check(Kinds{})
+		}
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s= %v, want %q", body, err, want)
+		}
+	}
+}
+
+// The reference's .agent.md example reads as the agent it describes.
+func TestTheReferenceAgentFileReads(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile("(?s)```markdown\n(---\napiVersion: saige/v1.*?)```").FindStringSubmatch(string(doc))
+	if m == nil {
+		t.Fatal("docs/spec.md has no .agent.md example")
+	}
+	s, err := wire.SpecOfAgentFile(m[1], wire.DefinitionPolicy{TaggedOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Name != "reviewer" || s.Provider != "anthropic" || s.SystemPrompt == "" || !s.TaggedOnly {
+		t.Fatalf("the example reads as %+v", s)
 	}
 }

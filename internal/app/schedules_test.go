@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -47,7 +47,7 @@ func TestTheFilesSchedulesAreTheFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	about := p.Schedules.About("field-recap")
-	if sc.Meta[runs.MetaProject] != "Field" || sc.Meta[platform.MetaDeliver] != platform.DeliverProject || about.Managed != platform.ManagedFile || about.CreatedAt.IsZero() {
+	if sc.Context[runs.MetaProject] != "Field" || sc.Context[platform.MetaDeliver] != platform.DeliverProject || about.Managed != platform.ManagedFile || about.CreatedAt.IsZero() {
 		t.Fatalf("the file's schedule = %+v, %+v", sc, about)
 	}
 	if mustGet(t, p, tenant, "Field").AgentPosts != spec.AgentPostsReview {
@@ -91,7 +91,7 @@ func TestTheFilesSchedulesAreTheFiles(t *testing.T) {
 func TestTheFileTakesOverAConsoleSchedule(t *testing.T) {
 	p := newProjectsPlatform(t)
 	if err := p.Schedules.Add(cron.Schedule{Name: "field-recap", Expression: "0 9 * * *", Agent: "lead", Text: "x", Tenant: "acme",
-		Meta: map[string]string{"created_by": "ada"}}, platform.About{CreatedAt: time.Now()}); err != nil {
+		Context: map[string]string{"created_by": "ada"}}, platform.About{CreatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	applyAll(t, p, "acme", fileWithRecap("What changed?"))

@@ -1,7 +1,14 @@
 import { defaultCopy } from "@humagen/components";
 import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
 import { type QueueControls, QueueStrip } from "@humagen/web";
-import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { insertTag, matching, sigilOf, type TagOption, type Typing, tagAt } from "./tags.ts";
 import { AgentMark, Presence } from "./ui.tsx";
 
@@ -12,7 +19,8 @@ const MAX_FILE_BYTES = 200 * 1024;
 // Files are read in the browser and sent as part of the message, so only text
 // can be attached. These are the extensions treated as text when the browser
 // does not say.
-const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|ya?ml|toml|xml|html?|css|log|sql|sh|py|go|rs|ts|tsx|js|jsx|java|rb|c|h|cpp)$/i;
+const TEXT_EXT =
+  /\.(txt|md|markdown|csv|tsv|json|ya?ml|toml|xml|html?|css|log|sql|sh|py|go|rs|ts|tsx|js|jsx|java|rb|c|h|cpp)$/i;
 
 export interface Attached {
   id: string;
@@ -21,19 +29,27 @@ export interface Attached {
 }
 
 /** Read picked files as text to send with a message, and say why any were left out. */
-export async function readAttached(picked: FileList | File[], already: Attached[]): Promise<{ files: Attached[]; skipped: string[] }> {
+export async function readAttached(
+  picked: FileList | File[],
+  already: Attached[],
+): Promise<{ files: Attached[]; skipped: string[] }> {
   const skipped: string[] = [];
   const next = [...already];
   for (const file of Array.from(picked)) {
-    const textual = file.type.startsWith("text/") || /json|xml|yaml|javascript/.test(file.type) || TEXT_EXT.test(file.name);
+    const textual =
+      file.type.startsWith("text/") ||
+      /json|xml|yaml|javascript/.test(file.type) ||
+      TEXT_EXT.test(file.name);
     if (next.length >= MAX_FILES) skipped.push(`${file.name}: at most ${MAX_FILES} files`);
     else if (!textual) skipped.push(`${file.name}: only text files can be attached`);
-    else if (file.size > MAX_FILE_BYTES) skipped.push(`${file.name}: larger than ${MAX_FILE_BYTES / 1024} KB`);
+    else if (file.size > MAX_FILE_BYTES)
+      skipped.push(`${file.name}: larger than ${MAX_FILE_BYTES / 1024} KB`);
     else {
       const text = await file.text();
       // A NUL byte means the file is not text, whatever its name says.
       if (text.includes("\u0000")) skipped.push(`${file.name}: only text files can be attached`);
-      else next.push({ id: `${file.name}:${file.size}:${file.lastModified}`, name: file.name, text });
+      else
+        next.push({ id: `${file.name}:${file.size}:${file.lastModified}`, name: file.name, text });
     }
   }
   return { files: next, skipped };
@@ -41,7 +57,9 @@ export async function readAttached(picked: FileList | File[], already: Attached[
 
 /** A message with its attached files after it. */
 export function withAttached(text: string, files: Attached[]): string {
-  return [text.trim(), ...files.map((f) => `Attached file: ${f.name}\n\`\`\`\n${f.text}\n\`\`\``)].filter(Boolean).join("\n\n");
+  return [text.trim(), ...files.map((f) => `Attached file: ${f.name}\n\`\`\`\n${f.text}\n\`\`\``)]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 // The browser's speech recognizer, where it exists. It has no standard type yet.
@@ -49,14 +67,22 @@ interface Recognizer {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
-  onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
+  onresult:
+    | ((e: {
+        resultIndex: number;
+        results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>;
+      }) => void)
+    | null;
   onend: (() => void) | null;
   onerror: (() => void) | null;
   start: () => void;
   stop: () => void;
 }
 function recognizer(): (new () => Recognizer) | undefined {
-  const w = window as unknown as { SpeechRecognition?: new () => Recognizer; webkitSpeechRecognition?: new () => Recognizer };
+  const w = window as unknown as {
+    SpeechRecognition?: new () => Recognizer;
+    webkitSpeechRecognition?: new () => Recognizer;
+  };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
@@ -80,7 +106,8 @@ function Glyph({ d, size = 18 }: { d: string; size?: number }) {
   );
 }
 const PLUS = "M5 12h14M12 5v14";
-const MIC = "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3";
+const MIC =
+  "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3";
 
 // The send and speak buttons share one size and one place, so nothing moves
 // when one takes over from the other.
@@ -130,7 +157,10 @@ export function Composer({
    * a way to close it and to attach files, and the chips of what it
    * selected, shown as text controls below the composer. Ctrl+/ (Cmd+/) opens it.
    */
-  plus?: { menu: (close: () => void, attach: () => void, leave: () => void) => ReactNode; chips?: ReactNode };
+  plus?: {
+    menu: (close: () => void, attach: () => void, leave: () => void) => ReactNode;
+    chips?: ReactNode;
+  };
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
@@ -154,8 +184,13 @@ export function Composer({
   useEffect(() => {
     if (!menu) return;
     const away = (e: MouseEvent) => {
-      const panel = form.current?.querySelector('[data-plus-panel]');
-      if (panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.("[data-plus-button]")) setMenu(false);
+      const panel = form.current?.querySelector("[data-plus-panel]");
+      if (
+        panel &&
+        !panel.contains(e.target as Node) &&
+        !(e.target as HTMLElement).closest?.("[data-plus-button]")
+      )
+        setMenu(false);
     };
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
@@ -324,184 +359,220 @@ export function Composer({
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-    <form
-      ref={form}
-      aria-label="Message"
-      onSubmit={(e) => {
-        e.preventDefault();
-        send(false);
-      }}
-      className="relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-muted"
-    >
-      {tags && shown.length > 0 && (
-        // Still: a list waiting on a person does not animate.
-        <ul
-          id="composer-tags"
-          data-layer="completion"
-          role="listbox"
-          aria-label={tags.label}
-          style={{ maxHeight: listAt.max }}
-          className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
-        >
-          {shown.map((o, i) => (
-            <li
-              key={`${o.kind}:${o.token}`}
-              id={`composer-tag-${i}`}
-              role="option"
-              aria-selected={i === current}
-              onMouseDown={(e) => {
-                // Keep the text box's focus and caret while picking.
-                e.preventDefault();
-                pickTag(o);
-              }}
-              className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg aria-selected:bg-aui-hover"
-            >
-              {o.kind === "agent" ? (
-                <AgentMark name={o.token} size={16} />
-              ) : (
-                <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium">
-                  {o.kind === "person" ? (o.hint ?? o.label).trim().charAt(0).toUpperCase() : o.kind === "skill" ? "$" : "@"}
-                </span>
-              )}
-              <span className="shrink-0 font-medium">
-                {sigilOf(o)}
-                {o.token}
-              </span>
-              {o.hint && <span className="min-w-0 truncate text-aui-xs text-aui-muted">{o.hint}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {plus && <Presence when={menu} ms={130}>{(leaving) => (
-        <div key={menuEpoch} data-plus-panel inert={leaving} aria-hidden={leaving || undefined} data-leaving={leaving} className="humagen-composer-menu contents">
-          {plus.menu(
-            closeMenu,
-            () => {
-              setMenu(false);
-              picker.current?.click();
-            },
-            () => setMenu(false),
-          )}
-        </div>
-      )}</Presence>}
-      <QueueStrip queue={queue} />
-      {files.length > 0 && (
-        <ul className="flex flex-wrap gap-1.5 px-2 pt-1" aria-label="Attached files">
-          {files.map((f) => (
-            <li
-              key={f.id}
-              className="inline-flex min-h-8 pointer-coarse:min-h-11 max-w-60 items-center gap-1.5 rounded-full border border-aui-border pr-1 pl-2.5 text-aui-xs text-aui-fg"
-            >
-              <FileIcon size={12} className="text-aui-muted" />
-              <span className="truncate">{f.name}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${f.name}`}
-                onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
-                className="inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-              >
-                <XIcon size={12} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <label className="sr-only" htmlFor="composer-input">
-        Message
-      </label>
-      <textarea
-        id="composer-input"
-        ref={input}
-        rows={1}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => {
-          change(e.target.value);
-          follow(e.target.value);
+      <form
+        ref={form}
+        aria-label="Message"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(false);
         }}
-        onKeyDown={onKeyDown}
-        onKeyUp={(e) => {
-          if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") follow(value);
-        }}
-        onClick={() => follow(value)}
-        onBlur={() => setTyping(null)}
-        role={tags ? "combobox" : undefined}
-        aria-expanded={tags ? shown.length > 0 : undefined}
-        aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
-        aria-autocomplete={tags ? "list" : undefined}
-        aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
-        className="max-h-[200px] min-h-10 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
-      />
-      {notice && (
-        <p role="status" className="px-3 text-aui-xs text-aui-muted">
-          {notice}
-        </p>
-      )}
-      <div className="flex items-center gap-1">
-        <input
-          ref={picker}
-          type="file"
-          multiple
-          className="sr-only"
-          tabIndex={-1}
-          aria-hidden
-          onChange={(e) => {
-            void attach(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        {plus ? (
-          <button
-            type="button"
-            data-plus-button
-            className={`${tool} self-start`}
-            aria-label={defaultCopy.chat.plus}
-            aria-haspopup="dialog"
-            aria-expanded={menu}
-            title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut(/Mac|iPhone|iPad/.test(navigator.platform))})`}
-            onClick={() => (menu ? closeMenu() : showMenu())}
+        className="relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-muted"
+      >
+        {tags && shown.length > 0 && (
+          // Still: a list waiting on a person does not animate.
+          <ul
+            id="composer-tags"
+            data-layer="completion"
+            role="listbox"
+            aria-label={tags.label}
+            style={{ maxHeight: listAt.max }}
+            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
           >
-            <Glyph d={PLUS} />
-          </button>
-        ) : (
-          <button type="button" className={tool} aria-label="Attach files" title="Attach text files" onClick={() => picker.current?.click()}>
-            <Glyph d={PLUS} />
-          </button>
+            {shown.map((o, i) => (
+              <li
+                key={`${o.kind}:${o.token}`}
+                id={`composer-tag-${i}`}
+                role="option"
+                aria-selected={i === current}
+                onMouseDown={(e) => {
+                  // Keep the text box's focus and caret while picking.
+                  e.preventDefault();
+                  pickTag(o);
+                }}
+                className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg aria-selected:bg-aui-hover"
+              >
+                {o.kind === "agent" ? (
+                  <AgentMark name={o.token} size={16} />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium"
+                  >
+                    {o.kind === "person"
+                      ? (o.hint ?? o.label).trim().charAt(0).toUpperCase()
+                      : o.kind === "skill"
+                        ? "$"
+                        : "@"}
+                  </span>
+                )}
+                <span className="shrink-0 font-medium">
+                  {sigilOf(o)}
+                  {o.token}
+                </span>
+                {o.hint && (
+                  <span className="min-w-0 truncate text-aui-xs text-aui-muted">{o.hint}</span>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
-        {leading}
-        <div className="min-w-0 flex-1" />
-        {trailing}
-        {/*
+        {plus && (
+          <Presence when={menu} ms={130}>
+            {(leaving) => (
+              <div
+                key={menuEpoch}
+                data-plus-panel
+                inert={leaving}
+                aria-hidden={leaving || undefined}
+                data-leaving={leaving}
+                className="humagen-composer-menu contents"
+              >
+                {plus.menu(
+                  closeMenu,
+                  () => {
+                    setMenu(false);
+                    picker.current?.click();
+                  },
+                  () => setMenu(false),
+                )}
+              </div>
+            )}
+          </Presence>
+        )}
+        <QueueStrip queue={queue} />
+        {files.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 px-2 pt-1" aria-label="Attached files">
+            {files.map((f) => (
+              <li
+                key={f.id}
+                className="inline-flex min-h-8 pointer-coarse:min-h-11 max-w-60 items-center gap-1.5 rounded-full border border-aui-border pr-1 pl-2.5 text-aui-xs text-aui-fg"
+              >
+                <FileIcon size={12} className="text-aui-muted" />
+                <span className="truncate">{f.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${f.name}`}
+                  onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
+                  className="inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                >
+                  <XIcon size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <label className="sr-only" htmlFor="composer-input">
+          Message
+        </label>
+        <textarea
+          id="composer-input"
+          ref={input}
+          rows={1}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => {
+            change(e.target.value);
+            follow(e.target.value);
+          }}
+          onKeyDown={onKeyDown}
+          onKeyUp={(e) => {
+            if (
+              e.key === "ArrowLeft" ||
+              e.key === "ArrowRight" ||
+              e.key === "Home" ||
+              e.key === "End"
+            )
+              follow(value);
+          }}
+          onClick={() => follow(value)}
+          onBlur={() => setTyping(null)}
+          role={tags ? "combobox" : undefined}
+          aria-expanded={tags ? shown.length > 0 : undefined}
+          aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
+          aria-autocomplete={tags ? "list" : undefined}
+          aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
+          className="max-h-[200px] min-h-10 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
+        />
+        {notice && (
+          <p role="status" className="px-3 text-aui-xs text-aui-muted">
+            {notice}
+          </p>
+        )}
+        <div className="flex items-center gap-1">
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden
+            onChange={(e) => {
+              void attach(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          {plus ? (
+            <button
+              type="button"
+              data-plus-button
+              className={`${tool} self-start`}
+              aria-label={defaultCopy.chat.plus}
+              aria-haspopup="dialog"
+              aria-expanded={menu}
+              title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut(/Mac|iPhone|iPad/.test(navigator.platform))})`}
+              onClick={() => (menu ? closeMenu() : showMenu())}
+            >
+              <Glyph d={PLUS} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={tool}
+              aria-label="Attach files"
+              title="Attach text files"
+              onClick={() => picker.current?.click()}
+            >
+              <Glyph d={PLUS} />
+            </button>
+          )}
+          {leading}
+          <div className="min-w-0 flex-1" />
+          {trailing}
+          {/*
           One button in one place. With nothing to send it listens, and once
           there is something to send it sends. While it is listening it stays
           the stop button, even as words arrive, so dictation can always be
           ended from where it was started.
         */}
-        {listening || (!ready && canDictate) ? (
-          <button
-            type="button"
-            className={`${action} ${listening ? "bg-aui-accent text-aui-accent-fg" : "bg-aui-hover text-aui-fg"}`}
-            aria-label={listening ? "Stop dictating" : "Dictate"}
-            aria-pressed={listening}
-            title={listening ? "Stop dictating" : "Dictate"}
-            onClick={dictate}
-          >
-            {listening ? <span aria-hidden className="size-2.5 rounded-[2px] bg-current" /> : <Glyph d={MIC} />}
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!ready}
-            aria-label={queue.running ? "Queue message" : "Send message"}
-            title={queue.running ? "Queue behind the reply in flight" : "Send"}
-            className={`${action} bg-aui-primary text-aui-primary-fg hover:opacity-90 disabled:opacity-40`}
-          >
-            <ArrowUpIcon size={16} strokeWidth={2.5} />
-          </button>
-        )}
-      </div>
-    </form>
-    {plus?.chips && <div className="min-w-0 px-1">{plus.chips}</div>}
+          {listening || (!ready && canDictate) ? (
+            <button
+              type="button"
+              className={`${action} ${listening ? "bg-aui-accent text-aui-accent-fg" : "bg-aui-hover text-aui-fg"}`}
+              aria-label={listening ? "Stop dictating" : "Dictate"}
+              aria-pressed={listening}
+              title={listening ? "Stop dictating" : "Dictate"}
+              onClick={dictate}
+            >
+              {listening ? (
+                <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
+              ) : (
+                <Glyph d={MIC} />
+              )}
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!ready}
+              aria-label={queue.running ? "Queue message" : "Send message"}
+              title={queue.running ? "Queue behind the reply in flight" : "Send"}
+              className={`${action} bg-aui-primary text-aui-primary-fg hover:opacity-90 disabled:opacity-40`}
+            >
+              <ArrowUpIcon size={16} strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
+      </form>
+      {plus?.chips && <div className="min-w-0 px-1">{plus.chips}</div>}
     </div>
   );
 }

@@ -64,7 +64,7 @@ so use Postgres to keep feedback across server restarts.
 
 File intake requires a configured Slack client whose bot token can read the
 message, and `files:read`. Bytes live in the server workspace's `attachments`
-directory as tenant-scoped, content-addressed blobs. Fiber bounds file count,
+directory as tenant-scoped, content-addressed blobs. `fiber/pkg/attachment` bounds file count,
 bytes and fetch time, checks content types, and resolves the references for the
 model. The app supplies only a message location, never a download URL or digest.
 Files from another person's Slack message are refused. Reinstall or reauthorize

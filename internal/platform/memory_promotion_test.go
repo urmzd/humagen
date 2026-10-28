@@ -2,13 +2,14 @@ package platform_test
 
 import (
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"testing"
-	"time"
 )
 
 func TestMemoryPromotionNeedsExplicitReviewAndDropsPrivateProvenance(t *testing.T) {

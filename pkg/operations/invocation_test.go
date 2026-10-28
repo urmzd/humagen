@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -23,14 +24,14 @@ func TestClockInvocationReplayRejectsChangedAssignmentIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tag := envelope.Tag{ID: "nightly@1", Tenant: "t", Agent: "worker", Origin: "cron", Text: "Work", Meta: map[string]string{operations.MetaAssignment: "a", "cron_schedule": "nightly"}, At: time.Now()}
+		tag := wire.NewEvent(wire.Raise{ID: "nightly@1", Tenant: "t", Agent: "worker", Origin: "cron", Text: "Work", Context: map[string]string{operations.MetaAssignment: "a", "cron_schedule": "nightly"}, At: time.Now()})
 		if _, err := s.ReserveInvocation("t", "a", tag, a.Version, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 		copied, _ := s.Invocation("t", "a")
-		copied.Meta[operations.MetaAssignment] = "changed"
+		wire.SetMeta(&copied, operations.MetaAssignment, "changed")
 		original, _ := s.Invocation("t", "a")
-		if original.Meta[operations.MetaAssignment] != "a" {
+		if wire.Meta(original)[operations.MetaAssignment] != "a" {
 			t.Fatal("caller changed durable invocation")
 		}
 		raw, err := st.Get(t.Context(), "operations", "t", "assignment:a")
@@ -41,7 +42,7 @@ func TestClockInvocationReplayRejectsChangedAssignmentIdentity(t *testing.T) {
 		if err := json.Unmarshal(raw, &record); err != nil {
 			t.Fatal(err)
 		}
-		record["invocation"].(map[string]any)["meta"].(map[string]any)[operations.MetaAssignment] = "other"
+		record["invocation"].(map[string]any)["data"].(map[string]any)["context"].(map[string]any)[operations.MetaAssignment] = "other"
 		if err := state.NewTable[map[string]any](st, "operations").Put("t", "assignment:a", record); err != nil {
 			t.Fatal(err)
 		}

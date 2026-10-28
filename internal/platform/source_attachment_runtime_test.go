@@ -1,28 +1,28 @@
 package platform_test
 
 import (
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"strings"
+	"testing"
+
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
-	"strings"
-	"testing"
 )
 
 func TestChannelSourceAttachmentChangesActualGroundingAndSurvivesRestart(t *testing.T) {
 	eachBackend(t, func(t *testing.T, b platform.Backends, again func() platform.Backends) {
 		model := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("first"), say("second"), say("third")}}
 		config := func(backends platform.Backends) platform.Config {
-			return platform.Config{Backends: backends, AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil })}}
+			return platform.Config{Backends: backends, AgentOptions: []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return model, nil })}}
 		}
 
 		p, stop := runningWith(t, config(b))
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "source-worker", Provider: "offline", Model: "m", SystemPrompt: "Answer."}, "ada"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "source-worker", Provider: "offline", Model: "m", SystemPrompt: "Answer."}, "ada"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "ada", Govern: true}, platform.ProjectInput{Name: "Field"}); err != nil {
@@ -38,7 +38,7 @@ func TestChannelSourceAttachmentChangesActualGroundingAndSurvivesRestart(t *test
 		}
 		invoke := func(p *platform.Platform, id, ch string) runs.Run {
 			t.Helper()
-			r, err := p.Invoke(t.Context(), envelope.Tag{Tenant: tenant, ID: id, Agent: "source-worker", Origin: runs.OriginAPI, Text: "Who signs renewals?", Meta: map[string]string{runs.MetaProject: "Field", runs.MetaChannel: ch}})
+			r, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{Tenant: tenant, ID: id, Agent: "source-worker", Origin: runs.OriginAPI, Text: "Who signs renewals?", Context: map[string]string{runs.MetaProject: "Field", runs.MetaChannel: ch}}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -72,9 +72,9 @@ func TestChannelSourceAttachmentChangesActualGroundingAndSurvivesRestart(t *test
 func TestNativePostMessageRetrievesFromOriginalAskWithRepeatedContext(t *testing.T) {
 	eachBackend(t, func(t *testing.T, b platform.Backends, _ func() platform.Backends) {
 		model := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("Packaging is scheduled.")}}
-		p, stop := runningWith(t, platform.Config{Backends: b, AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil })}})
+		p, stop := runningWith(t, platform.Config{Backends: b, AgentOptions: []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return model, nil })}})
 		defer stop()
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "source-worker", Provider: "offline", Model: "offline", SystemPrompt: "Answer the person."}, "ada"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "source-worker", Provider: "offline", Model: "offline", SystemPrompt: "Answer the person."}, "ada"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "ada", Govern: true}, platform.ProjectInput{Name: "Field", Instructions: strings.Repeat("Packaging context and instructions. ", 100)}); err != nil {

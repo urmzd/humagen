@@ -5,10 +5,10 @@
  */
 import {
   type AnswerRequest,
-  type BusEvent,
   type Http,
   mailTransport,
   type Run,
+  type RunEvent,
 } from "@humagen/adapter";
 import { App, type AppOptions } from "./app.tsx";
 import {
@@ -134,8 +134,6 @@ class Feed<T> {
 }
 
 const terminalStatus = (s: Run["status"]) => s === "completed" || s === "failed" || s === "stopped";
-
-const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
 
 /** A humagen that keeps runs, conversations and an inbox in memory, shaped like the real API. */
 export class FakeHumagen implements Humagen {
@@ -614,7 +612,7 @@ export class FakeHumagen implements Humagen {
     }
     const by = this.clients.get(as.client)?.slack?.people?.[as.user] ?? as.user;
     const { action, choice, text } = answer.body;
-    this.emit(answer.run, "lifecycle.resumed", {
+    this.emit(answer.run, "run.resumed.v1", {
       attempt: 2,
       answer: {
         question_id: answer.question,
@@ -638,12 +636,12 @@ export class FakeHumagen implements Humagen {
     if (!run || terminalStatus(run.status)) return;
     const said = this.said.get(id) ?? "";
     if (this.stopsFinishFirst) {
-      this.emit(id, "lifecycle.completed", { text: said });
+      this.emit(id, "run.completed.v1", { text: said });
       this.set(id, { stopping: undefined, stop_requested_at: undefined });
       return;
     }
     const cause = `Stopped by ${SUBJECT}`;
-    this.emit(id, "lifecycle.stopped", { text: said, reason: cause, by: SUBJECT });
+    this.emit(id, "run.stopped.v1", { text: said, reason: cause, by: SUBJECT });
     this.set(id, {
       status: "stopped",
       answer: said,
@@ -700,28 +698,29 @@ export class FakeHumagen implements Humagen {
     if (!run) throw new Error(`no run ${id}`);
     const seq = (this.seq.get(id) ?? 0) + 1;
     this.seq.set(id, seq);
-    const event: BusEvent = {
-      seq,
-      topic: `agent:${run.agent}:${id}`,
-      run_id: id,
+    const event = {
+      id: `${id}-${seq}`,
+      source: "humagen:acme",
+      type: kind,
+      channel: "humagen://acme",
+      time: this.at(),
+      hops: 0,
       tenant: "acme",
+      run: id,
+      seq,
       agent: run.agent,
-      rev: 1,
-      origin: "api",
-      kind,
-      payload: payload === undefined ? undefined : b64(payload),
-      at: this.at(),
-    };
-    if (kind === "lifecycle.started" || kind === "lifecycle.resumed")
-      this.set(id, { status: "running" });
-    if (kind === "lifecycle.parked") this.set(id, { status: "parked" });
-    if (kind === "delta.text") {
+      version: "1.0.0",
+      data: payload ?? {},
+    } as RunEvent;
+    if (kind === "run.started.v1" || kind === "run.resumed.v1") this.set(id, { status: "running" });
+    if (kind === "run.parked.v1") this.set(id, { status: "parked" });
+    if (kind === "run.delta.text.v1") {
       this.said.set(id, (this.said.get(id) ?? "") + ((payload as { text?: string })?.text ?? ""));
     }
-    if (kind === "lifecycle.completed") {
+    if (kind === "run.completed.v1") {
       this.set(id, { status: "completed", answer: (payload as { text?: string })?.text });
     }
-    if (kind === "lifecycle.failed" && (payload as { terminal?: boolean })?.terminal) {
+    if (kind === "run.failed.v1" && (payload as { terminal?: boolean })?.terminal) {
       this.set(id, { status: "failed", error: (payload as { error?: string }).error });
     }
     this.feed(id).push({ type: "event", event });

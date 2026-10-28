@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
 import { defaultCopy } from "@humagen/components";
+import { useEffect, useState } from "react";
 import { coworking, type Deletion } from "./api.ts";
-import { card, pageTitle, pageLede, Problem, SkeletonRows } from "./ui.tsx";
+import { card, Problem, pageLede, pageTitle, SkeletonRows } from "./ui.tsx";
 
-const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 const words = defaultCopy.deletions;
 
 /**
@@ -15,8 +16,7 @@ export function DeletionQueue() {
   const [rows, setRows] = useState<Deletion[] | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const load = () =>
-    coworking.deletions().then(setRows, () => setProblem(words.loadFailed));
+  const load = () => coworking.deletions().then(setRows, () => setProblem(words.loadFailed));
   useEffect(() => {
     load();
   }, []);
@@ -40,7 +40,10 @@ export function DeletionQueue() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-aui-sm text-aui-fg">{d.title || words.untitled}</p>
             <p className="flex flex-wrap gap-x-2 gap-y-1 text-aui-xs text-aui-muted">
-              <span>{d.requested ? words.requested : words.archived} {words.by(d.archived_by, day(d.archived_at))}</span>
+              <span>
+                {d.requested ? words.requested : words.archived}{" "}
+                {words.by(d.archived_by, day(d.archived_at))}
+              </span>
               {!d.due && <span>{words.due(day(d.delete_after))}</span>}
               {d.messages > 0 && <span>{words.messages(d.messages)}</span>}
             </p>
@@ -87,7 +90,9 @@ export function DeletionQueue() {
           </section>
           {waiting.length > 0 && (
             <section className="flex flex-col gap-2 pt-4">
-              <h2 className="text-aui-sm font-medium text-aui-fg">{words.archivedCount(waiting.length)}</h2>
+              <h2 className="text-aui-sm font-medium text-aui-fg">
+                {words.archivedCount(waiting.length)}
+              </h2>
               {list(waiting)}
             </section>
           )}

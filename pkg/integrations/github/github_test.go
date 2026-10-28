@@ -12,12 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/connector"
-	"github.com/urmzd/fiber/pkg/connectors/mention"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/signature"
-	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/signature"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
@@ -39,7 +40,7 @@ func deliver(t *testing.T, event, delivery, body string) *http.Request {
 	return r
 }
 
-func start(t *testing.T, cfg github.Config) (*github.Connector, <-chan envelope.Tag) {
+func start(t *testing.T, cfg github.Config) (*github.Connector, <-chan event.Envelope) {
 	t.Helper()
 	if cfg.API == nil {
 		cfg.API = github.NewFake()
@@ -52,12 +53,19 @@ func start(t *testing.T, cfg github.Config) (*github.Connector, <-chan envelope.
 		t.Fatalf("New: %v", err)
 	}
 
-	tags := make(chan envelope.Tag, 8)
+	tags := make(chan event.Envelope, 8)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_ = c.Ingest(ctx, tags)
+		_ = c.Ingest(ctx, func(ctx context.Context, e event.Envelope) error {
+			select {
+			case tags <- e:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -120,21 +128,21 @@ func TestIssueCommentBecomesATagAddressedAtTheIssue(t *testing.T) {
 	if tag.ID != "d1f2e3c4-0000-1111-2222-333344445555" {
 		t.Errorf("Tag.ID = %q, want the X-GitHub-Delivery guid", tag.ID)
 	}
-	if tag.Agent != "docs-bot" || tag.Origin != "github" {
-		t.Errorf("Tag agent/origin = %q/%q", tag.Agent, tag.Origin)
+	if wire.AgentOf(tag) != "docs-bot" || wire.Origin(tag) != "github" {
+		t.Errorf("Tag agent/origin = %q/%q", wire.AgentOf(tag), wire.Origin(tag))
 	}
 	want := "can summarize what changed here, and check the retry path too?"
-	if tag.Text != want {
-		t.Errorf("Tag.Text = %q, want %q with both mentions stripped", tag.Text, want)
+	if wire.TextOf(tag) != want {
+		t.Errorf("Tag.Text = %q, want %q with both mentions stripped", wire.TextOf(tag), want)
 	}
-	if got, want := tag.Source.String(), "github://urmzd/fiber/issues/42"; got != want {
+	if got, want := wire.SurfaceAddress(tag).String(), "github://urmzd/fiber/issues/42"; got != want {
 		t.Errorf("Tag.Source = %q, want %q", got, want)
 	}
-	if tag.Actor.ID != "urmzd" || tag.Actor.Bot {
-		t.Errorf("Tag.Actor = %+v", tag.Actor)
+	if wire.ActorOf(tag).ID != "urmzd" || wire.ActorOf(tag).Bot {
+		t.Errorf("Tag.Actor = %+v", wire.ActorOf(tag))
 	}
-	if !tag.At.Equal(time.Date(2026, 7, 20, 12, 30, 0, 0, time.UTC)) {
-		t.Errorf("Tag.At = %s, want the comment's own timestamp", tag.At)
+	if !tag.Time.Equal(time.Date(2026, 7, 20, 12, 30, 0, 0, time.UTC)) {
+		t.Errorf("Tag.At = %s, want the comment's own timestamp", tag.Time)
 	}
 	for key, want := range map[string]string{
 		"github_event":           "issue_comment",
@@ -150,7 +158,7 @@ func TestIssueCommentBecomesATagAddressedAtTheIssue(t *testing.T) {
 		"github_comment_id":      "2201234567",
 		"github_installation_id": "55555",
 	} {
-		if got := tag.Meta[key]; got != want {
+		if got := wire.Meta(tag)[key]; got != want {
 			t.Errorf("Meta[%q] = %q, want %q", key, got, want)
 		}
 	}
@@ -171,11 +179,11 @@ func TestACommentOnAPullRequestAddressesPullNotIssues(t *testing.T) {
 	c.ServeHTTP(w, deliver(t, "issue_comment", "d2", body))
 	tag := receive(t, tags)
 
-	if got, want := tag.Source.String(), "github://urmzd/fiber/pull/42"; got != want {
+	if got, want := wire.SurfaceAddress(tag).String(), "github://urmzd/fiber/pull/42"; got != want {
 		t.Errorf("Tag.Source = %q, want %q", got, want)
 	}
-	if tag.Meta["github_kind"] != "pull" {
-		t.Errorf("Meta[github_kind] = %q, want pull", tag.Meta["github_kind"])
+	if wire.Meta(tag)["github_kind"] != "pull" {
+		t.Errorf("Meta[github_kind] = %q, want pull", wire.Meta(tag)["github_kind"])
 	}
 }
 
@@ -221,19 +229,19 @@ func TestAReviewRequestNamesTheAgentWithoutAnyMention(t *testing.T) {
 	}
 	tag := receive(t, tags)
 
-	if tag.Agent != "docs-bot" {
-		t.Errorf("Tag.Agent = %q, want the requested reviewer's agent", tag.Agent)
+	if wire.AgentOf(tag) != "docs-bot" {
+		t.Errorf("Tag.Agent = %q, want the requested reviewer's agent", wire.AgentOf(tag))
 	}
-	if got, want := tag.Source.String(), "github://urmzd/fiber/pull/77?head_sha=deadbeef"; got != want {
+	if got, want := wire.SurfaceAddress(tag).String(), "github://urmzd/fiber/pull/77?head_sha=deadbeef"; got != want {
 		t.Errorf("Tag.Source = %q, want %q", got, want)
 	}
 	// With no message, the pull request is the request.
-	if !strings.HasPrefix(tag.Text, "Coalesce sink edits") || !strings.Contains(tag.Text, "flushes on an interval") {
-		t.Errorf("Tag.Text = %q, want the pull request title and body", tag.Text)
+	if !strings.HasPrefix(wire.TextOf(tag), "Coalesce sink edits") || !strings.Contains(wire.TextOf(tag), "flushes on an interval") {
+		t.Errorf("Tag.Text = %q, want the pull request title and body", wire.TextOf(tag))
 	}
 	// A mention of a human in the description is left alone.
-	if !strings.Contains(tag.Text, "@urmzd") {
-		t.Errorf("Tag.Text = %q, want the human mention preserved", tag.Text)
+	if !strings.Contains(wire.TextOf(tag), "@urmzd") {
+		t.Errorf("Tag.Text = %q, want the human mention preserved", wire.TextOf(tag))
 	}
 	for key, want := range map[string]string{
 		"github_kind":     "pull",
@@ -242,7 +250,7 @@ func TestAReviewRequestNamesTheAgentWithoutAnyMention(t *testing.T) {
 		"github_head_ref": "coalesce-edits",
 		"github_action":   "review_requested",
 	} {
-		if got := tag.Meta[key]; got != want {
+		if got := wire.Meta(tag)[key]; got != want {
 			t.Errorf("Meta[%q] = %q, want %q", key, got, want)
 		}
 	}
@@ -261,7 +269,7 @@ func TestAReviewRequestedFromAHumanRaisesNoTag(t *testing.T) {
 	}
 	select {
 	case tag := <-tags:
-		t.Errorf("a review request from a human raised a tag for %q", tag.Agent)
+		t.Errorf("a review request from a human raised a tag for %q", wire.AgentOf(tag))
 	default:
 	}
 }
@@ -341,13 +349,13 @@ func TestAnIssueOpenedWithAMentionRaisesATag(t *testing.T) {
 	c.ServeHTTP(w, deliver(t, "issues", "d5", body))
 	tag := receive(t, tags)
 
-	if tag.Agent != "docs-bot" {
-		t.Errorf("Tag.Agent = %q", tag.Agent)
+	if wire.AgentOf(tag) != "docs-bot" {
+		t.Errorf("Tag.Agent = %q", wire.AgentOf(tag))
 	}
-	if tag.Text != "please triage this\n\nThe sink posts twice on retry." {
-		t.Errorf("Tag.Text = %q", tag.Text)
+	if wire.TextOf(tag) != "please triage this\n\nThe sink posts twice on retry." {
+		t.Errorf("Tag.Text = %q", wire.TextOf(tag))
 	}
-	if got, want := tag.Source.String(), "github://urmzd/fiber/issues/9"; got != want {
+	if got, want := wire.SurfaceAddress(tag).String(), "github://urmzd/fiber/issues/9"; got != want {
 		t.Errorf("Tag.Source = %q, want %q", got, want)
 	}
 }
@@ -392,26 +400,17 @@ func TestThePingGitHubSendsWhenAHookIsCreatedIsAnswered(t *testing.T) {
 
 var target = address.MustParse("github://urmzd/fiber/issues/42")
 
-func event(seq uint64, kind envelope.Kind, payload string) envelope.Event {
-	return envelope.Event{
-		Seq:     seq,
-		Topic:   topic.MustParse("agent:docs-bot:run_1"),
-		RunID:   "run_1",
-		Agent:   "docs-bot",
-		Origin:  "github",
-		Kind:    kind,
-		Payload: []byte(payload),
-		At:      time.Unix(1700000100, 0).Add(time.Duration(seq) * time.Second),
-	}
+func runEvent(seq uint64, kind string, payload string) event.Envelope {
+	return event.Envelope{Seq: seq, Run: "run_1", Agent: "docs-bot", Type: kind, Data: wire.BodyOf(kind, []byte(payload)), Time: time.Unix(1700000100, 0).Add(time.Duration(seq) * time.Second)}
 }
 
-func textEvent(seq uint64, s string) envelope.Event {
+func textEvent(seq uint64, s string) event.Envelope {
 	b, err := json.Marshal(s)
 	if err != nil {
 		t := &testing.T{}
 		t.Fatal(err)
 	}
-	return event(seq, envelope.KindText, `{"text":`+string(b)+`}`)
+	return runEvent(seq, event.TypeText, `{"text":`+string(b)+`}`)
 }
 
 func sinkConnector(t *testing.T, api github.API) *github.Connector {
@@ -428,12 +427,12 @@ func TestDeliveringTheSameEventsTwiceKeepsOneEditedComment(t *testing.T) {
 	c := sinkConnector(t, fake)
 	ctx := context.Background()
 
-	events := []envelope.Event{
-		event(1, envelope.KindAccepted, ""),
+	events := []event.Envelope{
+		runEvent(1, event.TypeAccepted, ""),
 		textEvent(2, "The retry path posts twice "),
 		textEvent(3, "because the handle was lost."),
-		event(4, envelope.KindCitation, `{"title":"sink.go","uri":"https://github.com/urmzd/fiber/blob/main/sink.go"}`),
-		event(5, envelope.KindCompleted, ""),
+		runEvent(4, event.TypeCitation, `{"source":{"document_title":"sink.go","source_uri":"https://github.com/urmzd/fiber/blob/main/sink.go"}}`),
+		runEvent(5, event.TypeCompleted, ""),
 	}
 	for range 2 {
 		for _, e := range events {
@@ -470,7 +469,7 @@ func TestOutOfOrderDeliveryDoesNotRenderStaleTextOverFresh(t *testing.T) {
 	c := sinkConnector(t, fake)
 	ctx := context.Background()
 
-	for _, e := range []envelope.Event{textEvent(3, "second"), textEvent(2, "first "), event(4, envelope.KindCompleted, "")} {
+	for _, e := range []event.Envelope{textEvent(3, "second"), textEvent(2, "first "), runEvent(4, event.TypeCompleted, "")} {
 		if err := c.Deliver(ctx, target, e); err != nil {
 			t.Fatal(err)
 		}
@@ -601,13 +600,13 @@ func TestGitHubImplementsAllThreeFaces(t *testing.T) {
 	}
 }
 
-func receive(t *testing.T, tags <-chan envelope.Tag) envelope.Tag {
+func receive(t *testing.T, tags <-chan event.Envelope) event.Envelope {
 	t.Helper()
 	select {
 	case tag := <-tags:
 		return tag
 	case <-time.After(2 * time.Second):
 		t.Fatal("no tag was raised")
-		return envelope.Tag{}
+		return event.Envelope{}
 	}
 }

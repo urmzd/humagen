@@ -2,12 +2,14 @@ package platform
 
 import (
 	"cmp"
+	"slices"
+	"strings"
+
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
-	"slices"
-	"strings"
 )
 
 // CurrentPlace resolves the authoritative current audience of a conversation.
@@ -41,7 +43,7 @@ func (p *Platform) ShownRun(tenant string, run runs.Run) runs.Run {
 		// not grant those original capabilities to the new audience.
 		run.Citations = nil
 		hidden := append([]string{run.Project}, run.Within...)
-		hidden = append(hidden, runs.SourcesOf(run.Tag().Meta)...)
+		hidden = append(hidden, runs.SourcesOf(wire.Meta(run.Tag()))...)
 		for _, old := range hidden {
 			if old == "" {
 				continue

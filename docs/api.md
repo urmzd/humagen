@@ -16,7 +16,7 @@ with `go test ./...` and fail when the two disagree:
 |------|------------|
 | `TestSpecListsExactlyTheRegisteredRoutes` | A route is registered and not in the spec, or the reverse. An operation has no `operationId` or tag, or its `x-permission` is not the permission `Server.Handler` names for the route. Routes are read with `go/types`, so any call of `(*http.ServeMux).Handle` or `HandleFunc` counts, whatever its receiver is called, and one the reader cannot resolve to a constant pattern and permission fails the test. |
 | `TestSpecPermissionsAreTheOnesTheServerEnforces` | The running server enforces a different permission than `x-permission` says. |
-| `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal` | For the named Go types it lists (about 75), the type marshals a field the schema lacks, or the schema has one the type lacks, or `required` disagrees with `omitempty`. The event kinds differ from fiber's. |
+| `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal` | For the named Go types it lists (about 75), the type marshals a field the schema lacks, or the schema has one the type lacks, or `required` disagrees with `omitempty`. The event union is not the catalog: `EventType` is not exactly `event.Types()`, or `RunEvent`'s `type` mapping lacks a type, has one more, or maps a type to a variant whose `data` is not the body that type decodes to. `TestEventUnionParityCatchesAMissingVariant` proves a missing mapping entry fails. |
 | `TestResponsesMatchTheSpec`, `TestEventStreamMatchesTheSpec` | A real response, including 4xx and the event stream, does not validate against its schema, or answers with a status the spec does not list. Every JSON operation must be exercised. |
 | `TestResponsesMatchTheSpec` | A documented status code is never produced by a test, unless it is in `unexercised` with the reason. `401`, `403`, `413` and `500` are covered once for every route. |
 
@@ -28,7 +28,49 @@ optional in the spec and that no test makes the server send can drift without
 notice, and so can a field of a response shape no test reaches.
 
 So a change to a route, a handler's answer or a type's JSON fields is a change
-to `api/openapi.yaml` in the same commit, followed by `make client`.
+to `api/openapi.yaml` in the same commit, followed by `make client`. A new
+event type registered in fiber's catalog needs its variant in `RunEvent` and
+`EventType` too.
+
+## Events
+
+Every event is one envelope (`EventEnvelope`: `id`, `source`, `type`,
+`subject`, `channel`, `time`, `hops`, and on run events `tenant`, `run`,
+`seq`, `agent`, `version`, `digest`) with `data`, the body for its `type`,
+as inline JSON. `type` is the only discriminator and carries the version,
+such as `run.completed.v1`. `RunEvent` is the union, one variant per type in
+the catalog. A type not in its mapping is an `UnknownEvent`: a reader passes
+over it and never guesses its shape. The API sends run events only (`run.*`).
+
+| `type` | `data` | Was |
+|--------|--------|-----|
+| `run.accepted.v1`, `run.started.v1`, `run.resumed.v1` | `RunAcceptedEvent`, `RunStartedEvent`, `RunResumedEvent` | `lifecycle.accepted`, `.started`, `.resumed` |
+| `run.parked.v1`, `run.child.parked.v1` | the question, the child's question | `lifecycle.parked`, `lifecycle.child.parked` |
+| `run.completed.v1`, `run.failed.v1`, `run.stopped.v1` | the answer and usage, the error and `terminal`, the reason and partial answer | `lifecycle.completed`, `.failed`, `.stopped` |
+| `run.delta.text.v1`, `run.delta.thinking.v1`, `run.delta.tool.call.v1`, `run.delta.tool.done.v1`, `run.delta.citation.v1` | one fragment each | `delta.*` |
+| `run.action.taken.v1` | the action and its summary | `action.taken` |
+| `run.usage.v1`, `run.usage.child.v1` (opt-in) | one model call, a child's total | `usage.call`, `usage.child` |
+| `run.context.compacted.v1` (opt-in) | the compaction | `context.compacted` |
+
+The schema names are in `RunEvent`'s mapping in `api/openapi.yaml`.
+`UnknownEvent` is any other `type`, with `data` left as the server sent it:
+a newer server can add a type without breaking an older client.
+
+`GET /api/events` takes `channel` (a channel prefix), `type` (type prefixes,
+repeated) and `run`, and `from` to resume. With none it sends every run event
+the caller may read, `run.usage` and `run.context` included. The workspace is
+always the caller's. The old `topic` is deprecated. It still works and
+cannot be combined with the others: `agent:<name>:<run>` is read as `run=<run>`
+(`internal/legacy.Topic`). `inbox=true` sends inbox and thread notices alone,
+with no run event, and takes no other filter. `GET /api/journal` filters by
+`type`, repeated for more than one; the old `kind` is still read when no
+`type` is given.
+
+**Breaking change.** This replaced `kind` and a base64 `payload` on every
+event. A client generated before it reads neither `type` nor `data`:
+regenerate it (`make client`) and switch on `type`. Each old kind maps to one
+type in the table above; `lifecycle.*` became one type per ending, and
+`control.created`, `control.revised` and `control.deleted` are gone.
 
 Validation uses [`santhosh-tekuri/jsonschema`](https://github.com/santhosh-tekuri/jsonschema),
 a JSON Schema 2020-12 validator with no dependencies of its own, which is the
@@ -81,14 +123,21 @@ The layer in `humagen.ts` adds what the generator does not do:
 - `createClient({ baseUrl, token, credentials })`: `token` is a string or a
   function that returns one, sent as a bearer. `credentials: "include"` uses a
   browser's session cookie instead. Retries are off unless asked for.
-- `events({ topic, from })`: the event stream as typed items, with each
-  event's base64 payload decoded into a typed `body`. Leaving the loop by
-  `break`, `return` or a throw, or the stream ending, closes the connection.
+- `events({ channel, type, run, from })`: the event stream as typed items,
+  told apart by `item`: `event` carries a `RunEvent`, `inbox` an
+  `InboxNotice`. A `RunEvent` is an envelope whose `data` is the inline JSON
+  body for its `type`, so a `switch` on `event.type` narrows `event.data`.
+  Leaving the loop by `break`, `return` or a throw, or the stream ending,
+  closes the connection.
+- `runFilter(run, type?)`: the filter for one run's events.
+- `endsRun(event)`: whether an event ends its run on the stream:
+  `run.completed.v1`, `run.stopped.v1`, or `run.failed.v1` with
+  `data.terminal`.
 - `runEvents(run)`: one run's events, to the one that completes it, stops it
   or fails it for good. If the stream drops first, it reads the run's record
   and resumes after the last `seq`, with backoff. It never ends quietly before
   the run's last event: it throws `StreamEndedError` with `reason` `stopped`
-  (the record says stopped and its `lifecycle.stopped` was no longer on the
+  (the record says stopped and its `run.stopped.v1` was no longer on the
   stream), `ended` (the record says completed or failed and no ending event
   was found) or `gave-up` (it could not resume). The last read of a run that
   has ended waits at most `resume.drainMs` (2 s by default) for that event.
@@ -130,8 +179,8 @@ const run = await client.createRun({ agent: "helper", text: "Say hello" }, "slac
 const giveUp = AbortSignal.timeout(60_000);
 try {
   for await (const event of client.runEvents(run, {}, { signal: giveUp })) {
-    if (event.kind === "delta.text") process.stdout.write(event.body?.text ?? "");
-    if (event.kind === "action.taken") console.log(`\n${event.body?.summary}`);
+    if (event.type === "run.delta.text.v1") process.stdout.write(event.data.text);
+    if (event.type === "run.action.taken.v1") console.log(`\n${event.data.summary ?? ""}`);
   }
 } catch (error) {
   if (giveUp.aborted) await client.stopRun(run.id);
@@ -142,8 +191,10 @@ try {
 
 `runEvents` returns after the event that completes the run, or fails it for
 good, and closes its connection however the loop is left. It also yields
-`usage.call`, one per model call, and `usage.child`; a reader that does not
-count usage passes over them, and `getRun` has the run's total in `usage`. A dropped stream is
+`run.usage.v1`, one per model call, and `run.usage.child.v1`; a reader that
+does not count usage passes over them, and `getRun` has the run's total in
+`usage`. A type the client does not know (`UnknownEvent`) is passed over the
+same way. A dropped stream is
 resumed. A run stopped elsewhere ends it with `StreamEndedError` and `reason`
 `stopped`. `getRun` is the authority on whether a run is over. A refusal by a
 limit throws from `createRun`: `failureOf(error).refusal` names the limit, the

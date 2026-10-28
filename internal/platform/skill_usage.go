@@ -43,7 +43,7 @@ func (p *Platform) SkillAgents(ctx context.Context, who auth.Principal, id strin
 		if !seer.Agent(binding.Agent) {
 			continue
 		}
-		revision, err := p.Agents.Get(ctx, who.Tenant, binding.Agent, 0)
+		revision, err := p.Catalog().Get(ctx, who.Tenant, binding.Agent, 0)
 		if err != nil {
 			continue
 		}

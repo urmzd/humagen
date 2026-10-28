@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { encodeSkillFile, importSkillFolder, skillFiles, skillFileText, validSkillPath } from "./skill-files.ts";
+import {
+  encodeSkillFile,
+  importSkillFolder,
+  skillFiles,
+  skillFileText,
+  validSkillPath,
+} from "./skill-files.ts";
 
 test("skill folder imports preserve paths, Unicode and binary bytes", async () => {
   const file = (path: string, bytes: string | Uint8Array) => {

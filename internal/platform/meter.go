@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	drun "github.com/urmzd/anchor/pkg/run"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -50,27 +50,28 @@ func money(micros int64) string {
 }
 
 // observeUsage handles a usage event the observer saw.
-func (p *Platform) observeUsage(ctx context.Context, e envelope.Event) {
+func (p *Platform) observeUsage(ctx context.Context, e event.Envelope) {
 	run, ok := p.Runs.ObserveUsage(e)
-	if !ok || e.Kind != envelope.KindUsageCall {
+	if !ok || e.Type != event.TypeUsageCall {
 		return
 	}
-	c, err := payload.Decode[payload.UsageCall](e)
+	got, _, err := wire.UsageOf(e)
 	if err != nil {
-		p.log.Warn("platform: a usage report could not be read", "run", e.RunID, "error", err)
+		p.log.Warn("platform: a usage report could not be read", "run", e.Run, "error", err)
 		return
 	}
+	c := *got
 	key := c.AccountingID
 	if key == "" {
 		// A call with no key of its own is told apart by where it was
 		// published, which a redelivery repeats.
-		key = fmt.Sprintf("%s#%d", e.RunID, e.Seq)
+		key = fmt.Sprintf("%s#%d", e.Run, e.Seq)
 	}
 	// Stamped with the platform's clock, so entries are appended in time
 	// order whatever the runtime's clock said; the call's own time is kept.
 	added, counted, err := p.Usage.Record(usage.Entry{
 		Kind: usage.Spent, Key: key, Tenant: run.Tenant, Project: run.Project, Within: run.Within, Agent: run.Agent, Client: run.Client,
-		RunID: run.ID, At: p.now(), EventAt: e.At, Spend: new(usage.OfCall(c)),
+		RunID: run.ID, At: p.now(), EventAt: e.Time, Spend: new(usage.OfCall(c)),
 	})
 	if err != nil {
 		p.log.Error("platform: usage entry could not be written yet", "kind", usage.Spent, "run", run.ID, "error", err)
@@ -181,7 +182,7 @@ func (p *Platform) unmeteredAlert(tenant string, a policy.Applied) {
 // and is safe to call again: the ledger settles a run once.
 func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 	var micros int64
-	var recorded *payload.RunUsage
+	var recorded *event.RunUsage
 	if u, ok := p.recordedUsage(ctx, run); ok {
 		recorded = &u
 		// Only the run's own calls: the runs it called settle their own,
@@ -210,14 +211,14 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 // terminal event when that carried one, otherwise from the run ledger, its
 // output for a run that succeeded there and its usage records for one that
 // failed. It reports false when there is none, for a run that called no model.
-func (p *Platform) recordedUsage(ctx context.Context, run runs.Run) (payload.RunUsage, bool) {
+func (p *Platform) recordedUsage(ctx context.Context, run runs.Run) (event.RunUsage, bool) {
 	if run.UsageRecorded() {
 		return *run.Usage, true
 	}
 	rec, records, err := p.ledger.Load(ctx, run.ID)
 	if err != nil {
 		p.log.Warn("platform: a run's usage could not be read from the ledger", "run", run.ID, "error", err)
-		return payload.RunUsage{}, false
+		return event.RunUsage{}, false
 	}
 	if rec.Status == drun.StatusSucceeded {
 		var out runtime.Output

@@ -12,7 +12,6 @@ import { SSEError, type SSEOptions } from "./generated/sse.js";
 import type {
   ErrorBody,
   InboxNotice,
-  ManifestEvent,
   Refusal,
   Run,
   RunEvent,
@@ -53,19 +52,21 @@ export interface HumagenOptions {
   timeout?: number;
 }
 
-type Kind = RunEvent["kind"];
-
 /**
- * A run event with its payload decoded. The wire form carries the payload as
- * base64 JSON. This is the same union with `body` in its place, typed by kind
- * from the generated `ManifestEvent`, which is the decoded shape the server
- * itself sends in a run manifest.
+ * What the event stream sends: a channel prefix, type prefixes and one run.
+ * Empty is every run event the caller may read. The workspace is always the
+ * caller's own.
  */
-export type DecodedRunEvent = {
-  [K in Kind]: Omit<Extract<RunEvent, { kind: K }>, "payload"> & {
-    body?: Extract<ManifestEvent, { kind: K }>["body"];
-  };
-}[Kind];
+export interface EventFilter {
+  /** A channel prefix, such as `slack://T01/C02`. */
+  channel?: string;
+  /** Type prefixes, such as `run.delta` or `run.completed.v1`. */
+  type?: string[];
+  /** One run's events. */
+  run?: string;
+  /** Notices alone, with no run event. It takes no other filter. */
+  inbox?: boolean;
+}
 
 /** How `runEvents` reconnects when the stream drops before the run is over. */
 export interface ResumeOptions {
@@ -88,7 +89,7 @@ const DEFAULT_RESUME: Required<ResumeOptions> = { maxRetries: 5, initialDelayMs:
 
 /**
  * `runEvents` could not follow a run to an event that ends it. `reason` says
- * why: `stopped` (its record says it was stopped and its `lifecycle.stopped`
+ * why: `stopped` (its record says it was stopped and its `run.stopped.v1`
  * event was no longer on the stream), `ended` (its record says it completed or
  * failed and no ending event was found), or
  * `gave-up` (the stream kept dropping). `run` is the last record read.
@@ -128,10 +129,13 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/** One message from the event stream, told apart by `type`. */
+/**
+ * One message from the event stream, told apart by `item`, so it never reads
+ * as the `type` of the event it carries.
+ */
 export type StreamItem =
-  | { type: "event"; event: DecodedRunEvent }
-  | { type: "inbox"; notice: InboxNotice };
+  | { item: "event"; event: RunEvent }
+  | { item: "inbox"; notice: InboxNotice };
 
 /** What a failed request said, whichever generated error class carried it. */
 export interface ApiFailure {
@@ -169,35 +173,9 @@ export function failureOf(error: unknown): ApiFailure | undefined {
   };
 }
 
-/** The topic for every agent, one agent, or one run of an agent. */
-export function topicFor(agent?: string, run?: string): string {
-  if (!agent) return "agent";
-  return run ? `agent:${agent}:${run}` : `agent:${agent}`;
-}
-
-function decodeBase64(value: string): string {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
-}
-
-/**
- * Decode an event's payload. A payload that is absent, or is not JSON, leaves
- * `body` undefined rather than throwing: kinds are an open set, and a reader
- * should pass over what it does not know.
- */
-export function decodeEvent(event: RunEvent): DecodedRunEvent {
-  const { payload, ...rest } = event;
-  let body: unknown;
-  if (payload) {
-    try {
-      body = JSON.parse(decodeBase64(payload));
-    } catch {
-      body = undefined;
-    }
-  }
-  return { ...rest, body } as DecodedRunEvent;
+/** The filter for one run's events, narrowed to some type prefixes when given. */
+export function runFilter(run: string, type?: string[]): EventFilter {
+  return type?.length ? { run, type } : { run };
 }
 
 /**
@@ -205,9 +183,9 @@ export function decodeEvent(event: RunEvent): DecodedRunEvent {
  * or it failed and will not be retried. The run's record (`getRun`) stays the
  * authority on whether a run is over, for a stream that missed the event.
  */
-export function endsRun(event: DecodedRunEvent): boolean {
-  if (event.kind === "lifecycle.completed" || event.kind === "lifecycle.stopped") return true;
-  return event.kind === "lifecycle.failed" && event.body?.terminal === true;
+export function endsRun(event: RunEvent): boolean {
+  if (event.type === "run.completed.v1" || event.type === "run.stopped.v1") return true;
+  return event.type === "run.failed.v1" && event.data.terminal === true;
 }
 
 /**
@@ -249,26 +227,28 @@ export class Humagen extends ApiClient {
   }
 
   /**
-   * The event stream as typed items. A message with no name is a run event,
-   * decoded. A message named `inbox` is a notice that an inbox message
-   * changed.
+   * The event stream as typed items. A message with no name is a run event:
+   * an envelope whose `data` is the body for its `type`, told apart by
+   * `type`. A type this client does not know arrives as it is, and a reader
+   * passes over it. A message named `inbox` is a notice that an inbox
+   * message changed.
    *
    * Leaving the loop in any way (`break`, `return`, a throw, the stream
    * ending) closes the request, and so does aborting `options.signal`.
    *
    * The server ends the stream when the reader falls behind, and this returns
-   * when it does. `runEvents` resumes on its own; a reader of a wider topic
+   * when it does. `runEvents` resumes on its own; a reader of a wider filter
    * calls again.
    */
-  async *events(params: { topic?: string; from?: number } = {}, options?: SSEOptions): AsyncGenerator<StreamItem, void, undefined> {
+  async *events(params: EventFilter & { from?: number } = {}, options?: SSEOptions): AsyncGenerator<StreamItem, void, undefined> {
     const own = new AbortController();
     const signal = options?.signal ? AbortSignal.any([options.signal, own.signal]) : own.signal;
     try {
-      for await (const message of this.streamEvents(params.topic, params.from, { retry: false, ...options, signal })) {
+      for await (const message of this.streamEvents(params.channel, params.type, params.run, params.from, params.inbox, undefined, { retry: false, ...options, signal })) {
         if (message.event === "inbox") {
-          yield { type: "inbox", notice: message.data as InboxNotice };
+          yield { item: "inbox", notice: message.data as InboxNotice };
         } else if (message.event === undefined || message.event === "message") {
-          yield { type: "event", event: decodeEvent(message.data as RunEvent) };
+          yield { item: "event", event: message.data as RunEvent };
         }
       }
     } finally {
@@ -280,7 +260,7 @@ export class Humagen extends ApiClient {
   }
 
   /**
-   * One run's events, decoded, ending after the event that completes it or
+   * One run's events, ending after the event that completes it or
    * fails it for good. It never ends quietly before that.
    *
    * When the stream drops (the server ends a reader that fell behind, a
@@ -294,10 +274,10 @@ export class Humagen extends ApiClient {
    * (urmzd/oag#35), which is why the resuming lives here.
    */
   async *runEvents(
-    run: { agent: string; id: string },
+    run: { id: string; agent?: string },
     params: { from?: number; resume?: ResumeOptions } = {},
     options?: SSEOptions,
-  ): AsyncGenerator<DecodedRunEvent, void, undefined> {
+  ): AsyncGenerator<RunEvent, void, undefined> {
     const resume = { ...DEFAULT_RESUME, ...params.resume };
     let from = params.from;
     let failures = 0;
@@ -318,10 +298,11 @@ export class Humagen extends ApiClient {
       options?.signal?.addEventListener("abort", forward, { once: true });
       const read = drain ? { ...options, signal: drain.signal } : options;
       try {
-        for await (const item of this.events({ topic: topicFor(run.agent, run.id), from }, read)) {
-          if (item.type !== "event" || item.event.run_id !== run.id) continue;
-          if (from !== undefined && item.event.seq <= from) continue;
-          from = item.event.seq;
+        for await (const item of this.events({ ...runFilter(run.id), from }, read)) {
+          if (item.item !== "event" || item.event.run !== run.id) continue;
+          const seq = item.event.seq ?? 0;
+          if (from !== undefined && seq <= from) continue;
+          from = seq;
           failures = 0;
           yield item.event;
           if (endsRun(item.event)) return;

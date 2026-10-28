@@ -1,21 +1,21 @@
 import { defaultCopy } from "@humagen/components";
-import { useCallback, useEffect, useState } from "react";
-import { api, type Source } from "./api.ts";
-import { SourceLifecycle, SourceSyncSettings } from "./SourceLifecycle.tsx";
-import { ago, Chip, Page, Problem, SkeletonRows } from "./ui.tsx";
 import { DatabaseIcon, SearchIcon } from "@humagen/render-web";
 import { Button, buttonVariants } from "@humagen/render-web/ui/button";
-import { Input } from "@humagen/render-web/ui/input";
-import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import {
   Empty,
-  EmptyHeader,
-  EmptyTitle,
-  EmptyDescription,
-  EmptyMedia,
   EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
 } from "@humagen/render-web/ui/empty";
+import { Input } from "@humagen/render-web/ui/input";
+import { NativeSelect } from "@humagen/render-web/ui/native-select";
+import { useCallback, useEffect, useState } from "react";
+import { api, type Source } from "./api.ts";
 import { href } from "./route.ts";
+import { SourceLifecycle, SourceSyncSettings } from "./SourceLifecycle.tsx";
+import { ago, Chip, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.sourceOperations;
 const lifecycleWords = defaultCopy.sourceLifecycle;

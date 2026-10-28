@@ -28,11 +28,12 @@ import (
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/mcptools"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/app"
 	"github.com/urmzd/humagen/internal/platform"
@@ -67,13 +68,13 @@ func Main(v Version, opts ...Option) int {
 // WithModelProvider makes a model provider selectable by name: a spec whose
 // provider is name runs on what fn builds, and a built-in of the same name is
 // replaced.
-func WithModelProvider(name string, fn agentrt.ProviderFunc) Option {
+func WithModelProvider(name string, fn native.ProviderFunc) Option {
 	return func(o *app.Options) {
 		if name == "" || fn == nil {
 			return
 		}
 		if o.Ext.Providers == nil {
-			o.Ext.Providers = map[string]agentrt.ProviderFunc{}
+			o.Ext.Providers = map[string]native.ProviderFunc{}
 		}
 		o.Ext.Providers[name] = fn
 	}
@@ -95,7 +96,7 @@ func WithSourceProvider(name string, provider knowledge.Provider) Option {
 
 // WithOpenAICompatible registers an OpenAI-compatible endpoint under ep.Name.
 // The key is read from the variable ep.KeyEnv names when an agent is built.
-func WithOpenAICompatible(ep agentrt.OpenAICompatible) Option {
+func WithOpenAICompatible(ep native.OpenAICompatible) Option {
 	return WithModelProvider(ep.Name, ep.Provider())
 }
 
@@ -112,8 +113,8 @@ func WithToolSource(c runtime.Catalog) Option {
 
 // WithTools adds a fixed set of tools, resolved by name for every turn.
 func WithTools(tools ...saigetypes.Tool) Option {
-	static := agentrt.StaticTools(tools...)
-	return WithToolSource(func(runtime.Request, func(payload.Action) error) (agentrt.Tools, error) {
+	static := native.StaticTools(tools...)
+	return WithToolSource(func(runtime.Request, func(event.Action) error) (native.Tools, error) {
 		return static, nil
 	})
 }
@@ -172,6 +173,21 @@ func WithStore(c clients.Store, secrets clients.Secrets) Option {
 	})
 }
 
+// WithRuntime runs every turn on rt in place of the native saige turn, inside
+// the same playscape sandbox, on the same durable runs. rt is handed the pinned
+// definition and the triggering event, and streams back catalog event bodies
+// (turn.Runtime). It brings its own models and tools: WithModelProvider,
+// WithToolSource and the spec's models do not reach it. Nil changes nothing.
+func WithRuntime(rt turn.Runtime) Option {
+	if rt == nil {
+		return nil
+	}
+	return WithPlatform(func(cfg *platform.Config) error {
+		cfg.Runtime = rt
+		return nil
+	})
+}
+
 // WithPlatform edits the platform's configuration after flags and files are
 // applied. It reaches every seam platform.Config has, including ones no
 // option names yet.
@@ -203,7 +219,7 @@ const (
 
 // Factory builds a registered kind from its block in the spec file, which it
 // decodes strictly itself. What it returns depends on the slot: a blob.Store
-// for Blobs, a bus.Bus for Bus, an agentrt.ProviderFunc for Models, a
+// for Blobs, a bus.Bus for Bus, a native.ProviderFunc for Models, a
 // runtime.Catalog for Tools, and an Extension for Extensions.
 type Factory = app.Factory
 

@@ -16,7 +16,11 @@ const view = (all: boolean, names: string[]): ProjectAgentsView => ({
 test("what may answer: with every platform agent, those with no home and the project agents the platform listed", () => {
   const all = ["lead", "helper", "globex-helper", "initech-helper"];
   const homes = { "globex-helper": "Globex", "initech-helper": "Initech" };
-  assert.deepEqual(availableOf(all, view(true, ["globex-helper"]), homes), ["lead", "helper", "globex-helper"]);
+  assert.deepEqual(availableOf(all, view(true, ["globex-helper"]), homes), [
+    "lead",
+    "helper",
+    "globex-helper",
+  ]);
   // Narrowed by an allow list, only the names listed.
   assert.deepEqual(availableOf(all, view(false, ["helper"]), homes), ["helper"]);
   // Not yet read: nothing is hidden, the platform still refuses what is not available.
@@ -26,15 +30,25 @@ test("what may answer: with every platform agent, those with no home and the pro
 test("explicit Company homes remain platform-wide while scoped homes require the server's named offer", () => {
   const names = ["helper", "humagen-analyst", "older-root", "scoped"];
   const homes = { helper: "~", "humagen-analyst": "~", "older-root": "", scoped: "Vault" };
-  assert.deepEqual(availableOf(names, view(true, []), homes), ["helper", "humagen-analyst", "older-root"]);
+  assert.deepEqual(availableOf(names, view(true, []), homes), [
+    "helper",
+    "humagen-analyst",
+    "older-root",
+  ]);
   assert.deepEqual(availableOf(names, view(false, ["helper"]), homes), ["helper"]);
   assert.deepEqual(availableOf(names, view(true, ["scoped"]), homes), names);
 });
 
 test("where an agent comes from reads in words, and where a default is set is a project", () => {
   const title = (n: string) => (n === "" ? "Acme" : n);
-  assert.equal(offerWords({ agent: "globex-helper", from: "Globex", home: true }, "Globex", title), "Lives here");
-  assert.equal(offerWords({ agent: "globex-helper", from: "Globex", home: true }, "Globex renewals", title), "Lives in Globex");
+  assert.equal(
+    offerWords({ agent: "globex-helper", from: "Globex", home: true }, "Globex", title),
+    "Lives here",
+  );
+  assert.equal(
+    offerWords({ agent: "globex-helper", from: "Globex", home: true }, "Globex renewals", title),
+    "Lives in Globex",
+  );
   assert.equal(offerWords({ agent: "lead", from: "~" }, "Field", title), "from Acme");
   assert.equal(offerWords({ agent: "lead", from: "Field" }, "Field", title), "");
   assert.equal(defaultFrom({ agent: "lead", from: "project:~" }), "");
@@ -53,7 +67,12 @@ test("a home counts the places outside it that lose the agent, the workspace inc
   const outside = tree.filter((p) => p.name !== globex.name && p.name !== renewals.name).length;
   assert.equal(losing("Globex", ["~"], tree), outside + 1);
   // Enabled only in Field: what sits under Field and outside Globex.
-  const underField = tree.filter((p) => p.path.some((s) => s.name === field.name) && p.name !== globex.name && p.name !== renewals.name).length;
+  const underField = tree.filter(
+    (p) =>
+      p.path.some((s) => s.name === field.name) &&
+      p.name !== globex.name &&
+      p.name !== renewals.name,
+  ).length;
   assert.equal(losing("Globex", ["Field"], tree), underField);
   assert.ok(underField > 0 && tree.includes(east));
   // Back to being a platform agent loses nothing.

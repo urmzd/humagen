@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/humagen/fiber/pkg/signature"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -116,7 +116,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 			t.Errorf("platform shutdown: %v", err)
 		}
 	})
-	if _, err := p.Agents.Create(ctx, "trial", agentspec.AgentSpec{Name: "helper", Provider: "offline", Model: "offline", SystemPrompt: "Answer."}, "test"); err != nil {
+	if _, err := p.Agents.Create(ctx, "trial", wire.AgentSpec{Name: "helper", Provider: "offline", Model: "offline", SystemPrompt: "Answer."}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	if err := seedClients(ctx, p, "trial", envOf(vars)); err != nil {

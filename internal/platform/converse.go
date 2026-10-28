@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -212,7 +212,7 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 		if *name == "" {
 			continue
 		}
-		rev, err := p.Agents.Get(ctx, tenant, *name, 0)
+		rev, err := p.Catalog().Get(ctx, tenant, *name, 0)
 		if err != nil {
 			return fmt.Errorf("%w: %q", ErrNoBaseline, *name)
 		}
@@ -296,7 +296,7 @@ type Turn struct {
 	// Project files a new conversation. A follow-up keeps its conversation's
 	// project, whatever is passed here.
 	Project string
-	Actor   envelope.Actor
+	Actor   event.Actor
 	// Client is the client a surface's credential sends the turn through,
 	// when it acts for a person (act_as): its default is nearer than the
 	// channel's, and only the agents it may route to are asked.
@@ -382,11 +382,11 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	}
 	asked := legacy.Default(strings.TrimSpace(t.Agent))
 	if t.Sees != nil && asked != "" && asked != Open {
-		if _, err := p.Agents.Get(ctx, tenant, asked, 0); err != nil {
+		if _, err := p.Catalog().Get(ctx, tenant, asked, 0); err != nil {
 			return runs.Run{}, err
 		}
 		if !t.Sees(asked) {
-			return runs.Run{}, fmt.Errorf("%w: %q", registry.ErrNotFound, asked)
+			return runs.Run{}, fmt.Errorf("%w: %q", wire.ErrNotFound, asked)
 		}
 	}
 	place := p.placeIn(tenant, th, clientDefault)
@@ -424,10 +424,10 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		run, err := p.Runs.Get(tenant, runtime.RunID(tenant, id))
 		if err != nil {
-			run, err = p.Invoke(ctx, envelope.Tag{
-				ID: id, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAPI,
-				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, body, m), Actor: t.Actor, Meta: m,
-			})
+			run, err = p.Invoke(ctx, wire.NewEvent(wire.Raise{
+				ID: id, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAPI, Actor: t.Actor, Context: m,
+				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, body, m),
+			}))
 		}
 		if err != nil {
 			if i == 0 {

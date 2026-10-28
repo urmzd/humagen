@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentHuePath, agentHue, configureAgentHues, requestAgentHue, setAgentHues, subscribeHues } from "./agentHues.ts";
+import {
+  agentHue,
+  agentHuePath,
+  configureAgentHues,
+  requestAgentHue,
+  setAgentHues,
+  subscribeHues,
+} from "./agentHues.ts";
 
 test("unknown marks wait for a bounded lookup, then share server reservations", async () => {
   const batches: string[][] = [];
@@ -15,7 +22,10 @@ test("unknown marks wait for a bounded lookup, then share server reservations", 
     for (let i = 0; i < 201; i++) requestAgentHue(`lookup-${i}`);
     requestAgentHue("lookup-0");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.deepEqual(batches.map((names) => names.length), [100, 100, 1]);
+    assert.deepEqual(
+      batches.map((names) => names.length),
+      [100, 100, 1],
+    );
     assert.equal(notices, 3);
     assert.equal(agentHue("lookup-0"), 0);
     setAgentHues({ extra: 123 });
@@ -29,7 +39,12 @@ test("unknown marks wait for a bounded lookup, then share server reservations", 
 
 test("changing identity clears reservations and ignores in-flight results", async () => {
   let finish!: (hues: Record<string, number>) => void;
-  configureAgentHues(() => new Promise((resolve) => { finish = resolve; }));
+  configureAgentHues(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
   requestAgentHue("shared");
   await Promise.resolve();
   configureAgentHues(async () => ({ shared: 75 }));
@@ -54,7 +69,6 @@ test("a transient failure retries without needing to remount the mark", async ()
   assert.equal(agentHue("retried"), 135);
   configureAgentHues(undefined);
 });
-
 
 test("a project-only reader resolves marks without run or agent permissions", async () => {
   assert.equal(agentHuePath(["projects:read"]), "/api/project-agent-hues");

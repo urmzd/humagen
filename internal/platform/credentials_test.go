@@ -17,10 +17,10 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/mcpfake"
 	"github.com/urmzd/humagen/internal/platform"
@@ -269,13 +269,13 @@ func newWorldOn(t *testing.T, cfg platform.Config, server *mcpfake.Server, provi
 		cfg.CredentialValues = map[string]bool{tenant: true}
 	}
 	cfg.Log = slog.New(slog.NewTextHandler(w.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	cfg.AgentOptions = []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) {
+	cfg.AgentOptions = []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) {
 		return w.model, nil
 	})}
 	w.p = startWith(t, cfg)
 	// The MCP sessions are closed before the platform stops.
 	t.Cleanup(func() { _ = w.p.Close() })
-	spec := agentspec.AgentSpec{Name: "worker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"mcp:issues"}}
+	spec := wire.AgentSpec{Name: "worker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"mcp:issues"}}
 	if _, err := w.p.Agents.Create(t.Context(), tenant, spec, "test"); err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func newWorldOn(t *testing.T, cfg platform.Config, server *mcpfake.Server, provi
 }
 
 // ask runs worker once for an actor and waits for it to finish.
-func (w *world) ask(t *testing.T, id string, actor envelope.Actor) runs.Run {
+func (w *world) ask(t *testing.T, id string, actor event.Actor) runs.Run {
 	t.Helper()
 	r, err := w.p.Converse(t.Context(), tenant, platform.Turn{ID: id, Agent: "worker", Text: "Any open bugs?", Actor: actor})
 	if err != nil {
@@ -320,7 +320,7 @@ func (w *world) leaks(t *testing.T, secrets ...string) {
 	for _, r := range w.p.Runs.List(tenant, 200) {
 		places = append(places, r.Answer, r.Error)
 		for _, e := range w.p.Journal.Events(tenant, []string{r.ID}) {
-			places = append(places, string(e.Payload))
+			places = append(places, wire.JSONOf(e))
 		}
 	}
 	for _, s := range secrets {
@@ -398,7 +398,7 @@ func TestAPersonWithNoCredentialGetsNoToolsAndNothingFallsBackToTheSharedOne(t *
 	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
 
 	before := len(w.server.Requests())
-	for i, actor := range []envelope.Actor{
+	for i, actor := range []event.Actor{
 		platform.ActorOf(cyd), // signed in, and connected nothing
 		{},                    // a run for nobody
 		platform.ActorOf(slackApp),
@@ -451,7 +451,7 @@ func TestAMachinesOwnRunActsForNobody(t *testing.T) {
 	w.ask(t, "api-app", platform.ActorOf(slackApp))
 	// A machine's actor names the subject as its id, and nothing else
 	// can turn it into a person.
-	w.ask(t, "api-app-user", envelope.Actor{ID: slackApp.Subject, User: slackApp.Subject, Bot: true})
+	w.ask(t, "api-app-user", event.Actor{ID: slackApp.Subject, User: slackApp.Subject, Bot: true})
 	if got := w.server.Requests(); len(got) != 0 {
 		t.Fatalf("the app's own runs reached the server with %q", got)
 	}
@@ -648,7 +648,7 @@ func TestNobodyConnectsAnotherPersonsReference(t *testing.T) {
 func TestAnApproverCannotEditACallThatActsAsThePerson(t *testing.T) {
 	w := newWorld(t, platform.Config{})
 	ctx := t.Context()
-	spec := agentspec.AgentSpec{Name: "careful", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt,
+	spec := wire.AgentSpec{Name: "careful", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt,
 		Tools: []string{"mcp:issues"}, Approvals: []string{searchTool}}
 	if _, err := w.p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
 		t.Fatal(err)
@@ -764,7 +764,7 @@ func TestWhatAPersonsCredentialReachedIsNotTaughtToMemory(t *testing.T) {
 	w.model.mu.Unlock()
 	ctx := t.Context()
 	// lead, which every world has, is granted no tools.
-	if _, err := w.p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "scribe", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
+	if _, err := w.p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "scribe", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe", MemoryAutoApprove: true}); err != nil {
@@ -774,7 +774,7 @@ func TestWhatAPersonsCredentialReachedIsNotTaughtToMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
-	turn := func(id, agent, project, after, text string, actor envelope.Actor) runs.Run {
+	turn := func(id, agent, project, after, text string, actor event.Actor) runs.Run {
 		t.Helper()
 		r, err := w.p.Converse(ctx, tenant, platform.Turn{ID: id, Agent: agent, Text: text, Project: project, After: after, Actor: actor})
 		if err != nil {
@@ -858,7 +858,7 @@ func TestWhatAPersonsCredentialReachedIsNotTaughtToMemory(t *testing.T) {
 
 // failure asks worker once for an actor while its model fails, and returns
 // the failed run and the inbox message about it.
-func (w *world) failure(t *testing.T, id string, actor envelope.Actor) (runs.Run, inbox.Message) {
+func (w *world) failure(t *testing.T, id string, actor event.Actor) (runs.Run, inbox.Message) {
 	t.Helper()
 	return w.failing(t, platform.Turn{ID: id, Agent: "worker", Text: "Any open bugs?", Actor: actor})
 }
@@ -1087,7 +1087,7 @@ func TestOnlyThePersonARunActsForAnswersWhatItAsksWithTheirCredential(t *testing
 	w := newWorld(t, platform.Config{})
 	ctx := t.Context()
 	w.connect(t, ana, credentials.Input{Ref: "env:HUMAGEN_PERSON_ANA_ISSUES"})
-	for _, spec := range []agentspec.AgentSpec{
+	for _, spec := range []wire.AgentSpec{
 		{Name: "asker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"mcp:issues", "ask_person"}},
 		{Name: "chatty", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"ask_person"}},
 	} {

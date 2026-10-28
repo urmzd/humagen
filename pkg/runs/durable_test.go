@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/state"
@@ -22,8 +23,7 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rootTag := envelope.Tag{ID: "root", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", At: t0,
-			Meta: map[string]string{MetaThread: "th-1", MetaAsk: "what I typed", MetaRouted: "best_fit"}}
+		rootTag := wire.NewEvent(wire.Raise{ID: "root", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", At: t0, Context: map[string]string{MetaThread: "th-1", MetaAsk: "what I typed", MetaRouted: "best_fit"}})
 		rootID := runtime.RunID("acme", rootTag.ID)
 		if err := x.Record(rootID, rootTag, 2); err != nil {
 			t.Fatal(err)
@@ -40,9 +40,9 @@ func TestRestart(t *testing.T) {
 		x.Called(rootID, 500)
 		x.SetTitle("acme", "th-1", "Release notes")
 		record(t, x, "globex", "other", "lead", "api", time.Second, nil)
-		end(t, x, "acme", rootID, time.Second, envelope.KindStarted, payload.Lifecycle{Attempt: 1})
+		end(t, x, "acme", rootID, time.Second, event.TypeStarted, wire.Lifecycle{Attempt: 1})
 		x.Spend(childID, 120)
-		end(t, x, "acme", childID, 2*time.Second, envelope.KindCompleted, payload.Lifecycle{Text: "done"})
+		end(t, x, "acme", childID, 2*time.Second, event.TypeCompleted, wire.Lifecycle{Text: "done"})
 		c, _ := x.Get("acme", childID)
 		x.SettleCall(c)
 
@@ -65,7 +65,7 @@ func TestRestart(t *testing.T) {
 			if !reflect.DeepEqual(got.Tag(), want.Tag()) || !reflect.DeepEqual(got.Requesters(), want.Requesters()) {
 				t.Fatalf("%s: tag or requesters after restart = %+v %v, want %+v %v", id, got.Tag(), got.Requesters(), want.Tag(), want.Requesters())
 			}
-			got.tag, want.tag = envelope.Tag{}, envelope.Tag{}
+			got.tag, want.tag = event.Envelope{}, event.Envelope{}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("%s after restart = %+v\nwant %+v", id, got, want)
 			}
@@ -104,7 +104,7 @@ func TestFailedWrites(t *testing.T) {
 	x, _ := Open(f)
 	record(t, x, "acme", "r1", "lead", "api", 0, nil)
 	f.Fail(statetest.ErrInjected)
-	tag := envelope.Tag{ID: "r2", Tenant: "acme", Agent: "lead", Origin: "api", Text: "go", At: t0}
+	tag := wire.NewEvent(wire.Raise{ID: "r2", Tenant: "acme", Agent: "lead", Origin: "api", Text: "go", At: t0})
 	if err := x.Record("r2", tag, 1); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Record = %v", err)
 	}
@@ -112,7 +112,7 @@ func TestFailedWrites(t *testing.T) {
 		t.Fatal("a run that was not written was recorded")
 	}
 	// An event already happened: it is kept in memory and written later.
-	end(t, x, "acme", "r1", time.Second, envelope.KindCompleted, payload.Lifecycle{Text: "ok"})
+	end(t, x, "acme", "r1", time.Second, event.TypeCompleted, wire.Lifecycle{Text: "ok"})
 	if err := x.Flush(); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Flush = %v", err)
 	}

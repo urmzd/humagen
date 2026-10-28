@@ -1,14 +1,34 @@
-import { builtinAgentKey } from "./legacy.ts";
-import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
-import { BanIcon, CheckIcon, ChevronDownIcon, SearchIcon, ShieldIcon, Tooltip, XIcon } from "@humagen/render-web";
 import { defaultCopy } from "@humagen/components";
+import {
+  BanIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  SearchIcon,
+  ShieldIcon,
+  Tooltip,
+  XIcon,
+} from "@humagen/render-web";
 import { AgentOrb, type OrbState, usePresence } from "@humagen/web";
-export { usePresence, Presence } from "@humagen/web";
+import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
+import { builtinAgentKey } from "./legacy.ts";
+
+export { Presence, usePresence } from "@humagen/web";
+
 import { buttonVariants } from "@humagen/render-web/ui/button";
 import { inputClass } from "@humagen/render-web/ui/input";
-import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { Run } from "./adapter.ts";
-import { cause, dollars, elapsed, took } from "./format.ts";
+import { dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
 
 export const field = inputClass;
@@ -18,7 +38,15 @@ export const button = buttonVariants({ variant: "outline" });
 
 export const primary = buttonVariants();
 
-export function Label({ text, hint, children }: { text: string; hint?: string; children: ReactNode }) {
+export function Label({
+  text,
+  hint,
+  children,
+}: {
+  text: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-aui-xs font-medium text-aui-muted">{text}</span>
@@ -31,7 +59,10 @@ export function Label({ text, hint, children }: { text: string; hint?: string; c
 export function Problem({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="rounded-aui border border-aui-bad/40 bg-aui-bad/10 px-3 py-2 text-aui-sm text-aui-fg">
+    <p
+      role="alert"
+      className="rounded-aui border border-aui-bad/40 bg-aui-bad/10 px-3 py-2 text-aui-sm text-aui-fg"
+    >
       {message}
     </p>
   );
@@ -140,7 +171,10 @@ export function PickMany({
   const [query, setQuery] = useState("");
   const byValue = new Map(options.map((o) => [o.value, o]));
   const q = query.trim().toLowerCase();
-  const rest = options.filter((o) => !value.includes(o.value) && (!q || `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(q)));
+  const rest = options.filter(
+    (o) =>
+      !value.includes(o.value) && (!q || `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(q)),
+  );
   return (
     <div className="flex flex-col gap-2">
       {value.length === 0 ? (
@@ -150,15 +184,27 @@ export function PickMany({
           {value.map((v) => {
             const o = byValue.get(v);
             return (
-              <li key={v} className="flex items-center gap-3 border-aui-border border-t py-2 first:border-t-0">
+              <li
+                key={v}
+                className="flex items-center gap-3 border-aui-border border-t py-2 first:border-t-0"
+              >
                 {o?.mark}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-aui-sm text-aui-fg">{o?.label ?? v}</span>
-                  {o?.hint && <span className="block truncate text-aui-xs text-aui-muted">{o.hint}</span>}
-                  {!o && <span className="block text-aui-xs text-aui-muted">No longer exists.</span>}
+                  {o?.hint && (
+                    <span className="block truncate text-aui-xs text-aui-muted">{o.hint}</span>
+                  )}
+                  {!o && (
+                    <span className="block text-aui-xs text-aui-muted">No longer exists.</span>
+                  )}
                 </span>
                 {!disabled && (
-                  <button type="button" className={button} aria-label={`Remove ${o?.label ?? v}`} onClick={() => onChange(value.filter((x) => x !== v))}>
+                  <button
+                    type="button"
+                    className={button}
+                    aria-label={`Remove ${o?.label ?? v}`}
+                    onClick={() => onChange(value.filter((x) => x !== v))}
+                  >
                     Remove
                   </button>
                 )}
@@ -168,11 +214,7 @@ export function PickMany({
         </ul>
       )}
       {!disabled && options.some((o) => !value.includes(o.value)) && (
-        <Popover
-          label={`${add}: ${label}`}
-          className={`${button} self-start`}
-          button={<>{add}</>}
-        >
+        <Popover label={`${add}: ${label}`} className={`${button} self-start`} button={add}>
           {(close) => (
             <div className="flex max-h-[min(24rem,60vh)] flex-col gap-1">
               <input
@@ -186,7 +228,9 @@ export function PickMany({
                 onChange={(e) => setQuery(e.target.value)}
               />
               <ul className="aui-scroll flex flex-col overflow-y-auto">
-                {rest.length === 0 && <li className="px-2.5 py-2 text-aui-xs text-aui-muted">Nothing matches.</li>}
+                {rest.length === 0 && (
+                  <li className="px-2.5 py-2 text-aui-xs text-aui-muted">Nothing matches.</li>
+                )}
                 {rest.map((o) => (
                   <li key={o.value}>
                     <button
@@ -201,7 +245,11 @@ export function PickMany({
                       {o.mark}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-aui-sm text-aui-fg">{o.label}</span>
-                        {o.hint && <span className="block truncate text-aui-xs text-aui-muted">{o.hint}</span>}
+                        {o.hint && (
+                          <span className="block truncate text-aui-xs text-aui-muted">
+                            {o.hint}
+                          </span>
+                        )}
                       </span>
                     </button>
                   </li>
@@ -216,7 +264,8 @@ export function PickMany({
 }
 
 /** The one style for a page's title and the line under it, wherever a page draws its own header. */
-export const pageTitle = "humagen-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
+export const pageTitle =
+  "humagen-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
 export const pageLede = "max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted";
 
 export function Page({
@@ -264,10 +313,22 @@ export function Page({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="humagen-conversation-header relative z-10 grid shrink-0 items-center gap-x-4 gap-y-2 border-aui-border border-b px-4 py-3 md:px-6">
           <div className="humagen-conversation-title min-w-0">
-            <h1 className="truncate text-aui-base font-semibold leading-6 text-aui-fg" title={typeof title === "string" ? title : undefined}>{title}</h1>
-            {(start || meta) && <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted">{start}{meta}</div>}
+            <h1
+              className="truncate text-aui-base font-semibold leading-6 text-aui-fg"
+              title={typeof title === "string" ? title : undefined}
+            >
+              {title}
+            </h1>
+            {(start || meta) && (
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted">
+                {start}
+                {meta}
+              </div>
+            )}
           </div>
-          <div className="humagen-conversation-actions flex min-w-0 items-center justify-end gap-1">{actions}</div>
+          <div className="humagen-conversation-actions flex min-w-0 items-center justify-end gap-1">
+            {actions}
+          </div>
         </header>
         {children}
       </div>
@@ -277,7 +338,9 @@ export function Page({
   return (
     <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
       {/* Every page is one centered column, so a wide window never strands the content against the sidebar. */}
-      <div className={`@container humagen-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 pt-8 pb-12 md:px-10`}>
+      <div
+        className={`@container humagen-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 pt-8 pb-12 md:px-10`}
+      >
         <header className="flex flex-col gap-3">
           {back && (
             <button
@@ -293,13 +356,19 @@ export function Page({
               {icon}
               <div className="min-w-0">
                 <h1 className={pageTitle}>{title}</h1>
-                {meta && <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">{meta}</div>}
+                {meta && (
+                  <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">
+                    {meta}
+                  </div>
+                )}
                 {crumbs && <div className="pt-1.5">{crumbs}</div>}
                 {lede && <p className={pageLede}>{lede}</p>}
               </div>
             </div>
             {/* The actions may shrink to the column, so on a narrow screen they wrap onto more lines instead of running off it. */}
-            {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>}
+            {actions && (
+              <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>
+            )}
           </div>
         </header>
         {tabs && <div className="sticky top-0 z-10 -mx-1 bg-[var(--aui-bg)] px-1">{tabs}</div>}
@@ -328,7 +397,11 @@ export function Count({ n }: { n: number }) {
 }
 
 function CountBadge({ n }: { n: number }) {
-  return <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-aui-hover px-1.5 text-aui-2xs font-normal tabular-nums text-aui-muted">{n}</span>;
+  return (
+    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-aui-hover px-1.5 text-aui-2xs font-normal tabular-nums text-aui-muted">
+      {n}
+    </span>
+  );
 }
 
 /**
@@ -380,7 +453,9 @@ export function Section({
           </h2>
           {hint && <p className="max-w-[62ch] text-aui-xs text-aui-muted">{hint}</p>}
         </div>
-        {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>}
+        {actions && (
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>
+        )}
       </div>
       {children}
     </section>
@@ -414,7 +489,9 @@ export function RowButton({
       aria-label={label}
       className="flex min-h-11 w-full min-w-0 items-start gap-2 rounded-aui px-2 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
     >
-      {lead !== undefined && <span className="flex w-2 shrink-0 justify-center self-stretch pt-[0.45rem]">{lead}</span>}
+      {lead !== undefined && (
+        <span className="flex w-2 shrink-0 justify-center self-stretch pt-[0.45rem]">{lead}</span>
+      )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="min-w-0 truncate text-aui-sm text-aui-fg">{title}</span>
         {detail && <span className="min-w-0 truncate text-aui-xs text-aui-muted">{detail}</span>}
@@ -437,7 +514,9 @@ export function Stat({ label, value, note }: { label: string; value: string; not
   return (
     <div className="flex min-w-0 flex-col">
       <span className="text-aui-xs text-aui-muted">{label}</span>
-      <span className="humagen-display pt-0.5 text-[1.75rem] leading-9 font-semibold text-aui-fg">{value}</span>
+      <span className="humagen-display pt-0.5 text-[1.75rem] leading-9 font-semibold text-aui-fg">
+        {value}
+      </span>
       {note && <span className="text-aui-2xs text-aui-muted">{note}</span>}
     </div>
   );
@@ -500,7 +579,9 @@ export function Tape({
         <span key={i} aria-hidden className="humagen-tick" data-status="none" />
       ))}
       {shown.map((r) => {
-        const t = { "--t": Math.min(Math.log1p(elapsed(r)) / top, 1).toFixed(3) } as React.CSSProperties;
+        const t = {
+          "--t": Math.min(Math.log1p(elapsed(r)) / top, 1).toFixed(3),
+        } as React.CSSProperties;
         const label = `${r.agent}, ${statusWord[r.status].toLowerCase()}, ${took(elapsed(r))}, ${ago(r.created_at)}`;
         return onOpen ? (
           <button
@@ -514,7 +595,14 @@ export function Tape({
             onClick={() => onOpen(r.id)}
           />
         ) : (
-          <span key={r.id} aria-hidden className="humagen-tick" data-status={r.status} style={t} title={label} />
+          <span
+            key={r.id}
+            aria-hidden
+            className="humagen-tick"
+            data-status={r.status}
+            style={t}
+            title={label}
+          />
         );
       })}
     </div>
@@ -526,8 +614,14 @@ export const AGENT_HUES = 12;
 export { setAgentHues } from "./agentHues.ts";
 
 function useAgentHue(name: string): number | undefined {
-  const hue = useSyncExternalStore(subscribeHues, () => agentHue(name), () => agentHue(name));
-  useEffect(() => { requestAgentHue(name); }, [name]);
+  const hue = useSyncExternalStore(
+    subscribeHues,
+    () => agentHue(name),
+    () => agentHue(name),
+  );
+  useEffect(() => {
+    requestAgentHue(name);
+  }, [name]);
   return hue;
 }
 
@@ -545,10 +639,22 @@ export function hueOf(name: string): number {
  * one hue, so setting that hue here recolors the orb, and any accent, for this
  * agent alone.
  */
-export function AgentTint({ name, className, children }: { name: string; className?: string; children: ReactNode }) {
+export function AgentTint({
+  name,
+  className,
+  children,
+}: {
+  name: string;
+  className?: string;
+  children: ReactNode;
+}) {
   useAgentHue(name);
   return (
-    <div data-accent="agent" className={className} style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}>
+    <div
+      data-accent="agent"
+      className={className}
+      style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}
+    >
       {children}
     </div>
   );
@@ -559,11 +665,26 @@ export function AgentTint({ name, className, children }: { name: string; classNa
  * answers, where it moves with what the agent is doing, so the mark in a list
  * and the presence in a conversation are one thing. At rest it is still.
  */
-export function AgentMark({ name, size = 18, state = "idle" }: { name: string; size?: number; state?: OrbState }) {
+export function AgentMark({
+  name,
+  size = 18,
+  state = "idle",
+}: {
+  name: string;
+  size?: number;
+  state?: OrbState;
+}) {
   const hue = useAgentHue(name);
-  if (hue === undefined) return <span aria-hidden className="inline-block shrink-0" style={{ width: size, height: size }} />;
+  if (hue === undefined)
+    return (
+      <span aria-hidden className="inline-block shrink-0" style={{ width: size, height: size }} />
+    );
   return (
-    <span data-accent="agent" className="inline-flex shrink-0 items-center align-middle" style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}>
+    <span
+      data-accent="agent"
+      className="inline-flex shrink-0 items-center align-middle"
+      style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}
+    >
       <AgentOrb state={state} size={size} label="" />
     </span>
   );
@@ -618,7 +739,10 @@ export function Segmented<T extends string>({
   return (
     <fieldset className="inline-flex min-w-0 max-w-full rounded-aui border border-aui-border p-0.5">
       <legend className="sr-only">{label}</legend>
-      <div ref={strip} className="humagen-strip flex min-w-0 overflow-x-auto [scrollbar-width:none]">
+      <div
+        ref={strip}
+        className="humagen-strip flex min-w-0 overflow-x-auto [scrollbar-width:none]"
+      >
         {options.map((o) => (
           <button
             key={o.id}
@@ -656,7 +780,8 @@ export function useStrip<E extends HTMLElement>(chosen: unknown): RefObject<E | 
     const marked = () => mark(strip);
     strip.addEventListener("scroll", marked, { passive: true });
     // Widths settle late, when a face loads or the window turns, so the place is found again.
-    const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => fit(strip));
+    const sized =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => fit(strip));
     sized?.observe(strip);
     for (const item of strip.children) sized?.observe(item);
     // Items come and go after the strip shows, as an agent's tabs do once it loads. The new
@@ -667,7 +792,8 @@ export function useStrip<E extends HTMLElement>(chosen: unknown): RefObject<E | 
         : new MutationObserver((records) => {
             for (const r of records) {
               for (const node of r.addedNodes) if (node instanceof Element) sized?.observe(node);
-              for (const node of r.removedNodes) if (node instanceof Element) sized?.unobserve(node);
+              for (const node of r.removedNodes)
+                if (node instanceof Element) sized?.unobserve(node);
             }
             fit(strip);
           });
@@ -682,10 +808,16 @@ export function useStrip<E extends HTMLElement>(chosen: unknown): RefObject<E | 
 }
 
 /** The strip's own measurements: how far it is scrolled, how wide it is, and how wide its content is. */
-const viewOf = (strip: HTMLElement) => ({ scroll: strip.scrollLeft, width: strip.clientWidth, content: strip.scrollWidth });
+const viewOf = (strip: HTMLElement) => ({
+  scroll: strip.scrollLeft,
+  width: strip.clientWidth,
+  content: strip.scrollWidth,
+});
 
 function fit(strip: HTMLElement) {
-  const item = strip.querySelector<HTMLElement>('[aria-selected="true"], [aria-pressed="true"], [aria-current="page"]');
+  const item = strip.querySelector<HTMLElement>(
+    '[aria-selected="true"], [aria-pressed="true"], [aria-current="page"]',
+  );
   if (item) {
     const box = strip.getBoundingClientRect();
     const r = item.getBoundingClientRect();
@@ -720,8 +852,16 @@ export function Tabs<T extends string>({
   // full width while the strip's ends fade, and the chosen tab's line sits on it.
   return (
     <div className="relative">
-      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b" />
-      <div ref={strip} role="tablist" aria-label={label} className="humagen-strip aui-scroll relative flex gap-1 overflow-x-auto">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b"
+      />
+      <div
+        ref={strip}
+        role="tablist"
+        aria-label={label}
+        className="humagen-strip aui-scroll relative flex gap-1 overflow-x-auto"
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -746,7 +886,11 @@ export function Tabs<T extends string>({
  * agent menu does on a phone. It is measured from the panel's laid-out box,
  * which its opening scale does not change, and again when the window resizes.
  */
-export function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefObject<HTMLElement | null>, open: boolean): number {
+export function useInsideGutter(
+  panel: RefObject<HTMLElement | null>,
+  root: RefObject<HTMLElement | null>,
+  open: boolean,
+): number {
   const [shift, setShift] = useState(0);
   useLayoutEffect(() => {
     if (!open) return;
@@ -767,7 +911,8 @@ export function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefO
     };
     place();
     window.addEventListener("resize", place);
-    const observer = column && typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : undefined;
+    const observer =
+      column && typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : undefined;
     if (column) observer?.observe(column);
     return () => {
       window.removeEventListener("resize", place);
@@ -783,7 +928,17 @@ export function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefO
  * on Keep It, and Escape or moving focus away from it keeps things as they
  * are. An action that can be undone (Archive, Mute) acts at once instead.
  */
-export function Confirm({ question, action, onConfirm, onKeep }: { question: string; action: string; onConfirm: () => void; onKeep: () => void }) {
+export function Confirm({
+  question,
+  action,
+  onConfirm,
+  onKeep,
+}: {
+  question: string;
+  action: string;
+  onConfirm: () => void;
+  onKeep: () => void;
+}) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     root.current?.querySelector<HTMLButtonElement>("[data-keep]")?.focus();
@@ -831,7 +986,15 @@ export interface PageAction {
  * controls on one line. `note` sits beside them, such as a flash that says
  * an action did not take.
  */
-export function PageActions({ primary: main, actions, note }: { primary?: PageAction; actions: PageAction[]; note?: ReactNode }) {
+export function PageActions({
+  primary: main,
+  actions,
+  note,
+}: {
+  primary?: PageAction;
+  actions: PageAction[];
+  note?: ReactNode;
+}) {
   const few = actions.length + (main ? 1 : 0) <= 2;
   return (
     <span className="relative inline-flex flex-wrap items-center gap-2">
@@ -857,7 +1020,13 @@ export function PageActions({ primary: main, actions, note }: { primary?: PageAc
  * Home and End move through it; Escape, Tab or a click outside close it and
  * put focus back on the control. Destructive actions come last, after a rule.
  */
-export function MoreMenu({ items, label = defaultCopy.more }: { items: PageAction[]; label?: string }) {
+export function MoreMenu({
+  items,
+  label = defaultCopy.more,
+}: {
+  items: PageAction[];
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -875,7 +1044,8 @@ export function MoreMenu({ items, label = defaultCopy.more }: { items: PageActio
     return () => document.removeEventListener("mousedown", away);
   }, [open]);
 
-  const entries = () => Array.from(list.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? []);
+  const entries = () =>
+    Array.from(list.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? []);
   const focusAt = (i: number) => {
     const all = entries();
     if (all.length) all[(i + all.length) % all.length]?.focus();
@@ -957,7 +1127,9 @@ export function MoreMenu({ items, label = defaultCopy.more }: { items: PageActio
           className="humagen-glass-pop absolute top-full right-0 z-40 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col rounded-aui-lg p-1.5"
         >
           {everyday.map(entry)}
-          {everyday.length > 0 && destructive.length > 0 && <div role="separator" className="my-1 border-[var(--humagen-rule)] border-t" />}
+          {everyday.length > 0 && destructive.length > 0 && (
+            <div role="separator" className="my-1 border-[var(--humagen-rule)] border-t" />
+          )}
           {destructive.map(entry)}
         </div>
       )}
@@ -1012,28 +1184,34 @@ export function Popover({
   const [flyout, setFlyout] = useState<{ left: number; top: number }>();
   useEffect(() => {
     if (side === "right" && open && present.mounted) {
-      root.current?.querySelector<HTMLElement>('[role="dialog"] button, [role="dialog"] input')?.focus();
+      root.current
+        ?.querySelector<HTMLElement>('[role="dialog"] button, [role="dialog"] input')
+        ?.focus();
     }
   }, [side, open, present.mounted]);
 
   const triggerButton = (
-      <button
-        type="button"
-        aria-label={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={() => {
-          if (side === "right") {
-            const rect = root.current?.getBoundingClientRect();
-            if (rect) setFlyout({ left: rect.right + 8, top: Math.max(16, Math.min(rect.top, window.innerHeight - 320)) });
-          }
-          setOpen(!open);
-        }}
-        className={className}
-      >
-        {trigger}
-      </button>
+    <button
+      type="button"
+      aria-label={label}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-controls={open ? id : undefined}
+      onClick={() => {
+        if (side === "right") {
+          const rect = root.current?.getBoundingClientRect();
+          if (rect)
+            setFlyout({
+              left: rect.right + 8,
+              top: Math.max(16, Math.min(rect.top, window.innerHeight - 320)),
+            });
+        }
+        setOpen(!open);
+      }}
+      className={className}
+    >
+      {trigger}
+    </button>
   );
   return (
     <div
@@ -1059,7 +1237,8 @@ export function Popover({
             {
               ...(side === "right" ? flyout : {}),
               ...(shift ? { translate: `${shift}px 0` } : {}),
-              "--humagen-pop-origin": side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
+              "--humagen-pop-origin":
+                side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
             } as CSSProperties
           }
           className={`humagen-glass-pop humagen-pop ${side === "right" ? "fixed" : "absolute"} z-40 max-w-[calc(100vw-2rem)] rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"} ${
@@ -1141,14 +1320,22 @@ export type Flash = { text: string; bad: boolean };
  * `clear`, because a person needs time to read what went wrong. The timer is
  * cleared when the component goes away.
  */
-export function useFlash(ms = 1600): { flash: Flash | null; say: (text: string, bad?: boolean) => void; clear: () => void } {
+export function useFlash(ms = 1600): {
+  flash: Flash | null;
+  say: (text: string, bad?: boolean) => void;
+  clear: () => void;
+} {
   const [flash, setFlash] = useState<Flash | null>(null);
   useEffect(() => {
     if (!flash || flash.bad) return;
     const timer = window.setTimeout(() => setFlash(null), ms);
     return () => window.clearTimeout(timer);
   }, [flash, ms]);
-  return { flash, say: (text, bad = false) => setFlash({ text, bad }), clear: () => setFlash(null) };
+  return {
+    flash,
+    say: (text, bad = false) => setFlash({ text, bad }),
+    clear: () => setFlash(null),
+  };
 }
 
 /**
@@ -1157,15 +1344,26 @@ export function useFlash(ms = 1600): { flash: Flash | null; say: (text: string, 
  * its own label. Put it inside a `relative` wrapper. It is a live region, so
  * the confirmation is announced as well as seen.
  */
-export function FlashNote({ flash, align = "center" }: { flash: Flash | null; align?: "center" | "left" | "right" }) {
+export function FlashNote({
+  flash,
+  align = "center",
+}: {
+  flash: Flash | null;
+  align?: "center" | "left" | "right";
+}) {
   const present = usePresence(flash !== null);
   // Keep the words while the note leaves.
   const last = useRef<Flash | null>(flash);
   if (flash) last.current = flash;
   const shown = flash ?? last.current;
-  const place = align === "center" ? "left-1/2 -translate-x-1/2" : align === "left" ? "left-0" : "right-0";
+  const place =
+    align === "center" ? "left-1/2 -translate-x-1/2" : align === "left" ? "left-0" : "right-0";
   return (
-    <span role="status" aria-live="polite" className={`pointer-events-none absolute bottom-full z-50 mb-1.5 ${place}`}>
+    <span
+      role="status"
+      aria-live="polite"
+      className={`pointer-events-none absolute bottom-full z-50 mb-1.5 ${place}`}
+    >
       {present.mounted && shown && (
         <span
           data-testid="flash-note"
@@ -1174,7 +1372,11 @@ export function FlashNote({ flash, align = "center" }: { flash: Flash | null; al
           className="humagen-note humagen-glass-pop flex items-center gap-1.5 whitespace-nowrap rounded-aui px-2 py-1 text-aui-xs text-aui-fg"
         >
           {/* A mark as well as the words, so a small notice beside a bare icon still reads as a result. */}
-          {shown.bad ? <XIcon size={12} className="text-aui-bad" /> : <CheckIcon size={12} className="text-aui-ok" />}
+          {shown.bad ? (
+            <XIcon size={12} className="text-aui-bad" />
+          ) : (
+            <CheckIcon size={12} className="text-aui-ok" />
+          )}
           {shown.text}
         </span>
       )}
@@ -1187,13 +1389,25 @@ export function FlashNote({ flash, align = "center" }: { flash: Flash | null; al
  * will have, so nothing jumps when they arrive. Says "Loading" to a screen
  * reader. The shimmer stops when motion is reduced.
  */
-export function SkeletonRows({ count = 4, height = "2rem", className = "" }: { count?: number; height?: string; className?: string }) {
+export function SkeletonRows({
+  count = 4,
+  height = "2rem",
+  className = "",
+}: {
+  count?: number;
+  height?: string;
+  className?: string;
+}) {
   return (
     <div role="status" data-testid="skeleton" className={`flex flex-col gap-2 py-2 ${className}`}>
       <span className="sr-only">Loading</span>
       {Array.from({ length: count }, (_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: placeholders have no identity
-        <span key={i} aria-hidden className="aui-skeleton block" style={{ height, width: `${92 - ((i * 17) % 40)}%` }} />
+        <span
+          key={i}
+          aria-hidden
+          className="aui-skeleton block"
+          style={{ height, width: `${92 - ((i * 17) % 40)}%` }}
+        />
       ))}
     </div>
   );
@@ -1254,7 +1468,9 @@ export function Menu<T extends string>({
 
   const searchable = options.length > 8;
   const q = query.trim().toLowerCase();
-  const shown = q ? options.filter((o) => `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(q)) : options;
+  const shown = q
+    ? options.filter((o) => `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(q))
+    : options;
   const chosen = options.find((o) => o.value === value);
 
   const show = () => {
@@ -1264,7 +1480,12 @@ export function Menu<T extends string>({
       setUp(below < 300 && box.top > below);
     }
     setQuery("");
-    setActive(Math.max(options.findIndex((o) => o.value === value), 0));
+    setActive(
+      Math.max(
+        options.findIndex((o) => o.value === value),
+        0,
+      ),
+    );
     setOpen(true);
   };
   const hide = (refocus = true) => {
@@ -1289,7 +1510,8 @@ export function Menu<T extends string>({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll follows the highlighted row
   useEffect(() => {
-    if (open) list.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+    if (open)
+      list.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
   }, [open, active]);
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -1309,7 +1531,10 @@ export function Menu<T extends string>({
       // Typing a name jumps to it, as a native menu does.
       if (!searchable && e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
         const now = Date.now();
-        typed.current = { text: (now - typed.current.at > 600 ? "" : typed.current.text) + e.key.toLowerCase(), at: now };
+        typed.current = {
+          text: (now - typed.current.at > 600 ? "" : typed.current.text) + e.key.toLowerCase(),
+          at: now,
+        };
         const hit = shown.findIndex((o) => o.label.toLowerCase().startsWith(typed.current.text));
         if (hit >= 0) setActive(hit);
       }
@@ -1342,7 +1567,10 @@ export function Menu<T extends string>({
       >
         {shows === undefined && chosen?.mark}
         <span className="min-w-0 flex-1 truncate">{shows ?? chosen?.label ?? "Choose"}</span>
-        <ChevronDownIcon size={14} className={`text-aui-muted transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`} />
+        <ChevronDownIcon
+          size={14}
+          className={`text-aui-muted transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {present.mounted && (
         // biome-ignore lint/a11y/noStaticElementInteractions: keys are handled here for the filter and the list together
@@ -1350,12 +1578,21 @@ export function Menu<T extends string>({
           ref={panel}
           onKeyDown={onKey}
           data-leaving={present.leaving}
-          style={{ ...(shift ? { translate: `${shift}px 0` } : {}), "--humagen-pop-origin": `${up ? "bottom" : "top"} ${align}` } as CSSProperties}
+          style={
+            {
+              ...(shift ? { translate: `${shift}px 0` } : {}),
+              "--humagen-pop-origin": `${up ? "bottom" : "top"} ${align}`,
+            } as CSSProperties
+          }
           className={`humagen-glass-pop humagen-pop absolute z-40 flex max-h-80 min-w-full max-w-[min(22rem,calc(100vw-2rem))] flex-col rounded-aui-lg p-1 ${
             quiet ? "w-max min-w-44" : ""
           } ${align === "right" ? "right-0" : "left-0"} ${up ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}
         >
-          {header && <div className="shrink-0 border-[var(--humagen-rule)] border-b px-2.5 pt-1.5 pb-2 text-aui-xs text-aui-muted">{header}</div>}
+          {header && (
+            <div className="shrink-0 border-[var(--humagen-rule)] border-b px-2.5 pt-1.5 pb-2 text-aui-xs text-aui-muted">
+              {header}
+            </div>
+          )}
           {searchable && (
             <SearchField
               label={`Filter ${label.toLowerCase()}`}
@@ -1378,7 +1615,9 @@ export function Menu<T extends string>({
             tabIndex={-1}
             className="aui-scroll min-h-0 overflow-y-auto outline-none"
           >
-            {shown.length === 0 && <li className="px-2.5 py-2 text-aui-sm text-aui-muted">Nothing matches.</li>}
+            {shown.length === 0 && (
+              <li className="px-2.5 py-2 text-aui-sm text-aui-muted">Nothing matches.</li>
+            )}
             {shown.map((o, i) => (
               // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles keys for its options
               <li
@@ -1396,7 +1635,9 @@ export function Menu<T extends string>({
                   <span className="block truncate">{o.label}</span>
                   {o.hint && <span className="block text-aui-xs text-aui-muted">{o.hint}</span>}
                 </span>
-                {o.value === value && shows === undefined && <CheckIcon size={14} className="text-aui-fg" />}
+                {o.value === value && shows === undefined && (
+                  <CheckIcon size={14} className="text-aui-fg" />
+                )}
               </li>
             ))}
           </ul>
@@ -1408,7 +1649,11 @@ export function Menu<T extends string>({
 
 /** The choices for a menu of agents, each with its mark. */
 export function agentOptions(names: string[], none?: string): Option[] {
-  const list: Option[] = names.map((n) => ({ value: n, label: n, mark: <AgentMark name={n} size={16} /> }));
+  const list: Option[] = names.map((n) => ({
+    value: n,
+    label: n,
+    mark: <AgentMark name={n} size={16} />,
+  }));
   return none === undefined ? list : [{ value: "", label: none }, ...list];
 }
 
@@ -1462,7 +1707,15 @@ export function isWorking(status: Run["status"]): boolean {
 /** Which stroke state a run's status is. */
 export function strokeOf(status: Run["status"]): StrokeState {
   // A stopped run is at rest: it is neither working nor a failure.
-  return status === "failed" ? "failed" : status === "parked" ? "waiting" : status === "completed" ? "done" : status === "stopped" ? "idle" : "working";
+  return status === "failed"
+    ? "failed"
+    : status === "parked"
+      ? "waiting"
+      : status === "completed"
+        ? "done"
+        : status === "stopped"
+          ? "idle"
+          : "working";
 }
 
 export { dollars };
@@ -1538,7 +1791,11 @@ export function UsageMeter({
       }`
     : `${show(spent)} used. No limit.`;
   const note =
-    state === "over" ? `Over by ${show(spent - cap)}` : ahead && cap && ahead > cap ? `Heading for ${show(ahead)}` : word;
+    state === "over"
+      ? `Over by ${show(spent - cap)}`
+      : ahead && cap && ahead > cap
+        ? `Heading for ${show(ahead)}`
+        : word;
   const header = size === "header";
 
   if (size === "mini") {
@@ -1562,7 +1819,11 @@ export function UsageMeter({
   }
 
   return (
-    <div data-testid={testId} data-usage={state} className={`flex min-w-0 flex-col ${header ? "gap-2" : "gap-1"}`}>
+    <div
+      data-testid={testId}
+      data-usage={state}
+      className={`flex min-w-0 flex-col ${header ? "gap-2" : "gap-1"}`}
+    >
       {header && (
         <div className="flex flex-wrap items-baseline justify-between gap-x-4">
           <span className="text-aui-xs text-aui-muted">{label}</span>
@@ -1573,11 +1834,17 @@ export function UsageMeter({
       )}
       {!header && labelled && <span className="truncate text-aui-xs text-aui-muted">{label}</span>}
       <div className="flex items-baseline justify-between gap-3">
-        <span className={`humagen-display min-w-0 truncate font-semibold text-aui-fg ${header ? "text-[1.75rem] leading-9" : "text-aui-sm"}`}>
+        <span
+          className={`humagen-display min-w-0 truncate font-semibold text-aui-fg ${header ? "text-[1.75rem] leading-9" : "text-aui-sm"}`}
+        >
           {show(spent)}
-          {!header && cap > 0 && <span className="font-normal text-aui-muted"> of {show(cap)}</span>}
+          {!header && cap > 0 && (
+            <span className="font-normal text-aui-muted"> of {show(cap)}</span>
+          )}
         </span>
-        <span className={`shrink-0 text-aui-xs ${state === "over" || state === "warning" ? "font-medium text-aui-fg" : "text-aui-muted"}`}>
+        <span
+          className={`shrink-0 text-aui-xs ${state === "over" || state === "warning" ? "font-medium text-aui-fg" : "text-aui-muted"}`}
+        >
           {header && !cap ? "" : note}
         </span>
       </div>
@@ -1591,11 +1858,21 @@ export function UsageMeter({
         className="humagen-meter-track"
         style={header ? ({ "--humagen-meter-h": "10px" } as CSSProperties) : undefined}
       >
-        {ahead > 0 && <span data-testid={`${testId}-projected`} className="humagen-meter-projected" style={{ width: pct(ahead) }} />}
+        {ahead > 0 && (
+          <span
+            data-testid={`${testId}-projected`}
+            className="humagen-meter-projected"
+            style={{ width: pct(ahead) }}
+          />
+        )}
         {/* With no limit there is nothing to fill toward, so the track stays empty. */}
         {cap > 0 && <span className="humagen-meter-fill" style={{ width: pct(spent) }} />}
-        {cap > 0 && warnAt > 0 && warnAt < 1 && <span aria-hidden className="humagen-meter-warn" style={{ left: pct(cap * warnAt) }} />}
-        {cap > 0 && scale > cap && <span aria-hidden className="humagen-meter-limit" style={{ left: pct(cap) }} />}
+        {cap > 0 && warnAt > 0 && warnAt < 1 && (
+          <span aria-hidden className="humagen-meter-warn" style={{ left: pct(cap * warnAt) }} />
+        )}
+        {cap > 0 && scale > cap && (
+          <span aria-hidden className="humagen-meter-limit" style={{ left: pct(cap) }} />
+        )}
       </div>
     </div>
   );
@@ -1691,17 +1968,30 @@ export function LimitField({
             autoComplete="off"
             disabled={disabled}
             value={text}
-            placeholder={inherits ? (inherits.value / 1_000_000).toFixed(2).replace(/\.00$/, "") : "No limit"}
+            placeholder={
+              inherits ? (inherits.value / 1_000_000).toFixed(2).replace(/\.00$/, "") : "No limit"
+            }
             aria-invalid={bad}
             aria-describedby={hint ? `${id}-hint` : undefined}
             onChange={(e) => type(e.target.value)}
             className="min-w-0 flex-1 self-stretch bg-transparent text-aui-sm tabular-nums text-aui-fg outline-none placeholder:text-aui-muted disabled:cursor-not-allowed"
           />
         </div>
-        <Menu label={`${label} period`} className="w-28 shrink-0" value={period} options={periods} disabled={disabled} onChange={(p) => onChange(value, p)} />
+        <Menu
+          label={`${label} period`}
+          className="w-28 shrink-0"
+          value={period}
+          options={periods}
+          disabled={disabled}
+          onChange={(p) => onChange(value, p)}
+        />
       </div>
       {hint && (
-        <span id={`${id}-hint`} role={bad ? "alert" : undefined} className="text-aui-2xs text-aui-muted">
+        <span
+          id={`${id}-hint`}
+          role={bad ? "alert" : undefined}
+          className="text-aui-2xs text-aui-muted"
+        >
           {hint}
         </span>
       )}
@@ -1739,7 +2029,8 @@ export function PolicyBadge({
     >
       <Icon size={12} />
       <span className="truncate">
-        <span className="text-aui-fg">{name ? `${scope} ${name}` : scope}</span>, {actionWord[action].toLowerCase()}
+        <span className="text-aui-fg">{name ? `${scope} ${name}` : scope}</span>,{" "}
+        {actionWord[action].toLowerCase()}
       </span>
     </span>
   );

@@ -62,7 +62,15 @@ export const doing: Record<string, string> = {
 // is told they cannot run agents; an operator, that they cannot change one.
 // Owning every project is named last: only someone who may do everything
 // else is told they cannot.
-export const NOTABLE = ["runs:write", "agents:write", "schedules:write", "knowledge:write", "billing:write", "clients:write", "projects:govern"];
+export const NOTABLE = [
+  "runs:write",
+  "agents:write",
+  "schedules:write",
+  "knowledge:write",
+  "billing:write",
+  "clients:write",
+  "projects:govern",
+];
 const DENY_WORDS: Record<string, string> = { "agents:write": "change what an agent is" };
 
 /** "a, b and c". */
@@ -102,7 +110,12 @@ export function accessOf(me: Me, decision: AccessDecision | null, policyUrl?: st
       : reads.every((p) => held.has(p))
         ? "see everything in this workspace"
         : held.size > 0
-          ? listed(reads.filter((p) => held.has(p)).map((p) => doing[p] as string).slice(0, 2))
+          ? listed(
+              reads
+                .filter((p) => held.has(p))
+                .map((p) => doing[p] as string)
+                .slice(0, 2),
+            )
           : undefined;
   const missing = NOTABLE.find((p) => !held.has(p));
   return {
@@ -133,7 +146,10 @@ export function asked(permission: string): string {
  * The explanation, as the Access board lays it out: a question, a one-line
  * answer, then each step from sign-in to the rule.
  */
-export function explained(d: AccessDecision, name: string): { question: string; answer: string; steps: Step[]; fix?: string } {
+export function explained(
+  d: AccessDecision,
+  name: string,
+): { question: string; answer: string; steps: Step[]; fix?: string } {
   const first = name.split(/\s+/)[0] || "you";
   const question = `Can ${first} ${doing[d.permission] ?? asked(d.permission)}?`;
   if (d.outcome === "scope") {
@@ -145,28 +161,46 @@ export function explained(d: AccessDecision, name: string): { question: string; 
   }
   const roles = d.held.map((h) => h.role);
   const steps: Step[] = [
-    { label: "Signed in", text: roles.length > 0 ? `${name}, holding ${listed(roles)}` : `${name}, holding no role` },
+    {
+      label: "Signed in",
+      text: roles.length > 0 ? `${name}, holding ${listed(roles)}` : `${name}, holding no role`,
+    },
   ];
   const grant = d.grant ?? d.held.find((h) => h.role === d.role)?.grant;
   if (d.outcome === "no match") {
-    for (const h of d.held) if (h.grant) steps.push({ label: "Granted", text: h.grant, code: true });
+    for (const h of d.held)
+      if (h.grant) steps.push({ label: "Granted", text: h.grant, code: true });
     steps.push({
       label: "Asked for",
       text: `${asked(d.permission)}, which no rule ${roles.length > 0 ? "in these roles " : ""}covers`,
     });
     return {
       question,
-      answer: roles.length > 0 ? "No. Nothing in the policy allows it." : "No. No grant gives you a role yet.",
+      answer:
+        roles.length > 0
+          ? "No. Nothing in the policy allows it."
+          : "No. No grant gives you a role yet.",
       steps,
-      fix: roles.length > 0 ? "An admin can grant it by adding a rule to the access policy." : "An admin can add a grant to the access policy.",
+      fix:
+        roles.length > 0
+          ? "An admin can grant it by adding a rule to the access policy."
+          : "An admin can add a grant to the access policy.",
     };
   }
   if (grant) steps.push({ label: "Granted", text: grant, code: true });
-  if (d.path && d.path.length > 1) steps.push({ label: "Through", text: d.path.join(" extends "), code: true });
+  if (d.path && d.path.length > 1)
+    steps.push({ label: "Through", text: d.path.join(" extends "), code: true });
   if (d.rule) steps.push({ label: d.allowed ? "Allows" : "Denies", text: d.rule, code: true });
-  steps.push({ label: "Asked for", text: `${asked(d.permission)}, which the rule above ${d.allowed ? "allows" : "denies"}` });
+  steps.push({
+    label: "Asked for",
+    text: `${asked(d.permission)}, which the rule above ${d.allowed ? "allows" : "denies"}`,
+  });
   return d.allowed
-    ? { question, answer: `Yes. You are ${/^[aeiou]/i.test(d.role ?? "") ? "an" : "a"} ${d.role}, and the ${d.role} role allows it.`, steps }
+    ? {
+        question,
+        answer: `Yes. You are ${/^[aeiou]/i.test(d.role ?? "") ? "an" : "a"} ${d.role}, and the ${d.role} role allows it.`,
+        steps,
+      }
     : {
         question,
         answer: "No. A rule denies it, and a deny beats every allow.",

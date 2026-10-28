@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { defaultCopy } from "@humagen/components";
 import type { Citation } from "@humagen/core";
 import * as fixtures from "@humagen/core/fixtures";
-import { defaultCopy } from "@humagen/components";
 import { Markdown, Sources, Task } from "@humagen/primitives";
 import {
-  CitationRegistry,
   CitationProvenance,
+  CitationRegistry,
   TurnMetaContext,
   WebSurface,
 } from "@humagen/render-web";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const labels = defaultCopy.citation;
 const url = "https://example.com/shared-page";

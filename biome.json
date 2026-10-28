@@ -21,7 +21,6 @@
       "!**/node_modules",
       "!**/*.css",
       "!**/slack-manifest.json",
-      "!apps/web",
       "!packages/adapter",
       "!packages/client"
     ]
@@ -47,5 +46,29 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/web/**"],
+      "linter": {
+        "rules": {
+          "a11y": "warn",
+          "style": {
+            "noNonNullAssertion": "off"
+          },
+          "correctness": {
+            "useExhaustiveDependencies": "warn",
+            "useUniqueElementIds": "off"
+          },
+          "suspicious": {
+            "noArrayIndexKey": "warn",
+            "noAssignInExpressions": "off"
+          },
+          "complexity": {
+            "noCommaOperator": "off"
+          }
+        }
+      }
+    }
+  ]
 }

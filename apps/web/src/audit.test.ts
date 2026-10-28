@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { auditCSV } from "./audit.ts";
+
 test("audit CSV preserves escaped snapshots and makes spreadsheet formulas inert", () => {
   const csv = auditCSV(
     [

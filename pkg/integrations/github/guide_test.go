@@ -9,8 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/topic"
-
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
@@ -119,8 +118,7 @@ func TestGuideDoesNotWriteAfterThePRHeadChanges(t *testing.T) {
 // A pull request comment whose agent the platform resolves once the tag
 // reaches it, such as one addressed to the app that names no agent, posts no
 // guide: the guide names the agent that answers, which is not known yet. It is
-// still raised. A bot login mapped to fiber's control name raises the tag the
-// connector raises for such a comment.
+// still raised. The comment raises a tag that names no agent.
 func TestACommentWhoseAgentIsResolvedLaterPostsNoGuide(t *testing.T) {
 	fake := github.NewFake()
 	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 42}
@@ -129,7 +127,7 @@ func TestACommentWhoseAgentIsResolvedLaterPostsNoGuide(t *testing.T) {
 	if err := fake.SeedContext(ref, evidence); err != nil {
 		t.Fatal(err)
 	}
-	c, tags := start(t, github.Config{API: fake, Guides: true, Bots: map[string]string{"reviewer[bot]": "reviewer", "humagen": topic.ControlName}})
+	c, tags := start(t, github.Config{API: fake, Guides: true, Login: "humagen", Bots: map[string]string{"reviewer[bot]": "reviewer"}})
 	comment := func(delivery, body string) {
 		t.Helper()
 		raw := fmt.Sprintf(`{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"octocat","type":"User"},"issue":{"number":42,"pull_request":{"url":"x"}},"comment":{"id":7,"body":%q}}`, body)
@@ -142,8 +140,8 @@ func TestACommentWhoseAgentIsResolvedLaterPostsNoGuide(t *testing.T) {
 	comment("to-the-app", "@humagen what changed?")
 	select {
 	case tag := <-tags:
-		if tag.Agent != topic.ControlName {
-			t.Fatalf("the comment raised a tag for %q", tag.Agent)
+		if wire.AgentOf(tag) != "" {
+			t.Fatalf("the comment raised a tag for %q", wire.AgentOf(tag))
 		}
 	default:
 		t.Fatal("the comment raised no tag")

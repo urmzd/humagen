@@ -1,8 +1,30 @@
 import type { Run } from "./adapter.ts";
 import { api } from "./api.ts";
 import { deliver, download } from "./CopyAs.tsx";
-import { COPY_LIMIT, type Format, fileName, formats, type Item, type RunData, redact, runManifest, statusWord } from "./copyas.ts";
-import { elapsed, FlashNote, isEnded, Menu, type Option, Stroke, type StrokeState, strokeOf, took, UsageMeter, useFlash } from "./ui.tsx";
+import {
+  COPY_LIMIT,
+  type Format,
+  fileName,
+  formats,
+  type Item,
+  type RunData,
+  redact,
+  runManifest,
+  statusWord,
+} from "./copyas.ts";
+import {
+  elapsed,
+  FlashNote,
+  isEnded,
+  Menu,
+  type Option,
+  Stroke,
+  type StrokeState,
+  strokeOf,
+  took,
+  UsageMeter,
+  useFlash,
+} from "./ui.tsx";
 
 export { runManifest, runMarkdown } from "./copyas.ts";
 
@@ -15,7 +37,13 @@ export { runManifest, runMarkdown } from "./copyas.ts";
  */
 export function statusOf(run: Run): { word: string; state: StrokeState } {
   const state: StrokeState =
-    run.status === "accepted" ? "idle" : run.status === "running" ? "working" : run.status === "parked" ? "waiting" : strokeOf(run.status);
+    run.status === "accepted"
+      ? "idle"
+      : run.status === "running"
+        ? "working"
+        : run.status === "parked"
+          ? "waiting"
+          : strokeOf(run.status);
   return { word: statusWord(run), state };
 }
 
@@ -48,7 +76,15 @@ export function RunItem({
   // The menu is built from the run's formats before its call tree is fetched. Only the text needs the tree.
   const shape = formats({ kind: "run", run, data: { runs: [run], spans: [] } });
   const options: Option[] = [
-    ...(onActivity ? [{ value: "activity", label: "Open in Activity", hint: "This run, the agents it called and the tools they used." }] : []),
+    ...(onActivity
+      ? [
+          {
+            value: "activity",
+            label: "Open in Activity",
+            hint: "This run, the agents it called and the tools they used.",
+          },
+        ]
+      : []),
     ...shape.map((f) => ({ value: `copy:${f.id}`, label: `Copy as ${f.label}`, hint: f.hint })),
     { value: "save:markdown", label: "Export Markdown", hint: "The same Markdown, as a file." },
     { value: "save:json", label: "Download JSON Manifest", hint: "The same manifest, as a file." },
@@ -97,7 +133,13 @@ export function RunItem({
   };
 
   return (
-    <Stroke agent={run.agent} state={status.state} edge="around" testId="run-item" className="inline-flex max-w-full items-center rounded-full">
+    <Stroke
+      agent={run.agent}
+      state={status.state}
+      edge="around"
+      testId="run-item"
+      className="inline-flex max-w-full items-center rounded-full"
+    >
       <FlashNote flash={flash} align="left" />
       <Menu
         quiet

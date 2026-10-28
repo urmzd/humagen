@@ -3,8 +3,8 @@ package platform
 import (
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
 )
 
@@ -13,7 +13,7 @@ func TestConnectorToolsBelongOnlyToTheirInstallationTenant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := New(Config{Workspace: t.TempDir(), Connections: func(registry.Store) ([]Connection, error) { return []Connection{{Tenant: "acme", Peer: peer}}, nil }})
+	p, err := New(Config{Workspace: t.TempDir(), Connections: func(wire.AgentStore) ([]Connection, error) { return []Connection{{Tenant: "acme", Peer: peer}}, nil }})
 	if err != nil {
 		t.Fatal(err)
 	}

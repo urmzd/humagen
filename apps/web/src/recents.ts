@@ -8,7 +8,9 @@ export type Standing = "" | "running" | "failed";
 const PAGE = 30;
 
 const keep = (t: ThreadSummary, agent: string, standing: Standing) =>
-  t.origin === "api" && (!agent || t.agents.includes(agent)) && (standing === "" || (standing === "running" ? t.active > 0 : t.failed > 0));
+  t.origin === "api" &&
+  (!agent || t.agents.includes(agent)) &&
+  (standing === "" || (standing === "running" ? t.active > 0 : t.failed > 0));
 
 /**
  * The Recents list, a page at a time.
@@ -73,7 +75,10 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
           // Older pages are loaded. Keep the ones past the end of the fresh page.
           const seen = new Set(page.threads.map((t) => t.id));
           const edge = page.threads[page.threads.length - 1]?.updated_at ?? "";
-          setRows((old) => [...page.threads, ...old.filter((t) => !seen.has(t.id) && t.updated_at < edge)]);
+          setRows((old) => [
+            ...page.threads,
+            ...old.filter((t) => !seen.has(t.id) && t.updated_at < edge),
+          ]);
         }
         loaded.current = { key, pages: Math.max(fresh ? 1 : loaded.current.pages, 1) };
       })

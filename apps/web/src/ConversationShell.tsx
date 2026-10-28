@@ -1,9 +1,9 @@
 import { defaultCopy } from "@humagen/components";
 import {
   ArtifactOpenContext,
-  ProjectIcon,
-  LayersIcon,
   EllipsisIcon,
+  LayersIcon,
+  ProjectIcon,
   ShareIcon,
   UsersIcon,
 } from "@humagen/render-web";
@@ -18,10 +18,10 @@ import {
   type Thread,
 } from "./api.ts";
 import { ConversationAccess } from "./ConversationAccess.tsx";
-import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
-import { href, type ConversationPanel } from "./route.ts";
-import { AgentMark, Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
+import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
+import { type ConversationPanel, href } from "./route.ts";
+import { Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
 const control =
@@ -58,7 +58,12 @@ export function ConversationPage({
       <Page
         layout="conversation"
         title={title}
-        start={<span className="inline-flex min-w-0 max-w-full items-center gap-1.5" title={project}><ProjectIcon size={14}/><span className="max-w-48 truncate">{project}</span></span>}
+        start={
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1.5" title={project}>
+            <ProjectIcon size={14} />
+            <span className="max-w-48 truncate">{project}</span>
+          </span>
+        }
         meta={
           <span className="inline-flex flex-wrap items-center gap-x-3">
             {personal && <span>{words.private}</span>}
@@ -68,7 +73,18 @@ export function ConversationPage({
         }
         actions={
           <>
-            {personal && onProject && <button ref={projectRef} type="button" className={control} aria-label={defaultCopy.threads.share} onClick={onProject}><ShareIcon size={18}/><span className="hidden sm:inline">{defaultCopy.threads.share}</span></button>}
+            {personal && onProject && (
+              <button
+                ref={projectRef}
+                type="button"
+                className={control}
+                aria-label={defaultCopy.threads.share}
+                onClick={onProject}
+              >
+                <ShareIcon size={18} />
+                <span className="hidden sm:inline">{defaultCopy.threads.share}</span>
+              </button>
+            )}
             <button
               type="button"
               className={control}
@@ -147,14 +163,23 @@ function Sources({ project }: { project: string }) {
   });
   return (
     <div className="flex flex-col gap-4">
-      {sources.length > 0 ? <p className="text-aui-xs text-aui-muted">{words.contextHint}</p> : (
+      {sources.length > 0 ? (
+        <p className="text-aui-xs text-aui-muted">{words.contextHint}</p>
+      ) : (
         <div className="flex flex-col items-start gap-3 py-6">
           <LayersIcon size={24} className="text-aui-muted" />
           <p className="text-aui-sm text-aui-muted">{words.sourcesEmpty}</p>
-          <a href={href({page:"project",name:project,tab:"context"})} className="inline-flex min-h-9 items-center rounded-aui text-aui-xs font-medium text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent">{words.artifactOpenContext}</a>
+          <a
+            href={href({ page: "project", name: project, tab: "context" })}
+            className="inline-flex min-h-9 items-center rounded-aui text-aui-xs font-medium text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            {words.artifactOpenContext}
+          </a>
         </div>
       )}
-      {sources.map((source) => <SourceCard key={source.name} source={source} />)}
+      {sources.map((source) => (
+        <SourceCard key={source.name} source={source} />
+      ))}
     </div>
   );
 }
@@ -165,7 +190,8 @@ function SourceCard({ source }: { source: Source }) {
   const labels = defaultCopy.sourceLifecycle;
   const mode = lifecycle?.mode ?? "indexed";
   const status = lifecycle?.status ?? (source.passages > 0 ? "available" : "connected");
-  const lastGood = lifecycle?.last_good_at ?? (!lifecycle && source.passages > 0 ? source.updated_at : undefined);
+  const lastGood =
+    lifecycle?.last_good_at ?? (!lifecycle && source.passages > 0 ? source.updated_at : undefined);
   const [docs, setDocs] = useState<Doc[]>();
   const [visible, setVisible] = useState(20);
   const [failed, setFailed] = useState(false);
@@ -189,12 +215,38 @@ function SourceCard({ source }: { source: Source }) {
         </span>
       </summary>
       <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-aui-xs">
-        <dt className="text-aui-muted">{defaultCopy.memoryLibrary.scope}</dt><dd className="break-words">{lifecycle?.project || defaultCopy.skillsLibrary.workspace}</dd>
-        {lifecycle?.owner && <><dt className="text-aui-muted">{labels.owner}</dt><dd className="break-words">{lifecycle.owner}</dd></>}
-        {lifecycle?.origin && <><dt className="text-aui-muted">{words.sourceOrigin}</dt><dd className="break-all">{lifecycle.provider}: {lifecycle.origin}</dd></>}
-        {mode !== "live" && <><dt className="text-aui-muted">{labels.lastGood}</dt><dd>{lastGood ? <time dateTime={lastGood}>{new Date(lastGood).toLocaleString()}</time> : labels.noCopy}</dd></>}
+        <dt className="text-aui-muted">{defaultCopy.memoryLibrary.scope}</dt>
+        <dd className="break-words">{lifecycle?.project || defaultCopy.skillsLibrary.workspace}</dd>
+        {lifecycle?.owner && (
+          <>
+            <dt className="text-aui-muted">{labels.owner}</dt>
+            <dd className="break-words">{lifecycle.owner}</dd>
+          </>
+        )}
+        {lifecycle?.origin && (
+          <>
+            <dt className="text-aui-muted">{words.sourceOrigin}</dt>
+            <dd className="break-all">
+              {lifecycle.provider}: {lifecycle.origin}
+            </dd>
+          </>
+        )}
+        {mode !== "live" && (
+          <>
+            <dt className="text-aui-muted">{labels.lastGood}</dt>
+            <dd>
+              {lastGood ? (
+                <time dateTime={lastGood}>{new Date(lastGood).toLocaleString()}</time>
+              ) : (
+                labels.noCopy
+              )}
+            </dd>
+          </>
+        )}
       </dl>
-      {lifecycle?.cause && <p className="mt-2 text-aui-xs text-aui-muted">{labels.cause[lifecycle.cause]}</p>}
+      {lifecycle?.cause && (
+        <p className="mt-2 text-aui-xs text-aui-muted">{labels.cause[lifecycle.cause]}</p>
+      )}
       {source.description && (
         <p className="mt-3 text-aui-xs text-aui-muted">{source.description}</p>
       )}
@@ -217,11 +269,13 @@ function SourceCard({ source }: { source: Source }) {
               </time>
               <span className="flex flex-wrap gap-x-3 text-aui-muted">
                 <span>{words.sourcePassages(doc.passages)}</span>
-                <span>{doc.excluded
-                  ? words.sourceExcluded
-                  : doc.passages > 0
-                    ? words.sourceHealth
-                    : words.sourceEmpty}</span>
+                <span>
+                  {doc.excluded
+                    ? words.sourceExcluded
+                    : doc.passages > 0
+                      ? words.sourceHealth
+                      : words.sourceEmpty}
+                </span>
               </span>
             </li>
           ))}
@@ -257,15 +311,45 @@ export function ConversationInfo({
   project: string;
   onClose: () => void;
 }) {
-  const [ownTab,setOwnTab]=useState<"sources"|"instructions">("sources");
-  const selected=contextTab??ownTab;
-  const select=(next:"sources"|"instructions")=>onContextTab?onContextTab(next):setOwnTab(next);
+  const [ownTab, setOwnTab] = useState<"sources" | "instructions">("sources");
+  const selected = contextTab ?? ownTab;
+  const select = (next: "sources" | "instructions") =>
+    onContextTab ? onContextTab(next) : setOwnTab(next);
   return (
-    <Inspector open={panel === "context" || panel === "people"} title={words[panel === "people" ? "people" : "context"]} onClose={onClose}>
+    <Inspector
+      open={panel === "context" || panel === "people"}
+      title={words[panel === "people" ? "people" : "context"]}
+      onClose={onClose}
+    >
       {panel === "context" ? (
-        <div className="flex flex-col gap-6"><ForkContext thread={thread} /><Tabs label={words.contextSections} value={selected} tabs={[{id:"sources",label:words.sourcesTab},{id:"instructions",label:words.instructionsTab}]} onChange={select}/>{selected==="instructions"?<ProjectContextPreview key={`${thread.id}:${thread.version}`} project={thread.project} version={thread.version} initialAgent={thread.participants.find(participant=>participant.kind==="agent")?.name} initialChannel={thread.channel}/>:<Sources project={thread.project} />}</div>
-      ) : <ConversationAccess thread={thread} />}
-
+        <div className="flex flex-col gap-6">
+          <ForkContext thread={thread} />
+          <Tabs
+            label={words.contextSections}
+            value={selected}
+            tabs={[
+              { id: "sources", label: words.sourcesTab },
+              { id: "instructions", label: words.instructionsTab },
+            ]}
+            onChange={select}
+          />
+          {selected === "instructions" ? (
+            <ProjectContextPreview
+              key={`${thread.id}:${thread.version}`}
+              project={thread.project}
+              version={thread.version}
+              initialAgent={
+                thread.participants.find((participant) => participant.kind === "agent")?.name
+              }
+              initialChannel={thread.channel}
+            />
+          ) : (
+            <Sources project={thread.project} />
+          )}
+        </div>
+      ) : (
+        <ConversationAccess thread={thread} />
+      )}
     </Inspector>
   );
 }

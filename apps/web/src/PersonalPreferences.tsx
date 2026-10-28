@@ -1,16 +1,26 @@
 import { defaultCopy } from "@humagen/components";
-import { BrainIcon, ShieldIcon, ProjectIcon, ChevronRightIcon, UserIcon, MessageIcon, PlugIcon, BellIcon, ClockIcon } from "@humagen/render-web";
+import {
+  BellIcon,
+  BrainIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  MessageIcon,
+  PlugIcon,
+  ProjectIcon,
+  ShieldIcon,
+  UserIcon,
+} from "@humagen/render-web";
 import { Button } from "@humagen/render-web/ui/button";
 import { Input } from "@humagen/render-web/ui/input";
-import { Textarea } from "@humagen/render-web/ui/textarea";
+import { Label as FieldLabel } from "@humagen/render-web/ui/label";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Switch } from "@humagen/render-web/ui/switch";
-import { Label as FieldLabel } from "@humagen/render-web/ui/label";
-import { SettingsFormRow } from "./SettingsFormRow.tsx";
-import type { PersonalPreferences as Personal } from "../../../packages/client/src/generated/types.ts";
+import { Textarea } from "@humagen/render-web/ui/textarea";
 import { type ReactNode, useEffect, useId, useState } from "react";
-import { api, ApiError, type Preferences } from "./api.ts";
+import type { PersonalPreferences as Personal } from "../../../packages/client/src/generated/types.ts";
+import { ApiError, api, type Preferences } from "./api.ts";
 import { PersonalAgents } from "./PersonalAgents.tsx";
+import { SettingsFormRow } from "./SettingsFormRow.tsx";
 import { Page, Problem, SkeletonRows } from "./ui.tsx";
 
 function PreferenceRow({
@@ -144,52 +154,152 @@ export function PersonalPreferences({
               {section === "profile" && (
                 <>
                   <div>
-                    <SettingsFormRow id={`${formID}-name`} label={copy.displayName} description={copy.displayNameHint} icon={<UserIcon size={18} />}>
-                      <Input id={`${formID}-name`} aria-describedby={`${formID}-name-hint`} autoComplete="name" value={profile.display_name} maxLength={80} disabled={busy}
-                        onChange={(event) => { setProfile({ ...profile, display_name: event.target.value }); setSaved(false); }} />
+                    <SettingsFormRow
+                      id={`${formID}-name`}
+                      label={copy.displayName}
+                      description={copy.displayNameHint}
+                      icon={<UserIcon size={18} />}
+                    >
+                      <Input
+                        id={`${formID}-name`}
+                        aria-describedby={`${formID}-name-hint`}
+                        autoComplete="name"
+                        value={profile.display_name}
+                        maxLength={80}
+                        disabled={busy}
+                        onChange={(event) => {
+                          setProfile({ ...profile, display_name: event.target.value });
+                          setSaved(false);
+                        }}
+                      />
                     </SettingsFormRow>
-                    <SettingsFormRow id={`${formID}-briefing`} label={copy.briefing} description={copy.briefingHint} icon={<MessageIcon size={18} />}>
-                      <Textarea id={`${formID}-briefing`} aria-describedby={`${formID}-briefing-hint`} rows={4} className="min-h-28 resize-y" maxLength={500} value={value.briefing} disabled={busy}
-                        onChange={(event) => { setValue({ ...value, briefing: event.target.value }); setSaved(false); }} />
+                    <SettingsFormRow
+                      id={`${formID}-briefing`}
+                      label={copy.briefing}
+                      description={copy.briefingHint}
+                      icon={<MessageIcon size={18} />}
+                    >
+                      <Textarea
+                        id={`${formID}-briefing`}
+                        aria-describedby={`${formID}-briefing-hint`}
+                        rows={4}
+                        className="min-h-28 resize-y"
+                        maxLength={500}
+                        value={value.briefing}
+                        disabled={busy}
+                        onChange={(event) => {
+                          setValue({ ...value, briefing: event.target.value });
+                          setSaved(false);
+                        }}
+                      />
                     </SettingsFormRow>
                   </div>
-                  <p className="text-aui-xs text-aui-muted">{copy.role}: {roles.join(", ")}</p>
+                  <p className="text-aui-xs text-aui-muted">
+                    {copy.role}: {roles.join(", ")}
+                  </p>
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button asChild variant="outline" className="justify-start"><a href="/connections"><PlugIcon aria-hidden="true" />{copy.connections}<ChevronRightIcon aria-hidden="true" className="ml-auto" /></a></Button>
-                    <Button asChild variant="outline" className="justify-start"><a href="/library/memory"><BrainIcon aria-hidden="true" />{copy.memory}<ChevronRightIcon aria-hidden="true" className="ml-auto" /></a></Button>
+                    <Button asChild variant="outline" className="justify-start">
+                      <a href="/connections">
+                        <PlugIcon aria-hidden="true" />
+                        {copy.connections}
+                        <ChevronRightIcon aria-hidden="true" className="ml-auto" />
+                      </a>
+                    </Button>
+                    <Button asChild variant="outline" className="justify-start">
+                      <a href="/library/memory">
+                        <BrainIcon aria-hidden="true" />
+                        {copy.memory}
+                        <ChevronRightIcon aria-hidden="true" className="ml-auto" />
+                      </a>
+                    </Button>
                   </div>
                 </>
               )}
               {section === "notifications" && (
                 <>
                   <section aria-label={copy.notifications}>
-                    <p className="pb-2 text-sm leading-6 text-aui-muted">{defaultCopy.notifications.description}</p>
-                    <PreferenceRow icon={<BellIcon size={18} />} label={copy.email} description={emailAvailable ? copy.emailDescription : copy.deliveryUnavailable}
-                      checked={value.email ?? false} disabled={busy || (!emailAvailable && !value.email)}
-                      onChange={(email) => { setValue({ ...value, email }); setSaved(false); }} />
+                    <p className="pb-2 text-sm leading-6 text-aui-muted">
+                      {defaultCopy.notifications.description}
+                    </p>
+                    <PreferenceRow
+                      icon={<BellIcon size={18} />}
+                      label={copy.email}
+                      description={
+                        emailAvailable ? copy.emailDescription : copy.deliveryUnavailable
+                      }
+                      checked={value.email ?? false}
+                      disabled={busy || (!emailAvailable && !value.email)}
+                      onChange={(email) => {
+                        setValue({ ...value, email });
+                        setSaved(false);
+                      }}
+                    />
                     {Object.entries(copy.events).map(([kind, label]) => (
                       <SettingsFormRow key={kind} id={`${formID}-${kind}`} label={label}>
-                        <NativeSelect id={`${formID}-${kind}`} value={value.notifications[kind] ?? "off"} disabled={busy}
-                          onChange={(event) => { setValue({ ...value, notifications: { ...value.notifications, [kind]: event.target.value as "immediate" | "digest" | "off" } }); setSaved(false); }}>
-                          {(["immediate", "digest", "off"] as const).map((mode) => <option key={mode} value={mode}>{copy[mode]}</option>)}
+                        <NativeSelect
+                          id={`${formID}-${kind}`}
+                          value={value.notifications[kind] ?? "off"}
+                          disabled={busy}
+                          onChange={(event) => {
+                            setValue({
+                              ...value,
+                              notifications: {
+                                ...value.notifications,
+                                [kind]: event.target.value as "immediate" | "digest" | "off",
+                              },
+                            });
+                            setSaved(false);
+                          }}
+                        >
+                          {(["immediate", "digest", "off"] as const).map((mode) => (
+                            <option key={mode} value={mode}>
+                              {copy[mode]}
+                            </option>
+                          ))}
                         </NativeSelect>
                       </SettingsFormRow>
                     ))}
                   </section>
                   <section aria-labelledby={`${formID}-quiet`}>
-                    <h2 id={`${formID}-quiet`} className="flex items-center gap-2 text-sm font-medium"><ClockIcon size={18} className="text-aui-muted" />{copy.quiet}</h2>
+                    <h2
+                      id={`${formID}-quiet`}
+                      className="flex items-center gap-2 text-sm font-medium"
+                    >
+                      <ClockIcon size={18} className="text-aui-muted" />
+                      {copy.quiet}
+                    </h2>
                     <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[1fr_1fr_2fr]">
-                      {([["quiet_start", copy.start], ["quiet_end", copy.end]] as const).map(([key, label]) => (
+                      {(
+                        [
+                          ["quiet_start", copy.start],
+                          ["quiet_end", copy.end],
+                        ] as const
+                      ).map(([key, label]) => (
                         <div key={key} className="space-y-2">
                           <FieldLabel htmlFor={`${formID}-${key}`}>{label}</FieldLabel>
-                          <Input id={`${formID}-${key}`} type="time" value={value[key]} disabled={busy}
-                            onChange={(event) => { setValue({ ...value, [key]: event.target.value }); setSaved(false); }} />
+                          <Input
+                            id={`${formID}-${key}`}
+                            type="time"
+                            value={value[key]}
+                            disabled={busy}
+                            onChange={(event) => {
+                              setValue({ ...value, [key]: event.target.value });
+                              setSaved(false);
+                            }}
+                          />
                         </div>
                       ))}
                       <div className="col-span-2 space-y-2 sm:col-span-1">
                         <FieldLabel htmlFor={`${formID}-timezone`}>{copy.timezone}</FieldLabel>
-                        <Input id={`${formID}-timezone`} value={value.timezone} disabled={busy}
-                          onChange={(event) => { setValue({ ...value, timezone: event.target.value }); setSaved(false); }} />
+                        <Input
+                          id={`${formID}-timezone`}
+                          value={value.timezone}
+                          disabled={busy}
+                          onChange={(event) => {
+                            setValue({ ...value, timezone: event.target.value });
+                            setSaved(false);
+                          }}
+                        />
                       </div>
                     </div>
                   </section>
@@ -228,7 +338,13 @@ export function PersonalPreferences({
                       }}
                     />
                   </section>
-                  <Button asChild variant="outline"><a href="/library/memory"><BrainIcon aria-hidden="true" />{copy.memory}<ChevronRightIcon aria-hidden="true" /></a></Button>
+                  <Button asChild variant="outline">
+                    <a href="/library/memory">
+                      <BrainIcon aria-hidden="true" />
+                      {copy.memory}
+                      <ChevronRightIcon aria-hidden="true" />
+                    </a>
+                  </Button>
                   <section className="rounded-aui-lg border border-aui-border p-4">
                     <h2 className="text-sm font-medium">
                       {defaultCopy.preferences.ownershipTitle}

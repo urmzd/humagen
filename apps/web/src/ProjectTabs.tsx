@@ -1,7 +1,7 @@
-import { ActionId, isAnnouncement, messageState, type UiAction } from "@humagen/core";
 import { defaultCopy } from "@humagen/components";
+import { ActionId, isAnnouncement, messageState, type UiAction } from "@humagen/core";
 import { BanIcon, buttonClass } from "@humagen/render-web";
-import { type MailboxShow } from "@humagen/web";
+import type { MailboxShow } from "@humagen/web";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
@@ -15,18 +15,32 @@ import {
   type ProjectView,
 } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
-import { useHeld, useInbox } from "./inbox.ts";
 import { KindFilter, MailboxView } from "./InboxPage.tsx";
+import { useHeld, useInbox } from "./inbox.ts";
 import { type PlatformMessage, projectInbox, projectOf, type Source } from "./mail.ts";
-import { ago, button, Empty, field, Label, Menu, Problem, primary, SkeletonRows, Switch } from "./ui.tsx";
 import { titleOf, updateOf } from "./projects.ts";
+import {
+  ago,
+  button,
+  Empty,
+  field,
+  Label,
+  Menu,
+  Problem,
+  primary,
+  SkeletonRows,
+  Switch,
+} from "./ui.tsx";
 
 const copy = defaultCopy;
 const section = "flex flex-col gap-2 border-aui-border border-t pt-5 first:border-t-0 first:pt-0";
 const heading = "text-aui-base font-medium text-aui-fg";
 const sorry = (fallback: string) => (e: unknown) => (e instanceof ApiError ? e.message : fallback);
 
-const roleOptions = (["viewer", "member", "owner"] as const).map((r) => ({ value: r, label: copy.roles[r] }));
+const roleOptions = (["viewer", "member", "owner"] as const).map((r) => ({
+  value: r,
+  label: copy.roles[r],
+}));
 
 /** A control in the reading pane's header, beside Snooze and Hide for Me. */
 const paneButton = `${buttonClass("ghost")} h-7 px-2`;
@@ -108,7 +122,11 @@ export function ProjectInbox({
         onChanged();
       })
       .catch((err) =>
-        setProblem(err instanceof ApiError && err.status === 429 ? copy.announcements.tooMany(20) : sorry("The announcement could not be posted.")(err)),
+        setProblem(
+          err instanceof ApiError && err.status === 429
+            ? copy.announcements.tooMany(20)
+            : sorry("The announcement could not be posted.")(err),
+        ),
       );
   };
 
@@ -129,7 +147,11 @@ export function ProjectInbox({
   return (
     <div className="flex min-h-[28rem] flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Switch label={copy.announcements.includeSubProjects} checked={children} onChange={showChildren} />
+        <Switch
+          label={copy.announcements.includeSubProjects}
+          checked={children}
+          onChange={showChildren}
+        />
         {may && !writing && (
           <button type="button" className={primary} onClick={() => setWriting(true)}>
             {copy.announcements.post}
@@ -138,7 +160,10 @@ export function ProjectInbox({
       </div>
       <Problem message={problem ?? inbox.problem} />
       {writing && (
-        <form onSubmit={post} className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3">
+        <form
+          onSubmit={post}
+          className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3"
+        >
           <Label text={copy.project.subject}>
             <input
               className={field}
@@ -157,19 +182,29 @@ export function ProjectInbox({
               onChange={(e) => setDraft({ ...draft, text: e.target.value })}
             />
           </Label>
-          <Switch label={copy.project.warning} checked={draft.warning} onChange={(warning) => setDraft({ ...draft, warning })} />
+          <Switch
+            label={copy.project.warning}
+            checked={draft.warning}
+            onChange={(warning) => setDraft({ ...draft, warning })}
+          />
           <div className="flex justify-end gap-2">
             <button type="button" className={button} onClick={() => setWriting(false)}>
               Cancel
             </button>
-            <button type="submit" className={primary} disabled={!draft.subject.trim() || !draft.text.trim()}>
+            <button
+              type="submit"
+              className={primary}
+              disabled={!draft.subject.trim() || !draft.text.trim()}
+            >
               {copy.announcements.post}
             </button>
           </div>
         </form>
       )}
       {inbox.failed ? (
-        <Empty title="The project's inbox could not be loaded">It will be tried again when something changes.</Empty>
+        <Empty title="The project's inbox could not be loaded">
+          It will be tried again when something changes.
+        </Empty>
       ) : inbox.loading === "first" && messages.length === 0 ? (
         <SkeletonRows count={4} height="3rem" className="max-w-md" />
       ) : (
@@ -185,7 +220,9 @@ export function ProjectInbox({
           // Announcements land here, and what the reader hid of them is under Resolved.
           // A chosen kind of anything else keeps the mailbox's own words.
           emptyOpen={
-            kind === "" || kind === "announcement" ? { title: copy.mailbox.emptyOpen, hint: copy.announcements.emptyOpenHint } : undefined
+            kind === "" || kind === "announcement"
+              ? { title: copy.mailbox.emptyOpen, hint: copy.announcements.emptyOpenHint }
+              : undefined
           }
           messageActions={(m) =>
             withdrawable(m) && (
@@ -199,7 +236,12 @@ export function ProjectInbox({
           listEnd={
             inbox.hasMore && (
               <div className="flex justify-center py-3">
-                <button type="button" className={button} onClick={inbox.more} disabled={inbox.loading === "more"}>
+                <button
+                  type="button"
+                  className={button}
+                  onClick={inbox.more}
+                  disabled={inbox.loading === "more"}
+                >
                   {inbox.loading === "more" ? "Loading" : "See More"}
                 </button>
               </div>
@@ -239,7 +281,13 @@ export function aboveTitle(project: Pick<ProjectView, "path">, name: string): st
  * everyone owns, ownership flows down, so everyone sees it: nothing offers to
  * close it, and the tab says where to name owners first.
  */
-export function ProjectPeople({ project, onChanged }: { project: ProjectView; onChanged: () => void }) {
+export function ProjectPeople({
+  project,
+  onChanged,
+}: {
+  project: ProjectView;
+  onChanged: () => void;
+}) {
   const [members, setMembers] = useState<ProjectMembers | null>(null);
   const [draft, setDraft] = useState<ProjectMember[] | null>(null);
   const [who, setWho] = useState("");
@@ -266,7 +314,8 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
   const open = shown.some((m) => m.who === "*");
   const company = project.kind === "company" || project.name === "";
   const keepsEveryone = company || ownedAbove !== undefined;
-  const nudge = editable && open && !everyoneOwns && !ownedAbove && project.kind === "account" && !draft;
+  const nudge =
+    editable && open && !everyoneOwns && !ownedAbove && project.kind === "account" && !draft;
   const change = (next: ProjectMember[]) => setDraft(next);
   // A change names who holds a role by the entry alone: what a person is
   // called is the platform's to say.
@@ -303,7 +352,11 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
       {nudge && (
         <p className="flex max-w-xl flex-wrap items-center gap-3 text-aui-sm text-aui-muted">
           {copy.project.visibleToEveryone(titleOf(project))}
-          <button type="button" className={button} onClick={() => change(shown.filter((m) => m.who !== "*"))}>
+          <button
+            type="button"
+            className={button}
+            onClick={() => change(shown.filter((m) => m.who !== "*"))}
+          >
             {copy.project.makeMembersOnly}
           </button>
         </p>
@@ -312,7 +365,10 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
         <h2 className={heading}>{copy.project.members}</h2>
         <ul>
           {shown.map((m) => (
-            <li key={m.who} className="flex flex-wrap items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
+            <li
+              key={m.who}
+              className="flex flex-wrap items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0"
+            >
               <span className="min-w-0 text-aui-sm text-aui-fg">{whoOf(m)}</span>
               <span className="flex items-center gap-2">
                 {editable ? (
@@ -320,13 +376,19 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
                     label={`${copy.project.role}: ${whoOf(m)}`}
                     value={m.role}
                     options={roleOptions}
-                    onChange={(r) => change(shown.map((x) => (x.who === m.who ? { ...x, role: r } : x)))}
+                    onChange={(r) =>
+                      change(shown.map((x) => (x.who === m.who ? { ...x, role: r } : x)))
+                    }
                   />
                 ) : (
                   <span className="text-aui-xs text-aui-muted">{copy.roles[m.role]}</span>
                 )}
                 {editable && (m.who !== "*" || !keepsEveryone) && (
-                  <button type="button" className={button} onClick={() => change(shown.filter((x) => x.who !== m.who))}>
+                  <button
+                    type="button"
+                    className={button}
+                    onClick={() => change(shown.filter((x) => x.who !== m.who))}
+                  >
                     {copy.project.remove}
                   </button>
                 )}
@@ -334,7 +396,9 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
             </li>
           ))}
         </ul>
-        {editable && company && <p className="text-aui-xs text-aui-muted">{copy.project.everyoneNeeded}</p>}
+        {editable && company && (
+          <p className="text-aui-xs text-aui-muted">{copy.project.everyoneNeeded}</p>
+        )}
         {editable && (
           <form
             className="flex flex-wrap items-end gap-2"
@@ -348,7 +412,12 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
           >
             <div className="min-w-48 flex-1">
               <Label text={copy.project.who} hint={copy.project.whoHint}>
-                <input className={field} value={who} maxLength={255} onChange={(e) => setWho(e.target.value)} />
+                <input
+                  className={field}
+                  value={who}
+                  maxLength={255}
+                  onChange={(e) => setWho(e.target.value)}
+                />
               </Label>
             </div>
             <Menu label={copy.project.role} value={role} options={roleOptions} onChange={setRole} />
@@ -391,9 +460,14 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
           <h2 className={heading}>{copy.project.ownersAbove}</h2>
           <ul>
             {members.inherited.map((o) => (
-              <li key={`${o.from}:${o.who}`} className="flex items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
+              <li
+                key={`${o.from}:${o.who}`}
+                className="flex items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0"
+              >
                 <span className="min-w-0 text-aui-sm text-aui-fg">{whoOf(o)}</span>
-                <span className="text-aui-xs text-aui-muted">{copy.roles.ownerFrom(aboveTitle(project, o.from))}</span>
+                <span className="text-aui-xs text-aui-muted">
+                  {copy.roles.ownerFrom(aboveTitle(project, o.from))}
+                </span>
               </li>
             ))}
           </ul>
@@ -420,13 +494,17 @@ export function ProjectHistory({ project, tick }: { project: ProjectView; tick?:
       .catch((err) => setProblem(sorry("Its history could not be loaded.")(err)));
   }, [name, project.version, tick]);
   if (!changes) return problem ? <Problem message={problem} /> : <SkeletonRows count={4} />;
-  if (changes.length === 0) return <p className="text-aui-sm text-aui-muted">{copy.project.noHistory}</p>;
+  if (changes.length === 0)
+    return <p className="text-aui-sm text-aui-muted">{copy.project.noHistory}</p>;
   return (
     <div className="flex flex-col gap-3">
       <Problem message={problem} />
       <ol>
         {changes.map((c) => (
-          <li key={c.seq} className="flex flex-col gap-0.5 border-aui-border border-t py-2 first:border-t-0">
+          <li
+            key={c.seq}
+            className="flex flex-col gap-0.5 border-aui-border border-t py-2 first:border-t-0"
+          >
             <span className="text-aui-sm text-aui-fg">
               {copy.project.what[c.what] ?? c.what}
               {c.agent ? `: ${c.agent}` : ""}
@@ -491,9 +569,17 @@ export function ProjectLimits({
   return (
     <div className="flex flex-col gap-6">
       <section className={section} aria-label={copy.project.tabs.limits}>
-        <ScopeLimits key={`${project.name}:${reads}`} scope={scope} canWrite={canBilling} tick={tick} chain={chain} />
+        <ScopeLimits
+          key={`${project.name}:${reads}`}
+          scope={scope}
+          canWrite={canBilling}
+          tick={tick}
+          chain={chain}
+        />
         {!canBilling && !project.actions.includes("limits") && (
-          <p className="max-w-xl text-aui-xs text-aui-muted">{copy.project.limitsReadOnly(above)}</p>
+          <p className="max-w-xl text-aui-xs text-aui-muted">
+            {copy.project.limitsReadOnly(above)}
+          </p>
         )}
       </section>
       {project.actions.includes("limits") && !canBilling && (
@@ -517,7 +603,14 @@ export function ProjectLimits({
             }}
           >
             <Label text={copy.project.maxRuns}>
-              <input className={`${field} w-28`} type="number" min={1} required value={runs} onChange={(e) => setRuns(e.target.value)} />
+              <input
+                className={`${field} w-28`}
+                type="number"
+                min={1}
+                required
+                value={runs}
+                onChange={(e) => setRuns(e.target.value)}
+              />
             </Label>
             <Menu
               label={copy.project.period}

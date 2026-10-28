@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/internal/wire"
+
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
@@ -21,7 +22,7 @@ func TestAnalyticsSelectedDayUsesExactBoundedInterval(t *testing.T) {
 		{"before", "acme", start.Add(-time.Nanosecond)}, {"inside", "acme", start},
 		{"end", "acme", start.Add(24 * time.Hour)}, {"other", "other", start},
 	} {
-		if err := f.p.Runs.Record(row.id, envelope.Tag{ID: row.id, Tenant: row.tenant, Agent: "writer", Origin: runs.OriginAPI, At: row.at}, 1); err != nil {
+		if err := f.p.Runs.Record(row.id, wire.NewEvent(wire.Raise{ID: row.id, Tenant: row.tenant, Agent: "writer", Origin: runs.OriginAPI, At: row.at}), 1); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -1,17 +1,17 @@
 package httpapi
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/platform"
 )
 
@@ -29,8 +29,8 @@ const patSubject = "tailscale:pat@example.com"
 // under it Ana's. An agent on the "ollama" provider asks Pat a question.
 func namesFixture(t *testing.T) (f *fixture, ana, pat string) {
 	t.Helper()
-	f = newFixtureWith(t, platform.Config{AgentOptions: []agentrt.Option{
-		agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) {
+	f = newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
+		native.WithProvider(native.ProviderOllama, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
 				agenttest.ToolCallResponse("call-ask", "ask_person", map[string]any{"question": "Which colour?", "options": []any{"red", "blue"}}),
 				agenttest.TextResponse("Red."),
@@ -225,18 +225,11 @@ func TestWhoAnsweredAQuestionIsCalledByName(t *testing.T) {
 	var resumed map[string]any
 	for _, e := range want(t, f, ana, "GET", "/api/runs/"+id+"/events", "", http.StatusOK)["events"].([]any) {
 		e := e.(map[string]any)
-		if e["kind"] != "lifecycle.resumed" {
+		if e["type"] != event.TypeResumed {
 			continue
 		}
-		raw, err := base64.StdEncoding.DecodeString(e["payload"].(string))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var body map[string]any
-		if err := json.Unmarshal(raw, &body); err != nil {
-			t.Fatal(err)
-		}
-		resumed, _ = body["answer"].(map[string]any)
+		data, _ := e["data"].(map[string]any)
+		resumed, _ = data["answer"].(map[string]any)
 	}
 	if resumed == nil {
 		t.Fatal("the run's events hold no answer")

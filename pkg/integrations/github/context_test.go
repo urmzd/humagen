@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
@@ -99,7 +99,7 @@ func TestCompletedOnlyDeliveryRendersTheStructuredReviewOnce(t *testing.T) {
 	report := github.ReviewReport{Format: github.ReviewFormat, Summary: "Inspected abc; no findings. Tests not run.", Findings: []github.ReviewFinding{}}
 	text, _ := json.Marshal(report)
 	payload, _ := json.Marshal(map[string]string{"text": string(text)})
-	e := event(4, envelope.KindCompleted, string(payload))
+	e := runEvent(4, event.TypeCompleted, string(payload))
 	for range 2 {
 		if err := c.Deliver(context.Background(), target, e); err != nil {
 			t.Fatal(err)

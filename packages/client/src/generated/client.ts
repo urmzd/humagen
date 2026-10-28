@@ -1743,7 +1743,7 @@ Agents the caller may not read are left out.
 
   /** Starts a conversation, or continues one when `after` names a turn.
 The run is accepted, not finished: follow it on the event stream at
-topic `agent:<agent>:<id>`, or poll `getRun`.
+`/api/events?run=<id>`, or poll `getRun`.
 
 Send `Idempotency-Key` to make a retry safe. The run's `tag_id` is
 then `api-<length of subject in bytes>-<subject>-<key>`, its `id` is
@@ -2003,7 +2003,7 @@ a member of the run's project, and in a private thread a participant
   }
 
   /** The request goes to the runtime, which cancels the model call in
-flight and ends the run with `lifecycle.stopped`. Runs attached to it
+flight and ends the run with `run.stopped.v1`. Runs attached to it
 are asked too. Runs it delegated keep going.
 
 It does not wait for the run. From the moment it is asked, the run is
@@ -2040,7 +2040,7 @@ participant). A viewer of the project stops nobody else's run (403).
 optionally with edited `arguments` for an approval), to choose one of
 some options (`choose` with `choice`), or to reply in words (`reply`
 with `text`). The question is on the run as `question`, on its stream
-as `lifecycle.parked`, and in the inbox as a message addressed to the
+as `run.parked.v1`, and in the inbox as a message addressed to the
 people who may answer it. Answering here is the same as resolving that
 message's part, and returns the message.
 
@@ -2731,7 +2731,8 @@ to Renewal plan in Globex #general", read where the conversation is.
 
   /** A long-lived `text/event-stream`. Two kinds of message arrive on it:
 
-- A message with no `event:` field carries one `RunEvent` as JSON.
+- A message with no `event:` field carries one `RunEvent` as JSON, or
+  an `UnknownEvent` for a type this server's catalog does not hold.
 - A message with `event: inbox` carries one `InboxNotice` as JSON. It
   names a message and nothing more: fetch it to see what changed. A
   caller is only sent notices for kinds of message they may read.
@@ -2743,27 +2744,35 @@ to Renewal plan in Globex #general", read where the conversation is.
 A comment line (`: keep-alive`) is sent every 15 seconds. Messages
 carry no `id:` field, so `Last-Event-ID` is not used: to resume, pass
 the last `seq` processed as `from`. `seq` orders events within one
-run, so `from` is only meaningful with a topic that names one run.
+run, so `from` is only meaningful with `run`.
 
-The stream first replays what the bus still holds for the topic, then
-follows it live. The server ends the stream when the consumer falls
-behind, rather than feed it a gap: reconnect and resume. A run's end is
-not the stream's end, and the ledger (`getRun`) decides whether a run
-is over, not silence on the stream.
+The workspace is always the caller's own. A reader is sent the events
+of runs they may read, and only run events (`run.*`): a `type` outside
+that family is refused.
 
-There is no topic for one conversation. To follow a conversation,
-subscribe to `agent` and keep the events whose `run_id` is one of its
+The stream first replays what the bus still holds, then follows it
+live. The server ends the stream when the consumer falls behind,
+rather than feed it a gap: reconnect and resume. A run's end is not
+the stream's end, and the ledger (`getRun`) decides whether a run is
+over, not silence on the stream.
+
+There is no filter for one conversation. To follow a conversation,
+subscribe to everything and keep the events whose `run` is one of its
 turns.
 
 Note for generators: the schema below describes the JSON carried in
 each message's `data` field, which is how the oag generator reads
 `itemSchema`.
  */
-  async *streamEvents(topic?: string, from?: number, options?: SSEOptions): AsyncGenerator<SSEEvent<StreamEventsStreamEvent>> {
+  async *streamEvents(channel?: string, type?: string[], run?: string, from?: number, inbox?: boolean, topic?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<StreamEventsStreamEvent>> {
     let path = "/api/events";
     const _q = new URLSearchParams();
-    if (topic !== undefined && topic !== null) _q.set("topic", String(topic));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    if (type !== undefined && type !== null) { for (const _v of type) _q.append("type", String(_v)); }
+    if (run !== undefined && run !== null) _q.set("run", String(run));
     if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (inbox !== undefined && inbox !== null) _q.set("inbox", String(inbox));
+    if (topic !== undefined && topic !== null) _q.set("topic", String(topic));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     let url = `${this.baseUrl}${path}`;
@@ -3480,12 +3489,13 @@ Does not publish a new version or run an agent.
   }
 
   /** Query what happened, newest first */
-  async queryJournal(window?: string, agent?: string, run?: string, kind?: string, origin?: string, q?: string, limit?: number, options?: RequestOptions): Promise<QueryJournalResponse> {
+  async queryJournal(window?: string, agent?: string, run?: string, type?: string[], kind?: string, origin?: string, q?: string, limit?: number, options?: RequestOptions): Promise<QueryJournalResponse> {
     let path = "/api/journal";
     const _q = new URLSearchParams();
     if (window !== undefined && window !== null) _q.set("window", String(window));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (type !== undefined && type !== null) { for (const _v of type) _q.append("type", String(_v)); }
     if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
     if (origin !== undefined && origin !== null) _q.set("origin", String(origin));
     if (q !== undefined && q !== null) _q.set("q", String(q));
@@ -3497,12 +3507,13 @@ Does not publish a new version or run an agent.
     });
   }
 
-  async queryJournalRaw(window?: string, agent?: string, run?: string, kind?: string, origin?: string, q?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<QueryJournalResponse>> {
+  async queryJournalRaw(window?: string, agent?: string, run?: string, type?: string[], kind?: string, origin?: string, q?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<QueryJournalResponse>> {
     let path = "/api/journal";
     const _q = new URLSearchParams();
     if (window !== undefined && window !== null) _q.set("window", String(window));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (run !== undefined && run !== null) _q.set("run", String(run));
+    if (type !== undefined && type !== null) { for (const _v of type) _q.append("type", String(_v)); }
     if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
     if (origin !== undefined && origin !== null) _q.set("origin", String(origin));
     if (q !== undefined && q !== null) _q.set("q", String(q));

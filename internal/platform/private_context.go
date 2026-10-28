@@ -2,6 +2,8 @@ package platform
 
 import (
 	"context"
+
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
@@ -22,14 +24,14 @@ func (p *Platform) runNeedsSummary(ctx context.Context, run runs.Run, destinatio
 			return true
 		}
 	}
-	if run.UsesPrivateContext() || run.Tag().Meta[MetaPersonalMemoryContext] == "true" || run.Tag().Meta[MetaPrivateLibraryContext] == "true" || p.ContextFlags.Has(run.Tenant, run.ID) || p.RunUsesPersonalSources(ctx, run) {
+	if run.UsesPrivateContext() || wire.Meta(run.Tag())[MetaPersonalMemoryContext] == "true" || wire.Meta(run.Tag())[MetaPrivateLibraryContext] == "true" || p.ContextFlags.Has(run.Tenant, run.ID) || p.RunUsesPersonalSources(ctx, run) {
 		return true
 	}
-	revision, err := p.Agents.Get(ctx, run.Tenant, run.Agent, run.Rev)
+	revision, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, run.Rev)
 	if err != nil || p.grantsPersonScoped(ctx, run.Tenant, revision.Spec.Tools, run.CreatedAt) {
 		return true
 	}
-	for _, source := range runs.SourcesOf(run.Tag().Meta) {
+	for _, source := range runs.SourcesOf(wire.Meta(run.Tag())) {
 		if !p.SourceMayPublishIn(run.Tenant, source, destination) {
 			return true
 		}

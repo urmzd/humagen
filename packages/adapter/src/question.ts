@@ -8,7 +8,10 @@ import { ActionId, type Approval, type Clarification, type Interrupt, type UiAct
  * it is read on the run or in the inbox.
  */
 
-/** A question as the platform sends it: `payload.Question` on a run, `question` on an inbox part. */
+/**
+ * A question as the platform sends it: `data.question` on `run.parked.v1`,
+ * `question` on an inbox part. The generated `Question` is one.
+ */
 export interface WireQuestion {
   id: string;
   kind: string;
@@ -36,7 +39,7 @@ export interface Settled {
   note?: string;
 }
 
-/** The runtime's answer (`lifecycle.resumed`) as a settlement. */
+/** The runtime's answer (`data.answer` on `run.resumed.v1`) as a settlement. */
 export function settledOf(answer: {
   decision?: string;
   choice?: string;

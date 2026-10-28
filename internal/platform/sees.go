@@ -3,8 +3,9 @@ package platform
 import (
 	"slices"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/pkg/call"
 
@@ -69,7 +70,7 @@ const (
 // the turn's it serves.
 func placeOfRun(r runs.Run) Place {
 	if r.Origin == runs.OriginSystem {
-		if meta := r.Tag().Meta; meta[metaPlaceThread] != "" {
+		if meta := wire.Meta(r.Tag()); meta[metaPlaceThread] != "" {
 			return Place{Project: meta[metaPlaceProject], Thread: meta[metaPlaceThread]}
 		}
 	}
@@ -444,9 +445,9 @@ func (p *Platform) SeesThread(who auth.Principal, id string) bool {
 // placeAdmitted is where a run lives before the index records it: its
 // root's conversation for a called run, else the conversation the API placed
 // it in, or its own.
-func (p *Platform) placeAdmitted(tag envelope.Tag, edge call.Edge, runID, project string) Place {
-	if tag.Origin == runs.OriginSystem && tag.Meta[metaPlaceThread] != "" {
-		return Place{Project: tag.Meta[metaPlaceProject], Thread: tag.Meta[metaPlaceThread]}
+func (p *Platform) placeAdmitted(tag event.Envelope, edge call.Edge, runID, project string) Place {
+	if wire.Origin(tag) == runs.OriginSystem && wire.Meta(tag)[metaPlaceThread] != "" {
+		return Place{Project: wire.Meta(tag)[metaPlaceProject], Thread: wire.Meta(tag)[metaPlaceThread]}
 	}
 	if edge.Parent != "" {
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
@@ -454,7 +455,7 @@ func (p *Platform) placeAdmitted(tag envelope.Tag, edge call.Edge, runID, projec
 		}
 	}
 	thread := runID
-	if v := tag.Meta[runs.MetaThread]; v != "" && tag.Origin == runs.OriginAPI {
+	if v := wire.Meta(tag)[runs.MetaThread]; v != "" && wire.Origin(tag) == runs.OriginAPI {
 		thread = v
 	}
 	return Place{Project: project, Thread: thread}

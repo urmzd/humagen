@@ -6,8 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -22,7 +21,7 @@ func TestRestart(t *testing.T) {
 		}
 		src := filled(t)
 		src.mu.RLock()
-		src.each(j.Append)
+		src.each(func(h held) { j.Append(h.e, h.origin) })
 		src.mu.RUnlock()
 		// Nothing is written until a flush.
 		if early, _ := Open(st, 0); len(early.Events("acme", []string{"r1"})) != 0 {
@@ -54,7 +53,7 @@ func TestRestartKeepsTheBound(t *testing.T) {
 		st := open(t)
 		j, _ := Open(st, 5)
 		for i := range 12 {
-			j.Append(ev(t, "acme", "r1", i, envelope.KindText, payload.Text{Text: fmt.Sprint(i)}))
+			j.Append(ev(t, "acme", "r1", i, event.Text{Text: fmt.Sprint(i)}), "slack")
 			if i%4 == 0 {
 				if err := j.Flush(); err != nil {
 					t.Fatal(err)
@@ -80,7 +79,7 @@ func TestRestartKeepsTheBound(t *testing.T) {
 		if got := smaller.Events("acme", []string{"r1"}); len(got) != 3 || got[0].Seq != 9 {
 			t.Fatalf("with a smaller ring = %+v", got)
 		}
-		smaller.Append(ev(t, "acme", "r1", 12, envelope.KindText, payload.Text{Text: "12"}))
+		smaller.Append(ev(t, "acme", "r1", 12, event.Text{Text: "12"}), "slack")
 		if err := smaller.Flush(); err != nil {
 			t.Fatal(err)
 		}
@@ -97,12 +96,12 @@ func TestRestartKeepsTheBound(t *testing.T) {
 func TestFailedFlushIsRetried(t *testing.T) {
 	f := statetest.NewFaulty(state.NewMemory())
 	j, _ := Open(f, 0)
-	j.Append(ev(t, "acme", "r1", 0, envelope.KindAccepted, payload.Lifecycle{Rev: 1}))
+	j.Append(ev(t, "acme", "r1", 0, event.Accepted{}), "slack")
 	f.Fail(statetest.ErrInjected)
 	if err := j.Flush(); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Flush = %v", err)
 	}
-	j.Append(ev(t, "acme", "r1", 1, envelope.KindStarted, payload.Lifecycle{Attempt: 1}))
+	j.Append(ev(t, "acme", "r1", 1, event.Started{Attempt: 1}), "slack")
 	f.Fail(nil)
 	if err := j.Flush(); err != nil {
 		t.Fatal(err)

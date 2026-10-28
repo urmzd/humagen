@@ -1,9 +1,10 @@
 package platform
 
 import (
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/operations"
 )
 
@@ -12,7 +13,7 @@ import (
 // action policy. Implementations must not infer authority from client metadata.
 type AgentTestGate interface {
 	Ready(tenant, agent string) bool
-	AllowTag(envelope.Tag) bool
+	AllowTag(event.Envelope) bool
 	AllowRequest(runtime.Request) bool
 }
 
@@ -25,14 +26,14 @@ func (p *Platform) RegisterAgentTestGate(gate AgentTestGate) error {
 	}
 	return nil
 }
-func (p *Platform) operationAdmissionTag(tag envelope.Tag) error {
+func (p *Platform) operationAdmissionTag(tag event.Envelope) error {
 	if p.Operations.Control(tag.Tenant, "").Paused {
 		return operations.ErrPaused
 	}
 	if !p.AgentControl(tag.Tenant, tag.Agent).Paused && p.agentReady(tag.Tenant, tag.Agent) {
 		return nil
 	}
-	if tag.Meta[operations.MetaForceAsk] == "true" {
+	if wire.Meta(tag)[operations.MetaForceAsk] == "true" {
 		if v, ok := p.agentTestGates.Load("setup"); ok && v.(AgentTestGate).AllowTag(tag) {
 			return nil
 		}

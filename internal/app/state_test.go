@@ -12,8 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 func TestStateFlags(t *testing.T) {
@@ -52,8 +51,8 @@ func TestStateFlags(t *testing.T) {
 
 func TestRegisterSpecRevisesWhatIsKept(t *testing.T) {
 	ctx := context.Background()
-	agents := registry.NewMemory()
-	spec := agentspec.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "One."}
+	agents := wire.NewMemoryAgents()
+	spec := wire.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "One."}
 	for range 2 {
 		if err := registerSpec(ctx, agents, "acme", spec); err != nil {
 			t.Fatal(err)

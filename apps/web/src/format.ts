@@ -3,7 +3,9 @@ import type { Run } from "./adapter.ts";
 /** Micro-USD as dollars. Zero is an unmetered run, not a free one. */
 export function usd(micro: number): string {
   if (micro === 0) return "Unmetered";
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(micro / 1_000_000);
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(
+    micro / 1_000_000,
+  );
 }
 
 /** A duration a person can read at a glance: 840ms, 4.2s, 3m 05s. */
@@ -28,12 +30,17 @@ export function isEnded(run: Pick<Run, "status">): boolean {
 
 /** How long a run took, or has taken so far. */
 export function elapsed(run: Run): number {
-  return Math.max((isEnded(run) ? Date.parse(run.updated_at) : Date.now()) - Date.parse(run.created_at), 0);
+  return Math.max(
+    (isEnded(run) ? Date.parse(run.updated_at) : Date.now()) - Date.parse(run.created_at),
+    0,
+  );
 }
 
 /** Micro-USD as dollars, with zero shown as $0.00. For budgets, where zero is a real amount. */
 export function dollars(micro: number): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(micro / 1_000_000);
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(
+    micro / 1_000_000,
+  );
 }
 
 /** 1536 as "1.5 KB". Whole bytes below a kilobyte, one decimal above. */

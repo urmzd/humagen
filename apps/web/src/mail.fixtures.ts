@@ -50,8 +50,25 @@ export function wireMail(): Record<string, unknown>[] {
       unread: true,
       source: { run: "api-7f3k", agent: "releaser" },
       parts: [
-        { id: "p1", type: "text", state: "info", actions: [], text: "I could not tag 2.4.0. The tag already exists on the remote, so I stopped before pushing anything." },
-        { id: "p2", type: "failure", state: "open", actions: ["retry", "acknowledge"], failure: { run: "api-7f3k", agent: "releaser", error: "git: tag 'v2.4.0' already exists", retryable: true } },
+        {
+          id: "p1",
+          type: "text",
+          state: "info",
+          actions: [],
+          text: "I could not tag 2.4.0. The tag already exists on the remote, so I stopped before pushing anything.",
+        },
+        {
+          id: "p2",
+          type: "failure",
+          state: "open",
+          actions: ["retry", "acknowledge"],
+          failure: {
+            run: "api-7f3k",
+            agent: "releaser",
+            error: "git: tag 'v2.4.0' already exists",
+            retryable: true,
+          },
+        },
       ],
     },
     {
@@ -76,7 +93,10 @@ export function wireMail(): Record<string, unknown>[] {
             agent: "oncall",
             notes: [
               { id: "n1", text: "Checkout pages go to the payments rota, not the platform rota." },
-              { id: "n2", text: "Incidents are summarized in the #incidents channel within an hour." },
+              {
+                id: "n2",
+                text: "Incidents are summarized in the #incidents channel within an hour.",
+              },
               { id: "n3", text: "The staging cluster is rebuilt every Monday morning." },
             ],
           },
@@ -100,7 +120,14 @@ export function wireMail(): Record<string, unknown>[] {
           type: "budget",
           state: "open",
           actions: ["raise_limit", "acknowledge"],
-          budget: { scope_kind: "project", scope_name: "Launch", limit: "runs", period: "day", version: 2, current: { max_runs: 100 } },
+          budget: {
+            scope_kind: "project",
+            scope_name: "Launch",
+            limit: "runs",
+            period: "day",
+            version: 2,
+            current: { max_runs: 100 },
+          },
         },
       ],
     },
@@ -122,7 +149,13 @@ export function wireMail(): Record<string, unknown>[] {
           state: "resolved",
           actions: [],
           outcome: { action: "acknowledge", by: "Ada", at: ago(1400) },
-          alert: { id: "al-0", rule: "evals-below-80", kind: "eval_below", severity: "warning", title: "triage-basics passed 7 of 10 cases" },
+          alert: {
+            id: "al-0",
+            rule: "evals-below-80",
+            kind: "eval_below",
+            severity: "warning",
+            title: "triage-basics passed 7 of 10 cases",
+          },
         },
       ],
     },
@@ -138,7 +171,13 @@ export function wireMail(): Record<string, unknown>[] {
       unread: true,
       source: { run: "api-8a1c", agent: "releaser", project: "Launch" },
       parts: [
-        { id: "p0", type: "text", state: "info", actions: [], text: "2.4.0 already exists, so I bumped the patch. Pushing a tag starts the release pipeline." },
+        {
+          id: "p0",
+          type: "text",
+          state: "info",
+          actions: [],
+          text: "2.4.0 already exists, so I bumped the patch. Pushing a tag starts the release pipeline.",
+        },
         {
           id: "p1",
           type: "approval",
@@ -172,7 +211,14 @@ export function wireMail(): Record<string, unknown>[] {
           type: "choice",
           state: "open",
           actions: ["choose"],
-          question: { run: "api-5d2e", id: "q-choice", kind: "choice", agent: "lead", prompt: "Where should I post the launch note?", options: ["#launch", "#general", "#eng-announce"] },
+          question: {
+            run: "api-5d2e",
+            id: "q-choice",
+            kind: "choice",
+            agent: "lead",
+            prompt: "Where should I post the launch note?",
+            options: ["#launch", "#general", "#eng-announce"],
+          },
         },
       ],
     },
@@ -193,7 +239,16 @@ export function wireMail(): Record<string, unknown>[] {
           type: "artifact",
           state: "info",
           actions: [],
-          artifact: { id: "art-2", title: "launch-checklist.md", kind: "document", mime: "text/markdown", size: 97, version: 2, description: "With support added", previous: "art-1" },
+          artifact: {
+            id: "art-2",
+            title: "launch-checklist.md",
+            kind: "document",
+            mime: "text/markdown",
+            size: 97,
+            version: 2,
+            description: "With support added",
+            previous: "art-1",
+          },
         },
       ],
     },
@@ -231,7 +286,10 @@ const isOpen = (m: PlatformMessage) => messageState(m) === "open";
  * and resolves the way the platform does, and `fail` makes the next call of
  * that name reject, to see what the screen does when the platform says no.
  */
-export function memoryTransport(seed: PlatformMessage[] = sampleMail(), size = 30): Transport & { fail: Set<string>; all: () => PlatformMessage[] } {
+export function memoryTransport(
+  seed: PlatformMessage[] = sampleMail(),
+  size = 30,
+): Transport & { fail: Set<string>; all: () => PlatformMessage[] } {
   let all = [...seed].sort((a, b) => b.at.localeCompare(a.at));
   const fail = new Set<string>();
   const guard = (name: string) => {
@@ -243,7 +301,12 @@ export function memoryTransport(seed: PlatformMessage[] = sampleMail(), size = 3
     list: async (q) => {
       guard("list");
       const state = q.state ?? "open";
-      const kept = all.filter((m) => (state === "all" || (state === "open") === isOpen(m)) && (!q.kind || m.kind === q.kind) && (!q.news || (m.kind === "announcement" && isAnnouncement(m))));
+      const kept = all.filter(
+        (m) =>
+          (state === "all" || (state === "open") === isOpen(m)) &&
+          (!q.kind || m.kind === q.kind) &&
+          (!q.news || (m.kind === "announcement" && isAnnouncement(m))),
+      );
       const from = q.before ? kept.findIndex((m) => m.id === q.before) + 1 : 0;
       const messages = kept.slice(from, from + Math.min(q.limit, size));
       const last = messages[messages.length - 1];
@@ -274,10 +337,14 @@ export function memoryTransport(seed: PlatformMessage[] = sampleMail(), size = 3
               : r.call === "unhide"
                 ? { ...was, dismissedAt: undefined, snoozedUntil: undefined, hidden: undefined }
                 : {
-                  ...was,
-                  unread: false,
-                  parts: was.parts.map((p) => (p.id === r.partId ? { ...p, resolution: { outcome: r.action, by: "You", at: now } } : p)),
-                };
+                    ...was,
+                    unread: false,
+                    parts: was.parts.map((p) =>
+                      p.id === r.partId
+                        ? { ...p, resolution: { outcome: r.action, by: "You", at: now } }
+                        : p,
+                    ),
+                  };
       all = all.map((m) => (m.id === next.id ? next : m));
       return next;
     },

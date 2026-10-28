@@ -2,11 +2,11 @@ import "./react.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  type BusEvent,
   follow,
   fromServer,
   type PlatformMessage,
   type Run,
+  type RunEvent,
   replay,
   toRequest,
   updatesOf,
@@ -59,22 +59,26 @@ const run = (over: Partial<Run> = {}): Run => ({
 });
 
 let seq = 0;
-const ev = (kind: string, payload?: unknown): BusEvent => ({
-  seq: ++seq,
-  topic: `agent:lead:${RUN}`,
-  run_id: RUN,
-  tenant: "acme",
-  agent: "lead",
-  rev: 1,
-  origin: "api",
-  kind,
-  payload:
-    payload === undefined ? undefined : Buffer.from(JSON.stringify(payload)).toString("base64"),
-  at: "2026-10-09T00:00:01Z",
-});
+const ev = (type: string, data: unknown = {}): RunEvent => {
+  const n = ++seq;
+  return {
+    id: `e${n}`,
+    source: "humagen:acme",
+    type,
+    channel: "humagen://acme",
+    time: "2026-10-09T00:00:01Z",
+    hops: 0,
+    tenant: "acme",
+    run: RUN,
+    seq: n,
+    agent: "lead",
+    version: "1.0.0",
+    data,
+  } as RunEvent;
+};
 
 /** The turn the Slack app holds: events folded in one at a time, as they arrive. */
-function live(events: BusEvent[], record?: Run): Turn {
+function live(events: RunEvent[], record?: Run): Turn {
   const f = follow(run());
   for (const e of events) f.apply(e);
   if (record) f.settle(record);
@@ -176,18 +180,18 @@ function bothSay(element: ReactElement, ...phrases: string[]) {
 }
 
 const answered = [
-  ev("lifecycle.accepted", { rev: 1 }),
-  ev("lifecycle.started", { attempt: 1 }),
-  ev("delta.tool.call", { id: "t1", name: "github.search", phase: "requested" }),
-  ev("delta.tool.done", { id: "t1", result: "3 commits" }),
-  ev("delta.citation", {
+  ev("run.accepted.v1", { rev: 1 }),
+  ev("run.started.v1", { attempt: 1 }),
+  ev("run.delta.tool.call.v1", { id: "t1", name: "github.search", phase: "requested" }),
+  ev("run.delta.tool.done.v1", { id: "t1", result: "3 commits" }),
+  ev("run.delta.citation.v1", {
     label: "c1",
     index: 1,
     text: "Deploy 4812 went out at 14:52.",
     source: { document_title: "Deploy log", source_uri: "https://deploys.example.com/4812" },
   }),
-  ev("delta.tool.call", { id: "t2", name: "publish_artifact" }),
-  ev("action.taken", {
+  ev("run.delta.tool.call.v1", { id: "t2", name: "publish_artifact" }),
+  ev("run.action.taken.v1", {
     name: "publish_artifact",
     data: {
       id: "art-1",
@@ -198,10 +202,10 @@ const answered = [
       version: 1,
     },
   }),
-  ev("delta.tool.done", { id: "t2", result: "published" }),
-  ev("delta.text", { text: "Three commits " }),
-  ev("delta.text", { text: "went out." }),
-  ev("lifecycle.completed", { text: "Three commits went out." }),
+  ev("run.delta.tool.done.v1", { id: "t2", result: "published" }),
+  ev("run.delta.text.v1", { text: "Three commits " }),
+  ev("run.delta.text.v1", { text: "went out." }),
+  ev("run.completed.v1", { text: "Three commits went out." }),
 ];
 
 test("a streamed answer with a tool call is one turn, rendered by both surfaces", () => {
@@ -224,9 +228,9 @@ test("a streamed answer with a tool call is one turn, rendered by both surfaces"
 
 test("a failed run is the same failure in both", () => {
   const events = [
-    ev("lifecycle.accepted"),
-    ev("lifecycle.failed", { error: "timeout", terminal: false }),
-    ev("lifecycle.failed", { error: "agent: step 2\nprovider: 529 overloaded", terminal: true }),
+    ev("run.accepted.v1"),
+    ev("run.failed.v1", { error: "timeout", terminal: false }),
+    ev("run.failed.v1", { error: "agent: step 2\nprovider: 529 overloaded", terminal: true }),
   ];
   const turn = live(events);
   assert.deepEqual(replay(run(), events), turn);
@@ -242,7 +246,7 @@ test("a failed run is the same failure in both", () => {
 
   // A run whose final event is gone is ended from its record, to the same state.
   const fromRecord = live(
-    [ev("lifecycle.accepted")],
+    [ev("run.accepted.v1")],
     run({ status: "failed", error: "agent: step 2\nprovider: 529 overloaded" }),
   );
   assert.deepEqual(fromRecord.failure, turn.failure);
@@ -250,7 +254,7 @@ test("a failed run is the same failure in both", () => {
 });
 
 test("a stopped run is stopped in both, with nothing after the stop", () => {
-  const events = [ev("lifecycle.accepted"), ev("delta.text", { text: "Part one. " })];
+  const events = [ev("run.accepted.v1"), ev("run.delta.text.v1", { text: "Part one. " })];
   const turn = live(events, run({ status: "stopped", cause: "Stopped by svc-slack" }));
   assert.equal(turn.status, "stopped");
   assert.equal(turn.stop, "confirmed");
@@ -260,7 +264,7 @@ test("a stopped run is stopped in both, with nothing after the stop", () => {
 
   // A stopped run that settled from its record shows the partial answer it carries, in both.
   const fromRecord = live(
-    [ev("lifecycle.accepted")],
+    [ev("run.accepted.v1")],
     run({ status: "stopped", answer: "Half an answer" }),
   );
   assert.equal(fromRecord.status, "stopped");
@@ -404,12 +408,12 @@ function webButtons(element: ReactElement): string[] {
 }
 
 const asked = (kind: keyof typeof QUESTIONS) => [
-  ev("lifecycle.accepted", { rev: 1 }),
-  ev("lifecycle.started", { attempt: 1 }),
+  ev("run.accepted.v1", { rev: 1 }),
+  ev("run.started.v1", { attempt: 1 }),
   ...(kind === "approval"
-    ? [ev("delta.tool.call", { id: "call-1", name: "deploy", phase: "requested" })]
+    ? [ev("run.delta.tool.call.v1", { id: "call-1", name: "deploy", phase: "requested" })]
     : []),
-  ev("lifecycle.parked", { reason: "waiting on a person", question: QUESTIONS[kind] }),
+  ev("run.parked.v1", { reason: "waiting on a person", question: QUESTIONS[kind] }),
 ];
 const at = "2026-10-09T00:20:00Z";
 const answer = {
@@ -458,7 +462,7 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     // Answered: the record replaces the buttons, in the same words, wherever it is read.
     const settled = live([
       ...asked(kind),
-      ev("lifecycle.resumed", { attempt: 2, answer: answer[kind].run }),
+      ev("run.resumed.v1", { attempt: 2, answer: answer[kind].run }),
     ]);
     assert.notEqual(settled.status, "waiting");
     const decided = fromServer(questionMail(RUN, kind, answer[kind].inbox));

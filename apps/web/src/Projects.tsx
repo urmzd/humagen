@@ -1,32 +1,39 @@
-import { ProjectRollup } from "./ProjectRollup.tsx";
 import { defaultCopy } from "@humagen/components";
-import { AUTO } from "./availability.ts";
 import { ChevronDownIcon, FolderIcon, FolderPlusIcon } from "@humagen/render-web";
 import { Badge } from "@humagen/render-web/ui/badge";
-import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type MouseEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ApiError,
   api,
   type Note,
-  type ProjectAction,
   type ProjectAccount,
+  type ProjectAction,
   type ProjectDetail,
   type ProjectKind,
   type ProjectKindSpec,
-  type ProjectView,
   type ProjectTemplate,
+  type ProjectView,
   type Revision,
   type ScheduleView,
   type ThreadSummary,
 } from "./api.ts";
-import { ScopeLimits } from "./Billing.tsx";
+import { AUTO } from "./availability.ts";
 import { inWords } from "./cron.ts";
+import type { Source } from "./mail.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
-import { ProjectWork } from "./ProjectWork.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
-import type { Source } from "./mail.ts";
+import { ProjectRollup } from "./ProjectRollup.tsx";
 import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
+import { ProjectWork } from "./ProjectWork.tsx";
 import {
   above,
   accountOf,
@@ -45,8 +52,8 @@ import {
   updateOf,
   WORKSPACE,
 } from "./projects.ts";
-import { deliverOptions, recapAgent, recapName, weeklyRecap } from "./recap.ts";
 import { ChannelsTab } from "./Room.tsx";
+import { deliverOptions, recapAgent, recapName, weeklyRecap } from "./recap.ts";
 import { href, PROJECT_TABS, type ProjectTab } from "./route.ts";
 import {
   AgentMark,
@@ -76,10 +83,21 @@ const scheduleWords = defaultCopy.schedules;
 // A rule over each section parts it from the one before. The first in its column has none: what is above it draws its own.
 const section = "flex flex-col gap-2 border-aui-border border-t pt-5 first:border-t-0 first:pt-0";
 const heading = "text-aui-base font-medium text-aui-fg";
-const fail = (set: (m: string) => void, fallback: string) => (e: unknown) => set(e instanceof ApiError ? e.message : fallback);
+const fail = (set: (m: string) => void, fallback: string) => (e: unknown) =>
+  set(e instanceof ApiError ? e.message : fallback);
 
 /** A plain link: a plain click goes there in place, a modified one opens a new tab. */
-function Go({ to, onGo, className, children }: { to: string; onGo: () => void; className?: string; children: ReactNode }) {
+function Go({
+  to,
+  onGo,
+  className,
+  children,
+}: {
+  to: string;
+  onGo: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
   const go = (e: MouseEvent<HTMLAnchorElement>) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
@@ -117,18 +135,22 @@ function factLabelsOf(p: ProjectView): string[] {
     p.proposed > 0 && words.count.review(p.proposed),
     words.count.tasks(p.conversations),
     p.active_at && words.count.active(ago(p.active_at)),
-  ]
-    .filter((label): label is string => typeof label === "string");
+  ].filter((label): label is string => typeof label === "string");
 }
 
 /** A project in words under its title: its kind, its customer, and where it sits when the tree does not show it. */
 function aboutOf(p: ProjectView, path: string[], kinds: ProjectKindSpec[]): string[] {
-  return [kindWord(p.kind, kinds), p.account?.customer, path.length > 0 ? words.within(path) : null].filter((label): label is string => typeof label === "string" && label.length > 0);
+  return [
+    kindWord(p.kind, kinds),
+    p.account?.customer,
+    path.length > 0 ? words.within(path) : null,
+  ].filter((label): label is string => typeof label === "string" && label.length > 0);
 }
 
 /** The workspace's own kinds, as a project page reads them: from the workspace, first among its ancestors. */
 function kindsIn(detail: ProjectDetail): ProjectKindSpec[] {
-  const workspace = detail.project.name === "" ? detail.project : detail.ancestors.find((a) => a.name === "");
+  const workspace =
+    detail.project.name === "" ? detail.project : detail.ancestors.find((a) => a.name === "");
   return workspace?.kinds ?? [];
 }
 
@@ -154,38 +176,99 @@ function ProjectRow({
   ].filter(Boolean);
   const hasDetails = details.length > 0 || agents.length > 2;
   return (
-    <li data-indent={indent} style={indent > 0 ? { marginLeft: indent * INDENT_PX } : undefined} className="rounded-aui-lg border border-aui-border bg-aui-surface">
+    <li
+      data-indent={indent}
+      style={indent > 0 ? { marginLeft: indent * INDENT_PX } : undefined}
+      className="rounded-aui-lg border border-aui-border bg-aui-surface"
+    >
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5">
-        <Go to={to} onGo={onOpen} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-aui text-left hover:text-aui-accent focus-visible:outline-2 focus-visible:outline-aui-accent">
+        <Go
+          to={to}
+          onGo={onOpen}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-aui text-left hover:text-aui-accent focus-visible:outline-2 focus-visible:outline-aui-accent"
+        >
           <span className="relative shrink-0">
             <FolderIcon size={18} className="text-aui-muted" />
-            {project.unread > 0 && <span role="img" aria-label={words.unreadUpdates} className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-aui-accent" />}
+            {project.unread > 0 && (
+              <span
+                role="img"
+                aria-label={words.unreadUpdates}
+                className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-aui-accent"
+              />
+            )}
           </span>
           <span className="min-w-0">
             <span className="block break-words text-aui-sm font-medium text-aui-fg">{title}</span>
-            {project.account?.customer && <span className="block text-aui-xs text-aui-muted">{project.account.customer}</span>}
+            {project.account?.customer && (
+              <span className="block text-aui-xs text-aui-muted">{project.account.customer}</span>
+            )}
           </span>
         </Go>
         <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 pl-[30px] sm:ml-auto sm:w-auto sm:max-w-[60%] sm:justify-end sm:pl-0">
-          {project.initiative && <Badge variant="secondary">{defaultCopy.projectTemplates.initiative}</Badge>}
-          {agents.slice(0, 2).map((name) => <Badge key={name} variant="outline" className="max-w-full gap-1.5 whitespace-normal text-xs font-normal"><AgentMark name={name} size={12} /><span className="min-w-0 break-all">{name}</span></Badge>)}
-          {project.active > 0 && <Badge variant="secondary">{words.count.running(project.active)}</Badge>}
-          {project.proposed > 0 && <Badge variant="secondary">{words.count.review(project.proposed)}</Badge>}
-          {project.conversations > 0 && <span className="px-1 text-aui-xs text-aui-muted tabular-nums">{words.count.tasks(project.conversations)}</span>}
-          {project.active_at && <time dateTime={project.active_at} className="px-1 text-aui-xs text-aui-muted">{words.count.active(ago(project.active_at))}</time>}
+          {project.initiative && (
+            <Badge variant="secondary">{defaultCopy.projectTemplates.initiative}</Badge>
+          )}
+          {agents.slice(0, 2).map((name) => (
+            <Badge
+              key={name}
+              variant="outline"
+              className="max-w-full gap-1.5 whitespace-normal text-xs font-normal"
+            >
+              <AgentMark name={name} size={12} />
+              <span className="min-w-0 break-all">{name}</span>
+            </Badge>
+          ))}
+          {project.active > 0 && (
+            <Badge variant="secondary">{words.count.running(project.active)}</Badge>
+          )}
+          {project.proposed > 0 && (
+            <Badge variant="secondary">{words.count.review(project.proposed)}</Badge>
+          )}
+          {project.conversations > 0 && (
+            <span className="px-1 text-aui-xs text-aui-muted tabular-nums">
+              {words.count.tasks(project.conversations)}
+            </span>
+          )}
+          {project.active_at && (
+            <time dateTime={project.active_at} className="px-1 text-aui-xs text-aui-muted">
+              {words.count.active(ago(project.active_at))}
+            </time>
+          )}
         </div>
       </div>
-      {hasDetails && <details className="group/project-details border-aui-border border-t px-3 text-aui-xs text-aui-muted">
-        <summary className="flex min-h-8 pointer-coarse:min-h-11 w-fit cursor-pointer list-none items-center gap-3 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
-          <span className="flex w-[18px] shrink-0 justify-center"><ChevronDownIcon size={14} className="-rotate-90 transition-transform group-open/project-details:rotate-0 motion-reduce:transition-none" /></span>
-          <span>{words.details}</span>
-          {agents.length > 2 && <span className="tabular-nums">· {words.moreAgents(agents.length - 2)}</span>}
-        </summary>
-        <div className="max-w-[70ch] space-y-3 pb-3 pl-[30px] leading-5">
-          <p>{details.join(". ")}</p>
-          {agents.length > 2 && <div className="flex flex-wrap gap-1.5">{agents.slice(2).map(name => <Badge key={name} variant="outline" className="gap-1.5 whitespace-normal font-normal"><AgentMark name={name} size={12} /><span className="break-all">{name}</span></Badge>)}</div>}
-        </div>
-      </details>}
+      {hasDetails && (
+        <details className="group/project-details border-aui-border border-t px-3 text-aui-xs text-aui-muted">
+          <summary className="flex min-h-8 pointer-coarse:min-h-11 w-fit cursor-pointer list-none items-center gap-3 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+            <span className="flex w-[18px] shrink-0 justify-center">
+              <ChevronDownIcon
+                size={14}
+                className="-rotate-90 transition-transform group-open/project-details:rotate-0 motion-reduce:transition-none"
+              />
+            </span>
+            <span>{words.details}</span>
+            {agents.length > 2 && (
+              <span className="tabular-nums">· {words.moreAgents(agents.length - 2)}</span>
+            )}
+          </summary>
+          <div className="max-w-[70ch] space-y-3 pb-3 pl-[30px] leading-5">
+            <p>{details.join(". ")}</p>
+            {agents.length > 2 && (
+              <div className="flex flex-wrap gap-1.5">
+                {agents.slice(2).map((name) => (
+                  <Badge
+                    key={name}
+                    variant="outline"
+                    className="gap-1.5 whitespace-normal font-normal"
+                  >
+                    <AgentMark name={name} size={12} />
+                    <span className="break-all">{name}</span>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+      )}
     </li>
   );
 }
@@ -231,7 +314,10 @@ export function ProjectsPage({
   const kinds = root?.kinds ?? [];
   const groups = projects ? treeOf(projects, { narrow, q, kind, kinds }) : [];
   const showRoot = root !== null && !q.trim() && (!kind || kind === "company");
-  const shown = showRoot && !groups.some((g) => g.kind === "company") ? [{ kind: "company" as const, title: words.group.company ?? "", rows: [] }, ...groups] : groups;
+  const shown =
+    showRoot && !groups.some((g) => g.kind === "company")
+      ? [{ kind: "company" as const, title: words.group.company ?? "", rows: [] }, ...groups]
+      : groups;
 
   return (
     <Page
@@ -258,21 +344,35 @@ export function ProjectsPage({
         />
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <SearchField label={words.search} value={q} onChange={(next) => onFilter(next, kind)} className="w-full min-w-0 sm:w-auto sm:max-w-xs sm:flex-1" />
+        <SearchField
+          label={words.search}
+          value={q}
+          onChange={(next) => onFilter(next, kind)}
+          className="w-full min-w-0 sm:w-auto sm:max-w-xs sm:flex-1"
+        />
         <Segmented
           label={words.kindFilter}
           value={kind ?? "all"}
-          options={[{ id: "all", label: words.anyKind }, ...kindsOf(kinds, projects ?? []).map((k) => ({ id: k, label: groupWord(k, kinds) }))]}
+          options={[
+            { id: "all", label: words.anyKind },
+            ...kindsOf(kinds, projects ?? []).map((k) => ({ id: k, label: groupWord(k, kinds) })),
+          ]}
           onChange={(next) => onFilter(q, next === "all" ? undefined : (next as ProjectKind))}
         />
       </div>
       {projects === null ? (
         <SkeletonRows count={5} height="2.75rem" />
       ) : shown.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">{projects.length > 0 ? words.noMatch : canCreate ? words.emptyCreate : words.empty}</p>
+        <p className="text-aui-sm text-aui-muted">
+          {projects.length > 0 ? words.noMatch : canCreate ? words.emptyCreate : words.empty}
+        </p>
       ) : (
         shown.map((g) => (
-          <section key={g.kind} aria-labelledby={`projects-${g.kind}`} className="flex flex-col gap-1.5">
+          <section
+            key={g.kind}
+            aria-labelledby={`projects-${g.kind}`}
+            className="flex flex-col gap-1.5"
+          >
             <h2 id={`projects-${g.kind}`} className="text-aui-xs font-medium text-aui-muted">
               {g.title}
             </h2>
@@ -330,7 +430,18 @@ export function NewProject({
 }) {
   const [template, setTemplate] = useState("");
   const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
-  useEffect(() => { let active = true; api.projectTemplates().then((items) => { if (active) setTemplates(items); }).catch(() => {}); return () => { active = false; }; }, []);
+  useEffect(() => {
+    let active = true;
+    api
+      .projectTemplates()
+      .then((items) => {
+        if (active) setTemplates(items);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   const [title, setTitle] = useState("");
   const [name, setName] = useState("");
   const [named, setNamed] = useState(false);
@@ -373,12 +484,43 @@ export function NewProject({
   };
 
   return (
-    <form onSubmit={create} aria-label={words.form.heading} className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3">
+    <form
+      onSubmit={create}
+      aria-label={words.form.heading}
+      className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3"
+    >
       <h2 className="text-aui-sm font-medium text-aui-fg">
         {fixed ? `${words.form.heading} ${words.within([titleOf(fixed)])}` : words.form.heading}
       </h2>
-      <Label text={defaultCopy.projectTemplates.start}><select aria-label={defaultCopy.projectTemplates.start} className={field} value={template} disabled={saving} onChange={(event) => { const name = event.target.value; setTemplate(name); const picked = templates.find((item) => item.name === name); if (picked) setWant(picked.kind); }}><option value="">{defaultCopy.projectTemplates.blank}</option>{templates.filter((item) => kinds.includes(item.kind)).map((item) => <option key={item.name} value={item.name}>{item.title}</option>)}</select></Label>
-      {template && <p className="text-aui-xs text-aui-muted">{templates.find((item) => item.name === template)?.description} {defaultCopy.projectTemplates.hint}</p>}
+      <Label text={defaultCopy.projectTemplates.start}>
+        <select
+          aria-label={defaultCopy.projectTemplates.start}
+          className={field}
+          value={template}
+          disabled={saving}
+          onChange={(event) => {
+            const name = event.target.value;
+            setTemplate(name);
+            const picked = templates.find((item) => item.name === name);
+            if (picked) setWant(picked.kind);
+          }}
+        >
+          <option value="">{defaultCopy.projectTemplates.blank}</option>
+          {templates
+            .filter((item) => kinds.includes(item.kind))
+            .map((item) => (
+              <option key={item.name} value={item.name}>
+                {item.title}
+              </option>
+            ))}
+        </select>
+      </Label>
+      {template && (
+        <p className="text-aui-xs text-aui-muted">
+          {templates.find((item) => item.name === template)?.description}{" "}
+          {defaultCopy.projectTemplates.hint}
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Label text={words.form.title} hint={words.form.titleHint}>
           <input
@@ -422,7 +564,14 @@ export function NewProject({
                 ...roomy.map((p) => ({
                   value: p.name,
                   label: titleOf(p),
-                  hint: [p.initiative ? defaultCopy.projectTemplates.underInitiative : kindWord(p.kind, own), above(p).length > 0 ? words.within(above(p)) : null].filter(Boolean).join(", "),
+                  hint: [
+                    p.initiative
+                      ? defaultCopy.projectTemplates.underInitiative
+                      : kindWord(p.kind, own),
+                    above(p).length > 0 ? words.within(above(p)) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(", "),
                 })),
               ]}
               onChange={setParentName}
@@ -440,22 +589,46 @@ export function NewProject({
         </div>
       </div>
       {governedHere && <p className="text-aui-2xs text-aui-muted">{words.form.governed}</p>}
-      {kind === "account" && <p className="text-aui-2xs text-aui-muted">{words.form.accountMembersOnly}</p>}
+      {kind === "account" && (
+        <p className="text-aui-2xs text-aui-muted">{words.form.accountMembersOnly}</p>
+      )}
       <Label text={words.form.description}>
-        <input className={field} value={description} maxLength={500} disabled={saving} onChange={(e) => setDescription(e.target.value)} />
+        <input
+          className={field}
+          value={description}
+          maxLength={500}
+          disabled={saving}
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </Label>
       {likeOf(kind, own) === "account" && (
         <Label text={words.form.customer}>
-          <input className={field} value={customer} maxLength={120} disabled={saving} onChange={(e) => setCustomer(e.target.value)} />
+          <input
+            className={field}
+            value={customer}
+            maxLength={120}
+            disabled={saving}
+            onChange={(e) => setCustomer(e.target.value)}
+          />
         </Label>
       )}
-      {template && templates.find((item) => item.name === template)?.kind !== kind && <Problem message={defaultCopy.projectTemplates.parentMismatch} />}
+      {template && templates.find((item) => item.name === template)?.kind !== kind && (
+        <Problem message={defaultCopy.projectTemplates.parentMismatch} />
+      )}
       <Problem message={problem} />
       <div className="flex justify-end gap-2">
         <button type="button" className={button} disabled={saving} onClick={onCancel}>
           {words.cancel}
         </button>
-        <button type="submit" className={primary} disabled={saving || !shownName.trim() || Boolean(template && templates.find((item) => item.name === template)?.kind !== kind)}>
+        <button
+          type="submit"
+          className={primary}
+          disabled={
+            saving ||
+            !shownName.trim() ||
+            Boolean(template && templates.find((item) => item.name === template)?.kind !== kind)
+          }
+        >
           {saving ? words.creating : words.createProject}
         </button>
       </div>
@@ -490,7 +663,6 @@ function SharedMemory({
       .catch(() => setNotes([]));
     onChanged();
   };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reload when the project changes
   useEffect(() => {
     api
       .projectMemory(project)
@@ -506,13 +678,16 @@ function SharedMemory({
     <section className={section}>
       <h2 className={heading}>Shared memory</h2>
       <p className="max-w-xl text-aui-sm text-aui-muted">
-        Every agent answering in this project and below it is sent these, in every conversation. Keep them few and lasting.
+        Every agent answering in this project and below it is sent these, in every conversation.
+        Keep them few and lasting.
       </p>
       <Problem message={problem} />
       {proposed.length > 0 && (
         <div className="flex flex-col gap-2 rounded-aui-lg border border-aui-border p-3">
           <h3 className="text-aui-sm font-medium text-aui-fg">Proposed ({proposed.length})</h3>
-          <p className="text-aui-xs text-aui-muted">Not in use yet. Tick what the project should keep.</p>
+          <p className="text-aui-xs text-aui-muted">
+            Not in use yet. Tick what the project should keep.
+          </p>
           <ul>
             {proposed.map((n) => (
               <li key={n.id} className="border-aui-border border-t py-2 first:border-t-0">
@@ -543,7 +718,9 @@ function SharedMemory({
                 className={button}
                 onClick={() =>
                   Promise.all(
-                    proposed.filter((n) => picked.size === 0 || picked.has(n.id)).map((n) => api.removeProjectMemory(project, n.id)),
+                    proposed
+                      .filter((n) => picked.size === 0 || picked.has(n.id))
+                      .map((n) => api.removeProjectMemory(project, n.id)),
                   )
                     .then(() => {
                       setPicked(new Set());
@@ -579,15 +756,30 @@ function SharedMemory({
       ) : (
         <ul>
           {kept.map((n) => (
-            <li key={n.id} className="humagen-enter flex items-start justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
+            <li
+              key={n.id}
+              className="humagen-enter flex items-start justify-between gap-3 border-aui-border border-t py-2 first:border-t-0"
+            >
               <span className="min-w-0">
                 <span className="block text-aui-sm text-aui-fg">{n.text}</span>
                 <span className="block text-aui-xs text-aui-muted">
-                  {n.source === "person" ? `Written by ${n.by_name || n.by}` : "Proposed by the memory agent and approved"}, {ago(n.at)}
+                  {n.source === "person"
+                    ? `Written by ${n.by_name || n.by}`
+                    : "Proposed by the memory agent and approved"}
+                  , {ago(n.at)}
                 </span>
               </span>
               {canWrite && (
-                <button type="button" className={button} onClick={() => api.removeProjectMemory(project, n.id).then(load).catch(failed("That could not be removed."))}>
+                <button
+                  type="button"
+                  className={button}
+                  onClick={() =>
+                    api
+                      .removeProjectMemory(project, n.id)
+                      .then(load)
+                      .catch(failed("That could not be removed."))
+                  }
+                >
                   Forget
                 </button>
               )}
@@ -595,7 +787,9 @@ function SharedMemory({
           ))}
         </ul>
       )}
-      {canPropose && !canWrite && <p className="text-aui-xs text-aui-muted">{defaultCopy.project.proposeHint}</p>}
+      {canPropose && !canWrite && (
+        <p className="text-aui-xs text-aui-muted">{defaultCopy.project.proposeHint}</p>
+      )}
       {(canWrite || canPropose) && (
         <form
           className="flex gap-2"
@@ -655,7 +849,11 @@ function ProjectTasks({
   const generation = useRef(0);
   const loadedScope = useRef("");
   const address = name === "" ? "~" : name;
-  const scope = useCallback((): { project?: string; within?: string } => (below ? { within: address } : { project: address }), [below, address]);
+  const scope = useCallback(
+    (): { project?: string; within?: string } =>
+      below ? { within: address } : { project: address },
+    [below, address],
+  );
   const scopeKey = `${below ? "within" : "project"}:${address}`;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick and retry are signals to read again
@@ -669,7 +867,10 @@ function ProjectTasks({
     setMoreFailed(false);
     api
       .threadsPage({ limit: TASK_PAGE, ...scope() })
-      .then((r) => current === generation.current && setPage({ threads: r.threads, next: r.next ?? null }))
+      .then(
+        (r) =>
+          current === generation.current && setPage({ threads: r.threads, next: r.next ?? null }),
+      )
       .catch(() => current === generation.current && setFailed(true));
     return () => {
       generation.current++;
@@ -683,7 +884,17 @@ function ProjectTasks({
     setMoreFailed(false);
     api
       .threadsPage({ limit: TASK_PAGE, before: page.next, ...scope() })
-      .then((r) => current === generation.current && setPage({ threads: [...page.threads, ...r.threads.filter((t) => !page.threads.some((s) => s.id === t.id))], next: r.next ?? null }))
+      .then(
+        (r) =>
+          current === generation.current &&
+          setPage({
+            threads: [
+              ...page.threads,
+              ...r.threads.filter((t) => !page.threads.some((s) => s.id === t.id)),
+            ],
+            next: r.next ?? null,
+          }),
+      )
       .catch(() => current === generation.current && setMoreFailed(true))
       .finally(() => current === generation.current && setMore(false));
   };
@@ -693,17 +904,19 @@ function ProjectTasks({
       threads={page?.threads ?? null}
       project={name}
       failed={failed}
-      onRetry={() => setRetry(n => n + 1)}
+      onRetry={() => setRetry((n) => n + 1)}
       onOpenThread={onOpenThread}
       hasMore={Boolean(page?.next)}
       loadingMore={more}
       onMore={loadMore}
       moreFailed={moreFailed}
-      controls={hasChildren && (
+      controls={
+        hasChildren && (
           <div className="min-w-0 max-w-xs">
             <Switch label={words.includeBelow} checked={below} onChange={setBelow} />
           </div>
-      )}
+        )
+      }
     />
   );
 }
@@ -755,7 +968,9 @@ function SubProjects({
         />
       )}
       {detail.children.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">{here.depth >= MAX_DEPTH ? words.deepest : words.noSubProjects}</p>
+        <p className="text-aui-sm text-aui-muted">
+          {here.depth >= MAX_DEPTH ? words.deepest : words.noSubProjects}
+        </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {detail.children.map((c) => (
@@ -763,7 +978,10 @@ function SubProjects({
               key={c.name}
               to={projectHref(c.name)}
               title={titleOf(c)}
-              about={[...aboutOf(c, [], kinds), ...(c.children > 0 ? [words.count.below(c.children)] : [])]}
+              about={[
+                ...aboutOf(c, [], kinds),
+                ...(c.children > 0 ? [words.count.below(c.children)] : []),
+              ]}
               project={c}
               indent={0}
               onOpen={() => onOpen(c.name)}
@@ -800,7 +1018,13 @@ function Scheduled({
   onChanged: () => void;
 }) {
   const timed = schedules.filter((s) => (s.project ?? "") === name);
-  const [draft, setDraft] = useState<{ name: string; expression: string; agent: string; text: string; deliver?: "inbox" | "project" }>({
+  const [draft, setDraft] = useState<{
+    name: string;
+    expression: string;
+    agent: string;
+    text: string;
+    deliver?: "inbox" | "project";
+  }>({
     name: "",
     expression: "0 9 * * 1-5",
     agent: "",
@@ -816,7 +1040,9 @@ function Scheduled({
     if (!recapper) return;
     setProblem(null);
     api
-      .createSchedule(weeklyRecap(name, recapper, scheduleWords.recapText(title), scheduleWords.recapDescription))
+      .createSchedule(
+        weeklyRecap(name, recapper, scheduleWords.recapText(title), scheduleWords.recapDescription),
+      )
       .then(() => {
         onSchedulesChanged();
         onChanged();
@@ -844,9 +1070,13 @@ function Scheduled({
           )}
         </span>
       </div>
-      <p className="max-w-xl text-aui-sm text-aui-muted">Each time one fires, its run is filed in this project and is sent what the project knows.</p>
+      <p className="max-w-xl text-aui-sm text-aui-muted">
+        Each time one fires, its run is filed in this project and is sent what the project knows.
+      </p>
       {recap && recapper && (
-        <p className="max-w-xl text-aui-xs text-aui-muted">{hasRecap ? scheduleWords.hasRecap : scheduleWords.recapHint(recapper)}</p>
+        <p className="max-w-xl text-aui-xs text-aui-muted">
+          {hasRecap ? scheduleWords.hasRecap : scheduleWords.recapHint(recapper)}
+        </p>
       )}
       <Problem message={problem} />
       {adding && (
@@ -868,17 +1098,37 @@ function Scheduled({
         >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Label text="Name">
-              <input className={field} value={draft.name} required onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+              <input
+                className={field}
+                value={draft.name}
+                required
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
             </Label>
             <Label text="Send to agent">
-              <Menu label="Send to agent" value={agent} options={agentOptions(agents.map((a) => a.spec.name))} onChange={(v) => setDraft({ ...draft, agent: v })} />
+              <Menu
+                label="Send to agent"
+                value={agent}
+                options={agentOptions(agents.map((a) => a.spec.name))}
+                onChange={(v) => setDraft({ ...draft, agent: v })}
+              />
             </Label>
             <Label text="How often" hint="minute hour day month weekday, in UTC">
-              <input className={`${field} font-aui-mono`} value={draft.expression} required onChange={(e) => setDraft({ ...draft, expression: e.target.value })} />
+              <input
+                className={`${field} font-aui-mono`}
+                value={draft.expression}
+                required
+                onChange={(e) => setDraft({ ...draft, expression: e.target.value })}
+              />
             </Label>
           </div>
           <Label text="What to ask">
-            <textarea className={`${field} min-h-14`} value={draft.text} required onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
+            <textarea
+              className={`${field} min-h-14`}
+              value={draft.text}
+              required
+              onChange={(e) => setDraft({ ...draft, text: e.target.value })}
+            />
           </Label>
           {recap && (
             <Label text={scheduleWords.deliver} hint={scheduleWords.deliverHint}>
@@ -886,7 +1136,9 @@ function Scheduled({
                 label={scheduleWords.deliver}
                 value={draft.deliver ?? ""}
                 options={deliverOptions(name, scheduleWords, true)}
-                onChange={(v) => setDraft({ ...draft, deliver: v === "inbox" || v === "project" ? v : undefined })}
+                onChange={(v) =>
+                  setDraft({ ...draft, deliver: v === "inbox" || v === "project" ? v : undefined })
+                }
               />
             </Label>
           )}
@@ -905,18 +1157,25 @@ function Scheduled({
       ) : (
         <ul>
           {timed.map((s) => (
-            <li key={s.name} className="flex items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
+            <li
+              key={s.name}
+              className="flex items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0"
+            >
               <span className="min-w-0">
                 <span className="block text-aui-sm text-aui-fg">
                   {s.name}
                   <span className="pl-2 text-aui-xs text-aui-muted">
                     <span title={s.expression}>{inWords(s.expression)}</span> to {s.agent}
                     {s.paused ? ", paused" : ""}
-                    {s.deliver === "project" ? `, ${scheduleWords.deliverProject.toLowerCase()}` : ""}
+                    {s.deliver === "project"
+                      ? `, ${scheduleWords.deliverProject.toLowerCase()}`
+                      : ""}
                   </span>
                 </span>
                 <span className="block truncate text-aui-xs text-aui-muted">{s.text}</span>
-                {s.managed && <span className="block text-aui-xs text-aui-muted">{scheduleWords.managed}</span>}
+                {s.managed && (
+                  <span className="block text-aui-xs text-aui-muted">{scheduleWords.managed}</span>
+                )}
               </span>
               {canSchedule && (
                 <button
@@ -944,7 +1203,15 @@ function Scheduled({
 }
 
 /** A project's title, description and, for an account, its customer, changed as a whole. */
-function EditProject({ project, onSaved, onCancel }: { project: ProjectView; onSaved: () => void; onCancel: () => void }) {
+function EditProject({
+  project,
+  onSaved,
+  onCancel,
+}: {
+  project: ProjectView;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
   const [title, setTitle] = useState(project.title ?? "");
   const [description, setDescription] = useState(project.description ?? "");
   const [account, setAccount] = useState<ProjectAccount>(project.account ?? {});
@@ -956,7 +1223,14 @@ function EditProject({ project, onSaved, onCancel }: { project: ProjectView; onS
     setSaving(true);
     setProblem(null);
     api
-      .updateProject(project.name, updateOf(project, { title, description, ...(project.kind === "account" ? { account } : {}) }))
+      .updateProject(
+        project.name,
+        updateOf(project, {
+          title,
+          description,
+          ...(project.kind === "account" ? { account } : {}),
+        }),
+      )
       .then(onSaved)
       .catch((err: unknown) => {
         fail(setProblem, words.failed.save)(err);
@@ -965,28 +1239,64 @@ function EditProject({ project, onSaved, onCancel }: { project: ProjectView; onS
       .finally(() => setSaving(false));
   };
   return (
-    <form onSubmit={save} aria-label={words.editProject} className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3">
+    <form
+      onSubmit={save}
+      aria-label={words.editProject}
+      className="flex flex-col gap-3 rounded-aui-lg border border-aui-border p-3"
+    >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Label text={words.form.title} hint={words.form.titleHint}>
-          <input className={field} value={title} maxLength={80} disabled={saving} onChange={(e) => setTitle(e.target.value)} />
+          <input
+            className={field}
+            value={title}
+            maxLength={80}
+            disabled={saving}
+            onChange={(e) => setTitle(e.target.value)}
+          />
         </Label>
         <Label text={words.form.name} hint={words.form.nameHint}>
           <input className={field} value={project.name} disabled readOnly />
         </Label>
       </div>
       <Label text={words.form.description}>
-        <input className={field} value={description} maxLength={500} disabled={saving} onChange={(e) => setDescription(e.target.value)} />
+        <input
+          className={field}
+          value={description}
+          maxLength={500}
+          disabled={saving}
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </Label>
       {project.kind === "account" && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Label text={words.form.customer}>
-            <input className={field} value={account.customer ?? ""} maxLength={120} disabled={saving} onChange={(e) => setAccount({ ...account, customer: e.target.value })} />
+            <input
+              className={field}
+              value={account.customer ?? ""}
+              maxLength={120}
+              disabled={saving}
+              onChange={(e) => setAccount({ ...account, customer: e.target.value })}
+            />
           </Label>
           <Label text={words.form.externalId}>
-            <input className={field} value={account.external_id ?? ""} maxLength={120} disabled={saving} onChange={(e) => setAccount({ ...account, external_id: e.target.value })} />
+            <input
+              className={field}
+              value={account.external_id ?? ""}
+              maxLength={120}
+              disabled={saving}
+              onChange={(e) => setAccount({ ...account, external_id: e.target.value })}
+            />
           </Label>
           <Label text={words.form.url}>
-            <input className={field} type="url" pattern="https://.*" value={account.url ?? ""} maxLength={500} disabled={saving} onChange={(e) => setAccount({ ...account, url: e.target.value })} />
+            <input
+              className={field}
+              type="url"
+              pattern="https://.*"
+              value={account.url ?? ""}
+              maxLength={500}
+              disabled={saving}
+              onChange={(e) => setAccount({ ...account, url: e.target.value })}
+            />
           </Label>
         </div>
       )}
@@ -1084,10 +1394,16 @@ export function ContextTab({
               onChange={(e) => setDraft(e.target.value)}
             />
             <div className="flex items-center justify-between gap-3">
-              <span className="text-aui-2xs text-aui-muted tabular-nums">{draft.length} / 4,000</span>
+              <span className="text-aui-2xs text-aui-muted tabular-nums">
+                {draft.length} / 4,000
+              </span>
               <span className="flex items-center gap-2">
                 <FlashNote flash={flash} align="right" />
-                <button type="submit" className={primary} disabled={saving || draft === (p.instructions ?? "")}>
+                <button
+                  type="submit"
+                  className={primary}
+                  disabled={saving || draft === (p.instructions ?? "")}
+                >
                   {saving ? words.saving : words.context.save}
                 </button>
               </span>
@@ -1095,7 +1411,9 @@ export function ContextTab({
             <Problem message={problem} />
           </form>
         ) : (
-          <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{p.instructions || <span className="text-aui-muted">{words.context.none}</span>}</p>
+          <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
+            {p.instructions || <span className="text-aui-muted">{words.context.none}</span>}
+          </p>
         )}
       </section>
       {detail.ancestors.length > 0 && (
@@ -1107,9 +1425,17 @@ export function ContextTab({
           {detail.ancestors.map((a) => {
             const kept = notes[a.name] ?? [];
             return (
-              <section key={a.name} aria-label={words.context.from(titleOf(a, workspaceName))} className="flex flex-col gap-1.5 border-aui-border border-t pt-3">
-                <h3 className="text-aui-sm font-medium text-aui-fg">{words.context.from(titleOf(a, workspaceName))}</h3>
-                <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{a.instructions || <span className="text-aui-muted">{words.context.none}</span>}</p>
+              <section
+                key={a.name}
+                aria-label={words.context.from(titleOf(a, workspaceName))}
+                className="flex flex-col gap-1.5 border-aui-border border-t pt-3"
+              >
+                <h3 className="text-aui-sm font-medium text-aui-fg">
+                  {words.context.from(titleOf(a, workspaceName))}
+                </h3>
+                <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
+                  {a.instructions || <span className="text-aui-muted">{words.context.none}</span>}
+                </p>
                 {kept.length > 0 && (
                   <ul className="flex flex-col gap-1">
                     {kept.map((n) => (
@@ -1152,7 +1478,11 @@ function Breadcrumb({
       <ol className="flex flex-wrap items-center gap-x-1 text-aui-xs text-aui-muted">
         {detail.ancestors.map((a) => (
           <li key={a.name} className="flex items-center gap-1">
-            <Go to={projectHref(a.name)} onGo={() => onOpen(a.name)} className="inline-flex min-h-6 items-center rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent">
+            <Go
+              to={projectHref(a.name)}
+              onGo={() => onOpen(a.name)}
+              className="inline-flex min-h-6 items-center rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+            >
               {titleOf(a, workspaceName)}
             </Go>
             <span aria-hidden>›</span>
@@ -1287,7 +1617,11 @@ export function ProjectPage({
 
   if (missing) {
     return (
-      <Page title={words.missing(name === "" ? "~" : name)} lede={words.missingHint} back={{ label: words.allProjects, onClick: onOpenAll }}>
+      <Page
+        title={words.missing(name === "" ? "~" : name)}
+        lede={words.missingHint}
+        back={{ label: words.allProjects, onClick: onOpenAll }}
+      >
         {null}
       </Page>
     );
@@ -1295,7 +1629,11 @@ export function ProjectPage({
   if (!detail) {
     const listed = projects.find((p) => p.name === name);
     return (
-      <Page title={listed ? titleOf(listed) : name === "" ? workspaceName : name} back={{ label: words.allProjects, onClick: onOpenAll }} icon={<FolderIcon size={28} />}>
+      <Page
+        title={listed ? titleOf(listed) : name === "" ? workspaceName : name}
+        back={{ label: words.allProjects, onClick: onOpenAll }}
+        icon={<FolderIcon size={28} />}
+      >
         <SkeletonRows count={4} />
       </Page>
     );
@@ -1310,14 +1648,31 @@ export function ProjectPage({
   const canWrite = may("edit");
   const isMuted = muted.includes(p.name);
   const parent = detail.ancestors[detail.ancestors.length - 1];
-  const back = parent && parent.name !== "" ? { label: titleOf(parent), onClick: () => onOpen(parent.name) } : { label: words.allProjects, onClick: onOpenAll };
-  const meta = root ? words.workspace : [kindWord(p.kind, kindsIn(detail)), p.account?.customer, p.depth > 1 ? words.within(above(p)) : null].filter(Boolean).join(" · ");
-  const ownScope = root ? ({ kind: "tenant" } as const) : ({ kind: "project", name: p.name } as const);
+  const back =
+    parent && parent.name !== ""
+      ? { label: titleOf(parent), onClick: () => onOpen(parent.name) }
+      : { label: words.allProjects, onClick: onOpenAll };
+  const meta = root
+    ? words.workspace
+    : [
+        kindWord(p.kind, kindsIn(detail)),
+        p.account?.customer,
+        p.depth > 1 ? words.within(above(p)) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+  const ownScope = root
+    ? ({ kind: "tenant" } as const)
+    : ({ kind: "project", name: p.name } as const);
   const chain = detail.limits
     .filter((l) => l.from !== p.name)
     .map((l) => {
       const from = detail.ancestors.find((a) => a.name === l.from);
-      return { scope: l.scope, words: l.from === "" ? words.workspaceLimit : words.limitAbove(from ? titleOf(from) : l.from) };
+      return {
+        scope: l.scope,
+        words:
+          l.from === "" ? words.workspaceLimit : words.limitAbove(from ? titleOf(from) : l.from),
+      };
     });
 
   return (
@@ -1331,7 +1686,9 @@ export function ProjectPage({
           {lead && (
             <span className="inline-flex items-center gap-1.5">
               <span>{words.lead}</span>
-              {lead === AUTO ? defaultCopy.auto.handle : (
+              {lead === AUTO ? (
+                defaultCopy.auto.handle
+              ) : (
                 <span className="inline-flex items-center gap-1">
                   <AgentMark name={lead} size={12} />
                   {lead}
@@ -1341,47 +1698,88 @@ export function ProjectPage({
           )}
         </span>
       }
-      crumbs={root ? undefined : <Breadcrumb detail={detail} workspaceName={workspaceName} onOpen={onOpen} />}
+      crumbs={
+        root ? undefined : (
+          <Breadcrumb detail={detail} workspaceName={workspaceName} onOpen={onOpen} />
+        )
+      }
       lede={root ? words.workspaceHint : p.description}
       actions={
         <PageActions
           primary={can("runs:write") ? { label: words.newTask, onSelect: onNewChat } : undefined}
           actions={[
-            ...(onPin ? [{
-              label: pinned ? defaultCopy.pins.unpinProject : defaultCopy.pins.pinProject,
-              onSelect: () => {
-                clearMute();
-                onPin(p.name || "~", !pinned).catch(() => sayMute(pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed, true));
-              },
-            }] : []),
-            ...(!root && onMute
+            ...(onPin
               ? [
                   {
-                    label: isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute,
+                    label: pinned ? defaultCopy.pins.unpinProject : defaultCopy.pins.pinProject,
                     onSelect: () => {
                       clearMute();
-                      onMute(p.name, !isMuted).catch(() =>
-                        sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
+                      onPin(p.name || "~", !pinned).catch(() =>
+                        sayMute(
+                          pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed,
+                          true,
+                        ),
                       );
                     },
                   },
                 ]
               : []),
-            ...(can("projects:write") && !root && !p.personal_owner && onFork ? [{label: defaultCopy.projectFork.title, onSelect: onFork}] : []),
-            ...(canWrite && !root && !editing ? [{ label: words.editProject, onSelect: () => setEditing(true) }] : []),
-            ...(may("move") && moving === null ? [{ label: defaultCopy.roles.moveProject, onSelect: () => setMoving(p.parent ?? "") }] : []),
+            ...(!root && onMute
+              ? [
+                  {
+                    label: isMuted
+                      ? defaultCopy.announcements.unmute
+                      : defaultCopy.announcements.mute,
+                    onSelect: () => {
+                      clearMute();
+                      onMute(p.name, !isMuted).catch(() =>
+                        sayMute(
+                          isMuted
+                            ? defaultCopy.announcements.unmuteFailed
+                            : defaultCopy.announcements.muteFailed,
+                          true,
+                        ),
+                      );
+                    },
+                  },
+                ]
+              : []),
+            ...(can("projects:write") && !root && !p.personal_owner && onFork
+              ? [{ label: defaultCopy.projectFork.title, onSelect: onFork }]
+              : []),
+            ...(canWrite && !root && !editing
+              ? [{ label: words.editProject, onSelect: () => setEditing(true) }]
+              : []),
+            ...(may("move") && moving === null
+              ? [
+                  {
+                    label: defaultCopy.roles.moveProject,
+                    onSelect: () => setMoving(p.parent ?? ""),
+                  },
+                ]
+              : []),
             ...(may("archive")
               ? [
                   {
                     label: p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive,
                     // Restoring is not destructive; archiving is.
                     destructive: !p.archived,
-                    onSelect: () => api.updateProject(p.name, { ...updateOf(p), archived: !p.archived }).then(changed).catch(fail(setProblem, words.failed.save)),
+                    onSelect: () =>
+                      api
+                        .updateProject(p.name, { ...updateOf(p), archived: !p.archived })
+                        .then(changed)
+                        .catch(fail(setProblem, words.failed.save)),
                   },
                 ]
               : []),
             ...(may("delete")
-              ? [{ label: words.deleteProject, destructive: true, onSelect: () => setDeleting(true) }]
+              ? [
+                  {
+                    label: words.deleteProject,
+                    destructive: true,
+                    onSelect: () => setDeleting(true),
+                  },
+                ]
               : []),
           ]}
           note={<FlashNote flash={muteFlash} align="left" />}
@@ -1391,12 +1789,34 @@ export function ProjectPage({
         <Tabs
           label={titleOf(p, workspaceName)}
           value={tab}
-          tabs={PROJECT_TABS.map((id) => ({ id, label: words.tab[id] ?? defaultCopy.project.tabs[id as keyof typeof defaultCopy.project.tabs] ?? id }))}
+          tabs={PROJECT_TABS.map((id) => ({
+            id,
+            label:
+              words.tab[id] ??
+              defaultCopy.project.tabs[id as keyof typeof defaultCopy.project.tabs] ??
+              id,
+          }))}
           onChange={onTab}
         />
       }
     >
-      {p.fork?.ready && <p className="text-aui-xs text-aui-muted">{p.fork.source ? defaultCopy.projectFork.origin : defaultCopy.projectFork.originHidden}{p.fork.source && <> <Go to={projectHref(p.fork.source)} onGo={() => onOpen(p.fork?.source || "")} className="text-aui-accent underline">{p.fork.source}</Go></>}</p>}
+      {p.fork?.ready && (
+        <p className="text-aui-xs text-aui-muted">
+          {p.fork.source ? defaultCopy.projectFork.origin : defaultCopy.projectFork.originHidden}
+          {p.fork.source && (
+            <>
+              {" "}
+              <Go
+                to={projectHref(p.fork.source)}
+                onGo={() => onOpen(p.fork?.source || "")}
+                className="text-aui-accent underline"
+              >
+                {p.fork.source}
+              </Go>
+            </>
+          )}
+        </p>
+      )}
       <Problem message={problem} />
       {deleting && (
         <Confirm
@@ -1432,8 +1852,17 @@ export function ProjectPage({
               { value: "", label: defaultCopy.project.topLevel },
               ...projects
                 // Not under itself or anything below it, and only where the caller works.
-                .filter((q) => q.name !== p.name && !q.path.some((step) => step.name === p.name) && (q.access.role === "member" || q.access.role === "owner"))
-                .map((q) => ({ value: q.name, label: titleOf(q, workspaceName), hint: q.depth > 1 ? words.within(above(q)) : undefined })),
+                .filter(
+                  (q) =>
+                    q.name !== p.name &&
+                    !q.path.some((step) => step.name === p.name) &&
+                    (q.access.role === "member" || q.access.role === "owner"),
+                )
+                .map((q) => ({
+                  value: q.name,
+                  label: titleOf(q, workspaceName),
+                  hint: q.depth > 1 ? words.within(above(q)) : undefined,
+                })),
             ]}
             onChange={setMoving}
           />
@@ -1446,7 +1875,9 @@ export function ProjectPage({
         </form>
       )}
       {p.managed && <p className="text-aui-xs text-aui-muted">{words.managed}</p>}
-      {can("projects:write") && governed && !can("projects:govern") && <p className="text-aui-xs text-aui-muted">{words.governed}</p>}
+      {can("projects:write") && governed && !can("projects:govern") && (
+        <p className="text-aui-xs text-aui-muted">{words.governed}</p>
+      )}
       {editing && (
         <EditProject
           project={p}
@@ -1459,7 +1890,16 @@ export function ProjectPage({
       )}
 
       {tab === "inbox" ? (
-        <ProjectInbox key={p.name} project={p} me={me} signal={inboxTick} message={message} onMessage={onMessage} onOpen={onOpenSource} onChanged={onChanged} />
+        <ProjectInbox
+          key={p.name}
+          project={p}
+          me={me}
+          signal={inboxTick}
+          message={message}
+          onMessage={onMessage}
+          onOpen={onOpenSource}
+          onChanged={onChanged}
+        />
       ) : tab === "people" ? (
         <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
       ) : tab === "limits" ? (
@@ -1490,7 +1930,14 @@ export function ProjectPage({
           }}
         />
       ) : tab === "context" ? (
-        <ContextTab key={p.name} detail={detail} workspaceName={workspaceName} canWrite={canWrite} canKnowledge={can("knowledge:read")} onSaved={changed} />
+        <ContextTab
+          key={p.name}
+          detail={detail}
+          workspaceName={workspaceName}
+          canWrite={canWrite}
+          canKnowledge={can("knowledge:read")}
+          onSaved={changed}
+        />
       ) : tab === "schedules" ? (
         <Scheduled
           key={p.name}
@@ -1505,13 +1952,24 @@ export function ProjectPage({
           onChanged={changed}
         />
       ) : tab === "channels" ? (
-        <ChannelsTab key={p.name} project={p.name} canWrite={canWrite} onOpenChannel={(c) => onOpenChannel?.(c)} />
+        <ChannelsTab
+          key={p.name}
+          project={p.name}
+          canWrite={canWrite}
+          onOpenChannel={(c) => onOpenChannel?.(c)}
+        />
       ) : (
         // Tasks, what sits below and what holds the project take the wide column; what every task is sent and what runs on a timer sit beside them.
         <div className="grid grid-cols-1 items-start gap-8 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="flex flex-col gap-8">
             {p.initiative && <ProjectRollup project={p.name} signal={tick} />}
-            <ProjectTasks key={p.name} name={p.name} hasChildren={p.children > 0} tick={tick} onOpenThread={onOpenThread} />
+            <ProjectTasks
+              key={p.name}
+              name={p.name}
+              hasChildren={p.children > 0}
+              tick={tick}
+              onOpenThread={onOpenThread}
+            />
             <SubProjects
               detail={detail}
               places={projects}
@@ -1525,7 +1983,12 @@ export function ProjectPage({
             />
           </div>
           <aside className="humagen-project-context flex min-w-0 flex-col gap-8">
-            <SharedMemory project={p.name} canWrite={may("notes")} canPropose={may("propose")} onChanged={changed} />
+            <SharedMemory
+              project={p.name}
+              canWrite={may("notes")}
+              canPropose={may("propose")}
+              onChanged={changed}
+            />
             <Scheduled
               name={p.name}
               title={titleOf(p, workspaceName)}

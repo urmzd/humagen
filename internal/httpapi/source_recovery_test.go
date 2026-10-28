@@ -2,7 +2,8 @@ package httpapi
 
 import (
 	"context"
-	"github.com/urmzd/fiber/pkg/mcptools"
+
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
 	"github.com/urmzd/humagen/pkg/knowledge"
 )
 

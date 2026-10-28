@@ -1,6 +1,31 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { ApiError, api, type Policy, type PolicyChange, type PolicyScope, type ScopeUsage } from "./api.ts";
-import { ago, button, card, dollars, field, FlashNote, Label, LimitField, Menu, PolicyBadge, primary, Problem, SkeletonRows, UsageMeter, useFlash, pageLede, pageTitle } from "./ui.tsx";
+import {
+  ApiError,
+  api,
+  type Policy,
+  type PolicyChange,
+  type PolicyScope,
+  type ScopeUsage,
+} from "./api.ts";
+import {
+  ago,
+  button,
+  card,
+  dollars,
+  FlashNote,
+  field,
+  Label,
+  LimitField,
+  Menu,
+  PolicyBadge,
+  Problem,
+  pageLede,
+  pageTitle,
+  primary,
+  SkeletonRows,
+  UsageMeter,
+  useFlash,
+} from "./ui.tsx";
 import { money } from "./usage.ts";
 
 const kindWord: Record<PolicyScope["kind"], string> = {
@@ -9,7 +34,8 @@ const kindWord: Record<PolicyScope["kind"], string> = {
   agent: "Agent",
   client: "Client",
 };
-const same = (a: PolicyScope, b: PolicyScope) => a.kind === b.kind && (a.name ?? "") === (b.name ?? "");
+const same = (a: PolicyScope, b: PolicyScope) =>
+  a.kind === b.kind && (a.name ?? "") === (b.name ?? "");
 const keyOf = (s: PolicyScope) => `${s.kind}:${s.name ?? ""}`;
 const plain = (n: number) => n.toLocaleString();
 
@@ -56,10 +82,19 @@ export function Meters({ usage, size = "row" }: { usage: ScopeUsage; size?: "row
   const warnAt = usage.warn_at / 100;
   // A limit that blocks cannot be passed, so a projection beyond it would promise something that will not happen.
   const ahead = (m: { limit: number; projected?: number }) =>
-    usage.action === "block" && m.projected !== undefined && m.projected > m.limit ? undefined : m.projected;
-  const named = (label: string) => (size === "row" ? <span className="text-aui-xs text-aui-muted">{label}</span> : null);
+    usage.action === "block" && m.projected !== undefined && m.projected > m.limit
+      ? undefined
+      : m.projected;
+  const named = (label: string) =>
+    size === "row" ? <span className="text-aui-xs text-aui-muted">{label}</span> : null;
   const tokens = usage.tokens;
-  if (usage.runs.limit <= 0 && usage.concurrent.limit <= 0 && usage.spend.limit <= 0 && tokens.limit <= 0) return null;
+  if (
+    usage.runs.limit <= 0 &&
+    usage.concurrent.limit <= 0 &&
+    usage.spend.limit <= 0 &&
+    tokens.limit <= 0
+  )
+    return null;
   const lower = lowerBound(usage.spend);
   return (
     <div className="grid grid-cols-1 gap-x-6 gap-y-3 @lg:grid-cols-2 @4xl:grid-cols-3">
@@ -136,12 +171,14 @@ export function Meters({ usage, size = "row" }: { usage: ScopeUsage; size?: "row
  */
 export function lowerBound(spend: ScopeUsage["spend"]): string | null {
   const parts = [
-    spend.unpriced_calls > 0 ? `${plain(spend.unpriced_calls)} ${spend.unpriced_calls === 1 ? "call" : "calls"} had no price` : "",
-    ...(spend.other_costs ?? []).map(
-      (c) => `${money(c)} was not in US dollars`,
-    ),
+    spend.unpriced_calls > 0
+      ? `${plain(spend.unpriced_calls)} ${spend.unpriced_calls === 1 ? "call" : "calls"} had no price`
+      : "",
+    ...(spend.other_costs ?? []).map((c) => `${money(c)} was not in US dollars`),
   ].filter(Boolean);
-  return parts.length > 0 ? `At least this much: ${parts.join(", ")}. A token limit bounds every call.` : null;
+  return parts.length > 0
+    ? `At least this much: ${parts.join(", ")}. A token limit bounds every call.`
+    : null;
 }
 
 const count = (text: string) => (text.trim() === "" ? 0 : Number(text));
@@ -182,7 +219,8 @@ export function Limits({
     setPeriod(policy?.period ?? "day");
   }, [policy?.version]);
 
-  const fail = (fallback: string) => (e: unknown) => setProblem(e instanceof ApiError ? e.message : fallback);
+  const fail = (fallback: string) => (e: unknown) =>
+    setProblem(e instanceof ApiError ? e.message : fallback);
   const empty = count(runs) === 0 && count(atOnce) === 0 && count(tokens) === 0 && !spend;
   const dirty =
     count(runs) !== (policy?.max_runs ?? 0) ||
@@ -277,7 +315,10 @@ export function Limits({
                   className={button}
                   onClick={() => {
                     setProblem(null);
-                    api.deletePolicy(scope).then(onChanged).catch(fail("The limits could not be removed."));
+                    api
+                      .deletePolicy(scope)
+                      .then(onChanged)
+                      .catch(fail("The limits could not be removed."));
                   }}
                 >
                   Remove Limits
@@ -323,24 +364,32 @@ export function ScopeLimits({
   const above = policies.find((p) => p.scope.kind === "tenant");
   return (
     <div className="flex flex-col gap-3">
-      <Limits scope={scope} policy={policy} usage={usage.find((u) => same(u.scope, scope))} canWrite={canWrite} onChanged={reload} />
-      {chain ? (
-        chain.length > 0 && (
-          <ul className="flex flex-col gap-1" aria-label="Limits set above">
-            {chain.map((c) => {
-              const held = policies.find((p) => same(p.scope, c.scope));
-              return (
-                <li key={keyOf(c.scope)} className="text-aui-xs text-aui-muted">
-                  {c.words}
-                  {held ? `: ${brief(held)}` : ""}.
-                </li>
-              );
-            })}
-          </ul>
-        )
-      ) : (
-        above && <p className="text-aui-xs text-aui-muted">The workspace allows {brief(above)}. Limits here can only be tighter.</p>
-      )}
+      <Limits
+        scope={scope}
+        policy={policy}
+        usage={usage.find((u) => same(u.scope, scope))}
+        canWrite={canWrite}
+        onChanged={reload}
+      />
+      {chain
+        ? chain.length > 0 && (
+            <ul className="flex flex-col gap-1" aria-label="Limits set above">
+              {chain.map((c) => {
+                const held = policies.find((p) => same(p.scope, c.scope));
+                return (
+                  <li key={keyOf(c.scope)} className="text-aui-xs text-aui-muted">
+                    {c.words}
+                    {held ? `: ${brief(held)}` : ""}.
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        : above && (
+            <p className="text-aui-xs text-aui-muted">
+              The workspace allows {brief(above)}. Limits here can only be tighter.
+            </p>
+          )}
     </div>
   );
 }
@@ -380,7 +429,15 @@ export function Burn({ tick }: { tick?: number }) {
 }
 
 /** The settings section: workspace limits, the narrower ones, and who changed what. */
-export function BillingSettings({ projects, agents, canWrite }: { projects: string[]; agents: string[]; canWrite: boolean }) {
+export function BillingSettings({
+  projects,
+  agents,
+  canWrite,
+}: {
+  projects: string[];
+  agents: string[];
+  canWrite: boolean;
+}) {
   const { policies, usage, changes, loaded, reload } = useBilling();
   const [adding, setAdding] = useState<PolicyScope | null>(null);
   const tenant: PolicyScope = { kind: "tenant" };
@@ -390,7 +447,9 @@ export function BillingSettings({ projects, agents, canWrite }: { projects: stri
     ...agents.map((name): PolicyScope => ({ kind: "agent", name })),
   ].filter((s) => !narrower.some((p) => same(p.scope, s)));
   const shown =
-    adding && !narrower.some((p) => same(p.scope, adding)) ? [...narrower.map((p) => p.scope), adding] : narrower.map((p) => p.scope);
+    adding && !narrower.some((p) => same(p.scope, adding))
+      ? [...narrower.map((p) => p.scope), adding]
+      : narrower.map((p) => p.scope);
   const changed = () => {
     setAdding(null);
     reload();
@@ -401,7 +460,8 @@ export function BillingSettings({ projects, agents, canWrite }: { projects: stri
       <header className="pb-2">
         <h1 className={pageTitle}>Limits</h1>
         <p className={pageLede}>
-          A run that would pass a limit is refused. {canWrite ? "" : "Only an admin can change these."}
+          A run that would pass a limit is refused.{" "}
+          {canWrite ? "" : "Only an admin can change these."}
         </p>
       </header>
       {!loaded && <SkeletonRows count={4} height="4rem" />}
@@ -438,11 +498,16 @@ export function BillingSettings({ projects, agents, canWrite }: { projects: stri
               )}
             </div>
             {shown.length === 0 ? (
-              <p className="text-aui-sm text-aui-muted">None. Everything shares the workspace limits.</p>
+              <p className="text-aui-sm text-aui-muted">
+                None. Everything shares the workspace limits.
+              </p>
             ) : (
               <ul className="flex flex-col">
                 {shown.map((s) => (
-                  <li key={keyOf(s)} className="flex flex-col gap-3 border-aui-border border-t py-3 first:border-t-0 first:pt-0 last:pb-0">
+                  <li
+                    key={keyOf(s)}
+                    className="flex flex-col gap-3 border-aui-border border-t py-3 first:border-t-0 first:pt-0 last:pb-0"
+                  >
                     <h3 className="text-aui-sm text-aui-fg">{scopeName(s)}</h3>
                     <Limits
                       scope={s}

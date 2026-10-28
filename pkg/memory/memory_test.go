@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -156,7 +156,7 @@ func TestPersonalDataIsRefused(t *testing.T) {
 func TestNoAgentNameIsAProjectsOwner(t *testing.T) {
 	for _, project := range []string{"", "News", "workspace"} {
 		owner := ProjectOwner(project)
-		if _, err := topic.Agent(owner); err == nil {
+		if err := wire.Addressable(owner); err == nil {
 			t.Errorf("the owner %q of project %q is a name an agent can take", owner, project)
 		}
 		if got, ok := OwnerProject(owner); !ok || got != project {

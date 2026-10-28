@@ -2,15 +2,16 @@ package platform_test
 
 import (
 	"errors"
+	"sync/atomic"
+	"testing"
+	"time"
+
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"sync/atomic"
-	"testing"
-	"time"
 )
 
 func TestElapsedFreshnessProjectsHonestHealthAndOneConfinedAttentionItem(t *testing.T) {

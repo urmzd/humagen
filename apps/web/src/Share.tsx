@@ -1,8 +1,16 @@
 import { defaultCopy } from "@humagen/components";
 import { Inspector } from "@humagen/web";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import {
+  ApiError,
+  type Channel,
+  coworking,
+  type DirectoryPerson,
+  type ProjectView,
+  type Thread,
+  type ThreadShared,
+} from "./api.ts";
 import { conflictOf } from "./conflicts.ts";
-import { ApiError, type Channel, coworking, type DirectoryPerson, type ProjectView, type Thread, type ThreadShared } from "./api.ts";
 import { button, field, Label, Problem, primary } from "./ui.tsx";
 
 const words = defaultCopy.threads;
@@ -48,7 +56,12 @@ function PeopleToAdd({
   };
 
   const shown = found
-    .filter((p) => !leaveOut.includes(p.subject) && !leaveOut.includes(p.handle) && !value.some((v) => v.subject === p.subject))
+    .filter(
+      (p) =>
+        !leaveOut.includes(p.subject) &&
+        !leaveOut.includes(p.handle) &&
+        !value.some((v) => v.subject === p.subject),
+    )
     .slice(0, 8);
   const listed = open && shown.length > 0;
   const current = Math.min(active, shown.length - 1);
@@ -82,7 +95,10 @@ function PeopleToAdd({
       {value.length > 0 && (
         <ul aria-label={words.shareAdding} className="flex flex-wrap gap-1.5">
           {value.map((p) => (
-            <li key={p.subject} className="inline-flex h-7 max-w-full items-center gap-1 rounded-full border border-aui-border pr-1 pl-2.5 text-aui-xs text-aui-fg">
+            <li
+              key={p.subject}
+              className="inline-flex h-7 max-w-full items-center gap-1 rounded-full border border-aui-border pr-1 pl-2.5 text-aui-xs text-aui-fg"
+            >
               <span className="truncate">@{p.handle}</span>
               <button
                 type="button"
@@ -132,7 +148,9 @@ function PeopleToAdd({
                 className="flex cursor-pointer items-baseline gap-2 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg aria-selected:bg-aui-hover"
               >
                 <span className="shrink-0 font-medium">@{p.handle}</span>
-                {p.name && <span className="min-w-0 truncate text-aui-xs text-aui-muted">{p.name}</span>}
+                {p.name && (
+                  <span className="min-w-0 truncate text-aui-xs text-aui-muted">{p.name}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -178,7 +196,9 @@ export function ShareDialog({
   const [project, setProject] = useState(thread.project);
   // The server refused a move (409): the project stays where it is.
   const [fixed, setFixed] = useState(false);
-  const [preview, setPreview] = useState<Awaited<ReturnType<typeof coworking.placement>> | null>(null);
+  const [preview, setPreview] = useState<Awaited<ReturnType<typeof coworking.placement>> | null>(
+    null,
+  );
   const [reviewed, setReviewed] = useState(false);
   const [summary, setSummary] = useState("");
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -189,12 +209,14 @@ export function ShareDialog({
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const heading = useId();
+  const _heading = useId();
   const form = useRef<HTMLFormElement>(null);
 
   // The first control that can change takes focus, so Escape closes from it.
   useEffect(() => {
-    form.current?.querySelector<HTMLElement>("select:not(:disabled), input:not(:disabled)")?.focus();
+    form.current
+      ?.querySelector<HTMLElement>("select:not(:disabled), input:not(:disabled)")
+      ?.focus();
   }, []);
 
   useEffect(() => {
@@ -216,44 +238,77 @@ export function ShareDialog({
     setPreview(null);
     setReviewed(false);
     setPreviewFailed(false);
-    coworking.placement(thread.id, project, channel).then((next) => {
-      if (live) setPreview(next);
-    }).catch(() => { if (live) setPreviewFailed(true); });
-    return () => { live = false; };
+    coworking
+      .placement(thread.id, project, channel)
+      .then((next) => {
+        if (live) setPreview(next);
+      })
+      .catch(() => {
+        if (live) setPreviewFailed(true);
+      });
+    return () => {
+      live = false;
+    };
   }, [hasRuns, thread.id, thread.version, project, channel, reviewVersion]);
 
   const share = () => {
-    if (hasRuns && (!preview || !reviewed || (preview.summary_required && (!summary.trim() || !onPublished)))) return;
+    if (
+      hasRuns &&
+      (!preview || !reviewed || (preview.summary_required && (!summary.trim() || !onPublished)))
+    )
+      return;
     setProblem(null);
     setBusy(true);
     if (preview?.summary_required) {
-      coworking.publishSummary(thread.id, {project: project || "~",channel,summary:summary.trim(),placement_token:preview.token})
-        .then((next) => { setBusy(false); onPublished?.(next); })
+      coworking
+        .publishSummary(thread.id, {
+          project: project || "~",
+          channel,
+          summary: summary.trim(),
+          placement_token: preview.token,
+        })
+        .then((next) => {
+          setBusy(false);
+          onPublished?.(next);
+        })
         .catch((error) => {
           setBusy(false);
           if (error instanceof ApiError && error.status === 409) {
-            setReviewed(false); setReviewVersion((n) => n + 1); setProblem(words.placementChanged);
-          } else setProblem(error instanceof ApiError && error.status === 403 ? defaultCopy.noPermission : words.shareFailed);
+            setReviewed(false);
+            setReviewVersion((n) => n + 1);
+            setProblem(words.placementChanged);
+          } else
+            setProblem(
+              error instanceof ApiError && error.status === 403
+                ? defaultCopy.noPermission
+                : words.shareFailed,
+            );
         });
       return;
     }
     coworking
       .share(thread.id, {
-        ...(preview ? {placement_token:preview.token} : {}),
+        ...(preview ? { placement_token: preview.token } : {}),
         ...(project !== thread.project ? { project: project === "" ? "~" : project } : {}),
         channel,
         ...(people.length > 0 ? { add: people.map((p) => p.handle) } : {}),
       })
       .then((p) => {
         setBusy(false);
-        onShared(p, people.map((x) => x.handle));
+        onShared(
+          p,
+          people.map((x) => x.handle),
+        );
       })
       .catch((e) => {
         setBusy(false);
         // Each refusal in the console's own words: a run fixes the project
         // and the channel, and someone else may have changed it meanwhile.
         if (hasRuns && e instanceof ApiError && e.status === 409) {
-          setReviewed(false); setReviewVersion((n) => n + 1); setProblem(words.placementChanged); return;
+          setReviewed(false);
+          setReviewVersion((n) => n + 1);
+          setProblem(words.placementChanged);
+          return;
         }
         const why = conflictOf(e);
         if (why === "project" || why === "channel") {
@@ -270,13 +325,36 @@ export function ShareDialog({
   const inThread = thread.participants.filter((p) => p.kind === "person").map((p) => p.name);
   const names = channels?.map((c) => c.name) ?? [];
   if (!names.includes("general")) names.unshift("general");
-  if (project === thread.project && thread.channel && !names.includes(thread.channel)) names.push(thread.channel);
+  if (project === thread.project && thread.channel && !names.includes(thread.channel))
+    names.push(thread.channel);
 
   return (
-    <Inspector open={open} title={words.shareTitle} onClose={onClose} footer={<>
-      <button type="button" className={button} onClick={onClose}>{defaultCopy.projects.cancel}</button>
-      <button type="button" className={primary} disabled={busy || (hasRuns && (!preview || !reviewed || (preview.summary_required && (!summary.trim() || !onPublished))))} onClick={() => form.current?.requestSubmit()}>{preview?.summary_required ? words.publishSummary : words.share}</button>
-    </>}>
+    <Inspector
+      open={open}
+      title={words.shareTitle}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className={button} onClick={onClose}>
+            {defaultCopy.projects.cancel}
+          </button>
+          <button
+            type="button"
+            className={primary}
+            disabled={
+              busy ||
+              (hasRuns &&
+                (!preview ||
+                  !reviewed ||
+                  (preview.summary_required && (!summary.trim() || !onPublished))))
+            }
+            onClick={() => form.current?.requestSubmit()}
+          >
+            {preview?.summary_required ? words.publishSummary : words.share}
+          </button>
+        </>
+      }
+    >
       <p className="text-aui-xs text-aui-muted">{words.shareLede}</p>
       <form
         ref={form}
@@ -288,7 +366,12 @@ export function ShareDialog({
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Label text={words.shareProject} hint={fixed ? words.shareProjectFixed : undefined}>
-            <select className={field} value={project} disabled={fixed} onChange={(e) => setProject(e.target.value)}>
+            <select
+              className={field}
+              value={project}
+              disabled={fixed}
+              onChange={(e) => setProject(e.target.value)}
+            >
               <option value="">{workspaceName || defaultCopy.projects.workspace}</option>
               {projects
                 .filter((p) => p.name !== "")
@@ -300,7 +383,12 @@ export function ShareDialog({
             </select>
           </Label>
           <Label text={words.shareChannel}>
-            <select className={field} value={channel} disabled={fixed} onChange={(e) => setChannel(e.target.value)}>
+            <select
+              className={field}
+              value={channel}
+              disabled={fixed}
+              onChange={(e) => setChannel(e.target.value)}
+            >
               {names.map((n) => (
                 <option key={n} value={n}>
                   {words.channel(n)}
@@ -309,20 +397,73 @@ export function ShareDialog({
             </select>
           </Label>
         </div>
-        {hasRuns && <section aria-live="polite" className="flex flex-col gap-3 rounded-aui border border-aui-border p-3">
-          {preview ? <>
-            <p className="text-aui-sm text-aui-fg">{words.placementContents(preview.audience, preview.runs)}</p>
-            {preview.exclusions.length > 0 && <ul className="list-disc pl-5 text-aui-xs text-aui-muted">{preview.exclusions.map((item) => <li key={item}>{item}</li>)}</ul>}
-            {preview.summary_required && <Label text={words.publicationSummary} hint={words.publicationSummaryHint}>
-              <textarea className={field} rows={5} maxLength={16000} value={summary} onChange={(event) => {setSummary(event.target.value);setReviewed(false);}} />
-            </Label>}
-            <label className="flex items-start gap-2 text-aui-sm text-aui-fg"><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} className="mt-1 size-4 shrink-0" />{words.placementReview}</label>
-          </> : previewFailed ? <><Problem message={words.placementFailed}/><button type="button" className={button} onClick={() => setReviewVersion((n) => n + 1)}>{words.placementRetry}</button></> : <p className="text-aui-xs text-aui-muted">{words.placementLoading}</p>}
-        </section>}
-        {!preview?.summary_required && <div className="flex flex-col gap-1">
-          <span className="text-aui-xs font-medium text-aui-muted">{words.shareAdd}</span>
-          <PeopleToAdd value={people} leaveOut={[me, ...(handle ? [handle] : []), ...inThread]} onChange={setPeople} />
-        </div>}
+        {hasRuns && (
+          <section
+            aria-live="polite"
+            className="flex flex-col gap-3 rounded-aui border border-aui-border p-3"
+          >
+            {preview ? (
+              <>
+                <p className="text-aui-sm text-aui-fg">
+                  {words.placementContents(preview.audience, preview.runs)}
+                </p>
+                {preview.exclusions.length > 0 && (
+                  <ul className="list-disc pl-5 text-aui-xs text-aui-muted">
+                    {preview.exclusions.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+                {preview.summary_required && (
+                  <Label text={words.publicationSummary} hint={words.publicationSummaryHint}>
+                    <textarea
+                      className={field}
+                      rows={5}
+                      maxLength={16000}
+                      value={summary}
+                      onChange={(event) => {
+                        setSummary(event.target.value);
+                        setReviewed(false);
+                      }}
+                    />
+                  </Label>
+                )}
+                <label className="flex items-start gap-2 text-aui-sm text-aui-fg">
+                  <input
+                    type="checkbox"
+                    checked={reviewed}
+                    onChange={(event) => setReviewed(event.target.checked)}
+                    className="mt-1 size-4 shrink-0"
+                  />
+                  {words.placementReview}
+                </label>
+              </>
+            ) : previewFailed ? (
+              <>
+                <Problem message={words.placementFailed} />
+                <button
+                  type="button"
+                  className={button}
+                  onClick={() => setReviewVersion((n) => n + 1)}
+                >
+                  {words.placementRetry}
+                </button>
+              </>
+            ) : (
+              <p className="text-aui-xs text-aui-muted">{words.placementLoading}</p>
+            )}
+          </section>
+        )}
+        {!preview?.summary_required && (
+          <div className="flex flex-col gap-1">
+            <span className="text-aui-xs font-medium text-aui-muted">{words.shareAdd}</span>
+            <PeopleToAdd
+              value={people}
+              leaveOut={[me, ...(handle ? [handle] : []), ...inThread]}
+              onChange={setPeople}
+            />
+          </div>
+        )}
         <Problem message={problem} />
       </form>
     </Inspector>

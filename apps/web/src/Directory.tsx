@@ -1,11 +1,28 @@
 import { defaultCopy } from "@humagen/components";
 import { type MouseEvent, useEffect, useState } from "react";
-import { ApiError, api, type Person, type ProjectKindSpec, type ProjectView, type Revision } from "./api.ts";
+import {
+  ApiError,
+  api,
+  type Person,
+  type ProjectKindSpec,
+  type ProjectView,
+  type Revision,
+} from "./api.ts";
 import { nameOfAddress } from "./availability.ts";
 import { factsOf } from "./Projects.tsx";
 import { kindWord, titleOf } from "./projects.ts";
 import { DIRECTORY_TABS, type DirectoryTab, href } from "./route.ts";
-import { AgentMark, button, Page, Problem, rows, SearchField, SkeletonRows, Tabs, textLink } from "./ui.tsx";
+import {
+  AgentMark,
+  button,
+  Page,
+  Problem,
+  rows,
+  SearchField,
+  SkeletonRows,
+  Tabs,
+  textLink,
+} from "./ui.tsx";
 
 const words = defaultCopy.directory;
 
@@ -65,14 +82,36 @@ export function DirectoryPage({
     <Page
       title={words.title}
       lede={words.lede}
-      tabs={tabs.length > 1 ? <Tabs label={words.title} value={shown} tabs={tabs.map((id) => ({ id, label: words.tabs[id] }))} onChange={onTab} /> : undefined}
+      tabs={
+        tabs.length > 1 ? (
+          <Tabs
+            label={words.title}
+            value={shown}
+            tabs={tabs.map((id) => ({ id, label: words.tabs[id] }))}
+            onChange={onTab}
+          />
+        ) : undefined
+      }
     >
       {shown === "people" && readable.people && <People />}
       {shown === "agents" && readable.agents && (
-        <Agents agents={agents} homes={homes} enabledIn={enabledIn} title={title} onOpen={onOpenAgent} onOpenProject={onOpenProject} />
+        <Agents
+          agents={agents}
+          homes={homes}
+          enabledIn={enabledIn}
+          title={title}
+          onOpen={onOpenAgent}
+          onOpenProject={onOpenProject}
+        />
       )}
       {shown === "projects" && readable.projects && (
-        <Projects projects={projects} kinds={kinds} homes={homes} workspaceName={workspaceName} onOpen={onOpenProject} />
+        <Projects
+          projects={projects}
+          kinds={kinds}
+          homes={homes}
+          workspaceName={workspaceName}
+          onOpen={onOpenProject}
+        />
       )}
     </Page>
   );
@@ -81,9 +120,24 @@ export function DirectoryPage({
 /** A person's picture: their own photo, or a still, neutral circle. Never a letter in a box. */
 function Face({ person, size = 32 }: { person: Person; size?: number }) {
   if (person.picture) {
-    return <img src={person.picture} alt="" width={size} height={size} className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />;
+    return (
+      <img
+        src={person.picture}
+        alt=""
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
   }
-  return <span aria-hidden className="shrink-0 rounded-full bg-aui-hover" style={{ width: size, height: size }} />;
+  return (
+    <span
+      aria-hidden
+      className="shrink-0 rounded-full bg-aui-hover"
+      style={{ width: size, height: size }}
+    />
+  );
 }
 
 function People() {
@@ -129,14 +183,18 @@ function People() {
       {people === null ? (
         <SkeletonRows count={5} />
       ) : people.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">{q.trim() ? words.noMatch : words.empty.people}</p>
+        <p className="text-aui-sm text-aui-muted">
+          {q.trim() ? words.noMatch : words.empty.people}
+        </p>
       ) : (
         <ul className={rows}>
           {people.map((p) => (
             <li key={p.handle} className="flex items-center gap-3 py-2.5">
               <Face person={p} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-aui-sm text-aui-fg">{p.name || words.handle(p.handle)}</span>
+                <span className="block truncate text-aui-sm text-aui-fg">
+                  {p.name || words.handle(p.handle)}
+                </span>
                 <span className="block truncate text-aui-xs text-aui-muted">
                   {words.handle(p.handle)} · {words.roles(p.roles)}
                 </span>
@@ -169,7 +227,8 @@ function Agents({
   onOpen: (name: string) => void;
   onOpenProject: (name: string) => void;
 }) {
-  if (agents.length === 0) return <p className="text-aui-sm text-aui-muted">{words.empty.agents}</p>;
+  if (agents.length === 0)
+    return <p className="text-aui-sm text-aui-muted">{words.empty.agents}</p>;
   return (
     // The tabs draw the rule above the first row.
     <ul className={`${rows} border-t-0`} aria-label={words.tabs.agents}>
@@ -177,19 +236,32 @@ function Agents({
         const name = a.spec.name;
         const home = homes[name];
         const enabled = (enabledIn[name] ?? []).map(nameOfAddress);
-        const where = enabled.includes("") && !home ? words.enabledEverywhere : enabled.length > 0 ? words.enabledIn(enabled.map(title).join(", ")) : words.notEnabled;
+        const where =
+          enabled.includes("") && !home
+            ? words.enabledEverywhere
+            : enabled.length > 0
+              ? words.enabledIn(enabled.map(title).join(", "))
+              : words.notEnabled;
         return (
           <li key={name} className="flex items-center gap-3 py-2.5">
             <AgentMark name={name} size={24} />
             <span className="min-w-0 flex-1">
-              <a href={href({ page: "agent", name, tab: "access" })} onClick={follow(() => onOpen(name))} className="block truncate text-aui-sm leading-6 text-aui-fg hover:underline">
+              <a
+                href={href({ page: "agent", name, tab: "access" })}
+                onClick={follow(() => onOpen(name))}
+                className="block truncate text-aui-sm leading-6 text-aui-fg hover:underline"
+              >
                 {words.handle(name)}
               </a>
               <span className="block truncate text-aui-xs text-aui-muted">
                 {home ? (
                   <>
                     {defaultCopy.agentPlace.livesIn("")}
-                    <a href={href({ page: "project", name: nameOfAddress(home), tab: "agents" })} onClick={follow(() => onOpenProject(nameOfAddress(home)))} className={`${textLink} inline-flex min-h-[44px] min-w-[44px] items-center`}>
+                    <a
+                      href={href({ page: "project", name: nameOfAddress(home), tab: "agents" })}
+                      onClick={follow(() => onOpenProject(nameOfAddress(home)))}
+                      className={`${textLink} inline-flex min-h-[44px] min-w-[44px] items-center`}
+                    >
                       {title(home)}
                     </a>
                   </>
@@ -198,7 +270,11 @@ function Agents({
                 )}
                 {!home && ` · ${where}`}
               </span>
-              {a.spec.description && <span className="block truncate text-aui-xs text-aui-muted">{a.spec.description}</span>}
+              {a.spec.description && (
+                <span className="block truncate text-aui-xs text-aui-muted">
+                  {a.spec.description}
+                </span>
+              )}
             </span>
           </li>
         );
@@ -229,7 +305,11 @@ function Projects({
   return (
     <section className="flex flex-col gap-3" aria-label={words.tabs.projects}>
       <p className="text-aui-sm text-aui-fg">
-        <a href={href({ page: "project", name: "", tab: "inbox" })} onClick={follow(() => onOpen(""))} className="inline-block min-h-6 leading-6 hover:underline">
+        <a
+          href={href({ page: "project", name: "", tab: "inbox" })}
+          onClick={follow(() => onOpen(""))}
+          className="inline-block min-h-6 leading-6 hover:underline"
+        >
           {workspaceName}
         </a>
       </p>
@@ -240,13 +320,23 @@ function Projects({
           {projects.map((p) => {
             const here = living(p.name);
             return (
-              <li key={p.name} className="flex items-start gap-3 py-2.5" style={{ paddingLeft: `${Math.min(p.depth - 1, 3) * 16}px` }}>
+              <li
+                key={p.name}
+                className="flex items-start gap-3 py-2.5"
+                style={{ paddingLeft: `${Math.min(p.depth - 1, 3) * 16}px` }}
+              >
                 <span className="min-w-0 flex-1">
-                  <a href={href({ page: "project", name: p.name, tab: "inbox" })} onClick={follow(() => onOpen(p.name))} className="block truncate text-aui-sm leading-6 text-aui-fg hover:underline">
+                  <a
+                    href={href({ page: "project", name: p.name, tab: "inbox" })}
+                    onClick={follow(() => onOpen(p.name))}
+                    className="block truncate text-aui-sm leading-6 text-aui-fg hover:underline"
+                  >
                     {titleOf(p)}
                   </a>
                   <span className="block truncate text-aui-xs text-aui-muted">
-                    {[kindWord(p.kind, kinds), factsOf(p), words.holds(p.schedules, p.notes)].filter(Boolean).join(" · ")}
+                    {[kindWord(p.kind, kinds), factsOf(p), words.holds(p.schedules, p.notes)]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                   {here.length > 0 && (
                     <span className="flex flex-wrap items-center gap-1.5 pt-1 text-aui-xs text-aui-muted">

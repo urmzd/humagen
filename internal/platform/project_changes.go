@@ -11,10 +11,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/memory"
@@ -116,7 +116,7 @@ func (p *Platform) agentsEveryoneReads(tenant, own string) func(agent string) bo
 	tree := p.ProjectTree(tenant)
 	reads := p.everyoneReads(tenant, own)
 	return func(agent string) bool {
-		home, homed := tree.Home(agentspec.NormalizeName(agent))
+		home, homed := tree.Home(wire.NormalizeName(agent))
 		return !homed || reads(home)
 	}
 }
@@ -448,7 +448,7 @@ func (p *Platform) scheduleChanges(scope changesScope) []changeRow {
 	inWindow := func(t time.Time) bool { return !t.Before(scope.since) && t.Before(scope.until) }
 	var out []changeRow
 	for _, sc := range p.Schedules.List(scope.tenant) {
-		project := sc.Meta[runs.MetaProject]
+		project := sc.Context[runs.MetaProject]
 		if project == "" || !in[project] {
 			continue
 		}
@@ -461,7 +461,7 @@ func (p *Platform) scheduleChanges(scope changesScope) []changeRow {
 		case inWindow(about.UpdatedAt):
 			out = append(out, changeRow{about.UpdatedAt, row("%s %s: %s changed by %s, runs %s at %q", day(about.UpdatedAt), project, sc.Name, scope.person(about.UpdatedBy), agent, sc.Expression)})
 		case inWindow(about.CreatedAt):
-			out = append(out, changeRow{about.CreatedAt, row("%s %s: %s created by %s, runs %s at %q", day(about.CreatedAt), project, sc.Name, scope.person(sc.Meta[metaCreatedBy]), agent, sc.Expression)})
+			out = append(out, changeRow{about.CreatedAt, row("%s %s: %s created by %s, runs %s at %q", day(about.CreatedAt), project, sc.Name, scope.person(sc.Context[metaCreatedBy]), agent, sc.Expression)})
 		}
 	}
 	return out

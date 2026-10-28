@@ -1,24 +1,24 @@
 import { defaultCopy } from "@humagen/components";
+import {
+  ChevronDownIcon,
+  FileIcon,
+  FolderIcon,
+  MessageIcon,
+  ProjectIcon,
+  SearchIcon,
+} from "@humagen/render-web";
+import { Badge } from "@humagen/render-web/ui/badge";
+import { Button, buttonVariants } from "@humagen/render-web/ui/button";
+import { Input } from "@humagen/render-web/ui/input";
+import { NativeSelect } from "@humagen/render-web/ui/native-select";
+import { Textarea } from "@humagen/render-web/ui/textarea";
+import { FileBrowser, Inspector, ResourceBrowser } from "@humagen/web";
+import { useEffect, useState } from "react";
 import type {
   MemoryFolder,
   Note,
   NoteInput,
 } from "../../../packages/client/src/generated/types.ts";
-import { useEffect, useState } from "react";
-import { FileBrowser, Inspector, ResourceBrowser } from "@humagen/web";
-import {
-  FileIcon,
-  FolderIcon,
-  ProjectIcon,
-  ChevronDownIcon,
-  SearchIcon,
-  MessageIcon,
-} from "@humagen/render-web";
-import { Button, buttonVariants } from "@humagen/render-web/ui/button";
-import { Input } from "@humagen/render-web/ui/input";
-import { Textarea } from "@humagen/render-web/ui/textarea";
-import { NativeSelect } from "@humagen/render-web/ui/native-select";
-import { Badge } from "@humagen/render-web/ui/badge";
 import { api } from "./api.ts";
 import { href } from "./route.ts";
 import { AgentMark, Page, Problem, SkeletonRows } from "./ui.tsx";
@@ -390,7 +390,9 @@ export function MemoryLibrary({
                 </h2>
                 <details className="text-sm">
                   <summary className="group flex min-h-9 w-fit max-w-full cursor-pointer items-center gap-2 rounded-md pr-2 focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11">
-                    <Badge variant="secondary" className="max-w-full whitespace-normal text-left">{management}</Badge>
+                    <Badge variant="secondary" className="max-w-full whitespace-normal text-left">
+                      {management}
+                    </Badge>
                     <ChevronDownIcon
                       size={14}
                       className="text-muted-foreground group-open:rotate-180"
@@ -584,57 +586,59 @@ export function MemoryLibrary({
           if (!busy) setEditorOpen(false);
         }}
       >
-        {editorOpen && (<form
-          className="space-y-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-        >
-          {mutationError && <Problem message={copy.mutationFailed} />}
-          <label className="flex flex-col gap-2 text-sm">
-            {copy.text}
-            <Textarea
-              required
-              maxLength={300}
-              className="min-h-32"
-              value={text}
-              disabled={busy}
-              onChange={(event) => setText(event.target.value)}
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm">
-            {copy.kind}
-            <NativeSelect
-              value={kind ?? "fact"}
-              disabled={busy}
-              onChange={(event) => setKind(event.target.value as NoteInput["kind"])}
-            >
-              {(["fact", "decision", "preference", "person", "risk"] as const).map((value) => (
-                <option key={value} value={value}>
-                  {copy[value]}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <label className="flex flex-col gap-2 text-sm">
-            {copy.expires}
-            <Input
-              type="datetime-local"
-              value={expires}
-              disabled={busy}
-              onChange={(event) => setExpires(event.target.value)}
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={busy || !canSubmit || !text.trim()}>
-              {editing ? copy.saveEdit : copy.save}
-            </Button>
-            <Button variant="outline" disabled={busy} onClick={() => setEditorOpen(false)}>
-              {copy.cancel}
-            </Button>
-          </div>
-        </form>)}
+        {editorOpen && (
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save();
+            }}
+          >
+            {mutationError && <Problem message={copy.mutationFailed} />}
+            <label className="flex flex-col gap-2 text-sm">
+              {copy.text}
+              <Textarea
+                required
+                maxLength={300}
+                className="min-h-32"
+                value={text}
+                disabled={busy}
+                onChange={(event) => setText(event.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm">
+              {copy.kind}
+              <NativeSelect
+                value={kind ?? "fact"}
+                disabled={busy}
+                onChange={(event) => setKind(event.target.value as NoteInput["kind"])}
+              >
+                {(["fact", "decision", "preference", "person", "risk"] as const).map((value) => (
+                  <option key={value} value={value}>
+                    {copy[value]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            <label className="flex flex-col gap-2 text-sm">
+              {copy.expires}
+              <Input
+                type="datetime-local"
+                value={expires}
+                disabled={busy}
+                onChange={(event) => setExpires(event.target.value)}
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={busy || !canSubmit || !text.trim()}>
+                {editing ? copy.saveEdit : copy.save}
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={() => setEditorOpen(false)}>
+                {copy.cancel}
+              </Button>
+            </div>
+          </form>
+        )}
       </Inspector>
     </Page>
   );

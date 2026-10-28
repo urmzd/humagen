@@ -13,6 +13,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./src/generated/types.ts",
+      "default": "./src/generated/types.ts"
     }
   },
   "files": [

@@ -49,29 +49,57 @@ test("statusWord: every state has specific words", () => {
 });
 
 test("redact: anything under a secret-looking key is replaced, at any depth", () => {
-  const out = redact({ url: "https://x", headers: { Authorization: "Bearer abc", accept: "json" }, items: [{ api_key: "k", name: "n" }], token: null });
-  assert.deepEqual(out, { url: "https://x", headers: { Authorization: "[redacted]", accept: "json" }, items: [{ api_key: "[redacted]", name: "n" }], token: null });
+  const out = redact({
+    url: "https://x",
+    headers: { Authorization: "Bearer abc", accept: "json" },
+    items: [{ api_key: "k", name: "n" }],
+    token: null,
+  });
+  assert.deepEqual(out, {
+    url: "https://x",
+    headers: { Authorization: "[redacted]", accept: "json" },
+    items: [{ api_key: "[redacted]", name: "n" }],
+    token: null,
+  });
 });
 
 test("plain: Markdown with its marks taken off", () => {
-  assert.equal(plain("# lead\n\n**Asked**\n\n> hello\n\n- `git_tag`, 3s\n"), "lead\n\nAsked\n\nhello\n\n- git_tag, 3s\n");
+  assert.equal(
+    plain("# lead\n\n**Asked**\n\n> hello\n\n- `git_tag`, 3s\n"),
+    "lead\n\nAsked\n\nhello\n\n- git_tag, 3s\n",
+  );
 });
 
 test("run: Markdown, plain text and the JSON manifest", () => {
   const item: Item = { kind: "run", run: runOf("r2"), data: tree() };
   assert.deepEqual(ids(item), ["markdown", "text", "json"]);
-  assert.equal(text(item, "markdown"), runMarkdown(runOf("r2"), tree()), "copy and export share one serialiser");
+  assert.equal(
+    text(item, "markdown"),
+    runMarkdown(runOf("r2"), tree()),
+    "copy and export share one serialiser",
+  );
   assert.match(text(item, "markdown"), /^# lead\n/);
   assert.doesNotMatch(text(item, "text"), /^#|\*\*|`/m);
   const manifest = JSON.parse(text(item, "json"));
   assert.equal(manifest.manifest, 1);
   assert.equal(manifest.runs.length, 4);
-  assert.deepEqual(manifest.agents.find((a: { name: string }) => a.name === "releaser"), { name: "releaser", revision: 1 });
-  assert.equal(runManifest(runOf("r2"), { runs: [], spans: [] }).runs.length, 1, "with no tree, the run itself is still there");
+  assert.deepEqual(
+    manifest.agents.find((a: { name: string }) => a.name === "releaser"),
+    { name: "releaser", revision: 1 },
+  );
+  assert.equal(
+    runManifest(runOf("r2"), { runs: [], spans: [] }).runs.length,
+    1,
+    "with no tree, the run itself is still there",
+  );
 });
 
 test("agent call: what it was asked, what it answered, and its whole conversation", () => {
-  const done: Item = { kind: "call", run: runOf("r2b"), data: { runs: [runOf("r2b")], spans: tree().spans } };
+  const done: Item = {
+    kind: "call",
+    run: runOf("r2b"),
+    data: { runs: [runOf("r2b")], spans: tree().spans },
+  };
   assert.deepEqual(ids(done), ["asked", "answered", "markdown", "text", "json"]);
   assert.equal(text(done, "asked"), "Tell the on-call that 2.4 is delayed\n");
   assert.equal(text(done, "answered"), "Posted in #incidents.\n");
@@ -81,10 +109,18 @@ test("agent call: what it was asked, what it answered, and its whole conversatio
 });
 
 test("agent call that failed: no answer to copy, but why it failed", () => {
-  const failed: Item = { kind: "call", run: runOf("r2a"), data: { runs: [runOf("r2a"), runOf("r2a1")], spans: tree().spans } };
+  const failed: Item = {
+    kind: "call",
+    run: runOf("r2a"),
+    data: { runs: [runOf("r2a"), runOf("r2a1")], spans: tree().spans },
+  };
   assert.deepEqual(ids(failed), ["asked", "failure", "markdown", "text", "json"]);
   assert.equal(text(failed, "failure"), "git: tag 'v2.4.0' already exists\n");
-  assert.match(text(failed, "markdown"), /\n## helper \(delegate\)\n/, "the agents it called are in its conversation");
+  assert.match(
+    text(failed, "markdown"),
+    /\n## helper \(delegate\)\n/,
+    "the agents it called are in its conversation",
+  );
 });
 
 test("answer: the answer as written, plain, and the run's record", () => {
@@ -95,7 +131,11 @@ test("answer: the answer as written, plain, and the run's record", () => {
   assert.equal(record.agent, "lead");
   assert.equal(record.revision, 1);
   assert.equal(record.status, "completed");
-  assert.deepEqual(ids({ kind: "answer", run: { ...runOf("r2"), answer: undefined } }), ["json"], "with no answer yet, only the record");
+  assert.deepEqual(
+    ids({ kind: "answer", run: { ...runOf("r2"), answer: undefined } }),
+    ["json"],
+    "with no answer yet, only the record",
+  );
 });
 
 test("tool call with arguments and a result: every variation", () => {
@@ -111,19 +151,33 @@ test("tool call with arguments and a result: every variation", () => {
   assert.deepEqual(ids(item), ["call", "result", "both", "args", "json"]);
   assert.match(text(item, "call"), /^http_get\(\{\n {2}"url": "https:\/\/example\.com\/api"/);
   assert.equal(text(item, "result"), '{"ok":true}\n');
-  assert.deepEqual(JSON.parse(text(item, "args")), { url: "https://example.com/api", headers: { authorization: "[redacted]" } });
+  assert.deepEqual(JSON.parse(text(item, "args")), {
+    url: "https://example.com/api",
+    headers: { authorization: "[redacted]" },
+  });
   const both = text(item, "both");
   assert.match(both, /\*\*Tool\*\* `http_get`, called by lead/);
   assert.match(both, /- Took: 2\.5s/);
   assert.match(both, /```json\n\{/);
   assert.match(both, /\*\*Result\*\*\n\n\{"ok":true\}/);
-  for (const id of ["call", "both", "args", "json"]) assert.doesNotMatch(text(item, id), /Bearer abc/, `${id} keeps the secret out`);
+  for (const id of ["call", "both", "args", "json"])
+    assert.doesNotMatch(text(item, id), /Bearer abc/, `${id} keeps the secret out`);
 });
 
 test("tool call with no result yet: the call can be copied, and the result says it is still running", () => {
-  const tool = toolOf({ run_id: "r3a", agent: "oncall", kind: "tool", name: "search_incidents", start: "2026-10-09T10:00:00Z" });
+  const tool = toolOf({
+    run_id: "r3a",
+    agent: "oncall",
+    kind: "tool",
+    name: "search_incidents",
+    start: "2026-10-09T10:00:00Z",
+  });
   const item: Item = { kind: "tool", tool };
-  assert.deepEqual(ids(item), ["call", "both", "json"], "no result and no arguments, so neither is offered");
+  assert.deepEqual(
+    ids(item),
+    ["call", "both", "json"],
+    "no result and no arguments, so neither is offered",
+  );
   assert.equal(toolCallText(tool), "search_incidents()");
   assert.equal(toolResultText(tool), "No result yet. The call is still running.");
   assert.match(toolMarkdown(tool), /- Status: Running/);
@@ -140,7 +194,10 @@ test("tool call that failed: the result is the failure", () => {
 });
 
 test("tool call that returned nothing says so", () => {
-  assert.equal(toolResultText({ name: "noop", result: "", end: "2026-10-09T10:00:01Z" }), "It returned nothing.");
+  assert.equal(
+    toolResultText({ name: "noop", result: "", end: "2026-10-09T10:00:01Z" }),
+    "It returned nothing.",
+  );
 });
 
 test("fileName: named for the item and the format", () => {
@@ -163,5 +220,6 @@ test("every format of every item ends with one newline", () => {
     { kind: "answer", run: runOf("r2") },
     { kind: "tool", tool: { name: "t", args: { a: 1 }, result: "r", end: "2026-10-09T10:00:01Z" } },
   ];
-  for (const item of items) for (const f of formats(item)) assert.match(f.text(), /[^\n]\n$/, `${item.kind}:${f.id}`);
+  for (const item of items)
+    for (const f of formats(item)) assert.match(f.text(), /[^\n]\n$/, `${item.kind}:${f.id}`);
 });

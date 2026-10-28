@@ -13,9 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -63,9 +65,9 @@ func field(t *testing.T, p *platform.Platform) {
 	}
 }
 
-func inProject(id, agent, project string) envelope.Tag {
+func inProject(id, agent, project string) event.Envelope {
 	tg := tag(id, agent)
-	tg.Meta = map[string]string{runs.MetaProject: project}
+	wire.SetContext(&tg, map[string]string{runs.MetaProject: project})
 	return tg
 }
 
@@ -255,10 +257,10 @@ func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testin
 		fileOutsideTheTree(t, st, func(p *platform.Platform) error {
 			return errors.Join(
 				p.Schedules.Add(cron.Schedule{Name: "dropped-recap", Expression: "0 9 * * 1", Agent: "lead", Text: "recap", Tenant: tenant,
-					Meta: map[string]string{runs.MetaProject: "Dropped"}}, platform.About{}),
+					Context: map[string]string{runs.MetaProject: "Dropped"}}, platform.About{}),
 				// One name with Launch ignoring case cannot be kept beside it.
 				p.Schedules.Add(cron.Schedule{Name: "clash-recap", Expression: "0 9 * * 1", Agent: "lead", Text: "recap", Tenant: tenant,
-					Meta: map[string]string{runs.MetaProject: "launch"}}, platform.About{}),
+					Context: map[string]string{runs.MetaProject: "launch"}}, platform.About{}),
 				p.Alerts.AddRule(tenant, alerts.Rule{Name: "gone-fails", Kind: alerts.RunFailed, Severity: alerts.Critical, Project: "Gone", CreatedBy: "ada"}),
 				func() error {
 					_, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Spent"}, Period: policy.Day, MaxRuns: 5, Action: policy.Block}, "ada", time.Now())
@@ -266,7 +268,7 @@ func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testin
 				}(),
 				// A workspace whose settings held no projects at all.
 				p.Schedules.Add(cron.Schedule{Name: "away-recap", Expression: "0 9 * * 1", Agent: "lead", Text: "recap", Tenant: "globex",
-					Meta: map[string]string{runs.MetaProject: "Away"}}, platform.About{}),
+					Context: map[string]string{runs.MetaProject: "Away"}}, platform.About{}),
 			)
 		})
 		setup := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
@@ -298,7 +300,7 @@ func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testin
 			t.Fatal(err)
 		}
 		for _, origin := range []string{"cron", runs.OriginManual} {
-			r, err := p.Invoke(t.Context(), envelope.Tag{ID: "fire-" + origin, Tenant: tenant, Agent: sc.Agent, Origin: origin, Text: sc.Text, Meta: sc.Meta})
+			r, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: "fire-" + origin, Tenant: tenant, Agent: sc.Agent, Origin: origin, Text: sc.Text, Context: sc.Context}))
 			if err != nil {
 				t.Fatalf("a %s run of a schedule that ran before the upgrade = %v", origin, err)
 			}
@@ -312,7 +314,7 @@ func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := p.Invoke(t.Context(), envelope.Tag{ID: "fire-clash", Tenant: tenant, Agent: clash.Agent, Origin: "cron", Text: clash.Text, Meta: clash.Meta}); !errors.Is(err, platform.ErrProjectDeleted) {
+		if _, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: "fire-clash", Tenant: tenant, Agent: clash.Agent, Origin: "cron", Text: clash.Text, Context: clash.Context})); !errors.Is(err, platform.ErrProjectDeleted) {
 			t.Fatalf("a run in a name one with Launch ignoring case = %v, want ErrProjectDeleted", err)
 		}
 
@@ -614,7 +616,7 @@ func TestContextLayersInOrderAndWithinBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := second.Tag().Text
+	text := wire.TextOf(second.Tag())
 	order := []string{
 		"the workspace's first, then each project's down to this one",
 		"(instructions of Acme not sent)",
@@ -665,7 +667,7 @@ func TestContextLayersInOrderAndWithinBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := top.Tag().Text; !strings.Contains(got, "ROOT-RULE") || !strings.Contains(got, "What everyone in Acme knows:\n- WORKSPACE-NOTE") || strings.Contains(got, "FIELD") {
+	if got := wire.TextOf(top.Tag()); !strings.Contains(got, "ROOT-RULE") || !strings.Contains(got, "What everyone in Acme knows:\n- WORKSPACE-NOTE") || strings.Contains(got, "FIELD") {
 		t.Fatalf("a turn at the root was sent:\n%s", got)
 	}
 }
@@ -677,8 +679,8 @@ func TestATurnWithNoContextIsSentAsAsked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Tag().Text != "just this" {
-		t.Fatalf("sent %q", r.Tag().Text)
+	if wire.TextOf(r.Tag()) != "just this" {
+		t.Fatalf("sent %q", wire.TextOf(r.Tag()))
 	}
 }
 
@@ -698,14 +700,11 @@ func TestACronRunInAProjectGetsItsContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, origin := range []string{"cron", runs.OriginManual} {
-		r, err := p.Invoke(ctx, envelope.Tag{
-			ID: origin + "-1", Tenant: tenant, Agent: "lead", Origin: origin, Text: "What changed this week?",
-			Meta: map[string]string{"cron_schedule": "recap", runs.MetaProject: "Globex", runs.MetaAsk: "forged", runs.MetaWithin: "Initech"},
-		})
+		r, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: origin + "-1", Tenant: tenant, Agent: "lead", Origin: origin, Text: "What changed this week?", Context: map[string]string{"cron_schedule": "recap", runs.MetaProject: "Globex", runs.MetaAsk: "forged", runs.MetaWithin: "Initech"}}))
 		if err != nil {
 			t.Fatal(err)
 		}
-		sent := r.Tag().Text
+		sent := wire.TextOf(r.Tag())
 		for i, want := range []string{"GLOBEX-RULE", "FIELD-NOTE", "AGENT-NOTE", "What changed this week?"} {
 			if !strings.Contains(sent, want) {
 				t.Fatalf("%s run, layer %d: %q missing from:\n%s", origin, i, want, sent)
@@ -719,11 +718,11 @@ func TestACronRunInAProjectGetsItsContext(t *testing.T) {
 	// A cron run is filed nowhere the tag cannot claim: a run from an origin
 	// whose project the server did not write is not given one, nor its
 	// context.
-	other, err := p.Invoke(ctx, envelope.Tag{ID: "jira-1", Tenant: tenant, Agent: "lead", Origin: "jira", Text: "hi", Meta: map[string]string{runs.MetaProject: "Globex"}})
+	other, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "jira-1", Tenant: tenant, Agent: "lead", Origin: "jira", Text: "hi", Context: map[string]string{runs.MetaProject: "Globex"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if other.Project != "" || other.Within != nil || strings.Contains(other.Tag().Text, "GLOBEX-RULE") {
+	if other.Project != "" || other.Within != nil || strings.Contains(wire.TextOf(other.Tag()), "GLOBEX-RULE") {
 		t.Fatalf("a jira tag claimed a project: %+v", other)
 	}
 }
@@ -760,7 +759,7 @@ func TestDeleteKeepsThePolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := p.Schedules.Add(cron.Schedule{Name: "initech-recap", Expression: "0 9 * * 1", Agent: "lead", Text: "recap", Tenant: tenant,
-		Meta: map[string]string{runs.MetaProject: "Initech"}}, platform.About{}); err != nil {
+		Context: map[string]string{runs.MetaProject: "Initech"}}, platform.About{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.Alerts.AddRule(tenant, alerts.Rule{Name: "initech-fails", Kind: alerts.RunFailed, Severity: alerts.Critical, Project: "Initech", CreatedBy: "ada"}); err != nil {
@@ -824,7 +823,7 @@ func TestInProjectKeepsAProjectWhileSomethingIsFiled(t *testing.T) {
 	field(t, p)
 	err := p.InProject(tenant, "Initech", func() error {
 		return p.Schedules.Add(cron.Schedule{Name: "s", Expression: "0 9 * * 1", Agent: "lead", Text: "x", Tenant: tenant,
-			Meta: map[string]string{runs.MetaProject: "Initech"}}, platform.About{})
+			Context: map[string]string{runs.MetaProject: "Initech"}}, platform.About{})
 	})
 	if err != nil {
 		t.Fatal(err)

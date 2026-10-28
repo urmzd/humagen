@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/state"
@@ -63,7 +63,7 @@ func TestFindHelpNeverRanksHiddenProjectsOrAgents(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, agent := range []agentspec.AgentSpec{{Name: "helper", Description: "Renewal billing", Model: "offline", Provider: "offline", SystemPrompt: "Help."}, {Name: "private-canary", Description: "HiddenCanary renewal", Model: "offline", Provider: "offline", SystemPrompt: "Private."}} {
+	for _, agent := range []wire.AgentSpec{{Name: "helper", Description: "Renewal billing", Model: "offline", Provider: "offline", SystemPrompt: "Help."}, {Name: "private-canary", Description: "HiddenCanary renewal", Model: "offline", Provider: "offline", SystemPrompt: "Private."}} {
 		if _, err := p.Agents.Create(t.Context(), tenant, agent, "ada"); err != nil {
 			t.Fatal(err)
 		}

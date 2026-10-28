@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/memory"
@@ -164,7 +164,7 @@ func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names
 	scheds := p.Schedules.List(tenant)
 	slices.SortFunc(scheds, func(a, b cron.Schedule) int { return strings.Compare(a.Name, b.Name) })
 	for _, sc := range scheds {
-		if at := sc.Meta[runs.MetaProject]; moved[at] && lost(at, sc.Agent) {
+		if at := sc.Context[runs.MetaProject]; moved[at] && lost(at, sc.Agent) {
 			out = append(out, fmt.Sprintf("the schedule %s, which runs %s in %s, would be refused every time", sc.Name, sc.Agent, at))
 		}
 	}
@@ -354,7 +354,7 @@ func (p *Platform) MayFileIn(who auth.Principal, project string) error {
 // of its home, as any run filed there does. A platform agent asks nothing
 // more than the route's permission.
 func (p *Platform) MayTry(who auth.Principal, agent string) error {
-	home, homed := p.Projects.Tree(who.Tenant).Home(agentspec.NormalizeName(agent))
+	home, homed := p.Projects.Tree(who.Tenant).Home(wire.NormalizeName(agent))
 	if !homed || home == projects.Root {
 		return nil
 	}
@@ -402,7 +402,7 @@ func (p *Platform) ownsHome(tree *projects.Tree, who auth.Principal, agent strin
 	// Homes are kept by the agent's canonical name, which is what the
 	// registry and every store resolve a name to, so a name in another
 	// case or with spaces around it is the same agent here too.
-	home, homed := tree.Home(agentspec.NormalizeName(agent))
+	home, homed := tree.Home(wire.NormalizeName(agent))
 	if !homed || home == projects.Root {
 		return nil
 	}

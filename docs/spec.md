@@ -93,7 +93,7 @@ spec:
   execution:
     workspace: ""           # agents' files. Empty is the user cache directory
     concurrency: 1
-    max_depth: 4
+    max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
     max_fan_out: 16
     builtin: {provider: "", model: ""}       # the platform's own agents
 
@@ -232,6 +232,8 @@ spec:
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
     - project: Globex       # lives in Globex: available there and below, and nowhere else
       spec: {name: globex-helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: You know the Globex account.}
+    - file: agents/reviewer.agent.md   # saige's own format; a .json or .yaml file holds a spec instead
+      policy: {answerers: ["role:field-leads"], tagged_only: true}   # what the .agent.md does not say
 
   surfaces:
     slack:                  # humagen runs the Slack app as its client, over Socket Mode
@@ -316,6 +318,36 @@ builds on:
   client as it is, still answering. An unchanged section makes no new
   version. A client of that id made in the console is left as it is.
 - Nothing is deleted because it left the file.
+
+### Agent files
+
+An agent is a `spec` inline, or a `file`. A file ending in `.agent.md` is a
+saige definition: YAML frontmatter (`apiVersion: saige/v1`, `name`,
+`version`, `model.use: provider/model`, `tools`, `subagents`,
+`approval.ask`), then the system prompt. Any other file holds a spec as JSON
+or YAML.
+
+```markdown
+---
+apiVersion: saige/v1
+name: reviewer
+version: 1.0.0
+description: Reviews changes.
+model:
+  use: anthropic/YOUR_MODEL
+---
+Review the change and list what is risky.
+```
+
+`policy` goes beside an `.agent.md` file, and only there. It holds what
+saige's format does not: `approvers`, `self_approval`, `answerers`,
+`tagged_only`, `workspace_areas`, `mcp_write` (the MCP servers whose write
+tools it may call), `knowledge` and `fallback_on`. Left out, it grants
+nothing beyond the file. `subscriptions` is refused: the platform decides
+what wakes an agent. saige checks the file at start, then the platform's
+own rules apply as to any spec. The file's `version` is not kept: the store
+numbers each change, and a run pins the version, digest and policy it
+started with.
 
 ### The Slack app
 
@@ -550,7 +582,7 @@ project's instructions and notes:
 | `name` | required | letters, digits, dashes and underscores, at most 63, unique across the deployment: every run it raises carries it |
 | `cron` | required | a 5-field cron expression, in UTC |
 | `agent` | required | an agent in the file or one of the platform's own, available in the project |
-| `text` | required | what the agent is asked, at most 8,000 characters |
+| `text` | required | what the agent is asked, at most 8,000 characters. Each firing is a `cron.tick.v1` event carrying it, on the channel `cron://<workspace>/<name>` |
 | `description` | none | what it is for, at most 500 characters; the agent is not shown it |
 | `deliver` | the run | `project` posts each answer in the project as an announcement from the agent, its first line the subject, or as a draft for the project's owners under `agent_posts: review`. An answer of NONE posts nothing. A file has nobody to send an answer to, so `inbox` is refused |
 
@@ -683,13 +715,41 @@ when a run uses it, so there is nothing to read or pass when deploying:
 | `system.blobs` | disk, memory, s3 | a `blob.Store` |
 | `system.bus` | memory, postgres | a `bus.Bus` |
 | `system.extensions[]` | none | something with `Run(ctx) error`, run beside the server |
-| `platform.models[]` | anthropic, openai, ollama | an `agentrt.ProviderFunc` |
+| `platform.models[]` | anthropic, openai, ollama | a `native.ProviderFunc` |
 | `platform.tools[]` | mcp | a `runtime.Catalog` |
 
 `humagen.WithKind(slot, name, factory)` registers one. The factory is given its
 block as JSON and decodes it strictly itself, so its fields get the same
 unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.
+
+`humagen.WithRuntime(rt)` runs every turn on your own `turn.Runtime`
+(`github.com/urmzd/humagen/fiber/pkg/turn`) in place of the native saige
+turn. It is handed the pinned definition and the triggering event and streams
+back catalog event bodies. It runs inside the same playscape sandbox and on
+the same durable runs; it brings its own models and tools, so the spec's
+`models` and `WithModelProvider` do not reach it.
+
+### Since fiber moved into this repository
+
+fiber now lives in this module, at `fiber/`, and a program built on the
+`humagen` package imports it from `github.com/urmzd/humagen/fiber/...`. It
+drops `github.com/urmzd/fiber` from its `go.mod`. This is a breaking change for
+such a program, not for a file:
+
+| Before | Now |
+|--------|-----|
+| `github.com/urmzd/fiber/pkg/agentrt` | `github.com/urmzd/humagen/fiber/pkg/turn/native` (`native.ProviderFunc`, `native.Option`) |
+| `envelope.Tag`, `envelope.Event` | one `event.Envelope`, with a typed body per event type |
+| a kind (`delta.text`) and a payload | a type (`run.delta.text.v1`) and its body |
+| `router`, `registry`, `agentspec`, topics | `egress`, `definition` over `pkg/agents`, channels per tenant |
+| a cron schedule's `Meta` and `Routes` | its `Context`; where a run answers is its channel |
+
+Nothing a file says changes, and stored data is read as it was written: a run
+recorded before keeps its trigger, and a schedule keeps its context
+([upgrading-from-warp.md](upgrading-from-warp.md)). The API sends a run's
+events as the union too: each has a `type` and its `data` inline
+([API contract](api.md#events)).
 
 
 ## Managed source records

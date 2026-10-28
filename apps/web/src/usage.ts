@@ -18,7 +18,11 @@ export function money(c: Cost): string {
   const small = Math.abs(value) > 0 && Math.abs(value) < 1;
   const digits = { minimumFractionDigits: 2, maximumFractionDigits: small ? 4 : 2 };
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: c.currency || "USD", ...digits }).format(value);
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: c.currency || "USD",
+      ...digits,
+    }).format(value);
   } catch {
     return `${new Intl.NumberFormat(undefined, digits).format(value)} ${c.currency}`;
   }
@@ -54,6 +58,9 @@ export function contextFill(u: RunUsage | undefined): Fill | undefined {
 /** A context fill in words: "48,000 of 200,000 tokens, 24%". */
 export function contextWords(u: RunUsage | undefined): string {
   const fill = contextFill(u);
-  if (!fill) return u?.context?.tokens ? `${count(u.context.tokens)} tokens. The model's window is not in the catalog.` : "Not reported yet";
+  if (!fill)
+    return u?.context?.tokens
+      ? `${count(u.context.tokens)} tokens. The model's window is not in the catalog.`
+      : "Not reported yet";
   return `${count(fill.used)} of ${count(fill.limit)} tokens, ${Math.round((100 * fill.used) / fill.limit)}%`;
 }

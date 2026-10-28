@@ -14,9 +14,8 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -58,7 +57,7 @@ func name(t *testing.T, p *platform.Platform, project string, sources ...string)
 // askIn runs the agent once in a project and waits for its answer.
 func askIn(t *testing.T, p *platform.Platform, id, agent, project string) runs.Run {
 	t.Helper()
-	r, err := p.Invoke(t.Context(), envelope.Tag{ID: id, Tenant: tenant, Agent: agent, Origin: "api", Text: "Who signs renewals?", Meta: map[string]string{runs.MetaProject: project}})
+	r, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: agent, Origin: "api", Text: "Who signs renewals?", Context: map[string]string{runs.MetaProject: project}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,12 +80,12 @@ func sent(t *testing.T, call agenttest.ScriptedCall) string {
 // is accepted, nearest first, and whatever a caller put there is replaced.
 func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 	model := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("1"), say("2"), say("3"), say("4"), say("5"), say("6")}}
-	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{
-		"scripted": func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil },
+	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
+		"scripted": func(native.Spec) (saigetypes.Provider, error) { return model, nil },
 	}}})
 	ctx := t.Context()
-	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "support", Provider: "scripted", Model: "m", SystemPrompt: "Answer.",
-		Sources: []agentspec.Source{{Name: "own", URI: "knowledge://own"}}}, "test"); err != nil {
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "support", Provider: "scripted", Model: "m", SystemPrompt: "Answer.",
+		Sources: []wire.Source{{Name: "own", URI: "knowledge://own"}}}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	shelf(t, p, map[string]string{"own": "Olga", "guide": "Gus", "playbook": "Paula", "globex-notes": "Gina", "initech-notes": "Ivan"})
@@ -113,7 +112,7 @@ func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 		{projects.Root, "guide", []string{"Olga", "Gus"}},
 	} {
 		run := askIn(t, p, "in-"+c.project, "support", c.project)
-		if got := run.Tag().Meta[runs.MetaSources]; got != c.pinned {
+		if got := wire.Meta(run.Tag())[runs.MetaSources]; got != c.pinned {
 			t.Errorf("a run in %q was pinned %q, want %q", c.project, got, c.pinned)
 		}
 		text := sent(t, model.Calls[i])
@@ -129,12 +128,11 @@ func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 
 	// A caller cannot name sources of its own: the platform's pin replaces
 	// them.
-	r, err := p.Invoke(ctx, envelope.Tag{ID: "claims", Tenant: tenant, Agent: "support", Origin: "api", Text: "Who signs renewals?",
-		Meta: map[string]string{runs.MetaProject: "Field", runs.MetaSources: "initech-notes"}})
+	r, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "claims", Tenant: tenant, Agent: "support", Origin: "api", Text: "Who signs renewals?", Context: map[string]string{runs.MetaProject: "Field", runs.MetaSources: "initech-notes"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := await(t, p, r.ID, runs.Completed).Tag().Meta[runs.MetaSources]; got != "playbook,guide" {
+	if got := wire.Meta(await(t, p, r.ID, runs.Completed).Tag())[runs.MetaSources]; got != "playbook,guide" {
 		t.Fatalf("a run that claimed its sources was pinned %q", got)
 	}
 	if text := sent(t, model.Calls[4]); strings.Contains(text, "Ivan") {
@@ -144,12 +142,11 @@ func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 	// Nor under the key runs were pinned with before it was private, even
 	// where no project names anything for the pin to replace it with.
 	name(t, p, projects.Root)
-	r, err = p.Invoke(ctx, envelope.Tag{ID: "claims-v0", Tenant: tenant, Agent: "support", Origin: "api", Text: "Who signs renewals?",
-		Meta: map[string]string{runs.MetaProject: projects.Root, runs.MetaSourcesV0: "initech-notes"}})
+	r, err = p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "claims-v0", Tenant: tenant, Agent: "support", Origin: "api", Text: "Who signs renewals?", Context: map[string]string{runs.MetaProject: projects.Root, runs.MetaSourcesV0: "initech-notes"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := runs.SourcesOf(await(t, p, r.ID, runs.Completed).Tag().Meta); len(got) != 0 {
+	if got := runs.SourcesOf(wire.Meta(await(t, p, r.ID, runs.Completed).Tag())); len(got) != 0 {
 		t.Fatalf("a run that claimed its sources under the old key was pinned %q", got)
 	}
 	if text := sent(t, model.Calls[5]); strings.Contains(text, "Ivan") || strings.Contains(text, "Gus") {
@@ -163,8 +160,8 @@ func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 func TestACalledRunIsGivenItsRootsKnowledge(t *testing.T) {
 	model := &heldFirst{held: &holding{called: make(chan struct{})}, rest: &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("done")}}}
 	held := model.held
-	p := startWith(t, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 2}, AgentOptions: []agentrt.Option{
-		agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil }),
+	p := startWith(t, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 2}, AgentOptions: []native.Option{
+		native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return model, nil }),
 	}})
 	ctx := t.Context()
 	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Field"}); err != nil {
@@ -172,7 +169,7 @@ func TestACalledRunIsGivenItsRootsKnowledge(t *testing.T) {
 	}
 	shelf(t, p, map[string]string{"playbook": "Paula", "pricing": "Priya"})
 	name(t, p, "Field", "playbook")
-	root, err := p.Invoke(ctx, envelope.Tag{ID: "root", Tenant: tenant, Agent: "lead", Origin: "api", Text: "hi", Meta: map[string]string{runs.MetaProject: "Field"}})
+	root, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "root", Tenant: tenant, Agent: "lead", Origin: "api", Text: "hi", Context: map[string]string{runs.MetaProject: "Field"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +183,7 @@ func TestACalledRunIsGivenItsRootsKnowledge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := child.Tag().Meta[runs.MetaSources]; got != "playbook" || child.Project != "Field" {
+	if got := wire.Meta(child.Tag())[runs.MetaSources]; got != "playbook" || child.Project != "Field" {
 		t.Fatalf("a called run in %q was pinned %q, want its root's", child.Project, got)
 	}
 	await(t, p, child.ID, runs.Completed)
@@ -217,12 +214,12 @@ func (h *heldFirst) Stream(ctx context.Context, req saigetypes.Request) (<-chan 
 func TestARunKeepsItsKnowledgeAcrossAnEditAndARestart(t *testing.T) {
 	eachBackend(t, func(t *testing.T, first platform.Backends, again func() platform.Backends) {
 		ctx := t.Context()
-		model := func(m saigetypes.Provider) []agentrt.Option {
-			return []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return m, nil })}
+		model := func(m saigetypes.Provider) []native.Option {
+			return []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return m, nil })}
 		}
 		held := &holding{called: make(chan struct{})}
 		p, stop := runningWith(t, platform.Config{Backends: first, AgentOptions: model(held)})
-		if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
+		if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
 			t.Fatal(err)
 		}
 		for _, in := range []platform.ProjectInput{{Name: "Field"}, {Name: "Globex", Parent: "Field"}} {
@@ -232,7 +229,7 @@ func TestARunKeepsItsKnowledgeAcrossAnEditAndARestart(t *testing.T) {
 		}
 		shelf(t, p, map[string]string{"old-playbook": "Dana", "new-playbook": "Eve"})
 		name(t, p, "Field", "old-playbook")
-		r, err := p.Invoke(ctx, envelope.Tag{ID: "in-flight", Tenant: tenant, Agent: "lead", Origin: "api", Text: "Who signs renewals?", Meta: map[string]string{runs.MetaProject: "Globex"}})
+		r, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: "in-flight", Tenant: tenant, Agent: "lead", Origin: "api", Text: "Who signs renewals?", Context: map[string]string{runs.MetaProject: "Globex"}}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -248,7 +245,7 @@ func TestARunKeepsItsKnowledgeAcrossAnEditAndARestart(t *testing.T) {
 		answer := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("Dana."), say("Eve.")}}
 		q, _ := runningWith(t, platform.Config{Backends: again(), AgentOptions: model(answer)})
 		resumed := await(t, q, r.ID, runs.Completed)
-		if got := resumed.Tag().Meta[runs.MetaSources]; got != "old-playbook" {
+		if got := wire.Meta(resumed.Tag())[runs.MetaSources]; got != "old-playbook" {
 			t.Fatalf("the run after a restart is pinned %q", got)
 		}
 		if len(answer.Calls) != 1 {
@@ -258,7 +255,7 @@ func TestARunKeepsItsKnowledgeAcrossAnEditAndARestart(t *testing.T) {
 			t.Fatalf("the run resumed after an edit and a restart was sent: %s", text)
 		}
 		next := askIn(t, q, "next", "lead", "Globex")
-		if got := next.Tag().Meta[runs.MetaSources]; got != "new-playbook" {
+		if got := wire.Meta(next.Tag())[runs.MetaSources]; got != "new-playbook" {
 			t.Fatalf("the next run is pinned %q", got)
 		}
 		if text := sent(t, answer.Calls[1]); !strings.Contains(text, "Eve") || strings.Contains(text, "Dana") {
@@ -325,7 +322,7 @@ func TestNamingAProjectsKnowledgeTakesKnowledgeRead(t *testing.T) {
 func TestAHousekeepingRunIsGivenNoKnowledge(t *testing.T) {
 	p := startWith(t, platform.Config{OfflineHooks: true})
 	ctx := t.Context()
-	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "scribe", Model: "offline", Provider: "offline", SystemPrompt: "Title it."}, "test"); err != nil {
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "scribe", Model: "offline", Provider: "offline", SystemPrompt: "Title it."}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.SetSettings(ctx, tenant, platform.Settings{TitleAgent: "scribe"}); err != nil {
@@ -341,7 +338,7 @@ func TestAHousekeepingRunIsGivenNoKnowledge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := await(t, p, first.ID, runs.Completed).Tag().Meta[runs.MetaSources]; got != "playbook,guide" {
+	if got := wire.Meta(await(t, p, first.ID, runs.Completed).Tag())[runs.MetaSources]; got != "playbook,guide" {
 		t.Fatalf("the turn was pinned %q", got)
 	}
 	var title runs.Run
@@ -354,8 +351,8 @@ func TestAHousekeepingRunIsGivenNoKnowledge(t *testing.T) {
 		}
 		return false
 	})
-	if title.Origin != runs.OriginSystem || title.Tag().Meta[runs.MetaSources] != "" {
-		t.Fatalf("the housekeeping run %+v was pinned %q", title, title.Tag().Meta[runs.MetaSources])
+	if title.Origin != runs.OriginSystem || wire.Meta(title.Tag())[runs.MetaSources] != "" {
+		t.Fatalf("the housekeeping run %+v was pinned %q", title, wire.Meta(title.Tag())[runs.MetaSources])
 	}
 }
 

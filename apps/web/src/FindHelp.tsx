@@ -6,7 +6,12 @@ import { AgentMark, field, textAction } from "./ui.tsx";
 export type { HelpSuggestion } from "../../../packages/client/src/generated/types.ts";
 
 /** Discovery prepares the current composer; searching never starts work. */
-export function FindHelp({ onSearch, onChoose, initialDescription = "", canChoose = true }: {
+export function FindHelp({
+  onSearch,
+  onChoose,
+  initialDescription = "",
+  canChoose = true,
+}: {
   onSearch: (description: string) => Promise<HelpSuggestion[]>;
   onChoose: (suggestion: HelpSuggestion, description: string) => void;
   initialDescription?: string;
@@ -61,22 +66,50 @@ export function FindHelp({ onSearch, onChoose, initialDescription = "", canChoos
             }}
           />
         </label>
-        <button type="button" disabled={pending || !description.trim()} className={`${textAction} min-h-10 self-start`} onClick={() => void search()}>
+        <button
+          type="button"
+          disabled={pending || !description.trim()}
+          className={`${textAction} min-h-10 self-start`}
+          onClick={() => void search()}
+        >
           {pending ? c.searching : c.search}
         </button>
       </div>
-      {pending && <p role="status" className="mt-3 text-aui-sm text-aui-muted">{c.searching}</p>}
-      {error && <p role="alert" className="mt-3 text-aui-sm text-aui-muted">{c.failed}</p>}
-      {!pending && !error && results?.length === 0 && <p className="mt-3 text-aui-sm text-aui-muted">{c.empty}</p>}
+      {pending && (
+        <p role="status" className="mt-3 text-aui-sm text-aui-muted">
+          {c.searching}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="mt-3 text-aui-sm text-aui-muted">
+          {c.failed}
+        </p>
+      )}
+      {!pending && !error && results?.length === 0 && (
+        <p className="mt-3 text-aui-sm text-aui-muted">{c.empty}</p>
+      )}
       {!pending && !error && results && results.length > 0 && (
         <ul className="mt-3 divide-y divide-aui-border">
           {results.map((result) => (
-            <li key={`${result.project}:${result.agent}`} className="flex min-w-0 flex-wrap items-start gap-2 py-3">
+            <li
+              key={`${result.project}:${result.agent}`}
+              className="flex min-w-0 flex-wrap items-start gap-2 py-3"
+            >
               <AgentMark name={result.agent} />
               <div className="min-w-0 flex-1">
-                <p className="break-words text-aui-sm text-aui-fg">{result.title} <span className="text-aui-muted">{result.agent}</span></p>
+                <p className="break-words text-aui-sm text-aui-fg">
+                  {result.title} <span className="text-aui-muted">{result.agent}</span>
+                </p>
                 <p className="mt-1 text-aui-xs text-aui-muted">{result.reason}</p>
-                {canChoose && <button type="button" className={`${textAction} mt-2 min-h-10`} onClick={() => onChoose(result, description.trim())}>{c.choose}</button>}
+                {canChoose && (
+                  <button
+                    type="button"
+                    className={`${textAction} mt-2 min-h-10`}
+                    onClick={() => onChoose(result, description.trim())}
+                  >
+                    {c.choose}
+                  </button>
+                )}
               </div>
             </li>
           ))}

@@ -22,7 +22,12 @@ export function useThreadSelection(
     problem: (why: string | null) => void;
   },
 ): { selection: Selection; select: (next: Selection) => void } {
-  const saved: Selection = { agents: th.agents ?? [], mode: th.mode === "all" ? "all" : "join", project: th.project, channel: th.channel };
+  const saved: Selection = {
+    agents: th.agents ?? [],
+    mode: th.mode === "all" ? "all" : "join",
+    project: th.project,
+    channel: th.channel,
+  };
   const [shown, setShown] = useState<Selection | null>(null);
   const saving = useRef<{ busy: boolean; next: Selection | null }>({ busy: false, next: null });
   // The newest thread a save answered, which a render may not show yet.
@@ -41,7 +46,9 @@ export function useThreadSelection(
         default: from.default ?? "",
         agents: next.agents,
         mode: next.mode,
-        ...(moved && next.project !== null ? { project: next.project === "" ? "~" : next.project, channel: next.channel } : {}),
+        ...(moved && next.project !== null
+          ? { project: next.project === "" ? "~" : next.project, channel: next.channel }
+          : {}),
       })
       .then((t) => {
         latest.current = t;

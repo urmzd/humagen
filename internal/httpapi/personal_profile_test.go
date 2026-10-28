@@ -3,6 +3,8 @@ package httpapi
 import (
 	"strings"
 	"testing"
+
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 func TestSavedProfileNamesNewMessagesAndBriefsRealTurnsWithoutChangingIdentity(t *testing.T) {
@@ -35,10 +37,10 @@ func TestSavedProfileNamesNewMessagesAndBriefsRealTurnsWithoutChangingIdentity(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Actor.Display != "Nadia" || !strings.Contains(run.Tag().Text, "Start with the conclusion") {
+	if run.Actor.Display != "Nadia" || !strings.Contains(wire.TextOf(run.Tag()), "Start with the conclusion") {
 		t.Fatalf("real turn ignored saved profile: %+v", run.Actor)
 	}
-	if run.Tag().Meta["_humagen.context.personal_memory"] != "" {
+	if wire.Meta(run.Tag())["_humagen.context.personal_memory"] != "" {
 		t.Fatal("basic profile formatting classified as private memory")
 	}
 }

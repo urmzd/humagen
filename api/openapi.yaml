@@ -1538,7 +1538,7 @@ paths:
       description: |
         Starts a conversation, or continues one when `after` names a turn.
         The run is accepted, not finished: follow it on the event stream at
-        topic `agent:<agent>:<id>`, or poll `getRun`.
+        `/api/events?run=<id>`, or poll `getRun`.
 
         Send `Idempotency-Key` to make a retry safe. The run's `tag_id` is
         then `api-<length of subject in bytes>-<subject>-<key>`, its `id` is
@@ -1842,7 +1842,7 @@ paths:
       summary: Ask a run, and everything attached to it, to stop
       description: |
         The request goes to the runtime, which cancels the model call in
-        flight and ends the run with `lifecycle.stopped`. Runs attached to it
+        flight and ends the run with `run.stopped.v1`. Runs attached to it
         are asked too. Runs it delegated keep going.
 
         It does not wait for the run. From the moment it is asked, the run is
@@ -1894,7 +1894,7 @@ paths:
         optionally with edited `arguments` for an approval), to choose one of
         some options (`choose` with `choice`), or to reply in words (`reply`
         with `text`). The question is on the run as `question`, on its stream
-        as `lifecycle.parked`, and in the inbox as a message addressed to the
+        as `run.parked.v1`, and in the inbox as a message addressed to the
         people who may answer it. Answering here is the same as resolving that
         message's part, and returns the message.
 
@@ -2768,7 +2768,8 @@ paths:
       description: |
         A long-lived `text/event-stream`. Two kinds of message arrive on it:
 
-        - A message with no `event:` field carries one `RunEvent` as JSON.
+        - A message with no `event:` field carries one `RunEvent` as JSON, or
+          an `UnknownEvent` for a type this server's catalog does not hold.
         - A message with `event: inbox` carries one `InboxNotice` as JSON. It
           names a message and nothing more: fetch it to see what changed. A
           caller is only sent notices for kinds of message they may read.
@@ -2780,16 +2781,20 @@ paths:
         A comment line (`: keep-alive`) is sent every 15 seconds. Messages
         carry no `id:` field, so `Last-Event-ID` is not used: to resume, pass
         the last `seq` processed as `from`. `seq` orders events within one
-        run, so `from` is only meaningful with a topic that names one run.
+        run, so `from` is only meaningful with `run`.
 
-        The stream first replays what the bus still holds for the topic, then
-        follows it live. The server ends the stream when the consumer falls
-        behind, rather than feed it a gap: reconnect and resume. A run's end is
-        not the stream's end, and the ledger (`getRun`) decides whether a run
-        is over, not silence on the stream.
+        The workspace is always the caller's own. A reader is sent the events
+        of runs they may read, and only run events (`run.*`): a `type` outside
+        that family is refused.
 
-        There is no topic for one conversation. To follow a conversation,
-        subscribe to `agent` and keep the events whose `run_id` is one of its
+        The stream first replays what the bus still holds, then follows it
+        live. The server ends the stream when the consumer falls behind,
+        rather than feed it a gap: reconnect and resume. A run's end is not
+        the stream's end, and the ledger (`getRun`) decides whether a run is
+        over, not silence on the stream.
+
+        There is no filter for one conversation. To follow a conversation,
+        subscribe to everything and keep the events whose `run` is one of its
         turns.
 
         Note for generators: the schema below describes the JSON carried in
@@ -2797,16 +2802,46 @@ paths:
         `itemSchema`.
       x-permission: runs:read
       parameters:
-        - name: topic
+        - name: channel
           in: query
           description: |
-            What to listen to. `agent` is every agent (the default),
-            `agent:<name>` one agent, `agent:<name>:<run>` one run.
+            A channel prefix, such as `slack://T01/C02`. Absent is every
+            channel a run publishes on.
+          schema: {type: string}
+        - name: type
+          in: query
+          description: |
+            Type prefixes to listen to, repeated for more than one, such as
+            `run.delta` or `run.completed.v1`. Absent is every run event,
+            `run.usage` and `run.context` included. An opt-in family
+            (`run.usage`, `run.context`) is sent only to a prefix that names it.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {type: string}
+        - name: run
+          in: query
+          description: One run's events.
           schema: {type: string}
         - name: from
           in: query
           description: Resume after this sequence number within each run.
           schema: {type: integer, format: int64, minimum: 0}
+        - name: inbox
+          in: query
+          description: |
+            `true` sends inbox and thread notices alone, with no run event. It
+            cannot be combined with `channel`, `type`, `run`, `topic` or `from`.
+          schema: {type: boolean}
+        - name: topic
+          in: query
+          deprecated: true
+          description: |
+            The filter from before the event union: `agent` is everything,
+            `agent:<name>` one agent, `agent:<name>:<run>` one run (read as
+            `run`). It cannot be combined with `channel`, `type` or `run`.
+          schema: {type: string}
       responses:
         "200":
           description: The stream.
@@ -2815,6 +2850,7 @@ paths:
               itemSchema:
                 oneOf:
                   - $ref: "#/components/schemas/RunEvent"
+                  - $ref: "#/components/schemas/UnknownEvent"
                   - $ref: "#/components/schemas/InboxNotice"
                   - $ref: "#/components/schemas/ThreadNotice"
         "400": {$ref: "#/components/responses/BadRequest"}
@@ -3679,7 +3715,15 @@ paths:
         - {$ref: "#/components/parameters/Window"}
         - {name: agent, in: query, schema: {type: string}}
         - {name: run, in: query, schema: {type: string}}
-        - {name: kind, in: query, description: "An event kind, or a family such as `delta` or `lifecycle`.", schema: {type: string}}
+        - name: type
+          in: query
+          description: An event type, or a prefix of one such as `run.delta`, repeated for more than one. An entry matches any of them.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {type: string}
+        - {name: kind, in: query, deprecated: true, description: "A kind from before the event union, such as `lifecycle`. Use `type`.", schema: {type: string}}
         - {name: origin, in: query, schema: {type: string}}
         - {name: q, in: query, description: Matches part of an entry's detail., schema: {type: string}}
         - name: limit
@@ -11106,14 +11150,16 @@ components:
     JournalEntry:
       description: One event, summarized in a line.
       type: object
-      required: [seq, run_id, agent, rev, origin, kind, at]
+      required: [seq, run_id, agent, rev, origin, type, at]
       properties:
         seq: {type: integer, format: int64}
         run_id: {type: string}
         agent: {type: string}
         rev: {type: integer}
         origin: {type: string}
-        kind: {$ref: "#/components/schemas/EventKind"}
+        type:
+          description: The event's type, such as `run.completed.v1`. See `EventType`.
+          type: string
         at: {type: string, format: date-time}
         detail: {type: string}
     Span:
@@ -11901,38 +11947,51 @@ components:
         max: {type: integer}
         max_per_surface: {type: integer}
 
-    EventKind:
+    EventType:
       description: |
-        What an event is. Kinds are dotted, so a filter can select a family
-        (`delta`) or one member (`delta.citation`). The set is open in the
-        runtime: a reader should pass over a kind it does not know. The
-        `control.*` kinds here are defined and not published today. The
-        `usage.*` kinds report what model calls used: one `usage.call` per
-        call as it completes, and a `usage.child` when an attached run's total
-        is rolled up into its caller. A request
-        addressed to a run, such as `control.stop`, is the runtime's traffic
-        and never appears on this API.
+        What an event is, and the version of its body. `type` is the only
+        discriminator: dotted segments and a version, such as
+        `run.completed.v1`. A filter selects a family by a prefix (`run.delta`)
+        or one type. The set is open: a reader passes over a type it does not
+        know (`UnknownEvent`). This list is the catalog this build registers.
       type: string
       enum:
-        - delta.text
-        - delta.thinking
-        - delta.tool.call
-        - delta.tool.done
-        - delta.citation
-        - lifecycle.accepted
-        - lifecycle.started
-        - lifecycle.parked
-        - lifecycle.resumed
-        - lifecycle.completed
-        - lifecycle.failed
-        - lifecycle.child.parked
-        - lifecycle.stopped
-        - action.taken
-        - usage.call
-        - usage.child
-        - control.created
-        - control.revised
-        - control.deleted
+        - control.compact.v1
+        - control.stop.v1
+        - cron.tick.v1
+        - github.issue_comment.created.v1
+        - github.issues.labeled.v1
+        - github.issues.opened.v1
+        - github.pull_request.labeled.v1
+        - github.pull_request.opened.v1
+        - github.pull_request.ready_for_review.v1
+        - github.pull_request.review_requested.v1
+        - github.pull_request.synchronize.v1
+        - github.pull_request_review.submitted.v1
+        - github.pull_request_review_comment.created.v1
+        - jira.comment.created.v1
+        - jira.issue.assigned.v1
+        - jira.issue.created.v1
+        - message.posted.v1
+        - run.accepted.v1
+        - run.action.taken.v1
+        - run.child.parked.v1
+        - run.completed.v1
+        - run.context.compacted.v1
+        - run.delta.citation.v1
+        - run.delta.text.v1
+        - run.delta.thinking.v1
+        - run.delta.tool.call.v1
+        - run.delta.tool.done.v1
+        - run.failed.v1
+        - run.parked.v1
+        - run.resumed.v1
+        - run.started.v1
+        - run.stopped.v1
+        - run.usage.child.v1
+        - run.usage.v1
+        - slack.command.invoked.v1
+        - slack.session.stopped.v1
     TextPayload:
       description: One fragment of the agent's answer, in order. Concatenate fragments.
       type: object
@@ -11951,7 +12010,7 @@ components:
       required: [id, name, phase]
       properties:
         id:
-          description: Correlates the call with its `delta.tool.done`.
+          description: Correlates the call with its `run.delta.tool.done.v1`.
           type: string
         name: {type: string}
         phase:
@@ -12021,38 +12080,62 @@ components:
           type: string
         source: {$ref: "#/components/schemas/Provenance"}
         index: {type: integer}
-    LifecyclePayload:
-      description: |
-        The body of every lifecycle kind. A failed attempt is reported with
-        `terminal` false while the run may still be retried. The run's record
-        (`getRun`) is the authority on whether it is over.
+    AcceptedPayload:
+      description: The body of `run.accepted.v1`.
       type: object
       properties:
         attempt:
           description: The execution attempt that produced the event, from 1.
           type: integer
-        rev: {type: integer}
-        error:
-          description: The failure message, on `lifecycle.failed`.
-          type: string
-        terminal:
-          description: The run will not be retried. Meaningful on `lifecycle.failed`.
-          type: boolean
+    StartedPayload:
+      description: The body of `run.started.v1`.
+      type: object
+      properties:
+        attempt: {type: integer}
+    ParkedPayload:
+      description: The body of `run.parked.v1`.
+      type: object
+      properties:
+        attempt: {type: integer}
         reason:
-          description: What a parked run is waiting for.
+          description: What the run is waiting for.
           type: string
+        question:
+          description: What the run is waiting on a person for, when it parked on one.
+          $ref: "#/components/schemas/Question"
+    ResumedPayload:
+      description: The body of `run.resumed.v1`.
+      type: object
+      properties:
+        attempt: {type: integer}
+        answer:
+          description: The answer the run resumed with, after a question.
+          $ref: "#/components/schemas/Answer"
+    CompletedPayload:
+      description: The body of `run.completed.v1`.
+      type: object
+      properties:
+        attempt: {type: integer}
         text:
-          description: The final answer, on `lifecycle.completed`.
+          description: The whole final answer.
           type: string
         usage:
-          description: What the run used, on `lifecycle.completed`.
+          description: What the run used, everything it delegated included.
           $ref: "#/components/schemas/RunUsage"
-        question:
-          description: What the run is waiting on a person for, on `lifecycle.parked`.
-          $ref: "#/components/schemas/Question"
-        answer:
-          description: The answer the run resumed with, on `lifecycle.resumed` after a question.
-          $ref: "#/components/schemas/Answer"
+    FailedPayload:
+      description: |
+        The body of `run.failed.v1`. A failed attempt is reported with
+        `terminal` false while the run may still be retried. The run's record
+        (`getRun`) is the authority on whether it is over.
+      type: object
+      properties:
+        attempt: {type: integer}
+        error:
+          description: The failure message.
+          type: string
+        terminal:
+          description: The run will not be retried.
+          type: boolean
     QuestionTool:
       type: object
       required: [name, call_id]
@@ -12122,7 +12205,7 @@ components:
         expired: {type: boolean}
         run_id: {type: string}
     ChildQuestion:
-      description: The body of `lifecycle.child.parked`, a question a run this one waits on asked.
+      description: The body of `run.child.parked.v1`, a question a run this one waits on asked.
       type: object
       required: [run_id, question]
       properties:
@@ -12131,13 +12214,12 @@ components:
         question: {$ref: "#/components/schemas/Question"}
     StoppedPayload:
       description: |
-        The body of `lifecycle.stopped`: the run was asked to stop and wrapped
+        The body of `run.stopped.v1`: the run was asked to stop and wrapped
         its turn up. It is final. `text` is what the agent had said, which may
         be empty.
       type: object
       properties:
         attempt: {type: integer}
-        rev: {type: integer}
         reason:
           description: Why it was stopped, in the words of whoever asked.
           type: string
@@ -12259,519 +12341,670 @@ components:
         data:
           description: The tool's structured result, passed through untouched.
         error: {type: string}
-    EventBase:
-      description: What every event carries, whatever its kind.
+    CompactionPayload:
+      description: The body of `run.context.compacted.v1`.
       type: object
-      required: [seq, topic, run_id, tenant, agent, rev, origin, at]
       properties:
+        trigger: {type: string}
+        by: {type: string}
+        strategy: {type: string}
+        tokens_before: {type: integer}
+        tokens_after: {type: integer}
+        summarized: {type: integer}
+        kept: {type: integer}
+    StopRequestPayload:
+      description: The body of `control.stop.v1`.
+      type: object
+      required: [run_id]
+      properties:
+        run_id: {type: string}
+        reason: {type: string}
+        by: {type: string}
+        at: {type: string, format: date-time}
+    CompactRequestPayload:
+      description: The body of `control.compact.v1`.
+      type: object
+      required: [run_id, at]
+      properties:
+        run_id: {type: string}
+        by: {type: string}
+        at: {type: string, format: date-time}
+    EventRequest:
+      description: What an ingress event asks of an agent. Every ingress body that can start a run carries it.
+      type: object
+      required: [text]
+      properties:
+        text:
+          description: The request, with any agent mention taken out.
+          type: string
+        actor: {$ref: "#/components/schemas/Actor"}
+        mentions:
+          description: The agents the request names, in order.
+          type: array
+          items: {type: string}
+        attachments:
+          type: array
+          items: {$ref: "#/components/schemas/Attachment"}
+        context:
+          description: Host context shown to the model next to the body's own fields.
+          type: object
+          additionalProperties: {type: string}
+    SlackRef:
+      description: Where in Slack a message was posted.
+      type: object
+      required: [team, channel, user, event, ts]
+      properties:
+        team: {type: string}
+        channel: {type: string}
+        user: {type: string}
+        event: {type: string}
+        ts: {type: string}
+        thread_ts: {type: string}
+        channel_type: {type: string}
+        app_id: {type: string}
+    MessagePostedPayload:
+      description: The body of `message.posted.v1`. `slack` is set when the surface is Slack.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - type: object
+          properties:
+            slack: {$ref: "#/components/schemas/SlackRef"}
+    SlackCommandPayload:
+      description: The body of `slack.command.invoked.v1`. `text` is the command's arguments.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - type: object
+          required: [command, team, channel, user]
+          properties:
+            command: {type: string}
+            team: {type: string}
+            channel: {type: string}
+            user: {type: string}
+            app_id: {type: string}
+    SlackSessionStoppedPayload:
+      description: The body of `slack.session.stopped.v1`. `thread_ts` is absent for a code channel.
+      type: object
+      required: [team, channel, user]
+      properties:
+        team: {type: string}
+        channel: {type: string}
+        thread_ts: {type: string}
+        user: {type: string}
+    GitHubRef:
+      description: The GitHub issue or pull request an event is about.
+      type: object
+      required: [owner, repo, number, title, sender]
+      properties:
+        owner: {type: string}
+        repo: {type: string}
+        number: {type: integer}
+        pull:
+          description: The event is about a pull request rather than an issue.
+          type: boolean
+        title: {type: string}
+        sender: {type: string}
+        state: {type: string}
+        author: {type: string}
+        url: {type: string}
+        base_ref: {type: string}
+        head_ref: {type: string}
+        head_sha: {type: string}
+        labels:
+          type: array
+          items: {type: string}
+        draft: {type: boolean}
+        installation_id: {type: integer, format: int64}
+    GitHubIssuePayload:
+      description: The body of a GitHub issue or pull request event that carries nothing of its own.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - $ref: "#/components/schemas/GitHubRef"
+    GitHubIssueCommentPayload:
+      description: The body of a GitHub comment or review.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - $ref: "#/components/schemas/GitHubRef"
+        - type: object
+          properties:
+            comment_id: {type: integer, format: int64}
+    GitHubReviewCommentPayload:
+      description: The body of `github.pull_request_review_comment.created.v1`. `review_root_id` is the first comment of the review thread.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - $ref: "#/components/schemas/GitHubRef"
+        - type: object
+          properties:
+            comment_id: {type: integer, format: int64}
+            review_root_id: {type: integer, format: int64}
+    GitHubReviewRequestedPayload:
+      description: The body of `github.pull_request.review_requested.v1`. `reviewer` is the agent asked, when it is one.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - $ref: "#/components/schemas/GitHubRef"
+        - type: object
+          properties:
+            reviewer: {type: string}
+    JiraRef:
+      description: The Jira issue an event is about.
+      type: object
+      required: [site, key, webhook_event]
+      properties:
+        site: {type: string}
+        key: {type: string}
+        webhook_event: {type: string}
+        issue_event: {type: string}
+        id: {type: string}
+        summary: {type: string}
+        status: {type: string}
+        issue_type: {type: string}
+        priority: {type: string}
+        project: {type: string}
+        project_name: {type: string}
+        assignee: {type: string}
+        reporter: {type: string}
+        labels:
+          type: array
+          items: {type: string}
+        url: {type: string}
+    JiraIssuePayload:
+      description: The body of `jira.issue.created.v1`.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - $ref: "#/components/schemas/JiraRef"
+    JiraCommentPayload:
+      description: The body of `jira.comment.created.v1`.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - $ref: "#/components/schemas/JiraRef"
+        - type: object
+          properties:
+            comment_id: {type: string}
+    JiraIssueAssignedPayload:
+      description: The body of `jira.issue.assigned.v1`. `agent` is the agent the issue was handed to, when the host knows it.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - $ref: "#/components/schemas/JiraRef"
+        - type: object
+          properties:
+            agent: {type: string}
+    CronTickPayload:
+      description: The body of `cron.tick.v1`. `occurrence` is the scheduled instant, not the observed one.
+      allOf:
+        - $ref: "#/components/schemas/EventRequest"
+        - type: object
+          required: [schedule, expression, occurrence]
+          properties:
+            schedule: {type: string}
+            expression: {type: string}
+            occurrence: {type: string, format: date-time}
+    EventEnvelope:
+      description: |
+        What every event carries, whatever its type. The fields follow
+        CloudEvents naming. `type` is the only discriminator and carries the
+        version; `data` is that type's body as JSON. `run`, `seq`, `agent`,
+        `version` and `digest` are set on every run event.
+      type: object
+      required: [id, source, type, channel, time, hops]
+      properties:
+        id:
+          description: Unique per source. A redelivery keeps it.
+          type: string
+        source:
+          description: What produced the event, as a URI.
+          type: string
+        type:
+          description: The body's type and version. See `EventType`.
+          type: string
+        subject:
+          description: The resource inside `source`, such as `issues/42`.
+          type: string
+        channel:
+          description: Where the event was published, as a URI.
+          type: string
+        time:
+          description: When the source says the event happened.
+          type: string
+          format: date-time
+        hops:
+          description: How many events led to this one.
+          type: integer
+        tenant: {type: string}
+        run: {type: string}
         seq:
           description: Orders events within one run. It increases and is not contiguous, so compare it, do not count on it. It is the resume cursor.
           type: integer
           format: int64
-        topic:
-          description: Where the event was published, always `agent:<name>:<run>`.
-          type: string
-        run_id: {type: string}
-        tenant: {type: string}
         agent: {type: string}
-        rev: {type: integer}
-        origin: {type: string}
-        at: {type: string, format: date-time}
-    ManifestEventBase:
-      type: object
-      required: [seq, at]
-      properties:
-        seq: {type: integer, format: int64}
-        at: {type: string, format: date-time}
+        version:
+          description: The agent definition version the run is pinned to.
+          type: string
+        digest:
+          description: The content hash of that definition.
+          type: string
+    UnknownEvent:
+      description: |
+        The fallback for an event whose `type` is not in `RunEvent`'s mapping,
+        such as one a newer server added. It is never guessed from the shape
+        of `data`: a reader passes over it, or relays it unchanged.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type:
+              description: A type outside the catalog this server was built with.
+              type: string
+              not: {$ref: "#/components/schemas/EventType"}
+            data:
+              type: object
+              additionalProperties: true
     RunEvent:
       description: |
-        One thing a run produced, as the event stream and `listRunEvents` send
-        it. `kind` says which variant it is. `payload` is the kind's body as
-        JSON, base64-encoded, because the server marshals a byte slice: decode
-        the base64, then parse the JSON. The decoded shape for each kind is the
-        schema named in `contentSchema`. A kind may carry no payload.
+        One event, as the event stream and `listRunEvents` send it: the
+        envelope, and `data`, the body for its `type`, inline. `type` says
+        which variant it is. A type not in the mapping is an `UnknownEvent`.
+        The API sends run events only (`run.*`); the other types are listed
+        so the union is the whole catalog.
       oneOf:
+        - $ref: "#/components/schemas/CompactRequestedEvent"
+        - $ref: "#/components/schemas/StopRequestedEvent"
+        - $ref: "#/components/schemas/CronTickEvent"
+        - $ref: "#/components/schemas/GitHubIssueCommentCreatedEvent"
+        - $ref: "#/components/schemas/GitHubIssueLabeledEvent"
+        - $ref: "#/components/schemas/GitHubIssueOpenedEvent"
+        - $ref: "#/components/schemas/GitHubPullLabeledEvent"
+        - $ref: "#/components/schemas/GitHubPullOpenedEvent"
+        - $ref: "#/components/schemas/GitHubPullReadyForReviewEvent"
+        - $ref: "#/components/schemas/GitHubReviewRequestedEvent"
+        - $ref: "#/components/schemas/GitHubPullSynchronizeEvent"
+        - $ref: "#/components/schemas/GitHubReviewSubmittedEvent"
+        - $ref: "#/components/schemas/GitHubReviewCommentCreatedEvent"
+        - $ref: "#/components/schemas/JiraCommentCreatedEvent"
+        - $ref: "#/components/schemas/JiraIssueAssignedEvent"
+        - $ref: "#/components/schemas/JiraIssueCreatedEvent"
+        - $ref: "#/components/schemas/MessagePostedEvent"
+        - $ref: "#/components/schemas/RunAcceptedEvent"
+        - $ref: "#/components/schemas/ActionTakenEvent"
+        - $ref: "#/components/schemas/ChildParkedEvent"
+        - $ref: "#/components/schemas/RunCompletedEvent"
+        - $ref: "#/components/schemas/ContextCompactedEvent"
+        - $ref: "#/components/schemas/CitationEvent"
         - $ref: "#/components/schemas/TextDeltaEvent"
         - $ref: "#/components/schemas/ThinkingDeltaEvent"
         - $ref: "#/components/schemas/ToolCallEvent"
         - $ref: "#/components/schemas/ToolDoneEvent"
-        - $ref: "#/components/schemas/CitationEvent"
-        - $ref: "#/components/schemas/RunAcceptedEvent"
-        - $ref: "#/components/schemas/RunStartedEvent"
+        - $ref: "#/components/schemas/RunFailedEvent"
         - $ref: "#/components/schemas/RunParkedEvent"
         - $ref: "#/components/schemas/RunResumedEvent"
-        - $ref: "#/components/schemas/RunCompletedEvent"
-        - $ref: "#/components/schemas/RunFailedEvent"
-        - $ref: "#/components/schemas/ChildParkedEvent"
+        - $ref: "#/components/schemas/RunStartedEvent"
         - $ref: "#/components/schemas/RunStoppedEvent"
-        - $ref: "#/components/schemas/ActionTakenEvent"
-        - $ref: "#/components/schemas/UsageCallEvent"
         - $ref: "#/components/schemas/UsageChildEvent"
-        - $ref: "#/components/schemas/AgentCreatedEvent"
-        - $ref: "#/components/schemas/AgentRevisedEvent"
-        - $ref: "#/components/schemas/AgentDeletedEvent"
+        - $ref: "#/components/schemas/UsageCallEvent"
+        - $ref: "#/components/schemas/SlackCommandInvokedEvent"
+        - $ref: "#/components/schemas/SlackSessionStoppedEvent"
       discriminator:
-        propertyName: kind
+        propertyName: type
         mapping:
-          delta.text: "#/components/schemas/TextDeltaEvent"
-          delta.thinking: "#/components/schemas/ThinkingDeltaEvent"
-          delta.tool.call: "#/components/schemas/ToolCallEvent"
-          delta.tool.done: "#/components/schemas/ToolDoneEvent"
-          delta.citation: "#/components/schemas/CitationEvent"
-          lifecycle.accepted: "#/components/schemas/RunAcceptedEvent"
-          lifecycle.started: "#/components/schemas/RunStartedEvent"
-          lifecycle.parked: "#/components/schemas/RunParkedEvent"
-          lifecycle.resumed: "#/components/schemas/RunResumedEvent"
-          lifecycle.completed: "#/components/schemas/RunCompletedEvent"
-          lifecycle.failed: "#/components/schemas/RunFailedEvent"
-          lifecycle.child.parked: "#/components/schemas/ChildParkedEvent"
-          lifecycle.stopped: "#/components/schemas/RunStoppedEvent"
-          action.taken: "#/components/schemas/ActionTakenEvent"
-          usage.call: "#/components/schemas/UsageCallEvent"
-          usage.child: "#/components/schemas/UsageChildEvent"
-          control.created: "#/components/schemas/AgentCreatedEvent"
-          control.revised: "#/components/schemas/AgentRevisedEvent"
-          control.deleted: "#/components/schemas/AgentDeletedEvent"
-    TextDeltaEvent:
-      description: One fragment of the answer.
+          control.compact.v1: "#/components/schemas/CompactRequestedEvent"
+          control.stop.v1: "#/components/schemas/StopRequestedEvent"
+          cron.tick.v1: "#/components/schemas/CronTickEvent"
+          github.issue_comment.created.v1: "#/components/schemas/GitHubIssueCommentCreatedEvent"
+          github.issues.labeled.v1: "#/components/schemas/GitHubIssueLabeledEvent"
+          github.issues.opened.v1: "#/components/schemas/GitHubIssueOpenedEvent"
+          github.pull_request.labeled.v1: "#/components/schemas/GitHubPullLabeledEvent"
+          github.pull_request.opened.v1: "#/components/schemas/GitHubPullOpenedEvent"
+          github.pull_request.ready_for_review.v1: "#/components/schemas/GitHubPullReadyForReviewEvent"
+          github.pull_request.review_requested.v1: "#/components/schemas/GitHubReviewRequestedEvent"
+          github.pull_request.synchronize.v1: "#/components/schemas/GitHubPullSynchronizeEvent"
+          github.pull_request_review.submitted.v1: "#/components/schemas/GitHubReviewSubmittedEvent"
+          github.pull_request_review_comment.created.v1: "#/components/schemas/GitHubReviewCommentCreatedEvent"
+          jira.comment.created.v1: "#/components/schemas/JiraCommentCreatedEvent"
+          jira.issue.assigned.v1: "#/components/schemas/JiraIssueAssignedEvent"
+          jira.issue.created.v1: "#/components/schemas/JiraIssueCreatedEvent"
+          message.posted.v1: "#/components/schemas/MessagePostedEvent"
+          run.accepted.v1: "#/components/schemas/RunAcceptedEvent"
+          run.action.taken.v1: "#/components/schemas/ActionTakenEvent"
+          run.child.parked.v1: "#/components/schemas/ChildParkedEvent"
+          run.completed.v1: "#/components/schemas/RunCompletedEvent"
+          run.context.compacted.v1: "#/components/schemas/ContextCompactedEvent"
+          run.delta.citation.v1: "#/components/schemas/CitationEvent"
+          run.delta.text.v1: "#/components/schemas/TextDeltaEvent"
+          run.delta.thinking.v1: "#/components/schemas/ThinkingDeltaEvent"
+          run.delta.tool.call.v1: "#/components/schemas/ToolCallEvent"
+          run.delta.tool.done.v1: "#/components/schemas/ToolDoneEvent"
+          run.failed.v1: "#/components/schemas/RunFailedEvent"
+          run.parked.v1: "#/components/schemas/RunParkedEvent"
+          run.resumed.v1: "#/components/schemas/RunResumedEvent"
+          run.started.v1: "#/components/schemas/RunStartedEvent"
+          run.stopped.v1: "#/components/schemas/RunStoppedEvent"
+          run.usage.child.v1: "#/components/schemas/UsageChildEvent"
+          run.usage.v1: "#/components/schemas/UsageCallEvent"
+          slack.command.invoked.v1: "#/components/schemas/SlackCommandInvokedEvent"
+          slack.session.stopped.v1: "#/components/schemas/SlackSessionStoppedEvent"
+    CompactRequestedEvent:
+      description: A request that a run compact its context. The runtime's traffic, never sent on this API.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: delta.text}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/TextPayload"}
-    ThinkingDeltaEvent:
-      description: One fragment of reasoning.
+            type: {type: string, const: control.compact.v1}
+            data: {$ref: "#/components/schemas/CompactRequestPayload"}
+    StopRequestedEvent:
+      description: A request that a run stop. The runtime's traffic, never sent on this API.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: delta.thinking}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/ThinkingPayload"}
-    ToolCallEvent:
-      description: The agent reached for a tool.
+            type: {type: string, const: control.stop.v1}
+            data: {$ref: "#/components/schemas/StopRequestPayload"}
+    CronTickEvent:
+      description: A schedule fired.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: delta.tool.call}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/ToolCallPayload"}
-    ToolDoneEvent:
-      description: A tool finished.
+            type: {type: string, const: cron.tick.v1}
+            data: {$ref: "#/components/schemas/CronTickPayload"}
+    GitHubIssueCommentCreatedEvent:
+      description: A comment on a GitHub issue or pull request.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: delta.tool.done}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/ToolDonePayload"}
-    CitationEvent:
-      description: A passage the turn was grounded in.
+            type: {type: string, const: github.issue_comment.created.v1}
+            data: {$ref: "#/components/schemas/GitHubIssueCommentPayload"}
+    GitHubIssueLabeledEvent:
+      description: A GitHub issue was labeled.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: delta.citation}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/CitationPayload"}
+            type: {type: string, const: github.issues.labeled.v1}
+            data: {$ref: "#/components/schemas/GitHubIssuePayload"}
+    GitHubIssueOpenedEvent:
+      description: A GitHub issue was opened.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: github.issues.opened.v1}
+            data: {$ref: "#/components/schemas/GitHubIssuePayload"}
+    GitHubPullLabeledEvent:
+      description: A pull request was labeled.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: github.pull_request.labeled.v1}
+            data: {$ref: "#/components/schemas/GitHubIssuePayload"}
+    GitHubPullOpenedEvent:
+      description: A pull request was opened.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: github.pull_request.opened.v1}
+            data: {$ref: "#/components/schemas/GitHubIssuePayload"}
+    GitHubPullReadyForReviewEvent:
+      description: A draft pull request was marked ready for review.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: github.pull_request.ready_for_review.v1}
+            data: {$ref: "#/components/schemas/GitHubIssuePayload"}
+    GitHubReviewRequestedEvent:
+      description: A review was requested on a pull request.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: github.pull_request.review_requested.v1}
+            data: {$ref: "#/components/schemas/GitHubReviewRequestedPayload"}
+    GitHubPullSynchronizeEvent:
+      description: New commits were pushed to a pull request.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: github.pull_request.synchronize.v1}
+            data: {$ref: "#/components/schemas/GitHubIssuePayload"}
+    GitHubReviewSubmittedEvent:
+      description: A pull request review was submitted. `comment_id` is the review's id.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: github.pull_request_review.submitted.v1}
+            data: {$ref: "#/components/schemas/GitHubIssueCommentPayload"}
+    GitHubReviewCommentCreatedEvent:
+      description: A comment on a pull request's diff.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: github.pull_request_review_comment.created.v1}
+            data: {$ref: "#/components/schemas/GitHubReviewCommentPayload"}
+    JiraCommentCreatedEvent:
+      description: A comment on a Jira issue.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: jira.comment.created.v1}
+            data: {$ref: "#/components/schemas/JiraCommentPayload"}
+    JiraIssueAssignedEvent:
+      description: A Jira issue was assigned to an agent.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: jira.issue.assigned.v1}
+            data: {$ref: "#/components/schemas/JiraIssueAssignedPayload"}
+    JiraIssueCreatedEvent:
+      description: A Jira issue was created.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: jira.issue.created.v1}
+            data: {$ref: "#/components/schemas/JiraIssuePayload"}
+    MessagePostedEvent:
+      description: A person wrote to an agent, on any surface.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: message.posted.v1}
+            data: {$ref: "#/components/schemas/MessagePostedPayload"}
     RunAcceptedEvent:
       description: The run was accepted.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: lifecycle.accepted}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/LifecyclePayload"}
-    RunStartedEvent:
-      description: An attempt started.
-      allOf:
-        - $ref: "#/components/schemas/EventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.started}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/LifecyclePayload"}
-    RunParkedEvent:
-      description: The run is waiting on something.
-      allOf:
-        - $ref: "#/components/schemas/EventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.parked}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/LifecyclePayload"}
-    ChildParkedEvent:
-      description: A run this one is waiting on is waiting on a person. Answer it on that run.
-      allOf:
-        - $ref: "#/components/schemas/EventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.child.parked}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/ChildQuestion"}
-    RunResumedEvent:
-      description: A parked run carried on.
-      allOf:
-        - $ref: "#/components/schemas/EventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.resumed}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/LifecyclePayload"}
-    RunCompletedEvent:
-      description: The run finished, with its answer.
-      allOf:
-        - $ref: "#/components/schemas/EventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.completed}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/LifecyclePayload"}
-    RunFailedEvent:
-      description: An attempt failed. Final only when `terminal` is true.
-      allOf:
-        - $ref: "#/components/schemas/EventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.failed}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/LifecyclePayload"}
-    RunStoppedEvent:
-      description: The run was stopped on request, with what it had said. Final.
-      allOf:
-        - $ref: "#/components/schemas/EventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.stopped}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/StoppedPayload"}
+            type: {type: string, const: run.accepted.v1}
+            data: {$ref: "#/components/schemas/AcceptedPayload"}
     ActionTakenEvent:
       description: A tool acted on something.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: action.taken}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/ActionPayload"}
-    UsageCallEvent:
-      description: One model call and what it used.
+            type: {type: string, const: run.action.taken.v1}
+            data: {$ref: "#/components/schemas/ActionPayload"}
+    ChildParkedEvent:
+      description: A run this one is waiting on is waiting on a person. Answer it on that run.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: usage.call}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/UsageCallPayload"}
+            type: {type: string, const: run.child.parked.v1}
+            data: {$ref: "#/components/schemas/ChildQuestion"}
+    RunCompletedEvent:
+      description: The run finished, with its answer.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.completed.v1}
+            data: {$ref: "#/components/schemas/CompletedPayload"}
+    ContextCompactedEvent:
+      description: "The run's context was compacted. Opt in: sent only to a reader that names `run.context`."
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.context.compacted.v1}
+            data: {$ref: "#/components/schemas/CompactionPayload"}
+    CitationEvent:
+      description: A passage the turn was grounded in.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.delta.citation.v1}
+            data: {$ref: "#/components/schemas/CitationPayload"}
+    TextDeltaEvent:
+      description: One fragment of the answer.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.delta.text.v1}
+            data: {$ref: "#/components/schemas/TextPayload"}
+    ThinkingDeltaEvent:
+      description: One fragment of reasoning.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.delta.thinking.v1}
+            data: {$ref: "#/components/schemas/ThinkingPayload"}
+    ToolCallEvent:
+      description: The agent reached for a tool.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.delta.tool.call.v1}
+            data: {$ref: "#/components/schemas/ToolCallPayload"}
+    ToolDoneEvent:
+      description: A tool finished.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.delta.tool.done.v1}
+            data: {$ref: "#/components/schemas/ToolDonePayload"}
+    RunFailedEvent:
+      description: An attempt failed. Final only when `terminal` is true.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.failed.v1}
+            data: {$ref: "#/components/schemas/FailedPayload"}
+    RunParkedEvent:
+      description: The run is waiting on something.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.parked.v1}
+            data: {$ref: "#/components/schemas/ParkedPayload"}
+    RunResumedEvent:
+      description: A parked run carried on.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.resumed.v1}
+            data: {$ref: "#/components/schemas/ResumedPayload"}
+    RunStartedEvent:
+      description: An attempt started.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.started.v1}
+            data: {$ref: "#/components/schemas/StartedPayload"}
+    RunStoppedEvent:
+      description: The run was stopped on request, with what it had said. Final.
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.stopped.v1}
+            data: {$ref: "#/components/schemas/StoppedPayload"}
     UsageChildEvent:
-      description: An attached run's total, rolled up into this run.
+      description: "An attached run's total, rolled up into this run. Opt in: sent only to a reader that names `run.usage`."
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: usage.child}
-            payload:
-              type: string
-              contentEncoding: base64
-              contentMediaType: application/json
-              contentSchema: {$ref: "#/components/schemas/UsageChildPayload"}
-    AgentCreatedEvent:
-      description: An agent was created. Not published today.
+            type: {type: string, const: run.usage.child.v1}
+            data: {$ref: "#/components/schemas/UsageChildPayload"}
+    UsageCallEvent:
+      description: "One model call and what it used. Opt in: sent only to a reader that names `run.usage`."
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: control.created}
-            payload:
-              type: string
-              contentEncoding: base64
-    AgentRevisedEvent:
-      description: An agent was revised. Not published today.
+            type: {type: string, const: run.usage.v1}
+            data: {$ref: "#/components/schemas/UsageCallPayload"}
+    SlackCommandInvokedEvent:
+      description: A Slack slash command.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: control.revised}
-            payload:
-              type: string
-              contentEncoding: base64
-    AgentDeletedEvent:
-      description: An agent was deleted. Not published today.
+            type: {type: string, const: slack.command.invoked.v1}
+            data: {$ref: "#/components/schemas/SlackCommandPayload"}
+    SlackSessionStoppedEvent:
+      description: A person pressed stop on an agent session in Slack.
       allOf:
-        - $ref: "#/components/schemas/EventBase"
+        - $ref: "#/components/schemas/EventEnvelope"
         - type: object
-          required: [kind]
+          required: [type, data]
           properties:
-            kind: {type: string, const: control.deleted}
-            payload:
-              type: string
-              contentEncoding: base64
-    ManifestEvent:
-      description: |
-        One event in a run manifest, with its body already decoded. It is the
-        same union as `RunEvent`, without the envelope fields the manifest's
-        run already states. `body` is absent when the event carried none.
-      oneOf:
-        - $ref: "#/components/schemas/ManifestTextDeltaEvent"
-        - $ref: "#/components/schemas/ManifestThinkingDeltaEvent"
-        - $ref: "#/components/schemas/ManifestToolCallEvent"
-        - $ref: "#/components/schemas/ManifestToolDoneEvent"
-        - $ref: "#/components/schemas/ManifestCitationEvent"
-        - $ref: "#/components/schemas/ManifestRunAcceptedEvent"
-        - $ref: "#/components/schemas/ManifestRunStartedEvent"
-        - $ref: "#/components/schemas/ManifestRunParkedEvent"
-        - $ref: "#/components/schemas/ManifestRunResumedEvent"
-        - $ref: "#/components/schemas/ManifestRunCompletedEvent"
-        - $ref: "#/components/schemas/ManifestRunFailedEvent"
-        - $ref: "#/components/schemas/ManifestChildParkedEvent"
-        - $ref: "#/components/schemas/ManifestRunStoppedEvent"
-        - $ref: "#/components/schemas/ManifestActionTakenEvent"
-        - $ref: "#/components/schemas/ManifestUsageCallEvent"
-        - $ref: "#/components/schemas/ManifestUsageChildEvent"
-        - $ref: "#/components/schemas/ManifestAgentCreatedEvent"
-        - $ref: "#/components/schemas/ManifestAgentRevisedEvent"
-        - $ref: "#/components/schemas/ManifestAgentDeletedEvent"
-      discriminator:
-        propertyName: kind
-        mapping:
-          delta.text: "#/components/schemas/ManifestTextDeltaEvent"
-          delta.thinking: "#/components/schemas/ManifestThinkingDeltaEvent"
-          delta.tool.call: "#/components/schemas/ManifestToolCallEvent"
-          delta.tool.done: "#/components/schemas/ManifestToolDoneEvent"
-          delta.citation: "#/components/schemas/ManifestCitationEvent"
-          lifecycle.accepted: "#/components/schemas/ManifestRunAcceptedEvent"
-          lifecycle.started: "#/components/schemas/ManifestRunStartedEvent"
-          lifecycle.parked: "#/components/schemas/ManifestRunParkedEvent"
-          lifecycle.resumed: "#/components/schemas/ManifestRunResumedEvent"
-          lifecycle.completed: "#/components/schemas/ManifestRunCompletedEvent"
-          lifecycle.failed: "#/components/schemas/ManifestRunFailedEvent"
-          lifecycle.child.parked: "#/components/schemas/ManifestChildParkedEvent"
-          lifecycle.stopped: "#/components/schemas/ManifestRunStoppedEvent"
-          action.taken: "#/components/schemas/ManifestActionTakenEvent"
-          usage.call: "#/components/schemas/ManifestUsageCallEvent"
-          usage.child: "#/components/schemas/ManifestUsageChildEvent"
-          control.created: "#/components/schemas/ManifestAgentCreatedEvent"
-          control.revised: "#/components/schemas/ManifestAgentRevisedEvent"
-          control.deleted: "#/components/schemas/ManifestAgentDeletedEvent"
-    ManifestTextDeltaEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: delta.text}
-            body: {$ref: "#/components/schemas/TextPayload"}
-    ManifestThinkingDeltaEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: delta.thinking}
-            body: {$ref: "#/components/schemas/ThinkingPayload"}
-    ManifestToolCallEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: delta.tool.call}
-            body: {$ref: "#/components/schemas/ToolCallPayload"}
-    ManifestToolDoneEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: delta.tool.done}
-            body: {$ref: "#/components/schemas/ToolDonePayload"}
-    ManifestCitationEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: delta.citation}
-            body: {$ref: "#/components/schemas/CitationPayload"}
-    ManifestRunAcceptedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.accepted}
-            body: {$ref: "#/components/schemas/LifecyclePayload"}
-    ManifestRunStartedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.started}
-            body: {$ref: "#/components/schemas/LifecyclePayload"}
-    ManifestRunParkedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.parked}
-            body: {$ref: "#/components/schemas/LifecyclePayload"}
-    ManifestChildParkedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.child.parked}
-            body: {$ref: "#/components/schemas/ChildQuestion"}
-    ManifestRunResumedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.resumed}
-            body: {$ref: "#/components/schemas/LifecyclePayload"}
-    ManifestRunCompletedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.completed}
-            body: {$ref: "#/components/schemas/LifecyclePayload"}
-    ManifestRunFailedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.failed}
-            body: {$ref: "#/components/schemas/LifecyclePayload"}
-    ManifestRunStoppedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: lifecycle.stopped}
-            body: {$ref: "#/components/schemas/StoppedPayload"}
-    ManifestActionTakenEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: action.taken}
-            body: {$ref: "#/components/schemas/ActionPayload"}
-    ManifestUsageCallEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: usage.call}
-            body: {$ref: "#/components/schemas/UsageCallPayload"}
-    ManifestUsageChildEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: usage.child}
-            body: {$ref: "#/components/schemas/UsageChildPayload"}
-    ManifestAgentCreatedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: control.created}
-            body: {}
-    ManifestAgentRevisedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: control.revised}
-            body: {}
-    ManifestAgentDeletedEvent:
-      allOf:
-        - $ref: "#/components/schemas/ManifestEventBase"
-        - type: object
-          required: [kind]
-          properties:
-            kind: {type: string, const: control.deleted}
-            body: {}
+            type: {type: string, const: slack.session.stopped.v1}
+            data: {$ref: "#/components/schemas/SlackSessionStoppedPayload"}
     ManifestRun:
       description: Everything recorded about one run.
       type: object
@@ -12791,7 +13024,7 @@ components:
         duration_ms: {type: integer, format: int64}
         events:
           type: array
-          items: {$ref: "#/components/schemas/ManifestEvent"}
+          items: {$ref: "#/components/schemas/RunEvent"}
         complete:
           description: False when the run's first events are no longer held.
           type: boolean
@@ -12800,7 +13033,10 @@ components:
       type: object
       required: [version, generated_at, root, runs, usage]
       properties:
-        version: {type: integer, const: 1}
+        version:
+          description: 2 since events became RunEvent (type and data). Version 1 held kind and body.
+          type: integer
+          const: 2
         generated_at: {type: string, format: date-time}
         root: {type: string}
         runs:

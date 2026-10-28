@@ -5,8 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/registry"
-
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 )
 
@@ -32,8 +31,8 @@ func (s *Server) agentHues(w http.ResponseWriter, r *http.Request, who auth.Prin
 		if name == "" || !seer.Agent(name) {
 			continue
 		}
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, name, 0); err != nil {
-			if errors.Is(err, registry.ErrNotFound) {
+		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, name, 0); err != nil {
+			if errors.Is(err, wire.ErrNotFound) {
 				continue
 			}
 			s.problem(w, err)

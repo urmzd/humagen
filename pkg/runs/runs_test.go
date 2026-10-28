@@ -1,13 +1,15 @@
 package runs
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/call"
 )
@@ -16,35 +18,35 @@ var t0 = time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 
 func record(t *testing.T, x *Index, tenant, id, agent, origin string, at time.Duration, meta map[string]string) {
 	t.Helper()
-	tag := envelope.Tag{ID: id, Tenant: tenant, Agent: agent, Origin: origin, Text: "go", Meta: meta, At: t0.Add(at)}
+	tag := wire.NewEvent(wire.Raise{ID: id, Tenant: tenant, Agent: agent, Origin: origin, Text: "go", Context: meta, At: t0.Add(at)})
 	if err := x.Record(id, tag, 1); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func end(t *testing.T, x *Index, tenant, id string, at time.Duration, kind envelope.Kind, body payload.Lifecycle) (Run, bool) {
+func end(t *testing.T, x *Index, tenant, id string, at time.Duration, kind string, body wire.Lifecycle) (Run, bool) {
 	t.Helper()
-	b, err := payload.Encode(body)
+	b, err := wire.LifecycleBody(kind, body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return x.Observe(envelope.Event{RunID: id, Tenant: tenant, Kind: kind, Payload: b, At: t0.Add(at)})
+	return x.Observe(event.Envelope{Run: id, Tenant: tenant, Type: kind, Data: b, Time: t0.Add(at)})
 }
 
 func TestObserveReportsAnEndingOnce(t *testing.T) {
 	x := NewIndex()
 	record(t, x, "acme", "r1", "lead", "api", 0, nil)
-	if _, ended := end(t, x, "acme", "r1", time.Second, envelope.KindFailed, payload.Lifecycle{Error: "timeout"}); ended {
+	if _, ended := end(t, x, "acme", "r1", time.Second, event.TypeFailed, wire.Lifecycle{Error: "timeout"}); ended {
 		t.Fatal("a failure that will be retried ended the run")
 	}
-	r, ended := end(t, x, "acme", "r1", 2*time.Second, envelope.KindFailed, payload.Lifecycle{Error: "timeout", Terminal: true})
+	r, ended := end(t, x, "acme", "r1", 2*time.Second, event.TypeFailed, wire.Lifecycle{Error: "timeout", Terminal: true})
 	if !ended || r.Status != Failed || r.Error != "timeout" {
 		t.Fatalf("got %+v, %v", r, ended)
 	}
-	if _, again := end(t, x, "acme", "r1", 3*time.Second, envelope.KindCompleted, payload.Lifecycle{}); again {
+	if _, again := end(t, x, "acme", "r1", 3*time.Second, event.TypeCompleted, wire.Lifecycle{}); again {
 		t.Fatal("an ended run ended twice")
 	}
-	if _, ok := end(t, x, "globex", "r1", time.Second, envelope.KindCompleted, payload.Lifecycle{}); ok {
+	if _, ok := end(t, x, "globex", "r1", time.Second, event.TypeCompleted, wire.Lifecycle{}); ok {
 		t.Fatal("another tenant's event moved the run")
 	}
 }
@@ -89,9 +91,9 @@ func TestSummarize(t *testing.T) {
 	for i, took := range []time.Duration{time.Second, 2 * time.Second, 9 * time.Second} {
 		id := string(rune('a' + i))
 		record(t, x, "acme", id, "lead", "api", time.Duration(i)*time.Second, nil)
-		kind, body := envelope.KindCompleted, payload.Lifecycle{}
+		kind, body := event.TypeCompleted, wire.Lifecycle{}
 		if i == 2 {
-			kind, body = envelope.KindFailed, payload.Lifecycle{Error: "x", Terminal: true}
+			kind, body = event.TypeFailed, wire.Lifecycle{Error: "x", Terminal: true}
 		}
 		end(t, x, "acme", id, time.Duration(i)*time.Second+took, kind, body)
 	}
@@ -130,7 +132,7 @@ func TestRecent(t *testing.T) {
 	x := NewIndex()
 	record(t, x, "acme", "a", "lead", "api", 0, nil)
 	record(t, x, "acme", "b", "helper", "api", time.Minute, map[string]string{MetaProject: "Launch"})
-	end(t, x, "acme", "b", 2*time.Minute, envelope.KindFailed, payload.Lifecycle{Terminal: true})
+	end(t, x, "acme", "b", 2*time.Minute, event.TypeFailed, wire.Lifecycle{Terminal: true})
 	if w := x.Recent("acme", "", "", t0); w.Total != 2 || w.Failed != 1 {
 		t.Fatalf("all = %+v", w)
 	}
@@ -155,10 +157,10 @@ func TestRecentSpendCountsEachRunsOwnCalls(t *testing.T) {
 	x := NewIndex()
 	record(t, x, "acme", "a", "lead", "api", 0, nil)
 	record(t, x, "acme", "b", "lead", "api", time.Second, nil)
-	own := func(micros int64, currency string) *payload.RunUsage {
-		return &payload.RunUsage{
-			Own:   payload.Usage{ModelCalls: 1, Cost: &payload.Cost{Micros: micros, Currency: currency}},
-			Total: payload.Usage{ModelCalls: 2, Cost: &payload.Cost{Micros: 10 * micros, Currency: currency}},
+	own := func(micros int64, currency string) *event.RunUsage {
+		return &event.RunUsage{
+			Own:   event.Usage{ModelCalls: 1, Cost: &event.Cost{Micros: micros, Currency: currency}},
+			Total: event.Usage{ModelCalls: 2, Cost: &event.Cost{Micros: 10 * micros, Currency: currency}},
 		}
 	}
 	x.SetUsage("a", own(1500, "USD"), 0)
@@ -179,9 +181,9 @@ func TestThreadPaging(t *testing.T) {
 			agent, origin = "helper", "cron"
 		}
 		record(t, x, "acme", id, agent, origin, time.Duration(i)*time.Minute, nil)
-		kind, body := envelope.KindCompleted, payload.Lifecycle{}
+		kind, body := event.TypeCompleted, wire.Lifecycle{}
 		if i == 3 {
-			kind, body = envelope.KindFailed, payload.Lifecycle{Terminal: true}
+			kind, body = event.TypeFailed, wire.Lifecycle{Terminal: true}
 		}
 		if i != 6 {
 			end(t, x, "acme", id, time.Duration(i)*time.Minute+time.Second, kind, body)
@@ -280,30 +282,30 @@ func TestAStopIsRequestedThenConfirmedByTheRuntime(t *testing.T) {
 		t.Fatalf("a second request moved the first: %+v", r)
 	}
 
-	b, _ := payload.Encode(payload.Stopped{Reason: "Stopped by ada", By: "ada", Text: "Half"})
-	r, ended := x.Observe(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindStopped, Payload: b, At: t0.Add(3 * time.Second)})
+	b, _ := json.Marshal(event.Stopped{Reason: "Stopped by ada", By: "ada", Text: "Half"})
+	r, ended := x.Observe(event.Envelope{Run: "r1", Tenant: "acme", Type: event.TypeStopped, Data: wire.BodyOf(event.TypeStopped, b), Time: t0.Add(3 * time.Second)})
 	if !ended || r.Status != Stopped || r.Answer != "Half" || r.Cause != "Stopped by ada" || r.Stopping {
 		t.Fatalf("stopped = %+v, %v", r, ended)
 	}
-	r, ended = end(t, x, "acme", "r2", 3*time.Second, envelope.KindCompleted, payload.Lifecycle{Text: "Whole"})
+	r, ended = end(t, x, "acme", "r2", 3*time.Second, event.TypeCompleted, wire.Lifecycle{Text: "Whole"})
 	if !ended || r.Status != Completed || r.Answer != "Whole" || r.Cause != "" || r.Stopping {
 		t.Fatalf("completed first = %+v, %v", r, ended)
 	}
 	if _, ok := x.AskStop("r2", t0.Add(4*time.Second)); ok {
 		t.Fatal("a run that ended was asked to stop")
 	}
-	if _, again := x.Observe(envelope.Event{RunID: "r1", Tenant: "acme", Kind: envelope.KindStopped, Payload: b, At: t0.Add(5 * time.Second)}); again {
+	if _, again := x.Observe(event.Envelope{Run: "r1", Tenant: "acme", Type: event.TypeStopped, Data: wire.BodyOf(event.TypeStopped, b), Time: t0.Add(5 * time.Second)}); again {
 		t.Fatal("a redelivered lifecycle.stopped ended the run twice")
 	}
 }
 
-func usageCall(t *testing.T, tenant, runID, key string, micros int64) envelope.Event {
+func usageCall(t *testing.T, tenant, runID, key string, micros int64) event.Envelope {
 	t.Helper()
-	b, err := payload.Encode(payload.UsageCall{AccountingID: key, PromptTokens: 10, Cost: &payload.Cost{Micros: micros, Currency: "USD"}})
+	b, err := json.Marshal(event.UsageCall{AccountingID: key, PromptTokens: 10, Cost: &event.Cost{Micros: micros, Currency: "USD"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return envelope.Event{RunID: runID, Tenant: tenant, Kind: envelope.KindUsageCall, Payload: b, At: t0}
+	return event.Envelope{Run: runID, Tenant: tenant, Type: event.TypeUsageCall, Data: wire.BodyOf(event.TypeUsageCall, b), Time: t0}
 }
 
 // A usage report is folded into a run only in the run's own tenant: another
@@ -329,7 +331,7 @@ func TestAClosedRunsSpentDoesNotMove(t *testing.T) {
 	x := NewIndex()
 	record(t, x, "acme", "r1", "lead", "api", 0, nil)
 	x.Spend("r1", 100)
-	x.SetUsage("r1", &payload.RunUsage{Total: payload.Usage{ModelCalls: 1}}, 50)
+	x.SetUsage("r1", &event.RunUsage{Total: event.Usage{ModelCalls: 1}}, 50)
 	if _, ok := x.Spend("r1", 900); ok {
 		t.Fatal("a closed run took more spend")
 	}
@@ -343,7 +345,7 @@ func TestAClosedRunsSpentDoesNotMove(t *testing.T) {
 // ancestor still open, or the root, so the tree's spend is whole.
 func TestACallEndingAfterItsCallerSettlesClimbsToTheRoot(t *testing.T) {
 	x := NewIndex()
-	root := envelope.Tag{ID: "root", Tenant: "acme", Agent: "lead", Origin: "api", Text: "go", At: t0}
+	root := wire.NewEvent(wire.Raise{ID: "root", Tenant: "acme", Agent: "lead", Origin: "api", Text: "go", At: t0})
 	lim := call.Limits{MaxDepth: 3, MaxFanOut: 3}
 	mid, err := call.New(root, call.Request{Key: "k1", Agent: "mid", Text: "go", Mode: call.Delegate}, call.State{}, lim, t0)
 	if err != nil {
@@ -354,7 +356,7 @@ func TestACallEndingAfterItsCallerSettlesClimbsToTheRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := map[string]string{}
-	for _, tag := range []envelope.Tag{mid, leaf} {
+	for _, tag := range []event.Envelope{mid, leaf} {
 		id := runtime.RunID("acme", tag.ID)
 		ids[tag.Agent] = id
 		if err := x.Record(id, tag, 1); err != nil {

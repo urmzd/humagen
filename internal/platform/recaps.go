@@ -8,6 +8,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -65,7 +66,7 @@ func scheduledAnswer(run runs.Run) string {
 		run.Origin != "cron" && run.Origin != runs.OriginManual {
 		return DeliverNone
 	}
-	return run.Tag().Meta[MetaDeliver]
+	return wire.Meta(run.Tag())[MetaDeliver]
 }
 
 // deliverAnswer sends a scheduled run's answer where its schedule said. It is
@@ -82,7 +83,7 @@ func (p *Platform) deliverAnswer(ctx context.Context, run runs.Run) {
 	if where == DeliverNone {
 		return
 	}
-	if person := personOf(run.Actor); person != "" && (where == DeliverProject || run.Tag().Meta[metaCreatedBy] != person) && p.mayCarryPersonData(ctx, run) {
+	if person := personOf(run.Actor); person != "" && (where == DeliverProject || wire.Meta(run.Tag())[metaCreatedBy] != person) && p.mayCarryPersonData(ctx, run) {
 		p.keptFor(run, person, where)
 		return
 	}
@@ -215,7 +216,7 @@ func (p *Platform) deliverToInbox(run runs.Run) {
 // sendToCreator sends a result about a scheduled run to whoever created its
 // schedule, the only one shown it.
 func (p *Platform) sendToCreator(run runs.Run, subject, text string) {
-	to := run.Tag().Meta[metaCreatedBy]
+	to := wire.Meta(run.Tag())[metaCreatedBy]
 	if to == "" {
 		p.log.Warn("platform: a scheduled answer has nobody to go to", "tenant", run.Tenant, "run", run.ID, "schedule", run.Schedule)
 		return

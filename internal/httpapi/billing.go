@@ -70,7 +70,7 @@ func (s *Server) exists(r *http.Request, who auth.Principal, scope policy.Scope)
 			return platform.ErrProjectNotFound
 		}
 	case policy.Agent:
-		_, err := s.P.Agents.Get(r.Context(), who.Tenant, scope.Name, 0)
+		_, err := s.P.Catalog().Get(r.Context(), who.Tenant, scope.Name, 0)
 		return err
 	case policy.Client:
 		_, err := s.P.Clients.Get(who.Tenant, scope.Name)

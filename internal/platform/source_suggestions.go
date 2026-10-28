@@ -2,15 +2,17 @@ package platform
 
 import (
 	"fmt"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"slices"
+	"strings"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
-	"slices"
-	"strings"
 )
 
 func (p *Platform) sourceSuggestionVisible(who auth.Principal, row sourcelinks.Suggestion) bool {
@@ -109,26 +111,27 @@ func (p *Platform) observeKnowledgeSource(tenant string, src knowledge.Source) e
 	_, err = p.SourceSuggestions.Observe(tenant, "", src.Name, sourceResource(src), matches, p.now())
 	return err
 }
-func clientResource(c clients.Client, tag envelope.Tag) (sourcelinks.Resource, bool) {
+func clientResource(c clients.Client, tag event.Envelope) (sourcelinks.Resource, bool) {
+	from := wire.SurfaceOf(tag)
 	if c.Surface == clients.Slack {
-		return slackResource(tag.Meta["slack_channel"])
+		return slackResource(from.SlackChannel)
 	}
 	if c.Surface != clients.GitHub {
 		return sourcelinks.Resource{}, false
 	}
-	owner, repo := tag.Meta["github_owner"], tag.Meta["github_repo"]
+	owner, repo := from.GitHubOwner, from.GitHubRepo
 	if owner == "" || repo == "" || len(owner)+len(repo) > 256 {
 		return sourcelinks.Resource{}, false
 	}
 	id := owner + "/" + repo
 	attrs := map[string][]string{"repository": {id}}
-	if labels := tag.Meta["github_labels"]; labels != "" {
+	if labels := from.GitHubLabels; labels != "" {
 		values := strings.Split(labels, ",")
 		if len(values) <= 50 {
 			attrs["label"] = values
 		}
 	}
-	if author := tag.Meta["github_author"]; author != "" {
+	if author := from.GitHubAuthor; author != "" {
 		attrs["contributor"] = []string{author}
 	}
 	return sourcelinks.Resource{Provider: "github", ID: id, Attributes: attrs}, true

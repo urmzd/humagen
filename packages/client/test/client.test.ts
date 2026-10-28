@@ -9,11 +9,12 @@ import { after, before, test } from "node:test";
 import {
   ApiError,
   createClient,
+  endsRun,
   failureOf,
   isRunCompletedEvent,
+  runFilter,
   SSEError,
   StreamEndedError,
-  type DecodedRunEvent,
   type Run,
   type RunEvent,
   type StreamItem,
@@ -88,18 +89,20 @@ const run: Run = {
   updated_at: "2026-01-01T00:00:00Z",
 };
 
-function wire(seq: number, kind: RunEvent["kind"], body?: unknown): RunEvent {
+function wire(seq: number, type: RunEvent["type"], data: unknown = {}): RunEvent {
   return {
-    seq,
-    topic: "agent:helper:r1",
-    run_id: "r1",
+    id: `e${seq}`,
+    source: "humagen:acme",
+    type,
+    channel: "humagen://acme",
+    time: "2026-01-01T00:00:00Z",
+    hops: 0,
     tenant: "acme",
+    run: "r1",
+    seq,
     agent: "helper",
-    rev: 1,
-    origin: "api",
-    at: "2026-01-01T00:00:00Z",
-    kind,
-    ...(body === undefined ? {} : { payload: Buffer.from(JSON.stringify(body), "utf8").toString("base64") }),
+    version: "1.0.0",
+    data,
   } as RunEvent;
 }
 
@@ -226,19 +229,19 @@ test("a request is cancelled by its signal", async () => {
   await assert.rejects(patient.getArtifactContent("a1"), { name: "TimeoutError" });
 });
 
-test("the event stream yields decoded run events and inbox notices", async () => {
+test("the event stream yields run events with inline data, and inbox notices", async () => {
   const notice = { id: "m1", kind: "failure", state: "open", updated_at: "2026-01-01T00:00:00Z" };
-  const text = wire(2, "delta.text", { text: "Héllo ✓" });
+  const text = wire(2, "run.delta.text.v1", { text: "Héllo ✓" });
   const frames =
     ": keep-alive\n\n" +
-    `data: ${JSON.stringify(wire(1, "lifecycle.accepted", { rev: 1 }))}\n\n` +
+    `data: ${JSON.stringify(wire(1, "run.accepted.v1", { attempt: 1 }))}\n\n` +
     `data: ${JSON.stringify(text)}\n\n` +
     `event: inbox\ndata: ${JSON.stringify(notice)}\n\n` +
-    `data: ${JSON.stringify(wire(3, "delta.tool.call", { id: "c1", name: "publish_artifact", phase: "executing" }))}\n\n` +
-    `data: ${JSON.stringify(wire(4, "action.taken", { name: "publish_artifact", summary: "Published notes.txt, version 1", data: { id: "a1" } }))}\n\n` +
-    `data: ${JSON.stringify(wire(5, "lifecycle.started"))}\n\n` +
+    `data: ${JSON.stringify(wire(3, "run.delta.tool.call.v1", { id: "c1", name: "publish_artifact", phase: "executing" }))}\n\n` +
+    `data: ${JSON.stringify(wire(4, "run.action.taken.v1", { name: "publish_artifact", summary: "Published notes.txt, version 1", data: { id: "a1" } }))}\n\n` +
+    `data: ${JSON.stringify(wire(5, "run.started.v1"))}\n\n` +
     "data: not json\n\n" +
-    `data: ${JSON.stringify(wire(6, "lifecycle.completed", { text: "Héllo ✓" }))}\n\n`;
+    `data: ${JSON.stringify(wire(6, "run.completed.v1", { text: "Héllo ✓" }))}\n\n`;
   serve(async (_req, res) => {
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     // Written in pieces that split lines and a multi-byte character, the
@@ -253,64 +256,63 @@ test("the event stream yields decoded run events and inbox notices", async () =>
   const client = createClient({ baseUrl: base, token: "machine-token" });
 
   const items: StreamItem[] = [];
-  for await (const item of client.events({ topic: "agent:helper:r1", from: 7 })) items.push(item);
+  for await (const item of client.events({ run: "r1", type: ["run."], from: 7 })) items.push(item);
 
   const req = last();
-  assert.equal(req.url, "/api/events?topic=agent%3Ahelper%3Ar1&from=7");
+  assert.equal(req.url, "/api/events?type=run.&run=r1&from=7");
   assert.equal(req.headers.accept, "text/event-stream");
   assert.equal(req.headers.authorization, "Bearer machine-token");
   assert.deepEqual(
-    items.map((i) => (i.type === "event" ? i.event.kind : `inbox:${i.notice.id}`)),
-    ["lifecycle.accepted", "delta.text", "inbox:m1", "delta.tool.call", "action.taken", "lifecycle.started", "lifecycle.completed"],
+    items.map((i) => (i.item === "event" ? i.event.type : `inbox:${i.notice.id}`)),
+    ["run.accepted.v1", "run.delta.text.v1", "inbox:m1", "run.delta.tool.call.v1", "run.action.taken.v1", "run.started.v1", "run.completed.v1"],
   );
-  const events = items.flatMap((i) => (i.type === "event" ? [i.event] : []));
-  const said = events.find((e) => e.kind === "delta.text");
-  assert.equal(said?.kind === "delta.text" && said.body?.text, "Héllo ✓");
-  assert.equal("payload" in (said ?? {}), false);
-  const acted = events.find((e) => e.kind === "action.taken");
-  assert.deepEqual(acted?.kind === "action.taken" && acted.body?.data, { id: "a1" });
-  assert.equal(events.find((e) => e.kind === "lifecycle.started")?.body, undefined);
-  assert.equal(isRunCompletedEvent(wire(6, "lifecycle.completed")), true);
+  const events = items.flatMap((i) => (i.item === "event" ? [i.event] : []));
+  const said = events.find((e) => e.type === "run.delta.text.v1");
+  assert.equal(said?.type === "run.delta.text.v1" && said.data.text, "Héllo ✓");
+  const acted = events.find((e) => e.type === "run.action.taken.v1");
+  assert.deepEqual(acted?.type === "run.action.taken.v1" && acted.data.data, { id: "a1" });
+  assert.deepEqual(events.find((e) => e.type === "run.started.v1")?.data, {});
+  assert.equal(isRunCompletedEvent(wire(6, "run.completed.v1")), true);
 });
 
 test("a run's events end at the event that completes it", async () => {
   serve((_req, res) => {
     res.writeHead(200, { "Content-Type": "text/event-stream" });
-    res.write(`data: ${JSON.stringify(wire(1, "lifecycle.failed", { error: "flaky", attempt: 1 }))}\n\n`);
-    res.write(`data: ${JSON.stringify({ ...wire(1, "delta.text", { text: "other run" }), run_id: "r2" })}\n\n`);
-    res.write(`data: ${JSON.stringify(wire(2, "lifecycle.completed", { text: "done" }))}\n\n`);
+    res.write(`data: ${JSON.stringify(wire(1, "run.failed.v1", { error: "flaky", attempt: 1 }))}\n\n`);
+    res.write(`data: ${JSON.stringify({ ...wire(1, "run.delta.text.v1", { text: "other run" }), run: "r2" })}\n\n`);
+    res.write(`data: ${JSON.stringify(wire(2, "run.completed.v1", { text: "done" }))}\n\n`);
     // The server keeps the stream open. The reader is the one who leaves.
   });
   const client = createClient({ baseUrl: base });
 
-  const kinds: DecodedRunEvent["kind"][] = [];
-  for await (const event of client.runEvents({ agent: "helper", id: "r1" })) kinds.push(event.kind);
+  const kinds: RunEvent["type"][] = [];
+  for await (const event of client.runEvents({ agent: "helper", id: "r1" })) kinds.push(event.type);
 
-  assert.deepEqual(kinds, ["lifecycle.failed", "lifecycle.completed"]);
-  assert.equal(last().url, "/api/events?topic=agent%3Ahelper%3Ar1");
+  assert.deepEqual(kinds, ["run.failed.v1", "run.completed.v1"]);
+  assert.equal(last().url, "/api/events?run=r1");
 });
 
 test("a run's events end at the event that stops it, with its partial answer", async () => {
   serve((_req, res) => {
     res.writeHead(200, { "Content-Type": "text/event-stream" });
-    res.write(`data: ${JSON.stringify(wire(1, "delta.text", { text: "Half" }))}\n\n`);
-    res.write(`data: ${JSON.stringify(wire(2, "lifecycle.stopped", { text: "Half", reason: "Stopped by ada", by: "ada" }))}\n\n`);
+    res.write(`data: ${JSON.stringify(wire(1, "run.delta.text.v1", { text: "Half" }))}\n\n`);
+    res.write(`data: ${JSON.stringify(wire(2, "run.stopped.v1", { text: "Half", reason: "Stopped by ada", by: "ada" }))}\n\n`);
     // The server keeps the stream open, with heartbeats. The reader leaves.
   });
   const client = createClient({ baseUrl: base });
 
-  const seen: DecodedRunEvent[] = [];
+  const seen: RunEvent[] = [];
   for await (const event of client.runEvents({ agent: "helper", id: "r1" })) seen.push(event);
 
-  assert.deepEqual(seen.map((e) => e.kind), ["delta.text", "lifecycle.stopped"]);
+  assert.deepEqual(seen.map((e) => e.type), ["run.delta.text.v1", "run.stopped.v1"]);
   const stopped = seen[1];
-  assert.equal(stopped?.kind === "lifecycle.stopped" && stopped.body?.text, "Half");
+  assert.equal(stopped?.type === "run.stopped.v1" && stopped.data.text, "Half");
 });
 
 test("a stream is cancelled by its signal, and a refused stream throws with the body", async () => {
   serve((_req, res) => {
     res.writeHead(200, { "Content-Type": "text/event-stream" });
-    res.write(`data: ${JSON.stringify(wire(1, "lifecycle.accepted"))}\n\n`);
+    res.write(`data: ${JSON.stringify(wire(1, "run.accepted.v1"))}\n\n`);
   });
   const client = createClient({ baseUrl: base });
   const controller = new AbortController();
@@ -366,7 +368,7 @@ function within(ms: number, p: Promise<void>, what: string): Promise<void> {
 
 test("leaving the loop closes the connection, however it is left", async () => {
   const client = createClient({ baseUrl: base });
-  const frames = `data: ${JSON.stringify(wire(1, "lifecycle.accepted"))}\n\ndata: ${JSON.stringify(wire(2, "lifecycle.completed", { text: "done" }))}\n\n`;
+  const frames = `data: ${JSON.stringify(wire(1, "run.accepted.v1"))}\n\ndata: ${JSON.stringify(wire(2, "run.completed.v1", { text: "done" }))}\n\n`;
 
   let closed = holdOpen(frames);
   for await (const _ of client.events()) break;
@@ -374,8 +376,8 @@ test("leaving the loop closes the connection, however it is left", async () => {
 
   closed = holdOpen(frames);
   const kinds: string[] = [];
-  for await (const event of client.runEvents({ agent: "helper", id: "r1" })) kinds.push(event.kind);
-  assert.deepEqual(kinds, ["lifecycle.accepted", "lifecycle.completed"]);
+  for await (const event of client.runEvents({ agent: "helper", id: "r1" })) kinds.push(event.type);
+  assert.deepEqual(kinds, ["run.accepted.v1", "run.completed.v1"]);
   await within(500, closed, "return after the ending event");
 
   closed = holdOpen(frames);
@@ -415,22 +417,22 @@ const fast = { maxRetries: 2, initialDelayMs: 1, maxDelayMs: 5 };
 
 test("a stream that drops mid-run is resumed after the last event", async () => {
   const fake = flaky(
-    [frame(wire(1, "lifecycle.accepted")) + frame(wire(2, "delta.text", { text: "Hel" })), frame(wire(2, "delta.text", { text: "Hel" })) + frame(wire(3, "delta.text", { text: "lo" })) + frame(wire(4, "lifecycle.completed", { text: "Hello" }))],
+    [frame(wire(1, "run.accepted.v1")) + frame(wire(2, "run.delta.text.v1", { text: "Hel" })), frame(wire(2, "run.delta.text.v1", { text: "Hel" })) + frame(wire(3, "run.delta.text.v1", { text: "lo" })) + frame(wire(4, "run.completed.v1", { text: "Hello" }))],
     ["running"],
   );
   const client = createClient({ baseUrl: base });
   const seqs: number[] = [];
-  for await (const event of client.runEvents({ agent: "helper", id: "r1" }, { resume: fast })) seqs.push(event.seq);
+  for await (const event of client.runEvents({ agent: "helper", id: "r1" }, { resume: fast })) seqs.push(event.seq ?? 0);
   assert.deepEqual(seqs, [1, 2, 3, 4], "an event was lost or repeated");
-  assert.deepEqual(fake.urls, ["/api/events?topic=agent%3Ahelper%3Ar1", "/api/events?topic=agent%3Ahelper%3Ar1&from=2"]);
+  assert.deepEqual(fake.urls, ["/api/events?run=r1", "/api/events?run=r1&from=2"]);
 });
 
 test("a run that ended while the stream was down is read to its end", async () => {
-  flaky([frame(wire(1, "lifecycle.accepted")), frame(wire(1, "lifecycle.accepted")) + frame(wire(2, "lifecycle.completed", { text: "done" }))], ["completed"]);
+  flaky([frame(wire(1, "run.accepted.v1")), frame(wire(1, "run.accepted.v1")) + frame(wire(2, "run.completed.v1", { text: "done" }))], ["completed"]);
   const client = createClient({ baseUrl: base });
   const kinds: string[] = [];
-  for await (const event of client.runEvents({ agent: "helper", id: "r1" }, { resume: fast })) kinds.push(event.kind);
-  assert.deepEqual(kinds, ["lifecycle.accepted", "lifecycle.completed"]);
+  for await (const event of client.runEvents({ agent: "helper", id: "r1" }, { resume: fast })) kinds.push(event.type);
+  assert.deepEqual(kinds, ["run.accepted.v1", "run.completed.v1"]);
 });
 
 test("a last read of an ended run does not wait forever for an event the server no longer holds", async () => {
@@ -443,7 +445,7 @@ test("a last read of an ended run does not wait forever for an event the server 
       return;
     }
     res.writeHead(200, { "Content-Type": "text/event-stream" });
-    if (streams++ === 0) res.end(frame(wire(1, "delta.text", { text: "Hel" })));
+    if (streams++ === 0) res.end(frame(wire(1, "run.delta.text.v1", { text: "Hel" })));
     else res.write(": keep-alive\n\n");
   });
   const client = createClient({ baseUrl: base });
@@ -451,7 +453,7 @@ test("a last read of an ended run does not wait forever for an event the server 
   const began = Date.now();
   const error = await (async () => {
     for await (const event of client.runEvents({ agent: "helper", id: "r1" }, { resume: { ...fast, drainMs: 100 } })) {
-      kinds.push(event.kind);
+      kinds.push(event.type);
     }
   })().then(
     () => assert.fail("returned without an ending event"),
@@ -459,7 +461,7 @@ test("a last read of an ended run does not wait forever for an event the server 
   );
   assert.ok(error instanceof StreamEndedError, String(error));
   assert.equal(error.reason, "stopped");
-  assert.deepEqual(kinds, ["delta.text"]);
+  assert.deepEqual(kinds, ["run.delta.text.v1"]);
   assert.ok(Date.now() - began < 5_000, "the drain was bounded");
 });
 
@@ -468,7 +470,7 @@ test("a stream that cannot be resumed throws rather than ending quietly", async 
   const follow = async (resume = fast) => {
     const kinds: string[] = [];
     const error = await (async () => {
-      for await (const event of client.runEvents({ agent: "helper", id: "r1" }, { resume })) kinds.push(event.kind);
+      for await (const event of client.runEvents({ agent: "helper", id: "r1" }, { resume })) kinds.push(event.type);
     })().then(
       () => assert.fail(`returned without an ending event after ${kinds.join(", ")}`),
       (e: unknown) => e,
@@ -477,18 +479,18 @@ test("a stream that cannot be resumed throws rather than ending quietly", async 
     return { error, kinds };
   };
 
-  flaky([frame(wire(1, "delta.text", { text: "Hel" }))], ["running", "running", "running"]);
+  flaky([frame(wire(1, "run.delta.text.v1", { text: "Hel" }))], ["running", "running", "running"]);
   const gaveUp = await follow();
   assert.equal(gaveUp.error.reason, "gave-up");
-  assert.deepEqual(gaveUp.kinds, ["delta.text"]);
+  assert.deepEqual(gaveUp.kinds, ["run.delta.text.v1"]);
   assert.equal(seen.filter((r) => r.url.startsWith("/api/events")).length, 3, "it did not try exactly twice more");
 
-  flaky([frame(wire(1, "delta.text", { text: "Hel" }))], ["stopped"]);
+  flaky([frame(wire(1, "run.delta.text.v1", { text: "Hel" }))], ["stopped"]);
   const stopped = await follow();
   assert.equal(stopped.error.reason, "stopped");
   assert.equal(stopped.error.run?.status, "stopped");
 
-  flaky([frame(wire(1, "delta.text"))], ["completed"]);
+  flaky([frame(wire(1, "run.delta.text.v1"))], ["completed"]);
   assert.equal((await follow()).error.reason, "ended");
 
   // A refusal is the server's answer, not a dropped stream.
@@ -505,4 +507,15 @@ test("a stream that cannot be resumed throws rather than ending quietly", async 
   await assert.rejects(async () => {
     for await (const _ of client.runEvents({ agent: "helper", id: "r1" }, { resume: { initialDelayMs: 1000 } }, { signal: controller.signal })) assert.fail("yielded");
   }, { name: "AbortError" });
+});
+
+test("a run ends on completed, stopped, or a terminal failure, and a filter names one run", () => {
+  assert.equal(endsRun(wire(1, "run.completed.v1")), true);
+  assert.equal(endsRun(wire(1, "run.stopped.v1")), true);
+  assert.equal(endsRun(wire(1, "run.failed.v1", { error: "flaky" })), false);
+  assert.equal(endsRun(wire(1, "run.failed.v1", { error: "gone", terminal: true })), true);
+  assert.equal(endsRun(wire(1, "run.delta.text.v1", { text: "hi" })), false);
+  assert.equal(endsRun({ ...wire(1, "run.completed.v1"), type: "run.completed.v2" } as unknown as RunEvent), false);
+  assert.deepEqual(runFilter("r1"), { run: "r1" });
+  assert.deepEqual(runFilter("r1", ["run.delta"]), { run: "r1", type: ["run.delta"] });
 });

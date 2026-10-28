@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -58,12 +58,12 @@ func (s *Server) viewOf(seer *platform.Seer, sc cron.Schedule, now time.Time) sc
 	v := scheduleView{
 		schedule: schedule{
 			Name: sc.Name, Expression: sc.Expression, Agent: sc.Agent, Text: sc.Text,
-			Project: sc.Meta[runs.MetaProject], Description: about.Description, Deliver: sc.Meta[platform.MetaDeliver],
+			Project: sc.Context[runs.MetaProject], Description: about.Description, Deliver: sc.Context[platform.MetaDeliver],
 		},
 		Paused:        s.P.Schedules.Paused(sc.Name),
 		Managed:       about.Managed,
-		CreatedBy:     sc.Meta["created_by"],
-		CreatedByName: s.P.NameOf(sc.Tenant, sc.Meta["created_by"]),
+		CreatedBy:     sc.Context["created_by"],
+		CreatedByName: s.P.NameOf(sc.Tenant, sc.Context["created_by"]),
 		UpdatedBy:     about.UpdatedBy,
 		UpdatedAt:     about.UpdatedAt,
 		Next:          []time.Time{},
@@ -82,7 +82,7 @@ func (s *Server) listSchedules(w http.ResponseWriter, _ *http.Request, who auth.
 	for _, sc := range s.P.Schedules.List(who.Tenant) {
 		// A schedule filed in a project the caller cannot see is not theirs
 		// to read.
-		if !seer.Project(sc.Meta[runs.MetaProject]) {
+		if !seer.Project(sc.Context[runs.MetaProject]) {
 			continue
 		}
 		out = append(out, s.viewOf(seer, sc, now))
@@ -101,8 +101,8 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, who auth
 	}
 	sc := cron.Schedule{
 		Name: body.Name, Expression: body.Expression, Agent: body.Agent, Text: body.Text,
-		Tenant: who.Tenant,
-		Meta:   meta,
+		Tenant:  who.Tenant,
+		Context: meta,
 	}
 	if err := s.filed(who.Tenant, meta[runs.MetaProject], func() error {
 		return s.P.Schedules.Add(sc, platform.About{Description: strings.TrimSpace(body.Description), CreatedAt: time.Now().UTC()})
@@ -138,14 +138,13 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 	if !s.filedBy(w, who, old) {
 		return
 	}
-	meta, valid := s.scheduleMeta(w, r, who, body, maps.Clone(old.Meta))
+	meta, valid := s.scheduleMeta(w, r, who, body, maps.Clone(old.Context))
 	if !valid {
 		return
 	}
 	sc := cron.Schedule{
 		Name: name, Expression: body.Expression, Agent: body.Agent, Text: body.Text,
-		Tenant: who.Tenant, Routes: old.Routes,
-		Meta: meta,
+		Tenant: who.Tenant, Context: meta,
 	}
 	about := platform.About{
 		Description: strings.TrimSpace(body.Description), UpdatedBy: who.Subject, UpdatedAt: time.Now().UTC(),
@@ -163,7 +162,7 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 // pause, delete or run it; or answers 404 for a project they cannot see and
 // 403 for a viewer.
 func (s *Server) filedBy(w http.ResponseWriter, who auth.Principal, sc cron.Schedule) bool {
-	if err := s.P.MayFileIn(who, sc.Meta[runs.MetaProject]); err != nil {
+	if err := s.P.MayFileIn(who, sc.Context[runs.MetaProject]); err != nil {
 		s.problem(w, err)
 		return false
 	}
@@ -183,7 +182,7 @@ func (s *Server) filedBy(w http.ResponseWriter, who auth.Principal, sc cron.Sche
 // conversation there does. An agent the caller may not read is one that is
 // not there.
 func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.Principal, body schedule, meta map[string]string) (map[string]string, bool) {
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
+	if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
 		s.problem(w, err)
 		return nil, false
 	}
@@ -296,22 +295,22 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		actor.User = ""
 	}
 	now := time.Now()
-	run, err := s.P.Invoke(r.Context(), envelope.Tag{
+	run, err := s.P.Invoke(r.Context(), wire.NewEvent(wire.Raise{
 		ID:     "manual-" + token()[:22],
 		Tenant: who.Tenant,
 		Agent:  sc.Agent,
 		Origin: runs.OriginManual,
-		Text:   sc.Text,
 		Actor:  actor,
 		// The run carries what its schedule says now, as a run the clock
 		// raises does: its project, where its answer goes, and its creator.
-		Meta: map[string]string{
-			"cron_schedule": sc.Name, "cron_expression": sc.Expression,
-			runs.MetaProject: sc.Meta[runs.MetaProject], platform.MetaDeliver: sc.Meta[platform.MetaDeliver],
-			"created_by": sc.Meta["created_by"],
+		Context: map[string]string{
+			wire.MetaCronSchedule: sc.Name, wire.MetaCronExpression: sc.Expression,
+			runs.MetaProject: sc.Context[runs.MetaProject], platform.MetaDeliver: sc.Context[platform.MetaDeliver],
+			"created_by": sc.Context["created_by"],
 		},
-		At: now,
-	})
+		At:   now,
+		Text: sc.Text,
+	}))
 	if err != nil {
 		s.problem(w, err)
 		return

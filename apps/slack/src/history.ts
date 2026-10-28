@@ -14,7 +14,7 @@ import { type SlackApi, SlackError } from "./slack.ts";
  * is the last message in the thread that mentions it, or its own post that
  * opened the thread.
  *
- * This follows fiber's thread reconciliation (`pkg/thread`) in intent: only
+ * This follows the thread reconciliation in `fiber/pkg/thread` in intent: only
  * what the agent has not been shown, oldest first, never its own messages,
  * and never the message that asks, which is the run's own request.
  */

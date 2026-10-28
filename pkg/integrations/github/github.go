@@ -6,16 +6,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/urmzd/fiber/pkg/connector"
-	transport "github.com/urmzd/fiber/pkg/connectors/github"
-	"github.com/urmzd/fiber/pkg/connectors/mention"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/topic"
-	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/mention"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	presentation "github.com/urmzd/humagen/internal/presentation/github"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // Config combines transport configuration with explicit product policy.
@@ -26,12 +28,10 @@ type Config struct {
 	ReadRepositories []string
 	Bots             map[string]string
 	Agents           mention.Set
-	// Login is the app's own login, and DefaultAgent the agent a comment
-	// that mentions it and names no agent is raised for.
+	// Login is the app's own login. A comment that mentions it and names
+	// no agent is raised naming none, and the host chooses who answers.
 	Login          string
-	DefaultAgent   string
 	Checks         bool
-	Deliver        []envelope.Route
 	Interval       time.Duration
 	Clock          func() time.Time
 	MaxBody        int64
@@ -91,8 +91,17 @@ func New(cfg Config) (*Connector, error) {
 			return nil, fmt.Errorf("github: mutations need the tenant the connector's runs belong to")
 		}
 	}
-	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: cfg.Agents, Login: cfg.Login, DefaultAgent: cfg.DefaultAgent, Checks: cfg.Checks, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
-	base.Automation = c.automatic
+	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: cfg.Agents, Login: cfg.Login, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base.Automation = func(h transport.Hook) (string, bool) {
+		_, text, ok := c.automatic(h)
+		return text, ok
+	}
+	base.AutomationFor = func(h transport.Hook) []string {
+		if agent, _, ok := c.automatic(h); ok {
+			return []string{agent}
+		}
+		return nil
+	}
 	base.Prepare = c.prepare
 	base.Render = presentation.RenderReview
 	base.Conclusion = conclusion
@@ -122,19 +131,24 @@ func (c *Connector) Actions() []connector.Action {
 	return actions
 }
 
-// prepare applies humagen's policy to a tag before it is handed over. A tag for
-// fiber's control name is one whose agent the host has yet to choose, such as
-// a comment addressed to the app that names no agent: no agent can take that
-// name, and the guide names the agent that answers, so such a tag posts none.
-func (c *Connector) prepare(ctx context.Context, tag *envelope.Tag) error {
-	if tag.Source.Path[1] == "pull" {
-		if c.cfg.Guides && tag.Agent != topic.ControlName {
+// prepare applies humagen's policy to an event before it is published. An
+// event that names no agent is one whose agent the host has yet to choose,
+// such as a comment addressed to the app alone: the guide names the agent
+// that answers, so such an event posts none.
+func (c *Connector) prepare(ctx context.Context, tag *event.Envelope) error {
+	source, err := address.Parse(tag.Channel)
+	if err != nil || len(source.Path) < 2 {
+		return fmt.Errorf("github: event has no pull request or issue channel")
+	}
+	if source.Path[1] == "pull" {
+		if c.cfg.Guides && wire.AgentOf(*tag) != "" {
 			if err := c.prepareGuide(ctx, tag); err != nil {
 				return err
 			}
+			source, _ = address.Parse(tag.Channel)
 		}
-		if c.cfg.Mutations && tag.Source.Params["head_sha"] == "" {
-			ref, err := c.Reference(tag.Source)
+		if c.cfg.Mutations && source.Params["head_sha"] == "" {
+			ref, err := c.Reference(source)
 			if err != nil {
 				return err
 			}
@@ -145,11 +159,20 @@ func (c *Connector) prepare(ctx context.Context, tag *envelope.Tag) error {
 			if !transport.ValidSHA(evidence.Subject.Head.SHA) {
 				return fmt.Errorf("github: missing pinned head")
 			}
-			tag.Source = tag.Source.WithParam("head_sha", evidence.Subject.Head.SHA)
-			tag.Meta["github_head_sha"] = evidence.Subject.Head.SHA
+			setSource(tag, source.WithParam("head_sha", evidence.Subject.Head.SHA))
+			wire.SetGitHubHeadSHA(tag, evidence.Subject.Head.SHA)
 		}
 	}
 	return c.grantMutation(ctx, tag)
+}
+
+// sourceOf is the address an event is about and answers on.
+func sourceOf(tag event.Envelope) (address.Address, error) { return address.Parse(tag.Channel) }
+
+// setSource moves an event to a, its source and channel both: the runtime
+// binds the run's tools to its source and answers on its channel.
+func setSource(tag *event.Envelope, a address.Address) {
+	tag.Source, tag.Channel = a.String(), a.String()
 }
 
 func (c *Connector) automatic(h transport.Hook) (string, string, bool) {

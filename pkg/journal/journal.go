@@ -18,15 +18,17 @@ package journal
 
 import (
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -41,7 +43,7 @@ const maxDetail = 240
 // confined to one tenant.
 type Journal struct {
 	mu     sync.RWMutex
-	events []envelope.Event
+	events []held
 	head   int
 	full   bool
 
@@ -56,12 +58,40 @@ type Journal struct {
 	kept     *state.Table[stored]
 }
 
+// held is one event and the origin of the run it belongs to, which the
+// event does not carry.
+type held struct {
+	e      event.Envelope
+	origin string
+}
+
 // stored is one record: an event in its place in the ring, or the capacity
-// the ring was written with.
+// the ring was written with. An event written before the union has a kind
+// and its origin inside it.
 type stored struct {
 	Seq      int64           `json:"seq,omitempty"`
-	Event    *envelope.Event `json:"event,omitempty"`
+	Event    json.RawMessage `json:"event,omitempty"`
+	Origin   string          `json:"origin,omitempty"`
 	Capacity int             `json:"capacity,omitempty"`
+}
+
+// decode reads a stored event, in either shape.
+func (r stored) decode() (held, error) {
+	var probe struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(r.Event, &probe); err != nil {
+		return held{}, err
+	}
+	if probe.Type == "" {
+		e, origin, err := legacy.DecodeV1(r.Event)
+		return held{e: e, origin: origin}, err
+	}
+	var e event.Envelope
+	if err := json.Unmarshal(r.Event, &e); err != nil {
+		return held{}, err
+	}
+	return held{e: e, origin: r.Origin}, nil
 }
 
 const capacityKey = "capacity"
@@ -73,7 +103,7 @@ func New(capacity int) *Journal {
 	if capacity <= 0 {
 		capacity = DefaultCapacity
 	}
-	return &Journal{events: make([]envelope.Event, capacity)}
+	return &Journal{events: make([]held, capacity)}
 }
 
 // Open returns a journal that keeps the last capacity events in st too,
@@ -88,7 +118,7 @@ func Open(st state.Store, capacity int) (*Journal, error) {
 		switch {
 		case key == capacityKey:
 			written = r.Capacity
-		case r.Event != nil:
+		case len(r.Event) > 0:
 			all = append(all, r)
 		}
 		return nil
@@ -118,7 +148,12 @@ func Open(st state.Store, capacity int) (*Journal, error) {
 		}
 	}
 	for _, r := range all {
-		j.put(*r.Event)
+		h, err := r.decode()
+		if err != nil {
+			// An event this build cannot read is history it cannot show.
+			continue
+		}
+		j.put(h)
 	}
 	if len(all) > 0 {
 		j.seq = all[len(all)-1].Seq
@@ -126,21 +161,26 @@ func Open(st state.Store, capacity int) (*Journal, error) {
 	return j, nil
 }
 
-// Append records an event. With a store, it is written at the next Flush.
-func (j *Journal) Append(e envelope.Event) {
+// Append records an event of a run that came through origin. With a store,
+// it is written at the next Flush.
+func (j *Journal) Append(e event.Envelope, origin string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.put(e)
+	j.put(held{e: e, origin: origin})
 	if j.kept.Enabled() {
+		raw, err := json.Marshal(e)
+		if err != nil {
+			return
+		}
 		j.seq++
-		j.pending = append(j.pending, stored{Seq: j.seq, Event: &e})
+		j.pending = append(j.pending, stored{Seq: j.seq, Event: raw, Origin: origin})
 		if len(j.pending) > len(j.events) {
 			j.pending = slices.Delete(j.pending, 0, len(j.pending)-len(j.events))
 		}
 	}
 }
 
-func (j *Journal) put(e envelope.Event) {
+func (j *Journal) put(e held) {
 	j.events[j.head] = e
 	j.head = (j.head + 1) % len(j.events)
 	if j.head == 0 {
@@ -181,7 +221,7 @@ func (j *Journal) Flush() error {
 }
 
 // each visits events oldest first. The caller holds the read lock.
-func (j *Journal) each(fn func(envelope.Event)) {
+func (j *Journal) each(fn func(held)) {
 	if j.full {
 		for _, e := range j.events[j.head:] {
 			fn(e)
@@ -195,13 +235,13 @@ func (j *Journal) each(fn func(envelope.Event)) {
 // Events returns the events of the named runs in a tenant, oldest first, as
 // they were published. It is what the journal still holds: a run whose first
 // events have left the ring comes back without them.
-func (j *Journal) Events(tenant string, runIDs []string) []envelope.Event {
+func (j *Journal) Events(tenant string, runIDs []string) []event.Envelope {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	var out []envelope.Event
-	j.each(func(e envelope.Event) {
-		if e.Tenant == tenant && slices.Contains(runIDs, e.RunID) {
-			out = append(out, e)
+	var out []event.Envelope
+	j.each(func(h held) {
+		if h.e.Tenant == tenant && slices.Contains(runIDs, h.e.Run) {
+			out = append(out, h.e)
 		}
 	})
 	return out
@@ -211,14 +251,17 @@ func (j *Journal) Events(tenant string, runIDs []string) []envelope.Event {
 // empty field matches everything.
 type Query struct {
 	// Visible confines events before text matching and the result bound.
-	Visible func(envelope.Event) bool
+	Visible func(event.Envelope) bool
 	// ProjectEvent supplies an operational event view before text matching.
-	ProjectEvent func(envelope.Event) envelope.Event
+	ProjectEvent func(event.Envelope) event.Envelope
 	Tenant       string
 	Agent        string
 	RunID        string
-	// Kind is an exact kind ("delta.tool.call") or a family ("lifecycle").
-	Kind   string
+	// Type is a type prefix ("run.delta"), or a kind from before the union,
+	// exact ("delta.tool.call") or a family ("lifecycle").
+	Type string
+	// Types are more type prefixes. An entry matches Type or any of them.
+	Types  []string
 	Origin string
 	// Contains matches a substring of the entry's detail, ignoring case.
 	Contains string
@@ -237,14 +280,14 @@ const (
 // Entry is one event as a person reads it: the envelope's fields plus a short
 // plain-text account of its body.
 type Entry struct {
-	Seq    uint64        `json:"seq"`
-	RunID  string        `json:"run_id"`
-	Agent  string        `json:"agent"`
-	Rev    int           `json:"rev"`
-	Origin string        `json:"origin"`
-	Kind   envelope.Kind `json:"kind"`
-	At     time.Time     `json:"at"`
-	Detail string        `json:"detail,omitempty"`
+	Seq    uint64    `json:"seq"`
+	RunID  string    `json:"run_id"`
+	Agent  string    `json:"agent"`
+	Rev    int       `json:"rev"`
+	Origin string    `json:"origin"`
+	Type   string    `json:"type"`
+	At     time.Time `json:"at"`
+	Detail string    `json:"detail,omitempty"`
 }
 
 // Query returns matching entries, newest first.
@@ -259,21 +302,22 @@ func (j *Journal) Query(q Query) []Entry {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	var out []Entry
-	j.each(func(e envelope.Event) {
+	j.each(func(h held) {
+		e := h.e
 		switch {
 		case q.Tenant == "" || e.Tenant != q.Tenant:
 			return
 		case q.Agent != "" && e.Agent != q.Agent:
 			return
-		case q.RunID != "" && e.RunID != q.RunID:
+		case q.RunID != "" && e.Run != q.RunID:
 			return
-		case q.Origin != "" && e.Origin != q.Origin:
+		case q.Origin != "" && h.origin != q.Origin:
 			return
-		case q.Kind != "" && !e.Kind.Matches(q.Kind):
+		case !q.matchesType(e.Type):
 			return
-		case !q.Since.IsZero() && e.At.Before(q.Since):
+		case !q.Since.IsZero() && e.Time.Before(q.Since):
 			return
-		case !q.Until.IsZero() && e.At.After(q.Until):
+		case !q.Until.IsZero() && e.Time.After(q.Until):
 			return
 		}
 		if q.Visible != nil && !q.Visible(e) {
@@ -282,7 +326,7 @@ func (j *Journal) Query(q Query) []Entry {
 		if q.ProjectEvent != nil {
 			e = q.ProjectEvent(e)
 		}
-		entry := entryOf(e)
+		entry := entryOf(e, h.origin)
 		if needle != "" && !strings.Contains(strings.ToLower(entry.Detail), needle) {
 			return
 		}
@@ -295,43 +339,55 @@ func (j *Journal) Query(q Query) []Entry {
 	return out
 }
 
-func entryOf(e envelope.Event) Entry {
+// matchesType reports whether a type is chosen by Type or Types. No selector
+// chooses every type.
+func (q Query) matchesType(typ string) bool {
+	if q.Type == "" && len(q.Types) == 0 {
+		return true
+	}
+	if q.Type != "" && MatchesType(typ, q.Type) {
+		return true
+	}
+	return slices.ContainsFunc(q.Types, func(sel string) bool { return MatchesType(typ, sel) })
+}
+
+// MatchesType reports whether a type is what a selector chose: a type
+// prefix, or a kind from before the union.
+func MatchesType(typ, sel string) bool {
+	return event.Selects(sel, typ) || legacy.TypeMatchesKind(typ, sel)
+}
+
+func entryOf(e event.Envelope, origin string) Entry {
 	return Entry{
-		Seq: e.Seq, RunID: e.RunID, Agent: e.Agent, Rev: e.Rev, Origin: e.Origin,
-		Kind: e.Kind, At: e.At, Detail: clip(detail(e)),
+		Seq: e.Seq, RunID: e.Run, Agent: e.Agent, Rev: legacy.RevOf(e.Version), Origin: origin,
+		Type: e.Type, At: e.Time, Detail: clip(detail(e)),
 	}
 }
 
 // detail says what an event's body means, in a line.
-func detail(e envelope.Event) string {
-	switch e.Kind {
-	case envelope.KindText:
-		b, _ := payload.Decode[payload.Text](e)
+func detail(e event.Envelope) string {
+	switch b := e.Data.(type) {
+	case event.Text:
 		return b.Text
-	case envelope.KindThinking:
-		b, _ := payload.Decode[payload.Thinking](e)
+	case event.Thinking:
 		return b.Text
-	case envelope.KindToolCall:
-		b, _ := payload.Decode[payload.ToolCall](e)
+	case event.ToolCall:
 		return b.Name + " " + b.Phase
-	case envelope.KindToolDone:
-		b, _ := payload.Decode[payload.ToolDone](e)
+	case event.ToolDone:
 		if b.Error != "" {
 			return b.Name + " failed: " + b.Error
 		}
 		return b.Name + " done"
-	case envelope.KindCitation:
-		b, _ := payload.Decode[payload.Citation](e)
+	case event.Citation:
 		return b.Source.DocumentTitle
-	case envelope.KindActionTaken:
-		b, _ := payload.Decode[payload.Action](e)
+	case event.Action:
 		if b.Error != "" {
 			return b.Name + " failed: " + b.Error
 		}
 		return b.Name + " " + b.Summary
 	}
-	if e.Kind.Family() == "lifecycle" {
-		b, _ := payload.Decode[payload.Lifecycle](e)
+	if wire.IsLifecycle(e.Type) {
+		b, _ := wire.LifecycleOf(e)
 		switch {
 		case b.Error != "":
 			return Cause(b.Error)
@@ -406,8 +462,8 @@ func (j *Journal) Trace(tenant string, runIDs []string) []Span {
 	}
 	state := map[string]*open{}
 	var spans []*Span
-	start := func(e envelope.Event, kind SpanKind, name string) *Span {
-		s := &Span{RunID: e.RunID, Agent: e.Agent, Kind: kind, Name: name, Start: e.At}
+	start := func(e event.Envelope, kind SpanKind, name string) *Span {
+		s := &Span{RunID: e.Run, Agent: e.Agent, Kind: kind, Name: name, Start: e.Time}
 		spans = append(spans, s)
 		return s
 	}
@@ -419,71 +475,72 @@ func (j *Journal) Trace(tenant string, runIDs []string) []Span {
 	}
 
 	j.mu.RLock()
-	j.each(func(e envelope.Event) {
-		if e.Tenant != tenant || !want[e.RunID] {
+	j.each(func(h held) {
+		e := h.e
+		if e.Tenant != tenant || !want[e.Run] {
 			return
 		}
-		o := state[e.RunID]
+		o := state[e.Run]
 		if o == nil {
 			o = &open{tools: map[string]*Span{}}
-			state[e.RunID] = o
+			state[e.Run] = o
 		}
-		if o.run == nil && e.Kind != envelope.KindAccepted {
+		if o.run == nil && e.Type != event.TypeAccepted {
 			// The accepted event fell out of the journal. Open the run at
 			// the first event still held, rather than drop the run.
 			o.run = start(e, SpanRun, e.Agent)
 		}
-		switch e.Kind {
-		case envelope.KindAccepted:
+		switch e.Type {
+		case event.TypeAccepted:
 			if o.run == nil {
 				o.run = start(e, SpanRun, e.Agent)
 			}
-		case envelope.KindStarted, envelope.KindResumed:
-			end(&o.parked, e.At, "")
-			end(&o.attempt, e.At, "")
-			b, _ := payload.Decode[payload.Lifecycle](e)
+		case event.TypeStarted, event.TypeResumed:
+			end(&o.parked, e.Time, "")
+			end(&o.attempt, e.Time, "")
+			b, _ := wire.LifecycleOf(e)
 			name := "attempt"
 			if b.Attempt > 0 {
 				name = "attempt " + itoa(b.Attempt)
 			}
 			o.attempt = start(e, SpanAttempt, name)
-		case envelope.KindParked:
-			b, _ := payload.Decode[payload.Lifecycle](e)
-			end(&o.output, e.At, "")
-			end(&o.attempt, e.At, "")
+		case event.TypeParked:
+			b, _ := wire.LifecycleOf(e)
+			end(&o.output, e.Time, "")
+			end(&o.attempt, e.Time, "")
 			name := "waiting"
 			if b.Reason != "" {
 				name = "waiting: " + b.Reason
 			}
 			o.parked = start(e, SpanParked, name)
-		case envelope.KindText:
+		case event.TypeText:
 			if o.output == nil {
 				o.output = start(e, SpanOutput, "answer")
 			}
-			o.output.End = e.At
-		case envelope.KindToolCall:
-			b, _ := payload.Decode[payload.ToolCall](e)
+			o.output.End = e.Time
+		case event.TypeToolCall:
+			b, _ := e.Data.(event.ToolCall)
 			if _, seen := o.tools[b.ID]; !seen && b.ID != "" {
 				o.tools[b.ID] = start(e, SpanTool, b.Name)
 			}
-		case envelope.KindToolDone:
-			b, _ := payload.Decode[payload.ToolDone](e)
+		case event.TypeToolDone:
+			b, _ := e.Data.(event.ToolDone)
 			if s := o.tools[b.ID]; s != nil {
-				s.End, s.Error = e.At, b.Error
+				s.End, s.Error = e.Time, b.Error
 				delete(o.tools, b.ID)
 			}
-		case envelope.KindCompleted, envelope.KindFailed, envelope.KindStopped:
-			b, _ := payload.Decode[payload.Lifecycle](e)
+		case event.TypeCompleted, event.TypeFailed, event.TypeStopped:
+			b, _ := wire.LifecycleOf(e)
 			o.output = nil
-			end(&o.attempt, e.At, b.Error)
+			end(&o.attempt, e.Time, b.Error)
 			// A failed attempt that will be retried does not end the run. A
 			// stopped one ends it, without an error: nothing went wrong.
-			if e.Kind != envelope.KindFailed || b.Terminal {
+			if e.Type != event.TypeFailed || b.Terminal {
 				for id, s := range o.tools {
-					s.End = e.At
+					s.End = e.Time
 					delete(o.tools, id)
 				}
-				end(&o.run, e.At, b.Error)
+				end(&o.run, e.Time, b.Error)
 			}
 		}
 	})

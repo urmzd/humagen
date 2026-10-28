@@ -5,9 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -18,30 +19,28 @@ import (
 func (p *Platform) SourceCitationEvidence(tenant, runID, label, documentID string) (knowledge.CitationEvidence, bool) {
 	return p.SourceEvidence.Get(tenant, runID, label, documentID)
 }
-func (p *Platform) trustedCitation(e envelope.Event) (*runs.CitationMetadata, knowledge.CitationEvidence, bool) {
-	if e.Kind != envelope.KindCitation {
+func (p *Platform) trustedCitation(e event.Envelope) (*runs.CitationMetadata, knowledge.CitationEvidence, bool) {
+	if e.Type != event.TypeCitation {
 		return nil, knowledge.CitationEvidence{}, false
 	}
-	body, err := payload.Decode[payload.Citation](e)
+	body, err := wire.CitationOf(e)
 	if err != nil {
 		return nil, knowledge.CitationEvidence{}, false
 	}
-	proof, ok := p.SourceCitationEvidence(e.Tenant, e.RunID, body.Label, body.Source.DocumentUUID)
+	proof, ok := p.SourceCitationEvidence(e.Tenant, e.Run, body.Label, body.Source.DocumentUUID)
 	if !ok || proof.Digest != knowledge.EvidenceDigest(body.Source.DocumentUUID, body.Source.DocumentTitle, body.Source.SourceURI, body.Text, body.Source.SectionIndex) {
 		return nil, knowledge.CitationEvidence{}, false
 	}
 	return &runs.CitationMetadata{Mode: string(proof.Mode), CopyAt: proof.CopyAt, RefreshFailed: proof.RefreshFailed}, proof, true
 }
 
-// enrichCitation strips any model-claimed metadata before adding actual facts.
-func (p *Platform) enrichCitation(e envelope.Event) envelope.Event {
-	if e.Kind != envelope.KindCitation {
-		return e
-	}
-	body, err := payload.Decode[payload.Citation](e)
+// citationPayload is a citation's body as the API sends it: what the model
+// claimed about its source is never trusted, and only what the platform
+// recorded as evidence is added. A body that cannot be read is nil.
+func (p *Platform) citationPayload(e event.Envelope) []byte {
+	body, err := wire.CitationOf(e)
 	if err != nil {
-		e.Payload = nil
-		return e
+		return nil
 	}
 	shown := runs.CitationPayload{Citation: body}
 	if metadata, _, ok := p.trustedCitation(e); ok {
@@ -50,10 +49,11 @@ func (p *Platform) enrichCitation(e envelope.Event) envelope.Event {
 		failed := metadata.RefreshFailed
 		shown.RefreshFailed = &failed
 	}
-	if raw, err := json.Marshal(shown); err == nil {
-		e.Payload = raw
+	raw, err := json.Marshal(shown)
+	if err != nil {
+		return nil
 	}
-	return e
+	return raw
 }
 func (p *Platform) citationEvidenceVisible(who auth.Principal, proof knowledge.CitationEvidence) bool {
 	// Retained provider excerpts need a current per-file authorizer. These
@@ -72,8 +72,8 @@ func (p *Platform) citationEvidenceVisible(who auth.Principal, proof knowledge.C
 	src, err := p.Knowledge.Get(who.Tenant, proof.Source)
 	return err == nil && !src.RequiresUpstreamRead() && p.sourceRecordVisible(who, src)
 }
-func (p *Platform) CitationEventVisible(who auth.Principal, e envelope.Event) bool {
-	if e.Kind != envelope.KindCitation {
+func (p *Platform) CitationEventVisible(who auth.Principal, e event.Envelope) bool {
+	if e.Type != event.TypeCitation {
 		return true
 	}
 	if who.Tenant != e.Tenant || !who.Can(auth.KnowledgeRead) {
@@ -139,9 +139,8 @@ func (p *Platform) recordSourceToolCitations(req runtime.Request, src knowledge.
 		return nil, fmt.Errorf("source citation evidence could not be kept: %w", err)
 	}
 	for _, entry := range evidence {
-		body := payload.Citation{Label: entry.Label, Text: entry.Text, Index: entry.Index, Source: payload.Provenance{DocumentUUID: entry.DocumentID, DocumentTitle: entry.Title, SourceURI: entry.URI, SectionIndex: entry.Index}}
-		raw, _ := json.Marshal(body)
-		event := envelope.Event{Tenant: req.Tenant, RunID: req.RunID, Kind: envelope.KindCitation, Payload: raw, At: p.now()}
+		body := event.Citation{Label: entry.Label, Text: entry.Text, Index: entry.Index, Source: event.Provenance{DocumentUUID: entry.DocumentID, DocumentTitle: entry.Title, SourceURI: entry.URI, SectionIndex: entry.Index}}
+		event := event.Envelope{Tenant: req.Tenant, Run: req.RunID, Type: event.TypeCitation, Data: body, Time: p.now()}
 		metadata := &runs.CitationMetadata{Mode: string(entry.Mode), CopyAt: entry.CopyAt, RefreshFailed: entry.RefreshFailed}
 		if err := p.Runs.RecordCitation(event, metadata); err != nil {
 			return nil, err

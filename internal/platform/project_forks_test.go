@@ -9,9 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -25,7 +24,7 @@ import (
 func projectForkSource(t *testing.T, p *platform.Platform) string {
 	t.Helper()
 	field(t, p)
-	_, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "planner", Model: "offline", Provider: "offline", SystemPrompt: "Plan carefully."}, admin.Subject)
+	_, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "planner", Model: "offline", Provider: "offline", SystemPrompt: "Plan carefully."}, admin.Subject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +128,7 @@ func assertUnpublishedProjectFork(t *testing.T, p *platform.Platform) {
 			t.Fatalf("pending project accepts work: %v", err)
 		}
 	}
-	_, err := p.Invoke(t.Context(), envelope.Tag{ID: "must-not-run", Tenant: tenant, Agent: "copy-planner", Origin: "api", Text: "never run", Meta: map[string]string{runs.MetaProject: "Copy"}})
+	_, err := p.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: "must-not-run", Tenant: tenant, Agent: "copy-planner", Origin: "api", Text: "never run", Context: map[string]string{runs.MetaProject: "Copy"}}))
 	if err == nil {
 		t.Fatal("pending copied agent ran")
 	}
@@ -372,7 +371,7 @@ func TestProjectForkExplicitArchivesArePassiveConfinedAndReplayable(t *testing.T
 		if _, _, err := again.Threads.Post(tenant, archive.ID, threads.Message{By: admin.Subject, Text: "no store bypass"}, time.Now()); !errors.Is(err, threads.ErrInvalid) {
 			t.Fatalf("archive accepted direct store message: %v", err)
 		}
-		_, err = again.Invoke(t.Context(), envelope.Tag{ID: "archive-no-run", Tenant: tenant, Agent: "copy-planner", Origin: "api", Text: "never execute", Meta: map[string]string{runs.MetaProject: "Copy", runs.MetaThread: archive.ID}})
+		_, err = again.Invoke(t.Context(), wire.NewEvent(wire.Raise{ID: "archive-no-run", Tenant: tenant, Agent: "copy-planner", Origin: "api", Text: "never execute", Context: map[string]string{runs.MetaProject: "Copy", runs.MetaThread: archive.ID}}))
 		if err == nil {
 			t.Fatal("archive accepted direct run")
 		}

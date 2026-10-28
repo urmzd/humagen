@@ -11,9 +11,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/durable"
+	"github.com/urmzd/humagen/fiber/pkg/durable"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -184,12 +184,12 @@ func TestARunClaimedAsThePlatformStopsIsResumedAfterTheRestart(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = release() })
 
-	model := func(m saigetypes.Provider) []agentrt.Option {
-		return []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return m, nil })}
+	model := func(m saigetypes.Provider) []native.Option {
+		return []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return m, nil })}
 	}
 	held := &holding{called: make(chan struct{})}
 	p, stop := runningWith(t, platform.Config{Backends: first, AgentOptions: model(held)})
-	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	r, err := p.Invoke(ctx, tag("claimed-at-stop", "lead"))

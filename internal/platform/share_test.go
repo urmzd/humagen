@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -328,7 +328,7 @@ func TestAMentionIsReadWhereItsConversationWent(t *testing.T) {
 func TestAConversationFromBeforeThreadsHoldsAsManyParticipantsAsAThread(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
-	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-0", Agent: "lead", Text: "hi", Actor: envelope.Actor{ID: "p0", User: "p0"}})
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-0", Agent: "lead", Text: "hi", Actor: event.Actor{ID: "p0", User: "p0"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestAConversationFromBeforeThreadsHoldsAsManyParticipantsAsAThread(t *testi
 	const people = threads.MaxParticipants + 10
 	for i := 1; i < people; i++ {
 		who := fmt.Sprintf("p%d", i)
-		if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-" + who, Agent: "lead", Text: "and?", After: first.ID, Actor: envelope.Actor{ID: who, User: who}}); err != nil {
+		if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-" + who, Agent: "lead", Text: "and?", After: first.ID, Actor: event.Actor{ID: who, User: who}}); err != nil {
 			t.Fatal(err)
 		}
 	}

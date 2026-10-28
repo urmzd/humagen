@@ -9,12 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -119,17 +117,17 @@ func TestCallPolicyIsPerTenantAndValidated(t *testing.T) {
 	}
 
 	// Another tenant's agent does not exist for it, to read or to write.
-	if _, err := p.CallPolicy(ctx, "globex", "helper"); !errors.Is(err, registry.ErrNotFound) {
+	if _, err := p.CallPolicy(ctx, "globex", "helper"); !errors.Is(err, wire.ErrNotFound) {
 		t.Fatalf("another tenant read the policy: %v", err)
 	}
-	if _, err := p.SetCallPolicy(ctx, "globex", "helper", "eve", callpolicy.Policy{Callers: callpolicy.Nobody, Approval: callpolicy.Never}); !errors.Is(err, registry.ErrNotFound) {
+	if _, err := p.SetCallPolicy(ctx, "globex", "helper", "eve", callpolicy.Policy{Callers: callpolicy.Nobody, Approval: callpolicy.Never}); !errors.Is(err, wire.ErrNotFound) {
 		t.Fatalf("another tenant wrote the policy: %v", err)
 	}
-	if _, err := p.CallPolicy(ctx, tenant, "ghost"); !errors.Is(err, registry.ErrNotFound) {
+	if _, err := p.CallPolicy(ctx, tenant, "ghost"); !errors.Is(err, wire.ErrNotFound) {
 		t.Fatalf("an unknown agent has a policy: %v", err)
 	}
 	// An agent of another tenant is not an agent here.
-	if _, err := p.Agents.Create(ctx, "globex", agentspec.AgentSpec{Name: "spy", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
+	if _, err := p.Agents.Create(ctx, "globex", wire.AgentSpec{Name: "spy", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	for name, pol := range map[string]callpolicy.Policy{
@@ -151,7 +149,7 @@ func TestCallPolicyIsPerTenantAndValidated(t *testing.T) {
 func TestReachableSaysWhomAnAgentMayCallAndWhy(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
-	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "closed", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
+	if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "closed", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	setPolicy(t, p, "closed", callpolicy.Policy{Callers: callpolicy.Nobody, Approval: callpolicy.Never})
@@ -174,7 +172,7 @@ func TestReachableSaysWhomAnAgentMayCallAndWhy(t *testing.T) {
 	if r := by["closed"]; r.Admits || r.InSpawn || r.Approval != "never" || !strings.Contains(r.Reason, "spawn allowlist") {
 		t.Fatalf("closed = %+v", r)
 	}
-	if _, _, err := p.Reachable(ctx, "globex", "lead"); !errors.Is(err, registry.ErrNotFound) {
+	if _, _, err := p.Reachable(ctx, "globex", "lead"); !errors.Is(err, wire.ErrNotFound) {
 		t.Fatalf("another tenant: %v", err)
 	}
 }
@@ -230,7 +228,7 @@ func TestACallWaitingForApprovalIsInTheCalleesQueue(t *testing.T) {
 		},
 		spawn: map[string][]string{"lead": {"helper"}},
 		tools: map[string][]string{"lead": {platform.ToolCallAgent}},
-		shape: map[string]func(*agentspec.AgentSpec){"lead": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolCallAgent} }},
+		shape: map[string]func(*wire.AgentSpec){"lead": func(s *wire.AgentSpec) { s.Approvals = []string{platform.ToolCallAgent} }},
 	}
 	p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 	run := ask(t, p, "api-queue", "lead")
@@ -286,7 +284,7 @@ func TestACallTheCalleeHoldsWaitsForItsApprovers(t *testing.T) {
 			p := stage(t, c, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
 			setPolicy(t, p, "helper", callpolicy.Policy{Callers: callpolicy.Anyone, Approval: callpolicy.Always, Approvers: []string{"role:manager"}})
 
-			first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-gov", Agent: "lead", Text: "Go", Actor: envelope.Actor{ID: admin.Subject}})
+			first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-gov", Agent: "lead", Text: "Go", Actor: event.Actor{ID: admin.Subject}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -349,10 +347,10 @@ type slowToRecord struct {
 	hold time.Duration
 }
 
-func (s slowToRecord) Publish(ctx context.Context, e envelope.Event) error {
+func (s slowToRecord) Publish(ctx context.Context, e event.Envelope) error {
 	err := s.Bus.Publish(ctx, e)
-	if e.Kind == envelope.KindParked {
-		if body, derr := payload.Decode[payload.Lifecycle](e); derr == nil && body.Question != nil {
+	if e.Type == event.TypeParked {
+		if body, derr := wire.LifecycleOf(e); derr == nil && body.Question != nil {
 			time.Sleep(s.hold)
 		}
 	}
@@ -375,7 +373,7 @@ func TestACallApprovedBeforeItsQuestionIsRecordedGoesThrough(t *testing.T) {
 		Bus:    slowToRecord{Bus: bus.NewMemory(), hold: 200 * time.Millisecond},
 	})
 	setPolicy(t, p, "helper", callpolicy.Policy{Callers: callpolicy.Anyone, Approval: callpolicy.Always, Approvers: []string{"role:manager"}})
-	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-early", Agent: "lead", Text: "Go", Actor: envelope.Actor{ID: admin.Subject}})
+	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-early", Agent: "lead", Text: "Go", Actor: event.Actor{ID: admin.Subject}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +396,7 @@ func TestTheCallToolAsksTheCalleesApprovers(t *testing.T) {
 	}
 	var req runtime.Request
 	req.Tenant, req.RunID = tenant, "r"
-	req.Revision.Spec.Name, req.Revision.Spec.Access.Spawn = "lead", []string{"helper"}
+	req.Definition.Spec.Name, req.Definition.Spec.Access.Spawn = "lead", []string{"helper"}
 	args := map[string]any{"agent": "helper", "messages": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "Check\n the  build."}}}}}
 	if _, needed := p.CallToolApproval(req, args); needed {
 		t.Fatal("a callee with no policy needs approval")

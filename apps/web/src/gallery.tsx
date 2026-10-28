@@ -1,14 +1,14 @@
+import { type OrbState, orbLabel } from "@humagen/web";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { orbLabel, type OrbState } from "@humagen/web";
 import "@humagen/render-web/fonts.css";
 import "./styles.css";
 import { ActivityPanel } from "./Activity.tsx";
 import { sampleTrees } from "./activity.fixtures.ts";
 import { InboxPage } from "./InboxPage.tsx";
-import { memoryTransport } from "./mail.fixtures.ts";
 import { LimitsPanel } from "./Limits.tsx";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
+import { memoryTransport } from "./mail.fixtures.ts";
 import { RunItem } from "./RunItem.tsx";
 import { SessionGauge } from "./SessionGauge.tsx";
 import { Storage, StorageUsed, StoredList } from "./Storage.tsx";
@@ -57,7 +57,9 @@ function Gallery() {
   return (
     <main className="flex max-w-[68rem] flex-col gap-10 px-5 py-8 md:px-10">
       <header className="flex items-end justify-between gap-4">
-        <h1 className="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg">Console primitives</h1>
+        <h1 className="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg">
+          Console primitives
+        </h1>
         <Segmented
           label="Theme"
           value={theme}
@@ -70,12 +72,34 @@ function Gallery() {
       </header>
 
       <Section title="Agent marks: activity within the row">
-        <div id="agent-marks" data-testid="gallery-agent-marks" className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-          {(["idle", "thinking", "searching", "calling", "delegating", "composing", "waiting", "done", "error", "stopped"] as OrbState[]).map((state) => (
+        <div
+          id="agent-marks"
+          data-testid="gallery-agent-marks"
+          className="grid grid-cols-2 gap-4 sm:grid-cols-5"
+        >
+          {(
+            [
+              "idle",
+              "thinking",
+              "searching",
+              "calling",
+              "delegating",
+              "composing",
+              "waiting",
+              "done",
+              "error",
+              "stopped",
+            ] as OrbState[]
+          ).map((state) => (
             <div key={state} className="flex flex-col gap-2">
               <span className="text-aui-xs text-aui-muted">{orbLabel[state]}</span>
               {[12, 14, 16, 18, 24, 32].map((size) => (
-                <div key={size} data-mark-size={size} className="flex items-center gap-2 overflow-hidden text-aui-xs" style={{ height: size }}>
+                <div
+                  key={size}
+                  data-mark-size={size}
+                  className="flex items-center gap-2 overflow-hidden text-aui-xs"
+                  style={{ height: size }}
+                >
                   <AgentMark name="oncall" size={size} state={state} />
                   <span>oncall · {size}px</span>
                 </div>
@@ -102,7 +126,13 @@ function Gallery() {
           <Stroke agent="lead" state="done" edge="under" testId="stroke-under" className="pb-2">
             <p className="text-aui-sm text-aui-fg">Edge: under</p>
           </Stroke>
-          <Stroke agent="lead" state="waiting" edge="around" testId="stroke-around" className="rounded-aui-lg p-3">
+          <Stroke
+            agent="lead"
+            state="waiting"
+            edge="around"
+            testId="stroke-around"
+            className="rounded-aui-lg p-3"
+          >
             <p className="text-aui-sm text-aui-fg">Edge: around, waiting</p>
           </Stroke>
         </div>
@@ -121,9 +151,31 @@ function Gallery() {
 
       <Section title="Usage meter, header size">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-          <UsageMeter size="header" label="Workspace spend" spent={12 * M} limit={50 * M} period="month" testId="meter-under" />
-          <UsageMeter size="header" label="Project Launch" spent={43 * M} limit={50 * M} period="month" projected={58 * M} testId="meter-warning" />
-          <UsageMeter size="header" label="Agent oncall" spent={61.5 * M} limit={50 * M} period="month" testId="meter-over" />
+          <UsageMeter
+            size="header"
+            label="Workspace spend"
+            spent={12 * M}
+            limit={50 * M}
+            period="month"
+            testId="meter-under"
+          />
+          <UsageMeter
+            size="header"
+            label="Project Launch"
+            spent={43 * M}
+            limit={50 * M}
+            period="month"
+            projected={58 * M}
+            testId="meter-warning"
+          />
+          <UsageMeter
+            size="header"
+            label="Agent oncall"
+            spent={61.5 * M}
+            limit={50 * M}
+            period="month"
+            testId="meter-over"
+          />
           <UsageMeter size="header" label="Agent helper" spent={3.2 * M} testId="meter-none" />
         </div>
       </Section>
@@ -133,7 +185,14 @@ function Gallery() {
           <UsageMeter label="lead" spent={4 * M} limit={20 * M} period="day" />
           <UsageMeter label="oncall" spent={17 * M} limit={20 * M} period="day" />
           <UsageMeter label="releaser" spent={26 * M} limit={20 * M} period="day" />
-          <UsageMeter label="Runs today" spent={840} limit={1000} projected={1150} format={counted("runs")} testId="meter-runs" />
+          <UsageMeter
+            label="Runs today"
+            spent={840}
+            limit={1000}
+            projected={1150}
+            format={counted("runs")}
+            testId="meter-runs"
+          />
         </div>
       </Section>
 
@@ -149,8 +208,21 @@ function Gallery() {
               setPeriod(p);
             }}
           />
-          <LimitField label="Workspace limit" value={250 * M} period="month" onChange={() => {}} testId="limit-set" />
-          <LimitField label="Agent limit" value={null} period="day" onChange={() => {}} disabled testId="limit-disabled" />
+          <LimitField
+            label="Workspace limit"
+            value={250 * M}
+            period="month"
+            onChange={() => {}}
+            testId="limit-set"
+          />
+          <LimitField
+            label="Agent limit"
+            value={null}
+            period="day"
+            onChange={() => {}}
+            disabled
+            testId="limit-disabled"
+          />
         </div>
       </Section>
 
@@ -164,12 +236,32 @@ function Gallery() {
             return (
               <>
                 <RunItem run={{ ...base, status: "accepted" }} load={load} onActivity={setRun} />
-                <RunItem run={{ ...base, status: "running", calls: 0 }} load={load} onActivity={setRun} />
-                <RunItem run={{ ...base, status: "running", lease: 2_000_000, granted: 1_700_000 }} load={load} onActivity={setRun} />
-                <RunItem run={{ ...base, status: "parked", reason: "approval to deploy" }} load={load} onActivity={setRun} />
-                <RunItem run={{ ...base, status: "failed", agent: "releaser" }} load={load} onActivity={setRun} />
+                <RunItem
+                  run={{ ...base, status: "running", calls: 0 }}
+                  load={load}
+                  onActivity={setRun}
+                />
+                <RunItem
+                  run={{ ...base, status: "running", lease: 2_000_000, granted: 1_700_000 }}
+                  load={load}
+                  onActivity={setRun}
+                />
+                <RunItem
+                  run={{ ...base, status: "parked", reason: "approval to deploy" }}
+                  load={load}
+                  onActivity={setRun}
+                />
+                <RunItem
+                  run={{ ...base, status: "failed", agent: "releaser" }}
+                  load={load}
+                  onActivity={setRun}
+                />
                 <RunItem run={base} load={load} onActivity={setRun} />
-                <RunItem run={{ ...base, agent: "oncall", lease: 2_000_000, granted: 500_000 }} load={load} onActivity={setRun} />
+                <RunItem
+                  run={{ ...base, agent: "oncall", lease: 2_000_000, granted: 500_000 }}
+                  load={load}
+                  onActivity={setRun}
+                />
               </>
             );
           })()}
@@ -196,11 +288,26 @@ function Gallery() {
       <Section title="Activity: a conversation's runs, then one run's whole conversation">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* The panel is a full sheet below the lg width. A transform keeps each one inside its box here. */}
-          <div data-testid="gallery-activity" className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
-            <ActivityPanel trees={trees} selected={run} onSelect={setRun} onClose={() => setRun(null)} onJump={() => {}} />
+          <div
+            data-testid="gallery-activity"
+            className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full"
+          >
+            <ActivityPanel
+              trees={trees}
+              selected={run}
+              onSelect={setRun}
+              onClose={() => setRun(null)}
+              onJump={() => {}}
+            />
           </div>
           <div className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
-            <ActivityPanel trees={trees} selected="r2a" onSelect={() => {}} onClose={() => {}} onJump={() => {}} />
+            <ActivityPanel
+              trees={trees}
+              selected="r2a"
+              onSelect={() => {}}
+              onClose={() => {}}
+              onJump={() => {}}
+            />
           </div>
           <div className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
             <ActivityPanel trees={[]} selected={null} onSelect={() => {}} onClose={() => {}} />
@@ -209,19 +316,45 @@ function Gallery() {
       </Section>
 
       <Section title="Inbox, held in memory with one message of every kind">
-        <div data-testid="gallery-inbox" className="flex h-[44rem] flex-col overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)]">
+        <div
+          data-testid="gallery-inbox"
+          className="flex h-[44rem] flex-col overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)]"
+        >
           <InboxPage signal={0} viewer="You" via={inbox} onOpen={() => {}} />
         </div>
       </Section>
 
       <Section title="Artifacts, held in memory, then its over-limit, loading and failed states">
-        <div data-testid="gallery-storage" className="overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)]">
-          <Storage signal={0} agents={["lead", "billing", "oncall", "releaser"]} projects={["Launch"]} canDelete via={files} onOpenRun={() => {}} onOpenThread={() => {}} />
+        <div
+          data-testid="gallery-storage"
+          className="overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)]"
+        >
+          <Storage
+            signal={0}
+            agents={["lead", "billing", "oncall", "releaser"]}
+            projects={["Launch"]}
+            canDelete
+            via={files}
+            onOpenRun={() => {}}
+            onOpenThread={() => {}}
+          />
         </div>
         <div className="@container grid grid-cols-1 gap-6 md:grid-cols-3">
           <StorageUsed use={sampleUse({ used_bytes: 6 * 1024 ** 2, by_project: [] })} />
-          <StoredList files={[]} selected={null} state="loading" narrowed={false} onSelect={() => {}} />
-          <StoredList files={[]} selected={null} state="failed" narrowed={false} onSelect={() => {}} />
+          <StoredList
+            files={[]}
+            selected={null}
+            state="loading"
+            narrowed={false}
+            onSelect={() => {}}
+          />
+          <StoredList
+            files={[]}
+            selected={null}
+            state="failed"
+            narrowed={false}
+            onSelect={() => {}}
+          />
         </div>
       </Section>
 

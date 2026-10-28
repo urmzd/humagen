@@ -9,13 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -41,7 +40,7 @@ func (p *Platform) AgentControl(tenant, agent string) operations.Control {
 }
 func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operations.Control, version int) (result operations.Control, resultErr error) {
 	if agent != "" {
-		if _, err := p.Agents.Get(context.Background(), who.Tenant, agent, 0); err != nil {
+		if _, err := p.Catalog().Get(context.Background(), who.Tenant, agent, 0); err != nil {
 			return operations.Control{}, err
 		}
 		if !p.Seer(who).Agent(agent) {
@@ -115,17 +114,17 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 		return req, err
 	}
 	if restricted {
-		req.Revision.Spec.Tools = slices.DeleteFunc(slices.Clone(req.Revision.Spec.Tools), func(name string) bool { return !agentrt.IsToolGroup(name) && !slices.Contains(allowed, name) })
-		req.Revision.Spec.Access.Spawn = slices.DeleteFunc(slices.Clone(req.Revision.Spec.Access.Spawn), func(agent string) bool {
+		req.Definition.Spec.Tools = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Tools), func(name string) bool { return !native.IsToolGroup(name) && !slices.Contains(allowed, name) })
+		req.Definition.Spec.Access.Spawn = slices.DeleteFunc(slices.Clone(req.Definition.Spec.Access.Spawn), func(agent string) bool {
 			return !slices.Contains(allowed, ToolCallAgent) && !slices.Contains(allowed, ToolDelegate) && !slices.Contains(allowed, tagTool+agent)
 		})
 	}
 	if p.operationDecision(req, operations.CallAgents) == operations.Ask {
-		req.Revision.Spec.Approvals = slices.Clone(req.Revision.Spec.Approvals)
-		for _, agent := range req.Revision.Spec.Access.Spawn {
+		req.Definition.Spec.Approvals = slices.Clone(req.Definition.Spec.Approvals)
+		for _, agent := range req.Definition.Spec.Access.Spawn {
 			name := tagTool + agent
-			if slices.Contains(req.Revision.Spec.Tools, name) && !slices.Contains(req.Revision.Spec.Approvals, name) {
-				req.Revision.Spec.Approvals = append(req.Revision.Spec.Approvals, name)
+			if slices.Contains(req.Definition.Spec.Tools, name) && !slices.Contains(req.Definition.Spec.Approvals, name) {
+				req.Definition.Spec.Approvals = append(req.Definition.Spec.Approvals, name)
 			}
 		}
 	}
@@ -163,12 +162,12 @@ type operationRequestKey struct{}
 type operationsCatalog struct {
 	p      *Platform
 	req    runtime.Request
-	inner  agentrt.Tools
+	inner  native.Tools
 	groups runtime.ToolGroupSource
 }
 
 func (p *Platform) operationsCatalog(base runtime.Catalog, groups runtime.ToolGroupSource) runtime.Catalog {
-	return func(req runtime.Request, action func(payload.Action) error) (agentrt.Tools, error) {
+	return func(req runtime.Request, action func(event.Action) error) (native.Tools, error) {
 		inner, err := base(req, action)
 		if err != nil {
 			return nil, err
@@ -183,40 +182,40 @@ func (c *operationsCatalog) Lookup(name string) (saigetypes.Tool, error) {
 	}
 	return c.p.operationTool(c.req, t, categoryOf(name)), nil
 }
-func (c *operationsCatalog) ToolGroup(name string) (agentrt.ToolGroup, error) {
+func (c *operationsCatalog) ToolGroup(name string) (native.ToolGroup, error) {
 	if c.groups != nil {
 		// The sandbox's execution context is rebuilt inside playscape. Derive
 		// identity only from this run's durable tag (or its admission record),
 		// never from a process context or another person's active turn.
-		var actor envelope.Actor
+		var actor event.Actor
 		if run, err := c.p.Runs.Get(c.req.Tenant, c.req.RunID); err == nil {
 			actor = run.Actor
 		} else if v, ok := c.p.admitting.Load(c.req.RunID); ok && v.(admitted).tenant == c.req.Tenant {
 			actor = v.(admitted).actor
 		} else {
-			return agentrt.ToolGroup{}, operations.ErrDenied
+			return native.ToolGroup{}, operations.ErrDenied
 		}
 		execution, exists := c.p.operationContexts.Load(operationExecutionKey{c.req.Tenant, c.req.RunID, c.req.Attempt})
 		if !exists {
-			return agentrt.ToolGroup{}, operations.ErrDenied
+			return native.ToolGroup{}, operations.ErrDenied
 		}
-		ctx := envelope.WithActor(execution.(context.Context), actor)
+		ctx := event.WithActor(execution.(context.Context), actor)
 		ts, ok, err := c.groups.Expand(ctx, c.req.Tenant, name)
 		if err != nil {
-			return agentrt.ToolGroup{}, err
+			return native.ToolGroup{}, err
 		}
 		if ok {
 			return c.p.wrapOperationGroup(c.req, name, ts)
 		}
 	}
-	if g, ok := c.inner.(agentrt.ToolGroups); ok {
+	if g, ok := c.inner.(native.ToolGroups); ok {
 		group, err := g.ToolGroup(name)
 		if err != nil {
 			return group, err
 		}
 		return c.p.wrapOperationGroup(c.req, name, group.Tools)
 	}
-	return agentrt.ToolGroup{}, agentrt.ErrNoSuchToolGroup
+	return native.ToolGroup{}, native.ErrNoSuchToolGroup
 }
 
 type operationTool struct {
@@ -235,27 +234,27 @@ func (p *Platform) operationTool(req runtime.Request, t saigetypes.Tool, c opera
 	return wrapped
 }
 func (t *operationTool) ActsForPerson() bool {
-	v, ok := t.Tool.(agentrt.PersonScoped)
+	v, ok := t.Tool.(native.PersonScoped)
 	return ok && v.ActsForPerson()
 }
-func (t *operationTool) Approval(c saigetypes.ToolCallPart) (agentrt.ApprovalRequest, bool) {
-	if a, ok := t.Tool.(agentrt.Approving); ok {
+func (t *operationTool) Approval(c saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
+	if a, ok := t.Tool.(native.Approving); ok {
 		if q, needed := a.Approval(c); needed {
 			return q, true
 		}
 	}
 	if t.decision() != operations.Ask {
-		return agentrt.ApprovalRequest{}, false
+		return native.ApprovalRequest{}, false
 	}
 	control := t.p.AgentControl(t.req.Tenant, t.req.Agent())
-	approvers := slices.Clone(t.req.Revision.Spec.Approvers)
+	approvers := slices.Clone(t.req.Definition.Spec.Approvers)
 	if len(approvers) == 0 {
 		approvers = slices.Clone(fallbackApprovers)
 		if control.Manager != "" {
 			approvers = append(approvers, control.Manager)
 		}
 	}
-	return agentrt.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: approvers, SelfApproval: t.req.Revision.Spec.SelfApproval, ExpiresIn: 24 * time.Hour}, true
+	return native.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: approvers, SelfApproval: t.req.Definition.Spec.SelfApproval, ExpiresIn: 24 * time.Hour}, true
 }
 func (t *operationTool) check(ctx context.Context) error {
 	if allowed, restricted, err := t.p.operationTools(t.req); err != nil {
@@ -273,7 +272,7 @@ func (t *operationTool) check(ctx context.Context) error {
 		info, _ := saigetypes.ToolCallInfoFromContext(ctx)
 		approved := t.p.approvedCallTo(t.req.Tenant, t.req.RunID, info.ID+":action", "tool:"+t.Definition().Name)
 		if t.req.Resume != nil {
-			if a, ok := t.req.Resume.Answers[info.ID]; ok && a.Decision == payload.DecisionApprove {
+			if a, ok := t.req.Resume.Answers[info.ID]; ok && a.Decision == event.DecisionApprove {
 				approved = true
 			}
 		}
@@ -303,14 +302,14 @@ func (t *operationTool) ExecuteRich(ctx context.Context, args map[string]any) (s
 	return saigetypes.TextResult(out), err
 }
 
-var _ agentrt.Approving = (*operationTool)(nil)
-var _ agentrt.PersonScoped = (*operationTool)(nil)
+var _ native.Approving = (*operationTool)(nil)
+var _ native.PersonScoped = (*operationTool)(nil)
 var _ saigetypes.RichTool = (*operationTool)(nil)
 
 func (p *Platform) SetActionPolicy(who auth.Principal, scope operations.Scope, rules map[operations.Category]operations.Level, version int) (result operations.Policy, resultErr error) {
 	switch scope.Kind {
 	case "agent":
-		if _, err := p.Agents.Get(context.Background(), who.Tenant, scope.Name, 0); err != nil {
+		if _, err := p.Catalog().Get(context.Background(), who.Tenant, scope.Name, 0); err != nil {
 			return operations.Policy{}, err
 		}
 		if !p.Seer(who).Agent(scope.Name) {
@@ -499,7 +498,7 @@ func (p *Platform) AgentNetwork(who auth.Principal) AgentNetwork {
 func (p *Platform) operationTools(req runtime.Request) ([]string, bool, error) {
 	raw, ok := req.Meta[operations.MetaTools]
 	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
-		if v, pinned := run.Tag().Meta[operations.MetaTools]; pinned {
+		if v, pinned := wire.Meta(run.Tag())[operations.MetaTools]; pinned {
 			raw, ok = v, true
 		}
 	}
@@ -545,10 +544,10 @@ func (p *Platform) bindOperationContext(ctx context.Context, req runtime.Request
 	return func() { p.operationContexts.Delete(key) }
 }
 
-func (p *Platform) wrapOperationGroup(req runtime.Request, name string, ts []saigetypes.Tool) (agentrt.ToolGroup, error) {
+func (p *Platform) wrapOperationGroup(req runtime.Request, name string, ts []saigetypes.Tool) (native.ToolGroup, error) {
 	allowed, restricted, err := p.operationTools(req)
 	if err != nil {
-		return agentrt.ToolGroup{}, err
+		return native.ToolGroup{}, err
 	}
 	category := operations.ReadContext
 	if strings.HasSuffix(name, ":write") {
@@ -565,7 +564,7 @@ func (p *Platform) wrapOperationGroup(req runtime.Request, name string, ts []sai
 		}
 		out = append(out, wrapped)
 	}
-	return agentrt.ToolGroup{Name: name, Tools: out}, nil
+	return native.ToolGroup{Name: name, Tools: out}, nil
 }
 
 // operationPerson supplies policy identity only. It never supplies a credential.
@@ -577,7 +576,7 @@ func (p *Platform) operationPerson(run runs.Run) string {
 			root = got
 		}
 	}
-	if id := root.Tag().Meta[metaAssignment]; id != "" {
+	if id := wire.Meta(root.Tag())[metaAssignment]; id != "" {
 		if a, ok := p.Operations.Assignment(run.Tenant, id); ok {
 			return a.Owner
 		}
@@ -611,9 +610,9 @@ func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView
 	view := AgentControlView{Control: c, State: "ready", EffectivePaused: p.Operations.Paused(who.Tenant, legacy.BuiltinAgent(agent)) || !p.agentReady(who.Tenant, agent), ManagerName: p.NameOf(who.Tenant, c.Manager)}
 
 	if agent != "" && who.Can(auth.AgentsRead) && p.Seer(who).Agent(agent) {
-		binding := p.AgentSkillDefaults.Get(who.Tenant, agentspec.NormalizeName(legacy.BuiltinAgent(agent)))
+		binding := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(legacy.BuiltinAgent(agent)))
 		if len(binding.Skills) > 0 {
-			revision, err := p.Agents.Get(context.Background(), who.Tenant, agent, 0)
+			revision, err := p.Catalog().Get(context.Background(), who.Tenant, agent, 0)
 			home, homed := p.Projects.Tree(who.Tenant).Home(agent)
 			view.NeedsSkillReview = err != nil || binding.AgentRevision != revision.Rev || !homed || !p.defaultSkillsFitHome(who.Tenant, agent, home, p.Projects.Tree(who.Tenant))
 			if view.NeedsSkillReview {
@@ -678,7 +677,7 @@ func (p *Platform) operationForced(req runtime.Request) bool {
 		return true
 	}
 	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil {
-		return run.Tag().Meta[operations.MetaForceAsk] == "true"
+		return wire.Meta(run.Tag())[operations.MetaForceAsk] == "true"
 	}
 	if v, ok := p.admitting.Load(req.RunID); ok && v.(admitted).tenant == req.Tenant {
 		return v.(admitted).operationMeta[operations.MetaForceAsk] == "true"

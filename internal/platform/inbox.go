@@ -10,8 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/registry"
-
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -912,7 +911,7 @@ func (p *Platform) retryAnswer(ctx context.Context, tenant string, run runs.Run,
 		return runs.Run{}, err
 	}
 	if t.Agent != Open && !t.Sees(t.Agent) {
-		return runs.Run{}, fmt.Errorf("%w: %q", registry.ErrNotFound, t.Agent)
+		return runs.Run{}, fmt.Errorf("%w: %q", wire.ErrNotFound, t.Agent)
 	}
 	started, err := p.answerMessage(ctx, tenant, th, m, "", t.Agent, nil, run.Routed, t.Actor, t.ID, t.KeepsNotes, t.Sees)
 	if err != nil {

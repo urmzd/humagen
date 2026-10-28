@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
@@ -27,7 +27,7 @@ const metaDefaultSkills = "_humagen.skills.defaults"
 const metaDefaultSkillRevision = "_humagen.skills.agent_revision"
 
 func (p *Platform) AgentSkills(tenant, agent string) (AgentSkillsView, error) {
-	rev, err := p.Agents.Get(context.Background(), tenant, agent, 0)
+	rev, err := p.Catalog().Get(context.Background(), tenant, agent, 0)
 	if err != nil {
 		return AgentSkillsView{}, library.ErrNotFound
 	}
@@ -106,7 +106,7 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 	defer p.skillDefaultsMu.Unlock()
 	p.admission.Lock()
 	defer p.admission.Unlock()
-	rev, err := p.Agents.Get(context.Background(), who.Tenant, agent, 0)
+	rev, err := p.Catalog().Get(context.Background(), who.Tenant, agent, 0)
 	if err != nil || !p.Seer(who).Agent(agent) {
 		return AgentSkillsView{}, library.ErrNotFound
 	}
@@ -160,7 +160,7 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 	return saved, err
 }
 func (p *Platform) defaultSkillsFitHome(tenant, agent, project string, tree *projects.Tree) bool {
-	for _, ref := range p.AgentSkillDefaults.Get(tenant, agentspec.NormalizeName(agent)).Skills {
+	for _, ref := range p.AgentSkillDefaults.Get(tenant, wire.NormalizeName(agent)).Skills {
 		latest, err := p.SkillLibrary.Find(tenant, ref.ID)
 		if err != nil {
 			return false
@@ -179,15 +179,15 @@ func (p *Platform) defaultSkillsFitHome(tenant, agent, project string, tree *pro
 	}
 	return true
 }
-func (p *Platform) pinAgentSkillDefaults(ctx context.Context, tag envelope.Tag, edge call.Edge, project string) (envelope.Tag, error) {
+func (p *Platform) pinAgentSkillDefaults(ctx context.Context, tag event.Envelope, edge call.Edge, project string) (event.Envelope, error) {
 	// Never believe a caller-supplied defaults marker.
-	delete(tag.Meta, metaDefaultSkills)
-	delete(tag.Meta, metaDefaultSkillRevision)
-	defaults := p.AgentSkillDefaults.Get(tag.Tenant, agentspec.NormalizeName(tag.Agent))
+	wire.DeleteMeta(&tag, metaDefaultSkills)
+	wire.DeleteMeta(&tag, metaDefaultSkillRevision)
+	defaults := p.AgentSkillDefaults.Get(tag.Tenant, wire.NormalizeName(tag.Agent))
 	if defaults.Version == 0 || len(defaults.Skills) == 0 {
 		return tag, nil
 	}
-	rev, err := p.Agents.Get(ctx, tag.Tenant, tag.Agent, 0)
+	rev, err := p.Catalog().Get(ctx, tag.Tenant, tag.Agent, 0)
 	if err != nil {
 		return tag, err
 	}
@@ -201,7 +201,7 @@ func (p *Platform) pinAgentSkillDefaults(ctx context.Context, tag envelope.Tag, 
 	}
 	person := p.operationTagPerson(tag, edge)
 	var skills []pinnedSkill
-	if raw := tag.Meta[runs.MetaSkills]; raw != "" {
+	if raw := wire.Meta(tag)[runs.MetaSkills]; raw != "" {
 		if json.Unmarshal([]byte(raw), &skills) != nil {
 			return tag, library.ErrInvalid
 		}
@@ -228,14 +228,14 @@ func (p *Platform) pinAgentSkillDefaults(ctx context.Context, tag envelope.Tag, 
 	if len(skills) > library.MaxDefaultSkills {
 		return tag, fmt.Errorf("%w: at most four skills per turn", library.ErrInvalid)
 	}
-	oldTools := tag.Meta[operations.MetaTools]
-	pinSkills(tag.Meta, skills)
+	oldTools := wire.Meta(tag)[operations.MetaTools]
+	wire.EditMeta(&tag, func(m map[string]string) { pinSkills(m, skills) })
 	if oldTools != "" {
 		var old, next []string
 		if json.Unmarshal([]byte(oldTools), &old) != nil {
 			return tag, library.ErrInvalid
 		}
-		if raw := tag.Meta[operations.MetaTools]; raw != "" {
+		if raw := wire.Meta(tag)[operations.MetaTools]; raw != "" {
 			if json.Unmarshal([]byte(raw), &next) != nil {
 				return tag, library.ErrInvalid
 			}
@@ -245,11 +245,11 @@ func (p *Platform) pinAgentSkillDefaults(ctx context.Context, tag envelope.Tag, 
 			old = []string{}
 		}
 		raw, _ := json.Marshal(old)
-		tag.Meta[operations.MetaTools] = string(raw)
+		wire.SetMeta(&tag, operations.MetaTools, string(raw))
 	}
 	raw, _ := json.Marshal(defaults.Skills)
-	tag.Meta[metaDefaultSkills] = string(raw)
-	tag.Meta[metaDefaultSkillRevision] = strconv.Itoa(rev.Rev)
+	wire.SetMeta(&tag, metaDefaultSkills, string(raw))
+	wire.SetMeta(&tag, metaDefaultSkillRevision, strconv.Itoa(rev.Rev))
 	return tag, nil
 }
 
@@ -261,7 +261,7 @@ func (p *Platform) checkAgentSkillDefaults(req runtime.Request) error {
 		return nil
 	}
 	revision, err := strconv.Atoi(req.Meta[metaDefaultSkillRevision])
-	if err != nil || revision != req.Revision.Rev {
+	if err != nil || revision != wire.RevOf(req.Definition.Version) {
 		return library.ErrConflict
 	}
 	var refs []AgentSkillRef
@@ -290,7 +290,7 @@ func (p *Platform) checkAgentSkillDefaults(req runtime.Request) error {
 // defaultSkillPreview uses the admission compiler to report whether the exact
 // defaults would be sent, then projects names through the reader's scope rule.
 func (p *Platform) defaultSkillPreview(ctx context.Context, who auth.Principal, project, agent string) *ContextLayer {
-	defaults := p.AgentSkillDefaults.Get(who.Tenant, agentspec.NormalizeName(agent))
+	defaults := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(agent))
 	names := []string{}
 	for _, ref := range defaults.Skills {
 		latest, err := p.LibrarySkill(who, ref.ID)
@@ -306,7 +306,7 @@ func (p *Platform) defaultSkillPreview(ctx context.Context, who auth.Principal, 
 	if len(names) == 0 {
 		return nil
 	}
-	_, err := p.pinAgentSkillDefaults(ctx, envelope.Tag{Tenant: who.Tenant, Agent: agent, Actor: ActorOf(who), Meta: map[string]string{}}, call.Edge{}, project)
+	_, err := p.pinAgentSkillDefaults(ctx, wire.NewEvent(wire.Raise{Tenant: who.Tenant, Agent: agent, Origin: runs.OriginAPI, Actor: ActorOf(who)}), call.Edge{}, project)
 	layer := nameLayer("agent_skills", agent, names, library.MaxDefaultSkills)
 	if err != nil {
 		layer.Sent = false

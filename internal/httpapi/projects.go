@@ -152,7 +152,7 @@ func (s *Server) projectFacts(who auth.Principal) projectFacts {
 		f.named[name] = true
 	}
 	for _, sc := range s.P.Schedules.List(tenant) {
-		f.schedules[sc.Meta[runs.MetaProject]]++
+		f.schedules[sc.Context[runs.MetaProject]]++
 	}
 	return f
 }

@@ -9,14 +9,12 @@ import (
 
 	"github.com/urmzd/anchor/pkg/ledger"
 	dqueue "github.com/urmzd/anchor/pkg/queue"
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/connector"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/connector"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -44,7 +42,7 @@ func eachBackend(t *testing.T, fn func(t *testing.T, first platform.Backends, ag
 		{name: "memory", open: func(*testing.T) (platform.Backends, func() platform.Backends) {
 			// Memory stands in for a database by being shared.
 			b := platform.Backends{
-				State: state.NewMemory(), Agents: registry.NewMemory(),
+				State: state.NewMemory(), Agents: wire.NewMemoryAgents(),
 				Ledger: ledger.NewMemory(), Queue: dqueue.NewMemory(),
 			}
 			return b, func() platform.Backends { return b }
@@ -117,8 +115,8 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 	eachBackend(t, func(t *testing.T, first platform.Backends, again func() platform.Backends) {
 		ctx := t.Context()
 		p, stop := running(t, first)
-		for _, spec := range []agentspec.AgentSpec{
-			{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead.", Access: agentspec.Access{Spawn: []string{"helper"}}},
+		for _, spec := range []wire.AgentSpec{
+			{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead.", Access: wire.Access{Spawn: []string{"helper"}}},
 			{Name: "helper", Model: "offline", Provider: "offline", SystemPrompt: "Help."},
 		} {
 			if _, err := p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
@@ -253,17 +251,17 @@ type surfaceFake struct {
 
 type delivered struct {
 	to address.Address
-	e  envelope.Event
+	e  event.Envelope
 }
 
 func (f *surfaceFake) Name() string { return string(clients.GitHub) }
 
-func (f *surfaceFake) Ingest(ctx context.Context, _ chan<- envelope.Tag) error {
+func (f *surfaceFake) Ingest(ctx context.Context, _ connector.Publish) error {
 	<-ctx.Done()
 	return nil
 }
 
-func (f *surfaceFake) Deliver(_ context.Context, to address.Address, e envelope.Event) error {
+func (f *surfaceFake) Deliver(_ context.Context, to address.Address, e event.Envelope) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent = append(f.sent, delivered{to: to, e: e})
@@ -283,10 +281,10 @@ func (f *surfaceFake) answer(runID string) (string, address.Address, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, d := range f.sent {
-		if d.e.RunID != runID || d.e.Kind != envelope.KindCompleted {
+		if d.e.Run != runID || d.e.Type != event.TypeCompleted {
 			continue
 		}
-		if l, err := payload.Decode[payload.Lifecycle](d.e); err == nil {
+		if l, err := wire.LifecycleOf(d.e); err == nil {
 			return l.Text, d.to, true
 		}
 	}
@@ -317,11 +315,11 @@ func (h *holding) Stream(ctx context.Context, _ saigetypes.Request) (<-chan saig
 func TestARunInFlightAcrossARestartAnswersOnItsRoute(t *testing.T) {
 	eachBackend(t, func(t *testing.T, first platform.Backends, again func() platform.Backends) {
 		ctx := t.Context()
-		model := func(m saigetypes.Provider) []agentrt.Option {
-			return []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return m, nil })}
+		model := func(m saigetypes.Provider) []native.Option {
+			return []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) { return m, nil })}
 		}
-		connected := func(peer platform.Peer) func(registry.Store) ([]platform.Connection, error) {
-			return func(registry.Store) ([]platform.Connection, error) {
+		connected := func(peer platform.Peer) func(wire.AgentStore) ([]platform.Connection, error) {
+			return func(wire.AgentStore) ([]platform.Connection, error) {
 				return []platform.Connection{{Tenant: tenant, Peer: peer}}, nil
 			}
 		}
@@ -329,12 +327,12 @@ func TestARunInFlightAcrossARestartAnswersOnItsRoute(t *testing.T) {
 		held := &holding{called: make(chan struct{})}
 		before := &surfaceFake{}
 		p, stop := runningWith(t, platform.Config{Backends: first, AgentOptions: model(held), Connections: connected(before)})
-		if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
+		if _, err := p.Agents.Create(ctx, tenant, wire.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
 			t.Fatal(err)
 		}
 		issue := address.MustParse("github://acme/repo/issues/7")
 		asked := tag("in-flight", "lead")
-		asked.Source = issue
+		asked.Channel = issue.String()
 		r, err := p.Invoke(ctx, asked)
 		if err != nil {
 			t.Fatal(err)

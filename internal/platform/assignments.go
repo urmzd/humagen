@@ -10,14 +10,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
@@ -64,7 +65,7 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 	if a.Cron != "" && !p.standingOwner(who.Tenant, a.Project, a.Owner) {
 		return operations.Assignment{}, fmt.Errorf("%w: standing work needs an owner with current project membership", operations.ErrDenied)
 	}
-	if _, err := p.Agents.Get(ctx, who.Tenant, a.Agent, 0); err != nil {
+	if _, err := p.Catalog().Get(ctx, who.Tenant, a.Agent, 0); err != nil {
 		return operations.Assignment{}, err
 	}
 	if err := p.MayPost(who, Place{Project: a.Project, Thread: a.Thread}); err != nil {
@@ -144,7 +145,7 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 	defer func() { p.finishOperationsAudit(attempt, resultErr) }()
 	if a.Cron != "" {
 		a.Schedule = assignmentSchedule(who.Tenant, a.ID)
-		sc := cron.Schedule{Name: a.Schedule, Tenant: who.Tenant, Agent: a.Agent, Expression: a.Cron, Text: a.Goal + "\nDone when: " + a.DoneWhen, Meta: map[string]string{metaAssignment: a.ID, runs.MetaProject: a.Project, "created_by": who.Subject}}
+		sc := cron.Schedule{Name: a.Schedule, Tenant: who.Tenant, Agent: a.Agent, Expression: a.Cron, Text: a.Goal + "\nDone when: " + a.DoneWhen, Context: map[string]string{metaAssignment: a.ID, runs.MetaProject: a.Project, "created_by": who.Subject}}
 		if err := sc.Validate(); err != nil {
 			return operations.Assignment{}, err
 		}
@@ -213,7 +214,7 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 		if a.Trigger == operations.SourceTrigger && a.TagID != "" && a.RunID == runtime.RunID(who.Tenant, a.TagID) {
 			// The source cursor and exact trigger identity were committed together.
 			// Retry that invocation, never reinterpret it as a new console turn.
-			return p.Invoke(ctx, envelope.Tag{ID: a.TagID, Tenant: who.Tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Text: a.Goal + "\nDone when: " + a.DoneWhen, Meta: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}})
+			return p.Invoke(ctx, wire.NewEvent(wire.Raise{ID: a.TagID, Tenant: who.Tenant, Agent: a.Agent, Origin: runs.OriginAssignment, Context: map[string]string{metaAssignment: a.ID, metaAssignmentSource: strconv.FormatUint(a.SourceVersion, 10), runs.MetaProject: a.Project}, Text: a.Goal + "\nDone when: " + a.DoneWhen}))
 		}
 		manualTagID := "assignment-" + assignmentSchedule(who.Tenant, id) + "-" + strconv.Itoa(a.Version-1)
 		if a.Cron != "" && a.RunID != runtime.RunID(who.Tenant, manualTagID) {
@@ -255,8 +256,8 @@ func (p *Platform) RunAssignment(ctx context.Context, who auth.Principal, id str
 	}
 	return run, nil
 }
-func (p *Platform) admitAssignment(tag envelope.Tag) error {
-	id := tag.Meta[metaAssignment]
+func (p *Platform) admitAssignment(tag event.Envelope) error {
+	id := wire.Meta(tag)[metaAssignment]
 	if id == "" {
 		return nil
 	}
@@ -278,11 +279,11 @@ func (p *Platform) admitAssignment(tag envelope.Tag) error {
 	if a.Agent != tag.Agent || a.Project != runs.ProjectOf(tag) {
 		return operations.ErrDenied
 	}
-	if tag.Origin == runs.OriginAssignment {
+	if wire.Origin(tag) == runs.OriginAssignment {
 		if a.Trigger != operations.SourceTrigger || a.Thread != "" || !p.standingOwner(tag.Tenant, a.Project, a.Owner) || !p.assignmentSourceGrant(context.Background(), tag.Tenant, a.Project, a.Agent, a.Source) {
 			return operations.ErrDenied
 		}
-		version, err := strconv.ParseUint(tag.Meta[metaAssignmentSource], 10, 64)
+		version, err := strconv.ParseUint(wire.Meta(tag)[metaAssignmentSource], 10, 64)
 		if err != nil {
 			return operations.ErrInvalid
 		}
@@ -293,14 +294,14 @@ func (p *Platform) admitAssignment(tag envelope.Tag) error {
 		_, err = p.Operations.ReserveSource(tag.Tenant, id, runtime.RunID(tag.Tenant, tag.ID), tag.ID, a.Version, version, p.now())
 		return err
 	}
-	if tag.Origin == "cron" {
+	if wire.Origin(tag) == "cron" {
 		if a.State != operations.Watching && a.State != operations.Accepted && (a.State != operations.InProgress || a.RunID != runtime.RunID(tag.Tenant, tag.ID)) {
 			return operations.ErrConflict
 		}
 		// Admission receives the composed request. Keep the original ask so a
 		// retry passes through the same composer exactly once.
 		invocation := tag
-		invocation.Text = tag.Meta[runs.MetaAsk]
+		wire.SetText(&invocation, wire.Meta(tag)[runs.MetaAsk])
 		_, err := p.Operations.ReserveInvocation(tag.Tenant, id, invocation, a.Version, p.now())
 		return err
 	}
@@ -354,7 +355,7 @@ func (p *Platform) settleOperations(ctx context.Context) {
 
 // AssignmentSchedule reports schedules whose only mutation surface is their
 // versioned assignment. The ordinary schedule routes may not bypass its owner.
-func AssignmentSchedule(sc cron.Schedule) bool { return sc.Meta[metaAssignment] != "" }
+func AssignmentSchedule(sc cron.Schedule) bool { return sc.Context[metaAssignment] != "" }
 
 func (p *Platform) standingOwner(tenant, project, owner string) bool {
 	// A clock has no current sign-in or bearer scope. Only current explicit

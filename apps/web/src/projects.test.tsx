@@ -1,20 +1,48 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { defaultCopy as copy } from "@humagen/components";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { defaultCopy as copy } from "@humagen/components";
 import type { Me, Preferences, ProjectChange, Settings as Workspace } from "./api.ts";
-import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
 import { KnowledgeLists, MAX_KNOWLEDGE } from "./ProjectKnowledge.tsx";
+import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
-import { east, field, globex, globexKnowledge, initech, knowledgeSources, news, renewals, retail, stores, tree, view, workspace } from "./projects.fixtures.ts";
-import { kindsUnder, nameFrom, narrowAt, treeOf, updateOf, validName, WORKSPACE } from "./projects.ts";
+import {
+  east,
+  field,
+  globex,
+  globexKnowledge,
+  initech,
+  knowledgeSources,
+  news,
+  renewals,
+  retail,
+  stores,
+  tree,
+  view,
+  workspace,
+} from "./projects.fixtures.ts";
+import {
+  kindsUnder,
+  nameFrom,
+  narrowAt,
+  treeOf,
+  updateOf,
+  validName,
+  WORKSPACE,
+} from "./projects.ts";
 import { Settings } from "./Settings.tsx";
 
 const html = (el: ReactElement) => renderToStaticMarkup(el);
 const noop = () => {};
-const rowsOf = (narrow: boolean, opts: { q?: string; kind?: "company" | "team" | "account" } = {}) =>
-  treeOf(tree, { narrow, ...opts }).map((g) => [g.title, g.rows.map((r) => [r.project.name, r.indent, r.path.join(" › ")])]);
+const rowsOf = (
+  narrow: boolean,
+  opts: { q?: string; kind?: "company" | "team" | "account" } = {},
+) =>
+  treeOf(tree, { narrow, ...opts }).map((g) => [
+    g.title,
+    g.rows.map((r) => [r.project.name, r.indent, r.path.join(" › ")]),
+  ]);
 
 test("projects are grouped by kind, Company-wide, Teams, then Accounts, each in tree order", () => {
   assert.deepEqual(
@@ -31,16 +59,38 @@ test("a project of the workspace's own kind is listed after humagen's kinds, in 
   const partner = view("Reseller", { kind: "partner", parent: field });
   const kinds = [{ name: "partner", title: "Partners", like: "account" as const }];
   assert.deepEqual(
-    treeOf([...tree, partner], { narrow: false, kinds }).map((g) => [g.title, g.rows.map((r) => [r.project.name, r.path.join(" › ")])]),
+    treeOf([...tree, partner], { narrow: false, kinds }).map((g) => [
+      g.title,
+      g.rows.map((r) => [r.project.name, r.path.join(" › ")]),
+    ]),
     [
       ["Company-wide", [["Company news", ""]]],
-      ["Teams", [["Field", ""], ["East", ""], ["Retail", ""], ["Stores", ""], ["Globex renewals", "Field engineering › Globex"], ["Platform", ""]]],
-      ["Accounts", [["Globex", "Field engineering"], ["Initech", "Field engineering"]]],
+      [
+        "Teams",
+        [
+          ["Field", ""],
+          ["East", ""],
+          ["Retail", ""],
+          ["Stores", ""],
+          ["Globex renewals", "Field engineering › Globex"],
+          ["Platform", ""],
+        ],
+      ],
+      [
+        "Accounts",
+        [
+          ["Globex", "Field engineering"],
+          ["Initech", "Field engineering"],
+        ],
+      ],
       ["Partners", [["Reseller", "Field engineering"]]],
     ],
   );
   // Narrowed to it, only it; and a kind the console was not told of still shows, by its name.
-  assert.deepEqual(treeOf([...tree, partner], { narrow: false, kinds, kind: "partner" }).map((g) => g.title), ["Partners"]);
+  assert.deepEqual(
+    treeOf([...tree, partner], { narrow: false, kinds, kind: "partner" }).map((g) => g.title),
+    ["Partners"],
+  );
   assert.deepEqual(treeOf([...tree, partner], { narrow: false }).at(-1)?.title, "partner");
   // It behaves as an account: no account under it, and it never sits under one.
   const reseller = { name: "Reseller", kind: "partner", depth: 2 };
@@ -69,12 +119,39 @@ test("the tree at depth 4 indents one level at 390px, and deeper rows say where 
   ]);
 
   // As drawn: nothing indents more than one 16px level, and the deep rows print where they are.
-  const phone = html(<ProjectsPage projects={tree} root={workspace} workspaceName="Acme" onFilter={noop} canCreate canGovern={false} narrow={narrowAt(390)} onOpen={noop} onCreated={noop} />);
+  const phone = html(
+    <ProjectsPage
+      projects={tree}
+      root={workspace}
+      workspaceName="Acme"
+      onFilter={noop}
+      canCreate
+      canGovern={false}
+      narrow={narrowAt(390)}
+      onOpen={noop}
+      onCreated={noop}
+    />,
+  );
   const indents = [...phone.matchAll(/margin-left:(\d+)px/g)].map((m) => Number(m[1]));
   assert.ok(indents.length > 0);
-  assert.ok(indents.every((px) => px === 16), `indents at 390px: ${indents}`);
+  assert.ok(
+    indents.every((px) => px === 16),
+    `indents at 390px: ${indents}`,
+  );
   assert.match(phone, /in Field engineering › East › Retail/);
-  const desk = html(<ProjectsPage projects={tree} root={workspace} workspaceName="Acme" onFilter={noop} canCreate canGovern={false} narrow={false} onOpen={noop} onCreated={noop} />);
+  const desk = html(
+    <ProjectsPage
+      projects={tree}
+      root={workspace}
+      workspaceName="Acme"
+      onFilter={noop}
+      canCreate
+      canGovern={false}
+      narrow={false}
+      onOpen={noop}
+      onCreated={noop}
+    />,
+  );
   assert.match(desk, /margin-left:48px/);
   assert.doesNotMatch(desk, /in Field engineering › East › Retail/);
 });
@@ -91,25 +168,50 @@ test("a row whose parent is in another group says where it sits", () => {
 });
 
 test("a search finds a project by name, title, description or customer, and the rows it keeps say where they sit", () => {
-  const found = (q: string) => treeOf(tree, { narrow: false, q }).flatMap((g) => g.rows.map((r) => r.project.name));
+  const found = (q: string) =>
+    treeOf(tree, { narrow: false, q }).flatMap((g) => g.rows.map((r) => r.project.name));
   assert.deepEqual(found("initech llc"), ["Initech"], "by customer");
   assert.deepEqual(found("engineering"), ["Field"], "by title");
   assert.deepEqual(found("support for"), ["Globex"], "by description");
   assert.deepEqual(found("RETAIL"), ["Retail"], "ignoring case");
   assert.deepEqual(found("nothing like it"), []);
   // Retail's parent is not shown, so it starts the left edge and names its path.
-  assert.deepEqual(rowsOf(false, { q: "retail" }), [["Teams", [["Retail", 0, "Field engineering › East"]]]]);
-  assert.deepEqual(rowsOf(false, { kind: "account" }).map(([title]) => title), ["Accounts"]);
+  assert.deepEqual(rowsOf(false, { q: "retail" }), [
+    ["Teams", [["Retail", 0, "Field engineering › East"]]],
+  ]);
+  assert.deepEqual(
+    rowsOf(false, { kind: "account" }).map(([title]) => title),
+    ["Accounts"],
+  );
 });
 
 test("the projects page heads Company-wide with the workspace, links every row, and offers New Project only to those who may make one", () => {
   const page = (over: Partial<Parameters<typeof ProjectsPage>[0]> = {}) =>
-    html(<ProjectsPage projects={tree} root={workspace} workspaceName="Acme" onFilter={noop} canCreate={false} canGovern={false} narrow={false} onOpen={noop} onCreated={noop} {...over} />);
+    html(
+      <ProjectsPage
+        projects={tree}
+        root={workspace}
+        workspaceName="Acme"
+        onFilter={noop}
+        canCreate={false}
+        canGovern={false}
+        narrow={false}
+        onOpen={noop}
+        onCreated={noop}
+        {...over}
+      />,
+    );
   const out = page();
   assert.match(out, /<h1[^>]*>Projects</);
   const heads = ["Company-wide", "Teams", "Accounts"].map((h) => out.indexOf(`>${h}</h2>`));
-  assert.ok(heads.every((i) => i >= 0) && [...heads].sort((a, b) => a - b).join() === heads.join(), `groups in order: ${heads}`);
-  assert.ok(out.indexOf('href="/projects/~"') < out.indexOf('href="/projects/Company%20news"'), "the workspace comes first");
+  assert.ok(
+    heads.every((i) => i >= 0) && [...heads].sort((a, b) => a - b).join() === heads.join(),
+    `groups in order: ${heads}`,
+  );
+  assert.ok(
+    out.indexOf('href="/projects/~"') < out.indexOf('href="/projects/Company%20news"'),
+    "the workspace comes first",
+  );
   assert.match(out, />Acme</);
   assert.match(out, /href="\/projects\/Globex"/);
   for (const label of ["Globex Inc", "in Field engineering"]) assert.ok(out.includes(label));
@@ -126,9 +228,17 @@ test("the projects page heads Company-wide with the workspace, links every row, 
 });
 
 test("the kind rules decide what may be made where", () => {
-  assert.deepEqual(kindsUnder(WORKSPACE, false), ["team", "account"], "company-wide needs projects:govern");
+  assert.deepEqual(
+    kindsUnder(WORKSPACE, false),
+    ["team", "account"],
+    "company-wide needs projects:govern",
+  );
   assert.deepEqual(kindsUnder(WORKSPACE, true), ["company", "team", "account"]);
-  assert.deepEqual(kindsUnder(news, true), ["company", "team", "account"], "company-wide sits under company-wide");
+  assert.deepEqual(
+    kindsUnder(news, true),
+    ["company", "team", "account"],
+    "company-wide sits under company-wide",
+  );
   assert.deepEqual(kindsUnder(field, true), ["team", "account"], "but never under a team");
   assert.deepEqual(kindsUnder(globex, true), ["team"], "an account never sits under an account");
   assert.deepEqual(kindsUnder(stores, true), [], "nothing goes below the fourth level");
@@ -153,12 +263,20 @@ test("an update carries every field it does not change, from the version read, a
     account: { customer: "Globex Inc" },
     instructions: "Renewals close in March.",
   });
-  assert.deepEqual(updateOf(field, { title: "  " }), { version: 1, instructions: "Customer accounts. Never promise dates." });
-  assert.deepEqual(updateOf(globex, { account: { customer: "", url: "" } }), { version: 4, description: "Renewals and support for Globex." });
+  assert.deepEqual(updateOf(field, { title: "  " }), {
+    version: 1,
+    instructions: "Customer accounts. Never promise dates.",
+  });
+  assert.deepEqual(updateOf(globex, { account: { customer: "", url: "" } }), {
+    version: 4,
+    description: "Renewals and support for Globex.",
+  });
 });
 
 test("the picker shows each project's path and kind, and searches its customer", () => {
-  const out = html(<ProjectChoices projects={tree} value="Globex" onChange={noop} onCreated={noop} close={noop} />);
+  const out = html(
+    <ProjectChoices projects={tree} value="Globex" onChange={noop} onCreated={noop} close={noop} />,
+  );
   assert.match(out, /Account Globex Inc in Field engineering/);
   assert.match(out, /Team in Field engineering › East › Retail/);
   assert.match(out, />Field engineering</, "a project is shown by its title");
@@ -167,20 +285,65 @@ test("the picker shows each project's path and kind, and searches its customer",
   assert.equal(placeOf(initech, []), "Account Initech LLC in Field engineering");
   assert.equal(placeOf(east, []), "Team in Field engineering");
   // Without projects:write it only chooses.
-  assert.doesNotMatch(html(<ProjectChoices projects={tree} value={null} canCreate={false} onChange={noop} onCreated={noop} close={noop} />), /Create Project/);
+  assert.doesNotMatch(
+    html(
+      <ProjectChoices
+        projects={tree}
+        value={null}
+        canCreate={false}
+        onChange={noop}
+        onCreated={noop}
+        close={noop}
+      />,
+    ),
+    /Create Project/,
+  );
   // A project of one of the workspace's own kinds is called by the kind's title.
   const reseller = view("Reseller", { kind: "partner", parent: field });
   const kinds = [{ name: "partner", title: "Partner", like: "account" as const }];
   assert.equal(placeOf(reseller, kinds), "Partner in Field engineering");
-  assert.match(html(<ProjectChoices projects={[reseller]} kinds={kinds} value={null} onChange={noop} onCreated={noop} close={noop} />), /Partner in Field engineering/);
+  assert.match(
+    html(
+      <ProjectChoices
+        projects={[reseller]}
+        kinds={kinds}
+        value={null}
+        onChange={noop}
+        onCreated={noop}
+        close={noop}
+      />,
+    ),
+    /Partner in Field engineering/,
+  );
   // The closed picker names the chosen project by its title.
-  assert.match(html(<ProjectPicker projects={tree} value="Field" onChange={noop} onCreated={noop} />), /aria-label="Select project: Field engineering"/);
+  assert.match(
+    html(<ProjectPicker projects={tree} value="Field" onChange={noop} onCreated={noop} />),
+    /aria-label="Select project: Field engineering"/,
+  );
 });
 
 test("settings no longer edit projects: the workspace section links to Projects and to the workspace itself", () => {
-  const me: Me = { principal: { subject: "ada", tenant: "acme", kind: "user", name: "Ada", roles: ["admin"] }, permissions: ["agents:write"] };
-  const prefs: Preferences = { display_name: "", theme: "system", accent: "purple", has_photo: false, photo_version: 0, pinned: [], muted: [] };
-  const settings: Workspace = { history: "recent", history_limit: 20000, title_agent: "", memory_agent: "", memory_auto_approve: false, router: { enabled: false } };
+  const me: Me = {
+    principal: { subject: "ada", tenant: "acme", kind: "user", name: "Ada", roles: ["admin"] },
+    permissions: ["agents:write"],
+  };
+  const prefs: Preferences = {
+    display_name: "",
+    theme: "system",
+    accent: "purple",
+    has_photo: false,
+    photo_version: 0,
+    pinned: [],
+    muted: [],
+  };
+  const settings: Workspace = {
+    history: "recent",
+    history_limit: 20000,
+    title_agent: "",
+    memory_agent: "",
+    memory_auto_approve: false,
+    router: { enabled: false },
+  };
   const out = html(
     <Settings
       me={me}
@@ -222,10 +385,13 @@ test("every kind of change in a project's history reads as words", () => {
     knowledge: true,
     channel: true,
   };
-  for (const what of Object.keys(kinds)) assert.ok(copy.project.what[what], `no words for a ${what} change`);
+  for (const what of Object.keys(kinds))
+    assert.ok(copy.project.what[what], `no words for a ${what} change`);
 });
 
-const knowledgeOf = (opts: { editable?: boolean; fileOwned?: boolean; draft?: string[]; project?: string } = {}) =>
+const knowledgeOf = (
+  opts: { editable?: boolean; fileOwned?: boolean; draft?: string[]; project?: string } = {},
+) =>
   html(
     <KnowledgeLists
       project={opts.project ?? "Globex"}
@@ -280,7 +446,9 @@ test("knowledge: a member sees the sources the project names, read only", () => 
 test("knowledge: what runs here are grounded in says where each source comes from, nearest first", () => {
   const out = knowledgeOf();
   assert.match(out, /What runs here are grounded in/);
-  const given = [...out.matchAll(/<span class="min-w-0[^"]*">([^<]+)<\/span><span[^>]*>([^<]+)<\/span>/g)].map((m) => [m[1], m[2]]);
+  const given = [
+    ...out.matchAll(/<span class="min-w-0[^"]*">([^<]+)<\/span><span[^>]*>([^<]+)<\/span>/g),
+  ].map((m) => [m[1], m[2]]);
   assert.deepEqual(given, [
     ["globex-contracts", "From this project"],
     ["field-playbook", "From Field engineering"],
@@ -297,13 +465,24 @@ test("knowledge: a list the platform file sets is read only, and says so", () =>
   assert.match(out, /<li[^>]*>globex-contracts<\/li>/);
 });
 
-
 test("project rows show named agents and a still unread indicator only for unread updates", () => {
- const unread = {...view("Unread"), unread: 2, row_agents: ["lead", "helper"]};
- const read = {...view("Read"), unread: 0, row_agents: []};
- const markup = html(<ProjectsPage projects={[unread, read]} root={null} workspaceName="Acme" canCreate={false} canGovern={false} narrow={false} onFilter={noop} onOpen={noop} onCreated={noop} />);
- assert.match(markup, />lead<\/span>/);
- assert.match(markup, />helper<\/span>/);
- assert.equal((markup.match(/aria-label="Unread updates"/g) ?? []).length, 1);
- assert.doesNotMatch(markup, /animate-/);
+  const unread = { ...view("Unread"), unread: 2, row_agents: ["lead", "helper"] };
+  const read = { ...view("Read"), unread: 0, row_agents: [] };
+  const markup = html(
+    <ProjectsPage
+      projects={[unread, read]}
+      root={null}
+      workspaceName="Acme"
+      canCreate={false}
+      canGovern={false}
+      narrow={false}
+      onFilter={noop}
+      onOpen={noop}
+      onCreated={noop}
+    />,
+  );
+  assert.match(markup, />lead<\/span>/);
+  assert.match(markup, />helper<\/span>/);
+  assert.equal((markup.match(/aria-label="Unread updates"/g) ?? []).length, 1);
+  assert.doesNotMatch(markup, /animate-/);
 });

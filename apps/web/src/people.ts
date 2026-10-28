@@ -20,7 +20,14 @@ export function approvable(spec: AgentSpec): string[] {
 
 /** People and roles written one per line or separated by commas: `ana`, `role:operator`. */
 export function namesOf(text: string): string[] {
-  return [...new Set(text.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      text
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 /** Turn one approval on or off, keeping the order the rest were set in. */
@@ -38,7 +45,11 @@ export function withAsking(spec: AgentSpec, on: boolean): AgentSpec {
 }
 
 /** Set who may approve or answer. Nobody named means anyone in the workspace may. */
-export function withNames(spec: AgentSpec, field: "approvers" | "answerers", text: string): AgentSpec {
+export function withNames(
+  spec: AgentSpec,
+  field: "approvers" | "answerers",
+  text: string,
+): AgentSpec {
   const names = namesOf(text);
   return { ...spec, [field]: names.length > 0 ? names : undefined };
 }

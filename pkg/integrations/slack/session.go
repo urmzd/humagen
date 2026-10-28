@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	transport "github.com/urmzd/fiber/pkg/connectors/slack"
 	"strings"
 	"sync"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/envelope"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/slack"
+
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 )
 
 // MaxCommands is Slack's limit on commands in one code channel. The limit is
@@ -32,13 +33,13 @@ const maxChannels = 4096
 // A failed or stopped run reports active, not closed: the failure, or the
 // partial answer marked stopped, is in the message the run owns, and the thread
 // is still a conversation the human can continue.
-func statusFor(k envelope.Kind) (Status, bool) {
+func statusFor(k string) (Status, bool) {
 	switch k {
-	case envelope.KindAccepted, envelope.KindStarted, envelope.KindResumed:
+	case event.TypeAccepted, event.TypeStarted, event.TypeResumed:
 		return StatusProcessing, true
-	case envelope.KindParked:
+	case event.TypeParked:
 		return StatusSuspended, true
-	case envelope.KindCompleted, envelope.KindFailed, envelope.KindStopped:
+	case event.TypeCompleted, event.TypeFailed, event.TypeStopped:
 		return StatusActive, true
 	}
 	return "", false
@@ -52,13 +53,13 @@ func statusFor(k envelope.Kind) (Status, bool) {
 // would make the router retry an event whose answer is on the surface, and a
 // workspace without the agent feature would retry every run forever. A
 // transport failure is returned, because that one a retry can fix.
-func (c *Connector) session(ctx context.Context, target address.Address, e envelope.Event) error {
-	if e.Kind == envelope.KindAccepted && len(c.cfg.Commands) > 0 {
+func (c *Connector) session(ctx context.Context, target address.Address, e event.Envelope) error {
+	if e.Type == event.TypeAccepted && len(c.cfg.Commands) > 0 {
 		if err := c.offerCommands(ctx, target); err != nil {
 			return err
 		}
 	}
-	status, ok := statusFor(e.Kind)
+	status, ok := statusFor(e.Type)
 	if !c.cfg.Sessions || !ok {
 		return nil
 	}
@@ -73,7 +74,7 @@ func (c *Connector) session(ctx context.Context, target address.Address, e envel
 		s.ThreadTS = ""
 		err = c.cfg.API.(transport.AgentAPI).SetStatus(ctx, s)
 	}
-	return c.refused(err, "session status", target, e.RunID)
+	return c.refused(err, "session status", target, e.Run)
 }
 
 // offerCommands registers the configured commands in the target channel, once.

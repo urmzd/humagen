@@ -19,8 +19,16 @@ test("revealAt: one cut off at the left is brought back, and one in view stays p
 
 test("revealAt: it never scrolls past either end of the strip", () => {
   assert.equal(revealAt({ start: 640, end: 700 }, strip), 350, "the last tab ends the strip");
-  assert.equal(revealAt({ start: 0, end: 60 }, { ...strip, scroll: 200 }), 0, "the first tab starts it");
-  assert.equal(revealAt({ start: 20, end: 90 }, { scroll: 0, width: 400, content: 300 }), 0, "a strip that fits does not scroll");
+  assert.equal(
+    revealAt({ start: 0, end: 60 }, { ...strip, scroll: 200 }),
+    0,
+    "the first tab starts it",
+  );
+  assert.equal(
+    revealAt({ start: 20, end: 90 }, { scroll: 0, width: 400, content: 300 }),
+    0,
+    "a strip that fits does not scroll",
+  );
 });
 
 test("revealAt: an item nearly as wide as the strip is shown whole before it is padded", () => {
@@ -32,7 +40,11 @@ test("moreOf: says which ends have more, so the strip can fade them", () => {
   assert.equal(moreOf({ ...strip, scroll: 120 }), "both");
   assert.equal(moreOf({ ...strip, scroll: 350 }), "start");
   assert.equal(moreOf({ scroll: 0, width: 350, content: 350 }), "none");
-  assert.equal(moreOf({ scroll: 0.5, width: 350, content: 350.5 }), "none", "a fraction of a pixel is not more");
+  assert.equal(
+    moreOf({ scroll: 0.5, width: 350, content: 350.5 }),
+    "none",
+    "a fraction of a pixel is not more",
+  );
 });
 
 test("nudgeInto: the composer's agent menu, 6px from the left edge of a phone, moves inside the gutter", () => {
@@ -40,5 +52,9 @@ test("nudgeInto: the composer's agent menu, 6px from the left edge of a phone, m
   assert.equal(nudgeInto({ left: 6, width: 320 }, 390), GUTTER_PX - 6);
   assert.equal(nudgeInto({ left: 60, width: 320 }, 390), -(60 + 320 - (390 - GUTTER_PX)));
   assert.equal(nudgeInto({ left: 30, width: 320 }, 390), 0, "one already inside stays");
-  assert.equal(nudgeInto({ left: 40, width: 380 }, 390), GUTTER_PX - 40, "one wider than the room starts at the left gutter");
+  assert.equal(
+    nudgeInto({ left: 40, width: 380 }, 390),
+    GUTTER_PX - 40,
+    "one wider than the room starts at the left gutter",
+  );
 });

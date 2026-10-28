@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/signature"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -144,7 +144,7 @@ func said(f *slack.Fake, text string) bool {
 
 func agent(t *testing.T, p *platform.Platform, tenantName, name string) {
 	t.Helper()
-	spec := agentspec.AgentSpec{Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x"}
+	spec := wire.AgentSpec{Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x"}
 	if _, err := p.Agents.Create(context.Background(), tenantName, spec, "test"); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ const team = "T01ABCDEF"
 func slackTurn(tenantName, agentName string) runtime.Request {
 	return runtime.Request{
 		Tenant: tenantName, RunID: tenantName + "-turn", Source: "slack://" + team + "/C01",
-		Revision: agentrt.Revision{Spec: agentrt.Spec{Name: agentName}},
+		Definition: native.Revision{Spec: native.Spec{Name: agentName}},
 	}
 }
 

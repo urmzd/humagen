@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // What becomes of what a scheduled agent posts in a project.
@@ -55,7 +55,7 @@ func checkSchedules(sp PlatformSpec) error {
 			blind = true
 			continue
 		}
-		name := agentspec.NormalizeName(a.Spec.Name)
+		name := wire.NormalizeName(a.Spec.Name)
 		known[name] = true
 		if a.Project != "" && a.Project != RootParent {
 			homes[name] = a.Project

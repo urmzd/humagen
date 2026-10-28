@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/auth/authtest"
@@ -217,50 +218,151 @@ func TestTenantsAreIsolated(t *testing.T) {
 	}
 }
 
-func TestEventsStreamARun(t *testing.T) {
-	f := newFixture(t)
-	tok := f.machine(t, "acme", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
-	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/events?topic=agent:helper", nil)
+// openStream opens /api/events with a query as tok, and answers the
+// response and a reader of its run events.
+func openStream(t *testing.T, f *fixture, tok, query string, wait time.Duration) (*http.Response, func() (map[string]any, bool)) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	t.Cleanup(cancel)
+	req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/events"+query, nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = res.Body.Close() }()
+	t.Cleanup(func() { _ = res.Body.Close() })
+	sc := bufio.NewScanner(res.Body)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	named := false
+	next := func() (map[string]any, bool) {
+		for sc.Scan() {
+			line := sc.Text()
+			if strings.HasPrefix(line, "event: ") {
+				named = true
+				continue
+			}
+			if line == "" {
+				named = false
+				continue
+			}
+			data, ok := strings.CutPrefix(line, "data: ")
+			if !ok || named {
+				continue
+			}
+			var e map[string]any
+			if err := json.Unmarshal([]byte(data), &e); err != nil {
+				t.Fatalf("bad event %q: %v", data, err)
+			}
+			return e, true
+		}
+		return nil, false
+	}
+	return res, next
+}
+
+func TestEventsStreamARun(t *testing.T) {
+	f := newFixture(t)
+	tok := f.machine(t, "acme", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
+	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
+
+	res, next := openStream(t, f, tok, "", 10*time.Second)
 	if ct := res.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("content type = %q", ct)
 	}
 
 	f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"helper","text":"hi"}`)
 
-	var kinds []string
-	sc := bufio.NewScanner(res.Body)
-	for sc.Scan() {
-		data, ok := strings.CutPrefix(sc.Text(), "data: ")
-		if !ok {
-			continue
+	var types []string
+	for e, ok := next(); ok; e, ok = next() {
+		if e["tenant"] != "acme" {
+			t.Fatalf("stream carried tenant %v", e["tenant"])
 		}
-		var e struct {
-			Kind   string `json:"kind"`
-			Tenant string `json:"tenant"`
+		if _, isObject := e["data"].(map[string]any); !isObject {
+			t.Fatalf("an event's data is not inline JSON: %v", e)
 		}
-		if err := json.Unmarshal([]byte(data), &e); err != nil {
-			t.Fatalf("bad event %q: %v", data, err)
-		}
-		if e.Tenant != "acme" {
-			t.Fatalf("stream carried tenant %q", e.Tenant)
-		}
-		kinds = append(kinds, e.Kind)
-		if e.Kind == "lifecycle.completed" {
+		types = append(types, e["type"].(string))
+		if e["type"] == event.TypeCompleted {
 			break
 		}
 	}
-	if len(kinds) == 0 || kinds[len(kinds)-1] != "lifecycle.completed" {
-		t.Fatalf("stream did not reach completion: %v", kinds)
+	if len(types) == 0 || types[len(types)-1] != event.TypeCompleted {
+		t.Fatalf("stream did not reach completion: %v", types)
+	}
+}
+
+// An old reader's topic still narrows the stream: agent:<name>:<run> is
+// read as run=<run>. It does not mix with the new filters.
+func TestLegacyTopicParam(t *testing.T) {
+	f := newFixture(t)
+	tok := f.machine(t, "acme", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
+	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
+	_, first := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"helper","text":"first"}`)
+	_, second := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"helper","text":"second"}`)
+	id := second["id"].(string)
+
+	_, next := openStream(t, f, tok, "?topic="+url.QueryEscape("agent:helper:"+id), 10*time.Second)
+	sawEnd := false
+	for e, ok := next(); ok && !sawEnd; e, ok = next() {
+		if e["run"] != id {
+			t.Fatalf("a topic naming run %s carried run %v (the other is %v)", id, e["run"], first["id"])
+		}
+		sawEnd = e["type"] == event.TypeCompleted
+	}
+	if !sawEnd {
+		t.Fatal("the run's stream did not reach completion")
+	}
+	for _, query := range []string{
+		"?topic=agent:helper:" + id + "&run=" + id,
+		"?topic=agent:helper&type=run.delta",
+		"?topic=nope",
+	} {
+		if res, _ := f.do(t, nil, "GET", "/api/events"+query, tok, ""); res.StatusCode != http.StatusBadRequest {
+			t.Errorf("GET /api/events%s = %d, want 400", query, res.StatusCode)
+		}
+	}
+}
+
+// inbox=true streams notices alone: a run's events never reach it, and it
+// takes no run filter.
+func TestSSEInboxOnly(t *testing.T) {
+	f := newFixture(t)
+	tok := f.machine(t, "acme", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
+	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
+
+	res, next := openStream(t, f, tok, "?inbox=true", 2*time.Second)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/events?inbox=true = %d, want 200", res.StatusCode)
+	}
+	f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"helper","text":"hello"}`)
+	if e, ok := next(); ok {
+		t.Fatalf("an inbox-only stream carried a run event: %v", e)
+	}
+	for _, query := range []string{"?inbox=maybe", "?inbox=true&run=r1", "?inbox=true&type=run.delta", "?inbox=true&from=3"} {
+		if res, _ := f.do(t, nil, "GET", "/api/events"+query, tok, ""); res.StatusCode != http.StatusBadRequest {
+			t.Errorf("GET /api/events%s = %d, want 400", query, res.StatusCode)
+		}
+	}
+}
+
+// A reader hears only their own workspace's run events: the tenant is the
+// principal's, whatever the request names, and nothing outside the run
+// family is streamed.
+func TestSSEDefaultDenyAcrossTenants(t *testing.T) {
+	f := newFixture(t)
+	acme := f.machine(t, "acme", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
+	globex := f.machine(t, "globex", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
+	f.do(t, nil, "POST", "/api/agents", acme, helperSpec)
+	f.do(t, nil, "POST", "/api/agents", globex, helperSpec)
+
+	_, theirs := openStream(t, f, globex, "?channel=humagen://acme&tenant=acme", 3*time.Second)
+	_, run := f.do(t, nil, "POST", "/api/runs", acme, `{"agent":"helper","text":"hi"}`)
+	if e, ok := theirs(); ok {
+		t.Fatalf("globex was streamed %v from acme's run %v", e, run["id"])
+	}
+	for _, query := range []string{"?type=message", "?type=control.stop", "?channel=" + url.QueryEscape("control://acme/stop/x")} {
+		if res, _ := f.do(t, nil, "GET", "/api/events"+query, acme, ""); res.StatusCode != http.StatusBadRequest {
+			t.Errorf("GET /api/events%s = %d, want 400", query, res.StatusCode)
+		}
 	}
 }
 

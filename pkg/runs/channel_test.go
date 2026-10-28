@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/call"
 )
@@ -32,8 +33,7 @@ func TestAChannelAndAMessageAreBelievedOnlyWhereTheServerWroteThem(t *testing.T)
 
 func TestACalledRunIsInItsRootsChannelAndAnswersNoMessage(t *testing.T) {
 	x := NewIndex()
-	root := envelope.Tag{ID: "root", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", At: t0,
-		Meta: map[string]string{MetaChannel: "renewals", MetaMessage: "m-1", MetaThread: "th-1"}}
+	root := wire.NewEvent(wire.Raise{ID: "root", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", At: t0, Context: map[string]string{MetaChannel: "renewals", MetaMessage: "m-1", MetaThread: "th-1"}})
 	if err := x.Record(runtime.RunID("acme", "root"), root, 1); err != nil {
 		t.Fatal(err)
 	}

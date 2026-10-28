@@ -33,7 +33,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/attachment"
+	"github.com/urmzd/humagen/fiber/pkg/attachment"
 
 	"github.com/urmzd/humagen/pkg/projects"
 )

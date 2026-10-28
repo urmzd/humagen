@@ -14,10 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -385,7 +386,7 @@ func (l tagLookup) Skill(name string) bool {
 func (l tagLookup) MentionKind(kind string) (string, bool) { return l.p.mentionKind(l.tenant, kind) }
 
 func (l tagLookup) Agent(name string) bool {
-	_, err := l.p.Agents.Get(l.ctx, l.tenant, name, 0)
+	_, err := l.p.Catalog().Get(l.ctx, l.tenant, name, 0)
 	return err == nil && (l.sees == nil || l.sees(name))
 }
 
@@ -651,7 +652,7 @@ func (p *Platform) checkDefault(ctx context.Context, tenant, project, agent stri
 	if !projects.ValidDefault(agent) {
 		return fmt.Errorf("%w: a default is an agent's name or \"*\"", projects.ErrInvalid)
 	}
-	if _, err := p.Agents.Get(ctx, tenant, agent, 0); err != nil || (sees != nil && !sees(agent)) {
+	if _, err := p.Catalog().Get(ctx, tenant, agent, 0); err != nil || (sees != nil && !sees(agent)) {
 		return fmt.Errorf("%w: there is no agent called %s", projects.ErrInvalid, agent)
 	}
 	if reason := p.tagRefusal(tenant, project, agent); reason != "" {
@@ -670,7 +671,7 @@ func (p *Platform) checkRouting(ctx context.Context, tenant, project string, age
 		return nil, "", fmt.Errorf("%w: %s", projects.ErrInvalid, detailOf(err, threads.ErrInvalid))
 	}
 	for _, a := range agents {
-		if _, err := p.Agents.Get(ctx, tenant, a, 0); err != nil || (sees != nil && !sees(a)) {
+		if _, err := p.Catalog().Get(ctx, tenant, a, 0); err != nil || (sees != nil && !sees(a)) {
 			return nil, "", fmt.Errorf("%w: there is no agent called %s", projects.ErrInvalid, a)
 		}
 		if reason := p.tagRefusal(tenant, project, a); reason != "" {
@@ -1028,7 +1029,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	// poster's own credentials (credentials.go), though each run is sent
 	// what others said in the room, fenced off ahead of the poster's words
 	// (threads.Ask).
-	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
+	actor := event.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) ([]runs.Run, error) {
 		// A run the selection starts says how: one of the selected agents
@@ -1160,7 +1161,7 @@ func answerTagID(thread, message, agent string) string {
 // keeps pins that the person it acts for may change the project's notes, as
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
 // one they may not read is never asked.
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
@@ -1212,10 +1213,11 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 			mt = maps.Clone(meta)
 			mt[runs.MetaPicked] = a.picked
 		}
-		run, err := p.Invoke(ctx, envelope.Tag{
+		run, err := p.Invoke(ctx, wire.NewEvent(wire.Raise{
 			ID: a.tag, Tenant: tenant, Agent: a.agent, Origin: runs.OriginAPI,
-			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, body, mt), Attachments: m.Attachments, Actor: actor, Meta: mt,
-		})
+			Attachments: m.Attachments, Actor: actor, Context: mt,
+			Text: p.turnContext(tenant, th.Project, th.Channel, a.agent, actor.User, body, mt),
+		}))
 		if err != nil {
 			firstErr = cmp.Or(firstErr, err)
 			continue
@@ -1707,7 +1709,7 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 		switch a.Kind {
 		case threads.Agent:
 			// One the caller may not read is one that does not exist.
-			if _, err := p.Agents.Get(ctx, who.Tenant, a.Name, 0); err != nil || !p.Seer(who).Agent(a.Name) {
+			if _, err := p.Catalog().Get(ctx, who.Tenant, a.Name, 0); err != nil || !p.Seer(who).Agent(a.Name) {
 				return threads.Thread{}, fmt.Errorf("%w: there is no agent called %s", threads.ErrInvalid, a.Name)
 			}
 			if reason := p.tagRefusal(who.Tenant, th.Project, a.Name); reason != "" {

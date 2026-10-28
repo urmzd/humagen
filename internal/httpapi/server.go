@@ -21,14 +21,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/connectors/cron"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -227,7 +226,7 @@ type handler func(w http.ResponseWriter, r *http.Request, who auth.Principal)
 // change is made under, so another spelling of it is no way around one.
 func agentNamed(h handler) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-		if name := r.PathValue("name"); name != agentspec.NormalizeName(name) {
+		if name := r.PathValue("name"); name != wire.NormalizeName(name) {
 			fail(w, http.StatusNotFound, fmt.Sprintf("no agent called %q: agents are named in lower case", name))
 			return
 		}
@@ -295,8 +294,8 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if err := s.P.EnsureBuiltins(r.Context(), who.Tenant); err != nil {
 		s.Log.Warn("httpapi: built-in agents", "error", err)
 	}
-	var all []agentspec.Revision
-	page := registry.Page{Size: 100}
+	var all []wire.Revision
+	page := wire.Page{Size: 100}
 	for {
 		revs, next, err := s.P.AgentDirectory(r.Context(), who.Tenant, page)
 		if err != nil {
@@ -319,7 +318,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 	// An agent that lives in a project the caller cannot see is left out,
 	// and so is every project they cannot see that enables an agent.
 	seer := s.P.Seer(who)
-	all = slices.DeleteFunc(all, func(rev agentspec.Revision) bool { return !seer.Agent(rev.Spec.Name) })
+	all = slices.DeleteFunc(all, func(rev wire.Revision) bool { return !seer.Agent(rev.Spec.Name) })
 	names = slices.DeleteFunc(names, func(n string) bool { return !seer.Agent(n) })
 	hues, err := s.P.AgentColors.Assign(who.Tenant, names)
 	if err != nil {
@@ -339,11 +338,11 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 // revisionView is an agent's revision and what the person who saved it is
 // called. The revision names them by subject; the console shows the name.
 type revisionView struct {
-	agentspec.Revision
+	wire.Revision
 	CreatedByName string `json:"created_by_name,omitempty"`
 }
 
-func viewRevisions(names platform.Names, revs []agentspec.Revision) []revisionView {
+func viewRevisions(names platform.Names, revs []wire.Revision) []revisionView {
 	out := make([]revisionView, len(revs))
 	for i, rev := range revs {
 		out[i] = revisionView{Revision: rev, CreatedByName: names.Of(rev.CreatedBy)}
@@ -352,7 +351,7 @@ func viewRevisions(names platform.Names, revs []agentspec.Revision) []revisionVi
 }
 
 func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	var spec agentspec.AgentSpec
+	var spec wire.AgentSpec
 	if !decode(w, r, &spec) {
 		return
 	}
@@ -381,7 +380,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, viewRevisions(s.P.Names(who.Tenant), []agentspec.Revision{s.P.Seer(who).Revision(rev)})[0])
+	ok(w, http.StatusCreated, viewRevisions(s.P.Names(who.Tenant), []wire.Revision{s.P.Seer(who).Revision(rev)})[0])
 }
 
 func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -391,13 +390,13 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	// One that is not there is said so before the body is read, as one the
 	// caller may not see is, so neither tells them apart.
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
+	if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
 		s.problem(w, err)
 		return
 	}
 	var body struct {
-		Spec        agentspec.AgentSpec `json:"spec"`
-		ExpectedRev int                 `json:"expected_rev"`
+		Spec        wire.AgentSpec `json:"spec"`
+		ExpectedRev int            `json:"expected_rev"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -426,17 +425,17 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, viewRevisions(s.P.Names(who.Tenant), []agentspec.Revision{s.P.Seer(who).Revision(rev)})[0])
+	ok(w, http.StatusOK, viewRevisions(s.P.Names(who.Tenant), []wire.Revision{s.P.Seer(who).Revision(rev)})[0])
 }
 
 // agentHistory returns every revision of an agent, newest first.
 func (s *Server) agentHistory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	revs, err := s.P.Agents.History(r.Context(), who.Tenant, r.PathValue("name"))
+	revs, err := s.P.Catalog().History(r.Context(), who.Tenant, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	slices.SortFunc(revs, func(a, b agentspec.Revision) int { return b.Rev - a.Rev })
+	slices.SortFunc(revs, func(a, b wire.Revision) int { return b.Rev - a.Rev })
 	ok(w, http.StatusOK, map[string]any{"revisions": viewRevisions(s.P.Names(who.Tenant), s.P.Seer(who).Revisions(revs))})
 }
 
@@ -447,10 +446,10 @@ func (s *Server) agentHistory(w http.ResponseWriter, r *http.Request, who auth.P
 func (s *Server) agentOwner(w http.ResponseWriter, r *http.Request, who auth.Principal) (string, bool) {
 	name := r.PathValue("name")
 	if _, isProject := memory.OwnerProject(name); isProject {
-		s.problem(w, fmt.Errorf("%w: no agent called %q", registry.ErrNotFound, name))
+		s.problem(w, fmt.Errorf("%w: no agent called %q", wire.ErrNotFound, name))
 		return "", false
 	}
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, name, 0); err != nil {
+	if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, name, 0); err != nil {
 		s.problem(w, err)
 		return "", false
 	}
@@ -861,31 +860,39 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request, who auth.Princi
 
 // events streams the caller's tenant's events as server-sent events.
 //
-// topic narrows it: "agent" is everything, "agent:<name>" one agent,
-// "agent:<name>:<run>" one run. from resumes after a sequence number.
+// channel, type and run narrow it, and from resumes after a sequence number.
+// The tenant is the caller's. topic is the filter from before the event
+// union, read through legacy.Topic.
 func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	t := topic.All()
-	if raw := r.URL.Query().Get("topic"); raw != "" {
-		parsed, err := topic.Parse(raw)
-		if err != nil {
-			fail(w, http.StatusBadRequest, "topic is not valid")
-			return
-		}
-		t = parsed
+	sel, ok := eventFilter(r)
+	if !ok {
+		fail(w, http.StatusBadRequest, "use channel, type and run, or topic alone: a type is a run type prefix, such as run.delta")
+		return
 	}
-	sub := envelope.Subscription{Topic: t}
+	// inbox=true is notices alone: no run event is subscribed to, so it takes
+	// no run filter.
+	inboxOnly, err := inboxFlag(r)
+	if err != nil || (inboxOnly && (r.URL.Query().Has("channel") || r.URL.Query().Has("type") || r.URL.Query().Has("run") || r.URL.Query().Has("topic") || r.URL.Query().Has("from"))) {
+		fail(w, http.StatusBadRequest, "inbox is true or false, and inbox=true takes no channel, type, run, topic or from")
+		return
+	}
+	var from uint64
 	if raw := r.URL.Query().Get("from"); raw != "" {
-		if _, err := fmt.Sscan(raw, &sub.From); err != nil {
+		if _, err := fmt.Sscan(raw, &from); err != nil {
 			fail(w, http.StatusBadRequest, "from is not a sequence number")
 			return
 		}
 	}
-	stream, err := s.P.Subscribe(r.Context(), who.Tenant, sub)
-	if err != nil {
-		s.problem(w, err)
-		return
+	sel.From = from
+	var stream *platform.Stream
+	if !inboxOnly {
+		stream, err = s.P.Subscribe(r.Context(), who.Tenant, sel)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		defer func() { _ = stream.Close() }()
 	}
-	defer func() { _ = stream.Close() }()
 	// Inbox changes ride the same stream as a named event, so a reader that
 	// only listens for run events never sees them. A notice names a message
 	// and nothing more: the reader fetches it and is shown what they may see.
@@ -906,8 +913,15 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	w.WriteHeader(http.StatusOK)
 	_ = rc.Flush()
 
-	out := make(chan envelope.Event)
+	// An inbox-only stream leaves out nil, so it never delivers.
+	var out chan event.Envelope
+	if stream != nil {
+		out = make(chan event.Envelope)
+	}
 	go func() {
+		if stream == nil {
+			return
+		}
 		defer close(out)
 		for {
 			e, err := stream.Recv(r.Context())
@@ -979,15 +993,16 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// behind is ended here rather than fed a gap.
 				return
 			}
-			if !gate.seen(e.RunID) || !s.P.CitationEventVisible(who, e) {
+			if !gate.seen(e.Run) || !s.P.CitationEventVisible(who, e) {
 				continue
 			}
-			e = s.P.ShownEvent(who, e)
-			// Who answered a question is called by name (shownEvent).
-			if e.Kind == envelope.KindResumed {
-				e = shownEvent(s.P.Names(who.Tenant), e)
+			v, shown := s.P.ShownAPI(who, e)
+			if !shown {
+				continue
 			}
-			b, err := json.Marshal(e)
+			// Who answered a question is called by name (shownEvent).
+			v = shownEvent(s.P.Names(who.Tenant), v)
+			b, err := json.Marshal(v)
 			if err != nil {
 				continue
 			}
@@ -999,6 +1014,47 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			return
 		}
 	}
+}
+
+// inboxFlag reads inbox, which is absent, true or false.
+func inboxFlag(r *http.Request) (bool, error) {
+	raw := r.URL.Query().Get("inbox")
+	if raw == "" {
+		return false, nil
+	}
+	return strconv.ParseBool(raw)
+}
+
+// eventFilter reads the stream's filter from a request: channel, type and
+// run, or the old topic alone, which names an agent and a run. A type is a
+// run type prefix; a trailing dot is dropped, so "run." is "run". ok is false
+// for a filter that cannot be read.
+func eventFilter(r *http.Request) (platform.EventFilter, bool) {
+	q := r.URL.Query()
+	var f platform.EventFilter
+	if q.Has("topic") {
+		if q.Has("channel") || q.Has("type") || q.Has("run") {
+			return f, false
+		}
+		agent, run, err := legacy.Topic(q.Get("topic"))
+		if err != nil {
+			return f, false
+		}
+		f.Agent, f.Run = agent, run
+		return f, true
+	}
+	f.Channel, f.Run = q.Get("channel"), q.Get("run")
+	if event.IsControl(f.Channel) {
+		return f, false
+	}
+	for _, t := range q["type"] {
+		t = strings.TrimSuffix(t, ".")
+		if !event.HasPrefix(t, "run") {
+			return f, false
+		}
+		f.Types = append(f.Types, t)
+	}
+	return f, true
 }
 
 // problem maps a domain error to a response. Anything unrecognized is logged
@@ -1044,7 +1100,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, operations.ErrDenied):
 		fail(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, projectforks.ErrNotFound), errors.Is(err, runs.ErrNotFound), errors.Is(err, registry.ErrNotFound), errors.Is(err, platform.ErrScheduleNotFound),
+	case errors.Is(err, projectforks.ErrNotFound), errors.Is(err, runs.ErrNotFound), errors.Is(err, wire.ErrNotFound), errors.Is(err, platform.ErrScheduleNotFound),
 		errors.Is(err, platform.ErrProjectNotFound), errors.Is(err, errNotSeen),
 		errors.Is(err, alerts.ErrNotFound), errors.Is(err, knowledge.ErrNotFound), errors.Is(err, evals.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound), errors.Is(err, policy.ErrNotFound), errors.Is(err, inbox.ErrNotFound),
@@ -1057,7 +1113,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, detail(err, credentials.ErrInvalid))
 	case errors.Is(err, credentials.ErrLimit):
 		fail(w, http.StatusTooManyRequests, detail(err, credentials.ErrLimit))
-	case errors.Is(err, registry.ErrExists), errors.Is(err, platform.ErrScheduleExists), errors.Is(err, platform.ErrProjectExists),
+	case errors.Is(err, wire.ErrExists), errors.Is(err, platform.ErrScheduleExists), errors.Is(err, platform.ErrProjectExists),
 		errors.Is(err, alerts.ErrExists), errors.Is(err, knowledge.ErrExists), errors.Is(err, evals.ErrExists):
 		fail(w, http.StatusConflict, "already exists")
 	case errors.Is(err, clients.ErrExists):
@@ -1117,13 +1173,13 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, "that setting names an agent that does not exist")
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
-	case errors.Is(err, registry.ErrConflict):
+	case errors.Is(err, wire.ErrConflict):
 		fail(w, http.StatusConflict, "the agent was revised by someone else, reload and try again")
 	case errors.Is(err, platform.ErrForbidden), errors.Is(err, auth.ErrForbidden), errors.Is(err, call.ErrDepth), errors.Is(err, call.ErrFanOut), errors.Is(err, call.ErrBudget),
 		errors.Is(err, platform.ErrBusy):
 		fail(w, http.StatusForbidden, err.Error())
-	case errors.Is(err, call.ErrInvalid), errors.Is(err, registry.ErrInvalid), errors.Is(err, agentspec.ErrInvalid),
-		errors.Is(err, envelope.ErrInvalid), errors.Is(err, cron.ErrSchedule),
+	case errors.Is(err, call.ErrInvalid), errors.Is(err, wire.ErrInvalidPage), errors.Is(err, wire.ErrInvalidAgent),
+		errors.Is(err, event.ErrInvalid), errors.Is(err, cron.ErrSchedule),
 		errors.Is(err, alerts.ErrInvalid), errors.Is(err, knowledge.ErrInvalid), errors.Is(err, evals.ErrInvalid),
 		errors.Is(err, prefs.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid),
 		errors.Is(err, inbox.ErrInvalid), errors.Is(err, platform.ErrAction):

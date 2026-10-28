@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -97,7 +97,7 @@ func (p *Platform) MemoryFolders(ctx context.Context, who auth.Principal, q stri
 		}
 	}
 	if who.Can(auth.AgentsRead) {
-		page, added := registry.Page{Size: 100}, 0
+		page, added := wire.Page{Size: 100}, 0
 		for scan := 0; scan < 1000 && added < limit; scan += 100 {
 			rows, next, err := p.AgentDirectory(ctx, who.Tenant, page)
 			if err != nil {
@@ -138,7 +138,7 @@ func (p *Platform) MemoryFolders(ctx context.Context, who auth.Principal, q stri
 			}
 		case strings.HasPrefix(key, "agent:") && who.Can(auth.AgentsRead):
 			name := strings.TrimPrefix(key, "agent:")
-			if rev, err := p.Agents.Get(ctx, who.Tenant, name, 0); err == nil && seer.Agent(rev.Spec.Name) {
+			if rev, err := p.Catalog().Get(ctx, who.Tenant, name, 0); err == nil && seer.Agent(rev.Spec.Name) {
 				name = rev.Spec.Name
 				home, _ := tree.Home(name)
 				write := who.Can(auth.AgentsWrite) && p.OwnsHome(who, name) == nil
@@ -160,7 +160,7 @@ func (p *Platform) memoryManagement(ctx context.Context, who auth.Principal, fol
 	if cfg.MemoryAgent == "" {
 		return "disabled"
 	}
-	rev, err := p.Agents.Get(ctx, who.Tenant, cfg.MemoryAgent, 0)
+	rev, err := p.Catalog().Get(ctx, who.Tenant, cfg.MemoryAgent, 0)
 	if err != nil || rev.Spec.Provider == "offline" && !p.cfg.OfflineHooks {
 		return "unavailable"
 	}

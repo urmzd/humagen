@@ -1,12 +1,13 @@
 package runs
 
 import (
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"fmt"
 	"slices"
 	"strconv"
 	"time"
 	"unicode/utf8"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
 )
 
 const MaxCitations = 64
@@ -57,13 +58,13 @@ func CloneCitations(in []Citation) []Citation {
 
 // RecordCitation writes through, so a successful citation never depends on
 // bounded journal retention or a later dirty-index flush.
-func (x *Index) RecordCitation(e envelope.Event, metadata *CitationMetadata) error {
-	if e.Kind != envelope.KindCitation {
+func (x *Index) RecordCitation(e event.Envelope, metadata *CitationMetadata) error {
+	if e.Type != event.TypeCitation {
 		return nil
 	}
-	body, err := payload.Decode[payload.Citation](e)
-	if err != nil {
-		return err
+	body, ok := e.Data.(event.Citation)
+	if !ok {
+		return fmt.Errorf("runs: %s carries %T", e.Type, e.Data)
 	}
 	label := body.Label
 	if label == "" {
@@ -88,7 +89,7 @@ func (x *Index) RecordCitation(e envelope.Event, metadata *CitationMetadata) err
 	}
 	x.mu.Lock()
 	defer x.mu.Unlock()
-	r, ok := x.runs[e.RunID]
+	r, ok := x.runs[e.Run]
 	if !ok || r.Tenant != e.Tenant {
 		return ErrNotFound
 	}
@@ -118,7 +119,7 @@ func (x *Index) RecordCitation(e envelope.Event, metadata *CitationMetadata) err
 // CitationPayload preserves the established wire body while adding only
 // recorder-proven metadata. The application constructs it after verification.
 type CitationPayload struct {
-	payload.Citation
+	event.Citation
 	Mode          string     `json:"mode,omitempty"`
 	CopyAt        *time.Time `json:"copy_at,omitempty"`
 	RefreshFailed *bool      `json:"refresh_failed,omitempty"`

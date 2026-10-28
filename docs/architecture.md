@@ -10,7 +10,7 @@ and the stores behind them. It does not reimplement what it composes.
 
 | Part | Owns | Repo |
 |------|------|------|
-| Bus, topics, connectors, agent specs, revision pinning | Transport and surfaces | [fiber](https://github.com/urmzd/fiber) |
+| Event union, bus, egress, connectors, durable runtime, definition pinning | Transport and surfaces | fiber, in this repository at `fiber/` (`github.com/urmzd/humagen/fiber/...`) |
 | Agent loop, tools, MCP client, RAG, evals, OTel | Runtime | [saige](https://github.com/urmzd/saige) |
 | Sandboxed execution nodes, NGAC | Confinement | [playscape](https://github.com/urmzd/playscape) |
 | Durable runs and replay | Crash survival | [anchor](https://github.com/urmzd/anchor) |
@@ -21,9 +21,42 @@ and the stores behind them. It does not reimplement what it composes.
 The `packages/` UI libraries and `internal/presentation/github` are components and helpers only. They take data in as props and events and emit actions out.
 
 The test for where something goes: if it needs a network call, a database or an
-identity, it belongs in the platform or a surface host. The platform owns the wire. It translates fiber
-envelopes into Humagen events and turns Humagen actions back into tags. That
-adapter is the only place the two meet.
+identity, it belongs in the platform or a surface host. The platform owns the wire. It reads fiber's
+`event.Envelope` into Humagen's run model and raises Humagen's actions as
+events. `internal/wire` is the only place the two meet.
+
+## The event flow
+
+Every event is one `event.Envelope` with a typed body, and `type` is its only
+discriminator, such as `message.posted.v1` or `run.completed.v1`
+([fiber's design](../fiber/docs/architecture/events.md)). A run goes:
+
+```text
+surface (console, Slack, GitHub, cron)
+  -> ingress: a typed event on its channel (message.posted.v1, github.*.v1, cron.tick.v1)
+  -> Platform.Invoke: the agent named, or each that joins (pkg/join); limits and policy (pkg/call)
+  -> runtime.Accept: the definition pinned (name, version, digest, sub-agents, policy hash)
+  -> anchor: fiber.turn.v2 activities; each turn is a turn.Runtime in a playscape sandbox
+  -> run.* events on the bus, on the trigger's channel, under the run's tenant
+  -> egress: the sink of the channel's scheme (Slack, GitHub); the API's event stream; the journal
+```
+
+- **One bus, by channel and type prefix.** A subscription names a tenant,
+  channel prefixes and type prefixes. An empty one receives nothing, control
+  channels only reach a subscription that names them, and `run.usage` and
+  `run.context` only one that names them. The tenant is the principal's.
+- **Hops.** Each event carries `hops`; fiber drops one over `DefaultMaxHops`,
+  and an agent's own output never wakes it.
+- **At least once.** fiber keys a run by the event and its agent, so a
+  redelivered trigger joins the run it started. Humagen keeps its own run
+  ids (`runtime.AcceptOwn`), and a call key joins its run.
+- **The model reads the catalog.** The trigger reaches the model as its
+  catalog rendering, byte stable across replay. A sensitive body (human text,
+  private host data) reaches the model but not egress logs or webhooks unless
+  a subscriber opts in.
+- **Who answers.** Humagen picks agents itself, by name or through the
+  dynamic router (`pkg/join`). fiber's channel membership and dispatch
+  (`fiber/pkg/membership`, `fiber/pkg/dispatch`) are built but not wired in.
 
 ## One primitive: the call
 
@@ -136,8 +169,8 @@ against limits, and stops what goes over.
 
 | Source | When | Key | What it adds |
 |--------|------|-----|--------------|
-| `usage.call` on a run's stream | As each call completes | The runtime's `accounting_id` | The call, to the usage ledger, under the run's place |
-| The run's total (`lifecycle.completed` or `lifecycle.stopped`, else the ledger's output, else `runtime.RecordedUsage` for a failed run) | When the run ends | `run:<id>` | Only what the calls already counted for the run do not cover: a call whose event was missed |
+| `run.usage.v1` on a run's stream | As each call completes | The runtime's `accounting_id` | The call, to the usage ledger, under the run's place |
+| The run's total (`run.completed.v1` or `run.stopped.v1`, else the ledger's output, else `runtime.RecordedUsage` for a failed run) | When the run ends | `run:<id>` | Only what the calls already counted for the run do not cover: a call whose event was missed |
 
 The platform's observer sees every event (a subscription with no kind filter
 receives the usage family). A redelivered call, a redelivered terminal event
@@ -203,7 +236,7 @@ is the bound that holds whatever the price.
 | Surface | What |
 |---------|------|
 | `GET /api/runs/{id}` | `usage` (own, children, total, context), `spent`, `granted` |
-| The event stream and `listRunEvents` | `usage.call` and `usage.child` |
+| The event stream and `listRunEvents` | `run.usage.v1` and `run.usage.child.v1` |
 | `GET /api/usage` | `spend` (used, limit, `unpriced_calls`, `other_costs`) and `tokens` per scope |
 | `GET /api/analytics` | `usage` per group: calls, tokens, spend, unpriced calls |
 | Console | The run's Activity page (calls, tokens, cost, context), the session gauge's context edge, Analytics, Limits |
@@ -293,7 +326,7 @@ refused, not parked. See the status table.
 
 A call the callee's policy holds for a person is decided by `callApproval` in
 `internal/platform/call_policy.go`. The `call_agent` tool is an
-`agentrt.Approving` tool built on it: the runtime parks the caller on an
+`native.Approving` tool (`fiber/pkg/turn/native`) built on it: the runtime parks the caller on an
 approval addressed to the policy's approvers (`role:manager` and `role:admin`
 when it names nobody, so a held call is never open to the whole workspace).
 The call goes through only when a person approved that very tool call;
@@ -318,9 +351,9 @@ requirement.
 
 Every store has one choice, memory or Postgres, made in one place:
 `platform.Config.Backends`, which `humagen serve -state=postgres` fills from
-`HUMAGEN_POSTGRES_URL` through `platform.OpenPostgres`. fiber's families use
-fiber's own Postgres stores: `registry.Postgres` for agents, and `pkg/durable`
-for anchor's run ledger and queue. Humagen's own stores do not each get a SQL
+`HUMAGEN_POSTGRES_URL` through `platform.OpenPostgres`. Agent definitions are
+kept by `pkg/agents` on `pkg/state`, and fiber's `pkg/durable` keeps anchor's
+run ledger and queue. Humagen's own stores do not each get a SQL
 copy of their rules. They keep their logic and indexes in memory, as the read
 model, and write the records that state is built from through `pkg/state`: a
 namespaced, tenant-scoped document store with a Memory and a Postgres backend,
@@ -387,6 +420,14 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Company agents, personal projects, movable conversations, announcement banner and project/agent finder | Company root homes and durable human personal-project provisioning are implemented in the project store and `GET /api/me`, with owner confinement ahead of inherited ownership and memory/Postgres replay and race tests. Company homes preserve existing enable/allow behavior. Backend publication previews now bind explicit confirmation to current contents and destination versions; completed work moves with immutable accounting, scoped audit attempts and atomic placement history. Active, waiting and externally delivered work stays put. Operational run/artifact/inbox/count/stream projections follow current placement and remove former private provenance. Raw private-source and retained operational-contract publication requires a reviewed summary copy, which creates only explicit human text in a new shared conversation. The original stays private. Company welcome is a retained idempotent announcement; Home banner and the read-confined discovery API are implemented. Agent/project discovery lives inside the new-conversation composer picker, preserving drafts and attachments; existing conversations keep their fixed project. New expert tags/completions and prompt injection are retired, with actionable config diagnostics and retained human-question compatibility. Project history IDs/cursors are opaque and project-scoped; see [company-workspace.md](company-workspace.md). |
 | Reviewed agent setup | Backend implemented: bounded owner-confined durable setup records, inactive registry creation, resumable configuration, exact owner/revision test capability through the real runtime, native tool approval and completed-test activation. Public agent creation shares the name reservation boundary. Memory/Postgres restart, partial-failure, concurrent-creation and native OpenAI adapter approval regressions pass. The mounted create wizard uses real provider/model choices, explicit grants, recorded native approvals, resumable inactive drafts and completed-model-test activation. Exact published default skills and final screenshot acceptance are the remaining upper integration work. |
 | Initiatives, bounded discovery and safe project forks | File-defined atomic project templates and coordination-only initiative scope are implemented. Initiative Overview shows read-confined descendant activity, reader needs, approved unexpired typed decisions/risks and 30-day run counts. Project forks stage all copied resources behind a central deny gate, publish atomically, retain private resumable plans and optionally capture passive read-only archives. Source-link rules are copied disabled; original source access remains required. Bounded global discovery finds readable projects, agents and conversations. Shared host wiring and final screenshot verification are completed in the upper UI stack. Project-fork operations use a bounded lock pool separate from conversation archive locks; deterministic colliding-ID regressions cover memory and Postgres. Cross-project execution remains denied pending its explicit design question. |
+| `internal/wire`: the one seam onto fiber's run model | Built. Only `internal/wire` reads or writes a trigger's request (text, actor, context) and the connector meta keys, decodes event bodies, and reaches fiber's definitions; `pkg/call` builds a child through `wire.NewEvent`, and the platform reads definitions through `Platform.Catalog()`. `TestSeam` fails on a new read elsewhere, of `fiber/pkg/definition` outside `pkg/agents` and `internal/legacy`, and of `fiber/pkg/event/legacy` outside `internal/legacy` |
+| fiber folded in: Humagen on fiber's event union | Built. fiber lives at `fiber/` in this module and `github.com/urmzd/fiber` is gone from `go.mod`. One `event.Envelope` replaces the tag and the run event: a trigger is `message.posted.v1` (or a connector's own type), Humagen sets its `Agent`, and its meta is the request's context. The bus is subscribed per tenant (`Platform.RunSubscription`), `egress` delivers a run's events to the sink of its channel's scheme, and `runtime.AcceptOwn` keeps run ids as before. Old shapes are read only in `internal/legacy`: a run row's tag (`TestARunRowWrittenBeforeTheUnionIsReadAsItsEvent`), a schedule's `Meta`, and an old reader's SSE `topic` and journal `kind` (`legacy.Topic`, `legacy.KindSelector`). The composed turn is pinned byte for byte, and matched the version before (`TestTheComposedTurnMatchesItsGolden`); a call key joins its run however often it is made (`TestTheSameCallKeyJoinsTheSameRun`). A Slack message names an agent by a bot mention, or by a plain `@name` the client may route to. Not run against Postgres here |
+| The API on the event union: `api/openapi.yaml`, `@humagen/client`, `packages/adapter`, the console and the Slack app | Built. The event stream, `listRunEvents` and the run manifest send the envelope with `data` as inline JSON (`platform.APIEvent`), never base64. `RunEvent` is a `oneOf` told apart by `type`, one variant per type in fiber's catalog, and `UnknownEvent` is the documented fallback; `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal` derives the mapping from `event.Types()` and checks each body against its Go type, and `TestEventUnionParityCatchesAMissingVariant` proves a missing variant fails. `GET /api/events` takes `channel`, `type` and `run`, defaults to the run family, refuses any other family or a control channel, and reads the old `topic` through `internal/legacy` (`TestLegacyTopicParam`, `TestSSEDefaultDenyAcrossTenants`). The journal filters by `type`. The adapter takes the generated `RunEvent`, so a contract change fails its typecheck; a type it does not know gives nothing. The console and the Slack app are on the union: the console's list follows the run state types (`runStateTypes`) and reads agents again through the agents API on every (re)connect, a run's page follows it by `run`, and Analytics asks the journal by type prefix (`type` is repeatable); the Slack app reads frames as `RunEvent` and `InboxNotice`, hands each run's events on once by `seq`, follows a run by `run`, and reads its inbox with `inbox=true`, which sends notices alone (`TestSSEInboxOnly`) |
+| `pkg/agents`: each tenant's saige agent definitions on `pkg/state`, and the one-time move from fiber's registry | Built and wired in: the platform's agents are `pkg/agents`, resolved by fiber's `definition.Resolver`, and `platform.OpenPostgres` runs the move at start. `pkg/agents` is a `definition.Source` held to `definitiontest` on memory and Postgres. `legacy.ConvertAgents` moves `fiber_agents` and `fiber_agent_revisions` through `definition.FromAgentSpec` once, behind a state marker, in revision order, keeping who wrote each and when; an agent that cannot be moved is disabled and kept in the report (`legacy.AgentConversionOf`), and a platform agent that cannot be moved fails the move. `wire.DefinitionCatalog` reads the store as an `AgentCatalog` |
+| Event union (`fiber/pkg/event`): one envelope, a sealed body per type, `Unknown` for a type this build does not know, and one catalog of decoder, renderer, sensitivity and opt-in per type | Built. `TestCatalogComplete` fails on a type with no renderer, `TestUnknownKeepsBytes` and `TestDecodeRejectsMalformedKnown` hold the decode rules, and `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal` holds `api/openapi.yaml` to the catalog |
+| Channel bus (`fiber/pkg/bus`): one bus by tenant, channel and type prefix, with hops and at-least-once delivery | Built: memory, Postgres and Redis, held to `bustest` (`TestEmptySubscriptionMatchesNothing`, `TestRootDoesNotSeeControl`). Humagen subscribes per tenant (`Platform.RunSubscription`) and refuses a control channel on the API. fiber's membership and dispatch (`TestSelfOutputNeverWakesSelf`, `TestHopLimitDrops`, `TestRedeliveryJoinsRun`) are built and not wired in: Humagen chooses agents with `pkg/join`. New bus tables; old rows age out in 24 hours. Postgres and Redis runs are CI's integration job, not run here |
+| Definitions: saige `.agent.md` plus a policy, pinned per run | Built. A run pins name, version, digest, sub-agent versions and policy hash, and fails terminally when any moved (`TestAPinnedRevisionWhoseHashMovedFailsTerminally`, `TestVerifyFailsClosedOnEmptyDigest`). A spec's agent may be an `.agent.md` file with a `policy` (`TestAnAgentMdFileLandsWithItsPolicy`). Runs under the v1 activity names fail terminally |
+| Runtime seam (`fiber/pkg/turn`): one turn of a pinned definition for an input event, streaming catalog bodies. `turn/native` wraps saige, `turn/sandbox` puts any Runtime in playscape | Built and held to `runtimetest`. `humagen.WithRuntime` (`platform.Config.Runtime`) replaces the native turn inside the same sandbox (`TestAConfiguredRuntimeRunsTheTurn`) |
 | Durable agent operations | Built: durable versioned assignments and handoff contracts, effective workspace/agent/setup pause at admission, tighten-only action policy with safe inherited provenance, native durable approvals and bounded read-confined network APIs. Reviewed deadline corrections retain the same ledger run; bounded native inbox reminders survive restart without repeating or resuming work. Console controls, policy editor, assignments and network components use the real APIs. Global navigation, source-health integration and screenshot states are completed by the corresponding stack layers. See [agent-operations.md](agent-operations.md) for semantics and verification. |
 
 
@@ -550,12 +591,12 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Email connector and Jira wiring | Not built |
 | Remote execution nodes, peer connector | Not built |
 | `pkg/state`: one record store for Humagen's own stores, by namespace, tenant and key, in memory or in Postgres (one table, migrated by `OpenPostgres`), held to the `statetest` suite. Each store keeps its rules and indexes in memory and writes through it, undoing a change that cannot be written | Built, tested against both backends on Postgres 16, with a restart test per store and a failed-write test per store. One writer: a second process on the same schema gets `state.ErrLocked` |
-| Choosing the backends: `platform.Config.Backends` (Humagen's `state.Store`, fiber's `registry.Store`, anchor's ledger and queue), zero for memory; `platform.OpenPostgres` puts all of them on one database, with fiber's `registry.Postgres` for agents and fiber's `pkg/durable` for the run ledger and queue. `humagen serve -state=postgres`, the default when `HUMAGEN_POSTGRES_URL` is set | Built. `TestThePlatformSurvivesARestart` runs a platform on each backend, stops it and starts another on the same one. `TestARunClaimedAsThePlatformStopsIsResumedAfterTheRestart` holds a worker's claim on its way to Postgres until the stopping worker has handed its run back, and the next platform resumes the run at once. Run by hand against Postgres 16 with `-auth dev -seed`: settings, an agent, a client, an alert rule, runs, the inbox and artifacts survived a restart. Sessions are still in memory |
+| Choosing the backends: `platform.Config.Backends` (Humagen's `state.Store`, the agent store, anchor's ledger and queue, the bus), zero for memory; `platform.OpenPostgres` puts all of them on one database, with `pkg/agents` on `pkg/state` for agents and fiber's `pkg/durable` for the run ledger and queue. `humagen serve -state=postgres`, the default when `HUMAGEN_POSTGRES_URL` is set | Built. `TestThePlatformSurvivesARestart` runs a platform on each backend, stops it and starts another on the same one. `TestARunClaimedAsThePlatformStopsIsResumedAfterTheRestart` holds a worker's claim on its way to Postgres until the stopping worker has handed its run back, and the next platform resumes the run at once. Run by hand against Postgres 16 with `-auth dev -seed`: settings, an agent, a client, an alert rule, runs, the inbox and artifacts survived a restart. Sessions are still in memory |
 | The spec and the commands (`pkg/spec`, `internal/app`): System and Platform documents whose backends are kinds in slots ([spec](spec.md)). `humagen start` runs a laptop's defaults (dev sign-in on loopback, example agents when nothing is configured, the first-run questions on a terminal, `humagen.yaml` in the config directory); `humagen serve` keeps a server's (OIDC, nothing seeded, only the files `-f` names). Also `humagen setup`, `humagen config check` (which warns of a Slack app whose `humagen_client` reads runs but not projects, `TestConfigCheckWarnsOfAMachineThatReadsRunsButNotProjects`) and `print`, `humagen deploy` (local, compose or kubernetes) and `humagen slack manifest`. A downstream program passes `humagen.Main` options and kinds instead of forking | Built, tested: `humagen start` runs with nothing configured, a spec file runs the platform, the spec's examples load, mistakes are refused with their place, what `humagen setup` writes loads back as the same spec, an unregistered kind stops startup, and a spec on Postgres keeps its agents across a restart. The file's GitHub client follows the file at the next start, with no new version when nothing changed, on memory and Postgres (`TestTheFilesGitHubClientFollowsTheFileAtEveryStart`). `enabled: false` turns it off, so a signed webhook is answered 404, and it stays off across a restart (`TestEnabledFalseTurnsTheFilesGitHubClientOff`). `humagen deploy` is tested with docker, helm and kubectl replaced by a recorder; it has not been run against a Docker daemon or a cluster. It refuses `person_refs` starts in this machine's keychain or 1Password for a compose or kubernetes target, and says people's `env:` variables are the target's to set |
 | In-repo deploy, on [the spec](spec.md): a container image (`Dockerfile`: the console and a static `humagen`, non-root, `/var/lib/warp` volume, `serve -f /etc/warp`), a compose stack (`deploy/compose`: a mounted `humagen.yaml` with System and Platform documents, secrets in `.env` named by references, Postgres and a MinIO profile, a dev override on host networking, `make up`/`make down`), a Helm chart (`deploy/helm/humagen`: `system` and `platforms` values rendered into one `humagen.yaml`, one replica with `Recreate`, `existingSecret`, a workspace PVC; refuses loopback-only sign-in) and an example Flux setup (`deploy/flux`). See [deploy](deploy.md) | Written. `make chart-check` lints and renders the chart, runs `kubeconform -strict` on the renders and `humagen config check` on each rendered `humagen.yaml` and on both compose specs. The compose files pass `docker compose config`; the dev spec, with memory stores, was started and served the console. The Flux manifests pass `kubeconform` after `kustomize build`. `config check` lists env references the shell has not set; it does not read keychains or named files, so those fail only at start. The root image builds and runs as both command names; a default Postgres release upgrades in place from the last pre-rename chart through Helm and Flux on kind, with the Deployment, PVC contents, Secret data and container name retained ([rename verification](rename-verification.md)). The memory-slot edge in [issue #62](https://github.com/urmzd/humagen/issues/62) remains open. No image is published by releases |
 | Call policies: each agent says which agents may call it (`anyone`, `listed`, `none`) and which calls wait for a person. `GET`/`PUT /api/agents/{name}/call-policy` (`agents:read`/`agents:write`), enforced in the call path beside the caller's spawn allowlist, and the `call_agent` tool offers only callees that admit the caller | Built, tested. Kept with `-state=postgres`. Per tenant, at most 1,000 policies and 100 names per list. The console edits one on the agent's page |
 | Discoverability: `GET /api/agents/{name}/reachable` says, for that agent as a caller, whether each other agent admits it, is in its spawn allowlist, and needs approval, with a reason | Built, tested. One page of up to 500 agents, with `truncated` |
-| Per-call approval held by the callee's policy: `call_agent` implements `agentrt.Approving`, the question carries the policy's approvers and self-approval, the inbox addresses it to them, and only a call a person approved goes through | Built, unit tested. End to end it waits on fiber's host call tool wrapper forwarding `Approving`; until then the call is refused (fail closed), which the end-to-end test checks and then skips. `expires_seconds` is not applied yet |
+| Per-call approval held by the callee's policy: `call_agent` implements `native.Approving` (`fiber/pkg/turn/native`), the question carries the policy's approvers and self-approval, the inbox addresses it to them, and only a call a person approved goes through | Built, unit tested. End to end it waits on fiber's host call tool wrapper forwarding `Approving`; until then the call is refused (fail closed), which the end-to-end test checks and then skips. `expires_seconds` is not applied yet |
 | An agent's approval queue: approval questions about calling an agent carry it as `source.target`, and `GET /api/inbox?kind=approval&agent=X&state=open` lists what was raised by or would call `X`. It offers a note only where the run takes one from the viewer (`steered_for`), and says when a call acts as the person | Built, tested, the queue's notes in happy-dom (`governance.dom.test.tsx`) |
 | Built-in `manager` role: everything an operator has, and writing agents (their call policies among them) and knowledge. Granted by `-manager-group` (`humagen-managers`); mock persona `mock-manager` | Built, tested |
 

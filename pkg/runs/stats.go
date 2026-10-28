@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -61,7 +61,7 @@ type GroupUsage struct {
 	OtherCurrency int `json:"other_currency_runs"`
 }
 
-func (g *GroupUsage) add(u *payload.RunUsage) {
+func (g *GroupUsage) add(u *event.RunUsage) {
 	if u == nil {
 		return
 	}

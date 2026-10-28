@@ -11,12 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -105,9 +104,9 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				name := strings.TrimSpace(arg(args, "name"))
 				open := p.agentOpenFor(req.Tenant, p.ownProject(req.Tenant, req.RunID))
 				if !open(name) {
-					return "", fmt.Errorf("%w: %q", registry.ErrNotFound, name)
+					return "", fmt.Errorf("%w: %q", wire.ErrNotFound, name)
 				}
-				rev, err := p.Agents.Get(ctx, req.Tenant, name, 0)
+				rev, err := p.Catalog().Get(ctx, req.Tenant, name, 0)
 				if err != nil {
 					return "", err
 				}
@@ -295,7 +294,7 @@ func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string
 	}
 	out := []agent{}
 	open := p.agentOpenFor(tenant, own)
-	page := registry.Page{Size: 100}
+	page := wire.Page{Size: 100}
 	for len(out) < 200 {
 		revs, next, err := p.AgentDirectory(ctx, tenant, page)
 		if err != nil {
@@ -323,13 +322,13 @@ func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string
 // home's owners' to change, in its own routes, so the builder, whose save a
 // manager approves without owning anything, never revises one; and a new
 // agent's name is held to what the agents route holds it to.
-func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string]any) (agentspec.Revision, bool, error) {
+func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string]any) (wire.Revision, bool, error) {
 	name := strings.TrimSpace(arg(args, "name"))
 	if IsBuiltin(name) {
-		return agentspec.Revision{}, false, fmt.Errorf("%w: %s belongs to the platform", ErrBuilder, name)
+		return wire.Revision{}, false, fmt.Errorf("%w: %s belongs to the platform", ErrBuilder, name)
 	}
-	if home, homed := p.ProjectTree(tenant).Home(agentspec.NormalizeName(name)); homed && home != projects.Root {
-		return agentspec.Revision{}, false, fmt.Errorf("%w: %s lives in a project, so only that project's owners change it", ErrBuilder, name)
+	if home, homed := p.ProjectTree(tenant).Home(wire.NormalizeName(name)); homed && home != projects.Root {
+		return wire.Revision{}, false, fmt.Errorf("%w: %s lives in a project, so only that project's owners change it", ErrBuilder, name)
 	}
 	var tools []string
 	for t := range strings.SplitSeq(arg(args, "tools"), ",") {
@@ -338,33 +337,33 @@ func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string
 			continue
 		}
 		if !slices.Contains(grantable(), t) {
-			return agentspec.Revision{}, false, fmt.Errorf("%w: %q cannot be granted; choose from %s", ErrBuilder, t, strings.Join(grantable(), ", "))
+			return wire.Revision{}, false, fmt.Errorf("%w: %q cannot be granted; choose from %s", ErrBuilder, t, strings.Join(grantable(), ", "))
 		}
 		tools = append(tools, t)
 	}
 	description := strings.TrimSpace(arg(args, "description"))
 	prompt := strings.TrimSpace(arg(args, "system_prompt"))
 	if prompt == "" {
-		return agentspec.Revision{}, false, fmt.Errorf("%w: a system prompt is required", ErrBuilder)
+		return wire.Revision{}, false, fmt.Errorf("%w: a system prompt is required", ErrBuilder)
 	}
 
-	have, err := p.Agents.Get(ctx, tenant, name, 0)
+	have, err := p.Catalog().Get(ctx, tenant, name, 0)
 	switch {
-	case errors.Is(err, registry.ErrNotFound):
+	case errors.Is(err, wire.ErrNotFound):
 		if err := p.CheckAgentName(tenant, name); err != nil {
-			return agentspec.Revision{}, false, fmt.Errorf("%w: %w", ErrBuilder, err)
+			return wire.Revision{}, false, fmt.Errorf("%w: %w", ErrBuilder, err)
 		}
-		spec := agentspec.AgentSpec{
+		spec := wire.AgentSpec{
 			Name: name, Description: description, SystemPrompt: prompt, Tools: tools,
 			Provider: p.cfg.BuiltinProvider, Model: p.cfg.BuiltinModel,
 		}
 		if err := p.CheckAgentModel(tenant, spec); err != nil {
-			return agentspec.Revision{}, false, err
+			return wire.Revision{}, false, err
 		}
 		rev, err := p.Agents.Create(ctx, tenant, spec, "agent:"+BuiltinBuilder)
 		return rev, err == nil, err
 	case err != nil:
-		return agentspec.Revision{}, false, err
+		return wire.Revision{}, false, err
 	}
 	spec := have.Spec
 	spec.Description, spec.SystemPrompt = description, prompt

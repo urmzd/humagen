@@ -1,9 +1,10 @@
 package github
 
 import (
-	"github.com/urmzd/fiber/pkg/address"
-	transport "github.com/urmzd/fiber/pkg/connectors/github"
 	"strconv"
+
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
 )
 
 type API = transport.API

@@ -1,31 +1,82 @@
 import { defaultCopy } from "@humagen/components";
-import { UserIcon, PaletteIcon, ServerIcon, BotIcon, BrainIcon, GaugeIcon, PlugIcon, ShieldIcon, ScrollTextIcon, MonitorIcon, SunIcon, MoonIcon, TrashIcon } from "@humagen/render-web";
-import { type FormEvent, type MouseEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { ReadAudit } from "./ReadAudit.tsx";
-import { DeletionQueue } from "./DeletionQueue.tsx";
-import { AccessExplain } from "./AccessExplain.tsx";
-import { href, type SettingsSection } from "./route.ts";
-import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revision, type RouterSettings, type Settings as Workspace } from "./api.ts";
-import { ModelChain, POLICY, chainProblem, starterPolicy } from "./ModelChain.tsx";
+import {
+  BotIcon,
+  BrainIcon,
+  GaugeIcon,
+  MonitorIcon,
+  MoonIcon,
+  PaletteIcon,
+  PlugIcon,
+  ScrollTextIcon,
+  ServerIcon,
+  ShieldIcon,
+  SunIcon,
+  TrashIcon,
+  UserIcon,
+} from "@humagen/render-web";
 import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Switch as SettingSwitch } from "@humagen/render-web/ui/switch";
-import { SettingsFormRow } from "./SettingsFormRow.tsx";
+import {
+  type FormEvent,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { AccessExplain } from "./AccessExplain.tsx";
+import {
+  ApiError,
+  api,
+  type Me,
+  type ModelPolicy,
+  type Preferences,
+  type Revision,
+  type RouterSettings,
+  type Settings as Workspace,
+} from "./api.ts";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
+import { DeletionQueue } from "./DeletionQueue.tsx";
+import { chainProblem, ModelChain, POLICY, starterPolicy } from "./ModelChain.tsx";
 import type { PrefsRead } from "./preferences.ts";
-import { agentOptions, button, card, field, Label, Problem, primary, Segmented, SkeletonRows, pageLede, pageTitle, useStrip } from "./ui.tsx";
+import { ReadAudit } from "./ReadAudit.tsx";
+import { href, type SettingsSection } from "./route.ts";
+import { SettingsFormRow } from "./SettingsFormRow.tsx";
+import {
+  agentOptions,
+  button,
+  card,
+  field,
+  Label,
+  Problem,
+  pageLede,
+  pageTitle,
+  primary,
+  Segmented,
+  SkeletonRows,
+  useStrip,
+} from "./ui.tsx";
 
 export type Section = SettingsSection;
 
-const accents = (["red", "yellow", "green", "purple", "blue", "teal"] as const).map(id => ({
+const accents = (["red", "yellow", "green", "purple", "blue", "teal"] as const).map((id) => ({
   id,
   label: defaultCopy.accentPresets[id],
   icon: <span aria-hidden data-accent={id} className="size-2.5 rounded-full bg-aui-accent" />,
 }));
 
 /** A person's picture, or their initial when they have none. */
-export function Avatar({ name, prefs, size = 28 }: { name: string; prefs: Preferences | null; size?: number }) {
+export function Avatar({
+  name,
+  prefs,
+  size = 28,
+}: {
+  name: string;
+  prefs: Preferences | null;
+  size?: number;
+}) {
   if (prefs?.has_photo) {
     return (
       <img
@@ -111,13 +162,19 @@ export function Settings({
   const shown = prefs.display_name || who.name || who.email || who.subject;
   const read = prefsRead === "read";
 
-  const fail = (fallback: string) => (e: unknown) => setProblem(e instanceof ApiError ? e.message : fallback);
+  const fail = (fallback: string) => (e: unknown) =>
+    setProblem(e instanceof ApiError ? e.message : fallback);
   // A save sends every field, so none is sent before the saved ones are read.
   const savePrefs = (patch: Partial<Pick<Preferences, "display_name" | "theme" | "accent">>) => {
     if (!read) return;
     setProblem(null);
     api
-      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, ...patch })
+      .savePreferences({
+        display_name: prefs.display_name,
+        theme: prefs.theme,
+        accent: prefs.accent,
+        ...patch,
+      })
       .then((next) => {
         onPrefs(next);
         if (patch.display_name !== undefined) setDraft(null);
@@ -126,7 +183,11 @@ export function Settings({
   };
   // In place of a control that would save over what is not read yet.
   const notRead =
-    prefsRead === "failed" ? <Problem message="Your preferences could not be read. Reload to try again." /> : <SkeletonRows count={2} />;
+    prefsRead === "failed" ? (
+      <Problem message="Your preferences could not be read. Reload to try again." />
+    ) : (
+      <SkeletonRows count={2} />
+    );
   const saveWorkspace = (patch: Partial<Workspace>) => {
     if (!workspace) return;
     setProblem(null);
@@ -136,7 +197,8 @@ export function Settings({
       .catch(fail("The workspace settings could not be saved."));
   };
 
-  const canReadAudit = me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
+  const canReadAudit =
+    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const canGovern = me.permissions.includes("projects:govern");
   const sections: { id: Section; label: string; icon: ReactNode }[] = [
     { id: "profile", label: "Profile", icon: <UserIcon size={16} /> },
@@ -147,8 +209,24 @@ export function Settings({
     { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
     { id: "connections", label: "Connections", icon: <PlugIcon size={16} /> },
     { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
-    ...(canReadAudit ? [{ id: "read-audit" as const, label: defaultCopy.readAudit.label, icon: <ScrollTextIcon size={16} /> }] : []),
-    ...(canGovern ? [{ id: "deletions" as const, label: defaultCopy.deletions.title, icon: <TrashIcon size={16} /> }] : []),
+    ...(canReadAudit
+      ? [
+          {
+            id: "read-audit" as const,
+            label: defaultCopy.readAudit.label,
+            icon: <ScrollTextIcon size={16} />,
+          },
+        ]
+      : []),
+    ...(canGovern
+      ? [
+          {
+            id: "deletions" as const,
+            label: defaultCopy.deletions.title,
+            icon: <TrashIcon size={16} />,
+          },
+        ]
+      : []),
   ];
   // On a phone the sections are a row that scrolls inside itself, kept on the open one.
   const strip = useStrip<HTMLElement>(section);
@@ -158,7 +236,11 @@ export function Settings({
       {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
       {/* On a phone the row scrolls inside the 16px gutter, never under the screen's edge. */}
       <div className="shrink-0 border-aui-border border-b px-4 md:w-52 md:border-r md:border-b-0 md:px-0">
-        <nav ref={strip} aria-label="Settings sections" className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3">
+        <nav
+          ref={strip}
+          aria-label="Settings sections"
+          className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3"
+        >
           {sections.map((s) => (
             <button
               key={s.id}
@@ -170,7 +252,8 @@ export function Settings({
               }}
               className="inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
             >
-              {s.icon}{s.label}
+              {s.icon}
+              {s.label}
             </button>
           ))}
         </nav>
@@ -179,24 +262,35 @@ export function Settings({
       <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-8 pb-12 md:px-10">
           <Problem message={problem} />
-          {section === "read-audit" && (canReadAudit ? <ReadAudit /> : (
-            <>
-              <h1 className={pageTitle}>{defaultCopy.readAudit.title}</h1>
-              <Problem message={defaultCopy.readAudit.denied} />
-            </>
-          ))}
+          {section === "read-audit" &&
+            (canReadAudit ? (
+              <ReadAudit />
+            ) : (
+              <>
+                <h1 className={pageTitle}>{defaultCopy.readAudit.title}</h1>
+                <Problem message={defaultCopy.readAudit.denied} />
+              </>
+            ))}
 
-          {section === "deletions" && (canGovern ? <DeletionQueue /> : <><h1 className={pageTitle}>{defaultCopy.deletions.title}</h1><Problem message={defaultCopy.deletions.denied} /></>)}
+          {section === "deletions" &&
+            (canGovern ? (
+              <DeletionQueue />
+            ) : (
+              <>
+                <h1 className={pageTitle}>{defaultCopy.deletions.title}</h1>
+                <Problem message={defaultCopy.deletions.denied} />
+              </>
+            ))}
 
           {section === "routing" && (
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Agent routing</h1>
                 <p className={pageLede}>
-                  A message goes to the agents it tags. One that tags none goes to the default where it is posted. When
-                  that is Everyone decides, each agent available there decides for itself whether to answer, and each
-                  that does answers in the same thread. When none does, the message waits for a person to answer or tag
-                  an agent.
+                  A message goes to the agents it tags. One that tags none goes to the default where
+                  it is posted. When that is Everyone decides, each agent available there decides
+                  for itself whether to answer, and each that does answers in the same thread. When
+                  none does, the message waits for a person to answer or tag an agent.
                 </p>
               </header>
               {workspace && (
@@ -208,23 +302,38 @@ export function Settings({
                 />
               )}
               <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">{defaultCopy.workspaceDefault}</h2>
+                <h2 className="text-aui-sm font-medium text-aui-fg">
+                  {defaultCopy.workspaceDefault}
+                </h2>
                 <p className="text-aui-sm text-aui-muted">
-                  {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a project sets its own. It lives on the
-                  workspace's Agents tab.
+                  {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a
+                  project sets its own. It lives on the workspace's Agents tab.
                 </p>
-                <a href={href({ page: "project", name: "", tab: "agents" })} className={`${button} self-start`} onClick={follow(onOpenWorkspaceAgents)}>
+                <a
+                  href={href({ page: "project", name: "", tab: "agents" })}
+                  className={`${button} self-start`}
+                  onClick={follow(onOpenWorkspaceAgents)}
+                >
                   {defaultCopy.workspaceDefault}
                 </a>
               </section>
               <section className={`${card} flex flex-col gap-3`}>
                 <h2 className="text-aui-sm font-medium text-aui-fg">Agent capabilities</h2>
-                <p className="text-aui-xs text-aui-muted">Each agent reads its description first when deciding whether to take a message. Edit them in Agents.</p>
-                {agents.length === 0 && <p className="text-aui-sm text-aui-muted">No agents configured.</p>}
+                <p className="text-aui-xs text-aui-muted">
+                  Each agent reads its description first when deciding whether to take a message.
+                  Edit them in Agents.
+                </p>
+                {agents.length === 0 && (
+                  <p className="text-aui-sm text-aui-muted">No agents configured.</p>
+                )}
                 {agents.map((a) => (
                   <div key={a.spec.name}>
                     <p className="text-aui-sm font-medium text-aui-fg">{a.spec.name}</p>
-                    <p className="text-aui-xs text-aui-muted">{a.spec.tagged_only ? "Only when tagged." : a.spec.description || "Decides using its name and instructions."}</p>
+                    <p className="text-aui-xs text-aui-muted">
+                      {a.spec.tagged_only
+                        ? "Only when tagged."
+                        : a.spec.description || "Decides using its name and instructions."}
+                    </p>
                   </div>
                 ))}
               </section>
@@ -235,13 +344,17 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Profile</h1>
-                <p className={pageLede}>How you appear to yourself in this console. Only you see these.</p>
+                <p className={pageLede}>
+                  How you appear to yourself in this console. Only you see these.
+                </p>
               </header>
               <section className={`${card} flex flex-wrap items-center gap-4`}>
                 <Avatar name={shown} prefs={prefs} size={72} />
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <p className="text-aui-sm text-aui-fg">Profile picture</p>
-                  <p className="text-aui-xs text-aui-muted">A PNG, JPEG or WebP image up to 512 KB.</p>
+                  <p className="text-aui-xs text-aui-muted">
+                    A PNG, JPEG or WebP image up to 512 KB.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <input
                       ref={file}
@@ -254,7 +367,10 @@ export function Settings({
                         e.target.value = "";
                         if (!picked) return;
                         setProblem(null);
-                        api.uploadPhoto(picked).then(onPrefs).catch(fail("The picture could not be uploaded."));
+                        api
+                          .uploadPhoto(picked)
+                          .then(onPrefs)
+                          .catch(fail("The picture could not be uploaded."));
                       }}
                     />
                     <button type="button" className={button} onClick={() => file.current?.click()}>
@@ -264,7 +380,12 @@ export function Settings({
                       <button
                         type="button"
                         className={button}
-                        onClick={() => api.removePhoto().then(onPrefs).catch(fail("The picture could not be removed."))}
+                        onClick={() =>
+                          api
+                            .removePhoto()
+                            .then(onPrefs)
+                            .catch(fail("The picture could not be removed."))
+                        }
                       >
                         Remove
                       </button>
@@ -280,11 +401,23 @@ export function Settings({
                     savePrefs({ display_name: name });
                   }}
                 >
-                  <Label text="Display name" hint={`Leave empty to use the name from sign-in${who.name ? `: ${who.name}` : ""}.`}>
-                    <input className={field} value={name} maxLength={80} onChange={(e) => setDraft(e.target.value)} />
+                  <Label
+                    text="Display name"
+                    hint={`Leave empty to use the name from sign-in${who.name ? `: ${who.name}` : ""}.`}
+                  >
+                    <input
+                      className={field}
+                      value={name}
+                      maxLength={80}
+                      onChange={(e) => setDraft(e.target.value)}
+                    />
                   </Label>
                   <div className="flex justify-end">
-                    <button type="submit" className={primary} disabled={name === prefs.display_name}>
+                    <button
+                      type="submit"
+                      className={primary}
+                      disabled={name === prefs.display_name}
+                    >
                       Save Name
                     </button>
                   </div>
@@ -298,9 +431,15 @@ export function Settings({
                 <section className={`${card} flex flex-wrap items-center justify-between gap-3`}>
                   <div className="flex min-w-0 flex-col gap-1">
                     <p className="text-aui-sm text-aui-fg">Your connections</p>
-                    <p className="text-aui-xs text-aui-muted">The tools that act as you, and the credential you gave each.</p>
+                    <p className="text-aui-xs text-aui-muted">
+                      The tools that act as you, and the credential you gave each.
+                    </p>
                   </div>
-                  <a href={href({ page: "connections" })} className={button} onClick={follow(onConnections)}>
+                  <a
+                    href={href({ page: "connections" })}
+                    className={button}
+                    onClick={follow(onConnections)}
+                  >
                     Open Your Connections
                   </a>
                 </section>
@@ -320,7 +459,9 @@ export function Settings({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <span>
                       <span className="block text-aui-sm text-aui-fg">Theme</span>
-                      <span className="block text-aui-xs text-aui-muted">System follows your device.</span>
+                      <span className="block text-aui-xs text-aui-muted">
+                        System follows your device.
+                      </span>
                     </span>
                     <Segmented
                       label="Theme"
@@ -336,15 +477,28 @@ export function Settings({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <span>
                       <span className="block text-aui-sm text-aui-fg">Accent</span>
-                      <span className="block text-aui-xs text-aui-muted">Used for focus, selection and progress.</span>
+                      <span className="block text-aui-xs text-aui-muted">
+                        Used for focus, selection and progress.
+                      </span>
                     </span>
-                    <Segmented label="Accent" value={prefs.accent} onChange={(accent) => savePrefs({ accent })} options={accents} />
+                    <Segmented
+                      label="Accent"
+                      value={prefs.accent}
+                      onChange={(accent) => savePrefs({ accent })}
+                      options={accents}
+                    />
                   </div>
                   <div className="border-t border-aui-border pt-4">
-                    <span className="block text-aui-sm text-aui-fg">{defaultCopy.preferences.typeface}</span>
-                    <p className="mt-1 text-aui-xs text-aui-muted">{defaultCopy.preferences.typefaceDescription}</p>
+                    <span className="block text-aui-sm text-aui-fg">
+                      {defaultCopy.preferences.typeface}
+                    </span>
+                    <p className="mt-1 text-aui-xs text-aui-muted">
+                      {defaultCopy.preferences.typefaceDescription}
+                    </p>
                     <p className="mt-3 text-aui-sm">A clear place to think and work.</p>
-                    <p className="mt-1 font-aui-mono text-aui-xs text-aui-muted">SKILL.md / memory / agents</p>
+                    <p className="mt-1 font-aui-mono text-aui-xs text-aui-muted">
+                      SKILL.md / memory / agents
+                    </p>
                   </div>
                 </section>
               )}
@@ -356,9 +510,10 @@ export function Settings({
               <header className="pb-2">
                 <h1 className={pageTitle}>Models</h1>
                 <p className={pageLede}>
-                  Policies say which models agents run on, in order, and which errors move a call to the next. An agent
-                  that follows a policy picks up a change at its next call, so one edit moves every agent on it off a
-                  failing provider. {canAdmin ? "" : "Only an admin can change these."}
+                  Policies say which models agents run on, in order, and which errors move a call to
+                  the next. An agent that follows a policy picks up a change at its next call, so
+                  one edit moves every agent on it off a failing provider.{" "}
+                  {canAdmin ? "" : "Only an admin can change these."}
                 </p>
               </header>
               {workspace && (
@@ -378,14 +533,19 @@ export function Settings({
               <header className="pb-2">
                 <h1 className={pageTitle}>Workspace</h1>
                 <p className={pageLede}>
-                  Shared by everyone in {who.tenant}. {canAdmin ? "" : "Only an admin can change these."}
+                  Shared by everyone in {who.tenant}.{" "}
+                  {canAdmin ? "" : "Only an admin can change these."}
                 </p>
               </header>
               <section className="flex items-start gap-3 rounded-aui-lg border border-aui-border bg-aui-surface p-4">
                 <ServerIcon size={20} className="mt-0.5 shrink-0 text-aui-muted" />
                 <div className="min-w-0">
-                  <h2 className="text-aui-sm font-medium">{defaultCopy.preferences.ownershipTitle}</h2>
-                  <p className="mt-1 text-aui-xs leading-5 text-aui-muted">{defaultCopy.preferences.ownershipDescription}</p>
+                  <h2 className="text-aui-sm font-medium">
+                    {defaultCopy.preferences.ownershipTitle}
+                  </h2>
+                  <p className="mt-1 text-aui-xs leading-5 text-aui-muted">
+                    {defaultCopy.preferences.ownershipDescription}
+                  </p>
                 </div>
               </section>
               {!workspace ? null : (
@@ -404,7 +564,16 @@ export function Settings({
                         value={workspace.title_agent}
                         disabled={!canAdmin}
                         onChange={(event) => saveWorkspace({ title_agent: event.target.value })}
-                      >{agentOptions(agents.map((a) => a.spec.name), "None").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</NativeSelect>
+                      >
+                        {agentOptions(
+                          agents.map((a) => a.spec.name),
+                          "None",
+                        ).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
                     </SettingsFormRow>
                     <SettingsFormRow
                       id="workspace-memory-agent"
@@ -418,14 +587,31 @@ export function Settings({
                         value={workspace.memory_agent}
                         disabled={!canAdmin}
                         onChange={(event) => saveWorkspace({ memory_agent: event.target.value })}
-                      >{agentOptions(agents.map((a) => a.spec.name), "None").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</NativeSelect>
+                      >
+                        {agentOptions(
+                          agents.map((a) => a.spec.name),
+                          "None",
+                        ).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
                     </SettingsFormRow>
                     <SettingsFormRow
                       id="workspace-memory-approve"
                       label="Keep what the memory agent writes without asking"
                       description="Off, every note it writes waits for a person to approve it. On, notes for the workspace and company projects still wait for someone who can govern projects. Notes that carry personal data are refused either way."
                       compact
-                    ><SettingSwitch id="workspace-memory-approve" aria-describedby="workspace-memory-approve-hint" checked={workspace.memory_auto_approve} disabled={!canAdmin || !workspace.memory_agent} onCheckedChange={(on) => saveWorkspace({ memory_auto_approve: on })} /></SettingsFormRow>
+                    >
+                      <SettingSwitch
+                        id="workspace-memory-approve"
+                        aria-describedby="workspace-memory-approve-hint"
+                        checked={workspace.memory_auto_approve}
+                        disabled={!canAdmin || !workspace.memory_agent}
+                        onCheckedChange={(on) => saveWorkspace({ memory_auto_approve: on })}
+                      />
+                    </SettingsFormRow>
                   </section>
 
                   <section>
@@ -434,7 +620,15 @@ export function Settings({
                       label="Carry the conversation forward"
                       description="Send the agent answering the next turn what was said before it. Off sends only the new message."
                       compact
-                    ><SettingSwitch id="workspace-history" aria-describedby="workspace-history-hint" checked={workspace.history === "recent"} disabled={!canAdmin} onCheckedChange={(on) => saveWorkspace({ history: on ? "recent" : "none" })} /></SettingsFormRow>
+                    >
+                      <SettingSwitch
+                        id="workspace-history"
+                        aria-describedby="workspace-history-hint"
+                        checked={workspace.history === "recent"}
+                        disabled={!canAdmin}
+                        onCheckedChange={(on) => saveWorkspace({ history: on ? "recent" : "none" })}
+                      />
+                    </SettingsFormRow>
                     <SettingsFormRow
                       id="workspace-history-limit"
                       label="Keep at most (characters)"
@@ -462,14 +656,22 @@ export function Settings({
                   <section className={`${card} flex flex-col gap-3`} aria-label="Projects">
                     <h3 className="text-aui-sm font-medium text-aui-fg">Projects</h3>
                     <p className="text-aui-xs text-aui-muted">
-                      Projects are made and changed on their own page. The workspace is the top of the tree: its instructions
-                      and notes reach every agent.
+                      Projects are made and changed on their own page. The workspace is the top of
+                      the tree: its instructions and notes reach every agent.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <a href={href({ page: "projects" })} className={button} onClick={follow(onOpenProjects)}>
+                      <a
+                        href={href({ page: "projects" })}
+                        className={button}
+                        onClick={follow(onOpenProjects)}
+                      >
                         Open Projects
                       </a>
-                      <a href={href({ page: "project", name: "", tab: "inbox" })} className={button} onClick={follow(onOpenWorkspace)}>
+                      <a
+                        href={href({ page: "project", name: "", tab: "inbox" })}
+                        className={button}
+                        onClick={follow(onOpenWorkspace)}
+                      >
                         Open the Workspace
                       </a>
                     </div>
@@ -487,13 +689,18 @@ export function Settings({
             />
           )}
 
-          {section === "connections" && <ClientSettings canWrite={me.permissions.includes("clients:write")} />}
+          {section === "connections" && (
+            <ClientSettings canWrite={me.permissions.includes("clients:write")} />
+          )}
 
           {section === "access" && (
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Access</h1>
-                <p className={pageLede}>What you are signed in as and what you may do. Your identity provider decides this.</p>
+                <p className={pageLede}>
+                  What you are signed in as and what you may do. Your identity provider decides
+                  this.
+                </p>
               </header>
               <section className={`${card} flex flex-col gap-2`}>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-aui-sm">
@@ -502,10 +709,14 @@ export function Settings({
                   <dt className="text-aui-muted">Workspace</dt>
                   <dd className="text-aui-fg">{who.tenant}</dd>
                   <dt className="text-aui-muted">Roles</dt>
-                  <dd className="text-aui-fg">{who.roles?.length ? who.roles.join(", ") : "None"}</dd>
+                  <dd className="text-aui-fg">
+                    {who.roles?.length ? who.roles.join(", ") : "None"}
+                  </dd>
                   <dt className="text-aui-muted">Sign-in</dt>
                   <dd className="text-aui-fg">
-                    {who.subject === "dev" ? "Dev mode. No sign-in, and everyone on this machine is an admin." : "Through your identity provider"}
+                    {who.subject === "dev"
+                      ? "Dev mode. No sign-in, and everyone on this machine is an admin."
+                      : "Through your identity provider"}
                   </dd>
                 </dl>
               </section>
@@ -513,7 +724,10 @@ export function Settings({
                 <h3 className="text-aui-sm font-medium text-aui-fg">You may</h3>
                 <ul className="flex flex-wrap gap-1.5">
                   {me.permissions.map((p) => (
-                    <li key={p} className="rounded-full border border-aui-border px-2 py-0.5 font-aui-mono text-aui-2xs text-aui-muted">
+                    <li
+                      key={p}
+                      className="rounded-full border border-aui-border px-2 py-0.5 font-aui-mono text-aui-2xs text-aui-muted"
+                    >
                       {p}
                     </li>
                   ))}
@@ -534,24 +748,42 @@ export function Settings({
  * its key comes from an environment variable or a secrets manager, never from
  * here.
  */
-function RouterControl({ saved, canEdit, onSave }: { saved: RouterSettings; canEdit: boolean; onSave: (next: RouterSettings) => void }) {
+function RouterControl({
+  saved,
+  canEdit,
+  onSave,
+}: {
+  saved: RouterSettings;
+  canEdit: boolean;
+  onSave: (next: RouterSettings) => void;
+}) {
   const [draft, setDraft] = useState<RouterSettings>(saved);
   const [providers, setProviders] = useState<string[] | null>(null);
   useEffect(() => {
     let live = true;
     api
       .modelProviders()
-      .then((all) => live && setProviders(all.filter((p) => p.declared && p.name !== "offline").map((p) => p.name)))
+      .then(
+        (all) =>
+          live &&
+          setProviders(all.filter((p) => p.declared && p.name !== "offline").map((p) => p.name)),
+      )
       .catch(() => live && setProviders([]));
     return () => {
       live = false;
     };
   }, []);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const problem = draft.enabled && !draft.provider ? "Choose a provider." : draft.enabled && !draft.model?.trim() ? "Name a model." : null;
+  const problem =
+    draft.enabled && !draft.provider
+      ? "Choose a provider."
+      : draft.enabled && !draft.model?.trim()
+        ? "Name a model."
+        : null;
   const choices = providers ?? [];
   // A saved provider stays listed even when this deployment no longer declares it, so the field shows what is saved.
-  const listed = draft.provider && !choices.includes(draft.provider) ? [draft.provider, ...choices] : choices;
+  const listed =
+    draft.provider && !choices.includes(draft.provider) ? [draft.provider, ...choices] : choices;
   return (
     <section className={`${card} flex flex-col gap-3`} aria-label="Agents decide for themselves">
       <SettingsFormRow
@@ -576,7 +808,13 @@ function RouterControl({ saved, canEdit, onSave }: { saved: RouterSettings; canE
             disabled={!canEdit || !draft.enabled}
             onChange={(e) => setDraft((d) => ({ ...d, provider: e.target.value || undefined }))}
           >
-            <option value="">{providers === null ? "Loading providers" : listed.length === 0 ? "No provider declared" : "Choose a provider"}</option>
+            <option value="">
+              {providers === null
+                ? "Loading providers"
+                : listed.length === 0
+                  ? "No provider declared"
+                  : "Choose a provider"}
+            </option>
             {listed.map((name) => (
               <option key={name} value={name}>
                 {name}
@@ -595,7 +833,8 @@ function RouterControl({ saved, canEdit, onSave }: { saved: RouterSettings; canE
         </Label>
       </div>
       <p className="text-aui-xs text-aui-muted">
-        No credential is stored here. The provider's key comes from an environment variable or a secrets manager.
+        No credential is stored here. The provider's key comes from an environment variable or a
+        secrets manager.
       </p>
       {canEdit && (
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -605,7 +844,12 @@ function RouterControl({ saved, canEdit, onSave }: { saved: RouterSettings; canE
               Discard
             </button>
           )}
-          <button type="button" className={primary} disabled={!dirty || problem !== null} onClick={() => onSave(draft)}>
+          <button
+            type="button"
+            className={primary}
+            disabled={!dirty || problem !== null}
+            onClick={() => onSave(draft)}
+          >
             Save Routing
           </button>
         </div>
@@ -628,25 +872,60 @@ function ModelPolicies({
 }) {
   const [draft, setDraft] = useState<ModelPolicy[]>(saved);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const users = (name: string) => agents.filter((a) => a.spec.provider === POLICY && a.spec.model === name).map((a) => a.spec.name);
-  const edit = (i: number, patch: Partial<ModelPolicy>) => setDraft((d) => d.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const users = (name: string) =>
+    agents
+      .filter((a) => a.spec.provider === POLICY && a.spec.model === name)
+      .map((a) => a.spec.name);
+  const edit = (i: number, patch: Partial<ModelPolicy>) =>
+    setDraft((d) => d.map((p, j) => (j === i ? { ...p, ...patch } : p)));
   const problem =
-    draft.map((p) => (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(p.name) ? `"${p.name}" is not a valid name: lowercase letters, digits and dashes.` : chainProblem(p.models, p.fallback_on ?? []))).find(Boolean) ??
+    draft
+      .map((p) =>
+        !/^[a-z0-9][a-z0-9-]{0,62}$/.test(p.name)
+          ? `"${p.name}" is not a valid name: lowercase letters, digits and dashes.`
+          : chainProblem(p.models, p.fallback_on ?? []),
+      )
+      .find(Boolean) ??
     (new Set(draft.map((p) => p.name)).size !== draft.length ? "Two policies share a name." : null);
 
   return (
     <div className="flex flex-col gap-6">
-      {draft.length === 0 && <p className={`${card} text-aui-sm text-aui-muted`}>No policies yet. Agents each name their own models.</p>}
+      {draft.length === 0 && (
+        <p className={`${card} text-aui-sm text-aui-muted`}>
+          No policies yet. Agents each name their own models.
+        </p>
+      )}
       {draft.map((p, i) => {
         const by = users(saved[i]?.name ?? p.name);
         return (
-          <section key={i} className="flex flex-col gap-3 border-aui-border border-t pt-5 first:border-t-0 first:pt-0">
+          <section
+            key={i}
+            className="flex flex-col gap-3 border-aui-border border-t pt-5 first:border-t-0 first:pt-0"
+          >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[14rem_1fr_auto] sm:items-end">
-              <Label text="Name" hint={by.length > 0 ? "Agents follow it by name, so it cannot change while they do." : undefined}>
-                <input className={field} value={p.name} disabled={!canEdit || by.length > 0} onChange={(e) => edit(i, { name: e.target.value })} />
+              <Label
+                text="Name"
+                hint={
+                  by.length > 0
+                    ? "Agents follow it by name, so it cannot change while they do."
+                    : undefined
+                }
+              >
+                <input
+                  className={field}
+                  value={p.name}
+                  disabled={!canEdit || by.length > 0}
+                  onChange={(e) => edit(i, { name: e.target.value })}
+                />
               </Label>
               <Label text="Description">
-                <input className={field} maxLength={300} value={p.description ?? ""} disabled={!canEdit} onChange={(e) => edit(i, { description: e.target.value })} />
+                <input
+                  className={field}
+                  maxLength={300}
+                  value={p.description ?? ""}
+                  disabled={!canEdit}
+                  onChange={(e) => edit(i, { description: e.target.value })}
+                />
               </Label>
               {canEdit && (
                 <button
@@ -660,20 +939,28 @@ function ModelPolicies({
                 </button>
               )}
             </div>
-            <p className="text-aui-xs text-aui-muted">{by.length === 0 ? "No agent follows it yet." : `Followed by ${by.join(", ")}.`}</p>
+            <p className="text-aui-xs text-aui-muted">
+              {by.length === 0 ? "No agent follows it yet." : `Followed by ${by.join(", ")}.`}
+            </p>
             <ModelChain
               label={`Models of ${p.name}`}
               models={p.models}
               fallbackOn={p.fallback_on ?? []}
               editable={canEdit}
-              onChange={(models, fallback_on) => edit(i, { models, fallback_on: fallback_on.length > 0 ? fallback_on : undefined })}
+              onChange={(models, fallback_on) =>
+                edit(i, { models, fallback_on: fallback_on.length > 0 ? fallback_on : undefined })
+              }
             />
           </section>
         );
       })}
       {canEdit && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-aui-border border-t pt-4">
-          <button type="button" className={button} onClick={() => setDraft((d) => [...d, starterPolicy(d.map((p) => p.name))])}>
+          <button
+            type="button"
+            className={button}
+            onClick={() => setDraft((d) => [...d, starterPolicy(d.map((p) => p.name))])}
+          >
             Add Policy
           </button>
           <span className="flex items-center gap-2">
@@ -683,7 +970,12 @@ function ModelPolicies({
                 Discard
               </button>
             )}
-            <button type="button" className={primary} disabled={!dirty || problem !== null} onClick={() => onSave(draft)}>
+            <button
+              type="button"
+              className={primary}
+              disabled={!dirty || problem !== null}
+              onClick={() => onSave(draft)}
+            >
               Save Policies
             </button>
           </span>

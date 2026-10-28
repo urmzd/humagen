@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -53,7 +53,7 @@ func withMemoryAgent(t *testing.T) *platform.Platform {
 		}
 	})
 	for _, name := range []string{"lead", "scribe"} {
-		spec := agentspec.AgentSpec{Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x"}
+		spec := wire.AgentSpec{Name: name, Model: "offline", Provider: "offline", SystemPrompt: "x"}
 		if _, err := p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
 			t.Fatal(err)
 		}
@@ -381,12 +381,12 @@ func TestInboxHoldsFailures(t *testing.T) {
 	// the attempts are not spaced out.
 	p := startWith(t, platform.Config{
 		Backoff: func(int) time.Duration { return time.Millisecond },
-		AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) {
+		AgentOptions: []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) {
 			return refusing{}, nil
 		})},
 	})
 	ctx := t.Context()
-	broken := agentspec.AgentSpec{Name: "broken", Model: "offline", Provider: "offline", SystemPrompt: "x"}
+	broken := wire.AgentSpec{Name: "broken", Model: "offline", Provider: "offline", SystemPrompt: "x"}
 	if _, err := p.Agents.Create(ctx, tenant, broken, "test"); err != nil {
 		t.Fatal(err)
 	}
@@ -550,12 +550,12 @@ func TestKeepingAHomedAgentsNotesNeedsItsHome(t *testing.T) {
 func TestRetryingAFailedTurnInAProjectTakesAMember(t *testing.T) {
 	p := startWith(t, platform.Config{
 		Backoff: func(int) time.Duration { return time.Millisecond },
-		AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) {
+		AgentOptions: []native.Option{native.WithProvider(native.ProviderOffline, func(native.Spec) (saigetypes.Provider, error) {
 			return refusing{}, nil
 		})},
 	})
 	ctx := t.Context()
-	broken := agentspec.AgentSpec{Name: "broken", Model: "offline", Provider: "offline", SystemPrompt: "x"}
+	broken := wire.AgentSpec{Name: "broken", Model: "offline", Provider: "offline", SystemPrompt: "x"}
 	if _, err := p.Agents.Create(ctx, tenant, broken, "test"); err != nil {
 		t.Fatal(err)
 	}

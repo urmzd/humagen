@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/mcptools"
-	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/humagen/fiber/pkg/mcptools"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -391,14 +390,14 @@ func (p *Platform) SourceDependenciesAs(ctx context.Context, who auth.Principal,
 		}
 	}
 	if who.Can(auth.AgentsRead) {
-		page := registry.Page{Size: 100}
+		page := wire.Page{Size: 100}
 		for range 2 {
-			rows, next, err := p.Agents.List(ctx, who.Tenant, page)
+			rows, next, err := p.Catalog().List(ctx, who.Tenant, page)
 			if err != nil {
 				return out, err
 			}
 			for _, rev := range rows {
-				if seer.Agent(rev.Spec.Name) && slices.ContainsFunc(rev.Spec.Sources, func(src agentspec.Source) bool { return src.Name == name }) {
+				if seer.Agent(rev.Spec.Name) && slices.ContainsFunc(rev.Spec.Sources, func(src wire.Source) bool { return src.Name == name }) {
 					out.Agents = append(out.Agents, rev.Spec.Name)
 				}
 			}

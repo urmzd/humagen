@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/humagen/internal/wire"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/runs"
 	saigetypes "github.com/urmzd/saige/agent/types"
@@ -23,7 +24,7 @@ func TestOperationToolFailsClosedAndKeepsPersonScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := runtime.Request{Tenant: "t", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}}
+	req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 	calls := 0
 	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, operations.WriteFiles)
 	rule := func(level operations.Level) {
@@ -40,7 +41,7 @@ func TestOperationToolFailsClosedAndKeepsPersonScope(t *testing.T) {
 	if _, err := tool.Execute(t.Context(), nil); !errors.Is(err, operations.ErrDenied) {
 		t.Fatalf("unapproved Ask = %v", err)
 	}
-	q, needed := tool.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "file_write"})
+	q, needed := tool.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "file_write"})
 	if !needed || len(q.Approvers) == 0 {
 		t.Fatal("Ask did not use native durable approval")
 	}
@@ -61,7 +62,7 @@ func TestForceAskPreservesNeverAndDoesNotGrantTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := runtime.Request{Tenant: "t", Meta: map[string]string{operations.MetaForceAsk: "true"}, Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}}
+	req := runtime.Request{Tenant: "t", Meta: map[string]string{operations.MetaForceAsk: "true"}, Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 	if got := p.operationDecision(req, operations.Other); got != operations.Ask {
 		t.Fatal(got)
 	}
@@ -75,7 +76,7 @@ func TestForceAskPreservesNeverAndDoesNotGrantTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Revision.Spec.Tools) != 0 || len(got.Revision.Spec.Access.Spawn) != 0 {
+	if len(got.Definition.Spec.Tools) != 0 || len(got.Definition.Spec.Access.Spawn) != 0 {
 		t.Fatal("tightening added a grant")
 	}
 
@@ -84,8 +85,8 @@ func TestForceAskPreservesNeverAndDoesNotGrantTools(t *testing.T) {
 type fallbackOperationTools struct{ tool saigetypes.Tool }
 
 func (g fallbackOperationTools) Lookup(string) (saigetypes.Tool, error) { return g.tool, nil }
-func (g fallbackOperationTools) ToolGroup(name string) (agentrt.ToolGroup, error) {
-	return agentrt.ToolGroup{Name: name, Tools: []saigetypes.Tool{g.tool}}, nil
+func (g fallbackOperationTools) ToolGroup(name string) (native.ToolGroup, error) {
+	return native.ToolGroup{Name: name, Tools: []saigetypes.Tool{g.tool}}, nil
 }
 func TestFallbackToolGroupsCannotBypassOperations(t *testing.T) {
 	p, err := New(Config{Workspace: t.TempDir()})
@@ -94,7 +95,7 @@ func TestFallbackToolGroupsCannotBypassOperations(t *testing.T) {
 	}
 	calls := 0
 	raw := &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "custom__write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}
-	req := runtime.Request{Tenant: "t", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}}
+	req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 	catalog := &operationsCatalog{p: p, req: req, inner: fallbackOperationTools{raw}}
 	if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.ReadContext: operations.Never}}, 0, "manager", time.Now()); err != nil {
 		t.Fatal(err)
@@ -111,7 +112,7 @@ func TestFallbackToolGroupsCannotBypassOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, needed := group.Tools[0].(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "custom__write"}); !needed {
+	if _, needed := group.Tools[0].(native.Approving).Approval(saigetypes.ToolCallPart{Name: "custom__write"}); !needed {
 		t.Fatal("fallback ForceAsk bypass")
 	}
 	catalog.req.Meta = map[string]string{operations.MetaTools: "[]"}
@@ -126,7 +127,7 @@ func TestAnApprovedToolRechecksTightenedPolicyAndPause(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := runtime.Request{Tenant: "t", RunID: "run", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}, Resume: &agentrt.Parked{Answers: map[string]payload.Answer{"approved": {Decision: payload.DecisionApprove}}}}
+	req := runtime.Request{Tenant: "t", RunID: "run", Definition: native.Revision{Spec: native.Spec{Name: "a"}}, Resume: &native.Parked{Answers: map[string]event.Answer{"approved": {Decision: event.DecisionApprove}}}}
 	calls := 0
 	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, operations.WriteFiles)
 	ctx := saigetypes.WithToolCallInfo(t.Context(), saigetypes.ToolCallInfo{ID: "approved", Name: "file_write"})
@@ -159,7 +160,7 @@ func TestAdmissionKeepsTighteningBeforeRunRecordExists(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.admitting.Store("r", admitted{tenant: "t", person: "owner", operationMeta: map[string]string{operations.MetaForceAsk: "true", operations.MetaTools: "[]"}})
-	req := runtime.Request{Tenant: "t", RunID: "r", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a"}}}
+	req := runtime.Request{Tenant: "t", RunID: "r", Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
 	if got := p.operationDecision(req, operations.WriteFiles); got != operations.Ask {
 		t.Fatal("admission lost ForceAsk")
 	}
@@ -195,7 +196,7 @@ func TestAssignmentRecoveryAdvancesPastFullPageOfUnfinishedRuns(t *testing.T) {
 		}
 		last = id
 	}
-	tag := envelope.Tag{ID: last, Tenant: "t", Agent: "a", Origin: runs.OriginAPI, Text: "work", At: at}
+	tag := wire.NewEvent(wire.Raise{ID: last, Tenant: "t", Agent: "a", Origin: runs.OriginAPI, Text: "work", At: at})
 	if err := p.Runs.Record(last, tag, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -210,8 +211,8 @@ func TestAssignmentRecoveryAdvancesPastFullPageOfUnfinishedRuns(t *testing.T) {
 
 type operationStrictApprovalProbe struct{ *saigetypes.ToolFunc }
 
-func (*operationStrictApprovalProbe) Approval(saigetypes.ToolCallPart) (agentrt.ApprovalRequest, bool) {
-	return agentrt.ApprovalRequest{Prompt: "Stricter tool policy", Approvers: []string{"strict-reviewer"}, SelfApproval: false}, true
+func (*operationStrictApprovalProbe) Approval(saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
+	return native.ApprovalRequest{Prompt: "Stricter tool policy", Approvers: []string{"strict-reviewer"}, SelfApproval: false}, true
 }
 func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *testing.T) {
 	p, err := New(Config{Workspace: t.TempDir()})
@@ -219,7 +220,7 @@ func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
-	req := runtime.Request{Tenant: "t", Revision: agentrt.Revision{Spec: agentrt.Spec{Name: "a", Approvers: []string{"designated-reviewer"}, SelfApproval: true}}}
+	req := runtime.Request{Tenant: "t", Definition: native.Revision{Spec: native.Spec{Name: "a", Approvers: []string{"designated-reviewer"}, SelfApproval: true}}}
 	if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.Other: operations.Ask}}, 0, "owner", time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -229,20 +230,20 @@ func TestAddedAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 	calls := 0
 	base := &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "action"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}
 	tool := p.operationTool(req, base, operations.Other)
-	approval, needed := tool.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
+	approval, needed := tool.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || !approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"designated-reviewer"}) {
 		t.Fatalf("declared approval audience widened: %+v", approval)
 	}
 	fallbackReq := req
-	fallbackReq.Revision.Spec.Approvers = nil
-	fallbackReq.Revision.Spec.SelfApproval = false
+	fallbackReq.Definition.Spec.Approvers = nil
+	fallbackReq.Definition.Spec.SelfApproval = false
 	fallback := p.operationTool(fallbackReq, base, operations.Other)
-	fallbackApproval, fallbackNeeded := fallback.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
+	fallbackApproval, fallbackNeeded := fallback.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !fallbackNeeded || fallbackApproval.SelfApproval || !slices.Contains(fallbackApproval.Approvers, "outside-manager") {
 		t.Fatalf("missing native audience lost the existing fallback: %+v", fallbackApproval)
 	}
 	strict := p.operationTool(req, &operationStrictApprovalProbe{ToolFunc: base}, operations.Other)
-	approval, needed = strict.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
+	approval, needed = strict.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"strict-reviewer"}) {
 		t.Fatalf("underlying tool approval weakened: %+v", approval)
 	}

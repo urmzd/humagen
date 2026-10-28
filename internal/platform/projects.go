@@ -168,7 +168,7 @@ func (p *Platform) DeleteProject(_ context.Context, tenant, name string, w proje
 func (p *Platform) projectUsers(tenant, name string) []string {
 	var out []string
 	for _, sc := range p.Schedules.List(tenant) {
-		if sc.Meta[runs.MetaProject] == name {
+		if sc.Context[runs.MetaProject] == name {
 			out = append(out, "the schedule "+sc.Name)
 		}
 	}
@@ -346,7 +346,7 @@ func (p *Platform) stillNamed(tenant string, ps []projects.Project) []projects.P
 		}
 	}
 	for _, sc := range p.Schedules.List(tenant) {
-		add(sc.Meta[runs.MetaProject], "the schedule "+sc.Name)
+		add(sc.Context[runs.MetaProject], "the schedule "+sc.Name)
 	}
 	for _, r := range p.Alerts.Rules(tenant) {
 		add(r.Project, "the alert rule "+r.Name)

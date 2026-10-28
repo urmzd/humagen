@@ -16,16 +16,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/bus"
-	"github.com/urmzd/fiber/pkg/registry"
-	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/bus"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credref"
@@ -35,7 +34,7 @@ import (
 
 // Factory builds a registered kind from its block. What it returns depends on
 // the slot: a blob.Store for blobs, a bus.Bus for bus, an
-// agentrt.ProviderFunc for models, a runtime.Catalog for tools, and an
+// native.ProviderFunc for models, a runtime.Catalog for tools, and an
 // Extension for extensions.
 type Factory func(ctx context.Context, block json.RawMessage) (any, error)
 
@@ -296,7 +295,7 @@ func openBus(ctx context.Context, o Options, l loaded, kind string, backends pla
 // fileExtensions are the Platform documents' models and tools, as the
 // platform takes them.
 func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credref.Resolver) (platform.Extensions, error) {
-	ext := platform.Extensions{Providers: map[string]agentrt.ProviderFunc{}}
+	ext := platform.Extensions{Providers: map[string]native.ProviderFunc{}}
 	for _, p := range cfg.Platforms {
 		tenant := p.Metadata.Name
 		for _, m := range p.Spec.Models {
@@ -311,7 +310,7 @@ func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credre
 				}
 				ext.Providers[m.Name] = modelProvider(m.Kind, m.Name, b, keys)
 			default:
-				fn, err := build[agentrt.ProviderFunc](ctx, o, spec.SlotModels, m.Slot)
+				fn, err := build[native.ProviderFunc](ctx, o, spec.SlotModels, m.Slot)
 				if err != nil {
 					return ext, err
 				}
@@ -356,7 +355,7 @@ func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credre
 // tenantOnly answers for one workspace's turns, so a tool one workspace
 // declared is not another's.
 func tenantOnly(tenant string, c runtime.Catalog) runtime.Catalog {
-	return func(req runtime.Request, action func(payload.Action) error) (agentrt.Tools, error) {
+	return func(req runtime.Request, action func(event.Action) error) (native.Tools, error) {
 		if req.Tenant != tenant {
 			return nil, nil
 		}
@@ -368,7 +367,7 @@ func tenantOnly(tenant string, c runtime.Catalog) runtime.Catalog {
 // reserved word or a person's handle, as the API does: a tag must name one of
 // them. An agent the workspace already has keeps its name.
 func checkNewAgentName(ctx context.Context, p *platform.Platform, tenant, name string) error {
-	if _, err := p.Agents.Get(ctx, tenant, name, 0); !errors.Is(err, registry.ErrNotFound) {
+	if _, err := p.Agents.Get(ctx, tenant, name, 0); !errors.Is(err, wire.ErrNotFound) {
 		return nil
 	}
 	return p.CheckAgentName(tenant, name)
@@ -395,8 +394,16 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 				if err != nil {
 					return fmt.Errorf("platform %q: agents[%d]: %w", tenant, i, err)
 				}
-				var fromFile agentspec.AgentSpec
-				if err := decodeStrict(raw, &fromFile); err != nil {
+				var fromFile wire.AgentSpec
+				if strings.HasSuffix(a.File, wire.AgentFileSuffix) {
+					var policy wire.DefinitionPolicy
+					if a.Policy != nil {
+						policy = *a.Policy
+					}
+					if fromFile, err = wire.SpecOfAgentFile(string(raw), policy); err != nil {
+						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+					}
+				} else if err := decodeStrict(raw, &fromFile); err != nil {
 					return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
 				}
 				s = &fromFile
@@ -408,7 +415,7 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 				return fmt.Errorf("platform %q: agents[%d] %q: %w", tenant, i, s.Name, err)
 			}
 			_, err := p.Agents.Create(ctx, tenant, *s, "file")
-			if errors.Is(err, registry.ErrExists) {
+			if errors.Is(err, wire.ErrExists) {
 				_, err = p.Agents.Revise(ctx, tenant, *s, 0, "file")
 			}
 			if err != nil {
@@ -599,7 +606,7 @@ func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) er
 		if a.Spec == nil || a.Project == "" || a.Project == spec.RootParent {
 			continue
 		}
-		if err := p.SetAgentHome(ctx, tenant, agentspec.NormalizeName(a.Spec.Name), a.Project, projects.Writer{By: fileWriter, Govern: true}); err != nil {
+		if err := p.SetAgentHome(ctx, tenant, wire.NormalizeName(a.Spec.Name), a.Project, projects.Writer{By: fileWriter, Govern: true}); err != nil {
 			return fmt.Errorf("platform %q: agents[%d].project: %w", tenant, i, err)
 		}
 	}

@@ -5,34 +5,71 @@ import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import { useRunStop } from "./RunStop.tsx";
-import { MessageTime } from "./MessageTime.tsx";
-import { actedFor, citationOf, turnOf, type Run } from "./adapter.ts";
-import { Composer, type ComposerSeed } from "./Composer.tsx";
-import { OutcomeActions } from "./OutcomeActions.tsx";
-import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
-import { ConversationForkPanels,type ConversationForkActions } from "./ConversationForkPanels.tsx";
-import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
-import { href, type ConversationPanel, type ConversationView } from "./route.ts";
-import { ApiError, api, coworking, type ProjectView, type Revision, type Thread as ThreadRecord, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
+import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
+import {
+  ApiError,
+  api,
+  coworking,
+  type ProjectView,
+  type Revision,
+  type ThreadAsk,
+  type ThreadPage,
+  type Thread as ThreadRecord,
+  type ThreadSummary,
+} from "./api.ts";
 import { askedOf, copyFor } from "./asks.ts";
+import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
+import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
-import { useThreadSelection } from "./selection.ts";
-import { ProjectPicker } from "./ProjectPicker.tsx";
-import { HomePage, type HomeAnnouncement } from "./HomePage.tsx";
-import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
-import { emptySelection, MAX_SELECTED, PlusMenu, withAgent, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
-import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
 import { rememberSaid } from "./conflicts.ts";
-import { useRunTurn } from "./Runs.tsx";
+import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
+import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
+import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { itemActions } from "./itemActions.tsx";
+import { MessageTime } from "./MessageTime.tsx";
+import { OutcomeActions } from "./OutcomeActions.tsx";
+import {
+  emptySelection,
+  MAX_SELECTED,
+  PlusMenu,
+  placeholderFor,
+  type Selection,
+  SelectionChips,
+  withAgent,
+} from "./Plus.tsx";
+import { ProjectPicker } from "./ProjectPicker.tsx";
+import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
+import { useRunStop } from "./RunStop.tsx";
+import { useRunTurn } from "./Runs.tsx";
+import { type ConversationPanel, type ConversationView, href } from "./route.ts";
+import { useThreadSelection } from "./selection.ts";
 import { readFromStart } from "./turns.ts";
-import { AgentMark, AgentTint, cause, isWorking, Page, Presence, Problem, SkeletonRows } from "./ui.tsx";
+import {
+  AgentMark,
+  AgentTint,
+  cause,
+  isWorking,
+  Page,
+  Presence,
+  Problem,
+  SkeletonRows,
+} from "./ui.tsx";
 
 const words = defaultCopy.threads;
 
 /** The thread a page holds before one is read: nothing selected, nowhere. */
-const noThread: ThreadRecord = { id: "", project: "", channel: "general", visibility: "private", participants: [], version: 0, created_by: "", created_at: "", updated_at: "" };
+const noThread: ThreadRecord = {
+  id: "",
+  project: "",
+  channel: "general",
+  visibility: "private",
+  participants: [],
+  version: 0,
+  created_by: "",
+  created_at: "",
+  updated_at: "",
+};
 /** The answers to one point in the conversation, oldest first. */
 function siblingsOf(turns: Run[], run: Run): Run[] {
   return turns.filter((t) => (t.prev ?? "") === (run.prev ?? ""));
@@ -46,7 +83,9 @@ function siblingsOf(turns: Run[], run: Run): Run[] {
 function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
   const path: Run[] = [];
   const read = new Set(turns.map((t) => t.id));
-  let prev = turns.some((t) => (t.prev ?? "") === "") ? "" : (turns.find((t) => !read.has(t.prev ?? ""))?.prev ?? "");
+  let prev = turns.some((t) => (t.prev ?? "") === "")
+    ? ""
+    : (turns.find((t) => !read.has(t.prev ?? ""))?.prev ?? "");
   for (;;) {
     const options = turns.filter((t) => (t.prev ?? "") === prev);
     const next = options.find((t) => t.id === chosen[prev]) ?? options[options.length - 1];
@@ -70,10 +109,15 @@ function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
  */
 function ownerOf(run: Run, siblings: Run[]): string {
   const person = actedFor(run);
-  if (person || !run.actor || run.actor.bot || run.actor.user || run.origin !== "api") return person;
+  if (person || !run.actor || run.actor.bot || run.actor.user || run.origin !== "api")
+    return person;
   const id = run.actor.id;
   const tag = run.tag_id ?? "";
-  if (!tag.startsWith("api-r-") && !tag.startsWith(`api-${new TextEncoder().encode(id).length}-${id}-`)) return "";
+  if (
+    !tag.startsWith("api-r-") &&
+    !tag.startsWith(`api-${new TextEncoder().encode(id).length}-${id}-`)
+  )
+    return "";
   const at = siblings.findIndex((s) => s.id === run.id);
   const earlier = at < 0 ? siblings : siblings.slice(0, at);
   return earlier.some((s) => s.text === run.text && s.actor?.id !== id) ? "" : id;
@@ -94,7 +138,8 @@ export function notAskable(run: Run, me: string, siblings: Run[]): string {
   if (me !== "" && person === me) return "";
   // The person by what the run calls them, never by subject, which can hold
   // an address: a run recorded with no name for them names nobody.
-  if (person) return `This turn acted for ${run.actor?.display || "someone else"}, so only they can retry it.`;
+  if (person)
+    return `This turn acted for ${run.actor?.display || "someone else"}, so only they can retry it.`;
   return "This turn acted for nobody, so it is not retried here, where it would act for you.";
 }
 
@@ -123,32 +168,38 @@ function TurnView({
   onAsk?: () => void;
   onReply?: () => void;
   onRedirect?: () => void;
-  actions?:ReactNode;
+  actions?: ReactNode;
 }) {
   const { run, control } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(run);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
   const refused = notAskable(run, me, siblings);
-  const drawn = useMemo(
-    () =>
-      {
-      const base = turn ?? turnOf(run);
-      return run.citations !== undefined ? {...base,citations:run.citations.map(citationOf)} : base;
-    },
-    [turn, run],
-  );
+  const drawn = useMemo(() => {
+    const base = turn ?? turnOf(run);
+    return run.citations !== undefined
+      ? { ...base, citations: run.citations.map(citationOf) }
+      : base;
+  }, [turn, run]);
   // Neither Retry nor Regenerate is offered on a turn the reader may not ask
   // again (notAskable). A failure says why instead of offering Retry.
   const shown = useMemo(() => {
     const asked = askedOf(drawn, ask);
-    return refused && asked.failure ? { ...asked, failure: { ...asked.failure, retryNotOffered: refused } } : asked;
+    return refused && asked.failure
+      ? { ...asked, failure: { ...asked.failure, retryNotOffered: refused } }
+      : asked;
   }, [drawn, refused, ask]);
 
   return (
-    <article id={`turn-${run.id}`} className="flex flex-col gap-3" aria-label={`Turn answered by ${run.agent}`}>
+    <article
+      id={`turn-${run.id}`}
+      className="flex flex-col gap-3"
+      aria-label={`Turn answered by ${run.agent}`}
+    >
       <div className="flex flex-col items-end gap-1">
-        <p className="humagen-glass max-w-[80%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
+        <p className="humagen-glass max-w-[80%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
+          {run.text}
+        </p>
         <p className="flex flex-wrap items-center justify-end gap-x-2 text-aui-2xs text-aui-muted">
           <span className="inline-flex items-center gap-1">
             <AgentMark name={run.agent} size={14} />
@@ -159,7 +210,22 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage actions={<>{control}{actions}</>} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
+        <AgentMessage
+          actions={
+            <>
+              {control}
+              {actions}
+            </>
+          }
+          timestamp={<MessageTime at={run.created_at} />}
+          turn={shown}
+          copy={copyFor(ask)}
+          itemActions={itemActions(run)}
+          capabilities={{ regenerate: !refused }}
+          onAskAgent={onAsk}
+          onReply={onReply}
+          onRedirect={onRedirect}
+        />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -201,7 +267,11 @@ function TurnView({
  * message in the chat bar.
  */
 export const STARTERS: { agent: string; label: string; text: string }[] = [
-  { agent: "humagen-analyst", label: "How are my agents doing?", text: "How did my agents do today?" },
+  {
+    agent: "humagen-analyst",
+    label: "How are my agents doing?",
+    text: "How did my agents do today?",
+  },
   { agent: "humagen-builder", label: "Build an agent", text: "Help me build an agent that " },
   { agent: "humagen-writer", label: "Write a report", text: "Write a one-page report on " },
 ];
@@ -232,9 +302,18 @@ function ChatBar({
   root: ProjectView | null;
   me: string;
   handle?: string;
-  plus?: (choices: Pick<Completion, "agents" | "skills" | "skillsFailed">) => NonNullable<Parameters<typeof Composer>[0]["plus"]>;
+  plus?: (
+    choices: Pick<Completion, "agents" | "skills" | "skillsFailed">,
+  ) => NonNullable<Parameters<typeof Composer>[0]["plus"]>;
 }) {
-  const tags = useCompletion(project, agents, homes, topicsOf(projects ?? [], root, project), me, handle);
+  const tags = useCompletion(
+    project,
+    agents,
+    homes,
+    topicsOf(projects ?? [], root, project),
+    me,
+    handle,
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per list read
   useEffect(() => {
     if (tags.agents) onAvailable?.(tags.agents);
@@ -273,7 +352,7 @@ export function Chat({
   projects,
   canRun,
   artifactActions,
-  canLearn=false,
+  canLearn = false,
   forkActions,
   canCreateProject,
   greeting,
@@ -287,9 +366,9 @@ export function Chat({
 }: {
   /** Quiet lines under the prompt on Home: what needs the person, and what is new. */
   home?: ReactNode;
-  banner?:HomeAnnouncement;
+  banner?: HomeAnnouncement;
   findHelp?: (description: string) => Promise<HelpSuggestion[]>;
-  personalProject?:string;
+  personalProject?: string;
   threadId: string | null;
   /** The reader's subject: Retry asks a turn again as them, so only on a turn that acted for them. */
   me: string;
@@ -323,9 +402,9 @@ export function Chat({
   /** The project tree a new conversation can be filed in, or null while it loads. */
   projects: ProjectView[] | null;
   canRun: boolean;
-  canLearn?:boolean;
-  artifactActions?: {knowledge:boolean;memory:boolean};
-  forkActions?:ConversationForkActions;
+  canLearn?: boolean;
+  artifactActions?: { knowledge: boolean; memory: boolean };
+  forkActions?: ConversationForkActions;
   /** May make a project from the picker. */
   canCreateProject: boolean;
   greeting: string;
@@ -346,7 +425,9 @@ export function Chat({
     problem: (why) => setProblem(why),
   });
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [seed, setSeed] = useState<ComposerSeed | undefined>(() => (startAsk ? { text: startAsk } : undefined));
+  const [seed, setSeed] = useState<ComposerSeed | undefined>(() =>
+    startAsk ? { text: startAsk } : undefined,
+  );
   // What the + menu selected for a new conversation: an agent a link named, and where it lives.
   const [selection, setSelection] = useState<Selection>(() => ({
     ...emptySelection,
@@ -355,11 +436,21 @@ export function Chat({
     channel: startChannel || "general",
   }));
 
- useEffect(()=>{
-  if(!threadId&&startIn===undefined&&personalProject!==undefined)setSelection(current=>current.project===null?{...current,project:personalProject}:current);
- },[threadId,startIn,personalProject]);
+  useEffect(() => {
+    if (!threadId && startIn === undefined && personalProject !== undefined)
+      setSelection((current) =>
+        current.project === null ? { ...current, project: personalProject } : current,
+      );
+  }, [threadId, startIn, personalProject]);
   const project = selection.project ?? personalProject ?? null;
-  const select=(next:Selection)=>{if(next.project!==selection.project)setOffered(null);setSelection(next.project===null && personalProject!==undefined?{...next,project:personalProject,channel:"general"}:next)};
+  const select = (next: Selection) => {
+    if (next.project !== selection.project) setOffered(null);
+    setSelection(
+      next.project === null && personalProject !== undefined
+        ? { ...next, project: personalProject, channel: "general" }
+        : next,
+    );
+  };
   const [draft, setDraft] = useState("");
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
@@ -367,9 +458,18 @@ export function Chat({
   // The drawer of every run in the conversation, open on one of them or on the list.
   const [activity, setActivity] = useState<{ focus: string | null } | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
-  const shownView = onView ? view ?? {} : localView;
-  const openPanel = (panel?: ConversationPanel, selection: Omit<ConversationView, "panel"> = {}) => {
-    const next = { ...(panel==="activity"&&shownView.panel==="activity"?{filter:shownView.filter,showTools:shownView.showTools}:{}),...selection, panel };
+  const shownView = onView ? (view ?? {}) : localView;
+  const openPanel = (
+    panel?: ConversationPanel,
+    selection: Omit<ConversationView, "panel"> = {},
+  ) => {
+    const next = {
+      ...(panel === "activity" && shownView.panel === "activity"
+        ? { filter: shownView.filter, showTools: shownView.showTools }
+        : {}),
+      ...selection,
+      panel,
+    };
     if (onView) onView(next);
     else setLocalView(next);
   };
@@ -383,7 +483,9 @@ export function Chat({
   // What reading the conversation came to. One not read yet is not a new
   // conversation, and one the reader may not see is not there: the server
   // answers both alike (404), and so does the page.
-  const [read, setRead] = useState<"reading" | "read" | "missing" | "failed">(threadId ? "reading" : "read");
+  const [read, setRead] = useState<"reading" | "read" | "missing" | "failed">(
+    threadId ? "reading" : "read",
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
     if (!threadId) {
@@ -426,7 +528,13 @@ export function Chat({
 
   const path = useMemo(() => pathOf(turns, chosen), [turns, chosen]);
   // What each parked run asks, as the reader stands to it.
-  const asks = useMemo(() => Object.fromEntries((room?.turns ?? []).flatMap((t) => (t.run && t.ask ? [[t.run.id, t.ask]] : []))), [room]);
+  const asks = useMemo(
+    () =>
+      Object.fromEntries(
+        (room?.turns ?? []).flatMap((t) => (t.run && t.ask ? [[t.run.id, t.ask]] : [])),
+      ),
+    [room],
+  );
   const tail = path[path.length - 1];
   // A run waiting on a person is still, like one that has ended.
   const tailWorking = !!tail && isWorking(tail.status);
@@ -438,7 +546,11 @@ export function Chat({
   const post = useCallback(
     async (text: string, to: string, after: string | undefined, filed: string | null = project) => {
       setProblem(null);
-      const run = await api.createRun(to, text, after ? { after } : filed!==null ? { project: filed } : {});
+      const run = await api.createRun(
+        to,
+        text,
+        after ? { after } : filed !== null ? { project: filed } : {},
+      );
       setTurns((t) => (t.some((x) => x.id === run.id) ? t : [...t, run]));
       setChosen((c) => ({ ...c, [run.prev ?? ""]: run.id }));
       onChanged();
@@ -469,7 +581,9 @@ export function Chat({
             channel: selection.channel,
             text: m.text,
             visibility: startChannel ? "shared" : "private",
-            ...(selection.agents.length > 0 ? { agents: selection.agents, mode: selection.mode } : {}),
+            ...(selection.agents.length > 0
+              ? { agents: selection.agents, mode: selection.mode }
+              : {}),
           })
           .then((p) => {
             // What the first message did is said in the conversation it opens.
@@ -486,7 +600,16 @@ export function Chat({
         .post(threadId, { text: m.text, ...(tail ? { after: tail.id } : {}) })
         .then((p) => {
           setRoom((r) =>
-            r ? { ...r, turns: [...r.turns, { kind: "message", message: p.message }, ...p.runs.map((run) => ({ kind: "run" as const, run }))] } : r,
+            r
+              ? {
+                  ...r,
+                  turns: [
+                    ...r.turns,
+                    { kind: "message", message: p.message },
+                    ...p.runs.map((run) => ({ kind: "run" as const, run })),
+                  ],
+                }
+              : r,
           );
           done();
         })
@@ -513,9 +636,17 @@ export function Chat({
       const answer = answerOfAction(a);
       if (!answer) return;
       setProblem(null);
-      api.answer(answer).catch((e) =>
-        setProblem(e instanceof ApiError && e.status === 403 ? defaultCopy.noPermission : e instanceof ApiError ? e.message : defaultCopy.failure.internal()),
-      );
+      api
+        .answer(answer)
+        .catch((e) =>
+          setProblem(
+            e instanceof ApiError && e.status === 403
+              ? defaultCopy.noPermission
+              : e instanceof ApiError
+                ? e.message
+                : defaultCopy.failure.internal(),
+          ),
+        );
       return;
     }
     if (a.id !== ActionId.retry || !canRun) return;
@@ -528,7 +659,10 @@ export function Chat({
   };
 
   // A suggestion is offered only for an agent that can answer where the conversation goes.
-  const starters = STARTERS.filter((st) => agents.some((a) => a.spec.name === st.agent) && (offered !== null && offered.has(st.agent)));
+  const starters = STARTERS.filter(
+    (st) =>
+      agents.some((a) => a.spec.name === st.agent) && offered !== null && offered.has(st.agent),
+  );
 
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
@@ -541,7 +675,15 @@ export function Chat({
         root={root ?? null}
         me={me}
         handle={handle}
-        placeholder={!threadId ? (startChannel ? words.startThread : placeholderFor(selection)) : runs.selection.agents.length > 0 ? placeholderFor(runs.selection) : words.message}
+        placeholder={
+          !threadId
+            ? startChannel
+              ? words.startThread
+              : placeholderFor(selection)
+            : runs.selection.agents.length > 0
+              ? placeholderFor(runs.selection)
+              : words.message
+        }
         queue={queue}
         autoFocus={!threadId}
         seed={seed}
@@ -554,7 +696,8 @@ export function Chat({
                 const names = new Set(available.map((a) => a.name));
                 setOffered(names);
                 // An agent a link named that lives in a project opens that project, the first time.
-                const named = startAgent && !startIn && project === null ? homes[startAgent] : undefined;
+                const named =
+                  startAgent && !startIn && project === null ? homes[startAgent] : undefined;
                 if (named && !names.has(startAgent ?? "")) {
                   setSelection((sel) => ({ ...sel, project: named }));
                   return;
@@ -578,7 +721,9 @@ export function Chat({
                     agents={available}
                     skills={skills}
                     skillsFailed={skillsFailed}
-                    onSkill={(name) => { setSeed({ text: `$${name} `, mode: "prepend" }); }}
+                    onSkill={(name) => {
+                      setSeed({ text: `$${name} `, mode: "prepend" });
+                    }}
                     selection={runs.selection}
                     onChange={runs.select}
                     onAttach={attach}
@@ -589,7 +734,16 @@ export function Chat({
                     projectFixed={defaultCopy.threads.shareProjectFixed}
                   />
                 ),
-                chips: <SelectionChips personalProject={personalProject} selection={runs.selection} projects={projects} workspace={workspaceName} onChange={runs.select} projectFixed />,
+                chips: (
+                  <SelectionChips
+                    personalProject={personalProject}
+                    selection={runs.selection}
+                    projects={projects}
+                    workspace={workspaceName}
+                    onChange={runs.select}
+                    projectFixed
+                  />
+                ),
               })
             : ({ agents: available, skills, skillsFailed }) => ({
                 menu: (close, attach, leave) => (
@@ -598,7 +752,9 @@ export function Chat({
                     agents={available}
                     skills={skills}
                     skillsFailed={skillsFailed}
-                    onSkill={(name) => { setSeed({ text: `$${name} `, mode: "prepend" }); }}
+                    onSkill={(name) => {
+                      setSeed({ text: `$${name} `, mode: "prepend" });
+                    }}
                     selection={selection}
                     onChange={select}
                     onAttach={attach}
@@ -608,14 +764,51 @@ export function Chat({
                     kinds={root?.kinds}
                     canCreateProject={canCreateProject}
                     onProjectCreated={onProjectCreated}
-                    finder={findHelp ? <FindHelp initialDescription={draft} onSearch={findHelp} canChoose={canRun} onChoose={(match, description) => {
-                      select({ ...selection, project: match.project, channel: "general", agents: [match.agent], mode: "join" });
-                      if (!draft.trim()) setSeed({ text: description });
-                      close();
-                    }} /> : undefined}
+                    finder={
+                      findHelp ? (
+                        <FindHelp
+                          initialDescription={draft}
+                          onSearch={findHelp}
+                          canChoose={canRun}
+                          onChoose={(match, description) => {
+                            select({
+                              ...selection,
+                              project: match.project,
+                              channel: "general",
+                              agents: [match.agent],
+                              mode: "join",
+                            });
+                            if (!draft.trim()) setSeed({ text: description });
+                            close();
+                          }}
+                        />
+                      ) : undefined
+                    }
                   />
                 ),
-                chips: <SelectionChips personalProject={personalProject} selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectControl={<ProjectPicker projects={projects??null} kinds={root?.kinds} value={selection.project} personalProject={personalProject} channel={selection.channel} canCreate={canCreateProject} onCreated={onProjectCreated} onChange={project=>select({...selection,project,channel:"general"})}/>} />,
+                chips: (
+                  <SelectionChips
+                    personalProject={personalProject}
+                    selection={selection}
+                    projects={projects}
+                    workspace={workspaceName}
+                    onChange={select}
+                    projectControl={
+                      <ProjectPicker
+                        projects={projects ?? null}
+                        kinds={root?.kinds}
+                        value={selection.project}
+                        personalProject={personalProject}
+                        channel={selection.channel}
+                        canCreate={canCreateProject}
+                        onCreated={onProjectCreated}
+                        onChange={(project) =>
+                          select({ ...selection, project, channel: "general" })
+                        }
+                      />
+                    }
+                  />
+                ),
               })
         }
       />
@@ -623,7 +816,12 @@ export function Chat({
   );
 
   // A thread people have posted in is a room: their messages and the agents' answers, side by side.
-  if (threadId && room && room.thread.id === threadId && (room.thread.read_only || room.turns.some((t) => t.message))) {
+  if (
+    threadId &&
+    room &&
+    room.thread.id === threadId &&
+    (room.thread.read_only || room.turns.some((t) => t.message))
+  ) {
     return (
       <ThreadRoom
         key={threadId}
@@ -663,15 +861,29 @@ export function Chat({
   }
   if (threadId && path.length === 0 && (read === "reading" || read === "failed")) {
     return (
-      <section aria-label="Conversation" aria-busy={read === "reading"} className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-4 pt-4">
-        {read === "failed" ? <Problem message={defaultCopy.threads.readFailed} /> : <SkeletonRows count={3} height="2.5rem" />}
+      <section
+        aria-label="Conversation"
+        aria-busy={read === "reading"}
+        className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-4 pt-4"
+      >
+        {read === "failed" ? (
+          <Problem message={defaultCopy.threads.readFailed} />
+        ) : (
+          <SkeletonRows count={3} height="2.5rem" />
+        )}
       </section>
     );
   }
 
   if (!threadId || path.length === 0) {
     return (
-      <HomePage banner={banner} greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
+      <HomePage
+        banner={banner}
+        greeting={greeting}
+        canRun={canRun}
+        hasAgents={agents.length > 0}
+        below={home}
+      >
         {composer}
         {/*
           Suggestions stay with the chat bar while the person writes. A pick writes its words and adds its agent to
@@ -679,7 +891,10 @@ export function Chat({
         */}
         {canRun && starters.length > 0 && (
           // Every suggestion remains available and wraps within the reading column.
-          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 px-4 sm:px-5">
+          <ul
+            aria-label={defaultCopy.chat.suggestions}
+            className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 px-4 sm:px-5"
+          >
             {starters.map((st) => (
               <li key={st.agent} className="min-w-0 max-w-full">
                 <button
@@ -704,53 +919,172 @@ export function Chat({
     );
   }
 
-
   return (
     <section className="flex min-h-0 flex-1">
       <ConversationPage
         title={summary?.title ?? path[0]?.text ?? "Conversation"}
-        project={projects?.find((p) => p.name === where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace}
+        project={
+          projects?.find((p) => p.name === where)?.title ||
+          (where === personalProject ? defaultCopy.projects.personalTitle : where) ||
+          workspaceName ||
+          defaultCopy.projects.workspace
+        }
         private={room?.thread.visibility === "private"}
         agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
         onPanel={(next) => openPanel(next)}
         onArtifact={(id) => openPanel("deliverables", { artifact: id })}
       >
-      {room&&canRun&&!room.thread.read_only&&<ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions}/>}
-      <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-        <Thread className="mx-auto w-full max-w-4xl flex-1 px-4" busy={tailWorking} label="Conversation">
-          {path.map((run, i) => (
-            <TurnView
-              key={run.id}
-              run={run}
-              canStop={canRun&&!room?.thread.read_only}
-              actions={!room?.thread.read_only&&run.status==="completed"?<><OutcomeActions run={run} canWrite={canLearn}/>{canRun&&forkActions?.onFork&&<button type="button" className={messageActionButton} aria-label={defaultCopy.forking.fromHere} title={defaultCopy.forking.fromHere} onClick={()=>forkActions.onFork?.(run.id)}><ForkIcon size={16} /></button>}{canRun&&room?.thread.fork&&forkActions?.onBringBack&&<button type="button" className={messageActionButton} aria-label={defaultCopy.forking.bringBack} title={defaultCopy.forking.bringBack} onClick={()=>forkActions.onBringBack?.(run.id)}><BringBackIcon size={16} /></button>}</>:undefined}
-              me={me}
-              ask={asks[run.id]}
-              siblings={siblingsOf(turns, run)}
-              live={i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")}
-              onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
-              onAsk={canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined}
-              onReply={canRun ? () => setSeed({ text: `@${run.agent} following up on [this answer](${href({ page: "conversation", id: threadId, panel: "activity", run: run.id })}): `, mode: "prepend" }) : undefined}
-              onRedirect={canRun ? () => setSeed({text:defaultCopy.conversation.redirectPrompt(run.agent,href({page:"conversation",id:threadId,panel:"activity",run:run.id})),mode:"prepend"}) : undefined}
-            />
-          ))}
-        </Thread>
-      </WebSurface>
-      {composer}
+        {room && canRun && !room.thread.read_only && (
+          <ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions} />
+        )}
+        <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
+          <Thread
+            className="mx-auto w-full max-w-4xl flex-1 px-4"
+            busy={tailWorking}
+            label="Conversation"
+          >
+            {path.map((run, i) => (
+              <TurnView
+                key={run.id}
+                run={run}
+                canStop={canRun && !room?.thread.read_only}
+                actions={
+                  !room?.thread.read_only && run.status === "completed" ? (
+                    <>
+                      <OutcomeActions run={run} canWrite={canLearn} />
+                      {canRun && forkActions?.onFork && (
+                        <button
+                          type="button"
+                          className={messageActionButton}
+                          aria-label={defaultCopy.forking.fromHere}
+                          title={defaultCopy.forking.fromHere}
+                          onClick={() => forkActions.onFork?.(run.id)}
+                        >
+                          <ForkIcon size={16} />
+                        </button>
+                      )}
+                      {canRun && room?.thread.fork && forkActions?.onBringBack && (
+                        <button
+                          type="button"
+                          className={messageActionButton}
+                          aria-label={defaultCopy.forking.bringBack}
+                          title={defaultCopy.forking.bringBack}
+                          onClick={() => forkActions.onBringBack?.(run.id)}
+                        >
+                          <BringBackIcon size={16} />
+                        </button>
+                      )}
+                    </>
+                  ) : undefined
+                }
+                me={me}
+                ask={asks[run.id]}
+                siblings={siblingsOf(turns, run)}
+                live={
+                  i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")
+                }
+                onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
+                onAsk={
+                  canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined
+                }
+                onReply={
+                  canRun
+                    ? () =>
+                        setSeed({
+                          text: `@${run.agent} following up on [this answer](${href({ page: "conversation", id: threadId, panel: "activity", run: run.id })}): `,
+                          mode: "prepend",
+                        })
+                    : undefined
+                }
+                onRedirect={
+                  canRun
+                    ? () =>
+                        setSeed({
+                          text: defaultCopy.conversation.redirectPrompt(
+                            run.agent,
+                            href({
+                              page: "conversation",
+                              id: threadId,
+                              panel: "activity",
+                              run: run.id,
+                            }),
+                          ),
+                          mode: "prepend",
+                        })
+                    : undefined
+                }
+              />
+            ))}
+          </Thread>
+        </WebSurface>
+        {composer}
       </ConversationPage>
-      {room && <ConversationInfo panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={room.thread} project={projects?.find(project=>project.name===where)?.title || (where===personalProject?defaultCopy.projects.personalTitle:where) || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
-      <Presence when={shownView.panel === "deliverables"} ms={220}>{leaving => <Deliverables open={!leaving} promotion={artifactActions ? {project:room?.thread.project??where??"",shared:room?.thread.visibility==="shared",...artifactActions}:undefined} thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}</Presence>
+      {room && (
+        <ConversationInfo
+          panel={shownView.panel}
+          contextTab={shownView.contextTab}
+          onContextTab={(contextTab) => openPanel("context", { contextTab })}
+          thread={room.thread}
+          project={
+            projects?.find((project) => project.name === where)?.title ||
+            (where === personalProject ? defaultCopy.projects.personalTitle : where) ||
+            workspaceName ||
+            defaultCopy.projects.workspace
+          }
+          onClose={() => openPanel()}
+        />
+      )}
+      <Presence when={shownView.panel === "deliverables"} ms={220}>
+        {(leaving) => (
+          <Deliverables
+            open={!leaving}
+            promotion={
+              artifactActions
+                ? {
+                    project: room?.thread.project ?? where ?? "",
+                    shared: room?.thread.visibility === "shared",
+                    ...artifactActions,
+                  }
+                : undefined
+            }
+            thread={threadId}
+            view={shownView}
+            onView={(next) => openPanel("deliverables", next)}
+            onClose={() => openPanel()}
+            onRevise={
+              canRun
+                ? (file, slide) => {
+                    setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
+                    openPanel();
+                  }
+                : undefined
+            }
+          />
+        )}
+      </Presence>
       <Presence when={activity !== null} ms={220}>
         {(leaving) => (
           <Activity
-            filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length}
+            filter={shownView.filter}
+            showTools={shownView.showTools}
+            onFilterChange={(filter) => openPanel("activity", { run: shownView.run, filter })}
+            onShowToolsChange={(showTools) =>
+              openPanel("activity", { run: shownView.run, showTools })
+            }
+            isDecision={(run) =>
+              run.outcome?.kind === "decision" || !!run.outcome?.decisions?.length
+            }
             leaving={leaving}
             turns={path}
             stamp={turns.map((t) => `${t.id}:${t.calls}:${t.status}`).join("|")}
             focus={(activity ?? lastActivity.current)?.focus ?? null}
             onClose={() => openPanel()}
             onFocus={(run) => openPanel("activity", run ? { run } : {})}
-            onJump={(id) => document.getElementById(`turn-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })}
+            onJump={(id) =>
+              document
+                .getElementById(`turn-${id}`)
+                ?.scrollIntoView({ block: "start", behavior: "smooth" })
+            }
           />
         )}
       </Presence>

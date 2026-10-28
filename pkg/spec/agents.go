@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // Names an agent list holds besides agents.
@@ -75,7 +75,7 @@ func checkAgents(sp PlatformSpec) error {
 		at := fmt.Sprintf("agents[%d]", i)
 		name := ""
 		if a.Spec != nil {
-			name = agentspec.NormalizeName(a.Spec.Name)
+			name = wire.NormalizeName(a.Spec.Name)
 			known[name] = true
 		} else {
 			blind = true
@@ -176,7 +176,7 @@ func checkAgentLists(a Agents, known map[string]bool, blind bool, homes map[stri
 }
 
 func checkAgentName(n string, known map[string]bool, blind bool) error {
-	if n == "" || n != agentspec.NormalizeName(n) || strings.ContainsAny(n, " /") {
+	if n == "" || n != wire.NormalizeName(n) || strings.ContainsAny(n, " /") {
 		return fmt.Errorf("%q is not an agent's name", n)
 	}
 	if !known[n] && !blind {

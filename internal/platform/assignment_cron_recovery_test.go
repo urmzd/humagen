@@ -9,10 +9,10 @@ import (
 	"time"
 
 	anchorrun "github.com/urmzd/anchor/pkg/run"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -35,7 +35,7 @@ func TestCronAssignmentRecoversExactReservedInvocationAfterRestart(t *testing.T)
 		fault := &assignmentAcceptanceFault{Ledger: b.Ledger}
 		b.Ledger = fault
 		p, stop := running(t, b)
-		if _, err := p.Agents.Create(t.Context(), tenant, agentspec.AgentSpec{Name: "standing", Model: "offline", Provider: "offline", SystemPrompt: "Complete assigned work."}, "owner"); err != nil {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "standing", Model: "offline", Provider: "offline", SystemPrompt: "Complete assigned work."}, "owner"); err != nil {
 			t.Fatal(err)
 		}
 		who := auth.Principal{Tenant: tenant, Subject: "owner", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
@@ -52,12 +52,12 @@ func TestCronAssignmentRecoversExactReservedInvocationAfterRestart(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		meta := maps.Clone(sc.Meta)
+		meta := maps.Clone(sc.Context)
 		meta["cron_schedule"] = sc.Name
 		meta["cron_expression"] = sc.Expression
 		meta["cron_occurrence"] = "2025-01-01T00:00:00Z"
 		meta["occurrence_context"] = "exact-reservation-proof"
-		tag := envelope.Tag{ID: sc.Name + "@1735689600", Tenant: tenant, Agent: sc.Agent, Origin: "cron", Source: sc.Source(), Actor: envelope.Actor{ID: "cron:" + sc.Name, Bot: true}, Text: sc.Text, Meta: meta, At: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)}
+		tag := wire.NewEvent(wire.Raise{ID: sc.Name + "@1735689600", Tenant: tenant, Agent: sc.Agent, Origin: "cron", Actor: event.Actor{ID: "cron:" + sc.Name, Bot: true}, Text: sc.Text, Context: meta, At: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)})
 		fault.fail.Store(true)
 		if _, err := p.Invoke(t.Context(), tag); !errors.Is(err, statetest.ErrInjected) {
 			t.Fatalf("expected acceptance failure after reservation: %v", err)
@@ -84,7 +84,7 @@ func TestCronAssignmentRecoversExactReservedInvocationAfterRestart(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.ID != runtime.RunID(tenant, tag.ID) || got.Origin != "cron" || got.Tag().Meta["occurrence_context"] != "exact-reservation-proof" || got.Tag().Meta["cron_occurrence"] != tag.Meta["cron_occurrence"] || !got.Tag().At.Equal(tag.At) {
+		if got.ID != runtime.RunID(tenant, tag.ID) || got.Origin != "cron" || wire.Meta(got.Tag())["occurrence_context"] != "exact-reservation-proof" || wire.Meta(got.Tag())["cron_occurrence"] != wire.Meta(tag)["cron_occurrence"] || !got.Tag().Time.Equal(tag.Time) {
 			t.Fatalf("recovery changed exact occurrence: %+v", got)
 		}
 		sourceAwait(t, func() bool {

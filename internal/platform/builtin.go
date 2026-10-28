@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/wire"
 )
 
 // Agents the platform provides.
@@ -68,14 +67,14 @@ func Builtins() []string { return []string{BuiltinWriter, BuiltinAnalyst, Builti
 
 // IsBuiltin reports whether a name belongs to the platform.
 func IsBuiltin(name string) bool {
-	return slices.Contains(Builtins(), agentspec.NormalizeName(name)) || legacy.IsBuiltinAgent(agentspec.NormalizeName(name))
+	return slices.Contains(Builtins(), wire.NormalizeName(name)) || legacy.IsBuiltinAgent(wire.NormalizeName(name))
 }
 
-func (p *Platform) builtinSpecs() []agentspec.AgentSpec {
+func (p *Platform) builtinSpecs() []wire.AgentSpec {
 	if p.cfg.BuiltinProvider == "" || p.cfg.BuiltinModel == "" {
 		return nil
 	}
-	return []agentspec.AgentSpec{{
+	return []wire.AgentSpec{{
 		Name:         BuiltinWriter,
 		Description:  "Writes documents, reports and tables, and publishes them as files",
 		Provider:     p.cfg.BuiltinProvider,
@@ -121,26 +120,26 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 		}
 	}
 	for _, want := range specs {
-		have, err := p.Agents.Get(ctx, tenant, want.Name, 0)
+		have, err := p.Catalog().Get(ctx, tenant, want.Name, 0)
 		if err == nil {
 			if err := p.checkBuiltinOwner(ctx, tenant, have); err != nil {
 				return err
 			}
 		}
-		if err != nil && !errors.Is(err, registry.ErrNotFound) {
+		if err != nil && !errors.Is(err, wire.ErrNotFound) {
 			return err
 		}
 	}
 	for _, want := range specs {
-		have, err := p.Agents.Get(ctx, tenant, want.Name, 0)
+		have, err := p.Catalog().Get(ctx, tenant, want.Name, 0)
 		if err == nil {
 			if err := p.checkBuiltinOwner(ctx, tenant, have); err != nil {
 				return err
 			}
 		}
 		switch {
-		case errors.Is(err, registry.ErrNotFound):
-			if _, err := p.Agents.Create(ctx, tenant, want, "platform"); err != nil && !errors.Is(err, registry.ErrExists) {
+		case errors.Is(err, wire.ErrNotFound):
+			if _, err := p.Agents.Create(ctx, tenant, want, "platform"); err != nil && !errors.Is(err, wire.ErrExists) {
 				return fmt.Errorf("platform: built-in %s: %w", want.Name, err)
 			}
 		case err != nil:
@@ -149,7 +148,7 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 			have.Spec.Description != want.Description || !slices.Equal(have.Spec.Tools, want.Tools) ||
 			!slices.Equal(have.Spec.Approvals, want.Approvals) || !slices.Equal(have.Spec.Approvers, want.Approvers) ||
 			have.Spec.SelfApproval != want.SelfApproval:
-			if _, err := p.Agents.Revise(ctx, tenant, want, have.Rev, "platform"); err != nil && !errors.Is(err, registry.ErrConflict) {
+			if _, err := p.Agents.Revise(ctx, tenant, want, have.Rev, "platform"); err != nil && !errors.Is(err, wire.ErrConflict) {
 				return fmt.Errorf("platform: built-in %s: %w", want.Name, err)
 			}
 		}
@@ -160,9 +159,9 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 // EnsureAgentHomes upgrades absent legacy homes without changing enable rules.
 // Registry pagination bounds each read and existing explicit homes are preserved.
 func (p *Platform) EnsureAgentHomes(ctx context.Context, tenant string) error {
-	page := registry.Page{Size: 100}
+	page := wire.Page{Size: 100}
 	for {
-		rows, next, err := p.Agents.List(ctx, tenant, page)
+		rows, next, err := p.Catalog().List(ctx, tenant, page)
 		if err != nil {
 			return err
 		}
@@ -185,18 +184,18 @@ func (p *Platform) EnsureAgentHomes(ctx context.Context, tenant string) error {
 
 // AgentDirectory lists current choices. Compatibility definitions stay in the
 // registry for direct reads, historical revisions and existing routing grants.
-func (p *Platform) AgentDirectory(ctx context.Context, tenant string, page registry.Page) ([]agentspec.Revision, string, error) {
-	rows, next, err := p.Agents.List(ctx, tenant, page)
-	return slices.DeleteFunc(rows, func(r agentspec.Revision) bool { return legacy.IsBuiltinAgent(r.Spec.Name) }), next, err
+func (p *Platform) AgentDirectory(ctx context.Context, tenant string, page wire.Page) ([]wire.Revision, string, error) {
+	rows, next, err := p.Catalog().List(ctx, tenant, page)
+	return slices.DeleteFunc(rows, func(r wire.Revision) bool { return legacy.IsBuiltinAgent(r.Spec.Name) }), next, err
 }
 
 // A platform-owned name can be restored after a drifted revision. A custom
 // agent that used a newly reserved name before the upgrade is never replaced.
-func (p *Platform) checkBuiltinOwner(ctx context.Context, tenant string, have agentspec.Revision) error {
+func (p *Platform) checkBuiltinOwner(ctx context.Context, tenant string, have wire.Revision) error {
 	if have.CreatedBy == "platform" {
 		return nil
 	}
-	first, err := p.Agents.Get(ctx, tenant, have.Spec.Name, 1)
+	first, err := p.Catalog().Get(ctx, tenant, have.Spec.Name, 1)
 	if err != nil {
 		return fmt.Errorf("platform: built-in %s ownership: %w", have.Spec.Name, err)
 	}
@@ -218,7 +217,7 @@ func CurrentAgentNames(names []string) []string {
 		if legacy.IsBuiltinAgent(name) {
 			continue
 		}
-		name = agentspec.NormalizeName(name)
+		name = wire.NormalizeName(name)
 		if !seen[name] {
 			seen[name] = true
 			out = append(out, name)

@@ -1,11 +1,11 @@
+import { replay as fold, settled } from "@humagen/adapter";
 import { emptyTurn, reduce, type Turn } from "@humagen/core";
 import { useEffect, useReducer } from "react";
-import { replay as fold, settled } from "@humagen/adapter";
-import { adapter, type BusEvent, type Run, turnOf } from "./adapter.ts";
+import { adapter, type Run, type RunEvent, turnOf } from "./adapter.ts";
 import { api, subscribe } from "./api.ts";
 import { hueOf, isEnded } from "./ui.tsx";
 
-type Action = { type: "seed"; turn: Turn } | { type: "open" } | { type: "event"; event: BusEvent };
+type Action = { type: "seed"; turn: Turn } | { type: "open" } | { type: "event"; event: RunEvent };
 
 /**
  * One run's live turn. It starts from the run record, then the stream takes
@@ -16,7 +16,7 @@ type Action = { type: "seed"; turn: Turn } | { type: "open" } | { type: "event";
 const make = () => adapter({ hue: hueOf });
 
 /** A finished run's turn, rebuilt from the events the journal still holds. Undefined when it holds none. */
-export function replay(run: Run, events: BusEvent[]): Turn | undefined {
+export function replay(run: Run, events: RunEvent[]): Turn | undefined {
   return fold(run, events, { hue: hueOf });
 }
 
@@ -29,7 +29,9 @@ export function useRunTurn(run: Run | undefined): Turn | undefined {
         case "open":
           return { ...s, to: make(), fresh: true };
         case "event": {
-          const base = s.fresh ? emptyTurn(a.event.run_id, { name: a.event.agent }) : s.turn;
+          const base = s.fresh
+            ? emptyTurn(a.event.run ?? "", { name: a.event.agent ?? "" })
+            : s.turn;
           if (!base) return s;
           return { ...s, fresh: false, turn: s.to(a.event).reduce(reduce, base) };
         }
@@ -60,18 +62,25 @@ export function useRunTurn(run: Run | undefined): Turn | undefined {
         on = false;
       };
     }
-    return subscribe(`agent:${agent}:${id}`, {
-      onOpen: () => dispatch({ type: "open" }),
-      onEvent: (event) => dispatch({ type: "event", event }),
-    });
+    return subscribe(
+      { run: id },
+      {
+        onOpen: () => dispatch({ type: "open" }),
+        onEvent: (event) => dispatch({ type: "event", event }),
+      },
+    );
   }, [id, agent]);
 
   if (!run || !state.turn) return undefined;
   const recorded = turnOf(run);
   const turn = settled(state.turn, run).reduce(reduce, state.turn);
-  const citations = new Map(turn.citations.map((citation) => [citation.id,citation]));
-  for (const citation of recorded.citations) citations.set(citation.id,citation);
-  return { ...turn, citations: [...citations.values()], ...(recorded.outcome ? {outcome:recorded.outcome} : {}) };
+  const citations = new Map(turn.citations.map((citation) => [citation.id, citation]));
+  for (const citation of recorded.citations) citations.set(citation.id, citation);
+  return {
+    ...turn,
+    citations: [...citations.values()],
+    ...(recorded.outcome ? { outcome: recorded.outcome } : {}),
+  };
 }
 
 type Show = "all" | "live" | "failed" | "done";

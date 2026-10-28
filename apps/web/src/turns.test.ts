@@ -3,7 +3,10 @@ import { test } from "node:test";
 import type { ThreadPage, ThreadTurn } from "./api.ts";
 import { MAX_PAGES, mergeTurns, readFromStart } from "./turns.ts";
 
-const turn = (n: number, status = "completed"): ThreadTurn => ({ kind: "run", run: { id: `r${n}`, status } as never });
+const turn = (n: number, status = "completed"): ThreadTurn => ({
+  kind: "run",
+  run: { id: `r${n}`, status } as never,
+});
 const ids = (ts: ThreadTurn[]) => ts.map((t) => t.run?.id);
 
 test("turns read at different times merge oldest first, each once, the later read winning", () => {
@@ -13,10 +16,15 @@ test("turns read at different times merge oldest first, each once, the later rea
 });
 
 test("a conversation is read from its start, and reading stops after MAX_PAGES", async () => {
-  const pages = (count: number) => (before?: string): Promise<ThreadPage> => {
-    const n = before ? Number(before) : count - 1;
-    return Promise.resolve({ turns: [turn(n)], next: n > 0 ? String(n - 1) : null } as ThreadPage);
-  };
+  const pages =
+    (count: number) =>
+    (before?: string): Promise<ThreadPage> => {
+      const n = before ? Number(before) : count - 1;
+      return Promise.resolve({
+        turns: [turn(n)],
+        next: n > 0 ? String(n - 1) : null,
+      } as ThreadPage);
+    };
   const whole = await readFromStart(pages(3));
   assert.deepEqual(ids(whole.turns), ["r0", "r1", "r2"]);
   assert.equal(whole.next, null);
@@ -31,8 +39,26 @@ test("a conversation is read from its start, and reading stops after MAX_PAGES",
 });
 
 test("a thread's announcement is one turn whichever read it came in, and is never taken for a run", () => {
-  const seed: ThreadTurn = { kind: "announcement", announcement: { id: "m-7", kind: "person", by: "dana", subject: "News", at: "2026-10-01T09:00:00Z" } };
-  const withdrawn: ThreadTurn = { kind: "announcement", announcement: { id: "m-7", kind: "person", by: "dana", withdrawn: true, at: "2026-10-01T09:00:00Z" } };
+  const seed: ThreadTurn = {
+    kind: "announcement",
+    announcement: {
+      id: "m-7",
+      kind: "person",
+      by: "dana",
+      subject: "News",
+      at: "2026-10-01T09:00:00Z",
+    },
+  };
+  const withdrawn: ThreadTurn = {
+    kind: "announcement",
+    announcement: {
+      id: "m-7",
+      kind: "person",
+      by: "dana",
+      withdrawn: true,
+      at: "2026-10-01T09:00:00Z",
+    },
+  };
   const runless: ThreadTurn = { kind: "run", run: { id: "" } as never };
   const merged = mergeTurns([seed, turn(1)], [withdrawn, turn(1), runless]);
   assert.equal(merged.length, 3);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import type { HomeNotification, HomeUpdate } from "@humagen/core";
 import { defaultCopy } from "@humagen/components";
+import type { HomeNotification, HomeUpdate } from "@humagen/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FindHelp } from "./FindHelp.tsx";
 import { HomeBoxes, HomePage } from "./HomePage.tsx";
@@ -14,7 +14,13 @@ afterEach(() => {
   rendered = false;
 });
 
-const failed: HomeNotification = { kind: "inbox", id: "m-5", from: "any-run-fails", summary: "triage failed", at: "2026-10-21T11:00:00Z" };
+const failed: HomeNotification = {
+  kind: "inbox",
+  id: "m-5",
+  from: "any-run-fails",
+  summary: "triage failed",
+  at: "2026-10-21T11:00:00Z",
+};
 const posted: HomeUpdate = {
   id: "m-4",
   project: "Launch",
@@ -49,32 +55,89 @@ test("Home's rows open what they name, and each box's text control goes to the r
 });
 
 test("announcement actions use the retained inbox callbacks", () => {
- rendered = true; const did:string[]=[];
- render(<HomePage greeting="Hello" canRun hasAgents banner={{id:"m-1",source:"Company",title:"A retained announcement",text:"Saved copy",unread:true,onRead:()=>did.push("read"),onHide:()=>did.push("hide"),onOpen:()=>did.push("open")}}><form aria-label="Message" /></HomePage>);
- const hide = screen.getByRole("button",{name:"Hide for Me"});
- assert.ok(hide.querySelector("svg"));
- fireEvent.click(hide);
- fireEvent.click(screen.getByRole("button",{name:"Open Announcement"}));
- assert.deepEqual(did,["hide","open"]);
- assert.equal(screen.queryByRole("button",{name:"Mark as Read"}),null);
+  rendered = true;
+  const did: string[] = [];
+  render(
+    <HomePage
+      greeting="Hello"
+      canRun
+      hasAgents
+      banner={{
+        id: "m-1",
+        source: "Company",
+        title: "A retained announcement",
+        text: "Saved copy",
+        unread: true,
+        onRead: () => did.push("read"),
+        onHide: () => did.push("hide"),
+        onOpen: () => did.push("open"),
+      }}
+    >
+      <form aria-label="Message" />
+    </HomePage>,
+  );
+  const hide = screen.getByRole("button", { name: "Hide for Me" });
+  assert.ok(hide.querySelector("svg"));
+  fireEvent.click(hide);
+  fireEvent.click(screen.getByRole("button", { name: "Open Announcement" }));
+  assert.deepEqual(did, ["hide", "open"]);
+  assert.equal(screen.queryByRole("button", { name: "Mark as Read" }), null);
 });
 
 test("a pending announcement action prevents hiding again", () => {
- rendered = true; let hidden = false;
- render(<HomePage greeting="Hello" canRun hasAgents banner={{id:"m-1",source:"Company",title:"A retained announcement",text:"Saved copy",unread:true,busy:true,onRead:()=>{},onHide:()=>{hidden=true;}}}><form aria-label="Message" /></HomePage>);
- const hide = screen.getByRole("button",{name:"Hide for Me"}) as HTMLButtonElement;
- assert.equal(hide.disabled,true);
- fireEvent.click(hide);
- assert.equal(hidden,false);
+  rendered = true;
+  let hidden = false;
+  render(
+    <HomePage
+      greeting="Hello"
+      canRun
+      hasAgents
+      banner={{
+        id: "m-1",
+        source: "Company",
+        title: "A retained announcement",
+        text: "Saved copy",
+        unread: true,
+        busy: true,
+        onRead: () => {},
+        onHide: () => {
+          hidden = true;
+        },
+      }}
+    >
+      <form aria-label="Message" />
+    </HomePage>,
+  );
+  const hide = screen.getByRole("button", { name: "Hide for Me" }) as HTMLButtonElement;
+  assert.equal(hide.disabled, true);
+  fireEvent.click(hide);
+  assert.equal(hidden, false);
 });
 
 test("agent and project discovery searches without starting work and choosing is explicit", async () => {
   rendered = true;
   const c = defaultCopy.home.findHelp;
   const did: string[] = [];
-  const result = { project: "Field", title: "Field engineering", agent: "helper", reason: "Matches your description" };
-  render(<FindHelp onSearch={async (query) => { did.push(`search:${query}`); return [result]; }} onChoose={(match) => did.push(`choose:${match.project}:${match.agent}`)} />);
-  assert.equal(document.querySelector("form"), null, "the picker content must not introduce another form");
+  const result = {
+    project: "Field",
+    title: "Field engineering",
+    agent: "helper",
+    reason: "Matches your description",
+  };
+  render(
+    <FindHelp
+      onSearch={async (query) => {
+        did.push(`search:${query}`);
+        return [result];
+      }}
+      onChoose={(match) => did.push(`choose:${match.project}:${match.agent}`)}
+    />,
+  );
+  assert.equal(
+    document.querySelector("form"),
+    null,
+    "the picker content must not introduce another form",
+  );
   fireEvent.change(screen.getByLabelText(c.label), { target: { value: "renewal" } });
   fireEvent.click(screen.getByRole("button", { name: c.search }));
   await screen.findByText("Field engineering");
@@ -86,7 +149,14 @@ test("agent and project discovery searches without starting work and choosing is
 test("agent and project discovery exposes a real failed request as a retryable error", async () => {
   rendered = true;
   const c = defaultCopy.home.findHelp;
-  render(<FindHelp onSearch={async () => { throw new Error("failed"); }} onChoose={() => {}} />);
+  render(
+    <FindHelp
+      onSearch={async () => {
+        throw new Error("failed");
+      }}
+      onChoose={() => {}}
+    />,
+  );
   fireEvent.change(screen.getByLabelText(c.label), { target: { value: "renewal" } });
   fireEvent.click(screen.getByRole("button", { name: c.search }));
   assert.match((await screen.findByRole("alert")).textContent ?? "", /Try again/);

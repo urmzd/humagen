@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/library"
@@ -31,13 +32,13 @@ func learningRun(t *testing.T, p *platform.Platform) (auth.Principal, string) {
 		t.Fatal(err)
 	}
 	id := runtime.RunID(tenant, "learning-outcome")
-	if err := p.Runs.Record(id, envelope.Tag{ID: "learning-outcome", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "Review the plan", Meta: map[string]string{runs.MetaProject: "Learning", runs.MetaThread: th.ID}, At: time.Now()}, 1); err != nil {
+	if err := p.Runs.Record(id, wire.NewEvent(wire.Raise{ID: "learning-outcome", Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "Review the plan", Context: map[string]string{runs.MetaProject: "Learning", runs.MetaThread: th.ID}, At: time.Now()}), 1); err != nil {
 		t.Fatal(err)
 	}
-	action, _ := payload.Encode(payload.Action{Name: platform.ToolOutcome, Data: json.RawMessage(`{"kind":"decision","summary":"Use the Tuesday plan.","decisions":["Keep the Tuesday launch"],"next_action":"Confirm the owner"}`)})
-	p.Runs.Observe(envelope.Event{Tenant: tenant, RunID: id, Kind: envelope.KindActionTaken, Payload: action, At: time.Now()})
-	end, _ := payload.Encode(payload.Lifecycle{Text: "The plan is ready."})
-	p.Runs.Observe(envelope.Event{Tenant: tenant, RunID: id, Kind: envelope.KindCompleted, Payload: end, At: time.Now()})
+	action, _ := json.Marshal(event.Action{Name: platform.ToolOutcome, Data: json.RawMessage(`{"kind":"decision","summary":"Use the Tuesday plan.","decisions":["Keep the Tuesday launch"],"next_action":"Confirm the owner"}`)})
+	p.Runs.Observe(event.Envelope{Tenant: tenant, Run: id, Type: event.TypeAction, Data: wire.BodyOf(event.TypeAction, action), Time: time.Now()})
+	end, _ := json.Marshal(wire.Lifecycle{Text: "The plan is ready."})
+	p.Runs.Observe(event.Envelope{Tenant: tenant, Run: id, Type: event.TypeCompleted, Data: wire.BodyOf(event.TypeCompleted, end), Time: time.Now()})
 	if err := p.Runs.Flush(); err != nil {
 		t.Fatal(err)
 	}

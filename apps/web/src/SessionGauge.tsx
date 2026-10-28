@@ -18,7 +18,11 @@ export function shareOf(fill: Fill | undefined): number | null {
 const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n));
 
 /** What each edge says in words. The icon's label, its tooltip and the panel all read from this. */
-export function gaugeWords(context: Fill | undefined, budget: Fill | undefined, usual?: number): { context: string; budget: string } {
+export function gaugeWords(
+  context: Fill | undefined,
+  budget: Fill | undefined,
+  usual?: number,
+): { context: string; budget: string } {
   const c = shareOf(context);
   const b = shareOf(budget);
   return {
@@ -61,15 +65,33 @@ const X1 = 21;
 function Edge({ y, fill, state }: { y: number; fill: number | null; state: UsageState }) {
   return (
     <>
-      <path d={`M${X0} ${y}H${X1}`} stroke="currentColor" opacity={0.3} strokeDasharray={fill === null ? "1.5 3" : undefined} />
-      {fill !== null && fill > 0 && <path d={`M${X0} ${y}H${X0 + (X1 - X0) * fill}`} stroke={ink[state]} />}
+      <path
+        d={`M${X0} ${y}H${X1}`}
+        stroke="currentColor"
+        opacity={0.3}
+        strokeDasharray={fill === null ? "1.5 3" : undefined}
+      />
+      {fill !== null && fill > 0 && (
+        <path d={`M${X0} ${y}H${X0 + (X1 - X0) * fill}`} stroke={ink[state]} />
+      )}
     </>
   );
 }
 
 function GearIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
@@ -124,21 +146,42 @@ export function SessionGauge({
   const scale = Math.max(budget?.limit ?? 0, usual ?? 0);
   // A binding limit takes the bottom edge. The usual-limit notch belongs to the turn's own budget, so it goes.
   const notch = !bound && usual && scale > 0 ? X0 + ((X1 - X0) * usual) / scale : null;
-  const held = bound ? Math.min(share(bound), 1) : budget && scale > 0 ? (budget.limit / scale) * (b ?? 0) : b;
-  const heldState = bound ? usageOf(bound.used, bound.limit) : usageOf(budget?.used ?? 0, budget?.limit);
+  const held = bound
+    ? Math.min(share(bound), 1)
+    : budget && scale > 0
+      ? (budget.limit / scale) * (b ?? 0)
+      : b;
+  const heldState = bound
+    ? usageOf(bound.used, bound.limit)
+    : usageOf(budget?.used ?? 0, budget?.limit);
 
   return (
-    <div data-testid="session-gauge" data-binding={bound ? `${bound.scope.kind}:${bound.measure}` : "none"} className="flex shrink-0 items-center">
+    <div
+      data-testid="session-gauge"
+      data-binding={bound ? `${bound.scope.kind}:${bound.measure}` : "none"}
+      className="flex shrink-0 items-center"
+    >
       <Popover
         label={`Context: ${words.context} Budget: ${words.budget}`}
         align="right"
         narrow
         className={trigger}
         button={
-          <svg aria-hidden="true" focusable="false" width={24} height={16} viewBox="0 0 24 16" fill="none" strokeWidth={1.75} strokeLinecap="round">
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            width={24}
+            height={16}
+            viewBox="0 0 24 16"
+            fill="none"
+            strokeWidth={1.75}
+            strokeLinecap="round"
+          >
             <Edge y={5} fill={c} state={usageOf(context?.used ?? 0, context?.limit)} />
             <Edge y={11} fill={held} state={heldState} />
-            {notch !== null && <path d={`M${notch} 8.5V13.5`} stroke="currentColor" strokeWidth={1} />}
+            {notch !== null && (
+              <path d={`M${notch} 8.5V13.5`} stroke="currentColor" strokeWidth={1} />
+            )}
           </svg>
         }
       >
@@ -155,7 +198,12 @@ export function SessionGauge({
           </dl>
         )}
       </Popover>
-      <Popover label={limits ? "Limits and compaction" : "Compaction"} align="right" className={trigger} button={<GearIcon />}>
+      <Popover
+        label={limits ? "Limits and compaction" : "Compaction"}
+        align="right"
+        className={trigger}
+        button={<GearIcon />}
+      >
         {(close) => (
           <div className="aui-scroll flex max-h-[70vh] flex-col overflow-y-auto">
             {limits && (
@@ -174,27 +222,29 @@ export function SessionGauge({
                 />
               </div>
             )}
-          <div className="flex flex-col gap-2 px-2 py-1.5">
-            <Switch
-              label="Compact automatically"
-              hint="Summarize the oldest turns when the context is nearly full."
-              checked={compaction?.auto ?? false}
-              disabled={!compaction}
-              onChange={(next) => compaction?.onAuto(next)}
-            />
-            <button
-              type="button"
-              className={`${button} h-7 self-start px-2 text-aui-xs`}
-              disabled={!compaction}
-              onClick={() => {
-                compaction?.onCompact();
-                close();
-              }}
-            >
-              Compact Now
-            </button>
-            {!compaction && <p className="text-aui-xs text-aui-muted">Compaction is not built yet.</p>}
-          </div>
+            <div className="flex flex-col gap-2 px-2 py-1.5">
+              <Switch
+                label="Compact automatically"
+                hint="Summarize the oldest turns when the context is nearly full."
+                checked={compaction?.auto ?? false}
+                disabled={!compaction}
+                onChange={(next) => compaction?.onAuto(next)}
+              />
+              <button
+                type="button"
+                className={`${button} h-7 self-start px-2 text-aui-xs`}
+                disabled={!compaction}
+                onClick={() => {
+                  compaction?.onCompact();
+                  close();
+                }}
+              >
+                Compact Now
+              </button>
+              {!compaction && (
+                <p className="text-aui-xs text-aui-muted">Compaction is not built yet.</p>
+              )}
+            </div>
           </div>
         )}
       </Popover>
@@ -224,7 +274,10 @@ export function SessionGaugeFor({
     let on = true;
     api
       .usage()
-      .then((scopes) => on && setUsual(scopes.find((s) => s.scope.kind === "tenant")?.max_lease || undefined))
+      .then(
+        (scopes) =>
+          on && setUsual(scopes.find((s) => s.scope.kind === "tenant")?.max_lease || undefined),
+      )
       .catch(() => {});
     return () => {
       on = false;
@@ -234,7 +287,11 @@ export function SessionGaugeFor({
   return (
     <SessionGauge
       context={contextFill(tail?.usage)}
-      budget={tail && tail.lease > 0 ? { used: (tail.spent ?? 0) + tail.granted, limit: tail.lease } : undefined}
+      budget={
+        tail && tail.lease > 0
+          ? { used: (tail.spent ?? 0) + tail.granted, limit: tail.lease }
+          : undefined
+      }
       usual={usual}
       limits={limits}
       onAnalytics={onAnalytics}

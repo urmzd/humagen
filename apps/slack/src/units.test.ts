@@ -20,7 +20,7 @@ test("a thread names its conversation, and the name leads back to the thread", (
   assert.match(key, /^[A-Za-z0-9_-]+$/, "a run id is a bus topic segment");
   assert.deepEqual(sessionOf("svc-slack", tagId("svc-slack", key)), session);
   // The run id is the runtime's: the workspace and the trigger id, hashed as
-  // fiber's runtime.RunID does. These match the Go implementation.
+  // `RunID` in `fiber/pkg/runtime` does. These match the Go implementation.
   assert.equal(runId("acme", "svc-slack", key), "rdd6a9402cbeb5e28153f6bf63050792c");
   assert.match(runId("acme", "svc-slack", key), /^r[0-9a-f]{32}$/);
   assert.notEqual(runId("acme", "svc-slack", key), runId("globex", "svc-slack", key));
@@ -326,19 +326,22 @@ test("a refusal carries the limit, a missing object is null, and an error keeps 
 
 test("the event stream hands each event on once across a reconnect, and ends on abort", async () => {
   const frame = (seq: number, kind: string) =>
-    `data: ${JSON.stringify({ seq, run_id: "r1", agent: "lead", kind })}\n\n`;
+    `data: ${JSON.stringify({ id: `e${seq}`, type: kind, seq, run: "r1", agent: "lead", data: {} })}\n\n`;
   const sse =
     (...parts: string[]) =>
     () =>
       new Response(stream(...parts), { status: 200 });
   const { fn, asked } = fakeFetch([
     sse(
-      frame(1, "lifecycle.accepted"),
+      frame(1, "run.accepted.v1"),
       'event: inbox\ndata: {"id":"m1","kind":"memory"}\n\n',
+      'event: thread\ndata: {"id":"th1"}\n\n',
       "data: not json\n\n",
+      // A frame with no run or sequence number cannot be told from a replay.
+      `data: ${JSON.stringify({ id: "x", type: "run.delta.text.v1", data: { text: "?" } })}\n\n`,
     ),
     // The server replays what the bus holds on every open.
-    sse(frame(1, "lifecycle.accepted"), frame(2, "lifecycle.completed")),
+    sse(frame(1, "run.accepted.v1"), frame(2, "run.completed.v1")),
   ]);
   const c = httpHumagen({
     baseUrl: "http://humagen.test",
@@ -349,11 +352,11 @@ test("the event stream hands each event on once across a reconnect, and ends on 
   const stop = new AbortController();
   const got: string[] = [];
   for await (const item of c.runEvents({ id: "r1", agent: "lead" }, { signal: stop.signal })) {
-    got.push(item.type === "event" ? item.event.kind : `inbox:${item.notice.id}`);
-    if (item.type === "event" && item.event.kind === "lifecycle.completed") stop.abort();
+    got.push(item.type === "event" ? item.event.type : `inbox:${item.notice.id}`);
+    if (item.type === "event" && item.event.type === "run.completed.v1") stop.abort();
   }
-  assert.deepEqual(got, ["lifecycle.accepted", "inbox:m1", "lifecycle.completed"]);
-  assert.equal(asked[0]?.url, "http://humagen.test/api/events?topic=agent%3Alead%3Ar1");
+  assert.deepEqual(got, ["run.accepted.v1", "inbox:m1", "run.completed.v1"]);
+  assert.equal(asked[0]?.url, "http://humagen.test/api/events?run=r1");
 });
 
 test("the inbox stream says each time it opens, first and after every reconnect, before what it carries", async () => {
@@ -383,6 +386,8 @@ test("the inbox stream says each time it opens, first and after every reconnect,
   // A stream that answered 503 never opened, so it says nothing.
   assert.deepEqual(seen, ["opened", "m1", "opened", "m2"]);
   assert.equal(asked.length, 3);
+  // The inbox is asked for by the contract's flag, with no run.
+  assert.equal(asked[0]?.url, "http://humagen.test/api/events?inbox=true");
 });
 
 test("a project's announcements are read newest first from its inbox, withdrawn ones too, the workspace's as ~", async () => {

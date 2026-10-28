@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -81,7 +82,7 @@ func TestAReplyToAnAnnouncementsSlackPostStartsAThreadSeededWithIt(t *testing.T)
 	case len(got.Runs) != 1 || got.Runs[0].Agent != "lead" || got.Runs[0].Actor.User != "ana":
 		t.Fatalf("the reply started %+v", got.Runs)
 	}
-	text := got.Runs[0].Tag().Text
+	text := wire.TextOf(got.Runs[0].Tag())
 	for _, want := range []string{
 		"\nAda (@ada): (announcement: Field offsite) Lisbon, in May. @helper book it\n",
 		"The message you are answering follows, from Ana (@ana).\n\n@lead what does it mean for renewals?",
@@ -128,7 +129,7 @@ func TestAReplyToAnAnnouncementsSlackPostStartsAThreadSeededWithIt(t *testing.T)
 	if later.Rule != threads.RuleDefault || len(later.Runs) != 1 || later.Runs[0].Agent != "lead" || later.Runs[0].Actor.User != "ana" {
 		t.Fatalf("an untagged reply started %+v (%s)", later.Runs, later.Rule)
 	}
-	if text := later.Runs[0].Tag().Text; !strings.Contains(text, "\nAda (@ada): (announcement: Field offsite) Lisbon, in May. @helper book it\nAna (@ana): @lead what does it mean for renewals?\nlead (agent): ") {
+	if text := wire.TextOf(later.Runs[0].Tag()); !strings.Contains(text, "\nAda (@ada): (announcement: Field offsite) Lisbon, in May. @helper book it\nAna (@ana): @lead what does it mean for renewals?\nlead (agent): ") {
 		t.Fatalf("the later reply's run was sent:\n%s", text)
 	}
 	await(t, p, later.Runs[0].ID, runs.Completed)
@@ -147,7 +148,7 @@ func TestARecapsThreadStartsWithTheAgentThatWroteIt(t *testing.T) {
 	if got.Thread.Announcement != recap.ID || len(got.Runs) != 1 {
 		t.Fatalf("the reply = %+v", got)
 	}
-	if text := got.Runs[0].Tag().Text; !strings.Contains(text, "\nhelper (agent): (announcement: Weekly recap) Two renewals closed.\n") {
+	if text := wire.TextOf(got.Runs[0].Tag()); !strings.Contains(text, "\nhelper (agent): (announcement: Weekly recap) Two renewals closed.\n") {
 		t.Fatalf("the run was sent:\n%s", text)
 	}
 	await(t, p, got.Runs[0].ID, runs.Completed)
@@ -187,7 +188,7 @@ func TestAReplyToReleaseNotesStartsAThreadSeededWithThem(t *testing.T) {
 	if th.Project != projects.Root || th.Channel != projects.General || th.Announcement != notes.ID || len(got.Runs) != 1 {
 		t.Fatalf("the reply started %+v with %+v", th, got.Runs)
 	}
-	if text := got.Runs[0].Tag().Text; !strings.Contains(text, "\nHumagen (system): (announcement: What's new in Humagen 0.16.0) - Projects - Slack catch-up\n") || strings.Contains(text, "humagen (agent)") {
+	if text := wire.TextOf(got.Runs[0].Tag()); !strings.Contains(text, "\nHumagen (system): (announcement: What's new in Humagen 0.16.0) - Projects - Slack catch-up\n") || strings.Contains(text, "humagen (agent)") {
 		t.Fatalf("the run was sent:\n%s", text)
 	}
 	await(t, p, got.Runs[0].ID, runs.Completed)
@@ -258,7 +259,7 @@ func TestAReplyToAWithdrawnAnnouncementOrADraftStartsNothing(t *testing.T) {
 	if err != nil || again.Thread.ID != started.Thread.ID || len(again.Runs) != 1 {
 		t.Fatalf("a reply in a thread started before the withdrawal = %+v, %v", again, err)
 	}
-	text := again.Runs[0].Tag().Text
+	text := wire.TextOf(again.Runs[0].Tag())
 	if !strings.Contains(text, "\nAda (@ada): (announcement, since withdrawn)\n") || strings.Contains(text, "To June") {
 		t.Fatalf("the run was sent:\n%s", text)
 	}
@@ -317,7 +318,7 @@ func TestAnAnnouncementSeedsOnlyAThreadInItsOwnProject(t *testing.T) {
 				if got.Thread.Project != tc.filed || got.Thread.Announcement != "" {
 					t.Fatalf("a reply under %s started %+v", post, got.Thread)
 				}
-				if text := got.Runs[0].Tag().Text; strings.Contains(text, "Field only") || strings.Contains(text, "Field closed") || strings.Contains(text, "announcement") {
+				if text := wire.TextOf(got.Runs[0].Tag()); strings.Contains(text, "Field only") || strings.Contains(text, "Field closed") || strings.Contains(text, "announcement") {
 					t.Fatalf("the run in %s was sent Field's announcement:\n%s", tc.filed, text)
 				}
 				await(t, p, got.Runs[0].ID, runs.Completed)

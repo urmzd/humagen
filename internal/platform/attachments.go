@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/attachment"
-	"github.com/urmzd/fiber/pkg/thread"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/attachment"
+	"github.com/urmzd/humagen/fiber/pkg/thread"
 	"github.com/urmzd/humagen/pkg/auth"
 )
 

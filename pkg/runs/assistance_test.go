@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/internal/wire"
+
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -22,11 +23,11 @@ func TestUsageRetainsHumanAssistanceAfterResumeAndRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		record(t, x, "acme", "alone", "writer", "api", 0, nil)
-		end(t, x, "acme", "alone", time.Second, envelope.KindCompleted, payload.Lifecycle{})
+		end(t, x, "acme", "alone", time.Second, event.TypeCompleted, wire.Lifecycle{})
 		record(t, x, "acme", "asked", "writer", "api", 0, nil)
-		end(t, x, "acme", "asked", time.Second, envelope.KindParked, payload.Lifecycle{Question: &payload.Question{}})
-		end(t, x, "acme", "asked", 2*time.Second, envelope.KindResumed, payload.Lifecycle{})
-		end(t, x, "acme", "asked", 3*time.Second, envelope.KindCompleted, payload.Lifecycle{})
+		end(t, x, "acme", "asked", time.Second, event.TypeParked, wire.Lifecycle{Question: &event.Question{}})
+		end(t, x, "acme", "asked", 2*time.Second, event.TypeResumed, wire.Lifecycle{})
+		end(t, x, "acme", "asked", 3*time.Second, event.TypeCompleted, wire.Lifecycle{})
 		if err := x.Flush(); err != nil {
 			t.Fatal(err)
 		}
@@ -49,7 +50,7 @@ func TestCalledWorkHumanQuestionCountsForItsParentAfterRestart(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
 		x, _ := Open(st)
-		root := envelope.Tag{ID: "parent", Tenant: "acme", Agent: "lead", Origin: OriginAPI, At: t0}
+		root := wire.NewEvent(wire.Raise{ID: "parent", Tenant: "acme", Agent: "lead", Origin: OriginAPI, At: t0})
 		id := runtime.RunID("acme", root.ID)
 		if err := x.Record(id, root, 1); err != nil {
 			t.Fatal(err)
@@ -62,9 +63,9 @@ func TestCalledWorkHumanQuestionCountsForItsParentAfterRestart(t *testing.T) {
 		if err := x.Record(childID, child, 1); err != nil {
 			t.Fatal(err)
 		}
-		end(t, x, "acme", childID, 2*time.Second, envelope.KindParked, payload.Lifecycle{Question: &payload.Question{}})
-		end(t, x, "acme", childID, 3*time.Second, envelope.KindCompleted, payload.Lifecycle{})
-		end(t, x, "acme", id, 4*time.Second, envelope.KindCompleted, payload.Lifecycle{})
+		end(t, x, "acme", childID, 2*time.Second, event.TypeParked, wire.Lifecycle{Question: &event.Question{}})
+		end(t, x, "acme", childID, 3*time.Second, event.TypeCompleted, wire.Lifecycle{})
+		end(t, x, "acme", id, 4*time.Second, event.TypeCompleted, wire.Lifecycle{})
 		if err := x.Flush(); err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +89,7 @@ func TestFailedAssistanceFlushNeverFabricatesCompletedAloneAfterRecovery(t *test
 	st := statetest.NewFaulty(state.NewMemory())
 	x, _ := Open(st)
 	record(t, x, "acme", "recover", "writer", "api", 0, nil)
-	end(t, x, "acme", "recover", time.Second, envelope.KindParked, payload.Lifecycle{Question: &payload.Question{}})
+	end(t, x, "acme", "recover", time.Second, event.TypeParked, wire.Lifecycle{Question: &event.Question{}})
 	st.Fail(errors.New("write unavailable"))
 	if x.Flush() == nil {
 		t.Fatal("fault not exercised")
@@ -97,7 +98,7 @@ func TestFailedAssistanceFlushNeverFabricatesCompletedAloneAfterRecovery(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	end(t, x, "acme", "recover", 2*time.Second, envelope.KindCompleted, payload.Lifecycle{})
+	end(t, x, "acme", "recover", 2*time.Second, event.TypeCompleted, wire.Lifecycle{})
 	s := x.Summarize("acme", t0, t0.Add(time.Hour), time.Hour)
 	if s.Total.CompletedAlone != 0 || s.Total.HumanHelpUnknown != 1 {
 		t.Fatalf("lost observation became a false claim: %+v", s.Total)
@@ -126,7 +127,7 @@ func TestUsageDoesNotCallRecoveredHistoryUnassisted(t *testing.T) {
 		x, _ := Open(st)
 		record(t, x, "acme", "recover", "writer", "api", 0, nil)
 		x, _ = Open(st)
-		end(t, x, "acme", "recover", time.Second, envelope.KindCompleted, payload.Lifecycle{})
+		end(t, x, "acme", "recover", time.Second, event.TypeCompleted, wire.Lifecycle{})
 		raw, _ := json.Marshal(x.Summarize("acme", t0, t0.Add(time.Hour), time.Hour))
 		var got struct{ Total map[string]any }
 		_ = json.Unmarshal(raw, &got)
@@ -139,7 +140,7 @@ func TestUsageDoesNotCallRecoveredHistoryUnassisted(t *testing.T) {
 func TestSummaryHonorsExactBoundsAndReadableHandoffParents(t *testing.T) {
 	x := NewIndex()
 	record(t, x, "acme", "before", "writer", "api", 0, nil)
-	root := envelope.Tag{ID: "parent", Tenant: "acme", Agent: "lead", Origin: "api", At: t0.Add(time.Minute)}
+	root := wire.NewEvent(wire.Raise{ID: "parent", Tenant: "acme", Agent: "lead", Origin: "api", At: t0.Add(time.Minute)})
 	id := runtime.RunID("acme", root.ID)
 	if err := x.Record(id, root, 1); err != nil {
 		t.Fatal(err)

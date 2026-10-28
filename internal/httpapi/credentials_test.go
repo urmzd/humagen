@@ -13,8 +13,8 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/mcpfake"
 	"github.com/urmzd/humagen/internal/platform"
@@ -56,7 +56,7 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 	// The Slack app asks for people by their subject alone, so the policy
 	// grants each subject what they may do: ana runs agents, ben reads.
 	f := newFixtureGranting(t, platform.Config{
-		AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil })},
+		AgentOptions: []native.Option{native.WithProvider(native.ProviderOllama, func(native.Spec) (saigetypes.Provider, error) { return model, nil })},
 		Ext: platform.Extensions{
 			ToolProviders: []platform.ToolProviderSeed{{Provider: toolprovider.Provider{
 				Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: server.URL, CredentialScope: toolprovider.ScopePerson,

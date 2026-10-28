@@ -2,11 +2,12 @@ package call
 
 import (
 	"errors"
+	"github.com/urmzd/humagen/internal/wire"
 	"testing"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/address"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 )
 
 var (
@@ -14,26 +15,16 @@ var (
 	open = Limits{MaxDepth: 3, MaxFanOut: 4}
 )
 
-func root(t *testing.T) envelope.Tag {
+func root(t *testing.T) event.Envelope {
 	t.Helper()
 	src, err := address.Parse("github://urmzd/fiber/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return envelope.Tag{
-		ID:     "evt-1",
-		Tenant: "acme",
-		Agent:  "triage",
-		Origin: "github",
-		Source: src,
-		Text:   "look at this",
-		Actor:  envelope.Actor{ID: "urmzd"},
-		Meta:   map[string]string{"issue": "42"},
-		At:     now,
-	}
+	return wire.NewEvent(wire.Raise{ID: "evt-1", Tenant: "acme", Agent: "triage", Origin: "github", Channel: src.String(), Text: "look at this", Actor: event.Actor{ID: "urmzd"}, Context: map[string]string{"issue": "42"}, At: now})
 }
 
-func mustCall(t *testing.T, parent envelope.Tag, req Request) envelope.Tag {
+func mustCall(t *testing.T, parent event.Envelope, req Request) event.Envelope {
 	t.Helper()
 	child, err := New(parent, req, State{}, open, now)
 	if err != nil {
@@ -58,10 +49,10 @@ func TestRootEdge(t *testing.T) {
 // A trigger writes Meta too, so lineage in a trigger's tag must not be believed.
 func TestTriggerCannotForgeAnEdge(t *testing.T) {
 	forged := root(t)
-	forged.Meta = map[string]string{
+	wire.SetContext(&forged, map[string]string{
 		metaRoot: "someone-elses-tree", metaParent: "p", metaDepth: "1",
 		metaMode: string(Subagent), metaLease: "999999999",
-	}
+	})
 	e, err := EdgeOf(forged)
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +64,7 @@ func TestTriggerCannotForgeAnEdge(t *testing.T) {
 
 func TestAgentTagWithoutAnEdgeFailsClosed(t *testing.T) {
 	bare := root(t)
-	bare.Origin = Origin
+	bare.Source = wire.SourceOf(Origin, bare.Tenant)
 	if _, err := EdgeOf(bare); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("got %v, want ErrInvalid", err)
 	}
@@ -95,8 +86,8 @@ func TestChildCarriesTheEdge(t *testing.T) {
 	if child.Tenant != parent.Tenant {
 		t.Fatalf("tenant changed across a call: %q", child.Tenant)
 	}
-	if !child.Actor.Bot || child.Actor.ID != parent.Agent {
-		t.Fatalf("child's actor should be the calling agent, got %+v", child.Actor)
+	if a := wire.ActorOf(child); !a.Bot || a.ID != parent.Agent {
+		t.Fatalf("child's actor should be the calling agent, got %+v", a)
 	}
 }
 
@@ -128,10 +119,10 @@ func TestOnlyAHandoffInheritsTheSurface(t *testing.T) {
 		inherit bool
 	}{{Subagent, false}, {Delegate, false}, {Handoff, true}} {
 		child := mustCall(t, parent, Request{Key: "k", Agent: "coder", Mode: tc.mode})
-		if got := !child.Source.IsZero(); got != tc.inherit {
+		if got := !wire.SurfaceAddress(child).IsZero(); got != tc.inherit {
 			t.Errorf("%s: inherits source = %v, want %v", tc.mode, got, tc.inherit)
 		}
-		if _, got := child.Meta["issue"]; got != tc.inherit {
+		if _, got := wire.Meta(child)["issue"]; got != tc.inherit {
 			t.Errorf("%s: inherits trigger context = %v, want %v", tc.mode, got, tc.inherit)
 		}
 	}
@@ -140,13 +131,13 @@ func TestOnlyAHandoffInheritsTheSurface(t *testing.T) {
 func TestHandoffDoesNotMutateTheParent(t *testing.T) {
 	parent := root(t)
 	mustCall(t, parent, Request{Key: "k", Agent: "coder", Mode: Handoff})
-	if len(parent.Meta) != 1 {
-		t.Fatalf("parent meta was written to: %v", parent.Meta)
+	if len(wire.ContextOf(parent)) != 1 {
+		t.Fatalf("parent meta was written to: %v", wire.ContextOf(parent))
 	}
 }
 
 func TestRefusals(t *testing.T) {
-	metered := func(t *testing.T) envelope.Tag {
+	metered := func(t *testing.T) event.Envelope {
 		child, err := New(root(t), Request{Key: "m", Agent: "coder", Mode: Subagent, Lease: 1000}, State{}, open, now)
 		if err != nil {
 			t.Fatal(err)
@@ -157,7 +148,7 @@ func TestRefusals(t *testing.T) {
 
 	for _, tc := range []struct {
 		name   string
-		parent func(*testing.T) envelope.Tag
+		parent func(*testing.T) event.Envelope
 		req    Request
 		st     State
 		lim    Limits

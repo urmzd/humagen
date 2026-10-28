@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -10,11 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/agentrt/payload"
-	"github.com/urmzd/fiber/pkg/agentspec"
-	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/humagen/fiber/pkg/event"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -130,7 +128,8 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request, who auth.Prin
 }
 
 // journal answers "what happened": events in the caller's tenant, narrowed by
-// agent, run, kind, origin, text and time, newest first.
+// agent, run, type, origin, text and time, newest first. kind is the type
+// filter from before the event union.
 func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
 	since, until, valid := window(r)
@@ -139,19 +138,24 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 		return
 	}
 	limit, _ := strconv.Atoi(q.Get("limit"))
+	// kind is read only when no type is given.
+	kind := q.Get("kind")
+	if q.Has("type") {
+		kind = ""
+	}
 	entries := s.P.Journal.Query(journal.Query{
-		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
+		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Type: kind, Types: q["type"],
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
-		ProjectEvent: func(e envelope.Event) envelope.Event { return s.P.ShownEvent(who, e) },
-		Visible: func(e envelope.Event) bool {
+		ProjectEvent: func(e event.Envelope) event.Envelope { return s.P.ShownEvent(who, e) },
+		Visible: func(e event.Envelope) bool {
 			if !s.P.CitationEventVisible(who, e) {
 				return false
 			}
 			seer := s.P.Seer(who)
-			if e.RunID == "" {
+			if e.Run == "" {
 				return seer.Agent(e.Agent)
 			}
-			return seer.RunID(e.RunID)
+			return seer.RunID(e.Run)
 		},
 	})
 	// An event of a run the caller may not read is left out, as is one of
@@ -195,33 +199,33 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	events := slices.DeleteFunc(s.P.Journal.Events(who.Tenant, []string{run.ID}), func(e envelope.Event) bool { return !s.P.CitationEventVisible(who, e) })
-	for i, event := range events {
-		events[i] = s.P.ShownEvent(who, event)
+	held := s.P.Journal.Events(who.Tenant, []string{run.ID})
+	events := make([]platform.APIEvent, 0, len(held))
+	for _, e := range held {
+		if !s.P.CitationEventVisible(who, e) {
+			continue
+		}
+		if v, shown := s.P.ShownAPI(who, e); shown {
+			events = append(events, v)
+		}
 	}
-	ok(w, http.StatusOK, map[string]any{"events": shownEvents(s.P.Names(who.Tenant), events), "complete": complete(events)})
+	ok(w, http.StatusOK, map[string]any{"events": shownEvents(s.P.Names(who.Tenant), events), "complete": complete(held)})
 }
 
 // complete reports whether a run's events are all still held: the first one
 // kept is the first one published.
-func complete(events []envelope.Event) bool {
-	return len(events) > 0 && events[0].Kind == envelope.KindAccepted
+func complete(events []event.Envelope) bool {
+	return len(events) > 0 && events[0].Type == event.TypeAccepted
 }
 
 // manifest is one document that says everything the platform recorded about a
 // run and every run under the same root: who ran, at which revision, what each
-// was asked and answered, and every event in order with its body decoded.
+// was asked and answered, and every event in order, as the stream sends it.
 func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	tree, err := s.P.Runs.Tree(who.Tenant, r.PathValue("id"))
 	if err != nil {
 		s.problem(w, err)
 		return
-	}
-	type event struct {
-		Seq  uint64          `json:"seq"`
-		At   time.Time       `json:"at"`
-		Kind envelope.Kind   `json:"kind"`
-		Body json.RawMessage `json:"body,omitempty"`
 	}
 	type entry struct {
 		Run runs.Run `json:"run"`
@@ -232,9 +236,9 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		// Cause is why a failed run failed, in one line.
 		Cause string `json:"cause,omitempty"`
 		// Definition is the agent revision the run was pinned to.
-		Definition *agentspec.Revision `json:"definition,omitempty"`
+		Definition *wire.Revision      `json:"definition,omitempty"`
 		DurationMs int64               `json:"duration_ms"`
-		Events     []event             `json:"events"`
+		Events     []platform.APIEvent `json:"events"`
 		// Complete is false when the run's first events are no longer held.
 		Complete bool `json:"complete"`
 	}
@@ -244,7 +248,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 	out := make([]entry, 0, len(tree))
 	seer := s.P.Seer(who)
 	for _, run := range tree {
-		e := entry{Run: s.P.ShownRunAs(who, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
+		e := entry{Run: s.P.ShownRunAs(who, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []platform.APIEvent{}}
 		if run.Stopping {
 			e.State = "stopping"
 		}
@@ -256,7 +260,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		}
 		// The definition of an agent the caller may not read, one moved
 		// since into a project they may not read, is left out.
-		if rev, err := s.P.Agents.Get(r.Context(), who.Tenant, run.Agent, run.Rev); err == nil && seer.Agent(run.Agent) {
+		if rev, err := s.P.Catalog().Get(r.Context(), who.Tenant, run.Agent, run.Rev); err == nil && seer.Agent(run.Agent) {
 			shown := seer.Revision(rev)
 			e.Definition = &shown
 		}
@@ -266,18 +270,17 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 			if !s.P.CitationEventVisible(who, ev) {
 				continue
 			}
-			ev = s.P.ShownEvent(who, ev)
-			item := event{Seq: ev.Seq, At: ev.At, Kind: ev.Kind}
-			if json.Valid(ev.Payload) {
-				item.Body = ev.Payload
+			if v, shown := s.P.ShownAPI(who, ev); shown {
+				e.Events = append(e.Events, v)
 			}
-			e.Events = append(e.Events, item)
 		}
+		e.Events = shownEvents(s.P.Names(who.Tenant), e.Events)
 		out = append(out, e)
 	}
 	s.Log.Info("httpapi: run exported", "tenant", who.Tenant, "run", r.PathValue("id"), "runs", len(out), "by", who.Subject)
 	ok(w, http.StatusOK, map[string]any{
-		"version":      1,
+		// 2: events are the union's RunEvent (type, data), not kind and body.
+		"version":      2,
 		"generated_at": time.Now().UTC(),
 		"root":         tree[0].Root,
 		"runs":         out,
@@ -290,8 +293,8 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 // treeUsage is what every run in a tree used of its own. Each run's own calls
 // are counted in it once, so the sum is the tree's, attached and delegated
 // runs alike, with nothing counted twice.
-func treeUsage(tree []runs.Run) payload.Usage {
-	var total payload.Usage
+func treeUsage(tree []runs.Run) event.Usage {
+	var total event.Usage
 	for _, r := range tree {
 		if r.Usage != nil {
 			total = total.Add(r.Usage.Own)
@@ -424,7 +427,7 @@ func (s *Server) ruleScopeExists(w http.ResponseWriter, r *http.Request, who aut
 	rule.Project = projects.NameOf(rule.Project)
 	seer := s.P.Seer(who)
 	if rule.Agent != "" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil || !seer.Agent(rule.Agent) {
+		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil || !seer.Agent(rule.Agent) {
 			notFound(w)
 			return false
 		}
@@ -657,7 +660,7 @@ func (s *Server) putSuite(replace bool) handler {
 				return
 			}
 			if err = s.P.MayTry(who, suite.Subject); err == nil {
-				_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
+				_, err = s.P.Catalog().Get(r.Context(), who.Tenant, suite.Subject, 0)
 			}
 		case evals.Knowledge:
 			if !s.P.SourceVisible(who, suite.Subject) {

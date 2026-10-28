@@ -10,9 +10,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/urmzd/anchor"
-	"github.com/urmzd/fiber/pkg/agentrt"
-	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/fiber/pkg/turn"
+	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -117,21 +119,31 @@ func (p *Platform) resolveCallPart(ctx context.Context, tenant string, part call
 	}
 }
 
-// callExecutor adapts explicit helper messages to fiber's existing history
-// and request fields. It composes the sandbox; it never owns an agent loop.
+// callExecutor adapts explicit helper messages to the turn's history and
+// request. It composes the sandbox; it never owns an agent loop.
 type callExecutor struct {
 	bind  func(context.Context, runtime.Request) func()
-	inner runtime.Executor
+	inner turn.Runtime
 	// resolve puts in place what the platform decides about the pinned
-	// revision before fiber reads it: a workspace's model policy for the one
-	// an agent names, the knowledge sources the run's project chain was
-	// pinned with, and the skills the run was told to use (resolveRevision).
-	// Nil leaves the revision as it is.
+	// definition before the turn reads it: a workspace's model policy for
+	// the one an agent names, the knowledge sources the run's project chain
+	// was pinned with, and the skills the run was told to use
+	// (resolveRevision). Nil leaves the definition as it is.
 	resolve func(runtime.Request) (runtime.Request, error)
 	release func(runtime.Request)
 }
 
-func (e callExecutor) Execute(ctx context.Context, req runtime.Request, emit func(context.Context, agentrt.Chunk) error) (runtime.Outcome, error) {
+var _ turn.Runtime = callExecutor{}
+
+// Turn runs one turn of the runtime's request through the sandbox. The
+// request travels on ctx (runtime.RequestFrom); what this changes is handed
+// on with runtime.WithRequest, and mirrored on in for a runtime that reads
+// only its arguments.
+func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, emit func(context.Context, event.Body) error) (turn.Result, error) {
+	req, ok := runtime.RequestFrom(ctx)
+	if !ok {
+		req = runtime.Request{Definition: def, Tenant: in.Tenant, RunID: in.Trigger.Run, Text: wire.TextOf(in.Trigger), Meta: wire.Meta(in.Trigger), Origin: wire.Origin(in.Trigger)}
+	}
 	defer func() {
 		if e.release != nil {
 			e.release(req)
@@ -140,7 +152,7 @@ func (e callExecutor) Execute(ctx context.Context, req runtime.Request, emit fun
 	if e.resolve != nil {
 		var err error
 		if req, err = e.resolve(req); err != nil {
-			return runtime.Outcome{}, err
+			return turn.Result{}, err
 		}
 	}
 	if e.bind != nil {
@@ -153,14 +165,14 @@ func (e callExecutor) Execute(ctx context.Context, req runtime.Request, emit fun
 		if raw != "" {
 			var prepared call.Prepared
 			if err := call.StrictDecode([]byte(raw), &prepared); err != nil {
-				return runtime.Outcome{}, err
+				return turn.Result{}, err
 			}
 			if err := prepared.Validate(); err != nil {
-				return runtime.Outcome{}, err
+				return turn.Result{}, err
 			}
-			edge, err := call.EdgeOf(envelope.Tag{Origin: req.Origin, Meta: req.Meta})
+			edge, err := call.EdgeOf(in.Trigger)
 			if err != nil {
-				return runtime.Outcome{}, err
+				return turn.Result{}, err
 			}
 			format = prepared.Input.ResponseFormat
 			req.Instructions = format.Instruction()
@@ -169,53 +181,59 @@ func (e callExecutor) Execute(ctx context.Context, req runtime.Request, emit fun
 			}
 			req.History = nil
 			for _, m := range prepared.Messages[:len(prepared.Messages)-1] {
-				req.History = append(req.History, agentrt.Message{Role: agentrt.Role(m.Role), Text: m.Text})
+				req.History = append(req.History, native.Message{Role: native.Role(m.Role), Text: m.Text})
 			}
 			req.Text = prepared.Messages[len(prepared.Messages)-1].Text
 			// Provenance belongs in the journal, not in the model's prompt.
 			req.Meta = nil
+			in.Trigger = wire.Clone(in.Trigger)
+			wire.SetText(&in.Trigger, req.Text)
+			wire.SetContext(&in.Trigger, nil)
+			in.History = req.History
 		}
 	}
-	if len(req.Revision.Spec.Access.Spawn) > 0 {
+	if len(req.Definition.Spec.Access.Spawn) > 0 {
 		req.Instructions += "\nYou own the answer to your caller. Use call_agent for bounded helper work with explicit input messages and a return format. Incorporate useful results into one answer; do not narrate and repeat each helper's full answer."
 	}
+	in.Instructions = req.Instructions
 	// Buffer contracted outputs until validation succeeds. An invalid helper
 	// answer must not appear as accepted text or a successful tool result.
-	var buffered []agentrt.Chunk
+	var buffered []event.Body
 	send := emit
 	if format != nil {
 		size := 0
-		send = func(ctx context.Context, c agentrt.Chunk) error {
-			if c.Kind == "delta.text" {
-				size += len(c.Payload)
+		send = func(ctx context.Context, b event.Body) error {
+			if t, ok := b.(event.Text); ok {
+				size += len(t.Text)
 				if size > call.MaxOutputChars*6 {
 					return fmt.Errorf("%w: helper output exceeds stream limit", call.ErrInvalid)
 				}
-				buffered = append(buffered, c)
+				buffered = append(buffered, b)
 				return nil
 			}
 			if emit != nil {
-				return emit(ctx, c)
+				return emit(ctx, b)
 			}
 			return nil
 		}
 	}
+	ctx = runtime.WithRequest(ctx, req)
 	ctx = context.WithValue(ctx, operationRequestKey{}, req)
-	out, err := e.inner.Execute(ctx, req, send)
+	out, err := e.inner.Turn(ctx, req.Definition, in, send)
 	if err != nil {
 		return out, err
 	}
 	if format != nil {
 		if utf8.RuneCountInString(out.Text) > call.MaxOutputChars {
-			return runtime.Outcome{}, anchor.NonRetryable(fmt.Errorf("%w: helper output exceeds limit", call.ErrInvalid))
+			return turn.Result{}, anchor.NonRetryable(fmt.Errorf("%w: helper output exceeds limit", call.ErrInvalid))
 		}
 		if err := format.ValidateOutput(out.Text); err != nil {
-			return runtime.Outcome{}, anchor.NonRetryable(err)
+			return turn.Result{}, anchor.NonRetryable(err)
 		}
-		for _, c := range buffered {
+		for _, b := range buffered {
 			if emit != nil {
-				if err := emit(ctx, c); err != nil {
-					return runtime.Outcome{}, err
+				if err := emit(ctx, b); err != nil {
+					return turn.Result{}, err
 				}
 			}
 		}
@@ -236,7 +254,7 @@ func sameCallInput(existing runs.Run, req call.Request, input call.Input) bool {
 	if existing.Agent != req.Agent || existing.Mode != req.Mode || existing.Lease != req.Lease {
 		return false
 	}
-	raw := existing.Tag().Meta[call.MetaInput]
+	raw := wire.Meta(existing.Tag())[call.MetaInput]
 	if raw == "" {
 		return req.Input == nil && existing.Text == req.Text
 	}

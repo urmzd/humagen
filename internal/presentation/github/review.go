@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	transport "github.com/urmzd/fiber/pkg/connectors/github"
+	transport "github.com/urmzd/humagen/fiber/pkg/connectors/github"
 
 	"github.com/urmzd/humagen/internal/legacy"
 )
