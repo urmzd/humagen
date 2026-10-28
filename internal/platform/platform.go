@@ -993,18 +993,49 @@ func (p *Platform) RunSubscription(tenant, run string, from uint64) bus.Subscrip
 	return bus.Subscription{Tenant: tenant, Channels: p.channels(), Types: slices.Clone(RunTypes), Run: run, From: from}
 }
 
-// Subscribe opens a stream of a tenant's run events, narrowed to one agent
-// when agent is set and one run when run is set. The tenant is the caller's
-// scope, never part of what a request names.
-func (p *Platform) Subscribe(ctx context.Context, tenant, agent, run string, from uint64) (*Stream, error) {
+// EventFilter narrows a reader's stream of run events. The zero filter is
+// every run event in the tenant, the opt-in families included.
+type EventFilter struct {
+	// Channel is a channel prefix. Empty is every channel a run publishes on.
+	Channel string
+	// Types are type prefixes in the run family. Empty is RunTypes.
+	Types []string
+	// Run is one run's events.
+	Run string
+	// Agent is one agent's events. Only an old topic names one.
+	Agent string
+	// From resumes after this sequence within each run.
+	From uint64
+}
+
+// Subscribe opens a stream of a tenant's run events, narrowed by f. The
+// tenant is the caller's scope, never part of what a request names. A type
+// outside the run family, or a control channel, is refused: those are the
+// runtime's traffic and ingress, which no reader is owed.
+func (p *Platform) Subscribe(ctx context.Context, tenant string, f EventFilter) (*Stream, error) {
 	if tenant == "" {
 		return nil, fmt.Errorf("%w: no tenant", bus.ErrInvalid)
 	}
-	s, err := p.broker.Subscribe(ctx, p.RunSubscription(tenant, run, from))
+	sub := p.RunSubscription(tenant, f.Run, f.From)
+	if f.Channel != "" {
+		if event.IsControl(f.Channel) {
+			return nil, fmt.Errorf("%w: channel %q is not a run channel", bus.ErrInvalid, f.Channel)
+		}
+		sub.Channels = []string{f.Channel}
+	}
+	if len(f.Types) > 0 {
+		for _, t := range f.Types {
+			if !event.HasPrefix(t, "run") {
+				return nil, fmt.Errorf("%w: type %q is not a run type", bus.ErrInvalid, t)
+			}
+		}
+		sub.Types = slices.Clone(f.Types)
+	}
+	s, err := p.broker.Subscribe(ctx, sub)
 	if err != nil {
 		return nil, err
 	}
-	return &Stream{inner: s, tenant: tenant, agent: agent}, nil
+	return &Stream{inner: s, tenant: tenant, agent: f.Agent}, nil
 }
 
 // Stream is one tenant's view of the bus.

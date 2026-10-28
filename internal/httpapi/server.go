@@ -860,12 +860,13 @@ func (s *Server) stopRun(w http.ResponseWriter, r *http.Request, who auth.Princi
 
 // events streams the caller's tenant's events as server-sent events.
 //
-// topic narrows it: "agent" is everything, "agent:<name>" one agent,
-// "agent:<name>:<run>" one run. from resumes after a sequence number.
+// channel, type and run narrow it, and from resumes after a sequence number.
+// The tenant is the caller's. topic is the filter from before the event
+// union, read through legacy.Topic.
 func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	agent, run, err := legacy.Topic(r.URL.Query().Get("topic"))
-	if err != nil {
-		fail(w, http.StatusBadRequest, "topic is not valid")
+	sel, ok := eventFilter(r)
+	if !ok {
+		fail(w, http.StatusBadRequest, "use channel, type and run, or topic alone: a type is a run type prefix, such as run.delta")
 		return
 	}
 	var from uint64
@@ -875,7 +876,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			return
 		}
 	}
-	stream, err := s.P.Subscribe(r.Context(), who.Tenant, agent, run, from)
+	sel.From = from
+	stream, err := s.P.Subscribe(r.Context(), who.Tenant, sel)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -977,7 +979,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if !gate.seen(e.Run) || !s.P.CitationEventVisible(who, e) {
 				continue
 			}
-			v, shown := s.P.ShownV1(who, e)
+			v, shown := s.P.ShownAPI(who, e)
 			if !shown {
 				continue
 			}
@@ -995,6 +997,38 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			return
 		}
 	}
+}
+
+// eventFilter reads the stream's filter from a request: channel, type and
+// run, or the old topic alone, which names an agent and a run. A type is a
+// run type prefix; a trailing dot is dropped, so "run." is "run". ok is false
+// for a filter that cannot be read.
+func eventFilter(r *http.Request) (platform.EventFilter, bool) {
+	q := r.URL.Query()
+	var f platform.EventFilter
+	if q.Has("topic") {
+		if q.Has("channel") || q.Has("type") || q.Has("run") {
+			return f, false
+		}
+		agent, run, err := legacy.Topic(q.Get("topic"))
+		if err != nil {
+			return f, false
+		}
+		f.Agent, f.Run = agent, run
+		return f, true
+	}
+	f.Channel, f.Run = q.Get("channel"), q.Get("run")
+	if event.IsControl(f.Channel) {
+		return f, false
+	}
+	for _, t := range q["type"] {
+		t = strings.TrimSuffix(t, ".")
+		if !event.HasPrefix(t, "run") {
+			return f, false
+		}
+		f.Types = append(f.Types, t)
+	}
+	return f, true
 }
 
 // problem maps a domain error to a response. Anything unrecognized is logged

@@ -40,7 +40,7 @@ import type {
   ThreadShare,
   PlacementPreview,
 } from "../../../packages/client/src/generated/types.ts";
-import type { BusEvent, Run } from "./adapter.ts";
+import type { Run, RunEvent } from "./adapter.ts";
 
 // The project tree's shapes are the generated client's own, from
 // api/openapi.yaml, so this file cannot drift from the contract on them.
@@ -234,7 +234,8 @@ export interface Entry {
   agent: string;
   rev: number;
   origin: string;
-  kind: string;
+  /** The event's type, such as `run.completed.v1`. */
+  type: string;
   at: string;
   detail?: string;
 }
@@ -810,7 +811,7 @@ export const api = {
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
   /** A run's events as they were published, for a run that is no longer streaming. */
   runEvents: (id: string) =>
-    call<{ events: BusEvent[]; complete: boolean }>("GET", `/api/runs/${encodeURIComponent(id)}/events`),
+    call<{ events: RunEvent[]; complete: boolean }>("GET", `/api/runs/${encodeURIComponent(id)}/events`),
   /** Everything recorded about a run and the runs under it, as one document. */
   manifest: (id: string) => call<unknown>("GET", `/api/runs/${encodeURIComponent(id)}/manifest`),
   /** Open and unread count what may need the reader; updates are announcements they have not read, which never grow the badge. */
@@ -1032,15 +1033,16 @@ export const api = {
 };
 
 /**
- * Subscribe to the tenant's events. `onOpen` fires on every (re)connect, and
- * the stream then replays what the bus still holds, so a caller that folds
- * events into state resets that state in `onOpen`.
+ * Subscribe to the tenant's run events, narrowed to one run and to some type
+ * prefixes when given. `onOpen` fires on every (re)connect, and the stream
+ * then replays what the bus still holds, so a caller that folds events into
+ * state resets that state in `onOpen`.
  */
 export function subscribe(
-  topic: string,
+  filter: { run?: string; type?: string[] },
   handlers: {
     onOpen?: () => void;
-    onEvent: (e: BusEvent) => void;
+    onEvent: (e: RunEvent) => void;
     onState?: (live: boolean) => void;
     /** The inbox changed. It arrives as a named event, apart from run events. */
     onInbox?: () => void;
@@ -1048,7 +1050,11 @@ export function subscribe(
     onThread?: () => void;
   },
 ): () => void {
-  const source = new EventSource(`/api/events?topic=${encodeURIComponent(topic)}`);
+  const query = new URLSearchParams();
+  for (const t of filter.type ?? []) query.append("type", t);
+  if (filter.run) query.set("run", filter.run);
+  const qs = query.toString();
+  const source = new EventSource(`/api/events${qs ? `?${qs}` : ""}`);
   source.onopen = () => {
     handlers.onOpen?.();
     handlers.onState?.(true);
@@ -1056,7 +1062,7 @@ export function subscribe(
   source.onerror = () => handlers.onState?.(false);
   source.onmessage = (m) => {
     try {
-      handlers.onEvent(JSON.parse(m.data as string) as BusEvent);
+      handlers.onEvent(JSON.parse(m.data as string) as RunEvent);
     } catch {
       // A frame that is not an event is ignored rather than fatal.
     }

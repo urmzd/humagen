@@ -108,8 +108,8 @@ function under(blocks: Block[], heading: string): Block[] {
 /** Answer the run a message started, so the app stops following it. */
 async function answered(w: World) {
   await settle();
-  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "Done." });
+  w.humagen.emit(w.humagen.last.id, "run.accepted.v1");
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "Done." });
   await w.app.idle();
 }
 
@@ -302,8 +302,8 @@ test("Retry in what Review sent asks again as the person, in the run's thread, a
   await settle();
   const run = w.humagen.last.id;
   assert.equal(w.humagen.runs.get(run)?.actor?.user, "ana");
-  w.humagen.emit(run, "lifecycle.accepted");
-  w.humagen.emit(run, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
+  w.humagen.emit(run, "run.accepted.v1");
+  w.humagen.emit(run, "run.failed.v1", { error: "provider: 529 overloaded", terminal: true });
   await settle();
   await w.app.idle();
   // A failed run's message names no audience: the app's machine may read it too.
@@ -332,8 +332,8 @@ test("Retry in what Review sent asks again as the person, in the run's thread, a
     [],
     "humagen is never asked to retry, nor the app to settle it",
   );
-  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "ok" });
+  w.humagen.emit(w.humagen.last.id, "run.accepted.v1");
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "ok" });
   await settle();
   await w.app.idle();
 });

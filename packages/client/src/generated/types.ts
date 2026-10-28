@@ -2582,7 +2582,8 @@ export interface JournalEntry {
   agent: string;
   rev: number;
   origin: string;
-  kind: EventKind;
+  /** The event's type, such as `run.completed.v1`. See `EventType`. */
+  type: string;
   at: string;
   detail?: string;
 }
@@ -3158,17 +3159,13 @@ export interface ClientCaps {
   max_per_surface: number;
 }
 
-/** What an event is. Kinds are dotted, so a filter can select a family
-(`delta`) or one member (`delta.citation`). The set is open in the
-runtime: a reader should pass over a kind it does not know. The
-`control.*` kinds here are defined and not published today. The
-`usage.*` kinds report what model calls used: one `usage.call` per
-call as it completes, and a `usage.child` when an attached run's total
-is rolled up into its caller. A request
-addressed to a run, such as `control.stop`, is the runtime's traffic
-and never appears on this API.
+/** What an event is, and the version of its body. `type` is the only
+discriminator: dotted segments and a version, such as
+`run.completed.v1`. A filter selects a family by a prefix (`run.delta`)
+or one type. The set is open: a reader passes over a type it does not
+know (`UnknownEvent`). This list is the catalog this build registers.
  */
-export type EventKind = "delta.text" | "delta.thinking" | "delta.tool.call" | "delta.tool.done" | "delta.citation" | "lifecycle.accepted" | "lifecycle.started" | "lifecycle.parked" | "lifecycle.resumed" | "lifecycle.completed" | "lifecycle.failed" | "lifecycle.child.parked" | "lifecycle.stopped" | "action.taken" | "usage.call" | "usage.child" | "control.created" | "control.revised" | "control.deleted";
+export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.failed.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
 
 /** One fragment of the agent's answer, in order. Concatenate fragments. */
 export interface TextPayload {
@@ -3182,7 +3179,7 @@ export interface ThinkingPayload {
 
 /** The agent reaching for a tool. */
 export interface ToolCallPayload {
-  /** Correlates the call with its `delta.tool.done`. */
+  /** Correlates the call with its `run.delta.tool.done.v1`. */
   id: string;
   name: string;
   /** `requested` while the model writes the call, `executing` once it runs. */
@@ -3240,25 +3237,49 @@ export interface CitationPayload {
   index: number;
 }
 
-/** The body of every lifecycle kind. A failed attempt is reported with
+/** The body of `run.accepted.v1`. */
+export interface AcceptedPayload {
+  /** The execution attempt that produced the event, from 1. */
+  attempt?: number;
+}
+
+/** The body of `run.started.v1`. */
+export interface StartedPayload {
+  attempt?: number;
+}
+
+/** The body of `run.parked.v1`. */
+export interface ParkedPayload {
+  attempt?: number;
+  /** What the run is waiting for. */
+  reason?: string;
+  question?: Question;
+}
+
+/** The body of `run.resumed.v1`. */
+export interface ResumedPayload {
+  attempt?: number;
+  answer?: Answer;
+}
+
+/** The body of `run.completed.v1`. */
+export interface CompletedPayload {
+  attempt?: number;
+  /** The whole final answer. */
+  text?: string;
+  usage?: RunUsage;
+}
+
+/** The body of `run.failed.v1`. A failed attempt is reported with
 `terminal` false while the run may still be retried. The run's record
 (`getRun`) is the authority on whether it is over.
  */
-export interface LifecyclePayload {
-  /** The execution attempt that produced the event, from 1. */
+export interface FailedPayload {
   attempt?: number;
-  rev?: number;
-  /** The failure message, on `lifecycle.failed`. */
+  /** The failure message. */
   error?: string;
-  /** The run will not be retried. Meaningful on `lifecycle.failed`. */
+  /** The run will not be retried. */
   terminal?: boolean;
-  /** What a parked run is waiting for. */
-  reason?: string;
-  /** The final answer, on `lifecycle.completed`. */
-  text?: string;
-  usage?: RunUsage;
-  question?: Question;
-  answer?: Answer;
 }
 
 export interface QuestionTool {
@@ -3311,20 +3332,19 @@ export interface Answer {
   run_id?: string;
 }
 
-/** The body of `lifecycle.child.parked`, a question a run this one waits on asked. */
+/** The body of `run.child.parked.v1`, a question a run this one waits on asked. */
 export interface ChildQuestion {
   run_id: string;
   agent?: string;
   question: Question;
 }
 
-/** The body of `lifecycle.stopped`: the run was asked to stop and wrapped
+/** The body of `run.stopped.v1`: the run was asked to stop and wrapped
 its turn up. It is final. `text` is what the agent had said, which may
 be empty.
  */
 export interface StoppedPayload {
   attempt?: number;
-  rev?: number;
   /** Why it was stopped, in the words of whoever asked. */
   reason?: string;
   /** Who asked, such as a subject or `slack:<user id>`. */
@@ -3427,133 +3447,285 @@ export interface ActionPayload {
   error?: string;
 }
 
-/** What every event carries, whatever its kind. */
-export interface EventBase {
-  /** Orders events within one run. It increases and is not contiguous, so compare it, do not count on it. It is the resume cursor. */
-  seq: number;
-  /** Where the event was published, always `agent:<name>:<run>`. */
-  topic: string;
+/** The body of `run.context.compacted.v1`. */
+export interface CompactionPayload {
+  trigger?: string;
+  by?: string;
+  strategy?: string;
+  tokens_before?: number;
+  tokens_after?: number;
+  summarized?: number;
+  kept?: number;
+}
+
+/** The body of `control.stop.v1`. */
+export interface StopRequestPayload {
   run_id: string;
-  tenant: string;
-  agent: string;
-  rev: number;
-  origin: string;
+  reason?: string;
+  by?: string;
+  at?: string;
+}
+
+/** The body of `control.compact.v1`. */
+export interface CompactRequestPayload {
+  run_id: string;
+  by?: string;
   at: string;
 }
 
-export interface ManifestEventBase {
-  seq: number;
-  at: string;
+/** What an ingress event asks of an agent. Every ingress body that can start a run carries it. */
+export interface EventRequest {
+  /** The request, with any agent mention taken out. */
+  text: string;
+  actor?: Actor;
+  /** The agents the request names, in order. */
+  mentions?: string[];
+  attachments?: Attachment[];
+  /** Host context shown to the model next to the body's own fields. */
+  context?: Record<string, string>;
 }
 
-/** One thing a run produced, as the event stream and `listRunEvents` send
-it. `kind` says which variant it is. `payload` is the kind's body as
-JSON, base64-encoded, because the server marshals a byte slice: decode
-the base64, then parse the JSON. The decoded shape for each kind is the
-schema named in `contentSchema`. A kind may carry no payload.
+/** Where in Slack a message was posted. */
+export interface SlackRef {
+  team: string;
+  channel: string;
+  user: string;
+  event: string;
+  ts: string;
+  thread_ts?: string;
+  channel_type?: string;
+  app_id?: string;
+}
+
+/** The body of `message.posted.v1`. `slack` is set when the surface is Slack. */
+export type MessagePostedPayload = EventRequest & { slack?: SlackRef };
+
+/** The body of `slack.command.invoked.v1`. `text` is the command's arguments. */
+export type SlackCommandPayload = EventRequest & { command: string; team: string; channel: string; user: string; app_id?: string };
+
+/** The body of `slack.session.stopped.v1`. `thread_ts` is absent for a code channel. */
+export interface SlackSessionStoppedPayload {
+  team: string;
+  channel: string;
+  thread_ts?: string;
+  user: string;
+}
+
+/** The GitHub issue or pull request an event is about. */
+export interface GitHubRef {
+  owner: string;
+  repo: string;
+  number: number;
+  /** The event is about a pull request rather than an issue. */
+  pull?: boolean;
+  title: string;
+  sender: string;
+  state?: string;
+  author?: string;
+  url?: string;
+  base_ref?: string;
+  head_ref?: string;
+  head_sha?: string;
+  labels?: string[];
+  draft?: boolean;
+  installation_id?: number;
+}
+
+/** The body of a GitHub issue or pull request event that carries nothing of its own. */
+export type GitHubIssuePayload = EventRequest & GitHubRef;
+
+/** The body of a GitHub comment or review. */
+export type GitHubIssueCommentPayload = EventRequest & GitHubRef & { comment_id?: number };
+
+/** The body of `github.pull_request_review_comment.created.v1`. `review_root_id` is the first comment of the review thread. */
+export type GitHubReviewCommentPayload = EventRequest & GitHubRef & { comment_id?: number; review_root_id?: number };
+
+/** The body of `github.pull_request.review_requested.v1`. `reviewer` is the agent asked, when it is one. */
+export type GitHubReviewRequestedPayload = EventRequest & GitHubRef & { reviewer?: string };
+
+/** The Jira issue an event is about. */
+export interface JiraRef {
+  site: string;
+  key: string;
+  webhook_event: string;
+  issue_event?: string;
+  id?: string;
+  summary?: string;
+  status?: string;
+  issue_type?: string;
+  priority?: string;
+  project?: string;
+  project_name?: string;
+  assignee?: string;
+  reporter?: string;
+  labels?: string[];
+  url?: string;
+}
+
+/** The body of `jira.issue.created.v1`. */
+export type JiraIssuePayload = EventRequest & JiraRef;
+
+/** The body of `jira.comment.created.v1`. */
+export type JiraCommentPayload = EventRequest & JiraRef & { comment_id?: string };
+
+/** The body of `jira.issue.assigned.v1`. `agent` is the agent the issue was handed to, when the host knows it. */
+export type JiraIssueAssignedPayload = EventRequest & JiraRef & { agent?: string };
+
+/** The body of `cron.tick.v1`. `occurrence` is the scheduled instant, not the observed one. */
+export type CronTickPayload = EventRequest & { schedule: string; expression: string; occurrence: string };
+
+/** What every event carries, whatever its type. The fields follow
+CloudEvents naming. `type` is the only discriminator and carries the
+version; `data` is that type's body as JSON. `run`, `seq`, `agent`,
+`version` and `digest` are set on every run event.
  */
-export type RunEvent = TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | CitationEvent | RunAcceptedEvent | RunStartedEvent | RunParkedEvent | RunResumedEvent | RunCompletedEvent | RunFailedEvent | ChildParkedEvent | RunStoppedEvent | ActionTakenEvent | UsageCallEvent | UsageChildEvent | AgentCreatedEvent | AgentRevisedEvent | AgentDeletedEvent;
+export interface EventEnvelope {
+  /** Unique per source. A redelivery keeps it. */
+  id: string;
+  /** What produced the event, as a URI. */
+  source: string;
+  /** The body's type and version. See `EventType`. */
+  type: string;
+  /** The resource inside `source`, such as `issues/42`. */
+  subject?: string;
+  /** Where the event was published, as a URI. */
+  channel: string;
+  /** When the source says the event happened. */
+  time: string;
+  /** How many events led to this one. */
+  hops: number;
+  tenant?: string;
+  run?: string;
+  /** Orders events within one run. It increases and is not contiguous, so compare it, do not count on it. It is the resume cursor. */
+  seq?: number;
+  agent?: string;
+  /** The agent definition version the run is pinned to. */
+  version?: string;
+  /** The content hash of that definition. */
+  digest?: string;
+}
 
-/** One fragment of the answer. */
-export type TextDeltaEvent = EventBase & { kind: "delta.text"; payload?: string };
+/** The fallback for an event whose `type` is not in `RunEvent`'s mapping,
+such as one a newer server added. It is never guessed from the shape
+of `data`: a reader passes over it, or relays it unchanged.
+ */
+export type UnknownEvent = EventEnvelope & { type: string; data: Record<string, unknown> };
 
-/** One fragment of reasoning. */
-export type ThinkingDeltaEvent = EventBase & { kind: "delta.thinking"; payload?: string };
+/** One event, as the event stream and `listRunEvents` send it: the
+envelope, and `data`, the body for its `type`, inline. `type` says
+which variant it is. A type not in the mapping is an `UnknownEvent`.
+The API sends run events only (`run.*`); the other types are listed
+so the union is the whole catalog.
+ */
+export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | RunFailedEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
 
-/** The agent reached for a tool. */
-export type ToolCallEvent = EventBase & { kind: "delta.tool.call"; payload?: string };
+/** A request that a run compact its context. The runtime's traffic, never sent on this API. */
+export type CompactRequestedEvent = EventEnvelope & { type: "control.compact.v1"; data: CompactRequestPayload };
 
-/** A tool finished. */
-export type ToolDoneEvent = EventBase & { kind: "delta.tool.done"; payload?: string };
+/** A request that a run stop. The runtime's traffic, never sent on this API. */
+export type StopRequestedEvent = EventEnvelope & { type: "control.stop.v1"; data: StopRequestPayload };
 
-/** A passage the turn was grounded in. */
-export type CitationEvent = EventBase & { kind: "delta.citation"; payload?: string };
+/** A schedule fired. */
+export type CronTickEvent = EventEnvelope & { type: "cron.tick.v1"; data: CronTickPayload };
+
+/** A comment on a GitHub issue or pull request. */
+export type GitHubIssueCommentCreatedEvent = EventEnvelope & { type: "github.issue_comment.created.v1"; data: GitHubIssueCommentPayload };
+
+/** A GitHub issue was labeled. */
+export type GitHubIssueLabeledEvent = EventEnvelope & { type: "github.issues.labeled.v1"; data: GitHubIssuePayload };
+
+/** A GitHub issue was opened. */
+export type GitHubIssueOpenedEvent = EventEnvelope & { type: "github.issues.opened.v1"; data: GitHubIssuePayload };
+
+/** A pull request was labeled. */
+export type GitHubPullLabeledEvent = EventEnvelope & { type: "github.pull_request.labeled.v1"; data: GitHubIssuePayload };
+
+/** A pull request was opened. */
+export type GitHubPullOpenedEvent = EventEnvelope & { type: "github.pull_request.opened.v1"; data: GitHubIssuePayload };
+
+/** A draft pull request was marked ready for review. */
+export type GitHubPullReadyForReviewEvent = EventEnvelope & { type: "github.pull_request.ready_for_review.v1"; data: GitHubIssuePayload };
+
+/** A review was requested on a pull request. */
+export type GitHubReviewRequestedEvent = EventEnvelope & { type: "github.pull_request.review_requested.v1"; data: GitHubReviewRequestedPayload };
+
+/** New commits were pushed to a pull request. */
+export type GitHubPullSynchronizeEvent = EventEnvelope & { type: "github.pull_request.synchronize.v1"; data: GitHubIssuePayload };
+
+/** A pull request review was submitted. `comment_id` is the review's id. */
+export type GitHubReviewSubmittedEvent = EventEnvelope & { type: "github.pull_request_review.submitted.v1"; data: GitHubIssueCommentPayload };
+
+/** A comment on a pull request's diff. */
+export type GitHubReviewCommentCreatedEvent = EventEnvelope & { type: "github.pull_request_review_comment.created.v1"; data: GitHubReviewCommentPayload };
+
+/** A comment on a Jira issue. */
+export type JiraCommentCreatedEvent = EventEnvelope & { type: "jira.comment.created.v1"; data: JiraCommentPayload };
+
+/** A Jira issue was assigned to an agent. */
+export type JiraIssueAssignedEvent = EventEnvelope & { type: "jira.issue.assigned.v1"; data: JiraIssueAssignedPayload };
+
+/** A Jira issue was created. */
+export type JiraIssueCreatedEvent = EventEnvelope & { type: "jira.issue.created.v1"; data: JiraIssuePayload };
+
+/** A person wrote to an agent, on any surface. */
+export type MessagePostedEvent = EventEnvelope & { type: "message.posted.v1"; data: MessagePostedPayload };
 
 /** The run was accepted. */
-export type RunAcceptedEvent = EventBase & { kind: "lifecycle.accepted"; payload?: string };
-
-/** An attempt started. */
-export type RunStartedEvent = EventBase & { kind: "lifecycle.started"; payload?: string };
-
-/** The run is waiting on something. */
-export type RunParkedEvent = EventBase & { kind: "lifecycle.parked"; payload?: string };
-
-/** A run this one is waiting on is waiting on a person. Answer it on that run. */
-export type ChildParkedEvent = EventBase & { kind: "lifecycle.child.parked"; payload?: string };
-
-/** A parked run carried on. */
-export type RunResumedEvent = EventBase & { kind: "lifecycle.resumed"; payload?: string };
-
-/** The run finished, with its answer. */
-export type RunCompletedEvent = EventBase & { kind: "lifecycle.completed"; payload?: string };
-
-/** An attempt failed. Final only when `terminal` is true. */
-export type RunFailedEvent = EventBase & { kind: "lifecycle.failed"; payload?: string };
-
-/** The run was stopped on request, with what it had said. Final. */
-export type RunStoppedEvent = EventBase & { kind: "lifecycle.stopped"; payload?: string };
+export type RunAcceptedEvent = EventEnvelope & { type: "run.accepted.v1"; data: AcceptedPayload };
 
 /** A tool acted on something. */
-export type ActionTakenEvent = EventBase & { kind: "action.taken"; payload?: string };
+export type ActionTakenEvent = EventEnvelope & { type: "run.action.taken.v1"; data: ActionPayload };
 
-/** One model call and what it used. */
-export type UsageCallEvent = EventBase & { kind: "usage.call"; payload?: string };
+/** A run this one is waiting on is waiting on a person. Answer it on that run. */
+export type ChildParkedEvent = EventEnvelope & { type: "run.child.parked.v1"; data: ChildQuestion };
 
-/** An attached run's total, rolled up into this run. */
-export type UsageChildEvent = EventBase & { kind: "usage.child"; payload?: string };
+/** The run finished, with its answer. */
+export type RunCompletedEvent = EventEnvelope & { type: "run.completed.v1"; data: CompletedPayload };
 
-/** An agent was created. Not published today. */
-export type AgentCreatedEvent = EventBase & { kind: "control.created"; payload?: string };
+/** The run's context was compacted. Opt in: sent only to a reader that names `run.context`. */
+export type ContextCompactedEvent = EventEnvelope & { type: "run.context.compacted.v1"; data: CompactionPayload };
 
-/** An agent was revised. Not published today. */
-export type AgentRevisedEvent = EventBase & { kind: "control.revised"; payload?: string };
+/** A passage the turn was grounded in. */
+export type CitationEvent = EventEnvelope & { type: "run.delta.citation.v1"; data: CitationPayload };
 
-/** An agent was deleted. Not published today. */
-export type AgentDeletedEvent = EventBase & { kind: "control.deleted"; payload?: string };
+/** One fragment of the answer. */
+export type TextDeltaEvent = EventEnvelope & { type: "run.delta.text.v1"; data: TextPayload };
 
-/** One event in a run manifest, with its body already decoded. It is the
-same union as `RunEvent`, without the envelope fields the manifest's
-run already states. `body` is absent when the event carried none.
- */
-export type ManifestEvent = ManifestTextDeltaEvent | ManifestThinkingDeltaEvent | ManifestToolCallEvent | ManifestToolDoneEvent | ManifestCitationEvent | ManifestRunAcceptedEvent | ManifestRunStartedEvent | ManifestRunParkedEvent | ManifestRunResumedEvent | ManifestRunCompletedEvent | ManifestRunFailedEvent | ManifestChildParkedEvent | ManifestRunStoppedEvent | ManifestActionTakenEvent | ManifestUsageCallEvent | ManifestUsageChildEvent | ManifestAgentCreatedEvent | ManifestAgentRevisedEvent | ManifestAgentDeletedEvent;
+/** One fragment of reasoning. */
+export type ThinkingDeltaEvent = EventEnvelope & { type: "run.delta.thinking.v1"; data: ThinkingPayload };
 
-export type ManifestTextDeltaEvent = ManifestEventBase & { kind: "delta.text"; body?: TextPayload };
+/** The agent reached for a tool. */
+export type ToolCallEvent = EventEnvelope & { type: "run.delta.tool.call.v1"; data: ToolCallPayload };
 
-export type ManifestThinkingDeltaEvent = ManifestEventBase & { kind: "delta.thinking"; body?: ThinkingPayload };
+/** A tool finished. */
+export type ToolDoneEvent = EventEnvelope & { type: "run.delta.tool.done.v1"; data: ToolDonePayload };
 
-export type ManifestToolCallEvent = ManifestEventBase & { kind: "delta.tool.call"; body?: ToolCallPayload };
+/** An attempt failed. Final only when `terminal` is true. */
+export type RunFailedEvent = EventEnvelope & { type: "run.failed.v1"; data: FailedPayload };
 
-export type ManifestToolDoneEvent = ManifestEventBase & { kind: "delta.tool.done"; body?: ToolDonePayload };
+/** The run is waiting on something. */
+export type RunParkedEvent = EventEnvelope & { type: "run.parked.v1"; data: ParkedPayload };
 
-export type ManifestCitationEvent = ManifestEventBase & { kind: "delta.citation"; body?: CitationPayload };
+/** A parked run carried on. */
+export type RunResumedEvent = EventEnvelope & { type: "run.resumed.v1"; data: ResumedPayload };
 
-export type ManifestRunAcceptedEvent = ManifestEventBase & { kind: "lifecycle.accepted"; body?: LifecyclePayload };
+/** An attempt started. */
+export type RunStartedEvent = EventEnvelope & { type: "run.started.v1"; data: StartedPayload };
 
-export type ManifestRunStartedEvent = ManifestEventBase & { kind: "lifecycle.started"; body?: LifecyclePayload };
+/** The run was stopped on request, with what it had said. Final. */
+export type RunStoppedEvent = EventEnvelope & { type: "run.stopped.v1"; data: StoppedPayload };
 
-export type ManifestRunParkedEvent = ManifestEventBase & { kind: "lifecycle.parked"; body?: LifecyclePayload };
+/** An attached run's total, rolled up into this run. Opt in: sent only to a reader that names `run.usage`. */
+export type UsageChildEvent = EventEnvelope & { type: "run.usage.child.v1"; data: UsageChildPayload };
 
-export type ManifestChildParkedEvent = ManifestEventBase & { kind: "lifecycle.child.parked"; body?: ChildQuestion };
+/** One model call and what it used. Opt in: sent only to a reader that names `run.usage`. */
+export type UsageCallEvent = EventEnvelope & { type: "run.usage.v1"; data: UsageCallPayload };
 
-export type ManifestRunResumedEvent = ManifestEventBase & { kind: "lifecycle.resumed"; body?: LifecyclePayload };
+/** A Slack slash command. */
+export type SlackCommandInvokedEvent = EventEnvelope & { type: "slack.command.invoked.v1"; data: SlackCommandPayload };
 
-export type ManifestRunCompletedEvent = ManifestEventBase & { kind: "lifecycle.completed"; body?: LifecyclePayload };
-
-export type ManifestRunFailedEvent = ManifestEventBase & { kind: "lifecycle.failed"; body?: LifecyclePayload };
-
-export type ManifestRunStoppedEvent = ManifestEventBase & { kind: "lifecycle.stopped"; body?: StoppedPayload };
-
-export type ManifestActionTakenEvent = ManifestEventBase & { kind: "action.taken"; body?: ActionPayload };
-
-export type ManifestUsageCallEvent = ManifestEventBase & { kind: "usage.call"; body?: UsageCallPayload };
-
-export type ManifestUsageChildEvent = ManifestEventBase & { kind: "usage.child"; body?: UsageChildPayload };
-
-export type ManifestAgentCreatedEvent = ManifestEventBase & { kind: "control.created"; body?: unknown };
-
-export type ManifestAgentRevisedEvent = ManifestEventBase & { kind: "control.revised"; body?: unknown };
-
-export type ManifestAgentDeletedEvent = ManifestEventBase & { kind: "control.deleted"; body?: unknown };
+/** A person pressed stop on an agent session in Slack. */
+export type SlackSessionStoppedEvent = EventEnvelope & { type: "slack.session.stopped.v1"; data: SlackSessionStoppedPayload };
 
 /** Everything recorded about one run. */
 export interface ManifestRun {
@@ -3564,7 +3736,7 @@ export interface ManifestRun {
   cause?: string;
   definition?: Revision;
   duration_ms: number;
-  events: ManifestEvent[];
+  events: RunEvent[];
   /** False when the run's first events are no longer held. */
   complete: boolean;
 }
@@ -4123,5 +4295,5 @@ export interface GetAgentRosterResponse {
 }
 
 /** SSE event union type for streaming responses. */
-export type StreamEventsStreamEvent = RunEvent | InboxNotice | ThreadNotice;
+export type StreamEventsStreamEvent = RunEvent | UnknownEvent | InboxNotice | ThreadNotice;
 

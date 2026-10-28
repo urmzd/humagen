@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -1273,7 +1274,7 @@ func streamOf(t *testing.T, f *fixture, owner, outsider, tenant string, h hidden
 			if v["tenant"] != tenant {
 				t.Errorf("the outsider's stream carried an event of %v", v["tenant"])
 			}
-			if v["run_id"] == controlRun && v["kind"] == "lifecycle.completed" {
+			if v["run"] == controlRun && v["type"] == event.TypeCompleted {
 				sawControl = true
 			}
 		}

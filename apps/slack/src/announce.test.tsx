@@ -635,7 +635,7 @@ test("release notes posted before the app connects reach the workspace's channel
   );
   await settle();
   assert.deepEqual([...w.humagen.seeded.values()], ["m-release"]);
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "It posts what was missed." });
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "It posts what was missed." });
   await settle();
   await w.app.idle();
 });
@@ -711,7 +711,7 @@ test("a mapped person's reply that mentions the app under an announcement is the
   assert.deepEqual([...w.humagen.seeded.values()], ["m-news"]);
   // A bridge carries the settled outcome, never Activity or draft text.
   assert.equal(w.slack.of("chat.startStream").length, 0);
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "A trip in May." });
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "A trip in May." });
   await settle();
   await w.app.idle();
   assert.equal(w.slack.of("chat.postMessage").at(-1)?.thread_ts, post);
@@ -719,7 +719,7 @@ test("a mapped person's reply that mentions the app under an announcement is the
   // A later reply finds the same thread.
   await w.app.handle(replyTo(post, "@lead and the dates?", "1800000300.000100"));
   await settle();
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "The second week." });
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "The second week." });
   await settle();
   await w.app.idle();
   const threads = new Set(w.humagen.posts.map((p) => `${p.surface.channel}/${p.surface.ts}`));
@@ -775,7 +775,7 @@ test("once its channel is bound to another project, a reply under an old post of
   await w.app.handle(replyTo(post, "@lead what is this?", "1800000200.000100"));
   await settle();
   assert.equal(w.humagen.started.length, 1, "the reply starts a run in Initech");
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "A thread in Initech." });
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "A thread in Initech." });
   await settle();
   await w.app.idle();
   assert.equal(w.humagen.posts.length, 1, "the reply is posted as any other");

@@ -1,27 +1,20 @@
 import type { ArtifactKind, Citation, Interrupt, Task, Turn, TurnEvent } from "@humagen/core";
+import type { RunEvent } from "@humagen/client/types";
 import { interruptOf, settledOf, type WireQuestion } from "./question.ts";
 
 /**
- * The one place fiber's wire format meets humagen's event model, for every
+ * The one place the platform's events meet humagen's event model, for every
  * surface: the console and the Slack app both read runs through this file, so
  * the same run is the same turn in both. Everything above it speaks TurnEvent,
- * and everything below it speaks envelopes.
+ * and everything below it speaks the API's event union.
  */
 
-/** An fiber envelope.Event as the platform's event stream sends it. */
-export interface BusEvent {
-  seq: number;
-  topic: string;
-  run_id: string;
-  tenant: string;
-  agent: string;
-  rev: number;
-  origin: string;
-  kind: string;
-  /** Base64 of the kind-specific JSON body. */
-  payload?: string;
-  at: string;
-}
+/**
+ * An event as the platform's event stream and `listRunEvents` send it: an
+ * envelope whose `data` is the body for its `type`. The type is generated
+ * from api/openapi.yaml, so a change to the contract fails to typecheck here.
+ */
+export type { RunEvent };
 
 export type ResponseFormat =
   | { type: "text"; max_chars?: number }
@@ -186,40 +179,9 @@ export interface Run {
   updated_at: string;
 }
 
-/** Decode an event body. Bodies are UTF-8 JSON, base64-encoded by Go. */
-export function body<T>(e: BusEvent): Partial<T> {
-  if (!e.payload) return {};
-  try {
-    const bytes = Uint8Array.from(atob(e.payload), (c) => c.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes)) as Partial<T>;
-  } catch {
-    return {};
-  }
-}
-
-interface Lifecycle {
-  error: string;
-  terminal: boolean;
-  reason: string;
-  text: string;
-  question: WireQuestion;
-  /** `by` is who answered by subject, `by_name` what they are called, which is what is shown. */
-  answer: { question_id: string; decision?: string; choice?: string; text?: string; note?: string; by?: string; by_name?: string; at?: string; expired?: boolean };
-}
-interface Tool {
-  id: string;
-  name: string;
-  phase: string;
-  result: string;
-  error: string;
-  arguments?: unknown;
-}
-/** What the platform reports when an agent publishes a file. */
+/** What the platform reports in an action's `data` when an agent publishes a file. */
 interface Published {
-  name: string;
-  summary: string;
-  error: string;
-  data: {
+  data?: {
     id: string;
     title: string;
     kind: ArtifactKind;
@@ -243,16 +205,6 @@ export function delegateOf(tool?: string): string | undefined {
   return DELEGATE.exec(tool ?? "")?.[1];
 }
 
-interface Cite {
-  mode?: unknown;
-  copy_at?: unknown;
-  refresh_failed?: unknown;
-  label: string;
-  text: string;
-  index: number;
-  source: { document_title?: string; source_uri?: string; section_heading?: string };
-}
-
 /**
  * Returns a function that turns one run's envelopes into TurnEvents. It is
  * stateful because two facts span events: whether text already streamed (the
@@ -270,7 +222,7 @@ export function adapter(
      */
     href?: (path: string) => string | undefined;
   } = {},
-): (e: BusEvent) => TurnEvent[] {
+): (e: RunEvent) => TurnEvent[] {
   const href = opts.href ?? ((path: string) => path);
   let streamed = false;
   const tools = new Map<string, string>();
@@ -318,8 +270,8 @@ export function adapter(
   };
 
   return (e) => {
-    switch (e.kind) {
-      case "lifecycle.accepted":
+    switch (e.type) {
+      case "run.accepted.v1":
         streamed = false;
         tools.clear();
         toolStarted.clear();
@@ -327,11 +279,11 @@ export function adapter(
         calling.clear();
         shown.clear();
         asked.clear();
-        return [{ type: "turn.started", turnId: e.run_id, agent: { name: e.agent } }];
-      case "lifecycle.started":
+        return [{ type: "turn.started", turnId: e.run ?? "", agent: { name: e.agent ?? "" } }];
+      case "run.started.v1":
         return [{ type: "activity", activity: "thinking" }];
-      case "lifecycle.resumed": {
-        const a = body<Lifecycle>(e).answer;
+      case "run.resumed.v1": {
+        const a = e.data?.answer;
         const open = a?.question_id ? asked.get(a.question_id) : undefined;
         if (!a || !open) return [{ type: "activity", activity: "thinking" }];
         asked.delete(a.question_id);
@@ -347,9 +299,9 @@ export function adapter(
         out.push({ type: "activity", activity: "thinking" });
         return out;
       }
-      case "lifecycle.parked": {
+      case "run.parked.v1": {
         // Blocked on a person. humagen does not animate waiting.
-        const q = body<Lifecycle>(e).question;
+        const q: WireQuestion | undefined = e.data?.question;
         const interrupt = q?.id ? interruptOf(q, undefined) : null;
         if (!q || !interrupt) return [{ type: "activity", activity: "waiting" }];
         asked.set(q.id, { question: q, interrupt });
@@ -366,19 +318,19 @@ export function adapter(
         out.push({ type: "activity", activity: "waiting" });
         return out;
       }
-      case "lifecycle.child.parked": {
+      case "run.child.parked.v1": {
         // A run this one waits on is waiting on a person. The question is
         // that run's, answered there or in the inbox: here the step that
         // called it reads waiting.
-        const cq = body<{ run_id: string; agent: string }>(e);
-        const id = [...started].find(([, s]) => s.run === cq.run_id)?.[0];
+        const child = e.data?.run_id;
+        const id = [...started].find(([, s]) => s.run === child)?.[0];
         const out: TurnEvent[] = [];
         if (id) out.push({ type: "task.upserted", task: task(id, tools.get(id), { status: "waiting" }) });
         out.push({ type: "activity", activity: "waiting" });
         return out;
       }
-      case "delta.text": {
-        const text = body<{ text: string }>(e).text ?? "";
+      case "run.delta.text.v1": {
+        const text = e.data?.text ?? "";
         if (!text) return [];
         // The first words of an answer are the moment it starts composing.
         const first = !streamed;
@@ -390,15 +342,15 @@ export function adapter(
             ]
           : [{ type: "text.delta", text }];
       }
-      case "delta.thinking": {
-        const text = body<{ text: string }>(e).text ?? "";
+      case "run.delta.thinking.v1": {
+        const text = e.data?.text ?? "";
         return text ? [{ type: "reasoning.delta", text }] : [];
       }
-      case "delta.tool.call": {
-        const t = body<Tool>(e);
-        if (!t.id) return [];
+      case "run.delta.tool.call.v1": {
+        const t = e.data;
+        if (!t?.id) return [];
         tools.set(t.id, t.name ?? "tool");
-        if (t.phase === "executing" && Number.isFinite(Date.parse(e.at))) toolStarted.set(t.id, Date.parse(e.at));
+        if (t.phase === "executing" && Number.isFinite(Date.parse(e.time))) toolStarted.set(t.id, Date.parse(e.time));
         const out: TurnEvent[] = [
           { type: "activity", activity: doing(t.name) },
           { type: "task.upserted", task: task(t.id, t.name, t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }) },
@@ -416,22 +368,22 @@ export function adapter(
         }
         return out;
       }
-      case "delta.tool.done": {
-        const t = body<Tool>(e);
-        if (!t.id) return [];
+      case "run.delta.tool.done.v1": {
+        const t = e.data;
+        if (!t?.id) return [];
         const name = t.name ?? tools.get(t.id);
         const start = toolStarted.get(t.id);
-        const duration = start !== undefined ? Date.parse(e.at) - start : undefined;
+        const duration = start !== undefined ? Date.parse(e.time) - start : undefined;
         return [
           { type: "activity", activity: "thinking" },
           { type: "task.upserted", task: task(t.id, name, { status: t.error ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
         ];
       }
-      case "action.taken": {
-        const action = body<{name?: string; data?: Run["outcome"]}>(e);
-        if (action.name === "record_outcome" && action.data) return [{type:"outcome.updated",outcome:{kind:action.data.kind,summary:action.data.summary,decisions:action.data.decisions,nextAction:action.data.next_action}}];
-        const p = body<Published>(e);
-        const called = p.data as unknown as { run?: string; agent?: string; lifecycle?: string; tool_call_id?: string } | undefined;
+      case "run.action.taken.v1": {
+        const p = e.data ?? { name: "" };
+        const outcome = p.data as Run["outcome"] | undefined;
+        if (p.name === "record_outcome" && outcome) return [{type:"outcome.updated",outcome:{kind:outcome.kind,summary:outcome.summary,decisions:outcome.decisions,nextAction:outcome.next_action}}];
+        const called = p.data as { run?: string; agent?: string; lifecycle?: string; tool_call_id?: string } | undefined;
         if (p.name && called?.run && (delegateOf(p.name) || p.name === HAND_ON || p.name === CALL_AGENT)) {
           // Which run a call to another agent started. From here the step
           // can be opened as that run.
@@ -445,8 +397,8 @@ export function adapter(
         if (p.name !== PUBLISH) return [];
         // The card the call opened, or a new one if this is all that is left
         // of the run's record.
-        const id = publishing.shift() ?? p.data?.id ?? `published-${e.seq}`;
-        const a = p.data;
+        const a = (p as Published).data;
+        const id = publishing.shift() ?? a?.id ?? `published-${e.seq}`;
         if (p.error || !a) {
           return [
             {
@@ -486,8 +438,9 @@ export function adapter(
           },
         ];
       }
-      case "delta.citation": {
-        const c = body<Cite>(e);
+      case "run.delta.citation.v1": {
+        const c = e.data;
+        if (!c) return [];
         return [
           {
             type: "citation.added",
@@ -501,43 +454,45 @@ export function adapter(
           },
         ];
       }
-      case "lifecycle.completed": {
+      case "run.completed.v1": {
         const out: TurnEvent[] = [];
-        const text = body<Lifecycle>(e).text;
+        const text = e.data?.text;
         if (!streamed && text) out.push({ type: "text.delta", text });
         out.push({ type: "turn.completed" });
         return out;
       }
-      case "lifecycle.stopped": {
+      case "run.stopped.v1": {
         // The run was stopped and the platform says so on its stream. Until it
         // does, a stopped run is ended from its record (see `settled`). The
         // body carries what the agent had said, for a reader that did not
         // see it stream.
         const out: TurnEvent[] = [];
-        const text = body<Lifecycle>(e).text;
+        const text = e.data?.text;
         if (!streamed && text) out.push({ type: "text.delta", text });
         // A question nobody answered is settled with the run.
         for (const { question } of asked.values()) {
-          const settled = interruptOf(question, { action: "stopped", by: "system", at: e.at, note: "The run was stopped" });
+          const settled = interruptOf(question, { action: "stopped", by: "system", at: e.time, note: "The run was stopped" });
           if (settled) out.push({ type: "interrupt.resolved", interrupt: settled });
         }
         asked.clear();
         out.push({ type: "turn.stopped" }, { type: "stop.updated", stop: "confirmed" });
         return out;
       }
-      case "lifecycle.failed": {
-        const l = body<Lifecycle>(e);
+      case "run.failed.v1": {
+        const l = e.data;
         // A failed attempt may still be retried by the durable engine. Only a
         // terminal failure ends the turn.
-        if (!l.terminal) return [];
+        if (!l?.terminal) return [];
         return [
           {
             type: "turn.failed",
-            failure: { kind: "internal", message: lastLine(l.error) || "The run failed.", reference: e.run_id },
+            failure: { kind: "internal", message: lastLine(l.error) || "The run failed.", reference: e.run ?? "" },
           },
         ];
       }
       default:
+        // Usage, compaction and any type this build does not know
+        // (UnknownEvent) say nothing to a turn.
         return [];
     }
   };

@@ -3,9 +3,9 @@ package platform
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/journal"
@@ -32,26 +32,58 @@ func (p *Platform) ShownEvent(who auth.Principal, e event.Envelope) event.Envelo
 	return e
 }
 
-// ShownV1 is ShownEvent in the shape the API sends events in until its
-// contract moves to the union: a citation carries the evidence the platform
-// recorded for it, and a moved conversation's private context is scrubbed
-// from the payload. ok is false for an event the API never sent.
-func (p *Platform) ShownV1(who auth.Principal, e event.Envelope) (legacy.V1Event, bool) {
-	origin := ""
-	if run, err := p.Runs.Get(who.Tenant, e.Run); err == nil {
-		origin = run.Origin
+// APIEvent is an event as the API sends it: the envelope, with data as the
+// JSON the reader is shown.
+type APIEvent struct {
+	ID      string          `json:"id"`
+	Source  string          `json:"source"`
+	Type    string          `json:"type"`
+	Subject string          `json:"subject,omitempty"`
+	Channel string          `json:"channel"`
+	Time    time.Time       `json:"time"`
+	Hops    int             `json:"hops"`
+	Tenant  string          `json:"tenant,omitempty"`
+	Run     string          `json:"run,omitempty"`
+	Seq     uint64          `json:"seq,omitempty"`
+	Agent   string          `json:"agent,omitempty"`
+	Version string          `json:"version,omitempty"`
+	Digest  string          `json:"digest,omitempty"`
+	Data    json.RawMessage `json:"data"`
+}
+
+// ShownAPI is ShownEvent as the API sends it: a citation carries the
+// evidence the platform recorded for it, and a moved conversation's private
+// context is scrubbed from the data. ok is false for an event the API never
+// sends: one outside the run family, or one whose data cannot be shown.
+func (p *Platform) ShownAPI(who auth.Principal, e event.Envelope) (APIEvent, bool) {
+	if event.Family(e.Type) != "run" || e.Tenant != who.Tenant {
+		return APIEvent{}, false
 	}
-	v, err := legacy.V1Of(e, origin)
-	if err != nil {
-		return legacy.V1Event{}, false
+	var raw []byte
+	switch {
+	case e.Type == event.TypeCitation:
+		if raw = p.citationPayload(e); raw == nil {
+			return APIEvent{}, false
+		}
+	case e.Data != nil:
+		b, err := json.Marshal(e.Data)
+		if err != nil {
+			return APIEvent{}, false
+		}
+		raw = b
 	}
-	if e.Type == event.TypeCitation {
-		v.Payload = p.citationPayload(e)
+	if len(raw) == 0 || string(raw) == "null" {
+		raw = []byte("{}")
 	}
-	if hidden, moved := p.movedContext(who.Tenant, e.Run); moved && v.Payload != nil {
-		v.Payload = scrubPayload(v.Payload, hidden)
+	if hidden, moved := p.movedContext(who.Tenant, e.Run); moved {
+		if raw = scrubPayload(raw, hidden); raw == nil {
+			return APIEvent{}, false
+		}
 	}
-	return v, true
+	return APIEvent{
+		ID: e.ID, Source: e.Source, Type: e.Type, Subject: e.Subject, Channel: e.Channel, Time: e.Time, Hops: e.Hops,
+		Tenant: e.Tenant, Run: e.Run, Seq: e.Seq, Agent: e.Agent, Version: e.Version, Digest: e.Digest, Data: raw,
+	}, true
 }
 
 // movedContext is what a moved conversation's run hides: its old project,

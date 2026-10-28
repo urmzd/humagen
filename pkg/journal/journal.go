@@ -257,9 +257,9 @@ type Query struct {
 	Tenant       string
 	Agent        string
 	RunID        string
-	// Kind is a type prefix ("run.delta"), or a kind from before the union,
+	// Type is a type prefix ("run.delta"), or a kind from before the union,
 	// exact ("delta.tool.call") or a family ("lifecycle").
-	Kind   string
+	Type   string
 	Origin string
 	// Contains matches a substring of the entry's detail, ignoring case.
 	Contains string
@@ -283,7 +283,7 @@ type Entry struct {
 	Agent  string    `json:"agent"`
 	Rev    int       `json:"rev"`
 	Origin string    `json:"origin"`
-	Kind   string    `json:"kind"`
+	Type   string    `json:"type"`
 	At     time.Time `json:"at"`
 	Detail string    `json:"detail,omitempty"`
 }
@@ -311,7 +311,7 @@ func (j *Journal) Query(q Query) []Entry {
 			return
 		case q.Origin != "" && h.origin != q.Origin:
 			return
-		case q.Kind != "" && !MatchesKind(e.Type, q.Kind):
+		case q.Type != "" && !MatchesType(e.Type, q.Type):
 			return
 		case !q.Since.IsZero() && e.Time.Before(q.Since):
 			return
@@ -337,20 +337,16 @@ func (j *Journal) Query(q Query) []Entry {
 	return out
 }
 
-// MatchesKind reports whether a type is what a selector chose: a type prefix,
-// or a kind from before the union.
-func MatchesKind(typ, sel string) bool {
+// MatchesType reports whether a type is what a selector chose: a type
+// prefix, or a kind from before the union.
+func MatchesType(typ, sel string) bool {
 	return event.Selects(sel, typ) || legacy.TypeMatchesKind(typ, sel)
 }
 
 func entryOf(e event.Envelope, origin string) Entry {
-	kind, ok := legacy.KindOf(e.Type)
-	if !ok {
-		kind = e.Type
-	}
 	return Entry{
 		Seq: e.Seq, RunID: e.Run, Agent: e.Agent, Rev: legacy.RevOf(e.Version), Origin: origin,
-		Kind: kind, At: e.Time, Detail: clip(detail(e)),
+		Type: e.Type, At: e.Time, Detail: clip(detail(e)),
 	}
 }
 

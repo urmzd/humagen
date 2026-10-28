@@ -35,8 +35,8 @@ func filled(t *testing.T) *Journal {
 func TestQueryIsNewestFirstAndConfinedToATenant(t *testing.T) {
 	j := filled(t)
 	got := j.Query(Query{Tenant: "acme"})
-	if len(got) != 7 || got[0].Kind != "lifecycle.completed" || got[6].Kind != "lifecycle.accepted" {
-		t.Fatalf("got %d entries, first %s", len(got), got[0].Kind)
+	if len(got) != 7 || got[0].Type != event.TypeCompleted || got[6].Type != event.TypeAccepted {
+		t.Fatalf("got %d entries, first %s", len(got), got[0].Type)
 	}
 	for _, e := range got {
 		if e.RunID == "r9" || e.Detail == "secret" {
@@ -54,8 +54,10 @@ func TestQueryNarrows(t *testing.T) {
 		q    Query
 		want int
 	}{
-		"family":   {Query{Tenant: "acme", Kind: "lifecycle"}, 3},
-		"exact":    {Query{Tenant: "acme", Kind: "delta.tool.done"}, 1},
+		"family":   {Query{Tenant: "acme", Type: "lifecycle"}, 3},
+		"exact":    {Query{Tenant: "acme", Type: "delta.tool.done"}, 1},
+		"prefix":   {Query{Tenant: "acme", Type: "run.delta.tool"}, 2},
+		"type":     {Query{Tenant: "acme", Type: event.TypeToolDone}, 1},
 		"text":     {Query{Tenant: "acme", Contains: "RATE LIMITED"}, 1},
 		"since":    {Query{Tenant: "acme", Since: t0.Add(6 * time.Second)}, 3},
 		"until":    {Query{Tenant: "acme", Until: t0.Add(1 * time.Second)}, 2},

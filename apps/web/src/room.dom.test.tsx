@@ -703,10 +703,10 @@ test("a typed answer answers the question on the card it was typed in, though th
     // q1 is answered and the run parks on q2, on its stream, before the
     // room reads the run again.
     act(() => {
-      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.accepted" });
-      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.parked", body: { question: q1 } });
-      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.resumed", body: { answer: { question_id: "q1", text: "Only the duplicated line.", by: "priya", at } } });
-      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.parked", body: { question: q2 } });
+      live.send({ run: "r1", agent: "ledger", type: "run.accepted.v1" });
+      live.send({ run: "r1", agent: "ledger", type: "run.parked.v1", data: { question: q1 } });
+      live.send({ run: "r1", agent: "ledger", type: "run.resumed.v1", data: { answer: { question_id: "q1", text: "Only the duplicated line.", by: "priya", at } } });
+      live.send({ run: "r1", agent: "ledger", type: "run.parked.v1", data: { question: q2 } });
     });
     await screen.findByText(q2.prompt);
     typeAnswer("The first of April.");
@@ -731,10 +731,10 @@ test("a refusal said under a question goes once someone else settles it", async 
     assert.ok(await within(turn).findByText(defaultCopy.noPermission));
     // Another billing expert answers, and ledger finishes.
     act(() => {
-      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.accepted" });
-      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.parked", body: { question: q1 } });
-      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.resumed", body: { answer: { question_id: "q1", text: "Only the duplicated line.", by: "olu", at } } });
-      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.completed", body: { text: "I drafted credit note CN-0187." } });
+      live.send({ run: "r1", agent: "ledger", type: "run.accepted.v1" });
+      live.send({ run: "r1", agent: "ledger", type: "run.parked.v1", data: { question: q1 } });
+      live.send({ run: "r1", agent: "ledger", type: "run.resumed.v1", data: { answer: { question_id: "q1", text: "Only the duplicated line.", by: "olu", at } } });
+      live.send({ run: "r1", agent: "ledger", type: "run.completed.v1", data: { text: "I drafted credit note CN-0187." } });
     });
     await within(turn).findByText("I drafted credit note CN-0187.");
     assert.ok(!within(turn).queryByText(defaultCopy.noPermission), "the refusal is not left under the settled question");

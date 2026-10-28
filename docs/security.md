@@ -588,8 +588,8 @@ recorded. See [People in the loop](architecture.md#people-in-the-loop).
 
 Addressing routes a question; it does not keep it confidential. The question,
 its prompt and an approval's tool arguments are also on the run
-(`GET /api/runs/{id}`, `question`), on its event stream (`lifecycle.parked`,
-and `lifecycle.child.parked` on its caller's), and in its manifest, all
+(`GET /api/runs/{id}`, `question`), on its event stream (`run.parked.v1`,
+and `run.child.parked.v1` on its caller's), and in its manifest, all
 readable by anyone in the workspace with `runs:read`. Do not have an agent put
 in a question what everyone who can read runs may not see.
 

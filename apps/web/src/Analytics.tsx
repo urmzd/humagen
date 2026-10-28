@@ -231,7 +231,8 @@ function Breakdown({ title, groups, onPick }: { title: string; groups: Group[]; 
   );
 }
 
-const kinds = ["", "lifecycle", "lifecycle.failed", "lifecycle.completed", "delta.tool", "delta.text", "action.taken"];
+/** Type prefixes to filter by. `lifecycle` is the journal's name for every run state change. */
+const types = ["", "lifecycle", "run.failed.v1", "run.completed.v1", "run.delta.tool", "run.delta.text", "run.action.taken"];
 
 /** Ask the journal what happened. */
 function Journal({
@@ -247,25 +248,25 @@ function Journal({
   onAgent: (name: string) => void;
   onOpenRun: (id: string) => void;
 }) {
-  const [kind, setKind] = useState("lifecycle");
+  const [type, setType] = useState("lifecycle");
   const [text, setText] = useState("");
   const [entries, setEntries] = useState<Entry[] | null>(null);
 
   const search = useCallback(() => {
     const params: Record<string, string> = { window, limit: "100" };
     if (agent) params.agent = agent;
-    if (kind) params.kind = kind;
+    if (type) params.type = type;
     if (text.trim()) params.q = text.trim();
     api
       .journal(params)
       .then(setEntries)
       .catch(() => setEntries([]));
-  }, [window, agent, kind, text]);
+  }, [window, agent, type, text]);
 
   // Filters apply as they change. Free text waits for Enter, so a search is
   // not sent per keystroke.
   // biome-ignore lint/correctness/useExhaustiveDependencies: text is applied on submit
-  useEffect(search, [window, agent, kind]);
+  useEffect(search, [window, agent, type]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -287,11 +288,11 @@ function Journal({
           onChange={onAgent}
         />
         <Menu
-          label="Event kind"
+          label="Event type"
           className="w-48"
-          value={kind}
-          options={kinds.map((k) => ({ value: k, label: k || "All events" }))}
-          onChange={setKind}
+          value={type}
+          options={types.map((k) => ({ value: k, label: k || "All events" }))}
+          onChange={setType}
         />
         <input
           aria-label="Contains"
@@ -325,7 +326,7 @@ function Journal({
                     {new Date(e.at).toLocaleTimeString(undefined, { hour12: false })}
                   </td>
                   <td className="py-1.5 pr-3 text-aui-fg">{e.agent}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3 font-aui-mono text-aui-muted">{e.kind}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 font-aui-mono text-aui-muted">{e.type}</td>
                   <td className="max-w-0 w-full truncate py-1.5 pr-3 text-aui-fg" title={e.detail}>
                     {e.detail}
                   </td>

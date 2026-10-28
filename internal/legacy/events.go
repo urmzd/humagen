@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
 	fl "github.com/urmzd/humagen/fiber/pkg/event/legacy"
@@ -14,9 +13,9 @@ import (
 // Run triggers and run events before the event union.
 //
 // A run was raised by a tag and published events with a kind. Stored run
-// rows hold the tag, the journal holds the events, and the API still sends
-// events in that shape until its contract moves to the union. Everything
-// that reads or writes those shapes is here.
+// rows hold the tag, the journal holds the events, and an old reader still
+// names what it streams with a topic and filters the journal by kind.
+// Everything that reads those shapes is here.
 
 // HumagenChannelScheme is the scheme of the channel a run raised on no
 // surface publishes on. It is wire.ChannelScheme, spelled here because wire
@@ -86,24 +85,9 @@ func TypeMatchesKind(typ, sel string) bool {
 	return false
 }
 
-// V1Event is a run event in the shape the API sent before the union: kind,
-// topic and a base64 payload. The SSE stream and the event listings send it
-// until the API contract moves to the union.
-type V1Event struct {
-	Seq     uint64    `json:"seq"`
-	Topic   string    `json:"topic"`
-	RunID   string    `json:"run_id"`
-	Tenant  string    `json:"tenant"`
-	Agent   string    `json:"agent"`
-	Rev     int       `json:"rev"`
-	Origin  string    `json:"origin"`
-	Kind    string    `json:"kind"`
-	Payload []byte    `json:"payload,omitempty"`
-	At      time.Time `json:"at"`
-}
-
 // RevOf is the revision a definition version names: N for "N.0.0", or for
-// the bare "N" an event read before the union carries.
+// the bare "N" an event read before the union carries. The API's run and
+// journal records still count revisions.
 func RevOf(version string) int {
 	major, _, _ := strings.Cut(version, ".")
 	n, err := strconv.Atoi(major)
@@ -111,50 +95,6 @@ func RevOf(version string) int {
 		return 0
 	}
 	return n
-}
-
-// V1Of is a run event in the old shape. origin is the run's, which the event
-// itself does not carry. A type with no old kind is an error.
-func V1Of(e event.Envelope, origin string) (V1Event, error) {
-	kind, ok := fl.KindOf(e.Type)
-	if !ok {
-		return V1Event{}, fmt.Errorf("legacy: %s had no kind", e.Type)
-	}
-	rev := RevOf(e.Version)
-	out := V1Event{
-		Seq: e.Seq, Topic: fl.Topic(e.Agent, e.Run), RunID: e.Run, Tenant: e.Tenant,
-		Agent: e.Agent, Rev: rev, Origin: origin, Kind: kind, At: e.Time,
-	}
-	if e.Data == nil {
-		return out, nil
-	}
-	raw, err := json.Marshal(e.Data)
-	if err != nil {
-		return V1Event{}, err
-	}
-	if strings.HasPrefix(kind, "lifecycle.") && rev > 0 {
-		var m map[string]json.RawMessage
-		if json.Unmarshal(raw, &m) == nil {
-			m["rev"] = json.RawMessage(strconv.Itoa(rev))
-			if b, err := json.Marshal(m); err == nil {
-				raw = b
-			}
-		}
-	}
-	if string(raw) != "{}" && string(raw) != "null" {
-		out.Payload = raw
-	}
-	return out, nil
-}
-
-// EncodeV1Frame is a run event as the data of an SSE frame in the old shape.
-// It goes once the API contract moves to the union.
-func EncodeV1Frame(e event.Envelope, origin string) ([]byte, error) {
-	v, err := V1Of(e, origin)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(v)
 }
 
 // DecodeV1 reads an event stored in the old shape, with the origin it

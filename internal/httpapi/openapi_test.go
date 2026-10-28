@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,7 +33,6 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 	"github.com/urmzd/humagen/fiber/pkg/turn/native"
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
@@ -660,87 +658,142 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ClientIdentity": {typ: clients.Identity{}}, "SecretRef": {typ: clients.SecretRef{}}, "SecretInput": {typ: clients.SecretInput{}},
 		"SlackCommand": {typ: clients.Command{}}, "SlackOptions": {typ: clients.SlackOptions{}}, "GitHubOptions": {typ: clients.GitHubOptions{}},
 		"ClientView": {typ: clientView{}}, "ClientCaps": {typ: clients.Caps{}}, "ClientInput": {typ: clientBody{}, written: true},
-		"TextPayload": {typ: event.Text{}}, "ThinkingPayload": {typ: event.Thinking{}}, "ToolCallPayload": {typ: event.ToolCall{}},
-		"ToolDonePayload": {typ: event.ToolDone{}}, "Provenance": {typ: event.Provenance{}}, "CitationPayload": {typ: runs.CitationPayload{}},
-		"LifecyclePayload": {typ: v1Lifecycle{}}, "Question": {typ: event.Question{}}, "Answer": {typ: struct {
+		"Provenance": {typ: event.Provenance{}}, "Question": {typ: event.Question{}}, "Answer": {typ: struct {
 			event.Answer
 			// What a route hands out beside the subject (shownEvent).
 			ByName string `json:"by_name,omitempty"`
 		}{}},
-		"QuestionTool": {typ: event.QuestionTool{}}, "ChildQuestion": {typ: event.ChildParked{}}, "ActAs": {typ: platform.ActAs{}}, "ActionPayload": {typ: event.Action{}},
-		"StoppedPayload": {typ: struct {
-			event.Stopped
-			// V1Of adds the run's revision to a lifecycle payload.
-			Rev int `json:"rev,omitempty"`
-		}{}}, "Cost": {typ: event.Cost{}}, "Usage": {typ: event.Usage{}},
+		"QuestionTool": {typ: event.QuestionTool{}}, "ActAs": {typ: platform.ActAs{}},
+		"Cost": {typ: event.Cost{}}, "Usage": {typ: event.Usage{}},
 		"ContextUsage": {typ: event.ContextUsage{}}, "RunUsage": {typ: event.RunUsage{}},
-		"UsageCallPayload": {typ: event.UsageCall{}}, "UsageChildPayload": {typ: event.UsageChild{}},
 		"PolicyCost": {typ: policy.Cost{}}, "UsageSpend": {typ: usage.Spend{}}, "SpendMeasure": {typ: spendMeasure{}},
-		"AnalyticsUsage": {typ: runs.GroupUsage{}}, "UsageCallEvent": {typ: legacy.V1Event{}},
-		// Every variant of the event union is the same Go struct.
-		"TextDeltaEvent": {typ: legacy.V1Event{}}, "RunCompletedEvent": {typ: legacy.V1Event{}}, "ActionTakenEvent": {typ: legacy.V1Event{}},
+		"AnalyticsUsage": {typ: runs.GroupUsage{}},
+		// The envelope every variant of the event union shares, and the
+		// parts ingress bodies are made of. The bodies themselves are
+		// checked against the catalog below.
+		"UnknownEvent": {typ: platform.APIEvent{}}, "EventRequest": {typ: event.Request{}},
+		"SlackRef": {typ: event.SlackRef{}}, "GitHubRef": {typ: event.GitHubRef{}}, "JiraRef": {typ: event.JiraRef{}},
 	}
-	schemas := obj(obj(s.doc["components"])["schemas"])
 	for name, sh := range shapes {
-		schema := obj(schemas[name])
-		if schema == nil {
-			t.Errorf("the spec has no schema %s", name)
+		for _, problem := range shapeProblems(s, name, sh.typ, sh.written) {
+			t.Error(problem)
+		}
+	}
+	for _, problem := range eventUnionProblems(s, event.Types()) {
+		t.Error(problem)
+	}
+}
+
+// shownBodies are the bodies the API sends in place of the catalog's: a
+// citation carries the evidence the platform recorded for it.
+var shownBodies = map[string]any{event.TypeCitation: runs.CitationPayload{}}
+
+// shapeProblems compares a component schema with the fields a Go type
+// marshals. written says the schema is something a caller sends: the server
+// fills in what is left out, so only the field names are compared.
+func shapeProblems(s *apiSpec, name string, value any, written bool) []string {
+	schema := obj(obj(obj(s.doc["components"])["schemas"])[name])
+	if schema == nil {
+		return []string{"the spec has no schema " + name}
+	}
+	var out []string
+	props, required := map[string]bool{}, map[string]bool{}
+	schemaFields(s, schema, props, required)
+	typ := reflect.TypeOf(value)
+	seen := map[string]bool{}
+	for _, f := range jsonFields(typ) {
+		seen[f.name] = true
+		if !props[f.name] {
+			out = append(out, fmt.Sprintf("%s: %s marshals %q and the schema has no such property", name, typ, f.name))
 			continue
 		}
-		props, required := map[string]bool{}, map[string]bool{}
-		schemaFields(s, schema, props, required)
-		typ := reflect.TypeOf(sh.typ)
-		seen := map[string]bool{}
-		for _, f := range jsonFields(typ) {
-			seen[f.name] = true
-			if !props[f.name] {
-				t.Errorf("%s: %s marshals %q and the schema has no such property", name, typ, f.name)
-				continue
-			}
-			if !sh.written && required[f.name] == f.optional {
-				t.Errorf("%s.%s: required is %v in the schema, and the Go field's omitempty is %v", name, f.name, required[f.name], f.optional)
-			}
-		}
-		for prop := range props {
-			if !seen[prop] {
-				t.Errorf("%s: the schema has %q and %s has no such field", name, prop, typ)
-			}
+		if !written && required[f.name] == f.optional {
+			out = append(out, fmt.Sprintf("%s.%s: required is %v in the schema, and the Go field's omitempty is %v", name, f.name, required[f.name], f.optional))
 		}
 	}
+	for prop := range props {
+		if !seen[prop] {
+			out = append(out, fmt.Sprintf("%s: the schema has %q and %s has no such field", name, prop, typ))
+		}
+	}
+	slices.Sort(out)
+	return out
+}
 
-	// The event union names every kind the runtime declares.
-	var kinds []string
-	for _, v := range obj(schemas["EventKind"])["enum"].([]any) {
-		kinds = append(kinds, v.(string))
+// eventUnionProblems checks that the event union is the catalog: EventType
+// lists exactly the registered types, RunEvent maps each to one variant whose
+// type is that constant and whose data is the body the type decodes to, and
+// has no other variant.
+func eventUnionProblems(s *apiSpec, types []string) []string {
+	schemas := obj(obj(s.doc["components"])["schemas"])
+	var out []string
+	var listed []string
+	for _, v := range sliceOf(obj(schemas["EventType"])["enum"]) {
+		listed = append(listed, v.(string))
 	}
-	var declared []string
-	for _, typ := range []string{
-		event.TypeText, event.TypeThinking, event.TypeToolCall, event.TypeToolDone,
-		event.TypeCitation, event.TypeAccepted, event.TypeStarted, event.TypeParked,
-		event.TypeResumed, event.TypeCompleted, event.TypeFailed, event.TypeChildParked, event.TypeStopped, event.TypeAction,
-		event.TypeUsageCall, event.TypeUsageChild,
-	} {
-		kind, ok := legacy.KindOf(typ)
-		if !ok {
-			t.Fatalf("%s has no kind on the API", typ)
+	if !slices.Equal(listed, types) {
+		out = append(out, fmt.Sprintf("EventType is %v, the catalog registers %v", listed, types))
+	}
+	union := obj(schemas["RunEvent"])
+	if obj(union["discriminator"])["propertyName"] != "type" {
+		out = append(out, "RunEvent is not told apart by type")
+	}
+	mapping := obj(obj(union["discriminator"])["mapping"])
+	variants := map[string]bool{}
+	for _, v := range sliceOf(union["oneOf"]) {
+		variants[obj(v)["$ref"].(string)] = true
+	}
+	if len(mapping) != len(types) || len(variants) != len(types) {
+		out = append(out, fmt.Sprintf("RunEvent has %d mapped and %d variants, the catalog registers %d types", len(mapping), len(variants), len(types)))
+	}
+	for _, typ := range types {
+		ref, mapped := mapping[typ].(string)
+		if !mapped {
+			out = append(out, "RunEvent has no variant for "+typ)
+			continue
 		}
-		declared = append(declared, kind)
-	}
-	// The agent kinds are declared and not published.
-	declared = append(declared, "control.created", "control.revised", "control.deleted")
-	if !slices.Equal(kinds, declared) {
-		t.Errorf("EventKind is %v, the runtime declares %v", kinds, declared)
-	}
-	for _, union := range []string{"RunEvent", "ManifestEvent"} {
-		mapping := obj(obj(obj(schemas[union])["discriminator"])["mapping"])
-		for _, kind := range declared {
-			if _, mapped := mapping[kind]; !mapped {
-				t.Errorf("%s has no variant for kind %q", union, kind)
+		if !variants[ref] {
+			out = append(out, fmt.Sprintf("RunEvent maps %s to %s, which is not one of its variants", typ, ref))
+		}
+		variant := obj(schemas[strings.TrimPrefix(ref, "#/components/schemas/")])
+		var constant any
+		var data string
+		for _, part := range sliceOf(variant["allOf"]) {
+			props := obj(obj(part)["properties"])
+			if c, ok := obj(props["type"])["const"]; ok {
+				constant = c
+			}
+			if d, ok := obj(props["data"])["$ref"].(string); ok {
+				data = strings.TrimPrefix(d, "#/components/schemas/")
 			}
 		}
-		if len(mapping) != len(declared) || len(sliceOf(obj(schemas[union])["oneOf"])) != len(declared) {
-			t.Errorf("%s does not have exactly one variant per kind", union)
+		if constant != typ {
+			out = append(out, fmt.Sprintf("%s: type is %v, the mapping says %s", ref, constant, typ))
 		}
+		entry, _ := event.Lookup(typ)
+		body := shownBodies[typ]
+		if body == nil {
+			body = reflect.ValueOf(entry.New()).Elem().Interface()
+		}
+		if data == "" {
+			out = append(out, ref+" has no data schema")
+			continue
+		}
+		out = append(out, shapeProblems(s, data, body, false)...)
+	}
+	return out
+}
+
+// Taking one type out of RunEvent's mapping is caught.
+func TestEventUnionParityCatchesAMissingVariant(t *testing.T) {
+	s := loadSpec(t)
+	if problems := eventUnionProblems(s, event.Types()); len(problems) != 0 {
+		t.Fatalf("the spec's union is not the catalog: %v", problems)
+	}
+	mapping := obj(obj(obj(obj(obj(s.doc["components"])["schemas"])["RunEvent"])["discriminator"])["mapping"])
+	delete(mapping, event.TypeText)
+	if problems := eventUnionProblems(s, event.Types()); len(problems) == 0 {
+		t.Error("a union missing run.delta.text.v1 passes")
 	}
 }
 
@@ -1198,19 +1251,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// answer validates against the spec's body for it.
 	answeredBy := ""
 	for _, e := range sliceOf(c.call(acme, "GET", "/api/runs/{id}/events", "/api/runs/"+parked.str("id")+"/events", "", http.StatusOK).field("events")) {
-		if obj(e)["kind"] != "lifecycle.resumed" {
+		if obj(e)["type"] != event.TypeResumed {
 			continue
 		}
-		raw, _ := base64.StdEncoding.DecodeString(obj(e)["payload"].(string))
-		var body struct {
-			Answer struct {
-				By     string `json:"by"`
-				ByName string `json:"by_name"`
-			} `json:"answer"`
-		}
-		if json.Unmarshal(raw, &body) == nil {
-			answeredBy = body.Answer.By + " " + body.Answer.ByName
-		}
+		answer := obj(obj(obj(e)["data"])["answer"])
+		answeredBy = fmt.Sprint(answer["by"], " ", answer["by_name"])
 	}
 	if answeredBy != "svc-acme svc-acme" {
 		t.Errorf("the run's events say it was answered by %q", answeredBy)
@@ -2149,6 +2194,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?since=2026-10-01T00:00:00Z&until=2026-10-02T00:00:00Z&bucket=24h", "", http.StatusOK)
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?since=2026-10-01T00:00:00Z", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/analytics", "/api/analytics?window=9999h", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/journal", "/api/journal?run="+id+"&type=run.delta&limit=5", "", http.StatusOK)
 	c.call(acme, "GET", "/api/journal", "/api/journal?run="+id+"&kind=lifecycle&limit=5", "", http.StatusOK)
 	c.sweep(acme)
 
@@ -2490,12 +2536,11 @@ var unexercised = map[string]string{
 }
 
 // The event stream is server-sent events. Each message's data is validated
-// against the union the spec gives the stream, and each event's payload is
-// decoded from base64 and validated against the schema for its kind.
+// against the union the spec gives the stream, data and all.
 func TestEventStreamMatchesTheSpec(t *testing.T) {
 	f := newFixture(t)
 	s := loadSpec(t)
-	event, notice, posted := s.component(t, "RunEvent"), s.component(t, "InboxNotice"), s.component(t, "ThreadNotice")
+	runEvent, notice, posted := s.component(t, "RunEvent"), s.component(t, "InboxNotice"), s.component(t, "ThreadNotice")
 	tok := f.machine(t, "acme", everything...)
 	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
 	f.do(t, nil, "POST", "/api/projects", tok, `{"name":"Launch"}`)
@@ -2503,7 +2548,7 @@ func TestEventStreamMatchesTheSpec(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/events?topic=agent", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/events", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -2527,9 +2572,9 @@ func TestEventStreamMatchesTheSpec(t *testing.T) {
 		t.Fatalf("starting a thread = %d %v", res.StatusCode, out)
 	}
 
-	kinds, notices, posts, name := map[string]int{}, 0, 0, ""
+	types, notices, posts, name := map[string]int{}, 0, 0, ""
 	sc := bufio.NewScanner(res.Body)
-	for sc.Scan() && (kinds["lifecycle.completed"] == 0 || notices == 0 || posts == 0) {
+	for sc.Scan() && (types[event.TypeCompleted] == 0 || notices == 0 || posts == 0) {
 		line := sc.Text()
 		if v, isName := strings.CutPrefix(line, "event: "); isName {
 			name = v
@@ -2550,11 +2595,11 @@ func TestEventStreamMatchesTheSpec(t *testing.T) {
 		}
 		switch name {
 		case "":
-			if err := event.Validate(value); err != nil {
+			if err := runEvent.Validate(value); err != nil {
 				t.Errorf("an event does not match RunEvent:\n%v\ndata: %s", err, data)
 			}
-			if obj(value)["run_id"] == run["id"] {
-				kinds[obj(value)["kind"].(string)]++
+			if obj(value)["run"] == run["id"] {
+				types[obj(value)["type"].(string)]++
 			}
 		case "inbox":
 			if err := notice.Validate(value); err != nil {
@@ -2570,9 +2615,9 @@ func TestEventStreamMatchesTheSpec(t *testing.T) {
 			t.Errorf("the stream sent an event named %q, which the spec does not describe", name)
 		}
 	}
-	for _, want := range []string{"lifecycle.accepted", "lifecycle.started", "delta.text", "lifecycle.completed"} {
-		if kinds[want] == 0 {
-			t.Errorf("the run's stream had no %s: %v", want, kinds)
+	for _, want := range []string{event.TypeAccepted, event.TypeStarted, event.TypeText, event.TypeCompleted, event.TypeUsageCall} {
+		if types[want] == 0 {
+			t.Errorf("the run's stream had no %s: %v", want, types)
 		}
 	}
 	if notices == 0 {
@@ -2601,27 +2646,32 @@ func TestClosedSchemasRejectUnknownProperties(t *testing.T) {
 			t.Errorf("an unknown property %s is accepted", name)
 		}
 	}
-	event := s.component(t, "RunEvent")
-	base := map[string]any{"seq": json.Number("1"), "topic": "agent:a:r", "run_id": "r", "tenant": "t", "agent": "a", "rev": json.Number("1"), "origin": "api", "at": "2026-01-01T00:00:00Z", "kind": "delta.text"}
-	if err := event.Validate(base); err != nil {
+	runEvent := s.component(t, "RunEvent")
+	base := map[string]any{"id": "e1", "source": "humagen:t", "type": event.TypeText, "channel": "humagen://t", "time": "2026-01-01T00:00:00Z", "hops": json.Number("0"),
+		"tenant": "t", "run": "r", "seq": json.Number("1"), "agent": "a", "data": map[string]any{"text": "hi"}}
+	if err := runEvent.Validate(base); err != nil {
 		t.Fatalf("a valid event is refused: %v", err)
 	}
 	base["extra"] = true
-	if event.Validate(base) == nil {
+	if runEvent.Validate(base) == nil {
 		t.Error("an unknown property on an allOf variant is accepted")
 	}
-}
-
-// v1Lifecycle is every lifecycle body's fields together, as the API sends
-// them, with the revision V1Of adds.
-type v1Lifecycle struct {
-	Attempt  int             `json:"attempt,omitempty"`
-	Rev      int             `json:"rev,omitempty"`
-	Error    string          `json:"error,omitempty"`
-	Terminal bool            `json:"terminal,omitempty"`
-	Reason   string          `json:"reason,omitempty"`
-	Text     string          `json:"text,omitempty"`
-	Usage    *event.RunUsage `json:"usage,omitempty"`
-	Question *event.Question `json:"question,omitempty"`
-	Answer   *event.Answer   `json:"answer,omitempty"`
+	delete(base, "extra")
+	base["data"] = map[string]any{"text": "hi", "extra": true}
+	if runEvent.Validate(base) == nil {
+		t.Error("an unknown property in an event's data is accepted")
+	}
+	// A type outside the catalog is an UnknownEvent, and a known one never is.
+	unknown := s.component(t, "UnknownEvent")
+	base["type"] = "run.delta.audio.v1"
+	if err := unknown.Validate(base); err != nil {
+		t.Errorf("an unknown type is refused as an UnknownEvent: %v", err)
+	}
+	if runEvent.Validate(base) == nil {
+		t.Error("an unknown type is accepted as a RunEvent")
+	}
+	base["type"] = event.TypeText
+	if unknown.Validate(base) == nil {
+		t.Error("a known type is accepted as an UnknownEvent")
+	}
 }

@@ -326,19 +326,19 @@ test("a refusal carries the limit, a missing object is null, and an error keeps 
 
 test("the event stream hands each event on once across a reconnect, and ends on abort", async () => {
   const frame = (seq: number, kind: string) =>
-    `data: ${JSON.stringify({ seq, run_id: "r1", agent: "lead", kind })}\n\n`;
+    `data: ${JSON.stringify({ id: `e${seq}`, type: kind, seq, run: "r1", agent: "lead", data: {} })}\n\n`;
   const sse =
     (...parts: string[]) =>
     () =>
       new Response(stream(...parts), { status: 200 });
   const { fn, asked } = fakeFetch([
     sse(
-      frame(1, "lifecycle.accepted"),
+      frame(1, "run.accepted.v1"),
       'event: inbox\ndata: {"id":"m1","kind":"memory"}\n\n',
       "data: not json\n\n",
     ),
     // The server replays what the bus holds on every open.
-    sse(frame(1, "lifecycle.accepted"), frame(2, "lifecycle.completed")),
+    sse(frame(1, "run.accepted.v1"), frame(2, "run.completed.v1")),
   ]);
   const c = httpHumagen({
     baseUrl: "http://humagen.test",
@@ -349,11 +349,11 @@ test("the event stream hands each event on once across a reconnect, and ends on 
   const stop = new AbortController();
   const got: string[] = [];
   for await (const item of c.runEvents({ id: "r1", agent: "lead" }, { signal: stop.signal })) {
-    got.push(item.type === "event" ? item.event.kind : `inbox:${item.notice.id}`);
-    if (item.type === "event" && item.event.kind === "lifecycle.completed") stop.abort();
+    got.push(item.type === "event" ? item.event.type : `inbox:${item.notice.id}`);
+    if (item.type === "event" && item.event.type === "run.completed.v1") stop.abort();
   }
-  assert.deepEqual(got, ["lifecycle.accepted", "inbox:m1", "lifecycle.completed"]);
-  assert.equal(asked[0]?.url, "http://humagen.test/api/events?topic=agent%3Alead%3Ar1");
+  assert.deepEqual(got, ["run.accepted.v1", "inbox:m1", "run.completed.v1"]);
+  assert.equal(asked[0]?.url, "http://humagen.test/api/events?run=r1");
 });
 
 test("the inbox stream says each time it opens, first and after every reconnect, before what it carries", async () => {

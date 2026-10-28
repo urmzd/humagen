@@ -58,20 +58,21 @@ export function stubEventSource(): () => void {
 
 /**
  * Installs an EventSource a test delivers to: send(event) hands a run's
- * event to every source open on that run's topic, as the platform's stream
- * would. Returns send and a way to put back whatever was there.
+ * event to every source open on that run, or on every run, as the
+ * platform's stream would. Returns send and a way to put back whatever was
+ * there.
  */
-export function liveEventSource(): { send: (event: { run_id: string; agent: string; kind: string; body?: unknown; at?: string }) => void; restore: () => void } {
+export function liveEventSource(): { send: (event: { run: string; agent: string; type: string; data?: unknown; time?: string }) => void; restore: () => void } {
   const g = globalThis as { EventSource?: unknown };
   const real = g.EventSource;
-  const open = new Set<{ topic: string; onmessage: ((m: { data: string }) => void) | null }>();
+  const open = new Set<{ run: string; onmessage: ((m: { data: string }) => void) | null }>();
   g.EventSource = class {
     onopen: (() => void) | null = null;
     onerror: (() => void) | null = null;
     onmessage: ((m: { data: string }) => void) | null = null;
-    topic: string;
+    run: string;
     constructor(url: string) {
-      this.topic = new URL(url, "http://localhost/").searchParams.get("topic") ?? "";
+      this.run = new URL(url, "http://localhost/").searchParams.get("run") ?? "";
       open.add(this);
     }
     addEventListener() {}
@@ -80,21 +81,23 @@ export function liveEventSource(): { send: (event: { run_id: string; agent: stri
     }
   };
   let seq = 0;
-  const send = (e: { run_id: string; agent: string; kind: string; body?: unknown; at?: string }) => {
-    const topic = `agent:${e.agent}:${e.run_id}`;
+  const send = (e: { run: string; agent: string; type: string; data?: unknown; time?: string }) => {
+    seq++;
     const data = JSON.stringify({
-      seq: ++seq,
-      topic,
-      run_id: e.run_id,
+      id: `e${seq}`,
+      source: "humagen:t",
+      type: e.type,
+      channel: "humagen://t",
+      time: e.time ?? "2026-10-01T09:00:00Z",
+      hops: 0,
       tenant: "t",
+      run: e.run,
+      seq,
       agent: e.agent,
-      rev: 1,
-      origin: "test",
-      kind: e.kind,
-      at: e.at ?? "2026-10-01T09:00:00Z",
-      ...(e.body === undefined ? {} : { payload: btoa(JSON.stringify(e.body)) }),
+      version: "1.0.0",
+      data: e.data ?? {},
     });
-    for (const s of open) if (s.topic === topic) s.onmessage?.({ data });
+    for (const s of open) if (s.run === "" || s.run === e.run) s.onmessage?.({ data });
   };
   return {
     send,

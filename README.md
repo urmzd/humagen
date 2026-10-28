@@ -129,9 +129,9 @@ Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/F
 | `GET`, `POST /api/evals`, `PUT`, `DELETE /api/evals/{name}`, `POST .../run`, `GET .../runs` | `evals:read`, `evals:write` |
 | `GET`, `PUT /api/preferences`, `GET`, `PUT`, `DELETE /api/preferences/photo` | Signed in, the caller's own |
 | `POST /api/runs/{id}/calls` | `runs:write` |
-| `GET /api/events?topic=agent[:name[:run]]` | `runs:read`, server-sent events |
+| `GET /api/events?channel=&type=&run=&from=` | `runs:read`, server-sent events of the event union |
 | `GET /api/analytics?window=1h` | `runs:read` |
-| `GET /api/journal?agent=&run=&kind=&origin=&q=&window=` | `runs:read` |
+| `GET /api/journal?agent=&run=&type=&origin=&q=&window=` | `runs:read` |
 | `GET`, `POST /api/schedules`, `DELETE /api/schedules/{name}`, `POST .../pause`, `.../resume`, `.../run` | `schedules:read`, `schedules:write` |
 | `GET /api/alerts`, `POST /api/alerts/{id}/ack`, `GET`, `POST`, `DELETE /api/alert-rules` | `alerts:read`, `alerts:write` |
 | `GET`, `POST /api/knowledge`, `.../{name}/documents`, `GET /api/knowledge/search?q=` | `knowledge:read`, `knowledge:write` |

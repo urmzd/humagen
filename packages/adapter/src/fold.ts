@@ -1,5 +1,5 @@
 import { emptyTurn, reduce, type Turn, type TurnEvent } from "@humagen/core";
-import { adapter, citationOf, type BusEvent, type Run, turnOf } from "./run.ts";
+import { adapter, citationOf, type RunEvent, type Run, turnOf } from "./run.ts";
 
 /**
  * A run as one shared UI turn, kept current. This is the state every surface
@@ -10,7 +10,7 @@ export interface Follower {
   /** The turn as it stands. */
   readonly turn: Turn;
   /** Fold one of the run's events in. */
-  apply(e: BusEvent): Turn;
+  apply(e: RunEvent): Turn;
   /** Fold humagen events in directly, for what a surface itself knows, such as a stop it asked for. */
   push(...events: TurnEvent[]): Turn;
   /**
@@ -61,7 +61,7 @@ export function follow(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "threa
 }
 
 /** A turn rebuilt from the events the journal still holds. Undefined when it holds none. */
-export function replay(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread" | "citations" | "outcome">>, events: BusEvent[], opts: Options = {}): Turn | undefined {
+export function replay(run: Pick<Run, "id" | "agent"> & Partial<Pick<Run, "thread" | "citations" | "outcome">>, events: RunEvent[], opts: Options = {}): Turn | undefined {
   if (events.length === 0) return undefined;
   const f = follow(run, opts);
   for (const e of events) f.apply(e);

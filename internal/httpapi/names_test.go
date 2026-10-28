@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/platform"
 )
 
@@ -225,18 +225,11 @@ func TestWhoAnsweredAQuestionIsCalledByName(t *testing.T) {
 	var resumed map[string]any
 	for _, e := range want(t, f, ana, "GET", "/api/runs/"+id+"/events", "", http.StatusOK)["events"].([]any) {
 		e := e.(map[string]any)
-		if e["kind"] != "lifecycle.resumed" {
+		if e["type"] != event.TypeResumed {
 			continue
 		}
-		raw, err := base64.StdEncoding.DecodeString(e["payload"].(string))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var body map[string]any
-		if err := json.Unmarshal(raw, &body); err != nil {
-			t.Fatal(err)
-		}
-		resumed, _ = body["answer"].(map[string]any)
+		data, _ := e["data"].(map[string]any)
+		resumed, _ = data["answer"].(map[string]any)
 	}
 	if resumed == nil {
 		t.Fatal("the run's events hold no answer")

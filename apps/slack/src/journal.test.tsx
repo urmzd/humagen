@@ -44,9 +44,9 @@ test("journal: a stream is recorded while it is open and forgotten once it is st
   assert.ok(open?.ts, "the streamed message is named");
   assert.equal(JSON.parse(readFileSync(file, "utf8")).streams.length, 1, "it is on disk");
 
-  humagen.emit(humagen.last.id, "lifecycle.accepted");
+  humagen.emit(humagen.last.id, "run.accepted.v1");
   await settle();
-  humagen.emit(humagen.last.id, "lifecycle.completed", { text: "pong" });
+  humagen.emit(humagen.last.id, "run.completed.v1", { text: "pong" });
   await settle();
   await app.idle();
   assert.equal(journal.list().length, 0);

@@ -708,8 +708,9 @@ such a program, not for a file:
 
 Nothing a file says changes, and stored data is read as it was written: a run
 recorded before keeps its trigger, and a schedule keeps its context
-([upgrading-from-warp.md](upgrading-from-warp.md)). The API still sends a run's
-events as kinds with a payload.
+([upgrading-from-warp.md](upgrading-from-warp.md)). The API sends a run's
+events as the union too: each has a `type` and its `data` inline
+([API contract](api.md#events)).
 
 
 ## Managed source records

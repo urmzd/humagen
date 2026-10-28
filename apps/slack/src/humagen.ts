@@ -8,15 +8,15 @@
 import {
   type AnswerRequest,
   answerPath,
-  type BusEvent,
   type Http,
   mailTransport,
   type Run,
+  type RunEvent,
   type Transport,
   type WireProject,
 } from "@humagen/adapter";
 
-export type { BusEvent, Run, WireProject };
+export type { Run, RunEvent, WireProject };
 
 /** Who the platform says is calling, as `GET /api/me` answers. */
 export interface Me {
@@ -166,7 +166,7 @@ export interface InboxNotice {
 }
 
 export type StreamItem =
-  | { type: "event"; event: BusEvent }
+  | { type: "event"; event: RunEvent }
   | { type: "inbox"; notice: InboxNotice };
 
 /** A limit that turned a run away, as the platform reports it. */
@@ -426,7 +426,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | createRun | `POST /api/runs` with an `Idempotency-Key` header |
  * | getRun | `GET /api/runs/{id}` |
  * | getThread | `GET /api/threads/{id}` |
- * | runEvents, notices | `GET /api/events?topic=` as server-sent events, resumed with `from` |
+ * | runEvents, notices | `GET /api/events?run=` as server-sent events, resumed with `from` |
  * | stopRun | `POST /api/runs/{id}/stop` |
  * | answerQuestion | `POST /api/runs/{id}/questions/{question}/answer` |
  * | postThread | `POST /api/threads` with a surface |
@@ -510,13 +510,13 @@ export function httpHumagen(cfg: {
   };
 
   /**
-   * One topic's stream, reopened whenever it ends. Every open replays what the
+   * One run's stream, reopened whenever it ends. Every open replays what the
    * bus still holds, so run events are told apart by their sequence number and
    * each is handed on once. Inbox notices are not replayed: `opened` is
    * called once each open is answered, before anything on it is handed on.
    */
   async function* stream(
-    topic: string,
+    run: string,
     signal: AbortSignal,
     from?: number,
     opened?: () => void,
@@ -524,7 +524,7 @@ export function httpHumagen(cfg: {
     const seen = new Map<string, number>();
     while (!signal.aborted) {
       try {
-        const query = `topic=${enc(topic)}${from === undefined ? "" : `&from=${from}`}`;
+        const query = `run=${enc(run)}${from === undefined ? "" : `&from=${from}`}`;
         const res = await send("GET", `/api/events?${query}`, {
           signal,
           headers: { accept: "text/event-stream" },
@@ -545,9 +545,10 @@ export function httpHumagen(cfg: {
             yield { type: "inbox", notice: parsed as InboxNotice };
             continue;
           }
-          const event = parsed as BusEvent;
-          if ((seen.get(event.run_id) ?? -1) >= event.seq) continue;
-          seen.set(event.run_id, event.seq);
+          const event = parsed as RunEvent;
+          const at = event.seq ?? 0;
+          if ((seen.get(event.run ?? "") ?? -1) >= at) continue;
+          seen.set(event.run ?? "", at);
           yield { type: "event", event };
         }
       } catch (e) {
@@ -598,12 +599,11 @@ export function httpHumagen(cfg: {
     stopRun: (id) => http<Run>("POST", `/api/runs/${enc(id)}/stop`),
     answerQuestion: (answer, actAs) =>
       http<unknown>("POST", answerPath(answer), { ...answer.body, act_as: actAs }),
-    runEvents: (run, options) =>
-      stream(`agent:${run.agent}:${run.id}`, options.signal ?? never, options.from),
+    runEvents: (run, options) => stream(run.id, options.signal ?? never, options.from),
     notices: async function* (options) {
-      // No agent can be named this, so the topic carries no run and the stream is the inbox's alone.
+      // No run is called this, so the stream carries no run event and is the inbox's alone.
       for await (const item of stream(
-        "agent:_inbox",
+        "_inbox",
         options.signal ?? never,
         undefined,
         options.opened,

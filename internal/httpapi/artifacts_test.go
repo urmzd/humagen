@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/policy"
@@ -319,8 +320,8 @@ func TestRunManifest(t *testing.T) {
 	for range 200 {
 		_, out := f.do(t, nil, "GET", "/api/runs/"+id+"/events", acme, "")
 		events, _ = out["events"].([]any)
-		if n := len(events); n > 0 && events[n-1].(map[string]any)["kind"] == "lifecycle.completed" {
-			if out["complete"] != true || events[0].(map[string]any)["kind"] != "lifecycle.accepted" {
+		if n := len(events); n > 0 && events[n-1].(map[string]any)["type"] == event.TypeCompleted {
+			if out["complete"] != true || events[0].(map[string]any)["type"] != event.TypeAccepted {
 				t.Fatalf("events = %v", out)
 			}
 			break
@@ -343,10 +344,10 @@ func TestRunManifest(t *testing.T) {
 	if def["rev"].(float64) != 1 || def["hash"] == "" || def["spec"].(map[string]any)["name"] != "helper" {
 		t.Fatalf("definition = %v", def)
 	}
-	// Bodies are decoded, not base64: the document reads without a tool.
+	// Data is inline JSON, not base64: the document reads without a tool.
 	last := entry["events"].([]any)[len(events)-1].(map[string]any)
-	if body, isObject := last["body"].(map[string]any); !isObject || body["text"] == "" {
-		t.Fatalf("the last event's body = %v", last["body"])
+	if data, isObject := last["data"].(map[string]any); !isObject || data["text"] == "" || last["type"] != event.TypeCompleted {
+		t.Fatalf("the last event = %v", last)
 	}
 	if u := m["usage"].(map[string]any); u["metered"] != true || u["total"].(map[string]any)["model_calls"].(float64) < 1 {
 		t.Fatalf("the manifest's usage = %v", u)

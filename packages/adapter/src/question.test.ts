@@ -4,21 +4,26 @@ import { ActionId, type UiAction } from "@humagen/core";
 import { follow } from "./fold.ts";
 import { fromServer, toRequest } from "./mail.ts";
 import { answerOfAction, interruptOf } from "./question.ts";
-import type { BusEvent } from "./run.ts";
+import type { RunEvent } from "./run.ts";
 
 let seq = 0;
-const ev = (kind: string, payload?: unknown): BusEvent => ({
-  seq: ++seq,
-  topic: "agent:lead:r1",
-  run_id: "r1",
-  tenant: "acme",
-  agent: "lead",
-  rev: 1,
-  origin: "api",
-  kind,
-  payload: payload === undefined ? undefined : Buffer.from(JSON.stringify(payload)).toString("base64"),
-  at: "2026-10-14T00:00:00Z",
-});
+const ev = (type: string, data: unknown = {}): RunEvent => {
+  const n = ++seq;
+  return {
+    id: `e${n}`,
+    source: "humagen:acme",
+    type,
+    channel: "humagen://acme",
+    time: "2026-10-14T00:00:00Z",
+    hops: 0,
+    tenant: "acme",
+    run: "r1",
+    seq: n,
+    agent: "lead",
+    version: "1.0.0",
+    data,
+  } as RunEvent;
+};
 
 const at = "2026-10-14T00:01:00Z";
 const questions = {
@@ -68,9 +73,9 @@ const part = (kind: keyof typeof questions, outcome?: unknown) =>
 for (const kind of ["approval", "choice", "reply"] as const) {
   test(`a ${kind} question waits on the run, and its answer settles it in place`, () => {
     const f = follow({ id: "r1", agent: "lead" });
-    for (const e of [ev("lifecycle.accepted", { rev: 1 }), ev("lifecycle.started", { attempt: 1 })]) f.apply(e);
-    if (kind === "approval") f.apply(ev("delta.tool.call", { id: "call-1", name: "file_write", phase: "requested" }));
-    let turn = f.apply(ev("lifecycle.parked", { reason: "waiting on a person", question: questions[kind] }));
+    for (const e of [ev("run.accepted.v1"), ev("run.started.v1", { attempt: 1 })]) f.apply(e);
+    if (kind === "approval") f.apply(ev("run.delta.tool.call.v1", { id: "call-1", name: "file_write", phase: "requested" }));
+    let turn = f.apply(ev("run.parked.v1", { reason: "waiting on a person", question: questions[kind] }));
     assert.equal(turn.status, "waiting");
     assert.equal(turn.activity, "waiting");
     assert.equal(turn.interrupts.length, 1);
@@ -80,7 +85,7 @@ for (const kind of ["approval", "choice", "reply"] as const) {
       assert.equal(call?.status, "waiting", "the held call reads waiting, not running");
     }
 
-    turn = f.apply(ev("lifecycle.resumed", { attempt: 2, answer: answers[kind].answer }));
+    turn = f.apply(ev("run.resumed.v1", { attempt: 2, answer: answers[kind].answer }));
     assert.notEqual(turn.status, "waiting");
     const settled = turn.interrupts[0];
     if (settled?.type === "approval") assert.deepEqual(settled.decision, { kind: "approved", by: "olu", at });
@@ -97,8 +102,8 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     else assert.equal(open?.type === "reply" && open.prompt, questions.reply.prompt);
     // Settled: the run's resumed event and the inbox's outcome say the same.
     const f = follow({ id: "r1", agent: "lead" });
-    f.apply(ev("lifecycle.parked", { question: questions[kind] }));
-    const onRun = f.apply(ev("lifecycle.resumed", { answer: answers[kind].answer })).interrupts[0];
+    f.apply(ev("run.parked.v1", { question: questions[kind] }));
+    const onRun = f.apply(ev("run.resumed.v1", { answer: answers[kind].answer })).interrupts[0];
     const inMail = part(kind, answers[kind].outcome).parts[0];
     if (inMail?.type === "approval") assert.deepEqual(inMail.approval, onRun);
     else if (inMail?.type === "choice") assert.deepEqual(inMail.clarification, onRun);
@@ -150,13 +155,13 @@ test("a question nobody answered, or whose run was stopped, says so", () => {
   const expired = part("approval", { action: "expired", by: "system", at, note: "Nobody answered in time, so it was denied" }).parts[0];
   assert.deepEqual(expired?.type === "approval" && expired.approval.decision, { kind: "expired", at });
   const f = follow({ id: "r1", agent: "lead" });
-  f.apply(ev("lifecycle.parked", { question: questions.choice }));
-  const stopped = f.apply(ev("lifecycle.stopped", { reason: "Stopped by ada", by: "ada" }));
+  f.apply(ev("run.parked.v1", { question: questions.choice }));
+  const stopped = f.apply(ev("run.stopped.v1", { reason: "Stopped by ada", by: "ada" }));
   const i = stopped.interrupts[0];
   assert.equal(i?.type === "clarification" && i.answer.kind, "declined");
   const g = follow({ id: "r1", agent: "lead" });
-  g.apply(ev("lifecycle.parked", { question: questions.choice }));
-  const late = g.apply(ev("lifecycle.resumed", { answer: { question_id: "q-c", choice: "blue", expired: true, at } })).interrupts[0];
+  g.apply(ev("run.parked.v1", { question: questions.choice }));
+  const late = g.apply(ev("run.resumed.v1", { answer: { question_id: "q-c", choice: "blue", expired: true, at } })).interrupts[0];
   assert.deepEqual(late?.type === "clarification" && late.answer, {
     kind: "declined",
     by: "Nobody",
@@ -171,8 +176,8 @@ test("a question nobody answered, or whose run was stopped, says so", () => {
 test("whoever answered is shown by name, on the run and in the inbox, never by subject", () => {
   const subject = "tailscale:olu@example.com";
   const f = follow({ id: "r1", agent: "lead" });
-  f.apply(ev("lifecycle.parked", { question: questions.choice }));
-  const onRun = f.apply(ev("lifecycle.resumed", { answer: { ...answers.choice.answer, by: subject, by_name: "Olu Ade" } })).interrupts[0];
+  f.apply(ev("run.parked.v1", { question: questions.choice }));
+  const onRun = f.apply(ev("run.resumed.v1", { answer: { ...answers.choice.answer, by: subject, by_name: "Olu Ade" } })).interrupts[0];
   assert.equal(onRun?.type === "clarification" && onRun.answer.kind === "answered" && onRun.answer.by, "Olu Ade");
   const inMail = part("choice", { ...answers.choice.outcome, by: subject, by_name: "Olu Ade" }).parts[0];
   assert.deepEqual(inMail?.type === "choice" && inMail.clarification, onRun);

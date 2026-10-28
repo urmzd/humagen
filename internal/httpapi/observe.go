@@ -1,8 +1,8 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -12,7 +12,6 @@ import (
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
 
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -130,7 +129,8 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request, who auth.Prin
 }
 
 // journal answers "what happened": events in the caller's tenant, narrowed by
-// agent, run, kind, origin, text and time, newest first.
+// agent, run, type, origin, text and time, newest first. kind is the type
+// filter from before the event union.
 func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
 	since, until, valid := window(r)
@@ -140,7 +140,7 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 	}
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	entries := s.P.Journal.Query(journal.Query{
-		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
+		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Type: cmp.Or(q.Get("type"), q.Get("kind")),
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
 		ProjectEvent: func(e event.Envelope) event.Envelope { return s.P.ShownEvent(who, e) },
 		Visible: func(e event.Envelope) bool {
@@ -196,12 +196,12 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	held := s.P.Journal.Events(who.Tenant, []string{run.ID})
-	events := make([]legacy.V1Event, 0, len(held))
+	events := make([]platform.APIEvent, 0, len(held))
 	for _, e := range held {
 		if !s.P.CitationEventVisible(who, e) {
 			continue
 		}
-		if v, shown := s.P.ShownV1(who, e); shown {
+		if v, shown := s.P.ShownAPI(who, e); shown {
 			events = append(events, v)
 		}
 	}
@@ -216,18 +216,12 @@ func complete(events []event.Envelope) bool {
 
 // manifest is one document that says everything the platform recorded about a
 // run and every run under the same root: who ran, at which revision, what each
-// was asked and answered, and every event in order with its body decoded.
+// was asked and answered, and every event in order, as the stream sends it.
 func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	tree, err := s.P.Runs.Tree(who.Tenant, r.PathValue("id"))
 	if err != nil {
 		s.problem(w, err)
 		return
-	}
-	type item struct {
-		Seq  uint64          `json:"seq"`
-		At   time.Time       `json:"at"`
-		Kind string          `json:"kind"`
-		Body json.RawMessage `json:"body,omitempty"`
 	}
 	type entry struct {
 		Run runs.Run `json:"run"`
@@ -238,9 +232,9 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		// Cause is why a failed run failed, in one line.
 		Cause string `json:"cause,omitempty"`
 		// Definition is the agent revision the run was pinned to.
-		Definition *wire.Revision `json:"definition,omitempty"`
-		DurationMs int64          `json:"duration_ms"`
-		Events     []item         `json:"events"`
+		Definition *wire.Revision      `json:"definition,omitempty"`
+		DurationMs int64               `json:"duration_ms"`
+		Events     []platform.APIEvent `json:"events"`
 		// Complete is false when the run's first events are no longer held.
 		Complete bool `json:"complete"`
 	}
@@ -250,7 +244,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 	out := make([]entry, 0, len(tree))
 	seer := s.P.Seer(who)
 	for _, run := range tree {
-		e := entry{Run: s.P.ShownRunAs(who, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []item{}}
+		e := entry{Run: s.P.ShownRunAs(who, run), State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []platform.APIEvent{}}
 		if run.Stopping {
 			e.State = "stopping"
 		}
@@ -272,16 +266,11 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 			if !s.P.CitationEventVisible(who, ev) {
 				continue
 			}
-			v, shown := s.P.ShownV1(who, ev)
-			if !shown {
-				continue
+			if v, shown := s.P.ShownAPI(who, ev); shown {
+				e.Events = append(e.Events, v)
 			}
-			one := item{Seq: v.Seq, At: v.At, Kind: v.Kind}
-			if json.Valid(v.Payload) {
-				one.Body = v.Payload
-			}
-			e.Events = append(e.Events, one)
 		}
+		e.Events = shownEvents(s.P.Names(who.Tenant), e.Events)
 		out = append(out, e)
 	}
 	s.Log.Info("httpapi: run exported", "tenant", who.Tenant, "run", r.PathValue("id"), "runs", len(out), "by", who.Subject)

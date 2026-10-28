@@ -2,9 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -13,6 +10,7 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/internal/platform"
 )
 
@@ -65,12 +63,9 @@ func TestStoppingARunIsAcceptedThenConfirmed(t *testing.T) {
 		text := ""
 		for _, e := range events {
 			e, _ := e.(map[string]any)
-			raw, _ := base64.StdEncoding.DecodeString(fmt.Sprint(e["payload"]))
-			var body struct {
-				Text string `json:"text"`
-			}
-			if e["kind"] == "delta.text" && json.Unmarshal(raw, &body) == nil {
-				text += body.Text
+			data, _ := e["data"].(map[string]any)
+			if piece, isText := data["text"].(string); isText && e["type"] == event.TypeText {
+				text += piece
 			}
 		}
 		return text

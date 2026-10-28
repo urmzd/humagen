@@ -591,7 +591,7 @@ function ClientEvents({ client }: { client: Client }) {
       <ul className="divide-y divide-aui-border">
         {entries?.map((entry) => (
           <li key={entry.seq} className="break-words py-3 text-aui-sm">
-            {entry.kind}
+            {entry.type}
             <span className="block text-aui-xs text-aui-muted">{ago(entry.at)}</span>
           </li>
         ))}

@@ -89,7 +89,7 @@ func TestARunCompletesAndStreams(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
 
-	stream, err := p.Subscribe(ctx, tenant, "lead", "", 0)
+	stream, err := p.Subscribe(ctx, tenant, platform.EventFilter{Agent: "lead"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestAnotherTenantSeesNothing(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
 
-	stream, err := p.Subscribe(ctx, "globex", "", "", 0)
+	stream, err := p.Subscribe(ctx, "globex", platform.EventFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -436,7 +436,6 @@ test("the run's own approval of a call that acts as the person says so too, from
     prompt: "Create the issue?",
     tool: { name: "issues.create", call_id: "c1", arguments: { title: "Flaky test" }, ...(acts ? { acts_for_person: true } : {}) },
   });
-  const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
   const draw = (turn: Turn) =>
     html(
       <WebSurface onAction={() => {}}>
@@ -445,7 +444,7 @@ test("the run's own approval of a call that acts as the person says so too, from
     );
   for (const acts of [true, false]) {
     const run = runOf({ status: "parked", question: question(acts) as Run["question"] });
-    const parked = { seq: 1, kind: "lifecycle.parked", run_id: run.id, agent: run.agent, at: run.created_at, payload: b64({ reason: "waiting on a person", question: question(acts) }) } as never;
+    const parked = { id: "e1", source: "humagen:t", type: "run.parked.v1", channel: "humagen://t", time: run.created_at, hops: 0, run: run.id, seq: 1, agent: run.agent, data: { reason: "waiting on a person", question: question(acts) } } as never;
     const streamed = replay(run, [parked]);
     assert.ok(streamed);
     for (const turn of [streamed, turnOf(run)]) {
@@ -1013,12 +1012,11 @@ test("itemOf: a turn's answer, a tool call and a failed call become things to co
 test("replay: a finished run is rebuilt from its events, and stays undefined when there are none", () => {
   const run = runOf({});
   assert.equal(replay(run, []), undefined);
-  const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
-  const ev = (seq: number, kind: string, payload: unknown) => ({ seq, kind, run_id: run.id, agent: run.agent, at: run.created_at, payload: b64(payload) }) as never;
+  const ev = (seq: number, type: string, data: unknown) => ({ id: `e${seq}`, source: "humagen:t", type, channel: "humagen://t", time: run.created_at, hops: 0, run: run.id, seq, agent: run.agent, data }) as never;
   const turn = replay(run, [
-    ev(1, "delta.tool.call", { id: "c1", name: "git_log", phase: "call" }),
-    ev(2, "delta.tool.done", { id: "c1", name: "git_log", result: "14 commits" }),
-    ev(3, "delta.text", { text: "Done." }),
+    ev(1, "run.delta.tool.call.v1", { id: "c1", name: "git_log", phase: "call" }),
+    ev(2, "run.delta.tool.done.v1", { id: "c1", name: "git_log", result: "14 commits" }),
+    ev(3, "run.delta.text.v1", { text: "Done." }),
   ]);
   assert.ok(turn);
   assert.equal(turn.id, "r2");

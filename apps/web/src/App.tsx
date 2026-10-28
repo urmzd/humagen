@@ -307,7 +307,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const pending = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!can("runs:read")) return;
-    const close = subscribe("agent", {
+    const close = subscribe({}, {
       onOpen: loadRuns,
       onState: setLive,
       onInbox: () => {
@@ -320,8 +320,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         pending.current = window.setTimeout(loadRuns, 150);
       },
       onEvent: (e) => {
-        if (!e.kind.startsWith("lifecycle.") && !e.kind.startsWith("control.")) return;
-        if (e.kind.startsWith("control.")) loadAgents();
+        // A run's state changed: reload the list. Its text, tools, usage and
+        // actions do not move it.
+        if (/^run\.(delta|usage|context|action)\./.test(e.type)) return;
         window.clearTimeout(pending.current);
         pending.current = window.setTimeout(loadRuns, 150);
       },
@@ -330,7 +331,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       window.clearTimeout(pending.current);
       close();
     };
-  }, [can, loadRuns, loadAgents, loadInbox, loadProjects]);
+  }, [can, loadRuns, loadInbox, loadProjects]);
 
   // An eval in flight reports progress on its own record, not on the bus.
   const evalRunning = suites.some((s) => s.runs[0]?.status === "running");

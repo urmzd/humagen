@@ -111,9 +111,9 @@ function withThread(w: World, messages: SlackMessage[], users: Record<string, st
 }
 
 async function finish(w: World) {
-  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
+  w.humagen.emit(w.humagen.last.id, "run.accepted.v1");
   await settle();
-  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "ok" });
+  w.humagen.emit(w.humagen.last.id, "run.completed.v1", { text: "ok" });
   await settle();
   await w.app.idle();
 }
