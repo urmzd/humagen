@@ -395,7 +395,15 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 					return fmt.Errorf("platform %q: agents[%d]: %w", tenant, i, err)
 				}
 				var fromFile wire.AgentSpec
-				if err := decodeStrict(raw, &fromFile); err != nil {
+				if strings.HasSuffix(a.File, wire.AgentFileSuffix) {
+					var policy wire.DefinitionPolicy
+					if a.Policy != nil {
+						policy = *a.Policy
+					}
+					if fromFile, err = wire.SpecOfAgentFile(string(raw), policy); err != nil {
+						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+					}
+				} else if err := decodeStrict(raw, &fromFile); err != nil {
 					return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
 				}
 				s = &fromFile

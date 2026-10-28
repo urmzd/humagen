@@ -125,3 +125,37 @@ func TestTheLanguagesBuiltinAgentsAreThePlatforms(t *testing.T) {
 		t.Fatalf("the spec knows %v, the platform provides %v", spec.BuiltinAgents, platform.Builtins())
 	}
 }
+
+// An agent file in saige's own format is read with its policy, and lands as
+// the same agent a spec would make.
+func TestAnAgentMdFileLandsWithItsPolicy(t *testing.T) {
+	p := newProjectsPlatform(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "reviewer.agent.md")
+	md := "---\napiVersion: saige/v1\nname: reviewer\nversion: 3.0.0\ndescription: Reviews changes.\nmodel:\n  use: offline/offline\n---\nReview the change and list what is risky.\n"
+	if err := os.WriteFile(path, []byte(md), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc := spec.Platform{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{
+		Agents: []spec.Agent{{File: path, Policy: &wire.DefinitionPolicy{Answerers: []string{"role:leads"}, TaggedOnly: true}}},
+	}}
+	if err := applyPlatforms(t.Context(), p, spec.Config{Platforms: []spec.Platform{doc}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	r, err := p.Agents.Get(t.Context(), "acme", "reviewer", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := r.Spec; s.Provider != "offline" || s.SystemPrompt != "Review the change and list what is risky." || !s.TaggedOnly || !slices.Equal(s.Answerers, []string{"role:leads"}) {
+		t.Fatalf("the agent from the file = %+v", s)
+	}
+
+	bad := filepath.Join(dir, "bad.agent.md")
+	if err := os.WriteFile(bad, []byte("no frontmatter"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc.Spec.Agents = []spec.Agent{{File: bad}}
+	if err := applyPlatforms(t.Context(), p, spec.Config{Platforms: []spec.Platform{doc}}, nil); err == nil {
+		t.Fatal("an .agent.md file saige cannot read was accepted")
+	}
+}

@@ -25,6 +25,39 @@ identity, it belongs in the platform or a surface host. The platform owns the wi
 `event.Envelope` into Humagen's run model and raises Humagen's actions as
 events. `internal/wire` is the only place the two meet.
 
+## The event flow
+
+Every event is one `event.Envelope` with a typed body, and `type` is its only
+discriminator, such as `message.posted.v1` or `run.completed.v1`
+([fiber's design](../fiber/docs/architecture/events.md)). A run goes:
+
+```text
+surface (console, Slack, GitHub, cron)
+  -> ingress: a typed event on its channel (message.posted.v1, github.*.v1, cron.tick.v1)
+  -> Platform.Invoke: the agent named, or each that joins (pkg/join); limits and policy (pkg/call)
+  -> runtime.Accept: the definition pinned (name, version, digest, sub-agents, policy hash)
+  -> anchor: fiber.turn.v2 activities; each turn is a turn.Runtime in a playscape sandbox
+  -> run.* events on the bus, on the trigger's channel, under the run's tenant
+  -> egress: the sink of the channel's scheme (Slack, GitHub); the API's event stream; the journal
+```
+
+- **One bus, by channel and type prefix.** A subscription names a tenant,
+  channel prefixes and type prefixes. An empty one receives nothing, control
+  channels only reach a subscription that names them, and `run.usage` and
+  `run.context` only one that names them. The tenant is the principal's.
+- **Hops.** Each event carries `hops`; fiber drops one over `DefaultMaxHops`,
+  and an agent's own output never wakes it.
+- **At least once.** fiber keys a run by the event and its agent, so a
+  redelivered trigger joins the run it started. Humagen keeps its own run
+  ids (`runtime.AcceptOwn`), and a call key joins its run.
+- **The model reads the catalog.** The trigger reaches the model as its
+  catalog rendering, byte stable across replay. A sensitive body (human text,
+  private host data) reaches the model but not egress logs or webhooks unless
+  a subscriber opts in.
+- **Who answers.** Humagen picks agents itself, by name or through the
+  dynamic router (`pkg/join`). fiber's channel membership and dispatch
+  (`fiber/pkg/membership`, `fiber/pkg/dispatch`) are built but not wired in.
+
 ## One primitive: the call
 
 An agent is defined by a spec and runs in a sandbox. When one agent needs
@@ -391,6 +424,10 @@ and GitHub release from `main`, using the main-only `release` environment.
 | fiber folded in: Humagen on fiber's event union | Built. fiber lives at `fiber/` in this module and `github.com/urmzd/fiber` is gone from `go.mod`. One `event.Envelope` replaces the tag and the run event: a trigger is `message.posted.v1` (or a connector's own type), Humagen sets its `Agent`, and its meta is the request's context. The bus is subscribed per tenant (`Platform.RunSubscription`), `egress` delivers a run's events to the sink of its channel's scheme, and `runtime.AcceptOwn` keeps run ids as before. Old shapes are read only in `internal/legacy`: a run row's tag (`TestARunRowWrittenBeforeTheUnionIsReadAsItsEvent`), a schedule's `Meta`, and an old reader's SSE `topic` and journal `kind` (`legacy.Topic`, `legacy.KindSelector`). The composed turn is pinned byte for byte, and matched the version before (`TestTheComposedTurnMatchesItsGolden`); a call key joins its run however often it is made (`TestTheSameCallKeyJoinsTheSameRun`). A Slack message names an agent by a bot mention, or by a plain `@name` the client may route to. Not run against Postgres here |
 | The API on the event union: `api/openapi.yaml`, `@humagen/client`, `packages/adapter`, the console and the Slack app | Built. The event stream, `listRunEvents` and the run manifest send the envelope with `data` as inline JSON (`platform.APIEvent`), never base64. `RunEvent` is a `oneOf` told apart by `type`, one variant per type in fiber's catalog, and `UnknownEvent` is the documented fallback; `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal` derives the mapping from `event.Types()` and checks each body against its Go type, and `TestEventUnionParityCatchesAMissingVariant` proves a missing variant fails. `GET /api/events` takes `channel`, `type` and `run`, defaults to the run family, refuses any other family or a control channel, and reads the old `topic` through `internal/legacy` (`TestLegacyTopicParam`, `TestSSEDefaultDenyAcrossTenants`). The journal filters by `type`. The adapter takes the generated `RunEvent`, so a contract change fails its typecheck; a type it does not know gives nothing. The console and the Slack app are on the union: the console's list follows the run state types (`runStateTypes`) and reads agents again through the agents API on every (re)connect, a run's page follows it by `run`, and Analytics asks the journal by type prefix (`type` is repeatable); the Slack app reads frames as `RunEvent` and `InboxNotice`, hands each run's events on once by `seq`, follows a run by `run`, and reads its inbox with `inbox=true`, which sends notices alone (`TestSSEInboxOnly`) |
 | `pkg/agents`: each tenant's saige agent definitions on `pkg/state`, and the one-time move from fiber's registry | Built and wired in: the platform's agents are `pkg/agents`, resolved by fiber's `definition.Resolver`, and `platform.OpenPostgres` runs the move at start. `pkg/agents` is a `definition.Source` held to `definitiontest` on memory and Postgres. `legacy.ConvertAgents` moves `fiber_agents` and `fiber_agent_revisions` through `definition.FromAgentSpec` once, behind a state marker, in revision order, keeping who wrote each and when; an agent that cannot be moved is disabled and kept in the report (`legacy.AgentConversionOf`), and a platform agent that cannot be moved fails the move. `wire.DefinitionCatalog` reads the store as an `AgentCatalog` |
+| Event union (`fiber/pkg/event`): one envelope, a sealed body per type, `Unknown` for a type this build does not know, and one catalog of decoder, renderer, sensitivity and opt-in per type | Built. `TestCatalogComplete` fails on a type with no renderer, `TestUnknownKeepsBytes` and `TestDecodeRejectsMalformedKnown` hold the decode rules, and `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal` holds `api/openapi.yaml` to the catalog |
+| Channel bus (`fiber/pkg/bus`): one bus by tenant, channel and type prefix, with hops and at-least-once delivery | Built: memory, Postgres and Redis, held to `bustest` (`TestEmptySubscriptionMatchesNothing`, `TestRootDoesNotSeeControl`). Humagen subscribes per tenant (`Platform.RunSubscription`) and refuses a control channel on the API. fiber's membership and dispatch (`TestSelfOutputNeverWakesSelf`, `TestHopLimitDrops`, `TestRedeliveryJoinsRun`) are built and not wired in: Humagen chooses agents with `pkg/join`. New bus tables; old rows age out in 24 hours. Postgres and Redis runs are CI's integration job, not run here |
+| Definitions: saige `.agent.md` plus a policy, pinned per run | Built. A run pins name, version, digest, sub-agent versions and policy hash, and fails terminally when any moved (`TestAPinnedRevisionWhoseHashMovedFailsTerminally`, `TestVerifyFailsClosedOnEmptyDigest`). A spec's agent may be an `.agent.md` file with a `policy` (`TestAnAgentMdFileLandsWithItsPolicy`). Runs under the v1 activity names fail terminally |
+| Runtime seam (`fiber/pkg/turn`): one turn of a pinned definition for an input event, streaming catalog bodies. `turn/native` wraps saige, `turn/sandbox` puts any Runtime in playscape | Built and held to `runtimetest`. `humagen.WithRuntime` (`platform.Config.Runtime`) replaces the native turn inside the same sandbox (`TestAConfiguredRuntimeRunsTheTurn`) |
 | Durable agent operations | Built: durable versioned assignments and handoff contracts, effective workspace/agent/setup pause at admission, tighten-only action policy with safe inherited provenance, native durable approvals and bounded read-confined network APIs. Reviewed deadline corrections retain the same ledger run; bounded native inbox reminders survive restart without repeating or resuming work. Console controls, policy editor, assignments and network components use the real APIs. Global navigation, source-health integration and screenshot states are completed by the corresponding stack layers. See [agent-operations.md](agent-operations.md) for semantics and verification. |
 
 

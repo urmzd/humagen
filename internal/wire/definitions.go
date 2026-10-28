@@ -13,8 +13,7 @@ import (
 
 // DefinitionCatalog is an AgentCatalog over saige definitions (pkg/agents,
 // or any definition.Source). Revision N is the Nth version of a name, lowest
-// first, so an agent moved from the registry keeps its revision numbers. It
-// is not wired in yet: the platform still reads AgentStore.
+// first, so an agent moved from the registry keeps its revision numbers.
 type DefinitionCatalog struct{ src definition.Source }
 
 // NewDefinitionCatalog returns a catalog that reads src.
@@ -138,4 +137,30 @@ func RevisionOf(rec definition.Record, rev int) (Revision, error) {
 		spec.Sources = append(spec.Sources, Source{Name: k.Name, URI: k.URI, Options: k.Options})
 	}
 	return Revision{Spec: spec.Normalize(), Rev: rev, Hash: rec.Digest, CreatedAt: rec.CreatedAt, CreatedBy: rec.CreatedBy}, nil
+}
+
+// DefinitionPolicy is the sidecar an .agent.md file is read with: what saige's
+// format does not say (approvers, answerers, workspace areas, MCP write
+// grants, knowledge, tagged only).
+type DefinitionPolicy = definition.Policy
+
+// AgentFileSuffix marks an agent file written in saige's own format.
+const AgentFileSuffix = ".agent.md"
+
+// SpecOfAgentFile reads one .agent.md file and its policy as the spec the
+// platform stores. Its version is not kept: the store numbers versions.
+// saige's own validation applies here, and the store's when it is created.
+func SpecOfAgentFile(content string, policy DefinitionPolicy) (AgentSpec, error) {
+	if err := policy.Validate(); err != nil {
+		return AgentSpec{}, fmt.Errorf("%w: %w", ErrInvalidAgent, err)
+	}
+	d, err := sdef.Parse([]byte(content), "")
+	if err != nil {
+		return AgentSpec{}, fmt.Errorf("%w: %w", ErrInvalidAgent, err)
+	}
+	r, err := RevisionOf(definition.Record{Name: d.Name, Version: d.Version, Content: content, Policy: policy.Normalize()}, 0)
+	if err != nil {
+		return AgentSpec{}, err
+	}
+	return r.Spec, nil
 }

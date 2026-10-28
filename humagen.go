@@ -32,6 +32,7 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/mcptools"
 	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/fiber/pkg/turn"
 	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
 	"github.com/urmzd/humagen/internal/app"
@@ -168,6 +169,21 @@ func WithStore(c clients.Store, secrets clients.Secrets) Option {
 		if secrets != nil {
 			cfg.Secrets = secrets
 		}
+		return nil
+	})
+}
+
+// WithRuntime runs every turn on rt in place of the native saige turn, inside
+// the same playscape sandbox, on the same durable runs. rt is handed the pinned
+// definition and the triggering event, and streams back catalog event bodies
+// (turn.Runtime). It brings its own models and tools: WithModelProvider,
+// WithToolSource and the spec's models do not reach it. Nil changes nothing.
+func WithRuntime(rt turn.Runtime) Option {
+	if rt == nil {
+		return nil
+	}
+	return WithPlatform(func(cfg *platform.Config) error {
+		cfg.Runtime = rt
 		return nil
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urmzd/anchor/pkg/ledger"
@@ -107,6 +108,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	// agent that cannot be moved fails the start.
 	if _, err := legacy.ConvertAgents(ctx, st, defs.Source(), legacy.PostgresOldAgents{Pool: pool}, legacy.ConvertOptions{
 		Builtin: func(name string) bool { return IsBuiltin(name) || legacy.IsBuiltinAgent(name) },
+		Logf:    func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) },
 	}); err != nil {
 		return Backends{}, nil, err
 	}

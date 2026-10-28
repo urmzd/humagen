@@ -2,8 +2,9 @@
 
 ## What this is
 
-A Go module that composes fiber, saige, playscape and anchor into one agent
-platform and its web and Slack presentation in one repository. The design is in
+A Go module that composes saige, playscape and anchor into one agent platform
+and its web and Slack presentation in one repository. fiber, its transport,
+lives in `fiber/` in the same module and is no longer an upstream dependency. The design is in
 [docs/architecture.md](docs/architecture.md). Current console design requirements
 and their acceptance criteria are tracked in [design.md](design.md). Read it
 before changing presentation or integrations, and update its requirement status
@@ -13,12 +14,22 @@ and evidence when implementing a requirement.
 
 - **Every choice is a file or an interface, never a fork.** A new backend is a kind in a spec slot (`pkg/spec`, `humagen.WithKind`); a new setting is a spec field with a default, documented in docs/spec.md, whose examples are tested.
 
-- **Compose, don't reimplement.** If fiber, saige, playscape or anchor owns
-  a concern, use it or change it upstream.
+- **Compose, don't reimplement.** If saige, playscape or anchor owns a
+  concern, use it or change it upstream. fiber is in `fiber/`: change it here,
+  where it reads an old name only through `internal/legacy`.
 - **One way to call an agent.** Subagents, handoffs and delegations all go
   through `pkg/call`. Do not add a second path.
 - **Default deny.** A zero value grants nothing: no calls, no budget, no access.
 - **Fail closed.** A missing or malformed edge on an agent's tag is an error.
+- **Every event type has a renderer and an OpenAPI mapping.** A type is
+  registered once in fiber's catalog (`fiber/pkg/event`) with its body, its
+  renderer and its sensitivity; `TestCatalogComplete` fails without a
+  renderer. A `run.*` type also needs its `RunEvent` variant in
+  `api/openapi.yaml`, which `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal`
+  checks.
+- **Subscriptions are default deny.** An empty subscription receives
+  nothing, an agent's own output never wakes it, and the opt-in families
+  (`run.usage`, `run.context`) arrive only when named.
 - **Keep presentation separate.** Shared UI packages render data and emit actions.
   API calls, persistence and identity belong in the platform and surface hosts.
 - **Tenant comes from the Principal.** Never read it from a request, and return 404 for another tenant's objects.
@@ -32,11 +43,12 @@ and evidence when implementing a requirement.
 - **The API has one contract.** A route, a handler's answer or a type's JSON
   fields change together with `api/openapi.yaml`, then `make client`. Never edit
   `packages/client/src/generated`.
-- **Old names live in one place.** The product was called warp. A name from
-  then is read only through `internal/legacy` (Go) or `apps/*/src/legacy.ts`,
-  and a name stored data depends on is kept and pinned by a test.
-  `TestNoNewOldName` fails on any other mention; docs/upgrading-from-warp.md
-  lists both kinds.
+- **Old names live in one place.** The product was called warp, and fiber
+  had an earlier name of its own (docs/renaming.md#fiber, the only doc that
+  spells it). A name from either is read only through `internal/legacy` (Go)
+  or `apps/*/src/legacy.ts`, and a name stored data depends on is kept and
+  pinned by a test. `TestNoNewOldName` fails on any other mention;
+  docs/upgrading-from-warp.md lists both kinds.
 - **Keep the status table honest.** When a piece lands, update
   `docs/architecture.md#status` in the same change.
 
@@ -48,7 +60,11 @@ and evidence when implementing a requirement.
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/join`: whether each agent takes a message that names none (the dynamic router). `pkg/prefs`: a person's own settings.
 - `pkg/state`: the record store every Humagen store writes through, in memory or in Postgres, with the `statetest` suite. A store keeps its logic in memory and gains `Open(state.Store)`; `internal/platform/backends.go` chooses the backends.
-- `fiber/`: fiber, folded into this module and imported as `github.com/urmzd/humagen/fiber/...`: the event union, bus, egress, connectors and durable runtime.
+- `fiber/`: fiber, folded into this module and imported as `github.com/urmzd/humagen/fiber/...`. Its own guide is `fiber/AGENTS.md`.
+  - `fiber/pkg/event`: the envelope, the sealed bodies and the catalog. `fiber/pkg/bus`: the bus, by channel and type prefix. `fiber/pkg/egress`: delivery of a run's events to its channel's sink.
+  - `fiber/pkg/definition`: saige definitions plus a policy, and the pin a run carries. `fiber/pkg/turn`: the `Runtime` interface, with `turn/native` (saige) and `turn/sandbox` (playscape around any Runtime).
+  - `fiber/pkg/runtime` and `fiber/pkg/durable`: durable runs on anchor. `fiber/pkg/membership`, `fiber/pkg/dispatch`: channel membership and dispatch. `fiber/pkg/connectors`: Slack, GitHub, Jira, cron and webhook adapters.
+- `pkg/agents`: each tenant's agent definitions on `pkg/state`, a `definition.Source`. `internal/legacy` moves the old registry into it once.
 - `internal/wire`: the one seam onto fiber's run model: a trigger's request and context, connector meta keys, event types and bodies, and agent definitions (`AgentCatalog`). Nothing else touches them; `TestSeam` checks.
 - `internal/platform`: the composition root. `internal/httpapi`: routes, sessions, event stream.
 - `pkg/spec`: the configuration language, System and Platform documents (docs/spec.md). `internal/app`: the command tree (`start`, `serve`, `deploy`, `setup`, `config`, `slack manifest`, `authz`) and the composition root, which turns a spec and flags into a running platform. The module root package `humagen` (`humagen.go`): its public face, `humagen.Main` and the options a downstream program passes instead of forking. `cmd/humagen`: `humagen.Main` with no options. `pkg/credref`: credential references (`env:`, `keychain:`, `op://`), read when used and never stored. `pkg/credentials`: the credential each person gives for a person-scoped tool provider: a reference, or a value kept in the secrets store client secrets are kept in.

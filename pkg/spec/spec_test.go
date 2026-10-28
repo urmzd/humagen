@@ -272,3 +272,42 @@ func TestABusTheStoresCannotCarryIsRefused(t *testing.T) {
 		t.Fatalf("postgres bus on postgres stores: %v", err)
 	}
 }
+
+// A policy goes only with an .agent.md file, and never says what wakes the
+// agent.
+func TestAnAgentPolicyNeedsAnAgentMdFile(t *testing.T) {
+	plat := "api_version: humagen/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n"
+	for body, want := range map[string]string{
+		"  agents: [{file: a.json, policy: {tagged_only: true}}]\n":                                   "policy goes with an .agent.md file",
+		"  agents: [{file: a.agent.md, policy: {subscriptions: [{channel: x, types: [message]}]}}]\n": "the platform decides what wakes an agent",
+	} {
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		writeFile(t, path, plat+body)
+		cfg, err := Load(path)
+		if err == nil {
+			err = cfg.Check(Kinds{})
+		}
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s= %v, want %q", body, err, want)
+		}
+	}
+}
+
+// The reference's .agent.md example reads as the agent it describes.
+func TestTheReferenceAgentFileReads(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile("(?s)```markdown\n(---\napiVersion: saige/v1.*?)```").FindStringSubmatch(string(doc))
+	if m == nil {
+		t.Fatal("docs/spec.md has no .agent.md example")
+	}
+	s, err := wire.SpecOfAgentFile(m[1], wire.DefinitionPolicy{TaggedOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Name != "reviewer" || s.Provider != "anthropic" || s.SystemPrompt == "" || !s.TaggedOnly {
+		t.Fatalf("the example reads as %+v", s)
+	}
+}

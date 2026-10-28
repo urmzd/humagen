@@ -42,15 +42,35 @@ such as `run.completed.v1`. `RunEvent` is the union, one variant per type in
 the catalog. A type not in its mapping is an `UnknownEvent`: a reader passes
 over it and never guesses its shape. The API sends run events only (`run.*`).
 
+| `type` | `data` | Was |
+|--------|--------|-----|
+| `run.accepted.v1`, `run.started.v1`, `run.resumed.v1` | `RunAcceptedEvent`, `RunStartedEvent`, `RunResumedEvent` | `lifecycle.accepted`, `.started`, `.resumed` |
+| `run.parked.v1`, `run.child.parked.v1` | the question, the child's question | `lifecycle.parked`, `lifecycle.child.parked` |
+| `run.completed.v1`, `run.failed.v1`, `run.stopped.v1` | the answer and usage, the error and `terminal`, the reason and partial answer | `lifecycle.completed`, `.failed`, `.stopped` |
+| `run.delta.text.v1`, `run.delta.thinking.v1`, `run.delta.tool.call.v1`, `run.delta.tool.done.v1`, `run.delta.citation.v1` | one fragment each | `delta.*` |
+| `run.action.taken.v1` | the action and its summary | `action.taken` |
+| `run.usage.v1`, `run.usage.child.v1` (opt-in) | one model call, a child's total | `usage.call`, `usage.child` |
+| `run.context.compacted.v1` (opt-in) | the compaction | `context.compacted` |
+
+The schema names are in `RunEvent`'s mapping in `api/openapi.yaml`.
+`UnknownEvent` is any other `type`, with `data` left as the server sent it:
+a newer server can add a type without breaking an older client.
+
 `GET /api/events` takes `channel` (a channel prefix), `type` (type prefixes,
 repeated) and `run`, and `from` to resume. With none it sends every run event
 the caller may read, `run.usage` and `run.context` included. The workspace is
-always the caller's. The old `topic` still works and cannot be combined with
-the others: `agent:<name>:<run>` is read as `run=<run>`
+always the caller's. The old `topic` is deprecated. It still works and
+cannot be combined with the others: `agent:<name>:<run>` is read as `run=<run>`
 (`internal/legacy.Topic`). `inbox=true` sends inbox and thread notices alone,
 with no run event, and takes no other filter. `GET /api/journal` filters by
 `type`, repeated for more than one; the old `kind` is still read when no
 `type` is given.
+
+**Breaking change.** This replaced `kind` and a base64 `payload` on every
+event. A client generated before it reads neither `type` nor `data`:
+regenerate it (`make client`) and switch on `type`. Each old kind maps to one
+type in the table above; `lifecycle.*` became one type per ending, and
+`control.created`, `control.revised` and `control.deleted` are gone.
 
 Validation uses [`santhosh-tekuri/jsonschema`](https://github.com/santhosh-tekuri/jsonschema),
 a JSON Schema 2020-12 validator with no dependencies of its own, which is the

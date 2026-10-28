@@ -101,6 +101,19 @@ A workspace answers through one or more [clients](docs/clients.md): a Slack app 
 
 Run the same config on your own infrastructure with compose, Helm or Flux. Point `stores` at Postgres, `blobs` at S3 and `auth` at your identity provider. See [deploy](docs/deploy.md) and [security](docs/security.md) for real sign-in, roles and machine tokens.
 
+## How it works
+
+One repository holds the whole platform. Its transport, [fiber](fiber/README.md), lives in [`fiber/`](fiber/) in the same Go module; [saige](https://github.com/urmzd/saige), [anchor](https://github.com/urmzd/anchor) and [playscape](https://github.com/urmzd/playscape) are dependencies.
+
+| Concept | What it is |
+|---------|------------|
+| **Event** | One envelope (`id`, `source`, `type`, `channel`, `time`, `hops`, `data`). `type` is the only discriminator and carries the version, such as `message.posted.v1` or `run.completed.v1`. A type this build does not know is kept as raw bytes, never guessed |
+| **Channel** | Where an event is published, such as `slack://T01/C02`. One bus carries every event; a subscriber names channels and type prefixes, and an empty subscription receives nothing |
+| **Definition** | An agent is a saige definition, stored per workspace and versioned. A run pins its name, version and digest, and fails rather than replay a prompt that moved |
+| **Runtime** | One turn of a run. The default wraps saige inside a playscape sandbox; `humagen.WithRuntime` plugs in another. Anchor keeps runs durable |
+
+A message in the console, Slack or GitHub is an event, the agent's answer streams back as `run.*` events on the same channel, and each surface renders them. See [architecture](docs/architecture.md) and [fiber's event design](fiber/docs/architecture/events.md).
+
 ## Configuration
 
 One file, two documents:
@@ -164,6 +177,9 @@ make web
 
 - [Roadmap](docs/roadmap.md)
 - [Architecture and status](docs/architecture.md)
+- [API contract and events](docs/api.md)
+- [The spec](docs/spec.md)
+- [fiber: events, channels, definitions and the Runtime](fiber/docs/architecture/events.md)
 - [Projects](docs/projects.md)
 - [Agent calls](docs/agent-calls.md)
 - [Authorization](docs/authorization.md)

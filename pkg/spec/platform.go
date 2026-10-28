@@ -437,8 +437,13 @@ type AcceptTool struct {
 // Agent is one agent, from a file or written inline in the agent JSON fiber
 // reads (docs/agents.md).
 type Agent struct {
+	// File is a spec as JSON or YAML, or saige's own format when it ends in
+	// .agent.md.
 	File string          `json:"file,omitempty"`
 	Spec *wire.AgentSpec `json:"spec,omitempty"`
+	// Policy is what an .agent.md file is read with. Left out, it grants
+	// nothing beyond the file. Only an .agent.md file takes one.
+	Policy *wire.DefinitionPolicy `json:"policy,omitempty"`
 	// Project is where the agent lives: a project in this file. It is
 	// available there and below, and nowhere else. Left out, it is a
 	// platform agent, available wherever it is enabled.
@@ -618,6 +623,17 @@ func (p Platform) check(kinds Kinds) error {
 	for i, a := range sp.Agents {
 		if (a.File == "") == (a.Spec == nil) {
 			return fmt.Errorf("%s: agents[%d]: file or spec, exactly one", where, i)
+		}
+		if a.Policy != nil && !strings.HasSuffix(a.File, wire.AgentFileSuffix) {
+			return fmt.Errorf("%s: agents[%d]: policy goes with an %s file", where, i, wire.AgentFileSuffix)
+		}
+		if a.Policy != nil && len(a.Policy.Subscriptions) > 0 {
+			return fmt.Errorf("%s: agents[%d].policy.subscriptions: the platform decides what wakes an agent", where, i)
+		}
+		if a.Policy != nil {
+			if err := a.Policy.Validate(); err != nil {
+				return fmt.Errorf("%s: agents[%d].policy: %w", where, i, err)
+			}
 		}
 		if a.Spec != nil && slices.Contains(ReservedNames, wire.NormalizeName(a.Spec.Name)) {
 			return fmt.Errorf("%s: agents[%d].spec.name: @%s is reserved: it is never an agent's name", where, i, wire.NormalizeName(a.Spec.Name))

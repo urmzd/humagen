@@ -39,6 +39,7 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 	"github.com/urmzd/humagen/fiber/pkg/turn"
 	"github.com/urmzd/humagen/fiber/pkg/turn/native"
+	"github.com/urmzd/humagen/fiber/pkg/turn/sandbox"
 	"github.com/urmzd/playscape/pkg/controlplane"
 	"github.com/urmzd/playscape/pkg/metrics"
 	"github.com/urmzd/playscape/pkg/node/inproc"
@@ -189,7 +190,11 @@ type Config struct {
 	// AgentOptions are passed to every agent the sandbox builds. A test
 	// uses them to script a model.
 	AgentOptions []native.Option
-	Log          *slog.Logger
+	// Runtime, when set, runs every turn in place of the native one, inside
+	// the same playscape sandbox. It brings its own models and tools: the
+	// native options above do not reach it. Nil runs the native turn.
+	Runtime turn.Runtime
+	Log     *slog.Logger
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
 	// Router, when set, asks a workspace's agents whether to take a message
@@ -551,6 +556,11 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	}
 	tools := tool.NewRegistry()
 	plane := controlplane.NewMemory(inproc.NewFactory(tools, ws), metrics.Nop())
+	if p.cfg.Runtime != nil {
+		inner := sandbox.Sandboxed(p.cfg.Runtime, sandbox.Plane{Control: plane, Tools: tools},
+			sandbox.WithReplicas(p.slots()), sandbox.WithLogger(p.log))
+		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+	}
 	exec, err := runtime.NewSandbox(plane, tools, p.Agents.Resolver(),
 		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
 
