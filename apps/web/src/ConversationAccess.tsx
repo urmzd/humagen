@@ -9,10 +9,8 @@ const words = defaultCopy.conversationAccess;
 export function ConversationAccess({
   thread,
   onChanged,
-  onShare,
 }: {
   thread: Thread;
-  onShare?: () => void;
   onChanged?: (thread: Thread) => void;
 }) {
   const [current, setCurrent] = useState(thread);
@@ -87,27 +85,25 @@ export function ConversationAccess({
         {current.visibility === "private" ? words.privateHint : words.sharedHint}
       </p>
       {current.fork && <p className="text-aui-xs text-aui-muted">{words.forkHint}</p>}
-      {manage && (current.visibility !== "private" || onShare) && (
+      {manage && current.visibility !== "private" && (
         <button
           type="button"
           className={`${button} self-start`}
           disabled={saving}
           onClick={() =>
-            current.visibility === "private"
-              ? onShare?.()
-              : change(
-                  coworking.update(current.id, {
-                    version: current.version,
-                    title: current.title || "",
-                    visibility: "private",
-                    default: current.default || "",
-                    agents: current.agents,
-                    mode: current.mode,
-                  }),
-                )
+            change(
+              coworking.update(current.id, {
+                version: current.version,
+                title: current.title || "",
+                visibility: "private",
+                default: current.default || "",
+                agents: current.agents,
+                mode: current.mode,
+              }),
+            )
           }
         >
-          {current.visibility === "private" ? words.share : words.makePrivate}
+          {words.makePrivate}
         </button>
       )}
       <ul className="divide-aui-border divide-y">

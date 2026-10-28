@@ -152,9 +152,8 @@ test("setup keeps the personal home selected before project hydration and saves 
   );
 });
 
-test("People Share opens the host audience review instead of bypassing publication preflight", async () => {
+test("People & Access leaves sharing to the header's Share and offers no second Share", async () => {
   const { ConversationAccess } = await import("./ConversationAccess.tsx");
-  let opened = 0;
   net = stubFetch({
     "GET /api/me": () => ({
       principal: { subject: "ada" },
@@ -177,12 +176,9 @@ test("People Share opens the host audience review instead of bypassing publicati
         updated_at: "2026-10-01T00:00:00Z",
         version: 1,
       }}
-      onShare={() => opened++}
     />,
   );
-  fireEvent.click(
-    await screen.findByRole("button", { name: defaultCopy.conversationAccess.share }),
-  );
-  assert.equal(opened, 1);
+  await screen.findByRole("button", { name: defaultCopy.conversationAccess.add });
+  assert.equal(screen.queryByRole("button", { name: /share/i }), null);
   assert.ok(net.seen.every((request) => request.method === "GET"));
 });

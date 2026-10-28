@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.31.2 (2026-10-28)
+
+### Bug Fixes
+
+- **web**: make message actions icon-only and drop the duplicate Share in People & Access (#105) ([d81109d](https://github.com/urmzd/humagen/commit/d81109dea5f458a017c730135860b421c4d79589))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.31.1...v0.31.2)
+
+
 ## 0.31.1 (2026-10-28)
 
 ### Bug Fixes

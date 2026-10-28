@@ -170,30 +170,28 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
           });
           await fork.waitFor();
           const sizing = await fork.evaluate((button) => {
-            const style = getComputedStyle(button);
             const icon = button.querySelector("svg")?.getBoundingClientRect();
+            const box = button.getBoundingClientRect();
             return {
-              font: Number.parseFloat(style.fontSize),
-              expectedFont:
-                Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.75,
-              height: button.getBoundingClientRect().height,
+              width: box.width,
+              height: box.height,
               minTarget: matchMedia("(pointer: coarse)").matches ? 44 : 32,
               icon: icon?.width ?? 0,
-              overflow: button.scrollWidth > button.clientWidth,
-              wrap: style.whiteSpace,
+              text: button.textContent?.trim() ?? "",
+              title: button.getAttribute("title") ?? "",
             };
           });
-          assert.ok(
-            Math.abs(sizing.font - sizing.expectedFont) < 0.1,
-            `Message action labels must use compact typography: ${sizing.font}px, expected ${sizing.expectedFont}px`,
+          assert.equal(sizing.text, "", "Message actions are icon-only");
+          assert.equal(
+            sizing.title,
+            defaultCopy.forking.fromHere,
+            "An icon-only action names itself on hover",
           );
           assert.ok(
-            sizing.height >= sizing.minTarget,
-            "Compact action labels must keep comfortable targets",
+            sizing.height >= sizing.minTarget && sizing.width >= sizing.minTarget,
+            "Icon-only actions keep comfortable targets",
           );
           assert.equal(sizing.icon, 16, "Message action glyphs share one size");
-          assert.equal(sizing.wrap, "nowrap", "A message action label stays on one line");
-          assert.equal(sizing.overflow, false, "A message action must not clip its label");
         }
         await agent.getByRole("button", { name: "Reply", exact: true }).focus();
       },

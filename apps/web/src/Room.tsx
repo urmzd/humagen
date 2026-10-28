@@ -5,7 +5,7 @@ import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
 import {
   AgentMessage,
   MessageActionRow,
-  messageTextActionButton,
+  messageActionButton,
   Thread as ThreadList,
   useQueue,
 } from "@humagen/web";
@@ -786,11 +786,12 @@ export function ThreadRoom({
                     posts && forkActions?.onFork ? (
                       <button
                         type="button"
-                        className={messageTextActionButton}
+                        className={messageActionButton}
+                        aria-label={defaultCopy.forking.fromHere}
+                        title={defaultCopy.forking.fromHere}
                         onClick={() => forkActions.onFork?.(t.message!.id)}
                       >
                         <ForkIcon size={16} />
-                        {defaultCopy.forking.fromHere}
                       </button>
                     ) : undefined
                   }
@@ -816,21 +817,23 @@ export function ThreadRoom({
                         {posts && forkActions?.onFork && (
                           <button
                             type="button"
-                            className={messageTextActionButton}
+                            className={messageActionButton}
+                            aria-label={defaultCopy.forking.fromHere}
+                            title={defaultCopy.forking.fromHere}
                             onClick={() => forkActions.onFork?.(t.run!.id)}
                           >
                             <ForkIcon size={16} />
-                            {defaultCopy.forking.fromHere}
                           </button>
                         )}
                         {posts && th.fork && forkActions?.onBringBack && (
                           <button
                             type="button"
-                            className={messageTextActionButton}
+                            className={messageActionButton}
+                            aria-label={defaultCopy.forking.bringBack}
+                            title={defaultCopy.forking.bringBack}
                             onClick={() => forkActions.onBringBack?.(t.run!.id)}
                           >
                             <BringBackIcon size={16} />
-                            {defaultCopy.forking.bringBack}
                           </button>
                         )}
                       </>
@@ -944,14 +947,6 @@ export function ThreadRoom({
         </div>
       </ConversationPage>
       <ConversationInfo
-        onShare={
-          shareable
-            ? () => {
-                openPanel();
-                onSharing?.(true);
-              }
-            : undefined
-        }
         panel={shownView.panel}
         contextTab={shownView.contextTab}
         onContextTab={(contextTab) => openPanel("context", { contextTab })}

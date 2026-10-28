@@ -299,7 +299,6 @@ function SourceCard({ source }: { source: Source }) {
 export function ConversationInfo({
   contextTab,
   onContextTab,
-  onShare,
   panel,
   thread,
   project,
@@ -308,7 +307,6 @@ export function ConversationInfo({
   panel?: ConversationPanel;
   contextTab?: "sources" | "instructions";
   onContextTab?: (tab: "sources" | "instructions") => void;
-  onShare?: () => void;
   thread: Thread;
   project: string;
   onClose: () => void;
@@ -350,7 +348,7 @@ export function ConversationInfo({
           )}
         </div>
       ) : (
-        <ConversationAccess thread={thread} onShare={onShare} />
+        <ConversationAccess thread={thread} />
       )}
     </Inspector>
   );

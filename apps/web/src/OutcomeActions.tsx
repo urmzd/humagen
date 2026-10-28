@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { BookmarkIcon, WrenchIcon } from "@humagen/render-web";
-import { Inspector, messageTextActionButton } from "@humagen/web";
+import { Inspector, messageActionButton } from "@humagen/web";
 import { type FormEvent, useRef, useState } from "react";
 import type {
   LibraryScope,
@@ -135,22 +135,24 @@ export function OutcomeActions({ run, canWrite }: { run: Run; canWrite: boolean 
     <>
       <button
         type="button"
-        className={messageTextActionButton}
+        className={messageActionButton}
+        aria-label={copy.skill}
+        title={copy.skill}
         disabled={busy || action !== null}
         onClick={() => open("skill")}
       >
         <WrenchIcon size={16} />
-        {copy.skill}
       </button>
       {run.outcome.decisions?.some((item) => item.trim() !== "") && (
         <button
           type="button"
-          className={messageTextActionButton}
+          className={messageActionButton}
+          aria-label={copy.remember}
+          title={copy.remember}
           disabled={busy || action !== null}
           onClick={() => open("memory")}
         >
           <BookmarkIcon size={16} />
-          {copy.remember}
         </button>
       )}
       <Inspector

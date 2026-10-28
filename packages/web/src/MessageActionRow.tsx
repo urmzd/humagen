@@ -5,11 +5,6 @@ import type { ReactNode } from "react";
 export const messageActionButton =
   "inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-accent";
 
-export const messageTextActionButton = messageActionButton.replace(
-  "size-8 pointer-coarse:size-11",
-  "min-h-8 pointer-coarse:min-h-11 gap-1.5 px-2 text-aui-xs whitespace-nowrap",
-);
-
 /** The same persistent action row for a person's message and an agent's answer. */
 export function MessageActionRow({
   text,
