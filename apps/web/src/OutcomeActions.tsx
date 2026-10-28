@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { BookmarkIcon, WrenchIcon } from "@humagen/render-web";
-import { Inspector, messageTextActionButton } from "@humagen/web";
+import { Inspector, messageActionButton } from "@humagen/web";
 import { useRef, useState, type FormEvent } from "react";
 import type { LibraryScope, LibrarySkillDefinition, OutcomeLearningPreview } from "../../../packages/client/src/generated/types.ts";
 import type { Run } from "./adapter.ts";
@@ -56,8 +56,8 @@ export function OutcomeActions({ run, canWrite }: { run: Run; canWrite: boolean 
   };
   if (!canWrite || run.status !== "completed" || !run.outcome) return null;
   return <>
-    <button type="button" className={messageTextActionButton} disabled={busy || action !== null} onClick={() => open("skill")}><WrenchIcon size={16} />{copy.skill}</button>
-    {run.outcome.decisions?.some((item) => item.trim() !== "") && <button type="button" className={messageTextActionButton} disabled={busy || action !== null} onClick={() => open("memory")}><BookmarkIcon size={16} />{copy.remember}</button>}
+    <button type="button" className={messageActionButton} aria-label={copy.skill} title={copy.skill} disabled={busy || action !== null} onClick={() => open("skill")}><WrenchIcon size={16} /></button>
+    {run.outcome.decisions?.some((item) => item.trim() !== "") && <button type="button" className={messageActionButton} aria-label={copy.remember} title={copy.remember} disabled={busy || action !== null} onClick={() => open("memory")}><BookmarkIcon size={16} /></button>}
     <Inspector open={action !== null} title={action === "skill" ? copy.skillTitle : copy.decisionTitle} onClose={close}>
       <div className="flex min-w-0 flex-col gap-4 p-4">
         <p className="text-aui-sm text-aui-muted">{copy.reviewHint}</p>

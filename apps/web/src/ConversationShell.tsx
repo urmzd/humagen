@@ -245,7 +245,6 @@ function SourceCard({ source }: { source: Source }) {
 export function ConversationInfo({
   contextTab,
   onContextTab,
-  onShare,
   panel,
   thread,
   project,
@@ -254,7 +253,6 @@ export function ConversationInfo({
   panel?: ConversationPanel;
   contextTab?: "sources" | "instructions";
   onContextTab?: (tab: "sources" | "instructions") => void;
-  onShare?:()=>void;
   thread: Thread;
   project: string;
   onClose: () => void;
@@ -266,7 +264,7 @@ export function ConversationInfo({
     <Inspector open={panel === "context" || panel === "people"} title={words[panel === "people" ? "people" : "context"]} onClose={onClose}>
       {panel === "context" ? (
         <div className="flex flex-col gap-6"><ForkContext thread={thread} /><Tabs label={words.contextSections} value={selected} tabs={[{id:"sources",label:words.sourcesTab},{id:"instructions",label:words.instructionsTab}]} onChange={select}/>{selected==="instructions"?<ProjectContextPreview key={`${thread.id}:${thread.version}`} project={thread.project} version={thread.version} initialAgent={thread.participants.find(participant=>participant.kind==="agent")?.name} initialChannel={thread.channel}/>:<Sources project={thread.project} />}</div>
-      ) : <ConversationAccess thread={thread} onShare={onShare} />}
+      ) : <ConversationAccess thread={thread} />}
 
     </Inspector>
   );

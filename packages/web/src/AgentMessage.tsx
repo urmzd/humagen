@@ -25,7 +25,7 @@ import {
 import { type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";
-import { MessageActionRow, messageActionButton, messageTextActionButton } from "./MessageActionRow";
+import { MessageActionRow, messageActionButton } from "./MessageActionRow";
 import { Reasoning } from "./Reasoning";
 
 function seconds(ms?: number) {
@@ -188,9 +188,14 @@ function MessageActions({
       onReply={onReply}
     >
       {turn.outcome && onRedirect && (
-        <button type="button" className={messageTextActionButton} onClick={onRedirect}>
+        <button
+          type="button"
+          className={actionBtn}
+          aria-label={copy.conversation.redirect}
+          title={copy.conversation.redirect}
+          onClick={onRedirect}
+        >
           <RedirectIcon size={16} />
-          {copy.conversation.redirect}
         </button>
       )}
       {regenerate && (
