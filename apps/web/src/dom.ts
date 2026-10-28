@@ -58,21 +58,26 @@ export function stubEventSource(): () => void {
 
 /**
  * Installs an EventSource a test delivers to: send(event) hands a run's
- * event to every source open on that run, or on every run, as the
- * platform's stream would. Returns send and a way to put back whatever was
+ * event to every source open on that run, or on every run, and on a type
+ * prefix that selects it, as the platform's stream would. Returns send and a way to put back whatever was
  * there.
  */
 export function liveEventSource(): { send: (event: { run: string; agent: string; type: string; data?: unknown; time?: string }) => void; restore: () => void } {
   const g = globalThis as { EventSource?: unknown };
   const real = g.EventSource;
-  const open = new Set<{ run: string; onmessage: ((m: { data: string }) => void) | null }>();
+  const open = new Set<{ run: string; types: string[]; onmessage: ((m: { data: string }) => void) | null }>();
+  // A prefix selects a type at a dot boundary: run.delta selects run.delta.text.v1.
+  const selects = (types: string[], type: string) => types.length === 0 || types.some((p) => type === p || type.startsWith(`${p}.`));
   g.EventSource = class {
     onopen: (() => void) | null = null;
     onerror: (() => void) | null = null;
     onmessage: ((m: { data: string }) => void) | null = null;
     run: string;
+    types: string[];
     constructor(url: string) {
-      this.run = new URL(url, "http://localhost/").searchParams.get("run") ?? "";
+      const query = new URL(url, "http://localhost/").searchParams;
+      this.run = query.get("run") ?? "";
+      this.types = query.getAll("type");
       open.add(this);
     }
     addEventListener() {}
@@ -97,7 +102,7 @@ export function liveEventSource(): { send: (event: { run: string; agent: string;
       version: "1.0.0",
       data: e.data ?? {},
     });
-    for (const s of open) if (s.run === "" || s.run === e.run) s.onmessage?.({ data });
+    for (const s of open) if ((s.run === "" || s.run === e.run) && selects(s.types, e.type)) s.onmessage?.({ data });
   };
   return {
     send,

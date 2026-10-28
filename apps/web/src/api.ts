@@ -963,8 +963,12 @@ export const api = {
     }
     return call<Summary>("GET", `/api/analytics?${params}`);
   },
-  journal: (params: Record<string, string>) =>
-    call<{ entries: Entry[] }>("GET", `/api/journal?${new URLSearchParams(params)}`).then((r) => r.entries),
+  /** The journal, newest first. A list value, such as `type`, is sent once per item. */
+  journal: (params: Record<string, string | string[]>) => {
+    const query = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) for (const one of [v].flat()) query.append(k, one);
+    return call<{ entries: Entry[] }>("GET", `/api/journal?${query}`).then((r) => r.entries);
+  },
   trace: (id: string) => call<{ runs: Run[]; spans: Span[] }>("GET", `/api/runs/${encodeURIComponent(id)}/trace`),
 
   alerts: () => call<{ alerts: Alert[] }>("GET", "/api/alerts").then((r) => r.alerts),
@@ -1032,6 +1036,18 @@ export const api = {
   logout: () => call<void>("POST", "/auth/logout"),
 };
 
+/** The types that change a run's state. Its text, tools, usage and actions do not. */
+export const runStateTypes = [
+  "run.accepted.v1",
+  "run.started.v1",
+  "run.parked.v1",
+  "run.child.parked.v1",
+  "run.resumed.v1",
+  "run.completed.v1",
+  "run.failed.v1",
+  "run.stopped.v1",
+] as const satisfies readonly RunEvent["type"][];
+
 /**
  * Subscribe to the tenant's run events, narrowed to one run and to some type
  * prefixes when given. `onOpen` fires on every (re)connect, and the stream
@@ -1039,7 +1055,7 @@ export const api = {
  * state resets that state in `onOpen`.
  */
 export function subscribe(
-  filter: { run?: string; type?: string[] },
+  filter: { run?: string; type?: readonly string[] },
   handlers: {
     onOpen?: () => void;
     onEvent: (e: RunEvent) => void;

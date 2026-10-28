@@ -1,5 +1,5 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
-import { api, type Bucket, type Entry, type Group, type Revision, type Summary } from "./api.ts";
+import { api, type Bucket, type Entry, type Group, type Revision, runStateTypes, type Summary } from "./api.ts";
 import { Burn } from "./Billing.tsx";
 import { agentOptions, button, card, Chip, Empty, field, figures, Menu, Page, SkeletonRows, Stat, took, textLink } from "./ui.tsx";
 import { money } from "./usage.ts";
@@ -231,8 +231,16 @@ function Breakdown({ title, groups, onPick }: { title: string; groups: Group[]; 
   );
 }
 
-/** Type prefixes to filter by. `lifecycle` is the journal's name for every run state change. */
-const types = ["", "lifecycle", "run.failed.v1", "run.completed.v1", "run.delta.tool", "run.delta.text", "run.action.taken"];
+/** The type filters, each a list of type prefixes. "" is every event. */
+const typeFilters: { value: string; label: string; prefixes: readonly string[] }[] = [
+  { value: "", label: "All events", prefixes: [] },
+  { value: "run.state", label: "Run state changes", prefixes: runStateTypes },
+  ...["run.failed.v1", "run.completed.v1", "run.delta.tool", "run.delta.text", "run.action.taken"].map((t) => ({
+    value: t,
+    label: t,
+    prefixes: [t],
+  })),
+];
 
 /** Ask the journal what happened. */
 function Journal({
@@ -248,14 +256,15 @@ function Journal({
   onAgent: (name: string) => void;
   onOpenRun: (id: string) => void;
 }) {
-  const [type, setType] = useState("lifecycle");
+  const [type, setType] = useState("run.state");
   const [text, setText] = useState("");
   const [entries, setEntries] = useState<Entry[] | null>(null);
 
   const search = useCallback(() => {
-    const params: Record<string, string> = { window, limit: "100" };
+    const params: Record<string, string | string[]> = { window, limit: "100" };
     if (agent) params.agent = agent;
-    if (type) params.type = type;
+    const prefixes = typeFilters.find((f) => f.value === type)?.prefixes ?? [];
+    if (prefixes.length > 0) params.type = [...prefixes];
     if (text.trim()) params.q = text.trim();
     api
       .journal(params)
@@ -291,7 +300,7 @@ function Journal({
           label="Event type"
           className="w-48"
           value={type}
-          options={types.map((k) => ({ value: k, label: k || "All events" }))}
+          options={typeFilters.map(({ value, label }) => ({ value, label }))}
           onChange={setType}
         />
         <input

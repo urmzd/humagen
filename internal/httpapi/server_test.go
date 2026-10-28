@@ -322,6 +322,28 @@ func TestLegacyTopicParam(t *testing.T) {
 	}
 }
 
+// inbox=true streams notices alone: a run's events never reach it, and it
+// takes no run filter.
+func TestSSEInboxOnly(t *testing.T) {
+	f := newFixture(t)
+	tok := f.machine(t, "acme", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write")
+	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
+
+	res, next := openStream(t, f, tok, "?inbox=true", 2*time.Second)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/events?inbox=true = %d, want 200", res.StatusCode)
+	}
+	f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"helper","text":"hello"}`)
+	if e, ok := next(); ok {
+		t.Fatalf("an inbox-only stream carried a run event: %v", e)
+	}
+	for _, query := range []string{"?inbox=maybe", "?inbox=true&run=r1", "?inbox=true&type=run.delta", "?inbox=true&from=3"} {
+		if res, _ := f.do(t, nil, "GET", "/api/events"+query, tok, ""); res.StatusCode != http.StatusBadRequest {
+			t.Errorf("GET /api/events%s = %d, want 400", query, res.StatusCode)
+		}
+	}
+}
+
 // A reader hears only their own workspace's run events: the tenant is the
 // principal's, whatever the request names, and nothing outside the run
 // family is streamed.

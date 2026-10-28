@@ -47,8 +47,10 @@ repeated) and `run`, and `from` to resume. With none it sends every run event
 the caller may read, `run.usage` and `run.context` included. The workspace is
 always the caller's. The old `topic` still works and cannot be combined with
 the others: `agent:<name>:<run>` is read as `run=<run>`
-(`internal/legacy.Topic`). `GET /api/journal` filters by `type`; the old
-`kind` is still read.
+(`internal/legacy.Topic`). `inbox=true` sends inbox and thread notices alone,
+with no run event, and takes no other filter. `GET /api/journal` filters by
+`type`, repeated for more than one; the old `kind` is still read when no
+`type` is given.
 
 Validation uses [`santhosh-tekuri/jsonschema`](https://github.com/santhosh-tekuri/jsonschema),
 a JSON Schema 2020-12 validator with no dependencies of its own, which is the

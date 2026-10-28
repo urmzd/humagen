@@ -259,7 +259,9 @@ type Query struct {
 	RunID        string
 	// Type is a type prefix ("run.delta"), or a kind from before the union,
 	// exact ("delta.tool.call") or a family ("lifecycle").
-	Type   string
+	Type string
+	// Types are more type prefixes. An entry matches Type or any of them.
+	Types  []string
 	Origin string
 	// Contains matches a substring of the entry's detail, ignoring case.
 	Contains string
@@ -311,7 +313,7 @@ func (j *Journal) Query(q Query) []Entry {
 			return
 		case q.Origin != "" && h.origin != q.Origin:
 			return
-		case q.Type != "" && !MatchesType(e.Type, q.Type):
+		case !q.matchesType(e.Type):
 			return
 		case !q.Since.IsZero() && e.Time.Before(q.Since):
 			return
@@ -335,6 +337,18 @@ func (j *Journal) Query(q Query) []Entry {
 		out = out[:limit]
 	}
 	return out
+}
+
+// matchesType reports whether a type is chosen by Type or Types. No selector
+// chooses every type.
+func (q Query) matchesType(typ string) bool {
+	if q.Type == "" && len(q.Types) == 0 {
+		return true
+	}
+	if q.Type != "" && MatchesType(typ, q.Type) {
+		return true
+	}
+	return slices.ContainsFunc(q.Types, func(sel string) bool { return MatchesType(typ, sel) })
 }
 
 // MatchesType reports whether a type is what a selector chose: a type

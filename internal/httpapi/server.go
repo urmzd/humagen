@@ -869,6 +869,13 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		fail(w, http.StatusBadRequest, "use channel, type and run, or topic alone: a type is a run type prefix, such as run.delta")
 		return
 	}
+	// inbox=true is notices alone: no run event is subscribed to, so it takes
+	// no run filter.
+	inboxOnly, err := inboxFlag(r)
+	if err != nil || (inboxOnly && (r.URL.Query().Has("channel") || r.URL.Query().Has("type") || r.URL.Query().Has("run") || r.URL.Query().Has("topic") || r.URL.Query().Has("from"))) {
+		fail(w, http.StatusBadRequest, "inbox is true or false, and inbox=true takes no channel, type, run, topic or from")
+		return
+	}
 	var from uint64
 	if raw := r.URL.Query().Get("from"); raw != "" {
 		if _, err := fmt.Sscan(raw, &from); err != nil {
@@ -877,12 +884,15 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		}
 	}
 	sel.From = from
-	stream, err := s.P.Subscribe(r.Context(), who.Tenant, sel)
-	if err != nil {
-		s.problem(w, err)
-		return
+	var stream *platform.Stream
+	if !inboxOnly {
+		stream, err = s.P.Subscribe(r.Context(), who.Tenant, sel)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		defer func() { _ = stream.Close() }()
 	}
-	defer func() { _ = stream.Close() }()
 	// Inbox changes ride the same stream as a named event, so a reader that
 	// only listens for run events never sees them. A notice names a message
 	// and nothing more: the reader fetches it and is shown what they may see.
@@ -903,8 +913,15 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	w.WriteHeader(http.StatusOK)
 	_ = rc.Flush()
 
-	out := make(chan event.Envelope)
+	// An inbox-only stream leaves out nil, so it never delivers.
+	var out chan event.Envelope
+	if stream != nil {
+		out = make(chan event.Envelope)
+	}
 	go func() {
+		if stream == nil {
+			return
+		}
 		defer close(out)
 		for {
 			e, err := stream.Recv(r.Context())
@@ -997,6 +1014,15 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			return
 		}
 	}
+}
+
+// inboxFlag reads inbox, which is absent, true or false.
+func inboxFlag(r *http.Request) (bool, error) {
+	raw := r.URL.Query().Get("inbox")
+	if raw == "" {
+		return false, nil
+	}
+	return strconv.ParseBool(raw)
 }
 
 // eventFilter reads the stream's filter from a request: channel, type and

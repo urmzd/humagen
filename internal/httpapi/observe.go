@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -139,8 +138,13 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 		return
 	}
 	limit, _ := strconv.Atoi(q.Get("limit"))
+	// kind is read only when no type is given.
+	kind := q.Get("kind")
+	if q.Has("type") {
+		kind = ""
+	}
 	entries := s.P.Journal.Query(journal.Query{
-		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Type: cmp.Or(q.Get("type"), q.Get("kind")),
+		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Type: kind, Types: q["type"],
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
 		ProjectEvent: func(e event.Envelope) event.Envelope { return s.P.ShownEvent(who, e) },
 		Visible: func(e event.Envelope) bool {

@@ -20,7 +20,7 @@ test("a thread names its conversation, and the name leads back to the thread", (
   assert.match(key, /^[A-Za-z0-9_-]+$/, "a run id is a bus topic segment");
   assert.deepEqual(sessionOf("svc-slack", tagId("svc-slack", key)), session);
   // The run id is the runtime's: the workspace and the trigger id, hashed as
-  // fiber's runtime.RunID does. These match the Go implementation.
+  // `RunID` in `fiber/pkg/runtime` does. These match the Go implementation.
   assert.equal(runId("acme", "svc-slack", key), "rdd6a9402cbeb5e28153f6bf63050792c");
   assert.match(runId("acme", "svc-slack", key), /^r[0-9a-f]{32}$/);
   assert.notEqual(runId("acme", "svc-slack", key), runId("globex", "svc-slack", key));
@@ -335,7 +335,10 @@ test("the event stream hands each event on once across a reconnect, and ends on 
     sse(
       frame(1, "run.accepted.v1"),
       'event: inbox\ndata: {"id":"m1","kind":"memory"}\n\n',
+      'event: thread\ndata: {"id":"th1"}\n\n',
       "data: not json\n\n",
+      // A frame with no run or sequence number cannot be told from a replay.
+      `data: ${JSON.stringify({ id: "x", type: "run.delta.text.v1", data: { text: "?" } })}\n\n`,
     ),
     // The server replays what the bus holds on every open.
     sse(frame(1, "run.accepted.v1"), frame(2, "run.completed.v1")),
@@ -383,6 +386,8 @@ test("the inbox stream says each time it opens, first and after every reconnect,
   // A stream that answered 503 never opened, so it says nothing.
   assert.deepEqual(seen, ["opened", "m1", "opened", "m2"]);
   assert.equal(asked.length, 3);
+  // The inbox is asked for by the contract's flag, with no run.
+  assert.equal(asked[0]?.url, "http://humagen.test/api/events?inbox=true");
 });
 
 test("a project's announcements are read newest first from its inbox, withdrawn ones too, the workspace's as ~", async () => {

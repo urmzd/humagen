@@ -2828,6 +2828,12 @@ paths:
           in: query
           description: Resume after this sequence number within each run.
           schema: {type: integer, format: int64, minimum: 0}
+        - name: inbox
+          in: query
+          description: |
+            `true` sends inbox and thread notices alone, with no run event. It
+            cannot be combined with `channel`, `type`, `run`, `topic` or `from`.
+          schema: {type: boolean}
         - name: topic
           in: query
           deprecated: true
@@ -3709,7 +3715,14 @@ paths:
         - {$ref: "#/components/parameters/Window"}
         - {name: agent, in: query, schema: {type: string}}
         - {name: run, in: query, schema: {type: string}}
-        - {name: type, in: query, description: "An event type, or a prefix of one such as `run.delta`.", schema: {type: string}}
+        - name: type
+          in: query
+          description: An event type, or a prefix of one such as `run.delta`, repeated for more than one. An entry matches any of them.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {type: string}
         - {name: kind, in: query, deprecated: true, description: "A kind from before the event union, such as `lifecycle`. Use `type`.", schema: {type: string}}
         - {name: origin, in: query, schema: {type: string}}
         - {name: q, in: query, description: Matches part of an entry's detail., schema: {type: string}}

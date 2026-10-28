@@ -36,6 +36,7 @@ import {
   type Source,
   type SuiteView,
   type Summary,
+  runStateTypes,
   subscribe,
   type ThreadSummary,
 } from "./api.ts";
@@ -301,14 +302,18 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     loadSources();
   }, [loadRuns, loadAgents, loadSources]);
 
-  // One stream for the whole tenant keeps every list current. Lifecycle and
-  // control events are rare next to text deltas, so the reload is coalesced
-  // rather than run per event.
+  // One stream of the tenant's run state changes keeps every list current.
+  // The reload is coalesced rather than run per event. Agents change only
+  // through the agents API, so they are read again on every (re)connect, and
+  // by whatever changed them.
   const pending = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!can("runs:read")) return;
-    const close = subscribe({}, {
-      onOpen: loadRuns,
+    const close = subscribe({ type: runStateTypes }, {
+      onOpen: () => {
+        loadRuns();
+        loadAgents();
+      },
       onState: setLive,
       onInbox: () => {
         loadInbox();
@@ -319,10 +324,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         window.clearTimeout(pending.current);
         pending.current = window.setTimeout(loadRuns, 150);
       },
-      onEvent: (e) => {
-        // A run's state changed: reload the list. Its text, tools, usage and
-        // actions do not move it.
-        if (/^run\.(delta|usage|context|action)\./.test(e.type)) return;
+      onEvent: () => {
         window.clearTimeout(pending.current);
         pending.current = window.setTimeout(loadRuns, 150);
       },
@@ -331,7 +333,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       window.clearTimeout(pending.current);
       close();
     };
-  }, [can, loadRuns, loadInbox, loadProjects]);
+  }, [can, loadRuns, loadAgents, loadInbox, loadProjects]);
 
   // An eval in flight reports progress on its own record, not on the bus.
   const evalRunning = suites.some((s) => s.runs[0]?.status === "running");

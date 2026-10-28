@@ -64,6 +64,8 @@ export interface EventFilter {
   type?: string[];
   /** One run's events. */
   run?: string;
+  /** Notices alone, with no run event. It takes no other filter. */
+  inbox?: boolean;
 }
 
 /** How `runEvents` reconnects when the stream drops before the run is over. */
@@ -242,7 +244,7 @@ export class Humagen extends ApiClient {
     const own = new AbortController();
     const signal = options?.signal ? AbortSignal.any([options.signal, own.signal]) : own.signal;
     try {
-      for await (const message of this.streamEvents(params.channel, params.type, params.run, params.from, undefined, { retry: false, ...options, signal })) {
+      for await (const message of this.streamEvents(params.channel, params.type, params.run, params.from, params.inbox, undefined, { retry: false, ...options, signal })) {
         if (message.event === "inbox") {
           yield { item: "inbox", notice: message.data as InboxNotice };
         } else if (message.event === undefined || message.event === "message") {

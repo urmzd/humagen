@@ -58,6 +58,7 @@ func TestQueryNarrows(t *testing.T) {
 		"exact":    {Query{Tenant: "acme", Type: "delta.tool.done"}, 1},
 		"prefix":   {Query{Tenant: "acme", Type: "run.delta.tool"}, 2},
 		"type":     {Query{Tenant: "acme", Type: event.TypeToolDone}, 1},
+		"types":    {Query{Tenant: "acme", Types: []string{event.TypeToolDone, event.TypeCompleted}}, 2},
 		"text":     {Query{Tenant: "acme", Contains: "RATE LIMITED"}, 1},
 		"since":    {Query{Tenant: "acme", Since: t0.Add(6 * time.Second)}, 3},
 		"until":    {Query{Tenant: "acme", Until: t0.Add(1 * time.Second)}, 2},

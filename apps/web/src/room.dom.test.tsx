@@ -7,7 +7,7 @@ import { useRunStop } from "./RunStop.tsx";
 import { AgentMessage } from "@humagen/web";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
+import { api, type Revision, runStateTypes, subscribe, type ThreadPage, type ThreadTurn } from "./api.ts";
 import { liveEventSource, stubEventSource, stubFetch } from "./dom.ts";
 import { PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
@@ -1736,3 +1736,24 @@ for (const kind of ["conversation", "channel"] as const) {
     assert.equal((posted?.body as { text: string }).text, "$review Keep this request.");
   });
 }
+
+test("a stream of run state changes hears a run start and end, and none of its text", () => {
+  const live = liveEventSource();
+  try {
+    const heard: string[] = [];
+    const close = subscribe({ type: runStateTypes }, { onEvent: (e) => heard.push(e.type) });
+    live.send({ run: "r9", agent: "helper", type: "run.started.v1" });
+    live.send({ run: "r9", agent: "helper", type: "run.delta.text.v1", data: { text: "Hello" } });
+    live.send({ run: "r9", agent: "helper", type: "run.completed.v1", data: { text: "Hello" } });
+    close();
+    assert.deepEqual(heard, ["run.started.v1", "run.completed.v1"]);
+  } finally {
+    live.restore();
+  }
+});
+
+test("the journal is asked for each type prefix once", async () => {
+  net = stubFetch({ "GET /api/journal": () => ({ entries: [] }) });
+  await api.journal({ window: "1h", type: ["run.completed.v1", "run.failed.v1"] });
+  assert.equal(net.seen[0]?.path, "/api/journal?window=1h&type=run.completed.v1&type=run.failed.v1");
+});

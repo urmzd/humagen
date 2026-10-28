@@ -2764,13 +2764,14 @@ Note for generators: the schema below describes the JSON carried in
 each message's `data` field, which is how the oag generator reads
 `itemSchema`.
  */
-  async *streamEvents(channel?: string, type?: string[], run?: string, from?: number, topic?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<StreamEventsStreamEvent>> {
+  async *streamEvents(channel?: string, type?: string[], run?: string, from?: number, inbox?: boolean, topic?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<StreamEventsStreamEvent>> {
     let path = "/api/events";
     const _q = new URLSearchParams();
     if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
     if (type !== undefined && type !== null) { for (const _v of type) _q.append("type", String(_v)); }
     if (run !== undefined && run !== null) _q.set("run", String(run));
     if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (inbox !== undefined && inbox !== null) _q.set("inbox", String(inbox));
     if (topic !== undefined && topic !== null) _q.set("topic", String(topic));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
@@ -3488,13 +3489,13 @@ Does not publish a new version or run an agent.
   }
 
   /** Query what happened, newest first */
-  async queryJournal(window?: string, agent?: string, run?: string, type?: string, kind?: string, origin?: string, q?: string, limit?: number, options?: RequestOptions): Promise<QueryJournalResponse> {
+  async queryJournal(window?: string, agent?: string, run?: string, type?: string[], kind?: string, origin?: string, q?: string, limit?: number, options?: RequestOptions): Promise<QueryJournalResponse> {
     let path = "/api/journal";
     const _q = new URLSearchParams();
     if (window !== undefined && window !== null) _q.set("window", String(window));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (run !== undefined && run !== null) _q.set("run", String(run));
-    if (type !== undefined && type !== null) _q.set("type", String(type));
+    if (type !== undefined && type !== null) { for (const _v of type) _q.append("type", String(_v)); }
     if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
     if (origin !== undefined && origin !== null) _q.set("origin", String(origin));
     if (q !== undefined && q !== null) _q.set("q", String(q));
@@ -3506,13 +3507,13 @@ Does not publish a new version or run an agent.
     });
   }
 
-  async queryJournalRaw(window?: string, agent?: string, run?: string, type?: string, kind?: string, origin?: string, q?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<QueryJournalResponse>> {
+  async queryJournalRaw(window?: string, agent?: string, run?: string, type?: string[], kind?: string, origin?: string, q?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<QueryJournalResponse>> {
     let path = "/api/journal";
     const _q = new URLSearchParams();
     if (window !== undefined && window !== null) _q.set("window", String(window));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (run !== undefined && run !== null) _q.set("run", String(run));
-    if (type !== undefined && type !== null) _q.set("type", String(type));
+    if (type !== undefined && type !== null) { for (const _v of type) _q.append("type", String(_v)); }
     if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
     if (origin !== undefined && origin !== null) _q.set("origin", String(origin));
     if (q !== undefined && q !== null) _q.set("q", String(q));
