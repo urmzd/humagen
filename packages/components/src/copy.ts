@@ -827,7 +827,7 @@ export const defaultCopy = {
   /** The product, as a sender: what every system message is shown from, whatever name its record keeps. */
   product: "Humagen",
   forking: {
-    fromHere: "Fork From Here",
+    fromHere: "Fork",
     archive: "Read-only conversation archive",
     title: "Fork Conversation",
     create: "Create Fork",
@@ -868,7 +868,6 @@ export const defaultCopy = {
     owner: "Owner",
     failed: "Access could not be changed.",
     updated: "Access updated.",
-    share: "Share in Project",
     makePrivate: "Make Private",
     privateHint:
       "Only participants and authorized workspace administrators can read this conversation.",

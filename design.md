@@ -296,8 +296,11 @@ inspector dock. At 1024px and above the drawer occupies its own flex column,
 reflowing the conversation and composer. At smaller widths it is a native modal
 edge drawer with contained focus. Closing returns focus and restores the main
 column. The header has one left-aligned title, project/channel metadata and a
-compact action row. Share owns project placement; More contains Activity and
-Deliverables. Control geometry uses the existing shared icon family.
+compact action row. Share owns project placement; People & Access lists and
+changes participants and can make a shared conversation private, but does not
+offer a second Share. More contains Activity and Deliverables. Control geometry
+uses the existing shared icon family. Message actions below a message are
+icon-only, with the action's name as their accessible name and hover label.
 
 Dark console surfaces use neutral charcoal planes, IBM Plex Sans for reading and headings, with
 IBM Plex Mono for editors and technical text. Agent hues and focus use the existing

@@ -2,7 +2,7 @@ import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
-import { AgentMessage, messageTextActionButton, Thread, useQueue } from "@humagen/web";
+import { AgentMessage, messageActionButton, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { useRunStop } from "./RunStop.tsx";
@@ -723,7 +723,7 @@ export function Chat({
               key={run.id}
               run={run}
               canStop={canRun&&!room?.thread.read_only}
-              actions={!room?.thread.read_only&&run.status==="completed"?<><OutcomeActions run={run} canWrite={canLearn}/>{canRun&&forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(run.id)}><ForkIcon size={16} />{defaultCopy.forking.fromHere}</button>}{canRun&&room?.thread.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(run.id)}><BringBackIcon size={16} />{defaultCopy.forking.bringBack}</button>}</>:undefined}
+              actions={!room?.thread.read_only&&run.status==="completed"?<><OutcomeActions run={run} canWrite={canLearn}/>{canRun&&forkActions?.onFork&&<button type="button" className={messageActionButton} aria-label={defaultCopy.forking.fromHere} title={defaultCopy.forking.fromHere} onClick={()=>forkActions.onFork?.(run.id)}><ForkIcon size={16} /></button>}{canRun&&room?.thread.fork&&forkActions?.onBringBack&&<button type="button" className={messageActionButton} aria-label={defaultCopy.forking.bringBack} title={defaultCopy.forking.bringBack} onClick={()=>forkActions.onBringBack?.(run.id)}><BringBackIcon size={16} /></button>}</>:undefined}
               me={me}
               ask={asks[run.id]}
               siblings={siblingsOf(turns, run)}

@@ -2,7 +2,7 @@ import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
-import { AgentMessage, MessageActionRow, messageTextActionButton, Thread as ThreadList, useQueue } from "@humagen/web";
+import { AgentMessage, MessageActionRow, messageActionButton, Thread as ThreadList, useQueue } from "@humagen/web";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { actedFor, citationOf, turnOf, type Run } from "./adapter.ts";
 import {
@@ -619,13 +619,13 @@ export function ThreadRoom({
             t.announcement ? (
               <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
             ) : t.message ? (
-              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} actions={posts&&forkActions?.onFork?<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.message!.id)}><ForkIcon size={16} />{defaultCopy.forking.fromHere}</button>:undefined} onReply={posts ? () => setSeed({ text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `, mode: "prepend" }) : undefined} />
+              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} actions={posts&&forkActions?.onFork?<button type="button" className={messageActionButton} aria-label={defaultCopy.forking.fromHere} title={defaultCopy.forking.fromHere} onClick={()=>forkActions.onFork?.(t.message!.id)}><ForkIcon size={16} /></button>:undefined} onReply={posts ? () => setSeed({ text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `, mode: "prepend" }) : undefined} />
             ) : t.run ? (
               <AnswerView
                 key={t.run.id}
                 run={t.run}
                 canStop={posts}
-                actions={!th.read_only&&t.run.status==="completed"?<><OutcomeActions run={t.run} canWrite={canLearn}/>{posts&&forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.run!.id)}><ForkIcon size={16} />{defaultCopy.forking.fromHere}</button>}{posts&&th.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(t.run!.id)}><BringBackIcon size={16} />{defaultCopy.forking.bringBack}</button>}</>:undefined}
+                actions={!th.read_only&&t.run.status==="completed"?<><OutcomeActions run={t.run} canWrite={canLearn}/>{posts&&forkActions?.onFork&&<button type="button" className={messageActionButton} aria-label={defaultCopy.forking.fromHere} title={defaultCopy.forking.fromHere} onClick={()=>forkActions.onFork?.(t.run!.id)}><ForkIcon size={16} /></button>}{posts&&th.fork&&forkActions?.onBringBack&&<button type="button" className={messageActionButton} aria-label={defaultCopy.forking.bringBack} title={defaultCopy.forking.bringBack} onClick={()=>forkActions.onBringBack?.(t.run!.id)}><BringBackIcon size={16} /></button>}</>:undefined}
                 routed={routedOf(t.run)}
                 onAsk={posts ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" }) : undefined}
                 onReply={posts ? () => setSeed({ text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `, mode: "prepend" }) : undefined}
@@ -682,7 +682,7 @@ export function ThreadRoom({
         )}
       </div>
       </ConversationPage>
-      <ConversationInfo onShare={shareable?()=>{openPanel();onSharing?.(true)}:undefined} panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={th} project={projectTitle(projects, th.project, workspaceName,personalProject)} onClose={() => openPanel()} />
+      <ConversationInfo panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={th} project={projectTitle(projects, th.project, workspaceName,personalProject)} onClose={() => openPanel()} />
       <Presence when={shownView.panel === "deliverables"} ms={220}>{leaving => <Deliverables open={!leaving} promotion={artifactActions ? {project:th.project,shared:th.visibility==="shared",...artifactActions}:undefined} thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}</Presence>
       <Presence when={shownView.panel === "activity"} ms={220}>{leaving => <Activity leaving={leaving} filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length} turns={turns.flatMap((turn) => turn.run ? [turn.run] : [])} stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")} focus={shownView.run ?? null} onFocus={(run) => openPanel("activity", run ? { run } : {})} onClose={() => openPanel()} onJump={(run) => document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })} />}</Presence>
     </section>
