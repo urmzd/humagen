@@ -78,7 +78,7 @@ Each step leaves every repository building and releasable.
 
 | # | Step | Repos | Size | State |
 |---|------|-------|------|-------|
-| 1 | Fiber is a library: no binary, no server, no mandatum.v1; conformance suites per store family | fiber | L | in review on the branch |
+| 1 | Fiber is a library: no binary, no server, no API of its own; conformance suites per store family | fiber | L | in review on the branch |
 | 2 | Fiber's backends are chosen in code; its declarative config moves to Humagen | fiber, Humagen | M | in progress |
 | 3 | Humagen's stores on memory or Postgres, chosen by the spec | Humagen | L | done |
 | 4 | One spec, `humagen start`, `humagen deploy` (local, compose, Kubernetes) | Humagen | L | done |

@@ -20,7 +20,6 @@ var wholeFiles = []struct{ pattern, why string }{
 	{"CHANGELOG.md", "release history, never edited"},
 	{"docs/renaming.md", "the history of names"},
 	{"fiber/CHANGELOG.md", "fiber's release history, never edited"},
-	{"fiber/docs/renaming.md", "fiber's history of names"},
 	{"docs/upgrading-from-warp.md", "what changed, for operators"},
 	{"internal/legacy/*", "the one Go package that reads old names"},
 	{"apps/*/src/legacy.ts", "the one module per app that reads old names"},
@@ -78,6 +77,17 @@ const reach = 24
 
 var word = regexp.MustCompile(`(?i)warp`)
 
+// Fiber was called mandatum. That name has no kept form, so it appears only
+// in these files, tests included.
+var fiberWord = regexp.MustCompile(`(?i)mandatum`)
+
+var fiberFiles = []struct{ pattern, why string }{
+	{"CHANGELOG.md", "release history, never edited"},
+	{"fiber/CHANGELOG.md", "fiber's release history, never edited"},
+	{"docs/renaming.md", "the history of names"},
+	{"internal/legacy/*", "the one Go package that reads old names"},
+}
+
 // unexplained reports whether line names warp somewhere no explanation
 // reaches.
 func unexplained(line string) bool {
@@ -108,7 +118,11 @@ func TestNoNewOldName(t *testing.T) {
 	}
 	var bad []string
 	for _, p := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
-		if p == "" || matchesAny(p, wholeFiles) {
+		if p == "" {
+			continue
+		}
+		bad = append(bad, fiberMentions(root, p)...)
+		if matchesAny(p, wholeFiles) {
 			continue
 		}
 		if word.MatchString(p) {
@@ -136,6 +150,28 @@ func TestNoNewOldName(t *testing.T) {
 	if len(bad) > 0 {
 		t.Errorf("the old name appears outside the places that keep it (AGENTS.md, Old names live in one place):\n%s", strings.Join(bad, "\n"))
 	}
+}
+
+// fiberMentions reports each line of p, and its path, that names fiber as it
+// was called before its rename, outside fiberFiles.
+func fiberMentions(root, p string) []string {
+	if matchesAny(p, fiberFiles) {
+		return nil
+	}
+	var bad []string
+	if fiberWord.MatchString(p) {
+		bad = append(bad, p+": the path")
+	}
+	b, err := os.ReadFile(filepath.Join(root, p))
+	if err != nil || bytes.IndexByte(b, 0) >= 0 {
+		return bad
+	}
+	for i, line := range strings.Split(string(b), "\n") {
+		if fiberWord.MatchString(line) {
+			bad = append(bad, p+":"+itoa(i+1)+": "+strings.TrimSpace(line))
+		}
+	}
+	return bad
 }
 
 func matchesAny(p string, list []struct{ pattern, why string }) bool {

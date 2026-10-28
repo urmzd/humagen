@@ -271,6 +271,13 @@ one. There is no deprecation release on the old path.
 | System `metadata.name` default and `humagen deploy`'s namespace default, `warp` | They name existing compose projects, Helm releases and their `<release>-env` Secrets |
 | Flux namespace, `HelmRelease`, `GitRepository`, `Kustomization` and `warp-env` Secret | The example prunes |
 | A warp chart release's resource names (`nameOverride: warp`) | Its volume and selector |
+| Fiber's Postgres tables `fiber_definitions`, `fiber_definition_retirements`, `fiber_events`, `fiber_event_runs`, `fiber_memberships`, `fiber_runs`, `fiber_run_records`, `fiber_run_queue`, `fiber_threads`, `fiber_thread_entries`, `fiber_knowledge_documents`, `fiber_knowledge_chunks`, `fiber_tool_providers`, `fiber_tool_snapshots`, with their indexes | Fiber now lives in this repository under `fiber/`; its stores keep their rows across the fold |
+| Durable activity names `fiber.turn.v2`, `fiber.turn.agent.v2`, `fiber.turn.resume.v2`, and the v1 names `fiber.turn`, `fiber.turn.agent`, `fiber.turn.resume` | Anchor's ledger stores runs under them. A run under a v1 name fails terminally with a reason instead of replaying |
+| Run record keys `fiber.stop`, `fiber.question.`, `fiber.answer.`, `fiber.child.`, `fiber.usage.a` | A run in flight reads its records back by these names |
+
+`internal/legacy/kept_test.go` pins every name in this table that code
+defines, and fails when a fiber store creates a table not listed here.
+Fiber's own earlier names are in [renaming.md](renaming.md#fiber).
 
 ## Choices the owner can flip
 

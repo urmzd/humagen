@@ -1,4 +1,4 @@
-package pgrename_test
+package legacy_test
 
 import (
 	"context"
@@ -14,10 +14,10 @@ import (
 	"github.com/urmzd/anchor/pkg/run"
 
 	"github.com/urmzd/humagen/fiber/pkg/durable"
-	"github.com/urmzd/humagen/fiber/pkg/internal/pgrename"
 	"github.com/urmzd/humagen/fiber/pkg/knowledge"
 	"github.com/urmzd/humagen/fiber/pkg/thread"
 	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 const postgresEnv = "FIBER_POSTGRES_TEST_URL"
@@ -63,19 +63,19 @@ BEGIN
 	FOR r IN SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
 		WHERE ns.nspname = current_schema() AND c.relkind IN ('r', 'p') AND c.relname LIKE 'fiber\_%' AND c.relname NOT LIKE 'fiber\_bus\_%'
 	LOOP
-		EXECUTE format('ALTER TABLE %I RENAME TO %I', r.relname, '`+pgrename.LegacyPrefix+`' || substr(r.relname, 7));
+		EXECUTE format('ALTER TABLE %I RENAME TO %I', r.relname, '`+legacy.FiberPrefixBeforeRename+`' || substr(r.relname, 7));
 	END LOOP;
 	FOR r IN SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
 		WHERE ns.nspname = current_schema() AND c.relkind IN ('i', 'S') AND c.relname LIKE 'fiber\_%' AND c.relname NOT LIKE 'fiber\_bus\_%'
 	LOOP
 		EXECUTE format('ALTER %s %I RENAME TO %I', CASE WHEN r.relkind = 'S' THEN 'SEQUENCE' ELSE 'INDEX' END,
-			r.relname, '`+pgrename.LegacyPrefix+`' || substr(r.relname, 7));
+			r.relname, '`+legacy.FiberPrefixBeforeRename+`' || substr(r.relname, 7));
 	END LOOP;
 	FOR r IN SELECT con.conname, cl.relname AS tbl FROM pg_constraint con JOIN pg_class cl ON cl.oid = con.conrelid
 		JOIN pg_namespace ns ON ns.oid = cl.relnamespace
 		WHERE ns.nspname = current_schema() AND con.conname LIKE 'fiber\_%'
 	LOOP
-		EXECUTE format('ALTER TABLE %I RENAME CONSTRAINT %I TO %I', r.tbl, r.conname, '`+pgrename.LegacyPrefix+`' || substr(r.conname, 7));
+		EXECUTE format('ALTER TABLE %I RENAME CONSTRAINT %I TO %I', r.tbl, r.conname, '`+legacy.FiberPrefixBeforeRename+`' || substr(r.conname, 7));
 	END LOOP;
 END $$`)
 	if err != nil {
@@ -152,13 +152,13 @@ func TestADatabaseFromBeforeTheRenameKeepsItsData(t *testing.T) {
 		t.Fatal(err)
 	}
 	downgrade(t, ctx, p)
-	if named(t, ctx, p, "fiber_") != 0 || named(t, ctx, p, pgrename.LegacyPrefix) == 0 {
-		t.Fatalf("the downgrade left %d fiber_ objects and %d old ones", named(t, ctx, p, "fiber_"), named(t, ctx, p, pgrename.LegacyPrefix))
+	if named(t, ctx, p, "fiber_") != 0 || named(t, ctx, p, legacy.FiberPrefixBeforeRename) == 0 {
+		t.Fatalf("the downgrade left %d fiber_ objects and %d old ones", named(t, ctx, p, "fiber_"), named(t, ctx, p, legacy.FiberPrefixBeforeRename))
 	}
 	// The upgrade, twice: it is idempotent.
 	migrate(t, ctx, p)
 	after := migrate(t, ctx, p)
-	if n := named(t, ctx, p, pgrename.LegacyPrefix); n != 0 {
+	if n := named(t, ctx, p, legacy.FiberPrefixBeforeRename); n != 0 {
 		t.Errorf("%d objects still carry the old prefix", n)
 	}
 
@@ -186,7 +186,7 @@ func TestAnOldTableRecreatedAfterTheUpgradeFailsTheMigrationNamingBoth(t *testin
 	ctx := context.Background()
 	p := pool(t)
 	migrate(t, ctx, p)
-	old := pgrename.LegacyPrefix + "threads"
+	old := legacy.FiberPrefixBeforeRename + "threads"
 	if _, err := p.Exec(ctx, `CREATE TABLE `+old+` (LIKE fiber_threads INCLUDING ALL)`); err != nil {
 		t.Fatal(err)
 	}
