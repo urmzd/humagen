@@ -8,7 +8,15 @@ import { card, Label, Menu, Problem } from "./ui.tsx";
  * each step from their sign-in to the rule that decided. Only ever about the
  * reader; the platform takes no one else's name.
  */
-export function AccessExplain({ name, permission, onPermission }: { name: string; permission: string; onPermission: (p: string) => void }) {
+export function AccessExplain({
+  name,
+  permission,
+  onPermission,
+}: {
+  name: string;
+  permission: string;
+  onPermission: (p: string) => void;
+}) {
   const [decision, setDecision] = useState<AccessDecision | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -18,7 +26,11 @@ export function AccessExplain({ name, permission, onPermission }: { name: string
     api
       .explain(permission)
       .then((d) => live && setDecision(d))
-      .catch((e) => live && setProblem(e instanceof ApiError ? e.message : "The explanation could not be loaded."));
+      .catch(
+        (e) =>
+          live &&
+          setProblem(e instanceof ApiError ? e.message : "The explanation could not be loaded."),
+      );
     return () => {
       live = false;
     };
@@ -27,8 +39,15 @@ export function AccessExplain({ name, permission, onPermission }: { name: string
   const shown = decision && decision.permission === permission ? explained(decision, name) : null;
 
   return (
-    <section className={`${card} flex flex-col gap-4`} aria-labelledby="why-title" aria-busy={!shown && !problem}>
-      <Label text="Explain" hint="Pick something to do. The answer is about you, from the policy that decides it.">
+    <section
+      className={`${card} flex flex-col gap-4`}
+      aria-labelledby="why-title"
+      aria-busy={!shown && !problem}
+    >
+      <Label
+        text="Explain"
+        hint="Pick something to do. The answer is about you, from the policy that decides it."
+      >
         <Menu
           label="Permission to explain"
           value={permission}
@@ -51,7 +70,13 @@ export function AccessExplain({ name, permission, onPermission }: { name: string
               // biome-ignore lint/suspicious/noArrayIndexKey: see above
               <li key={i} className="flex gap-3">
                 <span className="w-20 shrink-0 text-aui-muted">{s.label}</span>
-                {s.code ? <code className="min-w-0 break-words font-aui-mono text-aui-xs text-aui-fg">{s.text}</code> : <span className="min-w-0 text-aui-fg">{s.text}</span>}
+                {s.code ? (
+                  <code className="min-w-0 break-words font-aui-mono text-aui-xs text-aui-fg">
+                    {s.text}
+                  </code>
+                ) : (
+                  <span className="min-w-0 text-aui-fg">{s.text}</span>
+                )}
               </li>
             ))}
           </ol>

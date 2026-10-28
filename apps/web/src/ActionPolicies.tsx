@@ -1,10 +1,10 @@
 import { defaultCopy } from "@humagen/components";
+import { Badge } from "@humagen/render-web/ui/badge";
+import { Button } from "@humagen/render-web/ui/button";
+import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { useEffect, useState } from "react";
 import { type ActionPolicy, api } from "./api.ts";
 import { Page, Problem, SkeletonRows } from "./ui.tsx";
-import { Button } from "@humagen/render-web/ui/button";
-import { NativeSelect } from "@humagen/render-web/ui/native-select";
-import { Badge } from "@humagen/render-web/ui/badge";
 
 const words = defaultCopy.operations;
 type Level = "allow" | "ask" | "never";

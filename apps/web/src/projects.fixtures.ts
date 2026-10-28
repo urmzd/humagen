@@ -21,7 +21,10 @@ export function view(
   } = {},
 ): ProjectView {
   const kind = opts.kind ?? "team";
-  const path = [...(opts.parent?.path ?? []), { name, kind, ...(opts.title ? { title: opts.title } : {}) }];
+  const path = [
+    ...(opts.parent?.path ?? []),
+    { name, kind, ...(opts.title ? { title: opts.title } : {}) },
+  ];
   return {
     name,
     kind,
@@ -37,7 +40,17 @@ export function view(
     // Fixtures read as a workspace admin's: owner everywhere, every action,
     // and named in none of it.
     access: { role: "owner", from: "", via: "projects:govern" },
-    actions: ["create", "propose", "notes", "edit", "move", "archive", "delete", "limits", "announce"],
+    actions: [
+      "create",
+      "propose",
+      "notes",
+      "edit",
+      "move",
+      "archive",
+      "delete",
+      "limits",
+      "announce",
+    ],
     mine: false,
     version: opts.version ?? 1,
     created_by: "ada",
@@ -68,7 +81,13 @@ export const workspace: ProjectView = {
 };
 
 export const news = view("Company news", { kind: "company", conversations: 2 });
-export const field = view("Field", { title: "Field engineering", children: 3, conversations: 4, active: 1, instructions: "Customer accounts. Never promise dates." });
+export const field = view("Field", {
+  title: "Field engineering",
+  children: 3,
+  conversations: 4,
+  active: 1,
+  instructions: "Customer accounts. Never promise dates.",
+});
 export const east = view("East", { parent: field, children: 1, conversations: 1 });
 export const retail = view("Retail", { parent: east, children: 1 });
 /** Four levels below the workspace: as deep as the tree goes. */
@@ -87,7 +106,17 @@ export const initech = view("Initech", { kind: "account", parent: field, custome
 export const platform = view("Platform", { conversations: 9 });
 
 /** The tree in the order the platform lists it: each project before its sub-projects, siblings by name. */
-export const tree: ProjectView[] = [news, field, east, retail, stores, globex, renewals, initech, platform];
+export const tree: ProjectView[] = [
+  news,
+  field,
+  east,
+  retail,
+  stores,
+  globex,
+  renewals,
+  initech,
+  platform,
+];
 
 /** What GET /api/projects/Globex answers: the workspace first in its ancestors, and its own limit, then Field's, then the workspace's. */
 export const globexDetail: ProjectDetail = {
@@ -124,7 +153,12 @@ export const globexKnowledge: ProjectKnowledge = {
 };
 
 /** The workspace's knowledge sources, as GET /api/knowledge lists them. */
-export const knowledgeSources: Source[] = ["globex-contracts", "field-playbook", "handbook", "pricing"].map((name) => ({
+export const knowledgeSources: Source[] = [
+  "globex-contracts",
+  "field-playbook",
+  "handbook",
+  "pricing",
+].map((name) => ({
   name,
   documents: 3,
   passages: 12,

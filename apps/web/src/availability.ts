@@ -16,12 +16,18 @@ export const AUTO = "*";
 export const EVERYONE = "*";
 
 /** The agents of `all` that may run where `view` was read, in the order given. */
-export function availableOf(all: string[], view: Pick<ProjectAgentsView, "available"> | null, homes: Record<string, string>): string[] {
+export function availableOf(
+  all: string[],
+  view: Pick<ProjectAgentsView, "available"> | null,
+  homes: Record<string, string>,
+): string[] {
   if (!view) return all;
   const names = new Set(view.available.names);
   // Company homes remain platform-wide. Scoped homes are offered only when
   // the server names them on this project's available chain.
-  return all.filter((a) => names.has(a) || (view.available.all && nameOfAddress(homes[a] ?? "") === ""));
+  return all.filter(
+    (a) => names.has(a) || (view.available.all && nameOfAddress(homes[a] ?? "") === ""),
+  );
 }
 
 /** "~" in an answer is the workspace, "" here. */
@@ -38,7 +44,11 @@ export function defaultFrom(d: DefaultResolved): string {
  * Where an agent available in a project comes from, in words: "Lives here",
  * "Lives in Globex", "from Field", or nothing when this project enables it.
  */
-export function offerWords(offer: AgentOffer, here: string, titleOf: (name: string) => string): string {
+export function offerWords(
+  offer: AgentOffer,
+  here: string,
+  titleOf: (name: string) => string,
+): string {
   const from = nameOfAddress(offer.from);
   if (offer.home) return from === here ? place.livesHere : place.livesIn(titleOf(from));
   return from === here ? "" : place.fromProject(titleOf(from));

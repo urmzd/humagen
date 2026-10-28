@@ -1,7 +1,5 @@
 import { defaultCopy } from "@humagen/components";
 import { Inspector } from "@humagen/web";
-import { ConnectSource } from "./Integrations.tsx";
-import { SourceCatalog, type SourceChoice } from "./SourceCatalog.tsx";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   ApiError,
@@ -13,12 +11,14 @@ import {
   type SuiteView,
 } from "./api.ts";
 import { Evals } from "./Evals.tsx";
+import { ConnectSource } from "./Integrations.tsx";
 import type { SourceTab } from "./route.ts";
+import { SourceCatalog, type SourceChoice } from "./SourceCatalog.tsx";
 import {
+  SourceAttachments,
   SourceLifecycle,
   SourceResources,
   SourceSyncSettings,
-  SourceAttachments,
 } from "./SourceLifecycle.tsx";
 import {
   ago,
@@ -129,7 +129,16 @@ export function Knowledge({
       lede="What agents are grounded in: sources of documents they search and cite. Each source is shared: attach it to any agent from the agent's Context tab."
       actions={
         canWrite ? (
-          <button type="button" className={primary} aria-haspopup="dialog" aria-expanded={creating} onClick={() => {setSourceKind(undefined);setCreating(true)}}>
+          <button
+            type="button"
+            className={primary}
+            aria-haspopup="dialog"
+            aria-expanded={creating}
+            onClick={() => {
+              setSourceKind(undefined);
+              setCreating(true);
+            }}
+          >
             New Source
           </button>
         ) : undefined
@@ -138,40 +147,61 @@ export function Knowledge({
       <p className="rounded-aui border border-aui-border px-3 py-2 text-aui-xs text-aui-muted">
         {defaultCopy.sourceLifecycle.grounding}
       </p>
-      <Inspector open={creating} title={defaultCopy.sourceCatalog.title} onClose={()=>setCreating(false)}>
-        {!sourceKind ? <SourceCatalog onSelect={setSourceKind} /> : <div className="space-y-4">
-          <button type="button" className={button} onClick={()=>setSourceKind(undefined)}>{defaultCopy.sourceCatalog.back}</button>
-          {sourceKind === "manual" ? (
-        <form onSubmit={create} className={`${card} flex flex-col gap-3`}>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Label text="Name" hint="Lowercase letters, digits and dashes.">
-              <input
-                className={field}
-                value={draft.name}
-                required
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-            </Label>
-            <Label text="Description">
-              <input
-                className={field}
-                value={draft.description}
-                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-              />
-            </Label>
-          </div>
-          <Problem message={problem} />
-          <div className="flex justify-end gap-2">
-            <button type="button" className={button} onClick={() => setCreating(false)}>
-              Cancel
+      <Inspector
+        open={creating}
+        title={defaultCopy.sourceCatalog.title}
+        onClose={() => setCreating(false)}
+      >
+        {!sourceKind ? (
+          <SourceCatalog onSelect={setSourceKind} />
+        ) : (
+          <div className="space-y-4">
+            <button type="button" className={button} onClick={() => setSourceKind(undefined)}>
+              {defaultCopy.sourceCatalog.back}
             </button>
-            <button type="submit" className={primary}>
-              Create Source
-            </button>
+            {sourceKind === "manual" ? (
+              <form onSubmit={create} className={`${card} flex flex-col gap-3`}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Label text="Name" hint="Lowercase letters, digits and dashes.">
+                    <input
+                      className={field}
+                      value={draft.name}
+                      required
+                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    />
+                  </Label>
+                  <Label text="Description">
+                    <input
+                      className={field}
+                      value={draft.description}
+                      onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                    />
+                  </Label>
+                </div>
+                <Problem message={problem} />
+                <div className="flex justify-end gap-2">
+                  <button type="button" className={button} onClick={() => setCreating(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className={primary}>
+                    Create Source
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <ConnectSource
+                key={sourceKind}
+                initialProvider={sourceKind}
+                onCancel={() => setCreating(false)}
+                onCreated={(name) => {
+                  setCreating(false);
+                  onChanged();
+                  setSelected(name);
+                }}
+              />
+            )}
           </div>
-        </form>
-          ) : <ConnectSource key={sourceKind} initialProvider={sourceKind} onCancel={()=>setCreating(false)} onCreated={name=>{setCreating(false);onChanged();setSelected(name)}} />}
-        </div>}
+        )}
       </Inspector>
 
       {sources.length === 0 ? (
@@ -385,7 +415,9 @@ function SourceDetail({
         tabs={[
           { id: "documents", label: "Documents", count: upstream ? undefined : docs.length },
           { id: "search", label: "Try a Question" },
-          ...(!upstream ? [{ id: "variants" as const, label: "Variants", count: source.variants.length }] : []),
+          ...(!upstream
+            ? [{ id: "variants" as const, label: "Variants", count: source.variants.length }]
+            : []),
           { id: "evals", label: "Evals", count: mine.length },
         ]}
       />
@@ -419,34 +451,40 @@ function SourceDetail({
           <p className="text-aui-sm text-aui-muted">
             What an agent asking this would get back, best match first.
           </p>
-          {frozen ? <p className="text-aui-sm leading-6 text-aui-muted">{defaultCopy.sourceLifecycle.frozenAccess}</p> : <form onSubmit={search} className="flex gap-2">
-            <input
-              aria-label="Question"
-              className={field}
-              placeholder="What would an agent ask this source?"
-              value={query}
-              required
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {source.variants.length > 0 && (
-              <Menu
-                label="Search in"
-                className="w-44 shrink-0"
-                value={variant}
-                options={[
-                  { value: "", label: "Current view" },
-                  ...source.variants.map((v) => ({ value: v.name, label: v.name })),
-                ]}
-                onChange={(next) => {
-                  setVariant(next);
-                  setHits(null);
-                }}
+          {frozen ? (
+            <p className="text-aui-sm leading-6 text-aui-muted">
+              {defaultCopy.sourceLifecycle.frozenAccess}
+            </p>
+          ) : (
+            <form onSubmit={search} className="flex gap-2">
+              <input
+                aria-label="Question"
+                className={field}
+                placeholder="What would an agent ask this source?"
+                value={query}
+                required
+                onChange={(e) => setQuery(e.target.value)}
               />
-            )}
-            <button type="submit" className={button}>
-              Search
-            </button>
-          </form>}
+              {source.variants.length > 0 && (
+                <Menu
+                  label="Search in"
+                  className="w-44 shrink-0"
+                  value={variant}
+                  options={[
+                    { value: "", label: "Current view" },
+                    ...source.variants.map((v) => ({ value: v.name, label: v.name })),
+                  ]}
+                  onChange={(next) => {
+                    setVariant(next);
+                    setHits(null);
+                  }}
+                />
+              )}
+              <button type="submit" className={button}>
+                Search
+              </button>
+            </form>
+          )}
           {warnings.length > 0 && (
             <output className="text-aui-sm">{defaultCopy.sourceLifecycle.liveUnavailable}</output>
           )}
@@ -481,7 +519,9 @@ function SourceDetail({
 
       {tab === "documents" && upstream && (
         <p className={`${card} text-aui-sm leading-6 text-aui-muted`}>
-          {frozen ? defaultCopy.sourceLifecycle.frozenAccess : defaultCopy.sourceLifecycle.retainedAccess}
+          {frozen
+            ? defaultCopy.sourceLifecycle.frozenAccess
+            : defaultCopy.sourceLifecycle.retainedAccess}
         </p>
       )}
       {tab === "documents" && !upstream && (
@@ -608,7 +648,9 @@ function SourceDetail({
       )}
 
       {tab === "variants" && upstream && (
-        <p className={`${card} text-aui-sm leading-6 text-aui-muted`}>{defaultCopy.sourceLifecycle.retainedAccess}</p>
+        <p className={`${card} text-aui-sm leading-6 text-aui-muted`}>
+          {defaultCopy.sourceLifecycle.retainedAccess}
+        </p>
       )}
       {tab === "variants" && !upstream && (
         <section className={`${card} flex flex-col gap-2`}>

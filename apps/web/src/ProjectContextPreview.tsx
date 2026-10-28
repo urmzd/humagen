@@ -1,12 +1,22 @@
 import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, api, type ProjectContext } from "./api.ts";
-import { AgentMark, field, Label, primary, Problem } from "./ui.tsx";
+import { AgentMark, field, Label, Problem, primary } from "./ui.tsx";
 
 const words = defaultCopy.projects.context.preview;
 
 /** A preview comes from the live composer, with the reader's confinement. */
-export function ProjectContextPreview({ project, version, initialAgent = "", initialChannel = "" }: { project: string; version: number; initialAgent?: string; initialChannel?: string }) {
+export function ProjectContextPreview({
+  project,
+  version,
+  initialAgent = "",
+  initialChannel = "",
+}: {
+  project: string;
+  version: number;
+  initialAgent?: string;
+  initialChannel?: string;
+}) {
   const [agent, setAgent] = useState(initialAgent);
   const [channel, setChannel] = useState(initialChannel);
   const [preview, setPreview] = useState<ProjectContext | null>(null);
@@ -83,7 +93,10 @@ export function ProjectContextPreview({ project, version, initialAgent = "", ini
       {preview && (
         <ol className="flex flex-col gap-3">
           {preview.layers.map((layer, index) => (
-            <li key={`${layer.kind}:${layer.from}:${index}`} className="min-w-0 border-aui-border border-t pt-3">
+            <li
+              key={`${layer.kind}:${layer.from}:${index}`}
+              className="min-w-0 border-aui-border border-t pt-3"
+            >
               <h3 className="flex flex-wrap items-center gap-1 text-aui-sm font-medium text-aui-fg">
                 {words.kinds[layer.kind as keyof typeof words.kinds] ?? layer.kind}
                 {layer.from && (
@@ -97,10 +110,20 @@ export function ProjectContextPreview({ project, version, initialAgent = "", ini
               <p className="text-aui-xs text-aui-muted">
                 {words.usage(layer.used, layer.budget, layer.unit)}
                 {layer.omitted > 0 ? ` · ${words.omitted(layer.omitted)}` : ""}
-                {layer.preview_omitted > 0 ? ` · ${words.previewOmitted(layer.preview_omitted)}` : ""}
-                {layer.kind === "skills" ? ` · ${words.available}` : !layer.sent ? ` · ${words.notSent}` : ""}
+                {layer.preview_omitted > 0
+                  ? ` · ${words.previewOmitted(layer.preview_omitted)}`
+                  : ""}
+                {layer.kind === "skills"
+                  ? ` · ${words.available}`
+                  : !layer.sent
+                    ? ` · ${words.notSent}`
+                    : ""}
               </p>
-              {layer.text && <p className="whitespace-pre-wrap break-words text-aui-sm text-aui-fg">{layer.text}</p>}
+              {layer.text && (
+                <p className="whitespace-pre-wrap break-words text-aui-sm text-aui-fg">
+                  {layer.text}
+                </p>
+              )}
             </li>
           ))}
         </ol>

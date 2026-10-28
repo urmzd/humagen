@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
-import { api, type AgentControl, type ProjectView, type Revision } from "./api.ts";
+import { type AgentControl, api, type ProjectView, type Revision } from "./api.ts";
 import { AgentMark, card, field, Problem, SkeletonRows } from "./ui.tsx";
 
 export function PersonalAgents() {

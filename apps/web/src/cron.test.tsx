@@ -20,7 +20,17 @@ test("inWords: the common shapes are words", () => {
 });
 
 test("inWords: anything else is shown as written", () => {
-  for (const e of ["*/5 * * * *", "0 9 1 * *", "0 9 * 1 *", "0 9 * * 1,3", "0 25 * * *", "75 * * * *", "0 9 * * * 2027", "nonsense"]) assert.equal(inWords(e), e);
+  for (const e of [
+    "*/5 * * * *",
+    "0 9 1 * *",
+    "0 9 * 1 *",
+    "0 9 * * 1,3",
+    "0 25 * * *",
+    "75 * * * *",
+    "0 9 * * * 2027",
+    "nonsense",
+  ])
+    assert.equal(inWords(e), e);
 });
 
 test("inWords: the words are the copy table's, so a host that changes them changes these", () => {

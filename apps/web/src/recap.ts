@@ -44,7 +44,12 @@ export function recapName(project: string): string {
  * Monday morning, what changed since the last recap, with the answer posted
  * to the project. `text` and `description` are the host's copy.
  */
-export function weeklyRecap(project: string, agent: string, text: string, description: string): Schedule {
+export function weeklyRecap(
+  project: string,
+  agent: string,
+  text: string,
+  description: string,
+): Schedule {
   return {
     name: recapName(project),
     expression: recapCron(project === "" ? "~" : project),
@@ -73,7 +78,10 @@ export function deliverOptions(
 }
 
 /** What deliver becomes when the project changes: a schedule filed nowhere cannot post to a project. */
-export function deliverFor(project: string | undefined, deliver: Schedule["deliver"]): Schedule["deliver"] {
+export function deliverFor(
+  project: string | undefined,
+  deliver: Schedule["deliver"],
+): Schedule["deliver"] {
   return deliver === "project" && project === undefined ? undefined : deliver;
 }
 

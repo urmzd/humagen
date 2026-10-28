@@ -59,10 +59,13 @@ export function usePreferences(): {
     latest.current = projected;
     show(projected);
   }, []);
-  const setPrefs = useCallback((p: Preferences) => {
-    confirmed.current = p;
-    refresh();
-  }, [refresh]);
+  const setPrefs = useCallback(
+    (p: Preferences) => {
+      confirmed.current = p;
+      refresh();
+    },
+    [refresh],
+  );
   // The saved preferences, as on screen. A read under way is shared, a read
   // that failed is tried again, and one that worked is not repeated.
   const read = useCallback((): Promise<Preferences> => {
@@ -117,24 +120,36 @@ export function usePreferences(): {
   }, [refresh]);
   const change = useCallback(
     (field: "pinned" | "pinned_projects" | "muted", next: (was: string[]) => string[]) =>
-      read().then(() => new Promise<void>((resolve, reject) => {
-        pending.current.push({ field, next, resolve, reject });
-        refresh();
-        void drain();
-      })),
+      read().then(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            pending.current.push({ field, next, resolve, reject });
+            refresh();
+            void drain();
+          }),
+      ),
     [read, refresh, drain],
   );
   // Pinned conversations are most recently pinned first.
   const pin = useCallback(
-    (id: string, on: boolean) => change("pinned", (was) => (on ? [id, ...was.filter((p) => p !== id)] : was.filter((p) => p !== id))),
+    (id: string, on: boolean) =>
+      change("pinned", (was) =>
+        on ? [id, ...was.filter((p) => p !== id)] : was.filter((p) => p !== id),
+      ),
     [change],
   );
   const mute = useCallback(
-    (project: string, on: boolean) => change("muted", (was) => (on ? [...was.filter((p) => p !== project), project] : was.filter((p) => p !== project))),
+    (project: string, on: boolean) =>
+      change("muted", (was) =>
+        on ? [...was.filter((p) => p !== project), project] : was.filter((p) => p !== project),
+      ),
     [change],
   );
   const pinProject = useCallback(
-    (project: string, on: boolean) => change("pinned_projects", (was) => (on ? [project, ...was.filter((p) => p !== project)] : was.filter((p) => p !== project))),
+    (project: string, on: boolean) =>
+      change("pinned_projects", (was) =>
+        on ? [project, ...was.filter((p) => p !== project)] : was.filter((p) => p !== project),
+      ),
     [change],
   );
   return { prefs, prefsRead, setPrefs, pin, pinProject, mute };

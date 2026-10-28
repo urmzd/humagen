@@ -23,7 +23,11 @@ export interface Span {
  * Unchanged when the item already shows that way. `view` is the strip: how far
  * it is scrolled, how wide it is, and how wide its content is.
  */
-export function revealAt(item: Span, view: { scroll: number; width: number; content: number }, pad = FADE_PX): number {
+export function revealAt(
+  item: Span,
+  view: { scroll: number; width: number; content: number },
+  pad = FADE_PX,
+): number {
   const max = Math.max(view.content - view.width, 0);
   // Near either end, the end itself is the place: nothing is faded there.
   const room = Math.min(pad, Math.max((view.width - (item.end - item.start)) / 2, 0));
@@ -48,7 +52,11 @@ export function moreOf(view: { scroll: number; width: number; content: number })
  * to spare on each side: right when its left edge is too close, left when its
  * right edge is. A panel wider than the room left starts at the left gutter.
  */
-export function nudgeInto(panel: { left: number; width: number }, viewport: number, gutter = GUTTER_PX): number {
+export function nudgeInto(
+  panel: { left: number; width: number },
+  viewport: number,
+  gutter = GUTTER_PX,
+): number {
   const right = panel.left + panel.width;
   if (panel.left < gutter) return gutter - panel.left;
   if (right > viewport - gutter) return Math.max(viewport - gutter - right, gutter - panel.left);

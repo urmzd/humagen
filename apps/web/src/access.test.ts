@@ -1,11 +1,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Permission } from "../../../packages/client/src/generated/types.ts";
-import { accessOf, asked, doing, explained, explainedPermission, explainUrl, listed, NOTABLE, PERMISSIONS } from "./access.ts";
+import {
+  accessOf,
+  asked,
+  doing,
+  explained,
+  explainedPermission,
+  explainUrl,
+  listed,
+  NOTABLE,
+  PERMISSIONS,
+} from "./access.ts";
 import type { AccessDecision, Me } from "./api.ts";
 
 const reads = PERMISSIONS.filter((p) => p.endsWith(":read"));
-const operatorWrites = ["runs:write", "schedules:write", "alerts:write", "evals:write", "artifacts:write", "projects:write"];
+const operatorWrites = [
+  "runs:write",
+  "schedules:write",
+  "alerts:write",
+  "evals:write",
+  "artifacts:write",
+  "projects:write",
+];
 
 // The console names exactly the permissions the contract has: one the API
 // gains and this list lacks, or the reverse, fails the typecheck.
@@ -14,7 +31,10 @@ export const contractIsListed: [Exclude<Permission, Listed>] extends [never] ? t
 export const listedIsContract: [Exclude<Listed, Permission>] extends [never] ? true : false = true;
 
 function me(roles: string[], permissions: string[], subject = "00u-ada"): Me {
-  return { principal: { subject, tenant: "acme", kind: "user", name: "Ada Lovelace", roles }, permissions };
+  return {
+    principal: { subject, tenant: "acme", kind: "user", name: "Ada Lovelace", roles },
+    permissions,
+  };
 }
 const operator = me(["viewer", "operator"], [...reads, ...operatorWrites]);
 const viewer = me(["viewer"], [...reads]);
@@ -35,18 +55,39 @@ test("every permission has words, the project ones included", () => {
   assert.equal(doing["projects:write"], "make and change projects");
   assert.equal(doing["projects:govern"], "own every project");
   assert.equal(doing["people:read"], "see who is in the workspace");
-  assert.deepEqual(PERMISSIONS.slice(-4), ["projects:read", "projects:write", "projects:govern", "people:read"], "in the order the platform lists them");
+  assert.deepEqual(
+    PERMISSIONS.slice(-4),
+    ["projects:read", "projects:write", "projects:govern", "people:read"],
+    "in the order the platform lists them",
+  );
 });
 
 test("owning every project is the last thing named, so only someone who may do everything else is told they cannot", () => {
   assert.equal(NOTABLE[NOTABLE.length - 1], "projects:govern");
-  const almost = me(["manager", "billing", "clients"], PERMISSIONS.filter((p) => p !== "projects:govern"));
+  const almost = me(
+    ["manager", "billing", "clients"],
+    PERMISSIONS.filter((p) => p !== "projects:govern"),
+  );
   const a = accessOf(almost, decision({ role: "manager", held: [{ role: "manager" }] }));
   assert.equal(a.denies, "own every project");
   assert.notEqual(a.allows, "do everything in this workspace");
   // An operator makes projects, and is still told first that it cannot change an agent.
-  assert.equal(accessOf(operator, decision({ role: "operator", held: [{ role: "operator" }] })).denies, "change what an agent is");
-  assert.equal(explained(decision({ permission: "projects:govern", allowed: false, outcome: "no match", held: [{ role: "operator" }] }), "Ada").question, "Can Ada own every project?");
+  assert.equal(
+    accessOf(operator, decision({ role: "operator", held: [{ role: "operator" }] })).denies,
+    "change what an agent is",
+  );
+  assert.equal(
+    explained(
+      decision({
+        permission: "projects:govern",
+        allowed: false,
+        outcome: "no match",
+        held: [{ role: "operator" }],
+      }),
+      "Ada",
+    ).question,
+    "Can Ada own every project?",
+  );
 });
 
 test("listed: joins with commas and a final and", () => {
@@ -80,7 +121,14 @@ test("accessOf: an operator is told the role, the group that earned it, and what
 });
 
 test("accessOf: a viewer sees everything and cannot run agents", () => {
-  const a = accessOf(viewer, decision({ permission: "agents:read", role: "viewer", held: [{ role: "viewer", group: "readers" }] }));
+  const a = accessOf(
+    viewer,
+    decision({
+      permission: "agents:read",
+      role: "viewer",
+      held: [{ role: "viewer", group: "readers" }],
+    }),
+  );
   assert.equal(a.role, "viewer");
   assert.equal(a.group, "readers");
   assert.equal(a.allows, "see everything in this workspace");
@@ -95,7 +143,10 @@ test("accessOf: an admin does everything and is denied nothing", () => {
 });
 
 test("accessOf: no role names no role, so the page says no rule grants one", () => {
-  const a = accessOf(nobody, decision({ permission: "runs:read", allowed: false, outcome: "no match" }));
+  const a = accessOf(
+    nobody,
+    decision({ permission: "runs:read", allowed: false, outcome: "no match" }),
+  );
   assert.equal(a.role, undefined);
   assert.equal(a.allows, undefined);
   assert.equal(a.denies, undefined);
@@ -112,7 +163,9 @@ test("explained: no rule covers it, as the Access board shows", () => {
       permission: "agents:write",
       allowed: false,
       outcome: "no match",
-      held: [{ role: "operator", grant: 'grant operator to group "eng-oncall"', group: "eng-oncall" }],
+      held: [
+        { role: "operator", grant: 'grant operator to group "eng-oncall"', group: "eng-oncall" },
+      ],
     }),
     "Ada Lovelace",
   );
@@ -154,13 +207,26 @@ test("explained: allowed names the grant, the inheritance and the rule", () => {
 });
 
 test("explained: a deny says it beats every allow", () => {
-  const e = explained(decision({ permission: "billing:read", allowed: false, outcome: "denied", role: "auditor", rule: "deny read on billing", held: [{ role: "auditor" }] }), "Ada");
+  const e = explained(
+    decision({
+      permission: "billing:read",
+      allowed: false,
+      outcome: "denied",
+      role: "auditor",
+      rule: "deny read on billing",
+      held: [{ role: "auditor" }],
+    }),
+    "Ada",
+  );
   assert.match(e.answer, /deny beats every allow/);
   assert.equal(e.steps.find((s) => s.label === "Denies")?.text, "deny read on billing");
 });
 
 test("explained: nobody with no role is told no grant gives one", () => {
-  const e = explained(decision({ permission: "runs:read", allowed: false, outcome: "no match" }), "Ada");
+  const e = explained(
+    decision({ permission: "runs:read", allowed: false, outcome: "no match" }),
+    "Ada",
+  );
   assert.equal(e.answer, "No. No grant gives you a role yet.");
   assert.equal(e.steps[0]?.text, "Ada, holding no role");
 });

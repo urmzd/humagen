@@ -2,7 +2,14 @@ import type { ModelRef } from "./api.ts";
 import { chainProblem, conditions, defaultModel, MAX_FALLBACKS, providers } from "./models.ts";
 import { button, card, field, Label, Menu } from "./ui.tsx";
 
-export { chainProblem, chainWords, defaultModel, MAX_FALLBACKS, POLICY, starterPolicy } from "./models.ts";
+export {
+  chainProblem,
+  chainWords,
+  defaultModel,
+  MAX_FALLBACKS,
+  POLICY,
+  starterPolicy,
+} from "./models.ts";
 
 /**
  * An ordered list of models and when a call moves down it. The first answers;
@@ -23,7 +30,8 @@ export function ModelChain({
   onChange: (models: ModelRef[], fallbackOn: string[]) => void;
 }) {
   const write = (next: ModelRef[]) => onChange(next, next.length < 2 ? [] : fallbackOn);
-  const edit = (i: number, patch: Partial<ModelRef>) => write(models.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const edit = (i: number, patch: Partial<ModelRef>) =>
+    write(models.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   const move = (i: number, by: -1 | 1) => {
     const next = models.slice();
     const [m] = next.splice(i, 1);
@@ -43,7 +51,10 @@ export function ModelChain({
         {models.map((m, i) => {
           const role = i === 0 ? "Primary" : `Fallback ${i}`;
           return (
-            <li key={`${i}:${m.provider}`} className={`${card} grid grid-cols-1 items-end gap-3 @3xl:grid-cols-[6rem_11rem_minmax(10rem,1fr)_auto]`}>
+            <li
+              key={`${i}:${m.provider}`}
+              className={`${card} grid grid-cols-1 items-end gap-3 @3xl:grid-cols-[6rem_11rem_minmax(10rem,1fr)_auto]`}
+            >
               <span className="text-aui-sm font-medium text-aui-fg @3xl:pb-2">{role}</span>
               <Label text="Provider">
                 <Menu
@@ -51,22 +62,46 @@ export function ModelChain({
                   value={m.provider}
                   disabled={!editable}
                   options={providers}
-                  onChange={(provider) => edit(i, { provider, model: defaultModel[provider] ?? m.model })}
+                  onChange={(provider) =>
+                    edit(i, { provider, model: defaultModel[provider] ?? m.model })
+                  }
                 />
               </Label>
               <Label text="Model">
-                <input aria-label={`Model, ${role.toLowerCase()}`} className={field} value={m.model} disabled={!editable} onChange={(e) => edit(i, { model: e.target.value })} />
+                <input
+                  aria-label={`Model, ${role.toLowerCase()}`}
+                  className={field}
+                  value={m.model}
+                  disabled={!editable}
+                  onChange={(e) => edit(i, { model: e.target.value })}
+                />
               </Label>
               {editable && (
                 <span className="flex gap-1">
-                  <button type="button" className={button} disabled={i === 0} aria-label={`Move ${m.model || role} up`} onClick={() => move(i, -1)}>
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={i === 0}
+                    aria-label={`Move ${m.model || role} up`}
+                    onClick={() => move(i, -1)}
+                  >
                     ↑
                   </button>
-                  <button type="button" className={button} disabled={i === models.length - 1} aria-label={`Move ${m.model || role} down`} onClick={() => move(i, 1)}>
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={i === models.length - 1}
+                    aria-label={`Move ${m.model || role} down`}
+                    onClick={() => move(i, 1)}
+                  >
                     ↓
                   </button>
                   {models.length > 1 && (
-                    <button type="button" className={button} onClick={() => write(models.filter((_, j) => j !== i))}>
+                    <button
+                      type="button"
+                      className={button}
+                      onClick={() => write(models.filter((_, j) => j !== i))}
+                    >
                       Remove
                     </button>
                   )}
@@ -77,26 +112,48 @@ export function ModelChain({
         })}
       </ol>
       {editable && models.length - 1 < MAX_FALLBACKS && (
-        <button type="button" className={`${button} self-start`} onClick={() => write([...models, { provider: "anthropic", model: "" }])}>
+        <button
+          type="button"
+          className={`${button} self-start`}
+          onClick={() => write([...models, { provider: "anthropic", model: "" }])}
+        >
           Add Fallback
         </button>
       )}
 
       {models.length > 1 && (
         <fieldset className="flex flex-col gap-2">
-          <legend className="pb-1 text-aui-sm font-medium text-aui-fg">Move to the next model on</legend>
+          <legend className="pb-1 text-aui-sm font-medium text-aui-fg">
+            Move to the next model on
+          </legend>
           <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-            <input type="radio" className="mt-1" disabled={!editable} checked={anyError} onChange={() => onChange(models, [])} />
+            <input
+              type="radio"
+              className="mt-1"
+              disabled={!editable}
+              checked={anyError}
+              onChange={() => onChange(models, [])}
+            />
             <span>
               Any recoverable error
-              <span className="block text-aui-xs text-aui-muted">Everything but a bad request, a cancelled run or a spent budget.</span>
+              <span className="block text-aui-xs text-aui-muted">
+                Everything but a bad request, a cancelled run or a spent budget.
+              </span>
             </span>
           </label>
           <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-            <input type="radio" className="mt-1" disabled={!editable} checked={!anyError} onChange={() => onChange(models, ["unavailable", "rate_limit"])} />
+            <input
+              type="radio"
+              className="mt-1"
+              disabled={!editable}
+              checked={!anyError}
+              onChange={() => onChange(models, ["unavailable", "rate_limit"])}
+            />
             <span>
               Only these errors
-              <span className="block text-aui-xs text-aui-muted">Anything else fails the call on the model it reached.</span>
+              <span className="block text-aui-xs text-aui-muted">
+                Anything else fails the call on the model it reached.
+              </span>
             </span>
           </label>
           {!anyError && (
@@ -130,4 +187,3 @@ export function ModelChain({
     </div>
   );
 }
-

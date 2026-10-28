@@ -1,31 +1,23 @@
 import { defaultCopy } from "@humagen/components";
-import { useEffect, useRef, useState } from "react";
-import { zipSync } from "fflate";
 import { Markdown } from "@humagen/primitives";
 import {
-  WebSurface,
   FolderIcon,
+  PlusIcon,
   ProjectIcon,
   SearchIcon,
-  PlusIcon,
   UploadIcon,
+  WebSurface,
 } from "@humagen/render-web";
-import { ResourceBrowser, FileBrowser, Inspector } from "@humagen/web";
+import { Badge } from "@humagen/render-web/ui/badge";
 import { Button } from "@humagen/render-web/ui/button";
 import { Input } from "@humagen/render-web/ui/input";
-import { Textarea } from "@humagen/render-web/ui/textarea";
-import { NativeSelect } from "@humagen/render-web/ui/native-select";
-import { Badge } from "@humagen/render-web/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@humagen/render-web/ui/tabs";
 import { Label } from "@humagen/render-web/ui/label";
-import {
-  importSkillFolder,
-  skillFiles,
-  skillFileText,
-  skillFileBytes,
-  textSkillFile,
-  validSkillPath,
-} from "./skill-files.ts";
+import { NativeSelect } from "@humagen/render-web/ui/native-select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@humagen/render-web/ui/tabs";
+import { Textarea } from "@humagen/render-web/ui/textarea";
+import { FileBrowser, Inspector, ResourceBrowser } from "@humagen/web";
+import { zipSync } from "fflate";
+import { useEffect, useRef, useState } from "react";
 import type {
   LibraryScope,
   LibrarySkill,
@@ -34,6 +26,14 @@ import type {
 } from "../../../packages/client/src/generated/types.ts";
 import { api, type ProjectAgentsView, type ProjectView, type Revision } from "./api.ts";
 import { availableOf } from "./availability.ts";
+import {
+  importSkillFolder,
+  skillFileBytes,
+  skillFiles,
+  skillFileText,
+  textSkillFile,
+  validSkillPath,
+} from "./skill-files.ts";
 import { AgentMark, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 const blank: LibrarySkillDefinition = {
@@ -1048,80 +1048,88 @@ export function SkillsLibrary({
         </div>
       </ResourceBrowser>
       <Inspector open={createOpen} title={copy.newFolder} onClose={() => setCreateOpen(false)}>
-        {createOpen && (<form
-          className="space-y-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const next = {
-              ...blank,
-              name: newName.trim(),
-              description: newPurpose.trim(),
-              instructions: `# ${newName.trim()}\n\n${copy.initialInstructions}`,
-            };
-            setDefinition({ ...next, files: skillFiles(next) });
-            setSelected(null);
-            setHistory([]);
-            setCreating(true);
-            setDirty(true);
-            setTab("contents");
-            setPath("SKILL.md");
-            setSource(true);
-            setCreateOpen(false);
-          }}
-        >
-          <div className="space-y-2">
-            <Label htmlFor="skill-name">{copy.name}</Label>
-            <Input
-              id="skill-name"
-              required
-              maxLength={64}
-              pattern="[a-z][a-z0-9]*(-[a-z0-9]+)*"
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="skill-purpose">{copy.purpose}</Label>
-            <Textarea
-              id="skill-purpose"
-              required
-              maxLength={1024}
-              value={newPurpose}
-              onChange={(event) => setNewPurpose(event.target.value)}
-            />
-          </div>
-          <Button type="submit">{copy.newFolder}</Button>
-        </form>)}
+        {createOpen && (
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const next = {
+                ...blank,
+                name: newName.trim(),
+                description: newPurpose.trim(),
+                instructions: `# ${newName.trim()}\n\n${copy.initialInstructions}`,
+              };
+              setDefinition({ ...next, files: skillFiles(next) });
+              setSelected(null);
+              setHistory([]);
+              setCreating(true);
+              setDirty(true);
+              setTab("contents");
+              setPath("SKILL.md");
+              setSource(true);
+              setCreateOpen(false);
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="skill-name">{copy.name}</Label>
+              <Input
+                id="skill-name"
+                required
+                maxLength={64}
+                pattern="[a-z][a-z0-9]*(-[a-z0-9]+)*"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="skill-purpose">{copy.purpose}</Label>
+              <Textarea
+                id="skill-purpose"
+                required
+                maxLength={1024}
+                value={newPurpose}
+                onChange={(event) => setNewPurpose(event.target.value)}
+              />
+            </div>
+            <Button type="submit">{copy.newFolder}</Button>
+          </form>
+        )}
       </Inspector>
       <Inspector open={fileOpen} title={copy.addFile} onClose={() => setFileOpen(false)}>
-        {fileOpen && (<form
-          className="space-y-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (
-              !validSkillPath(newPath) ||
-              files.some((file) => file.path === newPath) ||
-              files.length >= 64
-            ) {
-              setProblem(copy.invalidFilePath);
-              return;
-            }
-            setDefinition({ ...definition, files: [...files, textSkillFile(newPath, "")] });
-            setDirty(true);
-            setPath(newPath);
-            setSource(true);
-            setFileOpen(false);
-            setNewPath("");
-          }}
-        >
-          <label className="flex flex-col gap-2 text-sm">
-            {copy.filePath}
-            <Input required value={newPath} onChange={(event) => setNewPath(event.target.value)} />
-            <span className="text-muted-foreground">{copy.filePathHint}</span>
-          </label>
-          <Problem message={problem} />
-          <Button type="submit">{copy.addFile}</Button>
-        </form>)}
+        {fileOpen && (
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (
+                !validSkillPath(newPath) ||
+                files.some((file) => file.path === newPath) ||
+                files.length >= 64
+              ) {
+                setProblem(copy.invalidFilePath);
+                return;
+              }
+              setDefinition({ ...definition, files: [...files, textSkillFile(newPath, "")] });
+              setDirty(true);
+              setPath(newPath);
+              setSource(true);
+              setFileOpen(false);
+              setNewPath("");
+            }}
+          >
+            <label className="flex flex-col gap-2 text-sm">
+              {copy.filePath}
+              <Input
+                required
+                value={newPath}
+                onChange={(event) => setNewPath(event.target.value)}
+              />
+              <span className="text-muted-foreground">{copy.filePathHint}</span>
+            </label>
+            <Problem message={problem} />
+            <Button type="submit">{copy.addFile}</Button>
+          </form>
+        )}
       </Inspector>
     </Page>
   );

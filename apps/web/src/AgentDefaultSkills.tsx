@@ -7,7 +7,7 @@ import type {
   LibrarySkill,
 } from "../../../packages/client/src/generated/types.ts";
 import { api } from "./api.ts";
-import { field, Problem,button,primary,textLink,Label } from "./ui.tsx";
+import { button, field, Label, Problem, primary, textLink } from "./ui.tsx";
 
 // The picker only reads the library. Both an unsaved setup and an existing
 // agent editor submit its exact references through their own durable APIs.
@@ -128,7 +128,19 @@ export function PublishedSkillPicker({
             );
             return (
               <li key={ref.id} className="flex flex-wrap items-center gap-2">
-                <>{row?<a className={`${textLink} inline-flex min-h-10 items-center break-words`} href={skillHref(row, ref.id,ref.version)} target="_blank" rel="noreferrer" aria-label={copy.inspect(row.name,ref.version)}>{row.name}</a>:<span>{copy.savedRevision}</span>}</>
+                {row ? (
+                  <a
+                    className={`${textLink} inline-flex min-h-10 items-center break-words`}
+                    href={skillHref(row, ref.id, ref.version)}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={copy.inspect(row.name, ref.version)}
+                  >
+                    {row.name}
+                  </a>
+                ) : (
+                  <span>{copy.savedRevision}</span>
+                )}
                 <span>{copy.version(ref.version)}</span>
                 {!disabled && (
                   <button
@@ -169,7 +181,10 @@ export function PublishedSkillPicker({
             {choices.map((row) => {
               const checked = refs.some((s) => s.id === row.id && s.version === row.version);
               return (
-                <label key={`${row.id}:${row.version}`} className="flex min-h-11 min-w-0 items-start gap-2 py-2">
+                <label
+                  key={`${row.id}:${row.version}`}
+                  className="flex min-h-11 min-w-0 items-start gap-2 py-2"
+                >
                   <input
                     type="checkbox"
                     checked={checked}
@@ -190,7 +205,10 @@ export function PublishedSkillPicker({
                   />
                   <span>
                     {row.name} {copy.version(row.version)}
-                    <span className="block text-aui-xs text-aui-muted">{row.description}</span><span className="block text-aui-xs text-aui-muted">{copy.tools}: {row.tools.length?row.tools.join(", "):copy.noTools}</span>
+                    <span className="block text-aui-xs text-aui-muted">{row.description}</span>
+                    <span className="block text-aui-xs text-aui-muted">
+                      {copy.tools}: {row.tools.length ? row.tools.join(", ") : copy.noTools}
+                    </span>
                   </span>
                 </label>
               );
@@ -262,7 +280,10 @@ export function AgentDefaultSkills({
     }
   };
   return (
-    <section aria-label={copy.title} className="grid min-w-0 gap-3 rounded-aui border border-aui-border p-4 text-aui-sm">
+    <section
+      aria-label={copy.title}
+      className="grid min-w-0 gap-3 rounded-aui border border-aui-border p-4 text-aui-sm"
+    >
       <h3 className="font-medium">{copy.title}</h3>
       <p className="text-aui-sm text-aui-muted">{copy.help}</p>
       {problem && <Problem message={problem} />}
@@ -288,7 +309,12 @@ export function AgentDefaultSkills({
                 {copy.save}
               </button>
             )}
-            <button type="button" className={button} disabled={busy} onClick={() => setRefresh((v) => v + 1)}>
+            <button
+              type="button"
+              className={button}
+              disabled={busy}
+              onClick={() => setRefresh((v) => v + 1)}
+            >
               {copy.reload}
             </button>
           </div>
@@ -297,8 +323,12 @@ export function AgentDefaultSkills({
     </section>
   );
 }
-function skillHref(row: LibrarySkill | undefined, id: string,version:number) {
-  const query = new URLSearchParams({ scope: row?.scope.kind ?? "workspace", skill: id,version:String(version) });
+function skillHref(row: LibrarySkill | undefined, id: string, version: number) {
+  const query = new URLSearchParams({
+    scope: row?.scope.kind ?? "workspace",
+    skill: id,
+    version: String(version),
+  });
   if (row?.scope.project) query.set("project", row.scope.project);
   return `/library/skills?${query}`;
 }

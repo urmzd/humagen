@@ -67,7 +67,10 @@ export function redact<T>(value: T): T {
   if (Array.isArray(value)) return value.map(redact) as T;
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, SECRET.test(k) && v !== null && v !== undefined ? "[redacted]" : redact(v)]),
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k,
+        SECRET.test(k) && v !== null && v !== undefined ? "[redacted]" : redact(v),
+      ]),
     ) as T;
   }
   return value;
@@ -134,7 +137,8 @@ const quote = (text: string) =>
     .map((l) => `> ${l}`)
     .join("\n");
 
-const toolsOf = (data: RunData, id: string) => data.spans.filter((s) => s.kind === "tool" && s.run_id === id);
+const toolsOf = (data: RunData, id: string) =>
+  data.spans.filter((s) => s.kind === "tool" && s.run_id === id);
 
 /** A run and what it called as Markdown a person can read, paste or file. */
 export function runMarkdown(run: Run, data: RunData): string {
@@ -143,22 +147,35 @@ export function runMarkdown(run: Run, data: RunData): string {
   const section = (r: Run, level: number) => {
     const who = r.id === run.id ? r.agent : `${r.agent}${r.mode ? ` (${r.mode})` : ""}`;
     out.push(`${"#".repeat(level)} ${who}`, "");
-    out.push(`- Status: ${statusWord(r)}`, `- Took: ${took(elapsed(r))}`, `- Agent revision: ${r.rev}`, `- Run: \`${r.id}\``);
+    out.push(
+      `- Status: ${statusWord(r)}`,
+      `- Took: ${took(elapsed(r))}`,
+      `- Agent revision: ${r.rev}`,
+      `- Run: \`${r.id}\``,
+    );
     if (r.lease > 0) out.push(`- Budget: ${usd(r.granted)} of ${usd(r.lease)} handed to its calls`);
     out.push("", "**Asked**", "", quote(r.text || "No request text"), "");
     if (r.answer) out.push("**Answered**", "", r.answer.trim(), "");
-    if (r.status === "failed") out.push("**Failed**", "", cause(r.error) || "The run failed without saying why.", "");
-    if (r.status === "stopped") out.push("**Stopped**", "", r.cause || "The run was stopped before it finished.", "");
+    if (r.status === "failed")
+      out.push("**Failed**", "", cause(r.error) || "The run failed without saying why.", "");
+    if (r.status === "stopped")
+      out.push("**Stopped**", "", r.cause || "The run was stopped before it finished.", "");
     const tools = toolsOf(data, r.id);
     if (tools.length > 0) {
       out.push("**Tools**", "");
       for (const s of tools) {
-        const how = s.error ? `failed: ${cause(s.error)}` : s.end ? took(Date.parse(s.end) - Date.parse(s.start)) : "still running";
+        const how = s.error
+          ? `failed: ${cause(s.error)}`
+          : s.end
+            ? took(Date.parse(s.end) - Date.parse(s.start))
+            : "still running";
         out.push(`- \`${s.name}\`, ${how}`);
       }
       out.push("");
     }
-    for (const child of runs.filter((c) => c.parent === r.id).sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+    for (const child of runs
+      .filter((c) => c.parent === r.id)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))) {
       section(child, Math.min(level + 1, 6));
     }
   };
@@ -168,12 +185,21 @@ export function runMarkdown(run: Run, data: RunData): string {
 
 /** A tool span from a trace as a tool call item. */
 export function toolOf(span: Span): ToolCall {
-  return { name: span.name, run: span.run_id, agent: span.agent, start: span.start, end: span.end, error: span.error };
+  return {
+    name: span.name,
+    run: span.run_id,
+    agent: span.agent,
+    start: span.start,
+    end: span.end,
+    error: span.error,
+  };
 }
 
 /** The call itself: its name, and its arguments when they are known. */
 export function toolCallText(t: ToolCall): string {
-  return t.args === undefined ? `${t.name}()` : `${t.name}(${JSON.stringify(redact(t.args), null, 2)})`;
+  return t.args === undefined
+    ? `${t.name}()`
+    : `${t.name}(${JSON.stringify(redact(t.args), null, 2)})`;
 }
 
 /** What came back: the result, the failure, or that nothing has yet. */
@@ -186,14 +212,32 @@ export function toolResultText(t: ToolCall): string {
 export function toolMarkdown(t: ToolCall): string {
   const out = [`**Tool** \`${t.name}\`${t.agent ? `, called by ${t.agent}` : ""}`, ""];
   if (t.start && t.end) out.push(`- Took: ${took(Date.parse(t.end) - Date.parse(t.start))}`);
-  out.push(`- Status: ${t.error ? "Failed" : t.end || t.result !== undefined ? "Done" : "Running"}`, "");
-  if (t.args !== undefined) out.push("**Arguments**", "", "```json", JSON.stringify(redact(t.args), null, 2), "```", "");
+  out.push(
+    `- Status: ${t.error ? "Failed" : t.end || t.result !== undefined ? "Done" : "Running"}`,
+    "",
+  );
+  if (t.args !== undefined)
+    out.push("**Arguments**", "", "```json", JSON.stringify(redact(t.args), null, 2), "```", "");
   out.push("**Result**", "", toolResultText(t));
   return `${out.join("\n").trimEnd()}\n`;
 }
 
-const md = (id: string, label: string, text: () => string, hint?: string): Format => ({ id, label, hint, mime: "text/markdown", ext: "md", text });
-const txt = (id: string, label: string, text: () => string, hint?: string): Format => ({ id, label, hint, mime: "text/plain", ext: "txt", text });
+const md = (id: string, label: string, text: () => string, hint?: string): Format => ({
+  id,
+  label,
+  hint,
+  mime: "text/markdown",
+  ext: "md",
+  text,
+});
+const txt = (id: string, label: string, text: () => string, hint?: string): Format => ({
+  id,
+  label,
+  hint,
+  mime: "text/plain",
+  ext: "txt",
+  text,
+});
 const js = (id: string, label: string, value: () => unknown, hint?: string): Format => ({
   id,
   label,
@@ -213,18 +257,43 @@ export function formats(item: Item): Format[] {
     case "run": {
       const { run, data } = item;
       return [
-        md("markdown", "Markdown", () => runMarkdown(run, data), "The request, the answer and every call."),
+        md(
+          "markdown",
+          "Markdown",
+          () => runMarkdown(run, data),
+          "The request, the answer and every call.",
+        ),
         txt("text", "Plain text", () => plain(runMarkdown(run, data))),
-        js("json", "JSON manifest", () => runManifest(run, data), "Runs, agents and revisions, tools, timings and statuses."),
+        js(
+          "json",
+          "JSON manifest",
+          () => runManifest(run, data),
+          "Runs, agents and revisions, tools, timings and statuses.",
+        ),
       ];
     }
     case "call": {
       const { run, data } = item;
       return [
         txt("asked", "What it was asked", () => `${(run.text || "").trim()}\n`),
-        ...(run.answer ? [md("answered", "What it answered", () => `${run.answer?.trim()}\n`)] : []),
-        ...(run.status === "failed" ? [txt("failure", "Why it failed", () => `${cause(run.error) || "The run failed without saying why."}\n`)] : []),
-        md("markdown", "Its whole conversation", () => runMarkdown(run, data), `As Markdown. ${variantOf(run)}.`),
+        ...(run.answer
+          ? [md("answered", "What it answered", () => `${run.answer?.trim()}\n`)]
+          : []),
+        ...(run.status === "failed"
+          ? [
+              txt(
+                "failure",
+                "Why it failed",
+                () => `${cause(run.error) || "The run failed without saying why."}\n`,
+              ),
+            ]
+          : []),
+        md(
+          "markdown",
+          "Its whole conversation",
+          () => runMarkdown(run, data),
+          `As Markdown. ${variantOf(run)}.`,
+        ),
         txt("text", "Its whole conversation, plain text", () => plain(runMarkdown(run, data))),
         js("json", "JSON manifest", () => runManifest(run, data)),
       ];
@@ -233,7 +302,12 @@ export function formats(item: Item): Format[] {
       const { run } = item;
       const answer = (run.answer ?? "").trim();
       return [
-        ...(answer ? [md("markdown", "Markdown", () => `${answer}\n`), txt("text", "Plain text", () => `${plain(answer)}\n`)] : []),
+        ...(answer
+          ? [
+              md("markdown", "Markdown", () => `${answer}\n`),
+              txt("text", "Plain text", () => `${plain(answer)}\n`),
+            ]
+          : []),
         js("json", "JSON", () => runRecord(run), `The run's record. ${variantOf(run)}.`),
       ];
     }
@@ -241,7 +315,14 @@ export function formats(item: Item): Format[] {
       const t = item.tool;
       const has = t.result !== undefined || t.error !== undefined || t.end !== undefined;
       return [
-        txt("call", "The call", () => `${toolCallText(t)}\n`, t.args === undefined ? "Its name. The platform did not report arguments." : "Its name and arguments."),
+        txt(
+          "call",
+          "The call",
+          () => `${toolCallText(t)}\n`,
+          t.args === undefined
+            ? "Its name. The platform did not report arguments."
+            : "Its name and arguments.",
+        ),
         ...(has ? [txt("result", "The result", () => `${toolResultText(t)}\n`)] : []),
         md("both", "Call and result", () => toolMarkdown(t), "As Markdown."),
         ...(t.args !== undefined ? [js("args", "Arguments as JSON", () => t.args)] : []),
@@ -254,8 +335,13 @@ export function formats(item: Item): Format[] {
 /** A file name for an item in a format: run-r2.md, tool-git_tag.json. */
 export function fileName(item: Item, format: Format): string {
   const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]+/g, "-").slice(0, 60);
-  const stem = item.kind === "tool" ? `tool-${safe(item.tool.name)}` : `${item.kind === "answer" ? "answer" : "run"}-${safe(item.run.id)}`;
-  return format.id === "markdown" || format.id === "json" || format.id === "text" ? `${stem}.${format.ext}` : `${stem}-${format.id}.${format.ext}`;
+  const stem =
+    item.kind === "tool"
+      ? `tool-${safe(item.tool.name)}`
+      : `${item.kind === "answer" ? "answer" : "run"}-${safe(item.run.id)}`;
+  return format.id === "markdown" || format.id === "json" || format.id === "text"
+    ? `${stem}.${format.ext}`
+    : `${stem}-${format.id}.${format.ext}`;
 }
 
 /** Past this size a copy becomes a download: a clipboard this full is rarely what was wanted. */

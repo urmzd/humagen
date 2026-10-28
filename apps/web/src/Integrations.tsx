@@ -1,12 +1,12 @@
 import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
-  api,
-  coworking,
-  type BridgeDirection,
-  type ClientCapabilities,
   type ActionPolicy,
+  api,
+  type BridgeDirection,
   type Client,
+  type ClientCapabilities,
+  coworking,
   type Entry,
   type Source,
   type SourceLinkRule,
@@ -17,14 +17,14 @@ import {
 import { AUTO } from "./availability.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
 import {
+  SourceAccessMode,
+  SourceAttachments,
   SourceLifecycle,
   SourceResources,
   SourceSyncSettings,
-  SourceAccessMode,
-  SourceAttachments,
   sourceProblem,
 } from "./SourceLifecycle.tsx";
-import { ago, button, Chip, field, Label, Page, primary, Problem } from "./ui.tsx";
+import { ago, button, Chip, field, Label, Page, Problem, primary } from "./ui.tsx";
 
 export type IntegrationTab = "connect" | "resources" | "links" | "access" | "events" | "actions";
 const words = defaultCopy.sourceOperations;
@@ -231,7 +231,11 @@ export function Integrations({
                           {client.home?.channel ? ` / #${client.home.channel}` : ""}
                         </dd>
                         <dt className="text-aui-muted">{words.defaultAgent}</dt>
-                        <dd>{client.default_agent === AUTO ? defaultCopy.auto.handle : client.default_agent || words.noDefault}</dd>
+                        <dd>
+                          {client.default_agent === AUTO
+                            ? defaultCopy.auto.handle
+                            : client.default_agent || words.noDefault}
+                        </dd>
                         <dt className="text-aui-muted">{words.allowed}</dt>
                         <dd className="break-words">
                           {client.agents?.join(", ") || words.noDefault}
@@ -371,7 +375,13 @@ export function ConnectSource({
     setBusy(true);
     setProblem(null);
     try {
-      await api.createSource(name, description, { provider, origin, project, mode, sync_every_seconds: mode !== "live" && scheduled ? Number(every) * 60 : 0 });
+      await api.createSource(name, description, {
+        provider,
+        origin,
+        project,
+        mode,
+        sync_every_seconds: mode !== "live" && scheduled ? Number(every) * 60 : 0,
+      });
       onCreated(name);
     } catch (error) {
       setProblem(sourceProblem(error));
@@ -431,13 +441,37 @@ export function ConnectSource({
           ))}
         </select>
       </Label>
-      <p className="text-aui-xs leading-5 text-aui-muted sm:col-span-2">{defaultCopy.sourceCatalog.refreshHint}</p>
-      {mode !== "live" && <>
-        <Label text={defaultCopy.sourceCatalog.cadence}>
-          <select aria-label={defaultCopy.sourceCatalog.cadence} className={field} value={scheduled ? "scheduled" : "manual"} onChange={event=>setScheduled(event.target.value === "scheduled")}><option value="manual">{defaultCopy.sourceCatalog.onDemand}</option><option value="scheduled">{defaultCopy.sourceCatalog.scheduled}</option></select>
-        </Label>
-        {scheduled && <Label text={defaultCopy.sourceCatalog.everyMinutes}><input className={field} type="number" min={1} max={10080} required value={every} onChange={event=>setEvery(event.target.value)} /></Label>}
-      </>}
+      <p className="text-aui-xs leading-5 text-aui-muted sm:col-span-2">
+        {defaultCopy.sourceCatalog.refreshHint}
+      </p>
+      {mode !== "live" && (
+        <>
+          <Label text={defaultCopy.sourceCatalog.cadence}>
+            <select
+              aria-label={defaultCopy.sourceCatalog.cadence}
+              className={field}
+              value={scheduled ? "scheduled" : "manual"}
+              onChange={(event) => setScheduled(event.target.value === "scheduled")}
+            >
+              <option value="manual">{defaultCopy.sourceCatalog.onDemand}</option>
+              <option value="scheduled">{defaultCopy.sourceCatalog.scheduled}</option>
+            </select>
+          </Label>
+          {scheduled && (
+            <Label text={defaultCopy.sourceCatalog.everyMinutes}>
+              <input
+                className={field}
+                type="number"
+                min={1}
+                max={10080}
+                required
+                value={every}
+                onChange={(event) => setEvery(event.target.value)}
+              />
+            </Label>
+          )}
+        </>
+      )}
       <Label text={words.origin}>
         <input
           className={field}
@@ -521,7 +555,13 @@ function ClientResources({
                   {b.project || words.workspace} / #{b.channel}
                 </a>
                 <BridgeDirectionControl
-                  key={JSON.stringify([client.id, b.project, b.channel, b.slack_channel, b.direction ?? "two_way"])}
+                  key={JSON.stringify([
+                    client.id,
+                    b.project,
+                    b.channel,
+                    b.slack_channel,
+                    b.direction ?? "two_way",
+                  ])}
                   client={client}
                   binding={b}
                   canWrite={canWrite}

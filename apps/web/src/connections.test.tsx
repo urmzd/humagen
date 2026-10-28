@@ -4,18 +4,57 @@ import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ToolCredential } from "./api.ts";
 import { ConnectForm, ConnectionCard } from "./Connections.tsx";
-import { cannotConnect, destination, standing, startsAllowed, ways, whereReferences } from "./connections.ts";
+import {
+  cannotConnect,
+  destination,
+  standing,
+  startsAllowed,
+  ways,
+  whereReferences,
+} from "./connections.ts";
 
 const html = (el: ReactElement) => renderToStaticMarkup(el);
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 const noop = () => {};
 
-const issues: ToolCredential = { provider: "issues", transport: "http", endpoint: "https://issues.example.com/mcp", tools: 2, connected: false };
-const byRef: ToolCredential = { ...issues, connected: true, kind: "reference", ref: "op://People/ana/issues", updated_at: "2026-10-21T09:00:00Z" };
-const stored: ToolCredential = { ...issues, connected: true, kind: "value", updated_at: "2026-10-21T09:00:00Z" };
+const issues: ToolCredential = {
+  provider: "issues",
+  transport: "http",
+  endpoint: "https://issues.example.com/mcp",
+  tools: 2,
+  connected: false,
+};
+const byRef: ToolCredential = {
+  ...issues,
+  connected: true,
+  kind: "reference",
+  ref: "op://People/ana/issues",
+  updated_at: "2026-10-21T09:00:00Z",
+};
+const stored: ToolCredential = {
+  ...issues,
+  connected: true,
+  kind: "value",
+  updated_at: "2026-10-21T09:00:00Z",
+};
 
-const card = (c: ToolCredential, w = ways({ values: true, references: ["op://People/"] }), open = false) =>
-  html(<ConnectionCard connection={c} ways={w} references={["op://People/"]} open={open} onOpen={noop} onCancel={noop} onSave={noop} onRemove={noop} />);
+const card = (
+  c: ToolCredential,
+  w = ways({ values: true, references: ["op://People/"] }),
+  open = false,
+) =>
+  html(
+    <ConnectionCard
+      connection={c}
+      ways={w}
+      references={["op://People/"]}
+      open={open}
+      onOpen={noop}
+      onCancel={noop}
+      onSave={noop}
+      onRemove={noop}
+    />,
+  );
 
 test("a tool that acts as you says whether you connected it, and how", () => {
   const none = text(card(issues));
@@ -40,7 +79,10 @@ test("a tool that acts as you says whether you connected it, and how", () => {
 
 test("it says where your credential goes", () => {
   assert.equal(destination(issues), "Your credential is sent to issues.example.com.");
-  assert.match(destination({ ...issues, transport: "stdio", endpoint: undefined }), /runs on the server/);
+  assert.match(
+    destination({ ...issues, transport: "stdio", endpoint: undefined }),
+    /runs on the server/,
+  );
   assert.match(text(card(issues)), /sent to issues\.example\.com/);
 });
 
@@ -49,15 +91,33 @@ test("you are offered only the ways this workspace allows", () => {
   assert.deepEqual(ways({ values: true, references: [] }), ["value"]);
   assert.deepEqual(ways({ values: false, references: [] }), []);
 
-  const both = html(<ConnectForm ways={["reference", "value"]} references={["op://People/"]} replacing={false} onSave={noop} onCancel={noop} />);
+  const both = html(
+    <ConnectForm
+      ways={["reference", "value"]}
+      references={["op://People/"]}
+      replacing={false}
+      onSave={noop}
+      onCancel={noop}
+    />,
+  );
   assert.match(both, /Reference/);
   assert.match(both, /Value/);
 
-  const refOnly = html(<ConnectForm ways={["reference"]} references={["op://People/", "keychain:humagen-people/"]} replacing={false} onSave={noop} onCancel={noop} />);
+  const refOnly = html(
+    <ConnectForm
+      ways={["reference"]}
+      references={["op://People/", "keychain:humagen-people/"]}
+      replacing={false}
+      onSave={noop}
+      onCancel={noop}
+    />,
+  );
   assert.doesNotMatch(refOnly, /type="password"|>Value</);
   assert.match(text(refOnly), /starts with op:\/\/People\/, keychain:humagen-people\//);
 
-  const valueOnly = html(<ConnectForm ways={["value"]} references={[]} replacing onSave={noop} onCancel={noop} />);
+  const valueOnly = html(
+    <ConnectForm ways={["value"]} references={[]} replacing onSave={noop} onCancel={noop} />,
+  );
   assert.match(valueOnly, /type="password"/);
   assert.match(text(valueOnly), /never shown again/);
   assert.match(text(valueOnly), /Replace/);
@@ -87,11 +147,41 @@ test("what you stand with is said in words", () => {
 test("someone who may not connect is shown where they stand with each tool, and nothing to press", () => {
   for (const c of [issues, byRef, stored]) {
     const out = text(
-      html(<ConnectionCard connection={c} ways={["reference", "value"]} references={["op://People/"]} canConnect={false} open onOpen={noop} onCancel={noop} onSave={noop} onRemove={noop} />),
+      html(
+        <ConnectionCard
+          connection={c}
+          ways={["reference", "value"]}
+          references={["op://People/"]}
+          canConnect={false}
+          open
+          onOpen={noop}
+          onCancel={noop}
+          onSave={noop}
+          onRemove={noop}
+        />,
+      ),
     );
     assert.match(out, /connected/i);
     assert.doesNotMatch(out, /\bConnect\b|Replace|Remove|Cancel|type="password"/);
-    assert.doesNotMatch(html(<ConnectionCard connection={c} ways={["reference"]} references={["op://People/"]} canConnect={false} open onOpen={noop} onCancel={noop} onSave={noop} onRemove={noop} />), /<input|<button/);
+    assert.doesNotMatch(
+      html(
+        <ConnectionCard
+          connection={c}
+          ways={["reference"]}
+          references={["op://People/"]}
+          canConnect={false}
+          open
+          onOpen={noop}
+          onCancel={noop}
+          onSave={noop}
+          onRemove={noop}
+        />,
+      ),
+      /<input|<button/,
+    );
   }
-  assert.equal(cannotConnect, "Connecting a credential takes permission to run agents, which you don't have. An admin can give it to you.");
+  assert.equal(
+    cannotConnect,
+    "Connecting a credential takes permission to run agents, which you don't have. An admin can give it to you.",
+  );
 });

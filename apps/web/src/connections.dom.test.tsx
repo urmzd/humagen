@@ -19,8 +19,23 @@ afterEach(() => {
 const at = "2026-10-21T09:00:00Z";
 const mine: ToolCredentials = {
   providers: [
-    { provider: "calendar", transport: "http", endpoint: "https://calendar.acme.example/mcp", tools: 1, connected: false },
-    { provider: "issues", transport: "http", endpoint: "https://issues.acme.example/mcp", tools: 2, connected: true, kind: "reference", ref: "op://People/lee/issues", updated_at: at },
+    {
+      provider: "calendar",
+      transport: "http",
+      endpoint: "https://calendar.acme.example/mcp",
+      tools: 1,
+      connected: false,
+    },
+    {
+      provider: "issues",
+      transport: "http",
+      endpoint: "https://issues.acme.example/mcp",
+      tools: 2,
+      connected: true,
+      kind: "reference",
+      ref: "op://People/lee/issues",
+      updated_at: at,
+    },
   ],
   values: true,
   references: ["op://People/lee/"],
@@ -30,13 +45,16 @@ test("someone who may not connect is told so in words, with no Connect, form or 
   net = stubFetch({ "GET /api/me/credentials": () => mine });
   let why = 0;
   // Even an address that opens a tool's form opens none.
-  render(<YourConnections open="calendar" onOpen={() => {}} canConnect={false} onWhy={() => why++} />);
+  render(
+    <YourConnections open="calendar" onOpen={() => {}} canConnect={false} onWhy={() => why++} />,
+  );
   assert.ok(await screen.findByText(/Connecting a credential takes permission to run agents/));
   assert.ok(screen.getByText(cannotConnect, { exact: false }));
   // Where each tool stands is still shown.
   assert.ok(screen.getAllByText("Not connected").length > 0);
   assert.ok(screen.getByText(/reads op:\/\/People\/lee\/issues/));
-  for (const name of ["Connect", "Replace", "Remove", "Cancel"]) assert.ok(!screen.queryByRole("button", { name }), `${name} is offered`);
+  for (const name of ["Connect", "Replace", "Remove", "Cancel"])
+    assert.ok(!screen.queryByRole("button", { name }), `${name} is offered`);
   assert.ok(!screen.queryByRole("textbox"));
   const link = screen.getByRole("link", { name: "Why can't I?" });
   assert.equal(link.getAttribute("href"), "/settings/access?permission=runs%3Awrite");

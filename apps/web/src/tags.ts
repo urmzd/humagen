@@ -59,7 +59,9 @@ export function tagAt(text: string, caret: number): Typing | null {
 // name alone, since what it is for is not what it is called.
 const rank = (o: TagOption, q: string): number => {
   const token = o.token.toLowerCase();
-  const words = [o.label, ...(o.kind === "person" && o.hint ? [o.hint] : [])].join(" ").toLowerCase();
+  const words = [o.label, ...(o.kind === "person" && o.hint ? [o.hint] : [])]
+    .join(" ")
+    .toLowerCase();
   if (token.startsWith(q)) return 0;
   if (words.split(/\s+/).some((w) => w.startsWith(q))) return 1;
   if (token.includes(q) || words.includes(q)) return 2;
@@ -77,7 +79,12 @@ const shareOf = (o: TagOption): string => (o.kind === "item" ? "kind" : o.kind);
  * an earlier one. A mention kind already written out in full is not offered
  * again: its items are.
  */
-export function matching(options: TagOption[], query: string, limit = 8, sigil: Sigil = "@"): TagOption[] {
+export function matching(
+  options: TagOption[],
+  query: string,
+  limit = 8,
+  sigil: Sigil = "@",
+): TagOption[] {
   const q = query.toLowerCase();
   const ranked = options
     .filter((o) => sigilOf(o) === sigil && !(o.kind === "kind" && o.token.toLowerCase() === q))
@@ -101,7 +108,11 @@ export function matching(options: TagOption[], query: string, limit = 8, sigil: 
  * caret goes after it. A mention kind is written `@kind:` with no space, so
  * its items can be completed next; anything else ends with a space.
  */
-export function insertTag(text: string, at: Typing, option: TagOption): { text: string; caret: number } {
+export function insertTag(
+  text: string,
+  at: Typing,
+  option: TagOption,
+): { text: string; caret: number } {
   const end = at.start + 1 + at.query.length;
   const open = option.kind === "kind";
   const tag = `${sigilOf(option)}${option.token}${open ? "" : " "}`;
@@ -113,7 +124,7 @@ export function insertTag(text: string, at: Typing, option: TagOption): { text: 
 export interface KindOption {
   kind: string;
   title?: string;
- resolves?: string;
+  resolves?: string;
 }
 
 /**
@@ -127,16 +138,34 @@ export function tagOptions(
   people: { handle: string; name?: string }[],
   _topics: string[],
   words: { experts: (topic: string) => string; kind?: (kind: string, title?: string) => string },
-  extra: { kinds?: KindOption[]; items?: { kind: string; name: string; description?: string }[]; skills?: { name: string; description?: string }[] } = {},
+  extra: {
+    kinds?: KindOption[];
+    items?: { kind: string; name: string; description?: string }[];
+    skills?: { name: string; description?: string }[];
+  } = {},
 ): TagOption[] {
   // Old expert metadata can still be returned by a cached or older host, but
   // discovery replaces routing and those choices are never offered again.
-  const retired = new Set((extra.kinds ?? []).filter((k) => k.kind === "sme" || k.resolves === "experts").map((k) => k.kind));
+  const retired = new Set(
+    (extra.kinds ?? [])
+      .filter((k) => k.kind === "sme" || k.resolves === "experts")
+      .map((k) => k.kind),
+  );
   const kinds = (extra.kinds ?? []).filter((k) => !retired.has(k.kind));
   const items = (extra.items ?? []).filter((i) => i.kind !== "sme" && !retired.has(i.kind));
   return [
-    ...agents.map((a) => ({ kind: "agent" as const, token: a.name, label: a.name, ...(a.description ? { hint: a.description } : {}) })),
-    ...people.map((p) => ({ kind: "person" as const, token: p.handle, label: p.handle, ...(p.name ? { hint: p.name } : {}) })),
+    ...agents.map((a) => ({
+      kind: "agent" as const,
+      token: a.name,
+      label: a.name,
+      ...(a.description ? { hint: a.description } : {}),
+    })),
+    ...people.map((p) => ({
+      kind: "person" as const,
+      token: p.handle,
+      label: p.handle,
+      ...(p.name ? { hint: p.name } : {}),
+    })),
     ...kinds.map((k) => ({
       kind: "kind" as const,
       token: `${k.kind}:`,
@@ -149,6 +178,11 @@ export function tagOptions(
       label: `${i.kind}:${i.name}`,
       ...(i.description ? { hint: i.description } : {}),
     })),
-    ...(extra.skills ?? []).map((s) => ({ kind: "skill" as const, token: s.name, label: s.name, ...(s.description ? { hint: s.description } : {}) })),
+    ...(extra.skills ?? []).map((s) => ({
+      kind: "skill" as const,
+      token: s.name,
+      label: s.name,
+      ...(s.description ? { hint: s.description } : {}),
+    })),
   ];
 }

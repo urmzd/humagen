@@ -2,7 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Client, type ClientCaps } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
-import { button, card, Problem, Switch, pageLede, pageTitle } from "./ui.tsx";
+import { button, card, Problem, pageLede, pageTitle, Switch } from "./ui.tsx";
 
 const surfaces: Record<Client["surface"], string> = { slack: "Slack", github: "GitHub" };
 
@@ -12,14 +12,20 @@ function identity(c: Client): string {
   const parts =
     c.surface === "slack"
       ? [id.team && `team ${id.team}`, id.app_id && `app ${id.app_id}`]
-      : [id.owners?.length && id.owners.join(", "), id.installation && `installation ${id.installation}`, id.app_id && `app ${id.app_id}`];
+      : [
+          id.owners?.length && id.owners.join(", "),
+          id.installation && `installation ${id.installation}`,
+          id.app_id && `app ${id.app_id}`,
+        ];
   return parts.filter(Boolean).join(", ");
 }
 
 /** The agents a client may raise runs for. */
 function reach(c: Client): string {
   if (c.agents?.includes("*")) return "Any agent";
-  const names = [c.default_agent, ...(c.agents ?? [])].filter((n, i, all): n is string => !!n && all.indexOf(n) === i);
+  const names = [c.default_agent, ...(c.agents ?? [])].filter(
+    (n, i, all): n is string => !!n && all.indexOf(n) === i,
+  );
   return names.length ? names.join(", ") : "No agent";
 }
 
@@ -27,7 +33,10 @@ function reach(c: Client): string {
 function limits(c: Client): string | null {
   const l = c.limits;
   if (!l) return null;
-  const parts = [l.max_concurrent && `${l.max_concurrent} at once`, l.max_runs && `${l.max_runs} runs a ${l.period}`];
+  const parts = [
+    l.max_concurrent && `${l.max_concurrent} at once`,
+    l.max_runs && `${l.max_runs} runs a ${l.period}`,
+  ];
   return parts.filter(Boolean).join(", ") || null;
 }
 
@@ -38,7 +47,8 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
 
-  const fail = (fallback: string) => (e: unknown) => setProblem(e instanceof ApiError ? e.message : fallback);
+  const fail = (fallback: string) => (e: unknown) =>
+    setProblem(e instanceof ApiError ? e.message : fallback);
   const reload = useCallback(() => {
     api
       .clients()
@@ -64,19 +74,39 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
       <header className="pb-2">
         <h1 className={pageTitle}>Connections</h1>
         <p className={pageLede}>
-          The Slack apps and GitHub installations this workspace answers through. Each one reaches only the agents it is given.
+          The Slack apps and GitHub installations this workspace answers through. Each one reaches
+          only the agents it is given.
         </p>
       </header>
       <Problem message={problem} />
       {canWrite && clients && !connecting && (
-        <div><button type="button" className={button} disabled={!!caps && clients.length >= caps.max} onClick={() => setConnecting(true)}>{defaultCopy.clientConnect.open}</button></div>
+        <div>
+          <button
+            type="button"
+            className={button}
+            disabled={!!caps && clients.length >= caps.max}
+            onClick={() => setConnecting(true)}
+          >
+            {defaultCopy.clientConnect.open}
+          </button>
+        </div>
       )}
-      {canWrite && connecting && <ClientConnect onCreated={() => { setConnecting(false); reload(); }} onCancel={() => setConnecting(false)} />}
+      {canWrite && connecting && (
+        <ClientConnect
+          onCreated={() => {
+            setConnecting(false);
+            reload();
+          }}
+          onCancel={() => setConnecting(false)}
+        />
+      )}
       {clients?.length === 0 && (
         <section className={`${card} flex flex-col gap-2`}>
           <p className="text-aui-sm text-aui-fg">No clients yet.</p>
           <p className="text-aui-sm text-aui-muted">
-            {canWrite ? defaultCopy.clientConnect.emptyAdmin : defaultCopy.clientConnect.emptyReader}
+            {canWrite
+              ? defaultCopy.clientConnect.emptyAdmin
+              : defaultCopy.clientConnect.emptyReader}
           </p>
         </section>
       )}
@@ -95,7 +125,9 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
             <dd className="text-aui-fg">{reach(c)}</dd>
             <dt className="text-aui-muted">Secrets</dt>
             <dd className="text-aui-fg">
-              {c.credentials.token.ref || c.credentials.signing_secret.ref ? "In the server's environment" : "Held by the server"}
+              {c.credentials.token.ref || c.credentials.signing_secret.ref
+                ? "In the server's environment"
+                : "Held by the server"}
             </dd>
             {limits(c) && (
               <>
@@ -105,7 +137,9 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
             )}
           </dl>
           {c.managed ? (
-            <p className="text-aui-xs text-aui-muted">Configured by the server's environment. It is changed there, not here.</p>
+            <p className="text-aui-xs text-aui-muted">
+              Configured by the server's environment. It is changed there, not here.
+            </p>
           ) : (
             canWrite && (
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -121,7 +155,9 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
               </div>
             )
           )}
-          {!c.managed && !canWrite && !c.enabled && <p className="text-aui-xs text-aui-muted">Disabled.</p>}
+          {!c.managed && !canWrite && !c.enabled && (
+            <p className="text-aui-xs text-aui-muted">Disabled.</p>
+          )}
         </section>
       ))}
       {caps && clients && clients.length > 0 && (

@@ -1,6 +1,14 @@
 import { type FormEvent, useState } from "react";
-import { ApiError, api, type Check, type EvalCase, type EvalRun, type Suite, type SuiteView } from "./api.ts";
-import { ago, button, card, Chip, field, Label, Menu, Problem, primary, took } from "./ui.tsx";
+import {
+  ApiError,
+  api,
+  type Check,
+  type EvalCase,
+  type EvalRun,
+  type Suite,
+  type SuiteView,
+} from "./api.ts";
+import { ago, button, Chip, card, field, Label, Menu, Problem, primary, took } from "./ui.tsx";
 
 const checkLabel: Record<Check["kind"], string> = {
   contains: "Contains",
@@ -39,11 +47,16 @@ function Outcome({ status }: { status: EvalRun["status"] | "pass" | "fail" }) {
  * line marks the rate a run has to reach.
  */
 function History({ runs, threshold }: { runs: EvalRun[]; threshold: number }) {
-  const ended = runs.filter((r) => r.status !== "running").slice(0, 12).reverse();
+  const ended = runs
+    .filter((r) => r.status !== "running")
+    .slice(0, 12)
+    .reverse();
   if (ended.length < 2) return null;
   return (
     <figure className="flex flex-col gap-1">
-      <figcaption className="text-aui-xs text-aui-muted">Pass rate, last {ended.length} runs</figcaption>
+      <figcaption className="text-aui-xs text-aui-muted">
+        Pass rate, last {ended.length} runs
+      </figcaption>
       <div className="relative flex h-16 items-end gap-1">
         <span
           aria-hidden
@@ -58,7 +71,10 @@ function History({ runs, threshold }: { runs: EvalRun[]; threshold: number }) {
           >
             <span
               className="w-full rounded-t-sm bg-aui-accent"
-              style={{ height: `${Math.max(r.pass_rate, 2)}%`, opacity: r.pass_rate >= r.threshold ? 1 : 0.45 }}
+              style={{
+                height: `${Math.max(r.pass_rate, 2)}%`,
+                opacity: r.pass_rate >= r.threshold ? 1 : 0.45,
+              }}
             />
           </div>
         ))}
@@ -84,12 +100,16 @@ function Results({ run, onOpenRun }: { run: EvalRun; onOpenRun?: (id: string) =>
               <Outcome status={r.passed ? "pass" : "fail"} />
               <span className="min-w-0 flex-1 truncate text-aui-fg">{r.input}</span>
               {r.rank !== undefined && r.rank > 0 && <Chip>Rank {r.rank}</Chip>}
-              <span className="shrink-0 text-aui-xs tabular-nums text-aui-muted">{took(r.duration_ms)}</span>
+              <span className="shrink-0 text-aui-xs tabular-nums text-aui-muted">
+                {took(r.duration_ms)}
+              </span>
             </summary>
             <div className="flex flex-col gap-2 pt-2 pl-4 text-aui-xs">
               {r.error && <p className="text-aui-fg">{r.error}</p>}
               {r.output && (
-                <p className="whitespace-pre-wrap rounded-aui border border-aui-border p-2 text-aui-muted">{r.output}</p>
+                <p className="whitespace-pre-wrap rounded-aui border border-aui-border p-2 text-aui-muted">
+                  {r.output}
+                </p>
               )}
               {(r.verdicts ?? []).map((v) => (
                 <p key={v.check} className="flex items-baseline gap-2">
@@ -109,7 +129,9 @@ function Results({ run, onOpenRun }: { run: EvalRun; onOpenRun?: (id: string) =>
                   ))}
                 </ol>
               )}
-              {r.hits && r.hits.length === 0 && <p className="text-aui-muted">Nothing was retrieved.</p>}
+              {r.hits && r.hits.length === 0 && (
+                <p className="text-aui-muted">Nothing was retrieved.</p>
+              )}
               {r.run_id && onOpenRun && (
                 <button
                   type="button"
@@ -154,7 +176,14 @@ function SuiteForm({
       ? { id: slug(), input: "", checks: [{ kind: "contains", value: "" }] }
       : { id: slug(), input: "", expect: [""] };
   const [suite, setSuite] = useState<Suite>(
-    initial ?? { name: "", target, subject, cases: [blankCase()], pass_rate: 100, k: target === "knowledge" ? 5 : undefined },
+    initial ?? {
+      name: "",
+      target,
+      subject,
+      cases: [blankCase()],
+      pass_rate: 100,
+      k: target === "knowledge" ? 5 : undefined,
+    },
   );
   const [problem, setProblem] = useState<string | null>(null);
   const setCase = (i: number, patch: Partial<EvalCase>) =>
@@ -165,12 +194,16 @@ function SuiteForm({
     setProblem(null);
     (initial ? api.saveSuite(suite) : api.createSuite(suite))
       .then(onSaved)
-      .catch((err) => setProblem(err instanceof ApiError ? err.message : "The suite could not be saved."));
+      .catch((err) =>
+        setProblem(err instanceof ApiError ? err.message : "The suite could not be saved."),
+      );
   };
 
   return (
     <form onSubmit={save} className={`${card} flex flex-col gap-3`}>
-      <h3 className="text-aui-base font-medium text-aui-fg">{initial ? `Edit ${initial.name}` : "New eval"}</h3>
+      <h3 className="text-aui-base font-medium text-aui-fg">
+        {initial ? `Edit ${initial.name}` : "New eval"}
+      </h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Label text="Name" hint="Lowercase letters, digits, dashes.">
           <input
@@ -209,7 +242,13 @@ function SuiteForm({
         {suite.cases.map((c, i) => (
           <li key={c.id} className="flex flex-col gap-2 rounded-aui border border-aui-border p-3">
             <div className="flex items-start gap-2">
-              <Label text={target === "agent" ? `Case ${i + 1}: send the agent` : `Case ${i + 1}: ask the source`}>
+              <Label
+                text={
+                  target === "agent"
+                    ? `Case ${i + 1}: send the agent`
+                    : `Case ${i + 1}: ask the source`
+                }
+              >
                 <textarea
                   className={`${field} min-h-10`}
                   value={c.input}
@@ -221,7 +260,9 @@ function SuiteForm({
                 <button
                   type="button"
                   className={`${button} mt-5 h-7 shrink-0 px-2 text-aui-xs`}
-                  onClick={() => setSuite({ ...suite, cases: suite.cases.filter((_, n) => n !== i) })}
+                  onClick={() =>
+                    setSuite({ ...suite, cases: suite.cases.filter((_, n) => n !== i) })
+                  }
                 >
                   Remove
                 </button>
@@ -229,7 +270,9 @@ function SuiteForm({
             </div>
             {target === "agent" ? (
               <div className="flex flex-col gap-1.5">
-                <span className="text-aui-xs font-medium text-aui-muted">The answer passes when it</span>
+                <span className="text-aui-xs font-medium text-aui-muted">
+                  The answer passes when it
+                </span>
                 {(c.checks ?? []).map((ch, n) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: checks have no identity beyond their position
                   <div key={n} className="flex gap-2">
@@ -237,7 +280,10 @@ function SuiteForm({
                       label="Check"
                       className="w-48 shrink-0"
                       value={ch.kind}
-                      options={Object.entries(checkLabel).map(([k, l]) => ({ value: k as Check["kind"], label: l }))}
+                      options={Object.entries(checkLabel).map(([k, l]) => ({
+                        value: k as Check["kind"],
+                        label: l,
+                      }))}
                       onChange={(kind) =>
                         setCase(i, {
                           checks: (c.checks ?? []).map((x, m) => (m === n ? { ...x, kind } : x)),
@@ -251,7 +297,9 @@ function SuiteForm({
                       required
                       onChange={(e) =>
                         setCase(i, {
-                          checks: (c.checks ?? []).map((x, m) => (m === n ? { ...x, value: e.target.value } : x)),
+                          checks: (c.checks ?? []).map((x, m) =>
+                            m === n ? { ...x, value: e.target.value } : x,
+                          ),
                         })
                       }
                     />
@@ -260,7 +308,9 @@ function SuiteForm({
                         type="button"
                         aria-label="Remove check"
                         className={`${button} shrink-0 px-2`}
-                        onClick={() => setCase(i, { checks: (c.checks ?? []).filter((_, m) => m !== n) })}
+                        onClick={() =>
+                          setCase(i, { checks: (c.checks ?? []).filter((_, m) => m !== n) })
+                        }
                       >
                         ✕
                       </button>
@@ -270,18 +320,25 @@ function SuiteForm({
                 <button
                   type="button"
                   className={`${button} h-7 self-start px-2 text-aui-xs`}
-                  onClick={() => setCase(i, { checks: [...(c.checks ?? []), { kind: "contains", value: "" }] })}
+                  onClick={() =>
+                    setCase(i, { checks: [...(c.checks ?? []), { kind: "contains", value: "" }] })
+                  }
                 >
                   Add Check
                 </button>
               </div>
             ) : (
-              <Label text="Should retrieve the document titled" hint="Separate several titles with a comma. One in the top results is a pass.">
+              <Label
+                text="Should retrieve the document titled"
+                hint="Separate several titles with a comma. One in the top results is a pass."
+              >
                 <input
                   className={field}
                   value={(c.expect ?? []).join(", ")}
                   required
-                  onChange={(e) => setCase(i, { expect: e.target.value.split(",").map((x) => x.trim()) })}
+                  onChange={(e) =>
+                    setCase(i, { expect: e.target.value.split(",").map((x) => x.trim()) })
+                  }
                 />
               </Label>
             )}
@@ -362,7 +419,8 @@ export function Evals({
       )}
       {mine.length === 0 && !editing && (
         <p className={`${card} text-aui-sm text-aui-muted`}>
-          No evals yet. Without one, a change to {target === "agent" ? "the prompt" : "the documents"} is judged by eye.
+          No evals yet. Without one, a change to{" "}
+          {target === "agent" ? "the prompt" : "the documents"} is judged by eye.
         </p>
       )}
       {mine.map((s) => {
@@ -383,7 +441,8 @@ export function Evals({
                   )}
                 </div>
                 <p className="text-aui-xs text-aui-muted">
-                  {s.cases.length} {s.cases.length === 1 ? "case" : "cases"}, passes at {s.pass_rate || 100}%
+                  {s.cases.length} {s.cases.length === 1 ? "case" : "cases"}, passes at{" "}
+                  {s.pass_rate || 100}%
                 </p>
               </div>
               {canWrite && (
@@ -414,13 +473,19 @@ export function Evals({
                 {Object.entries(metricLabel).map(([k, l]) => (
                   <div key={k} className="flex items-baseline gap-1.5">
                     <dt className="text-aui-muted">{l}</dt>
-                    <dd className="tabular-nums text-aui-fg">{(last.metrics?.[k] ?? 0).toFixed(2)}</dd>
+                    <dd className="tabular-nums text-aui-fg">
+                      {(last.metrics?.[k] ?? 0).toFixed(2)}
+                    </dd>
                   </div>
                 ))}
               </dl>
             )}
             <History runs={s.runs} threshold={s.pass_rate || 100} />
-            {last ? <Results run={last} onOpenRun={onOpenRun} /> : <p className="text-aui-xs text-aui-muted">Not run yet.</p>}
+            {last ? (
+              <Results run={last} onOpenRun={onOpenRun} />
+            ) : (
+              <p className="text-aui-xs text-aui-muted">Not run yet.</p>
+            )}
           </section>
         );
       })}

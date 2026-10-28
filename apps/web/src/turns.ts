@@ -8,7 +8,11 @@ export const MAX_PAGES = 50;
 
 /** What a turn is, whichever read it came in: a message's id, a run's, or an announcement's. */
 const keyOf = (t: ThreadTurn) =>
-  t.message ? `m:${t.message.id}` : t.announcement ? `a:${t.announcement.id}` : `r:${t.run?.id ?? ""}`;
+  t.message
+    ? `m:${t.message.id}`
+    : t.announcement
+      ? `a:${t.announcement.id}`
+      : `r:${t.run?.id ?? ""}`;
 
 /**
  * Turns read at different times, as one list, oldest first. A turn is only
@@ -27,7 +31,9 @@ export function mergeTurns(older: ThreadTurn[], newer: ThreadTurn[]): ThreadTurn
  * holds every turn read, oldest first, and `next` is where reading stopped,
  * null when it reached the start.
  */
-export async function readFromStart(read: (before?: string) => Promise<ThreadPage>): Promise<ThreadPage> {
+export async function readFromStart(
+  read: (before?: string) => Promise<ThreadPage>,
+): Promise<ThreadPage> {
   const first = await read();
   let turns = first.turns;
   let next = first.next;

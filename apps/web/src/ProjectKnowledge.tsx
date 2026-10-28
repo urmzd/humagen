@@ -1,8 +1,24 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useRef, useState } from "react";
-import { ApiError, api, coworking, type ProjectKnowledge, type ProjectView, type Source } from "./api.ts";
+import {
+  ApiError,
+  api,
+  coworking,
+  type ProjectKnowledge,
+  type ProjectView,
+  type Source,
+} from "./api.ts";
 import { titleOf } from "./projects.ts";
-import { type Flash, FlashNote, PickMany, Problem, primary, Section, SkeletonRows, useFlash } from "./ui.tsx";
+import {
+  type Flash,
+  FlashNote,
+  PickMany,
+  Problem,
+  primary,
+  Section,
+  SkeletonRows,
+  useFlash,
+} from "./ui.tsx";
 
 const words = defaultCopy.projects.knowledge;
 
@@ -64,7 +80,8 @@ export function KnowledgeLists({
   const options = full ? all.filter((o) => draft.includes(o.value)) : all;
   const dirty = !same(draft, view.knowledge);
   // Nothing named and nothing to name: say why, rather than offer a Save with nothing to save.
-  const nothing = sources !== null && all.length === 0 && draft.length === 0 && view.knowledge.length === 0;
+  const nothing =
+    sources !== null && all.length === 0 && draft.length === 0 && view.knowledge.length === 0;
   return (
     <div className="flex flex-col gap-6">
       <Section title={words.heading} hint={words.hint}>
@@ -73,10 +90,23 @@ export function KnowledgeLists({
           <p className="text-aui-sm text-aui-muted">{words.noSources}</p>
         ) : editable && !fileOwned ? (
           <>
-            <PickMany label={words.heading} add={words.add} disabled={saving} empty={words.none} value={draft} options={options} onChange={onChange} />
+            <PickMany
+              label={words.heading}
+              add={words.add}
+              disabled={saving}
+              empty={words.none}
+              value={draft}
+              options={options}
+              onChange={onChange}
+            />
             {full && <p className="text-aui-xs text-aui-muted">{words.full}</p>}
             <div className="flex items-center gap-3">
-              <button type="button" className={primary} disabled={saving || !dirty} onClick={onSave}>
+              <button
+                type="button"
+                className={primary}
+                disabled={saving || !dirty}
+                onClick={onSave}
+              >
                 {saving ? defaultCopy.projects.saving : words.save}
               </button>
               <FlashNote flash={flash} align="left" />
@@ -87,7 +117,10 @@ export function KnowledgeLists({
         ) : (
           <ul aria-label={words.heading} className="flex flex-col">
             {view.knowledge.map((k) => (
-              <li key={k} className="border-aui-border border-t py-2 text-aui-sm text-aui-fg first:border-t-0">
+              <li
+                key={k}
+                className="border-aui-border border-t py-2 text-aui-sm text-aui-fg first:border-t-0"
+              >
                 {k}
               </li>
             ))}
@@ -101,9 +134,14 @@ export function KnowledgeLists({
         ) : (
           <ol aria-label={words.given} className="flex flex-col">
             {view.given.map((g) => (
-              <li key={g.name} className="flex items-baseline justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
+              <li
+                key={g.name}
+                className="flex items-baseline justify-between gap-3 border-aui-border border-t py-2 first:border-t-0"
+              >
                 <span className="min-w-0 truncate text-aui-sm text-aui-fg">{g.name}</span>
-                <span className="shrink-0 text-aui-xs text-aui-muted">{givenFrom(g.from, project, titles)}</span>
+                <span className="shrink-0 text-aui-xs text-aui-muted">
+                  {givenFrom(g.from, project, titles)}
+                </span>
               </li>
             ))}
           </ol>
@@ -198,7 +236,9 @@ export function ProjectKnowledgeSection({
   if (!canRead) return null;
   if (!view) return problem ? <Problem message={problem} /> : <SkeletonRows count={2} />;
 
-  const titles: Record<string, string> = Object.fromEntries(ancestors.map((a) => [a.name, titleOf(a, workspaceName)]));
+  const titles: Record<string, string> = Object.fromEntries(
+    ancestors.map((a) => [a.name, titleOf(a, workspaceName)]),
+  );
 
   const save = () => {
     if (saving) return;

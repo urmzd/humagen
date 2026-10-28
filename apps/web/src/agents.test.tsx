@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { policyWords } from "./Governance.tsx";
 import { AgentDetail, BUILTIN_LOCKED, type Tab } from "./AgentDetail.tsx";
 import type { Note, ProjectView, Revision } from "./api.ts";
+import { policyWords } from "./Governance.tsx";
 
 const writer: Revision = {
   rev: 2,
-  spec: { name: "humagen-writer", description: "Writes a document.", provider: "offline", model: "offline", system_prompt: "Write it.", access: { spawn: [] } },
+  spec: {
+    name: "humagen-writer",
+    description: "Writes a document.",
+    provider: "offline",
+    model: "offline",
+    system_prompt: "Write it.",
+    access: { spawn: [] },
+  },
   created_at: new Date().toISOString(),
   created_by: "humagen",
   hash: "h2",
@@ -37,10 +44,28 @@ const field: ProjectView = {
   mine: false,
 };
 
-const older: Revision = { ...writer, rev: 1, hash: "h1", spec: { ...writer.spec, system_prompt: "Write." } };
+const older: Revision = {
+  ...writer,
+  rev: 1,
+  hash: "h1",
+  spec: { ...writer.spec, system_prompt: "Write." },
+};
 const notes: Note[] = [
-  { id: "n1", text: "Releases go out on Tuesdays.", source: "person", status: "approved", by: "ada", at: new Date().toISOString() },
-  { id: "n2", text: "Ada prefers short plans.", source: "consolidated", status: "pending", at: new Date().toISOString() },
+  {
+    id: "n1",
+    text: "Releases go out on Tuesdays.",
+    source: "person",
+    status: "approved",
+    by: "ada",
+    at: new Date().toISOString(),
+  },
+  {
+    id: "n2",
+    text: "Ada prefers short plans.",
+    source: "consolidated",
+    status: "pending",
+    at: new Date().toISOString(),
+  },
 ];
 
 const noop = () => {};
@@ -96,14 +121,18 @@ test("someone who may not write sees no save, with or without the lock", () => {
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 // The controls, by what they hold: the model on the Model tab, where it lives on the Access tab.
 const model = (html: string) => /<input[^>]*value="offline"[^>]*>/.exec(html)?.[0] ?? "";
-const livesIn = (html: string) => /<button[^>]*aria-label="Lives in: [^"]*"[^>]*>/.exec(html)?.[0] ?? "";
+const livesIn = (html: string) =>
+  /<button[^>]*aria-label="Lives in: [^"]*"[^>]*>/.exec(html)?.[0] ?? "";
 
 test("A built-in's spec is locked, and it lives in no project", () => {
   assert.match(model(render(true, true, "model")), /disabled=""/);
   // Every switch of the spec's own is locked.
   const access = render(true, true, "access");
   const specSwitches = access.match(/<input type="checkbox" class="humagen-switch[^>]*>/g) ?? [];
-  assert.ok(specSwitches.length > 0 && specSwitches.every((s) => s.includes('disabled=""')), "the spec's switches are locked");
+  assert.ok(
+    specSwitches.length > 0 && specSwitches.every((s) => s.includes('disabled=""')),
+    "the spec's switches are locked",
+  );
   assert.match(livesIn(access), /disabled=""/, "the platform's own agents live nowhere");
   assert.doesNotMatch(model(render(false, true, "model")), /\sdisabled(?:=|\s|>)/);
   assert.doesNotMatch(livesIn(render(false, true, "access")), /disabled=""/);
@@ -141,7 +170,10 @@ test("Memory: a writer keeps a built-in's memory, as the server allows; a reader
     assert.match(words, /Remember/, `builtin ${builtin}`);
     assert.match(words, /Forget/, `builtin ${builtin}`);
     assert.match(words, /Discard All/, `builtin ${builtin}`);
-    assert.doesNotMatch(/<input type="checkbox" class="mt-1"[^>]*>/.exec(html)?.[0] ?? "", /disabled/);
+    assert.doesNotMatch(
+      /<input type="checkbox" class="mt-1"[^>]*>/.exec(html)?.[0] ?? "",
+      /disabled/,
+    );
   }
   const reader = render(false, false, "memory");
   assert.doesNotMatch(text(reader), /Remember|Forget|Discard All/);
@@ -149,14 +181,32 @@ test("Memory: a writer keeps a built-in's memory, as the server allows; a reader
 });
 
 test("a call policy reads as a sentence about who may call and who approves", () => {
-  assert.equal(policyWords({ callers: "anyone", approval: "never" }), "Any agent that lists it may call it. Calls run without asking anyone.");
-  assert.equal(policyWords({ callers: "none", approval: "always" }), "No agent may call it. Calls run without asking anyone.");
   assert.equal(
-    policyWords({ callers: "listed", allow: ["lead"], approval: "always", approvers: ["role:manager", "ada"], expires_seconds: 14400 }),
+    policyWords({ callers: "anyone", approval: "never" }),
+    "Any agent that lists it may call it. Calls run without asking anyone.",
+  );
+  assert.equal(
+    policyWords({ callers: "none", approval: "always" }),
+    "No agent may call it. Calls run without asking anyone.",
+  );
+  assert.equal(
+    policyWords({
+      callers: "listed",
+      allow: ["lead"],
+      approval: "always",
+      approvers: ["role:manager", "ada"],
+      expires_seconds: 14400,
+    }),
     "Only lead may call it. Every call waits for Managers, ada to approve it, for up to 4 hours.",
   );
   assert.equal(
-    policyWords({ callers: "anyone", approval: "unlisted", trusted: ["lead"], approvers: [], expires_seconds: 86400 }),
+    policyWords({
+      callers: "anyone",
+      approval: "unlisted",
+      trusted: ["lead"],
+      approvers: [],
+      expires_seconds: 86400,
+    }),
     "Any agent that lists it may call it. A call from anyone but lead waits for a manager or an admin to approve it, for up to 1 day.",
   );
 });

@@ -16,7 +16,11 @@ const agent = (name: string, description = ""): Revision => ({
   created_by: "ada",
   hash: name,
 });
-const agents = [agent("lead", "Coordinates work."), agent("helper"), agent("globex-helper", "Knows the Globex account.")];
+const agents = [
+  agent("lead", "Coordinates work."),
+  agent("helper"),
+  agent("globex-helper", "Knows the Globex account."),
+];
 const homes = { "globex-helper": "Globex" };
 const enabledIn = { lead: ["~"], helper: ["~"], "globex-helper": [] };
 
@@ -30,10 +34,22 @@ afterEach(() => {
   net = undefined;
 });
 
-const dana: Person = { subject: "okta|dana", name: "Dana Scully", handle: "dana-scully", roles: ["operator"], picture: "/api/people/dana-scully/photo?v=2" };
+const dana: Person = {
+  subject: "okta|dana",
+  name: "Dana Scully",
+  handle: "dana-scully",
+  roles: ["operator"],
+  picture: "/api/people/dana-scully/photo?v=2",
+};
 const fox: Person = { subject: "okta|fox", handle: "fox", roles: [], picture: null };
 
-function openDirectory(tab: DirectoryTab, can = ["people:read", "agents:read", "projects:read"], projects = tree, kinds: ProjectKindSpec[] = [], agentHomes: Record<string, string> = homes) {
+function openDirectory(
+  tab: DirectoryTab,
+  can = ["people:read", "agents:read", "projects:read"],
+  projects = tree,
+  kinds: ProjectKindSpec[] = [],
+  agentHomes: Record<string, string> = homes,
+) {
   net = stubFetch({ "GET /api/people": () => ({ people: [dana, fox], next: null }) });
   const opened: string[] = [];
   render(
@@ -128,7 +144,11 @@ function openAgents(name: string, view: ProjectAgentsView, can = { write: true, 
   const address = name === "" ? "~" : encodeURIComponent(name);
   net = stubFetch({
     [`GET /api/projects/${address}/agents`]: () => view,
-    [`PUT /api/projects/${address}/agents`]: (body) => ({ ...view, ...(body as object), version: view.version + 1 }),
+    [`PUT /api/projects/${address}/agents`]: (body) => ({
+      ...view,
+      ...(body as object),
+      version: view.version + 1,
+    }),
     "PUT /api/agents/lead/home": () => ({ agent: "lead", home: name, enabled_in: [] }),
   });
   let changed = 0;
@@ -168,7 +188,16 @@ test("changing the default writes the lists as a whole, at the version read", as
 });
 
 test("on the workspace the default is the Workspace Default, and someone who may not change it sees it still", async () => {
-  openAgents("", { ...fieldAgents, enable: ["*"], default: "*", default_resolved: { agent: "*", from: "project:~" } }, { write: false, home: false });
+  openAgents(
+    "",
+    {
+      ...fieldAgents,
+      enable: ["*"],
+      default: "*",
+      default_resolved: { agent: "*", from: "project:~" },
+    },
+    { write: false, home: false },
+  );
   await screen.findByRole("list", { name: "Available here" });
   const control = screen.getByRole("button", { name: /^Workspace Default:/ }) as HTMLButtonElement;
   assert.ok(control.disabled);
@@ -182,5 +211,7 @@ test("an agent comes to live in a project from its Agents tab", async () => {
   await screen.findByRole("list", { name: "Available here" });
   fireEvent.click(screen.getByRole("button", { name: /Lives Here: Lives here/ }));
   fireEvent.click(await screen.findByRole("button", { name: /^lead/ }));
-  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/lead/home")));
+  await waitFor(() =>
+    assert.ok(net?.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/lead/home")),
+  );
 });

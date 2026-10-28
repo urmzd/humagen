@@ -7,13 +7,18 @@
 import type { Alert } from "./api.ts";
 
 /** A console address: `/?view=...` on this console, or under `base` (its public URL) when given. */
-export function consoleUrl(view: string, extra: Record<string, string> = {}, base?: string): string {
+export function consoleUrl(
+  view: string,
+  extra: Record<string, string> = {},
+  base?: string,
+): string {
   const path = `/?${new URLSearchParams({ view, ...extra })}`;
   return base ? `${base.replace(/\/+$/, "")}${path}` : path;
 }
 
 /** One inbox message: the inbox, with that message open. */
-export const inboxItemUrl = (id: string, base?: string) => consoleUrl("inbox", { message: id }, base);
+export const inboxItemUrl = (id: string, base?: string) =>
+  consoleUrl("inbox", { message: id }, base);
 
 /** One alert: the inbox, at the message the alert raised. */
 export const alertUrl = (id: string, base?: string) => consoleUrl("inbox", { alert: id }, base);

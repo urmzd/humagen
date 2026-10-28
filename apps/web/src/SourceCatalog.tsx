@@ -4,8 +4,8 @@ import {
   DatabaseIcon,
   FileIcon,
   GoogleDriveIcon,
-  SlackIcon,
   PlugIcon,
+  SlackIcon,
 } from "@humagen/render-web";
 import { Badge } from "@humagen/render-web/ui/badge";
 

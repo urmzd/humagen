@@ -1,32 +1,32 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { emptyTurn, type Turn } from "@humagen/core";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage } from "@humagen/web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { type Run, turnOf } from "./adapter.ts";
 import { ActivityPanel, ordered, ordinals, trailOf } from "./Activity.tsx";
-import { isEnded } from "./format.ts";
 import { sampleTrees } from "./activity.fixtures.ts";
-import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
-import { Schedules } from "./Schedules.tsx";
-import { LimitsPanel } from "./Limits.tsx";
-import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
-import { DrawerButton, Sidebar } from "./Sidebar.tsx";
+import { type Run, turnOf } from "./adapter.ts";
 import type { Me, ProjectView, ScheduleView, ThreadSummary } from "./api.ts";
-import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
-import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
-import { bindingWords, SessionGauge } from "./SessionGauge.tsx";
-import { StorageUsed, StoredDetail, StoredList } from "./Storage.tsx";
-import { bytes, contentUrl, matches, showsInline } from "./storage.ts";
-import { memoryStorage, sampleFiles, sampleUse } from "./storage.fixtures.ts";
-import { RunItem, runManifest, runMarkdown, statusOf } from "./RunItem.tsx";
 import { CopyAs } from "./CopyAs.tsx";
-import { itemActions, itemOf } from "./itemActions.tsx";
-import { AgentMessage } from "@humagen/web";
-import { WebSurface } from "@humagen/render-web";
-import { replay } from "./Runs.tsx";
 import { formats } from "./copyas.ts";
-import { emptyTurn, type Turn } from "@humagen/core";
+import { isEnded } from "./format.ts";
+import { itemActions, itemOf } from "./itemActions.tsx";
+import { LimitsPanel } from "./Limits.tsx";
+import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
+import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
+import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
+import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
+import { RunItem, runManifest, runMarkdown, statusOf } from "./RunItem.tsx";
+import { replay } from "./Runs.tsx";
+import { Schedules } from "./Schedules.tsx";
+import { bindingWords, SessionGauge } from "./SessionGauge.tsx";
+import { DrawerButton, Sidebar } from "./Sidebar.tsx";
+import { StorageUsed, StoredDetail, StoredList } from "./Storage.tsx";
+import { memoryStorage, sampleFiles, sampleUse } from "./storage.fixtures.ts";
+import { bytes, contentUrl, matches, showsInline } from "./storage.ts";
 
 const sidebarMe: Me = {
   principal: { subject: "ada", tenant: "acme", name: "Ada", roles: ["member"] },
@@ -50,7 +50,17 @@ const task = (id: string, title: string): ThreadSummary => ({
   updated_at: "2026-01-01T00:00:00Z",
 });
 function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
-  const all = ["runs:read", "runs:write", "schedules:read", "agents:read", "knowledge:read", "evals:read", "alerts:read", "artifacts:read", "projects:read"];
+  const all = [
+    "runs:read",
+    "runs:write",
+    "schedules:read",
+    "agents:read",
+    "knowledge:read",
+    "evals:read",
+    "alerts:read",
+    "artifacts:read",
+    "projects:read",
+  ];
   return renderToStaticMarkup(
     <Sidebar
       open
@@ -71,19 +81,46 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar groups readable work under Projects Library and Operations",()=>{
- const out=sidebar();
- for(const group of ["Projects","Library","Operations"])assert.match(out,new RegExp(`aria-label="${group}"`));
- for(const route of ["/","/projects","/library/sources","/notifications","/agents","/operations/context"])assert.ok(out.includes(`href="${route}"`),route);
- for (const route of ["/library/skills", "/library/memory", "/assignments", "/agent-network", "/operations/usage"]) assert.ok(!out.includes(`href="${route}"`), route);
- assert.match(out,/href="\/" aria-current="page"/);
- assert.match(sidebar({route:{page:"agent",name:"lead",tab:"model"}}),/href="\/agents" aria-current="page"/);
+test("the sidebar groups readable work under Projects Library and Operations", () => {
+  const out = sidebar();
+  for (const group of ["Projects", "Library", "Operations"])
+    assert.match(out, new RegExp(`aria-label="${group}"`));
+  for (const route of [
+    "/",
+    "/projects",
+    "/library/sources",
+    "/notifications",
+    "/agents",
+    "/operations/context",
+  ])
+    assert.ok(out.includes(`href="${route}"`), route);
+  for (const route of [
+    "/library/skills",
+    "/library/memory",
+    "/assignments",
+    "/agent-network",
+    "/operations/usage",
+  ])
+    assert.ok(!out.includes(`href="${route}"`), route);
+  assert.match(out, /href="\/" aria-current="page"/);
+  assert.match(
+    sidebar({ route: { page: "agent", name: "lead", tab: "model" } }),
+    /href="\/agents" aria-current="page"/,
+  );
 });
 
-test("the sidebar does not expose unreadable destination links",()=>{
- const out=sidebar({can:permission=>permission==="runs:write"});
- assert.match(out,/>New</);
- for(const route of ["/projects","/library/skills","/inbox","/agents","/assignments","/operations/audit"])assert.ok(!out.includes(`href="${route}"`),route);
+test("the sidebar does not expose unreadable destination links", () => {
+  const out = sidebar({ can: (permission) => permission === "runs:write" });
+  assert.match(out, />New</);
+  for (const route of [
+    "/projects",
+    "/library/skills",
+    "/inbox",
+    "/agents",
+    "/assignments",
+    "/operations/audit",
+  ])
+    assert.ok(!out.includes(`href="${route}"`), route);
 });
 
 test("pinned conversations sit in their own section, ahead of the rest", () => {
@@ -98,13 +135,30 @@ test("pinned conversations sit in their own section, ahead of the rest", () => {
 });
 
 test("project pins work without recent conversations and omit unreadable projects", () => {
-  const prefs = { display_name: "Ada", theme: "dark" as const, accent: "purple", has_photo: false, photo_version: 0, pinned: [], muted: [], pinned_projects: ["Launch", "hidden"] };
-  const out = sidebar({ prefs, threads: [], projects: [{ name: "Launch", title: "Spring launch" } as ProjectView], onPinProject: async () => {} });
+  const prefs = {
+    display_name: "Ada",
+    theme: "dark" as const,
+    accent: "purple",
+    has_photo: false,
+    photo_version: 0,
+    pinned: [],
+    muted: [],
+    pinned_projects: ["Launch", "hidden"],
+  };
+  const out = sidebar({
+    prefs,
+    threads: [],
+    projects: [{ name: "Launch", title: "Spring launch" } as ProjectView],
+    onPinProject: async () => {},
+  });
   assert.match(out, /aria-label="Pinned"/);
   assert.match(out, /href="\/projects\/Launch"/);
   assert.match(out, /aria-label="Unpin project Spring launch"/);
   assert.doesNotMatch(out, /href="\/projects\/hidden"/);
-  assert.doesNotMatch(sidebar({ prefs, can: permission => permission === "runs:read" }), /aria-label="Pinned"/);
+  assert.doesNotMatch(
+    sidebar({ prefs, can: (permission) => permission === "runs:read" }),
+    /aria-label="Pinned"/,
+  );
 });
 
 test("project selection: an empty directory offers the explicit Company home and project creation", () => {
@@ -114,7 +168,9 @@ test("project selection: an empty directory offers the explicit Company home and
   assert.match(out, /Create Project/);
   assert.match(out, /No projects yet/);
   assert.doesNotMatch(out, /<form/, "the picker must not nest a form inside the message form");
-  const loading = renderToStaticMarkup(<ProjectChoices projects={null} value={null} {...actions} />);
+  const loading = renderToStaticMarkup(
+    <ProjectChoices projects={null} value={null} {...actions} />,
+  );
   assert.match(loading, /Loading projects/);
   assert.doesNotMatch(loading, /No projects yet/);
   const untouched = renderToStaticMarkup(<ProjectPicker projects={[]} value={null} {...actions} />);
@@ -122,13 +178,34 @@ test("project selection: an empty directory offers the explicit Company home and
   const projectless = renderToStaticMarkup(<ProjectPicker projects={[]} value="" {...actions} />);
   assert.match(projectless, /aria-label="Select project: Company"/);
 });
-import type { Alert, AlertRule } from "./api.ts";
+
 import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@humagen/core";
-import { after, merge } from "./inbox.ts";
+import type { Alert, AlertRule } from "./api.ts";
 import { edgeOf, KindFilter, MailboxView } from "./InboxPage.tsx";
-import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
+import { after, merge } from "./inbox.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
-import { AgentMark, AgentTint, setAgentHues, AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf, PageActions } from "./ui.tsx";
+import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
+import {
+  AGENT_HUES,
+  AgentMark,
+  AgentTint,
+  button,
+  counted,
+  dollars,
+  hueOf,
+  LimitField,
+  Page,
+  PageActions,
+  PolicyBadge,
+  parseDollars,
+  primary,
+  Section,
+  Stroke,
+  setAgentHues,
+  strokeOf,
+  UsageMeter,
+  usageOf,
+} from "./ui.tsx";
 
 const M = 1_000_000;
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -154,18 +231,24 @@ test("usageOf: at the limit is a warning, past it is over", () => {
 });
 
 test("UsageMeter: a real meter with its values", () => {
-  const out = html(<UsageMeter label="Project Launch" spent={12 * M} limit={50 * M} period="month" />);
+  const out = html(
+    <UsageMeter label="Project Launch" spent={12 * M} limit={50 * M} period="month" />,
+  );
   assert.equal(attr(out, "role"), "meter");
   assert.equal(attr(out, "aria-label"), "Project Launch");
   assert.equal(attr(out, "aria-valuemin"), "0");
   assert.equal(attr(out, "aria-valuemax"), String(50 * M));
   assert.equal(attr(out, "aria-valuenow"), String(12 * M));
-  assert.match(attr(out, "aria-valuetext") ?? "", /12\.00 of .*50\.00 a month, 24%\. Under limit\./);
+  assert.match(
+    attr(out, "aria-valuetext") ?? "",
+    /12\.00 of .*50\.00 a month, 24%\. Under limit\./,
+  );
   assert.equal(attr(out, "data-testid"), "usage-meter");
 });
 
 test("UsageMeter: each state is a data attribute and is written out", () => {
-  const state = (spent: number, limit?: number) => html(<UsageMeter label="x" spent={spent} limit={limit} />);
+  const state = (spent: number, limit?: number) =>
+    html(<UsageMeter label="x" spent={spent} limit={limit} />);
   assert.equal(attr(state(1 * M, 10 * M), "data-usage"), "under");
   assert.match(state(1 * M, 10 * M), /Under limit/);
   assert.equal(attr(state(9 * M, 10 * M), "data-usage"), "warning");
@@ -185,8 +268,14 @@ test("UsageMeter: exactly at the limit says so, and is still the warning state",
 });
 
 test("UsageMeter: a row shows its label only when asked", () => {
-  assert.doesNotMatch(html(<UsageMeter label="Launch spend" spent={1 * M} limit={5 * M} />), />Launch spend</);
-  assert.match(html(<UsageMeter labelled label="Launch spend" spent={1 * M} limit={5 * M} />), />Launch spend</);
+  assert.doesNotMatch(
+    html(<UsageMeter label="Launch spend" spent={1 * M} limit={5 * M} />),
+    />Launch spend</,
+  );
+  assert.match(
+    html(<UsageMeter labelled label="Launch spend" spent={1 * M} limit={5 * M} />),
+    />Launch spend</,
+  );
 });
 
 test("UsageMeter: over the limit, the value stops at the limit and the limit line is drawn", () => {
@@ -225,7 +314,8 @@ test("strokeOf: every run status has a stroke state", () => {
     // Stopped from outside: at rest, not working and not a failure.
     stopped: "idle",
   };
-  for (const [status, state] of Object.entries(want)) assert.equal(strokeOf(status as Run["status"]), state);
+  for (const [status, state] of Object.entries(want))
+    assert.equal(strokeOf(status as Run["status"]), state);
 });
 
 test("Stroke: an agent's stroke carries its hue and state", () => {
@@ -254,13 +344,19 @@ test("Stroke: waiting never animates, in markup or in the stylesheet", () => {
   );
   assert.doesNotMatch(out, /animate|aui-shimmer|aui-spinner/);
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selector]) => selector?.includes(".humagen-stroke"));
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selector]) =>
+    selector?.includes(".humagen-stroke"),
+  );
   assert.ok(rules.length > 5, "the stroke rules were found");
   for (const [, selector = "", body = ""] of rules) {
-    if (selector.includes('"waiting"')) assert.doesNotMatch(body, /animation/, `waiting animates in: ${selector.trim()}`);
+    if (selector.includes('"waiting"'))
+      assert.doesNotMatch(body, /animation/, `waiting animates in: ${selector.trim()}`);
   }
   assert.ok(
-    rules.some(([, selector = "", body = ""]) => selector.includes('"working"') && /animation:\s*humagen-stroke-work/.test(body)),
+    rules.some(
+      ([, selector = "", body = ""]) =>
+        selector.includes('"working"') && /animation:\s*humagen-stroke-work/.test(body),
+    ),
     "working is the state that animates",
   );
 });
@@ -277,11 +373,13 @@ test("parseDollars: amounts become micro-USD", () => {
 test("parseDollars: empty is no limit, and anything else is refused", () => {
   assert.equal(parseDollars(""), null);
   assert.equal(parseDollars("   "), null);
-  for (const bad of ["abc", "1.234", "-5", "1e3", "12 dollars", "."]) assert.equal(parseDollars(bad), undefined, bad);
+  for (const bad of ["abc", "1.234", "-5", "1e3", "12 dollars", "."])
+    assert.equal(parseDollars(bad), undefined, bad);
 });
 
 test("dollars and parseDollars round-trip", () => {
-  for (const micro of [0, 70_000, 49_500_000, 1_250_000_000]) assert.equal(parseDollars(dollars(micro)), micro);
+  for (const micro of [0, 70_000, 49_500_000, 1_250_000_000])
+    assert.equal(parseDollars(dollars(micro)), micro);
   assert.match(dollars(0), /0\.00/);
 });
 
@@ -301,7 +399,9 @@ test("LimitField: empty shows what it inherits", () => {
 });
 
 test("LimitField: empty with nothing to inherit says there is no limit", () => {
-  const out = html(<LimitField label="Workspace limit" value={null} period="day" onChange={() => {}} />);
+  const out = html(
+    <LimitField label="Workspace limit" value={null} period="day" onChange={() => {}} />,
+  );
   assert.match(out, /No limit\./);
   assert.doesNotMatch(out, /Inherits/);
 });
@@ -337,23 +437,44 @@ const mailOf = (id: string): PlatformMessage => {
   assert.ok(found, id);
   return found;
 };
-const click = (message: PlatformMessage, id: UiAction["id"], target: string, extra: Partial<UiAction["payload"]> = {}): UiAction => ({
+const click = (
+  message: PlatformMessage,
+  id: UiAction["id"],
+  target: string,
+  extra: Partial<UiAction["payload"]> = {},
+): UiAction => ({
   id,
   payload: { turnId: message.id, target, ...extra },
 });
 const mailbox = (selected: string | null, messages = sampleMail()) =>
-  html(<MailboxView messages={messages} selectedId={selected} onSelect={() => {}} onAction={() => {}} onOpen={() => {}} viewer="Ada" />);
+  html(
+    <MailboxView
+      messages={messages}
+      selectedId={selected}
+      onSelect={() => {}}
+      onAction={() => {}}
+      onOpen={() => {}}
+      viewer="Ada"
+    />,
+  );
 
 test("fromServer: the platform's alert becomes a mailbox message", () => {
   const mail = mailOf("m-alert");
   assert.equal(mail.unread, true);
   assert.equal(mail.severity, "bad");
   assert.equal(mail.kind, "alert");
-  assert.deepEqual(mail.about.map((s) => `${s.kind}:${s.id}`), ["rule:oncall-failure-rate", "agent:oncall"]);
+  assert.deepEqual(
+    mail.about.map((s) => `${s.kind}:${s.id}`),
+    ["rule:oncall-failure-rate", "agent:oncall"],
+  );
   assert.equal(mail.source?.kind, "rule");
   const [part] = mail.parts;
   assert.ok(part?.type === "alert");
-  assert.deepEqual(part.allowed, [ActionId.acknowledge], "what this reader may do rides on the part");
+  assert.deepEqual(
+    part.allowed,
+    [ActionId.acknowledge],
+    "what this reader may do rides on the part",
+  );
   assert.equal(part.alert.title, "6 of 10 runs failed in the last 15 minutes");
   assert.equal(part.alert.service, "oncall-failure-rate");
   assert.equal(part.alert.status, "down");
@@ -362,7 +483,11 @@ test("fromServer: the platform's alert becomes a mailbox message", () => {
 
 test("fromServer: failure, memory and a limit, and an outcome as a resolution", () => {
   const failure = mailOf("m-failure").parts[1];
-  assert.ok(failure?.type === "failure" && failure.failure.reference === "api-7f3k" && failure.failure.retryable === true);
+  assert.ok(
+    failure?.type === "failure" &&
+      failure.failure.reference === "api-7f3k" &&
+      failure.failure.retryable === true,
+  );
   const memory = mailOf("m-memory").parts[0];
   assert.ok(memory?.type === "memory" && memory.proposals.length === 3);
   const limit = mailOf("m-budget");
@@ -381,20 +506,49 @@ test("fromServer: failure, memory and a limit, and an outcome as a resolution", 
   const [raw] = wireMail().filter((m) => m.id === "m-budget");
   const warning = fromServer({
     ...raw,
-    parts: [{ id: "p1", type: "budget", actions: ["acknowledge"], budget: { scope_kind: "project", scope_name: "Launch", limit: "runs", period: "day", version: 2, current: { max_runs: 100 }, used: 82, max: 100, refused: false } }],
+    parts: [
+      {
+        id: "p1",
+        type: "budget",
+        actions: ["acknowledge"],
+        budget: {
+          scope_kind: "project",
+          scope_name: "Launch",
+          limit: "runs",
+          period: "day",
+          version: 2,
+          current: { max_runs: 100 },
+          used: 82,
+          max: 100,
+          refused: false,
+        },
+      },
+    ],
   });
   const [soft] = warning.parts;
   assert.ok(soft?.type === "budget");
   assert.deepEqual(soft.meter, { used: 82, limit: 100, unit: "runs", period: "day" });
   assert.equal(warning.budgets.p1?.refused, false);
-  const drawn = html(<MailboxView messages={[warning]} selectedId={warning.id} onSelect={() => {}} onAction={() => {}} onOpen={() => {}} />);
+  const drawn = html(
+    <MailboxView
+      messages={[warning]}
+      selectedId={warning.id}
+      onSelect={() => {}}
+      onAction={() => {}}
+      onOpen={() => {}}
+    />,
+  );
   assert.match(drawn, /close to its limit on runs\. Nothing has been refused yet\./);
   assert.match(drawn, /82 runs of 100 runs a day, 82%\. Near limit\./);
 
   const done = mailOf("m-done");
   assert.equal(messageState(done), "resolved");
   const [part] = done.parts;
-  assert.ok(part?.type === "alert" && part.resolution?.outcome === "acknowledge" && part.resolution.by === "Ada");
+  assert.ok(
+    part?.type === "alert" &&
+      part.resolution?.outcome === "acknowledge" &&
+      part.resolution.by === "Ada",
+  );
 });
 
 test("an approval of a call that acts as the person says only they may change it, and offers nobody an edit", () => {
@@ -404,11 +558,16 @@ test("an approval of a call that acts as the person says only they may change it
     const part = p as Record<string, unknown>;
     if (part.type !== "approval") return part;
     const question = part.question as Record<string, unknown>;
-    return { ...part, question: { ...question, tool: { ...(question.tool as object), acts_for_person: true } } };
+    return {
+      ...part,
+      question: { ...question, tool: { ...(question.tool as object), acts_for_person: true } },
+    };
   };
   const mail = fromServer({ ...raw, parts: (raw.parts as unknown[]).map(own) });
   const asked = mail.parts.find((p) => p.type === "approval");
-  assert.ok(asked?.type === "approval" && asked.id === "p1" && asked.approval.actsForPerson === true);
+  assert.ok(
+    asked?.type === "approval" && asked.id === "p1" && asked.approval.actsForPerson === true,
+  );
   const plain = mailOf("m-approval");
   const unmarked = plain.parts.find((p) => p.type === "approval");
   assert.ok(unmarked?.type === "approval" && unmarked.approval.actsForPerson === undefined);
@@ -417,13 +576,36 @@ test("an approval of a call that acts as the person says only they may change it
   // call that acts as the person.
   const editable = (m: PlatformMessage): PlatformMessage => ({
     ...m,
-    parts: m.parts.map((p) => (p.type === "approval" ? { ...p, approval: { ...p.approval, editable: true } } : p)),
+    parts: m.parts.map((p) =>
+      p.type === "approval" ? { ...p, approval: { ...p.approval, editable: true } } : p,
+    ),
   });
-  const drawn = html(<MailboxView messages={[editable(mail)]} selectedId={mail.id} onSelect={() => {}} onAction={() => {}} onOpen={() => {}} viewer="Ada" />);
-  assert.match(drawn, /Uses the credentials of the person this run acts for\. Only they may change its arguments\./);
+  const drawn = html(
+    <MailboxView
+      messages={[editable(mail)]}
+      selectedId={mail.id}
+      onSelect={() => {}}
+      onAction={() => {}}
+      onOpen={() => {}}
+      viewer="Ada"
+    />,
+  );
+  assert.match(
+    drawn,
+    /Uses the credentials of the person this run acts for\. Only they may change its arguments\./,
+  );
   assert.match(drawn, />Approve</);
   assert.doesNotMatch(drawn, />Edit</);
-  const other = html(<MailboxView messages={[editable(plain)]} selectedId={plain.id} onSelect={() => {}} onAction={() => {}} onOpen={() => {}} viewer="Ada" />);
+  const other = html(
+    <MailboxView
+      messages={[editable(plain)]}
+      selectedId={plain.id}
+      onSelect={() => {}}
+      onAction={() => {}}
+      onOpen={() => {}}
+      viewer="Ada"
+    />,
+  );
   assert.doesNotMatch(other, /Only they may change its arguments/);
   assert.match(other, />Edit</, "an approval that does not act as the person is drawn as it was");
 });
@@ -434,7 +616,12 @@ test("the run's own approval of a call that acts as the person says so too, from
     kind: "approval",
     agent: "lead",
     prompt: "Create the issue?",
-    tool: { name: "issues.create", call_id: "c1", arguments: { title: "Flaky test" }, ...(acts ? { acts_for_person: true } : {}) },
+    tool: {
+      name: "issues.create",
+      call_id: "c1",
+      arguments: { title: "Flaky test" },
+      ...(acts ? { acts_for_person: true } : {}),
+    },
   });
   const draw = (turn: Turn) =>
     html(
@@ -444,7 +631,18 @@ test("the run's own approval of a call that acts as the person says so too, from
     );
   for (const acts of [true, false]) {
     const run = runOf({ status: "parked", question: question(acts) as Run["question"] });
-    const parked = { id: "e1", source: "humagen:t", type: "run.parked.v1", channel: "humagen://t", time: run.created_at, hops: 0, run: run.id, seq: 1, agent: run.agent, data: { reason: "waiting on a person", question: question(acts) } } as never;
+    const parked = {
+      id: "e1",
+      source: "humagen:t",
+      type: "run.parked.v1",
+      channel: "humagen://t",
+      time: run.created_at,
+      hops: 0,
+      run: run.id,
+      seq: 1,
+      agent: run.agent,
+      data: { reason: "waiting on a person", question: question(acts) },
+    } as never;
     const streamed = replay(run, [parked]);
     assert.ok(streamed);
     for (const turn of [streamed, turnOf(run)]) {
@@ -454,7 +652,11 @@ test("the run's own approval of a call that acts as the person says so too, from
       const drawn = draw(turn);
       assert.match(drawn, />Approve</);
       assert.doesNotMatch(drawn, />Edit</);
-      if (acts) assert.match(drawn, /Uses the credentials of the person this run acts for\. Only they may change its arguments\./);
+      if (acts)
+        assert.match(
+          drawn,
+          /Uses the credentials of the person this run acts for\. Only they may change its arguments\./,
+        );
       else assert.doesNotMatch(drawn, /credentials of the person this run acts for/);
     }
   }
@@ -462,50 +664,105 @@ test("the run's own approval of a call that acts as the person says so too, from
 
 test("fromServer: dismissed and snoozed states, and parts it does not know", () => {
   const [wire] = wireMail();
-  const base = { ...wire, parts: [...(wire?.parts as unknown[]), { id: "x", type: "hologram", actions: [] }] };
+  const base = {
+    ...wire,
+    parts: [...(wire?.parts as unknown[]), { id: "x", type: "hologram", actions: [] }],
+  };
   assert.equal(fromServer(base).parts.length, 1, "a part of an unknown type is left out");
   assert.equal(messageState(fromServer({ ...base, state: "dismissed" })), "dismissed");
   const later = new Date(Date.now() + 3_600_000).toISOString();
-  assert.equal(messageState(fromServer({ ...base, state: "snoozed", snoozed_until: later }), new Date().toISOString()), "snoozed");
+  assert.equal(
+    messageState(
+      fromServer({ ...base, state: "snoozed", snoozed_until: later }),
+      new Date().toISOString(),
+    ),
+    "snoozed",
+  );
 });
 
 test("toRequest: each click becomes the platform's call", () => {
   const alert = mailOf("m-alert");
   assert.deepEqual(toRequest(alert, click(alert, ActionId.read, alert.id)), { call: "read" });
   assert.deepEqual(toRequest(alert, click(alert, ActionId.dismiss, alert.id)), { call: "dismiss" });
-  assert.deepEqual(toRequest(alert, click(alert, ActionId.acknowledge, "p1")), { call: "resolve", partId: "p1", action: "acknowledge", values: undefined });
-  assert.equal(toRequest(alert, click(alert, ActionId.snooze, "p1"))?.call, "snooze", "snoozing is never sent as a part's action");
-  assert.deepEqual(toRequest(alert, click(alert, ActionId.snooze, alert.id, { option: "2026-10-11T00:00:00Z" })), { call: "snooze", until: "2026-10-11T00:00:00Z" });
+  assert.deepEqual(toRequest(alert, click(alert, ActionId.acknowledge, "p1")), {
+    call: "resolve",
+    partId: "p1",
+    action: "acknowledge",
+    values: undefined,
+  });
+  assert.equal(
+    toRequest(alert, click(alert, ActionId.snooze, "p1"))?.call,
+    "snooze",
+    "snoozing is never sent as a part's action",
+  );
+  assert.deepEqual(
+    toRequest(alert, click(alert, ActionId.snooze, alert.id, { option: "2026-10-11T00:00:00Z" })),
+    { call: "snooze", until: "2026-10-11T00:00:00Z" },
+  );
 
   const failure = mailOf("m-failure");
   const part = failure.parts[1];
   assert.ok(part);
-  assert.deepEqual(toRequest(failure, click(failure, ActionId.retry, partTarget(part))), { call: "resolve", partId: "p2", action: "retry", values: undefined });
+  assert.deepEqual(toRequest(failure, click(failure, ActionId.retry, partTarget(part))), {
+    call: "resolve",
+    partId: "p2",
+    action: "retry",
+    values: undefined,
+  });
 
   const memory = mailOf("m-memory");
-  assert.deepEqual(toRequest(memory, click(memory, ActionId.keepMemories, "p1", { selection: ["n1", "n3"] })), {
-    call: "resolve",
-    partId: "p1",
-    action: "keep",
-    values: { ids: ["n1", "n3"] },
-  });
-  assert.equal((toRequest(memory, click(memory, ActionId.discardMemories, "p1")) as { action: string }).action, "discard");
+  assert.deepEqual(
+    toRequest(memory, click(memory, ActionId.keepMemories, "p1", { selection: ["n1", "n3"] })),
+    {
+      call: "resolve",
+      partId: "p1",
+      action: "keep",
+      values: { ids: ["n1", "n3"] },
+    },
+  );
+  assert.equal(
+    (toRequest(memory, click(memory, ActionId.discardMemories, "p1")) as { action: string }).action,
+    "discard",
+  );
 
   const budget = mailOf("m-budget");
-  assert.deepEqual(toRequest(budget, click(budget, ActionId.raiseBudget, "p1", { option: "250" })), {
-    call: "resolve",
-    partId: "p1",
-    action: "raise_limit",
-    values: { limits: { max_runs: 250 } },
-  });
-  assert.equal((toRequest(budget, click(budget, ActionId.acknowledge, "p1")) as { action: string }).action, "acknowledge");
-  assert.equal(toRequest(budget, click(budget, ActionId.raiseBudget, "p1")), null, "a raise with no amount is not sent");
+  assert.deepEqual(
+    toRequest(budget, click(budget, ActionId.raiseBudget, "p1", { option: "250" })),
+    {
+      call: "resolve",
+      partId: "p1",
+      action: "raise_limit",
+      values: { limits: { max_runs: 250 } },
+    },
+  );
+  assert.equal(
+    (toRequest(budget, click(budget, ActionId.acknowledge, "p1")) as { action: string }).action,
+    "acknowledge",
+  );
+  assert.equal(
+    toRequest(budget, click(budget, ActionId.raiseBudget, "p1")),
+    null,
+    "a raise with no amount is not sent",
+  );
 
   // A spend limit is shown in dollars and sent in micro-USD.
   const [wire] = wireMail().filter((m) => m.id === "m-budget");
   const spend = fromServer({
     ...wire,
-    parts: [{ id: "p1", type: "budget", actions: ["raise_limit"], budget: { scope_kind: "tenant", limit: "spend", period: "month", version: 1, current: { spend_limit: 50_000_000 } } }],
+    parts: [
+      {
+        id: "p1",
+        type: "budget",
+        actions: ["raise_limit"],
+        budget: {
+          scope_kind: "tenant",
+          limit: "spend",
+          period: "month",
+          version: 1,
+          current: { spend_limit: 50_000_000 },
+        },
+      },
+    ],
   });
   const [money] = spend.parts;
   assert.ok(money?.type === "budget");
@@ -517,8 +774,16 @@ test("toRequest: each click becomes the platform's call", () => {
     values: { limits: { spend_limit: 75_500_000 } },
   });
 
-  assert.equal(toRequest(alert, click(budget, ActionId.acknowledge, "p1")), null, "an action for another message is not sent");
-  assert.equal(toRequest(alert, click(alert, ActionId.approve, "p1")), null, "an action the platform has no call for is not sent");
+  assert.equal(
+    toRequest(alert, click(budget, ActionId.acknowledge, "p1")),
+    null,
+    "an action for another message is not sent",
+  );
+  assert.equal(
+    toRequest(alert, click(alert, ActionId.approve, "p1")),
+    null,
+    "an action the platform has no call for is not sent",
+  );
 });
 
 test("after: a click shows at once, and resolving the last part resolves the message", () => {
@@ -532,14 +797,21 @@ test("after: a click shows at once, and resolving the last part resolves the mes
   const budget = mailOf("m-budget");
   const raised = after(budget, click(budget, ActionId.raiseBudget, "p1", { option: "250" }), "Ada");
   const [part] = raised.parts;
-  assert.ok(part?.type === "budget" && part.resolution?.outcome === "raised" && part.resolution.by === "Ada");
+  assert.ok(
+    part?.type === "budget" &&
+      part.resolution?.outcome === "raised" &&
+      part.resolution.by === "Ada",
+  );
   assert.deepEqual(raised.budgets, budget.budgets);
 
   // What the reader may not do is refused before it is shown.
   const [only] = alert.parts;
   assert.ok(only);
   const reader = { ...alert, parts: [{ ...only, allowed: [] }] };
-  assert.equal(messageState(after(reader, click(reader, ActionId.acknowledge, "p1"), "Ada")), "open");
+  assert.equal(
+    messageState(after(reader, click(reader, ActionId.acknowledge, "p1"), "Ada")),
+    "open",
+  );
 });
 
 test("inbox merge: a fresh first page keeps older pages, drops what it re-lists, and shows nothing twice", () => {
@@ -547,8 +819,15 @@ test("inbox merge: a fresh first page keeps older pages, drops what it re-lists,
   const loaded = [m("a", "5"), m("b", "4"), m("c", "3"), m("d", "2"), m("e", "1")];
   // d became active and moved to the top. c fell out of the first page's range without being re-listed.
   const fresh = [m("d", "9"), m("a", "5"), m("b", "4")];
-  assert.deepEqual(merge(loaded, fresh, false).map((x) => x.id), ["d", "a", "b", "c", "e"]);
-  assert.deepEqual(merge(loaded, fresh, true).map((x) => x.id), ["d", "a", "b"], "a first page that is the whole list replaces everything");
+  assert.deepEqual(
+    merge(loaded, fresh, false).map((x) => x.id),
+    ["d", "a", "b", "c", "e"],
+  );
+  assert.deepEqual(
+    merge(loaded, fresh, true).map((x) => x.id),
+    ["d", "a", "b"],
+    "a first page that is the whole list replaces everything",
+  );
 });
 
 test("memoryTransport: filters, pages, resolves, and refuses on demand", async () => {
@@ -561,8 +840,14 @@ test("memoryTransport: filters, pages, resolves, and refuses on demand", async (
   assert.equal(first.unread, 5);
   const second = await via.list({ limit: 30, state: "all", before: first.next ?? undefined });
   assert.equal(new Set([...first.messages, ...second.messages].map((m) => m.id)).size, 4);
-  assert.deepEqual((await via.list({ limit: 30, state: "resolved" })).messages.map((m) => m.id), ["m-done"]);
-  assert.deepEqual((await via.list({ limit: 30, state: "all", kind: "memory" })).messages.map((m) => m.id), ["m-memory"]);
+  assert.deepEqual(
+    (await via.list({ limit: 30, state: "resolved" })).messages.map((m) => m.id),
+    ["m-done"],
+  );
+  assert.deepEqual(
+    (await via.list({ limit: 30, state: "all", kind: "memory" })).messages.map((m) => m.id),
+    ["m-memory"],
+  );
 
   const alert = mailOf("m-alert");
   const request = toRequest(alert, click(alert, ActionId.acknowledge, "p1"));
@@ -583,7 +868,8 @@ test("edgeOf: an agent's message carries its edge, a rule's and the platform's s
 
 test("MailboxView: hosts humagen's mailbox with every message listed", () => {
   const out = mailbox(null);
-  for (const m of sampleMail().filter((x) => messageState(x) === "open")) assert.ok(out.includes(m.subject), m.subject);
+  for (const m of sampleMail().filter((x) => messageState(x) === "open"))
+    assert.ok(out.includes(m.subject), m.subject);
   assert.equal(out.match(/data-message="/g)?.length, 8, "one row per open message");
   // Decisions come first, then what is only there to be read.
   assert.ok(out.indexOf(">Needs you<") < out.indexOf(">What&#x27;s new<"));
@@ -680,7 +966,10 @@ test("MailboxView: a resolved part shows its record and offers nothing", () => {
 test("MailboxView: a reader with no right to act is told so, and a message put away offers nothing", () => {
   const [alert, ...rest] = sampleMail();
   assert.ok(alert);
-  const reader = mailbox("m-alert", [{ ...alert, parts: alert.parts.map((p) => ({ ...p, allowed: [] })) }, ...rest]);
+  const reader = mailbox("m-alert", [
+    { ...alert, parts: alert.parts.map((p) => ({ ...p, allowed: [] })) },
+    ...rest,
+  ]);
   assert.match(reader, /someone with more access has to act on it/);
   assert.doesNotMatch(reader, />Acknowledge</);
   const away = mailbox("m-alert", [{ ...alert, dismissedAt: new Date().toISOString() }, ...rest]);
@@ -740,24 +1029,67 @@ test("MailboxView: the compact native kind filter retains selection, and there i
 });
 
 test("MailboxView: nothing in the inbox animates", () => {
-  for (const m of sampleMail()) assert.doesNotMatch(mailbox(m.id), /aui-shimmer|aui-spinner|animate-/, m.id);
+  for (const m of sampleMail())
+    assert.doesNotMatch(mailbox(m.id), /aui-shimmer|aui-spinner|animate-/, m.id);
 });
 
-const rule: AlertRule = { name: "any-run-fails", kind: "run_failed", severity: "critical", created_by: "ada" };
-const quiet: AlertRule = { name: "slow-oncall", kind: "slow_run", severity: "warning", agent: "oncall", threshold: 60 };
+const rule: AlertRule = {
+  name: "any-run-fails",
+  kind: "run_failed",
+  severity: "critical",
+  created_by: "ada",
+};
+const quiet: AlertRule = {
+  name: "slow-oncall",
+  kind: "slow_run",
+  severity: "warning",
+  agent: "oncall",
+  threshold: 60,
+};
 const fired: Alert[] = [
-  { id: "al-1", rule: "any-run-fails", kind: "run_failed", severity: "critical", title: "lead failed", at: "2026-10-09T10:00:00Z" },
-  { id: "al-2", rule: "any-run-fails", kind: "run_failed", severity: "critical", title: "oncall failed", at: "2026-10-09T11:00:00Z", acked_by: "ada", acked_at: "2026-10-09T11:05:00Z" },
+  {
+    id: "al-1",
+    rule: "any-run-fails",
+    kind: "run_failed",
+    severity: "critical",
+    title: "lead failed",
+    at: "2026-10-09T10:00:00Z",
+  },
+  {
+    id: "al-2",
+    rule: "any-run-fails",
+    kind: "run_failed",
+    severity: "critical",
+    title: "oncall failed",
+    at: "2026-10-09T11:00:00Z",
+    acked_by: "ada",
+    acked_at: "2026-10-09T11:05:00Z",
+  },
 ];
 const monitor = (over: Partial<Parameters<typeof Monitor>[0]> = {}) =>
-  html(<Monitor tab="rules" alerts={fired} rules={[rule, quiet]} agents={[]} canWrite onChanged={() => {}} onOpenAlert={() => {}} onOpenFired={() => {}} {...over} />);
+  html(
+    <Monitor
+      tab="rules"
+      alerts={fired}
+      rules={[rule, quiet]}
+      agents={[]}
+      canWrite
+      onChanged={() => {}}
+      onOpenAlert={() => {}}
+      onOpenFired={() => {}}
+      {...over}
+    />,
+  );
 
 test("Monitor: each rule says what it watches, how loud it is, and where its message goes", () => {
   const out = monitor();
   assert.match(out, />Monitor</);
   assert.equal(out.match(/data-testid="alert-rule"/g)?.length, 2);
   assert.match(out, /When a run of any agent fails\./);
-  assert.match(out, /Watches every agent\. Raises a critical message for everyone who can see alerts\. Made by ada\./);
+  assert.match(
+    out,
+    /Watches every agent\. Raises a critical message for everyone who can see alerts\. Made by ada\./,
+  );
   assert.match(out, /Watches oncall\. Raises a warning message for everyone who can see alerts\./);
   assert.match(out, />Critical</);
   assert.match(out, />Warning</);
@@ -765,18 +1097,57 @@ test("Monitor: each rule says what it watches, how loud it is, and where its mes
 
 test("Monitor and Schedules name a project by its title, in a rule's words and in their pickers", () => {
   const benefits = { name: "Benefits", title: "Benefits and leave" };
-  const scoped: AlertRule = { name: "benefits-fails", kind: "run_failed", severity: "warning", project: "Benefits", created_by: "priya", created_by_name: "Priya Nair" };
+  const scoped: AlertRule = {
+    name: "benefits-fails",
+    kind: "run_failed",
+    severity: "warning",
+    project: "Benefits",
+    created_by: "priya",
+    created_by_name: "Priya Nair",
+  };
   const out = monitor({ rules: [scoped], alerts: [], projects: [benefits] });
   assert.match(out, /When a run of any agent in Benefits and leave fails\./);
-  assert.match(out, /Watches every agent in Benefits and leave\. Raises a warning message for everyone who can see alerts\. Made by Priya Nair\./);
+  assert.match(
+    out,
+    /Watches every agent in Benefits and leave\. Raises a warning message for everyone who can see alerts\. Made by Priya Nair\./,
+  );
   assert.doesNotMatch(out, /in Benefits\./);
   // A project the reader does not have is named as the rule names it.
   assert.match(monitor({ rules: [scoped], alerts: [] }), /Watches every agent in Benefits\./);
 
-  const nightly: ScheduleView = { name: "leave-digest", expression: "0 9 * * 1", agent: "hr", text: "Sum up leave.", project: "Benefits", paused: false, next: [], recent: [] };
-  const list = html(<Schedules schedules={[nightly]} agents={[]} projects={[benefits]} canWrite={false} onChanged={() => {}} onOpenRun={() => {}} />);
+  const nightly: ScheduleView = {
+    name: "leave-digest",
+    expression: "0 9 * * 1",
+    agent: "hr",
+    text: "Sum up leave.",
+    project: "Benefits",
+    paused: false,
+    next: [],
+    recent: [],
+  };
+  const list = html(
+    <Schedules
+      schedules={[nightly]}
+      agents={[]}
+      projects={[benefits]}
+      canWrite={false}
+      onChanged={() => {}}
+      onOpenRun={() => {}}
+    />,
+  );
   assert.match(list, />in Benefits and leave</);
-  const detail = html(<Schedules schedules={[nightly]} agents={[]} projects={[benefits]} selected="leave-digest" onSelect={() => {}} canWrite={false} onChanged={() => {}} onOpenRun={() => {}} />);
+  const detail = html(
+    <Schedules
+      schedules={[nightly]}
+      agents={[]}
+      projects={[benefits]}
+      selected="leave-digest"
+      onSelect={() => {}}
+      canWrite={false}
+      onChanged={() => {}}
+      onOpenRun={() => {}}
+    />,
+  );
   assert.match(detail, /<dd[^>]*>Benefits and leave<\/dd>/);
 });
 
@@ -800,7 +1171,11 @@ test("Monitor: what fired is counted and sent to the inbox, never listed or ackn
 });
 
 test("Monitor: the overview is for who may read runs, and offers the analyst when there is one", () => {
-  assert.doesNotMatch(monitor({ tab: "overview" }), /Ask the analyst/, "no run statistics: only the rules");
+  assert.doesNotMatch(
+    monitor({ tab: "overview" }),
+    /Ask the analyst/,
+    "no run statistics: only the rules",
+  );
   assert.match(monitor({ tab: "overview" }), /data-testid="alert-rule"/);
   const asks = html(<AskAnalyst onAsk={() => {}} />);
   assert.match(asks, /How did my agents do today\?/);
@@ -820,21 +1195,46 @@ test("Monitor: a reader who cannot write sees rules but cannot delete them", () 
 });
 
 test("on a phone, one small button opens the sidebar, and there is no bottom bar", () => {
-  const closed = renderToStaticMarkup(<DrawerButton open={false} inboxCount={0} onOpen={() => {}} />);
+  const closed = renderToStaticMarkup(
+    <DrawerButton open={false} inboxCount={0} onOpen={() => {}} />,
+  );
   assert.match(closed, /aria-label="Open sidebar"/);
   assert.match(closed, /md:hidden/, "only on a narrow screen");
   assert.doesNotMatch(closed, /bottom-0|Quick navigation/);
-  assert.match(renderToStaticMarkup(<DrawerButton open={false} inboxCount={2} onOpen={() => {}} />), /aria-label="Open sidebar, 2 need you"/);
-  assert.equal(renderToStaticMarkup(<DrawerButton open inboxCount={2} onOpen={() => {}} />), "", "hidden while the drawer is open");
+  assert.match(
+    renderToStaticMarkup(<DrawerButton open={false} inboxCount={2} onOpen={() => {}} />),
+    /aria-label="Open sidebar, 2 need you"/,
+  );
+  assert.equal(
+    renderToStaticMarkup(<DrawerButton open inboxCount={2} onOpen={() => {}} />),
+    "",
+    "hidden while the drawer is open",
+  );
 });
 
-const activity = (selected: string | null, trees = sampleTrees(), over: Partial<Parameters<typeof ActivityPanel>[0]> = {}) =>
-  html(<ActivityPanel trees={trees} selected={selected} onSelect={() => {}} onClose={() => {}} onJump={() => {}} {...over} />);
+const activity = (
+  selected: string | null,
+  trees = sampleTrees(),
+  over: Partial<Parameters<typeof ActivityPanel>[0]> = {},
+) =>
+  html(
+    <ActivityPanel
+      trees={trees}
+      selected={selected}
+      onSelect={() => {}}
+      onClose={() => {}}
+      onJump={() => {}}
+      {...over}
+    />,
+  );
 
 test("activity: a tree is listed parent first, in the order things were called", () => {
   const [, second] = sampleTrees();
   assert.ok(second);
-  assert.deepEqual(ordered({ ...second, runs: [...second.runs].reverse() }).map((r) => r.id), ["r2", "r2a", "r2a1", "r2b"]);
+  assert.deepEqual(
+    ordered({ ...second, runs: [...second.runs].reverse() }).map((r) => r.id),
+    ["r2", "r2a", "r2a1", "r2b"],
+  );
 });
 
 test("activity: an agent that runs again gets a number, and the trail leads from the turn to the run", () => {
@@ -846,7 +1246,10 @@ test("activity: an agent that runs again gets a number, and the trail leads from
   assert.equal(nth.get("r2b"), 1);
   assert.equal(nth.get("r3a"), 2, "oncall is called again");
   const runs = new Map(trees.flatMap((t) => t.runs.map((r) => [r.id, r] as const)));
-  assert.deepEqual(trailOf(runs, "r2a1").map((r) => r.agent), ["lead", "releaser", "helper"]);
+  assert.deepEqual(
+    trailOf(runs, "r2a1").map((r) => r.agent),
+    ["lead", "releaser", "helper"],
+  );
 });
 
 test("ActivityPanel: with nothing run, it says so, and says Loading while it is finding out", () => {
@@ -859,10 +1262,16 @@ test("ActivityPanel: every run in the conversation is listed, running first, nes
   const out = activity(null);
   assert.equal(out.match(/data-testid="activity-row"/g)?.length, 7);
   assert.match(out, /7 runs, 2 running, 1 failed/);
-  assert.ok(out.indexOf('data-testid="activity-running"') < out.indexOf('data-testid="activity-done"'));
+  assert.ok(
+    out.indexOf('data-testid="activity-running"') < out.indexOf('data-testid="activity-done"'),
+  );
   assert.match(out, /Running \(2\)/);
   assert.match(out, /Done \(5\)/);
-  assert.match(out, /padding-left:32px[^>]*>(?:(?!<\/li>).)*List the commits since 2\.3\.0/s, "a run two calls deep is indented twice");
+  assert.match(
+    out,
+    /padding-left:32px[^>]*>(?:(?!<\/li>).)*List the commits since 2\.3\.0/s,
+    "a run two calls deep is indented twice",
+  );
   assert.match(out, /1 tool call/);
 });
 
@@ -877,7 +1286,10 @@ test("ActivityPanel: each row carries its agent's stroke and says how it stands 
 
 test("ActivityPanel: a run shows its whole conversation, its tools, and the agents it called", () => {
   const out = activity("r2a");
-  assert.match(out, /data-testid="activity-detail"[^>]*data-agent="releaser"[^>]*data-state="failed"|data-agent="releaser"[^>]*data-state="failed"[^>]*data-testid="activity-detail"/);
+  assert.match(
+    out,
+    /data-testid="activity-detail"[^>]*data-agent="releaser"[^>]*data-state="failed"|data-agent="releaser"[^>]*data-state="failed"[^>]*data-testid="activity-detail"/,
+  );
   assert.match(out, /Called as a subagent by lead\./);
   assert.match(out, /data-testid="activity-conversation"/);
   assert.match(out, /Tag 2\.4\.0 and write the changelog/, "what it was asked");
@@ -922,17 +1334,32 @@ const runOf = (over: Partial<Run>): Run => ({ ...second().root, ...over });
 
 test("statusOf: every state a run can be in has its own words and stroke", () => {
   assert.deepEqual(statusOf(runOf({ status: "accepted" })), { word: "Queued", state: "idle" });
-  assert.deepEqual(statusOf(runOf({ status: "running", calls: 0 })), { word: "Running", state: "working" });
-  assert.deepEqual(statusOf(runOf({ status: "running", calls: 2 })), { word: "Running, calling others", state: "working" });
-  assert.deepEqual(statusOf(runOf({ status: "parked" })), { word: "Waiting on you", state: "waiting" });
-  assert.deepEqual(statusOf(runOf({ status: "parked", reason: "approval to deploy" })), { word: "Waiting: approval to deploy", state: "waiting" });
+  assert.deepEqual(statusOf(runOf({ status: "running", calls: 0 })), {
+    word: "Running",
+    state: "working",
+  });
+  assert.deepEqual(statusOf(runOf({ status: "running", calls: 2 })), {
+    word: "Running, calling others",
+    state: "working",
+  });
+  assert.deepEqual(statusOf(runOf({ status: "parked" })), {
+    word: "Waiting on you",
+    state: "waiting",
+  });
+  assert.deepEqual(statusOf(runOf({ status: "parked", reason: "approval to deploy" })), {
+    word: "Waiting: approval to deploy",
+    state: "waiting",
+  });
   assert.deepEqual(statusOf(runOf({ status: "failed" })), { word: "Failed", state: "failed" });
   assert.deepEqual(statusOf(runOf({ status: "completed" })), { word: "Done", state: "done" });
 });
 
 test("RunItem: the outline is the run's status in the agent's color, and the words say it", () => {
   const done = html(<RunItem run={runOf({})} onActivity={() => {}} />);
-  assert.match(done, /data-testid="run-item"[^>]*data-agent="lead"[^>]*data-state="done"[^>]*data-edge="around"/);
+  assert.match(
+    done,
+    /data-testid="run-item"[^>]*data-agent="lead"[^>]*data-state="done"[^>]*data-edge="around"/,
+  );
   assert.match(done, />Done</);
   assert.match(done, /1m 00s/);
   assert.match(html(<RunItem run={runOf({ status: "parked" })} />), /data-state="waiting"/);
@@ -965,7 +1392,11 @@ test("runManifest: the run, its call tree, agents with revisions, tools, timings
   assert.equal(releaser.duration_ms, 38_000);
   assert.equal(m.spans.length, 3);
   assert.doesNotThrow(() => JSON.parse(JSON.stringify(m)));
-  assert.equal(runManifest(root, { runs: [], spans: [] }).runs.length, 1, "with no tree, the run itself is still exported");
+  assert.equal(
+    runManifest(root, { runs: [], spans: [] }).runs.length,
+    1,
+    "with no tree, the run itself is still exported",
+  );
 });
 
 test("runMarkdown: the request, the answer and every call, nested by who called whom", () => {
@@ -977,7 +1408,10 @@ test("runMarkdown: the request, the answer and every call, nested by who called 
   assert.match(md, /\n## releaser \(subagent\)\n/);
   assert.match(md, /\n### helper \(delegate\)\n/);
   assert.match(md, /\n## oncall \(handoff\)\n/);
-  assert.ok(md.indexOf("## releaser") < md.indexOf("### helper") && md.indexOf("### helper") < md.indexOf("## oncall"));
+  assert.ok(
+    md.indexOf("## releaser") < md.indexOf("### helper") &&
+      md.indexOf("### helper") < md.indexOf("## oncall"),
+  );
   assert.match(md, /- Status: Failed/);
   assert.match(md, /\*\*Failed\*\*\n\ngit: tag 'v2\.4\.0' already exists/);
   assert.match(md, /- `git_tag`, failed: git: tag 'v2\.4\.0' already exists/);
@@ -992,27 +1426,75 @@ test("itemOf: a turn's answer, a tool call and a failed call become things to co
   assert.ok(answer?.kind === "answer");
   assert.equal(answer.run.answer, "The streamed answer.", "what is on screen is what is copied");
 
-  const done = itemOf(run, { kind: "task", turn, task: { id: "t1", title: "Git log", status: "complete", tool: "git_log", output: "14 commits" } });
+  const done = itemOf(run, {
+    kind: "task",
+    turn,
+    task: { id: "t1", title: "Git log", status: "complete", tool: "git_log", output: "14 commits" },
+  });
   assert.ok(done?.kind === "tool");
   assert.deepEqual(done.tool, { name: "git_log", run: "r2", agent: "lead", result: "14 commits" });
-  assert.deepEqual(formats(done).map((f) => f.id), ["call", "result", "both", "json"]);
+  assert.deepEqual(
+    formats(done).map((f) => f.id),
+    ["call", "result", "both", "json"],
+  );
 
-  const failed = itemOf(run, { kind: "task", turn, task: { id: "t2", title: "Git tag", status: "error", tool: "git_tag", output: "tag exists" } });
-  assert.ok(failed?.kind === "tool" && failed.tool.error === "tag exists" && failed.tool.result === undefined);
+  const failed = itemOf(run, {
+    kind: "task",
+    turn,
+    task: { id: "t2", title: "Git tag", status: "error", tool: "git_tag", output: "tag exists" },
+  });
+  assert.ok(
+    failed?.kind === "tool" &&
+      failed.tool.error === "tag exists" &&
+      failed.tool.result === undefined,
+  );
 
-  const running = itemOf(run, { kind: "task", turn, task: { id: "t3", title: "Search", status: "in_progress", tool: "search" } });
+  const running = itemOf(run, {
+    kind: "task",
+    turn,
+    task: { id: "t3", title: "Search", status: "in_progress", tool: "search" },
+  });
   assert.ok(running?.kind === "tool");
-  assert.deepEqual(formats(running).map((f) => f.id), ["call", "both", "json"], "nothing has come back yet, so no result is offered");
+  assert.deepEqual(
+    formats(running).map((f) => f.id),
+    ["call", "both", "json"],
+    "nothing has come back yet, so no result is offered",
+  );
 
-  const agent = itemOf(run, { kind: "subagent", turn, task: { id: "t4", title: "Tag oncall", status: "complete", tool: "tag_oncall", output: "Posted.", subagent: { name: "oncall" } } });
-  assert.ok(agent?.kind === "tool" && agent.tool.name === "tag_oncall" && agent.tool.result === "Posted.");
+  const agent = itemOf(run, {
+    kind: "subagent",
+    turn,
+    task: {
+      id: "t4",
+      title: "Tag oncall",
+      status: "complete",
+      tool: "tag_oncall",
+      output: "Posted.",
+      subagent: { name: "oncall" },
+    },
+  });
+  assert.ok(
+    agent?.kind === "tool" && agent.tool.name === "tag_oncall" && agent.tool.result === "Posted.",
+  );
   assert.equal(itemOf(run, { kind: "task", turn }), null);
 });
 
 test("replay: a finished run is rebuilt from its events, and stays undefined when there are none", () => {
   const run = runOf({});
   assert.equal(replay(run, []), undefined);
-  const ev = (seq: number, type: string, data: unknown) => ({ id: `e${seq}`, source: "humagen:t", type, channel: "humagen://t", time: run.created_at, hops: 0, run: run.id, seq, agent: run.agent, data }) as never;
+  const ev = (seq: number, type: string, data: unknown) =>
+    ({
+      id: `e${seq}`,
+      source: "humagen:t",
+      type,
+      channel: "humagen://t",
+      time: run.created_at,
+      hops: 0,
+      run: run.id,
+      seq,
+      agent: run.agent,
+      data,
+    }) as never;
   const turn = replay(run, [
     ev(1, "run.delta.tool.call.v1", { id: "c1", name: "git_log", phase: "call" }),
     ev(2, "run.delta.tool.done.v1", { id: "c1", name: "git_log", result: "14 commits" }),
@@ -1031,7 +1513,18 @@ const fileOf = (id: string) => {
   return f;
 };
 const detail = (id: string, over: Partial<Parameters<typeof StoredDetail>[0]> = {}) =>
-  html(<StoredDetail file={fileOf(id)} versions={[fileOf(id)]} canDelete onClose={() => {}} onDelete={() => {}} onOpenRun={() => {}} onOpenThread={() => {}} {...over} />);
+  html(
+    <StoredDetail
+      file={fileOf(id)}
+      versions={[fileOf(id)]}
+      canDelete
+      onClose={() => {}}
+      onDelete={() => {}}
+      onOpenRun={() => {}}
+      onOpenThread={() => {}}
+      {...over}
+    />,
+  );
 
 test("storage: sizes, search and what may be shown inline", () => {
   assert.equal(bytes(512), "512 B");
@@ -1050,12 +1543,36 @@ test("storage: sizes, search and what may be shown inline", () => {
 test("memoryStorage: filters, pages and deletes", async () => {
   const via = memoryStorage(sampleFiles(), sampleUse(), 3);
   const first = await via.list({ project: "", agent: "", kind: "", q: "", limit: 30 });
-  assert.deepEqual(first.artifacts.map((f) => f.id), ["a1", "a2", "a3"], "newest first");
+  assert.deepEqual(
+    first.artifacts.map((f) => f.id),
+    ["a1", "a2", "a3"],
+    "newest first",
+  );
   assert.equal(first.next, "a3");
-  assert.deepEqual((await via.list({ project: "", agent: "", kind: "", q: "", limit: 30, before: "a3" })).artifacts.map((f) => f.id), ["a4"]);
-  assert.deepEqual((await via.list({ project: "Launch", agent: "", kind: "", q: "", limit: 30 })).artifacts.map((f) => f.id), ["a1", "a3"]);
-  assert.deepEqual((await via.list({ project: "", agent: "billing", kind: "spreadsheet", q: "", limit: 30 })).artifacts.map((f) => f.id), ["a2"]);
-  assert.deepEqual((await via.list({ project: "", agent: "", kind: "", q: "release", limit: 30 })).artifacts.map((f) => f.id), ["a4"]);
+  assert.deepEqual(
+    (
+      await via.list({ project: "", agent: "", kind: "", q: "", limit: 30, before: "a3" })
+    ).artifacts.map((f) => f.id),
+    ["a4"],
+  );
+  assert.deepEqual(
+    (await via.list({ project: "Launch", agent: "", kind: "", q: "", limit: 30 })).artifacts.map(
+      (f) => f.id,
+    ),
+    ["a1", "a3"],
+  );
+  assert.deepEqual(
+    (
+      await via.list({ project: "", agent: "billing", kind: "spreadsheet", q: "", limit: 30 })
+    ).artifacts.map((f) => f.id),
+    ["a2"],
+  );
+  assert.deepEqual(
+    (await via.list({ project: "", agent: "", kind: "", q: "release", limit: 30 })).artifacts.map(
+      (f) => f.id,
+    ),
+    ["a4"],
+  );
   assert.equal((await via.versions("a1")).length, 3);
   await via.remove("a2");
   assert.equal((await via.use()).count, 3);
@@ -1078,7 +1595,15 @@ test("StorageUsed: a real meter in bytes, under, over and with no limit, and whe
 });
 
 test("StoredList: each row says what the file is, who made it and when", () => {
-  const out = html(<StoredList files={sampleFiles()} selected="a2" state="ready" narrowed={false} onSelect={() => {}} />);
+  const out = html(
+    <StoredList
+      files={sampleFiles()}
+      selected="a2"
+      state="ready"
+      narrowed={false}
+      onSelect={() => {}}
+    />,
+  );
   assert.equal(out.match(/data-testid="stored-row"/g)?.length, 4);
   assert.match(out, /launch-plan\.md/);
   assert.match(out, />Spreadsheet</);
@@ -1088,7 +1613,16 @@ test("StoredList: each row says what the file is, who made it and when", () => {
 });
 
 test("StoredList: empty, no match, loading and failed each say what is going on", () => {
-  const list = (state: "ready" | "loading" | "failed", narrowed = false) => html(<StoredList files={[]} selected={null} state={state} narrowed={narrowed} onSelect={() => {}} />);
+  const list = (state: "ready" | "loading" | "failed", narrowed = false) =>
+    html(
+      <StoredList
+        files={[]}
+        selected={null}
+        state={state}
+        narrowed={narrowed}
+        onSelect={() => {}}
+      />,
+    );
   assert.match(list("ready"), /No artifacts yet/);
   assert.match(list("ready", true), /No artifacts match/);
   assert.match(list("loading"), />Loading</);
@@ -1096,12 +1630,17 @@ test("StoredList: empty, no match, loading and failed each say what is going on"
 });
 
 test("StoredDetail: a text file shows its preview, its versions, and where it came from", () => {
-  const out = detail("a1", { versions: [fileOf("a1"), { ...fileOf("a1"), id: "a1-v2", version: 2 }] });
+  const out = detail("a1", {
+    versions: [fileOf("a1"), { ...fileOf("a1"), id: "a1-v2", version: 2 }],
+  });
   assert.match(out, /<h2[^>]*>launch-plan\.md<\/h2>/);
   assert.match(out, /Version 3/);
   assert.match(out, /data-testid="stored-preview"/);
   assert.match(out, /Freeze scope on the 14th/);
-  assert.match(out, /href="\/api\/artifacts\/a1\/content"[^>]*download="launch-plan\.md"|download="launch-plan\.md"[^>]*href="\/api\/artifacts\/a1\/content"/);
+  assert.match(
+    out,
+    /href="\/api\/artifacts\/a1\/content"[^>]*download="launch-plan\.md"|download="launch-plan\.md"[^>]*href="\/api\/artifacts\/a1\/content"/,
+  );
   assert.match(out, /Version 2/);
   assert.match(out, />Open the conversation</);
   assert.match(out, />Open the run</);
@@ -1129,13 +1668,25 @@ test("motion: every class moves only transform and opacity, and reduced motion r
   assert.ok(frames.length >= 7, "the motion keyframes were found");
   for (const [, name, body = ""] of frames) {
     const props = [...body.matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1]);
-    for (const prop of props) assert.ok(prop === "opacity" || prop === "transform", `${name} animates ${prop}`);
+    for (const prop of props)
+      assert.ok(prop === "opacity" || prop === "transform", `${name} animates ${prop}`);
   }
   const reduced = css.slice(css.indexOf("/* With motion reduced, nothing travels."));
-  for (const cls of [".humagen-enter", ".humagen-pop", ".humagen-drawer", ".humagen-note"]) assert.ok(reduced.includes(cls), `${cls} is covered when motion is reduced`);
+  for (const cls of [".humagen-enter", ".humagen-pop", ".humagen-drawer", ".humagen-note"])
+    assert.ok(reduced.includes(cls), `${cls} is covered when motion is reduced`);
   assert.match(reduced, /animation: humagen-fade /, "what arrives only fades");
-  assert.doesNotMatch(css, /animation:[^;]*infinite[^;]*;[^}]*\}\s*(?=[^]*\.humagen-(enter|pop|drawer|note|fade)\b)(?!)/, "no motion class loops");
-  for (const cls of ["humagen-enter", "humagen-fade", "humagen-pop", "humagen-drawer", "humagen-note"]) {
+  assert.doesNotMatch(
+    css,
+    /animation:[^;]*infinite[^;]*;[^}]*\}\s*(?=[\s\S]*\.humagen-(enter|pop|drawer|note|fade)\b)(?!)/,
+    "no motion class loops",
+  );
+  for (const cls of [
+    "humagen-enter",
+    "humagen-fade",
+    "humagen-pop",
+    "humagen-drawer",
+    "humagen-note",
+  ]) {
     const rule = css.match(new RegExp(`\\.${cls} \\{([^}]*)\\}`))?.[1] ?? "";
     assert.doesNotMatch(rule, /infinite/, `${cls} plays once`);
   }
@@ -1148,23 +1699,33 @@ test("motion: what arrives lets go of its last frame, so glass inside it keeps i
   // What arrives ends on the element's own style, so it needs to hold nothing.
   const sheets = {
     console: readFileSync(new URL("./styles.css", import.meta.url), "utf8"),
-    shared: readFileSync(new URL("../../../packages/render-web/src/theme.css", import.meta.url), "utf8"),
+    shared: readFileSync(
+      new URL("../../../packages/render-web/src/theme.css", import.meta.url),
+      "utf8",
+    ),
   };
   for (const [sheet, css] of Object.entries(sheets)) {
     const arrives = new Set(
       [...css.matchAll(/@keyframes ([a-z-]+) \{((?:[^{}]|\{[^{}]*\})*)\}/g)]
         .filter(([, , body = ""]) => {
-          const stops = [...body.matchAll(/([^{}]+)\{/g)].flatMap((m) => (m[1] ?? "").split(",").map((stop) => stop.trim()));
+          const stops = [...body.matchAll(/([^{}]+)\{/g)].flatMap((m) =>
+            (m[1] ?? "").split(",").map((stop) => stop.trim()),
+          );
           return stops.every((stop) => stop === "from" || stop === "0%");
         })
         .map(([, name]) => name),
     );
     assert.ok(arrives.size >= 4, `${sheet}: the keyframes for what arrives were found`);
-    const uses = [...css.matchAll(/animation:\s*([^;]+);/g)].map((m) => (m[1] ?? "").trim().split(/\s+/));
+    const uses = [...css.matchAll(/animation:\s*([^;]+);/g)].map((m) =>
+      (m[1] ?? "").trim().split(/\s+/),
+    );
     const arriving = uses.filter((words) => words.some((w) => arrives.has(w)));
     assert.ok(arriving.length >= 4, `${sheet}: the animations that arrive were found`);
     for (const words of arriving) {
-      assert.ok(!words.includes("both") && !words.includes("forwards"), `${sheet}: ${words.join(" ")} holds its last frame`);
+      assert.ok(
+        !words.includes("both") && !words.includes("forwards"),
+        `${sheet}: ${words.join(" ")} holds its last frame`,
+      );
     }
   }
 });
@@ -1172,7 +1733,11 @@ test("motion: what arrives lets go of its last frame, so glass inside it keeps i
 test("motion: a copy control keeps its label, and its confirmation is a live region beside it", () => {
   const out = html(<CopyAs item={{ kind: "answer", run: runOf({}) }} />);
   assert.match(out, />Copy as</);
-  assert.doesNotMatch(out, />Copied</, "nothing reads Copied until something is copied, and then it is a note, not the label");
+  assert.doesNotMatch(
+    out,
+    />Copied</,
+    "nothing reads Copied until something is copied, and then it is a note, not the label",
+  );
   assert.match(out, /role="status"[^>]*aria-live="polite"/);
   const item = html(<RunItem run={runOf({})} />);
   assert.match(item, />Done</);
@@ -1180,7 +1745,9 @@ test("motion: a copy control keeps its label, and its confirmation is a live reg
 });
 
 test("motion: loading lists are skeletons that still say Loading to a screen reader", () => {
-  const out = html(<StoredList files={[]} selected={null} state="loading" narrowed={false} onSelect={() => {}} />);
+  const out = html(
+    <StoredList files={[]} selected={null} state="loading" narrowed={false} onSelect={() => {}} />,
+  );
   assert.match(out, /data-testid="skeleton"/);
   assert.match(out, /role="status"/);
   assert.match(out, /class="sr-only">Loading</);
@@ -1189,7 +1756,11 @@ test("motion: loading lists are skeletons that still say Loading to a screen rea
 
 test("an answer has exactly one copy control: the console's Copy as, in place of humagen's button", () => {
   const run = runOf({ answer: "2.4 could not be tagged." });
-  const turn = { ...emptyTurn(run.id, { name: run.agent }), status: "done" as const, text: "2.4 could not be tagged." };
+  const turn = {
+    ...emptyTurn(run.id, { name: run.agent }),
+    status: "done" as const,
+    text: "2.4 could not be tagged.",
+  };
   const draw = (withSlot: boolean) =>
     html(
       <WebSurface onAction={() => {}}>
@@ -1197,15 +1768,27 @@ test("an answer has exactly one copy control: the console's Copy as, in place of
       </WebSurface>,
     );
   const hosted = draw(true);
-  assert.equal(hosted.match(/data-testid="item-copy"/g)?.length, 1, "the console's control is there once");
-  assert.doesNotMatch(hosted, /aria-label="Copy answer"/, "humagen's own button is not drawn beside it");
+  assert.equal(
+    hosted.match(/data-testid="item-copy"/g)?.length,
+    1,
+    "the console's control is there once",
+  );
+  assert.doesNotMatch(
+    hosted,
+    /aria-label="Copy answer"/,
+    "humagen's own button is not drawn beside it",
+  );
   assert.match(hosted, /aria-label="Copy answer as"/, "it is an icon with a name, opened on click");
   assert.match(hosted, /aria-haspopup="listbox"/);
   assert.match(hosted, /role="status"[^>]*aria-live="polite"/, "the confirmation is announced");
   assert.doesNotMatch(hosted, />Copied</);
 
   const plain = draw(false);
-  assert.equal(plain.match(/aria-label="Copy answer"/g)?.length, 1, "with no host control, humagen's button is the one");
+  assert.equal(
+    plain.match(/aria-label="Copy answer"/g)?.length,
+    1,
+    "with no host control, humagen's button is the one",
+  );
   assert.doesNotMatch(plain, /data-testid="item-copy"/);
 });
 
@@ -1225,14 +1808,27 @@ test("a stopped run is over, is not a failure, and says why when the platform do
 
   const [tree] = sampleTrees().slice(1);
   assert.ok(tree);
-  const trees = [{ ...tree, runs: tree.runs.map((r) => (r.id === "r2b" ? { ...r, status: "stopped" as const } : r)) }];
-  const out = html(<ActivityPanel trees={trees} selected={null} onSelect={() => {}} onClose={() => {}} />);
-  assert.doesNotMatch(out, /data-testid="activity-running"/, "a stopped run does not count as running");
+  const trees = [
+    {
+      ...tree,
+      runs: tree.runs.map((r) => (r.id === "r2b" ? { ...r, status: "stopped" as const } : r)),
+    },
+  ];
+  const out = html(
+    <ActivityPanel trees={trees} selected={null} onSelect={() => {}} onClose={() => {}} />,
+  );
+  assert.doesNotMatch(
+    out,
+    /data-testid="activity-running"/,
+    "a stopped run does not count as running",
+  );
   assert.match(out, /data-run="r2b"[^>]*data-status="stopped"/);
 });
 
-const panel = (data: Parameters<typeof LimitsPanel>[0]["data"], over: Partial<Parameters<typeof LimitsPanel>[0]> = {}) =>
-  html(<LimitsPanel data={data} onAnalytics={() => {}} onRaise={() => {}} {...over} />);
+const panel = (
+  data: Parameters<typeof LimitsPanel>[0]["data"],
+  over: Partial<Parameters<typeof LimitsPanel>[0]> = {},
+) => html(<LimitsPanel data={data} onAnalytics={() => {}} onRaise={() => {}} {...over} />);
 
 test("limits: the fullest limit is the one that binds, and each scope has its words", () => {
   const b = binding(sessionBound().limits);
@@ -1253,23 +1849,44 @@ test("limits: the fullest limit is the one that binds, and each scope has its wo
 
 test("limits: usage by agent and by run, largest first, and one run's share of it", () => {
   const { by_run } = sessionBound();
-  assert.deepEqual(byAgent(by_run, "spend").map((a) => [a.agent, a.runs]), [["releaser", 1], ["lead", 2], ["oncall", 1], ["helper", 1]]);
+  assert.deepEqual(
+    byAgent(by_run, "spend").map((a) => [a.agent, a.runs]),
+    [
+      ["releaser", 1],
+      ["lead", 2],
+      ["oncall", 1],
+      ["helper", 1],
+    ],
+  );
   assert.equal(byAgent(by_run, "spend")[1]?.used, 670_000);
-  assert.deepEqual(byRun(by_run, "spend").map((r) => r.run), ["r2a", "r2", "r2b", "r3", "r2a1"]);
+  assert.deepEqual(
+    byRun(by_run, "spend").map((r) => r.run),
+    ["r2a", "r2", "r2b", "r3", "r2a1"],
+  );
   assert.deepEqual(byAgent(by_run, "storage"), [], "a measure nothing used has no rows");
-  assert.deepEqual(forRun(sessionBound(), "r2a").by_run.map((r) => r.run), ["r2a", "r2a1"], "a run and the runs under it");
+  assert.deepEqual(
+    forRun(sessionBound(), "r2a").by_run.map((r) => r.run),
+    ["r2a", "r2a1"],
+    "a run and the runs under it",
+  );
 });
 
 test("LimitsPanel: a session limit binds, and says so", () => {
   const out = panel(sessionBound());
   assert.equal(attr(out, "data-binding"), "session:spend");
   assert.equal(out.match(/data-testid="limit-row"/g)?.length, 3);
-  assert.ok(out.indexOf('data-measure="spend"') < out.indexOf('data-measure="concurrent"'), "fullest first");
+  assert.ok(
+    out.indexOf('data-measure="spend"') < out.indexOf('data-measure="concurrent"'),
+    "fullest first",
+  );
   assert.match(out, /Session limit, spend/);
   assert.match(out, /Project Launch, runs/);
   assert.match(out, /Workspace limit, runs at once/);
   assert.match(out, /\$2\.25 of \$3\.00, 75%\. Under limit\./);
-  assert.match(out, /Session limit on spend is the fullest, so it is the one that stops things first\./);
+  assert.match(
+    out,
+    /Session limit on spend is the fullest, so it is the one that stops things first\./,
+  );
   assert.match(out, /data-testid="limits-raise"/, "this reader may raise it");
   assert.match(out, />Raise Limit</);
 });
@@ -1329,12 +1946,29 @@ test("SessionGauge: the bottom edge follows the binding limit, and without one i
 });
 
 test("Activity: a selected run shows the limits it draws on, with only its own runs", () => {
-  const out = html(<ActivityPanel trees={sampleTrees()} selected="r2a" limits={sessionBound()} onSelect={() => {}} onClose={() => {}} />);
+  const out = html(
+    <ActivityPanel
+      trees={sampleTrees()}
+      selected="r2a"
+      limits={sessionBound()}
+      onSelect={() => {}}
+      onClose={() => {}}
+    />,
+  );
   assert.match(out, /data-testid="activity-limits"/);
   assert.match(out, /Limits it draws on/);
   const within = out.slice(out.indexOf('data-testid="activity-limits"'));
-  assert.equal(within.slice(0, within.indexOf("</details>")).match(/data-testid="limits-agent"/g)?.length, 2, "releaser and the helper it called");
-  assert.doesNotMatch(html(<ActivityPanel trees={sampleTrees()} selected="r2a" onSelect={() => {}} onClose={() => {}} />), /activity-limits/);
+  assert.equal(
+    within.slice(0, within.indexOf("</details>")).match(/data-testid="limits-agent"/g)?.length,
+    2,
+    "releaser and the helper it called",
+  );
+  assert.doesNotMatch(
+    html(
+      <ActivityPanel trees={sampleTrees()} selected="r2a" onSelect={() => {}} onClose={() => {}} />,
+    ),
+    /activity-limits/,
+  );
 });
 
 test("every custom property the console reads is one it defines", () => {
@@ -1343,14 +1977,26 @@ test("every custom property the console reads is one it defines", () => {
   const sources = readdirSync(dir).filter((f) => /\.(tsx|ts)$/.test(f) && !f.includes(".test."));
   const code = sources.map((f) => readFileSync(new URL(f, dir), "utf8")).join("\n");
   // Defined in the stylesheet, or set inline on an element as a custom property.
-  const defined = new Set([...css.matchAll(/(--[a-z][a-z0-9-]*)\s*:/g), ...code.matchAll(/"(--[a-z][a-z0-9-]*)"\s*:/g)].map((m) => m[1]));
-  const read = new Set([...code.matchAll(/var\((--[a-z][a-z0-9-]*)/g), ...css.matchAll(/var\((--[a-z][a-z0-9-]*)/g)].map((m) => m[1]));
+  const defined = new Set(
+    [
+      ...css.matchAll(/(--[a-z][a-z0-9-]*)\s*:/g),
+      ...code.matchAll(/"(--[a-z][a-z0-9-]*)"\s*:/g),
+    ].map((m) => m[1]),
+  );
+  const read = new Set(
+    [
+      ...code.matchAll(/var\((--[a-z][a-z0-9-]*)/g),
+      ...css.matchAll(/var\((--[a-z][a-z0-9-]*)/g),
+    ].map((m) => m[1]),
+  );
   // humagen owns these: its theme defines the --aui-* tokens and Tailwind the --tw-* ones.
-  const missing = [...read].filter((name) => name && !defined.has(name) && !/^--(aui|tw|color|radius|text|font|shadow)-/.test(name));
+  const missing = [...read].filter(
+    (name) =>
+      name && !defined.has(name) && !/^--(aui|tw|color|radius|text|font|shadow)-/.test(name),
+  );
   assert.deepEqual(missing, [], "read but never defined");
   assert.doesNotMatch(code, /\boap-/, "the old prefix is gone");
 });
-
 
 test("Activity preserves a helper's constructed examples and resolved input", () => {
   const trees = sampleTrees();
@@ -1371,7 +2017,9 @@ test("Activity preserves a helper's constructed examples and resolved input", ()
       { role: "user", text: "Frozen artifact contents" },
     ],
   };
-  const out = html(<ActivityPanel trees={trees} selected="r2a" onSelect={() => {}} onClose={() => {}} />);
+  const out = html(
+    <ActivityPanel trees={trees} selected="r2a" onSelect={() => {}} onClose={() => {}} />,
+  );
   assert.match(out, /Return format: summary/);
   assert.match(out, /Example response/);
   assert.match(out, /Example answer/);
@@ -1387,18 +2035,38 @@ test("a page's actions shrink to its column and wrap there, so none runs off a p
     </>
   );
   // The wrapper's classes, for the page header and for a section of the page.
-  const wrapper = (markup: string) => markup.match(/<div class="([^"]*)"><button type="button">Mute Project/)?.[1] ?? "";
-  for (const markup of [html(<Page title="Globex" actions={actions}>{null}</Page>), html(<Section title="Scheduled" actions={actions}>{null}</Section>)]) {
+  const wrapper = (markup: string) =>
+    markup.match(/<div class="([^"]*)"><button type="button">Mute Project/)?.[1] ?? "";
+  for (const markup of [
+    html(
+      <Page title="Globex" actions={actions}>
+        {null}
+      </Page>,
+    ),
+    html(
+      <Section title="Scheduled" actions={actions}>
+        {null}
+      </Section>,
+    ),
+  ]) {
     const classes = wrapper(markup).split(/\s+/);
     assert.ok(classes.includes("flex-wrap"), "they wrap onto another line");
-    assert.ok(classes.includes("min-w-0") && classes.includes("max-w-full"), "they may be narrower than all of them in a row");
+    assert.ok(
+      classes.includes("min-w-0") && classes.includes("max-w-full"),
+      "they may be narrower than all of them in a row",
+    );
     assert.ok(!classes.includes("shrink-0"), "a wrapper that may not shrink never wraps");
   }
 });
 
 test("a page's header shows two actions as buttons, and with more, one primary and a More menu", () => {
   const noop = () => {};
-  const two = html(<PageActions primary={{ label: "Run Now", onSelect: noop }} actions={[{ label: "Edit", onSelect: noop }]} />);
+  const two = html(
+    <PageActions
+      primary={{ label: "Run Now", onSelect: noop }}
+      actions={[{ label: "Edit", onSelect: noop }]}
+    />,
+  );
   assert.match(two, />Edit<\/button>/);
   assert.doesNotMatch(two, /aria-haspopup="menu"/);
   const many = html(
@@ -1423,18 +2091,27 @@ test("what floats above the page is opaque, so nothing under a menu shows throug
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
   // Each rule's selector, without the comment before it.
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-    .map(([, selector = "", body = ""]) => [selector.split("*/").at(-1)?.trim() ?? "", body] as const)
+    .map(
+      ([, selector = "", body = ""]) => [selector.split("*/").at(-1)?.trim() ?? "", body] as const,
+    )
     .filter(([selector]) => /\.humagen-glass-pop\b/.test(selector));
   assert.ok(rules.length > 0, "the floating surface was found");
   const own = rules.find(([selector]) => selector === ".humagen-glass-pop")?.[1] ?? "";
-  assert.match(own, /background:\s*var\(--aui-pop\)/, "the theme's popover surface, which is opaque");
+  assert.match(
+    own,
+    /background:\s*var\(--aui-pop\)/,
+    "the theme's popover surface, which is opaque",
+  );
   for (const [selector, body] of rules) {
     assert.doesNotMatch(body, /backdrop-filter/, `no blur is relied on in ${selector}`);
-    assert.doesNotMatch(body, /background:[^;]*\/\s*\d+%/, `no see-through background in ${selector}`);
+    assert.doesNotMatch(
+      body,
+      /background:[^;]*\/\s*\d+%/,
+      `no see-through background in ${selector}`,
+    );
   }
   assert.doesNotMatch(css, /--humagen-glass-strong/, "the see-through surface is gone");
 });
-
 
 test("agents shown together are told apart by color: humagen's own and the seeded agents each take a hue of their own", () => {
   const builtin = ["humagen-analyst", "humagen-builder", "humagen-writer"];
@@ -1445,11 +2122,12 @@ test("agents shown together are told apart by color: humagen's own and the seede
   for (const h of hues) assert.equal(h % (360 / AGENT_HUES), 0, String(h));
   // humagen's own agents sit side by side as Home's suggestions, so they are far apart.
   const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
-  for (const [i, a] of builtin.entries()) for (const b of builtin.slice(i + 1)) assert.ok(apart(hueOf(a), hueOf(b)) >= 90, `${a} and ${b}`);
+  for (const [i, a] of builtin.entries())
+    for (const b of builtin.slice(i + 1))
+      assert.ok(apart(hueOf(a), hueOf(b)) >= 90, `${a} and ${b}`);
   // A name keeps its hue.
   assert.equal(hueOf("helper"), hueOf("helper"));
 });
-
 
 test("server hue reservations color marks, tints and strokes consistently", () => {
   assert.doesNotMatch(html(<AgentMark name="never-loaded" />), /aui-orb|--aui-accent-h/);
@@ -1462,30 +2140,61 @@ test("server hue reservations color marks, tints and strokes consistently", () =
     assert.notEqual(hueOf("custom"), hueOf("second"));
     setAgentHues({ custom: 15, second: 45, third: 75 });
     assert.equal(hueOf("custom"), 15);
-  } finally { setAgentHues({ custom: hueOf("custom"), second: hueOf("second") }); }
+  } finally {
+    setAgentHues({ custom: hueOf("custom"), second: hueOf("second") });
+  }
 });
 
 test("operation notices use canonical links on every mailbox host", () => {
   for (const kind of ["assignment", "handoff"] as const) {
     const id = "review/a b";
     const message = fromServer({
-      id: `notice-${kind}`, kind: "operation", subject: "Work needs review",
-      from: { kind: "agent", name: "oncall" }, at: "2026-10-25T12:00:00Z",
-      updated_at: "2026-10-25T12:00:00Z", severity: "warning", state: "open", unread: true,
+      id: `notice-${kind}`,
+      kind: "operation",
+      subject: "Work needs review",
+      from: { kind: "agent", name: "oncall" },
+      at: "2026-10-25T12:00:00Z",
+      updated_at: "2026-10-25T12:00:00Z",
+      severity: "warning",
+      state: "open",
+      unread: true,
       source: { agent: "oncall" },
-      parts: [{ id: "p1", type: "operation", state: "open", actions: ["acknowledge"], operation: { kind, id, reason: "Review this work" } }],
+      parts: [
+        {
+          id: "p1",
+          type: "operation",
+          state: "open",
+          actions: ["acknowledge"],
+          operation: { kind, id, reason: "Review this work" },
+        },
+      ],
     });
     const out = mailbox(message.id, [message]);
     const route = kind === "assignment" ? "/assignments/" : "/agent-network/handoffs/";
-    assert.ok(out.includes(`href="${route}${encodeURIComponent(id)}"`), `${kind} must navigate without an inbox mutation dispatcher`);
+    assert.ok(
+      out.includes(`href="${route}${encodeURIComponent(id)}"`),
+      `${kind} must navigate without an inbox mutation dispatcher`,
+    );
   }
 });
 
-
-test("credential failures give an actionable answer and reference without exposing configuration paths",()=>{
- const turn:Turn={...emptyTurn("r-credential",{name:"helper"}),status:"failed",failure:{kind:"internal",message:"anchor: max attempts: resolve op://Private/provider/api_key: credential unavailable",reference:"r-credential"}};
- const markup=html(<WebSurface><AgentMessage turn={turn}/></WebSurface>);
- assert.match(markup,/The model credential is unavailable/);
- assert.match(markup,/r-credential/);
- assert.doesNotMatch(markup,/op:\/\/|max attempts|Private\/provider/);
+test("credential failures give an actionable answer and reference without exposing configuration paths", () => {
+  const turn: Turn = {
+    ...emptyTurn("r-credential", { name: "helper" }),
+    status: "failed",
+    failure: {
+      kind: "internal",
+      message:
+        "anchor: max attempts: resolve op://Private/provider/api_key: credential unavailable",
+      reference: "r-credential",
+    },
+  };
+  const markup = html(
+    <WebSurface>
+      <AgentMessage turn={turn} />
+    </WebSurface>,
+  );
+  assert.match(markup, /The model credential is unavailable/);
+  assert.match(markup, /r-credential/);
+  assert.doesNotMatch(markup, /op:\/\/|max attempts|Private\/provider/);
 });

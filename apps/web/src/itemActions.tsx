@@ -10,7 +10,8 @@ import type { Item } from "./copyas.ts";
  * its name and its answer.
  */
 export function itemOf(run: Run, item: TurnItem): Item | null {
-  if (item.kind === "answer") return { kind: "answer", run: { ...run, answer: item.turn.text || run.answer } };
+  if (item.kind === "answer")
+    return { kind: "answer", run: { ...run, answer: item.turn.text || run.answer } };
   const task = item.task;
   if (!task) return null;
   const failed = task.status === "error";
@@ -21,7 +22,11 @@ export function itemOf(run: Run, item: TurnItem): Item | null {
       name: task.tool ?? task.title,
       run: run.id,
       agent: run.agent,
-      ...(failed ? { error: task.output || "The call failed without saying why." } : ended ? { result: task.output ?? "" } : {}),
+      ...(failed
+        ? { error: task.output || "The call failed without saying why." }
+        : ended
+          ? { result: task.output ?? "" }
+          : {}),
     },
   };
 }
@@ -41,6 +46,14 @@ export function itemActions(run: Run): ItemActions {
     const found = itemOf(run, item);
     if (!found) return null;
     // The answer's toolbar starts at the left edge, so its menu opens rightward. Rows have theirs at the right edge.
-    return <CopyAs compact align={item.kind === "answer" ? "left" : "right"} label={item.kind === "answer" ? "Copy answer as" : "Copy as"} testId="item-copy" item={found} />;
+    return (
+      <CopyAs
+        compact
+        align={item.kind === "answer" ? "left" : "right"}
+        label={item.kind === "answer" ? "Copy answer as" : "Copy as"}
+        testId="item-copy"
+        item={found}
+      />
+    );
   };
 }

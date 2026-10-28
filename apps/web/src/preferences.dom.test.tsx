@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { act, cleanup, fireEvent, render, renderHook, screen, within, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { Me, Preferences, ProjectView, ThreadSummary } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs, usePreferences } from "./preferences.ts";
-import { Sidebar } from "./Sidebar.tsx";
 import type { Route } from "./route.ts";
+import { Sidebar } from "./Sidebar.tsx";
 
 // The loader imports every DOM file into one process, where a top-level hook
 // runs after other files' tests too, so it acts only on what this file set up.
@@ -17,16 +26,28 @@ afterEach(() => {
   net = undefined;
 });
 
-const saved: Preferences = { ...unreadPrefs, display_name: "Ada", theme: "dark", accent: "green", pinned: ["t0"], muted: ["Initech"] };
+const saved: Preferences = {
+  ...unreadPrefs,
+  display_name: "Ada",
+  theme: "dark",
+  accent: "green",
+  pinned: ["t0"],
+  muted: ["Initech"],
+};
 // The server saves what it is sent over what it has.
 const save = (body: unknown) => ({ ...saved, ...(body as Partial<Preferences>) });
-const puts = () => net?.seen.filter((r) => r.method === "PUT" && r.path === "/api/preferences") ?? [];
-const reads = () => net?.seen.filter((r) => r.method === "GET" && r.path === "/api/preferences").length ?? 0;
+const puts = () =>
+  net?.seen.filter((r) => r.method === "PUT" && r.path === "/api/preferences") ?? [];
+const reads = () =>
+  net?.seen.filter((r) => r.method === "GET" && r.path === "/api/preferences").length ?? 0;
 
 test("a pin made while the saved preferences are read is made once they are, over the saved name, theme and accent", async () => {
   let answer = () => {};
   const answered = new Promise<void>((r) => (answer = r));
-  net = stubFetch({ "GET /api/preferences": () => answered.then(() => saved), "PUT /api/preferences": save });
+  net = stubFetch({
+    "GET /api/preferences": () => answered.then(() => saved),
+    "PUT /api/preferences": save,
+  });
   const { result } = renderHook(() => usePreferences());
   assert.equal(result.current.prefsRead, "reading");
   let pinned = Promise.resolve();
@@ -102,7 +123,10 @@ test("a pin that cannot be saved goes back, and the sidebar says so beside the t
   await choose("Quarterly report", "Pin");
   const note = await screen.findByText("Could not pin. Try again.");
   // The row sits over the section's label, which sticks above the first row, so the note is not hidden under it.
-  assert.ok(note.closest("li")?.className.split(" ").includes("z-20"), "the row saying it is not raised");
+  assert.ok(
+    note.closest("li")?.className.split(" ").includes("z-20"),
+    "the row saying it is not raised",
+  );
   // PUT /api/preferences is not stubbed, so the save failed and the task is not pinned.
   assert.equal(puts().length, 1);
   assert.ok(!pinnedRegion(), "Pinned is still shown");
@@ -153,7 +177,11 @@ test("a rapid pin and unpin show the latest intent while their writes finish in 
   assert.equal(answers.length, 1, "the newer write waits for the earlier acknowledgement");
   await act(async () => answers[0]?.({ ...saved, pinned: ["t1", "t0"] }));
   await waitFor(() => assert.equal(answers.length, 2));
-  assert.deepEqual(result.current.prefs.pinned, ["t0"], "an earlier acknowledgement cannot flash the pin back");
+  assert.deepEqual(
+    result.current.prefs.pinned,
+    ["t0"],
+    "an earlier acknowledgement cannot flash the pin back",
+  );
   assert.deepEqual((puts()[1]?.body as Partial<Preferences>).pinned, ["t0"]);
   await act(async () => answers[1]?.({ ...saved, pinned: ["t0"] }));
   await act(() => Promise.all([pinned, unpinned]));
@@ -164,7 +192,8 @@ test("a refused pin rolls back only itself while the next pin is preserved and s
   const answers: ((value: Preferences | Response) => void)[] = [];
   net = stubFetch({
     "GET /api/preferences": () => saved,
-    "PUT /api/preferences": () => new Promise<Preferences | Response>((resolve) => answers.push(resolve)),
+    "PUT /api/preferences": () =>
+      new Promise<Preferences | Response>((resolve) => answers.push(resolve)),
   });
   const { result } = renderHook(() => usePreferences());
   await waitFor(() => assert.equal(result.current.prefsRead, "read"));
@@ -183,7 +212,7 @@ test("a refused pin rolls back only itself while the next pin is preserved and s
   assert.deepEqual((puts()[1]?.body as Partial<Preferences>).pinned, ["t2", "t0"]);
   await act(async () => answers[1]?.({ ...saved, pinned: ["t2", "t0"] }));
   await act(() => pinned);
-  assert.ok(await rejected instanceof Error);
+  assert.ok((await rejected) instanceof Error);
   assert.deepEqual(result.current.prefs.pinned, ["t2", "t0"]);
 });
 
@@ -198,8 +227,18 @@ test("pin and unpin move one active conversation and retain focus on its action"
   render(<Pins route={{ page: "conversation", id: "t1" }} onGo={(route) => visited.push(route)} />);
   await choose("Quarterly report", "Pin");
   const pinned = await screen.findByRole("region", { name: "Pinned" });
-  await waitFor(() => assert.equal(document.activeElement === within(pinned).getByRole("button", { name: "Manage Quarterly report" }), true));
-  assert.ok(within(pinned).getByRole("button", { name: /^Quarterly report/ }).getAttribute("aria-current") === "page");
+  await waitFor(() =>
+    assert.equal(
+      document.activeElement ===
+        within(pinned).getByRole("button", { name: "Manage Quarterly report" }),
+      true,
+    ),
+  );
+  assert.ok(
+    within(pinned)
+      .getByRole("button", { name: /^Quarterly report/ })
+      .getAttribute("aria-current") === "page",
+  );
   assert.equal(screen.getAllByRole("button", { name: /^Quarterly report/ }).length, 1);
   assert.equal(visited.length, 0, "pinning does not navigate away from the active conversation");
   await choose("Quarterly report", "Unpin");
@@ -208,8 +247,14 @@ test("pin and unpin move one active conversation and retain focus on its action"
   await waitFor(() => assert.equal(document.activeElement === restored, true));
   assert.equal(screen.queryByRole("region", { name: "Pinned" }), null);
   assert.equal(screen.getAllByRole("button", { name: /^Quarterly report/ }).length, 1);
-  assert.equal(screen.getByRole("button", { name: /^Quarterly report/ }).getAttribute("aria-current"), "page");
-  assert.deepEqual(puts().map((request) => (request.body as Partial<Preferences>).pinned), [["t1", "t0"], ["t0"]]);
+  assert.equal(
+    screen.getByRole("button", { name: /^Quarterly report/ }).getAttribute("aria-current"),
+    "page",
+  );
+  assert.deepEqual(
+    puts().map((request) => (request.body as Partial<Preferences>).pinned),
+    [["t1", "t0"], ["t0"]],
+  );
 });
 
 test("unpinning the active conversation keeps it visible when it is older than the recent page", async () => {
@@ -252,8 +297,11 @@ test("project and conversation pins persist independently through unpinning and 
   let stored = { ...saved, pinned: [] as string[], pinned_projects: [] as string[] };
   net = stubFetch({
     "GET /api/preferences": () => stored,
-    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<typeof stored> }),
-    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+    "PUT /api/preferences": (body) => (stored = { ...stored, ...(body as Partial<typeof stored>) }),
+    "GET /api/threads": () => ({
+      threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }],
+      next: null,
+    }),
   });
   render(<Pins />);
   fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
@@ -265,7 +313,10 @@ test("project and conversation pins persist independently through unpinning and 
   cleanup();
   render(<Pins />);
   const pinned = within(await screen.findByRole("region", { name: "Pinned" }));
-  assert.equal(pinned.getByRole("link", { name: "Launch" }).getAttribute("href"), "/projects/Launch");
+  assert.equal(
+    pinned.getByRole("link", { name: "Launch" }).getAttribute("href"),
+    "/projects/Launch",
+  );
   fireEvent.click(pinned.getByRole("button", { name: "Unpin project Launch" }));
   await waitFor(() => assert.deepEqual(stored.pinned_projects, []));
   assert.deepEqual(stored.pinned, ["t1"]);
@@ -277,8 +328,11 @@ test("keyboard project pinning moves focus to its shortcut and unpinning returns
   let stored: Preferences = { ...saved, pinned: [], pinned_projects: [] };
   net = stubFetch({
     "GET /api/preferences": () => stored,
-    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<Preferences> }),
-    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+    "PUT /api/preferences": (body) => (stored = { ...stored, ...(body as Partial<Preferences>) }),
+    "GET /api/threads": () => ({
+      threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }],
+      next: null,
+    }),
   });
   render(<Pins />);
   const pin = await screen.findByRole("button", { name: "Pin project Launch" });
@@ -300,7 +354,7 @@ test("keyboard unpinning a project without recent conversations returns focus to
   let stored: Preferences = { ...saved, pinned: [], pinned_projects: ["Launch"] };
   net = stubFetch({
     "GET /api/preferences": () => stored,
-    "PUT /api/preferences": body => (stored = { ...stored, ...body as Partial<Preferences> }),
+    "PUT /api/preferences": (body) => (stored = { ...stored, ...(body as Partial<Preferences>) }),
     "GET /api/threads": () => ({ threads: [], next: null }),
   });
   render(<Pins />);
@@ -318,7 +372,10 @@ test("keyboard unpinning a project without recent conversations returns focus to
 test("a refused project pin rolls back and says so beside the project", async () => {
   net = stubFetch({
     "GET /api/preferences": () => saved,
-    "GET /api/threads": () => ({ threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }], next: null }),
+    "GET /api/threads": () => ({
+      threads: [{ ...task("t1", "Quarterly report"), project: "Launch" }],
+      next: null,
+    }),
   });
   render(<Pins />);
   fireEvent.click(await screen.findByRole("button", { name: "Pin project Launch" }));
@@ -329,14 +386,16 @@ test("a refused project pin rolls back and says so beside the project", async ()
 
 test("overlapping project and conversation saves keep both lists", async () => {
   let release = () => {};
-  const first = new Promise<void>(resolve => { release = resolve; });
+  const first = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   let stored: Preferences = { ...saved, pinned_projects: [] };
   let writes = 0;
   net = stubFetch({
     "GET /api/preferences": () => stored,
-    "PUT /api/preferences": async body => {
+    "PUT /api/preferences": async (body) => {
       if (++writes === 1) await first;
-      stored = { ...stored, ...body as Partial<Preferences> };
+      stored = { ...stored, ...(body as Partial<Preferences>) };
       return stored;
     },
   });
@@ -356,7 +415,11 @@ test("overlapping project and conversation saves keep both lists", async () => {
 });
 
 test("conversation rows identify multiple agents and people, with the full names accessible", async () => {
-  const conversation = { ...task("t1", "Launch checklist"), agents: ["lead", "helper", "lead"], people: ["ada", "mira", "jon", "sam", "mira"] };
+  const conversation = {
+    ...task("t1", "Launch checklist"),
+    agents: ["lead", "helper", "lead"],
+    people: ["ada", "mira", "jon", "sam", "mira"],
+  };
   net = stubFetch({
     "GET /api/preferences": () => saved,
     "GET /api/threads": () => ({ threads: [conversation], next: null }),
@@ -366,17 +429,24 @@ test("conversation rows identify multiple agents and people, with the full names
   assert.equal(agents.textContent, "lead+1");
   const people = screen.getByRole("group", { name: "People: Ada, mira, jon, sam" });
   assert.ok(people.textContent?.includes("4 people"));
-  assert.equal(people.querySelectorAll("[aria-hidden] > span").length, 3, "only three avatars fit in a compact row");
+  assert.equal(
+    people.querySelectorAll("[aria-hidden] > span").length,
+    3,
+    "only three avatars fit in a compact row",
+  );
   assert.ok(agents.closest("button")?.textContent?.includes("Launch checklist"));
 });
 
 test("people-only and agent-only conversations show only their actual participants", async () => {
   net = stubFetch({
     "GET /api/preferences": () => saved,
-    "GET /api/threads": () => ({ threads: [
-      { ...task("people", "Team discussion"), agents: [] },
-      { ...task("agents", "Agent work"), people: [] },
-    ], next: null }),
+    "GET /api/threads": () => ({
+      threads: [
+        { ...task("people", "Team discussion"), agents: [] },
+        { ...task("agents", "Agent work"), people: [] },
+      ],
+      next: null,
+    }),
   });
   render(<Pins />);
   const person = await screen.findByRole("group", { name: "People: Ada" });
@@ -389,27 +459,41 @@ test("people-only and agent-only conversations show only their actual participan
 test("Archive hides a conversation at once, and Delete asks once more before queueing it for an admin", async () => {
   net = stubFetch({
     "GET /api/preferences": () => saved,
-    "GET /api/threads": () => ({ threads: [task("t1", "Quarterly report"), task("t2", "Old draft")], next: null }),
+    "GET /api/threads": () => ({
+      threads: [task("t1", "Quarterly report"), task("t2", "Old draft")],
+      next: null,
+    }),
     "POST /api/threads/t1/archive": () => ({}),
     "POST /api/threads/t2/archive": () => ({}),
   });
   render(<Pins />);
   fireEvent.click(await manage("Quarterly report"));
   fireEvent.click(await screen.findByRole("menuitem", { name: /^Archive/ }));
-  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /^Quarterly report/ }), "the archived row is still listed"));
+  await waitFor(() =>
+    assert.ok(
+      !screen.queryByRole("button", { name: /^Quarterly report/ }),
+      "the archived row is still listed",
+    ),
+  );
   assert.ok(screen.getByText(/Archived/));
 
   fireEvent.click(await manage("Old draft"));
   fireEvent.click(await screen.findByRole("menuitem", { name: /^Delete/ }));
   assert.ok(screen.getByText(/removed once an admin approves/));
-  assert.ok(screen.queryByRole("button", { name: /^Old draft/ }), "nothing happens before the second Delete");
+  assert.ok(
+    screen.queryByRole("button", { name: /^Old draft/ }),
+    "nothing happens before the second Delete",
+  );
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
   await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /^Old draft/ })));
   const archives = net.seen.filter((r) => r.method === "POST" && r.path.endsWith("/archive"));
-  assert.deepEqual(archives.map((r) => [r.path, (r.body as { delete_now: boolean }).delete_now]), [
-    ["/api/threads/t1/archive", false],
-    ["/api/threads/t2/archive", true],
-  ]);
+  assert.deepEqual(
+    archives.map((r) => [r.path, (r.body as { delete_now: boolean }).delete_now]),
+    [
+      ["/api/threads/t1/archive", false],
+      ["/api/threads/t2/archive", true],
+    ],
+  );
 });
 
 const me: Me = {
@@ -418,7 +502,15 @@ const me: Me = {
 };
 
 // The sidebar with its pins kept as the console keeps them.
-function Pins({ threads = [], route = { page: "new" }, onGo = () => {} }: { threads?: ThreadSummary[]; route?: Route; onGo?: (route: Route) => void }) {
+function Pins({
+  threads = [],
+  route = { page: "new" },
+  onGo = () => {},
+}: {
+  threads?: ThreadSummary[];
+  route?: Route;
+  onGo?: (route: Route) => void;
+}) {
   const { prefs, pin, pinProject } = usePreferences();
   const noop = () => {};
   return (

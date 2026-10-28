@@ -12,7 +12,10 @@ import { bytes, dollars } from "./format.ts";
 export type Measure = "spend" | "runs" | "concurrent" | "storage" | "tokens";
 
 /** Where a limit comes from. A run scope is a parent run: what a child draws on. */
-export type LimitScope = { kind: "session" | "run" | "project" | "agent" | "tenant"; name?: string };
+export type LimitScope = {
+  kind: "session" | "run" | "project" | "agent" | "tenant";
+  name?: string;
+};
 
 /** One limit in force, for one measure. Spend is micro-USD, storage is bytes, the rest are counts. */
 export interface Limit {
@@ -49,7 +52,10 @@ export const share = (l: Limit) => (l.limit > 0 ? l.used / l.limit : 0);
 
 /** The limit that will stop things first: the fullest one. Null when nothing governs. */
 export function binding(limits: Limit[]): Limit | null {
-  return limits.reduce<Limit | null>((worst, l) => (l.limit > 0 && (!worst || share(l) > share(worst)) ? l : worst), null);
+  return limits.reduce<Limit | null>(
+    (worst, l) => (l.limit > 0 && (!worst || share(l) > share(worst)) ? l : worst),
+    null,
+  );
 }
 
 /** Whose limit it is, in a few words: "Session limit", "From lead", "Project Launch". */
@@ -96,7 +102,10 @@ export function amount(measure: Measure, value: number): string {
 }
 
 /** What was used of a measure, by agent, largest first. Agents that used none are left out. */
-export function byAgent(runs: RunDraw[], measure: Measure): { agent: string; used: number; runs: number }[] {
+export function byAgent(
+  runs: RunDraw[],
+  measure: Measure,
+): { agent: string; used: number; runs: number }[] {
   const by = new Map<string, { agent: string; used: number; runs: number }>();
   for (const r of runs) {
     const used = r.used[measure] ?? 0;
@@ -109,7 +118,9 @@ export function byAgent(runs: RunDraw[], measure: Measure): { agent: string; use
 
 /** The runs that used some of a measure, largest first. */
 export function byRun(runs: RunDraw[], measure: Measure): RunDraw[] {
-  return runs.filter((r) => (r.used[measure] ?? 0) > 0).sort((a, b) => (b.used[measure] ?? 0) - (a.used[measure] ?? 0));
+  return runs
+    .filter((r) => (r.used[measure] ?? 0) > 0)
+    .sort((a, b) => (b.used[measure] ?? 0) - (a.used[measure] ?? 0));
 }
 
 /** The limits one run draws on, with only that run and the runs under it in the breakdown. */

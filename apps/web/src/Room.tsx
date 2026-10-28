@@ -2,9 +2,16 @@ import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
-import { AgentMessage, MessageActionRow, messageTextActionButton, Thread as ThreadList, useQueue } from "@humagen/web";
+import {
+  AgentMessage,
+  MessageActionRow,
+  messageTextActionButton,
+  Thread as ThreadList,
+  useQueue,
+} from "@humagen/web";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { actedFor, citationOf, turnOf, type Run } from "./adapter.ts";
+import { Activity } from "./Activity.tsx";
+import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
   api,
@@ -14,36 +21,53 @@ import {
   type Revision,
   type ThreadAnnouncement,
   type ThreadAnswers,
+  type ThreadAsk,
+  type ThreadMention,
   type ThreadMessage,
   type ThreadPage,
   type ThreadPosted,
   type ThreadSummary,
-  type ThreadAsk,
-  type ThreadMention,
   type ThreadTurn,
 } from "./api.ts";
 import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { answersLine } from "./availability.ts";
+import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
+import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { rememberSaid, saidFor } from "./conflicts.ts";
-import { Composer, type ComposerSeed } from "./Composer.tsx";
-import { OutcomeActions } from "./OutcomeActions.tsx";
-import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
-import { Activity } from "./Activity.tsx";
-import { href, type ConversationPanel, type ConversationView } from "./route.ts";
-import { itemActions } from "./itemActions.tsx";
-import { useRunTurn } from "./Runs.tsx";
-import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
-import { useThreadSelection } from "./selection.ts";
-import { ConversationForkPanels,type ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
-import { ShareDialog } from "./Share.tsx";
-import { mergeTurns } from "./turns.ts";
-import { AgentMark, AgentTint, Presence, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
-import { useRunStop } from "./RunStop.tsx";
-import { MessageTime } from "./MessageTime.tsx";
+import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
+import { MessageTime } from "./MessageTime.tsx";
+import { OutcomeActions } from "./OutcomeActions.tsx";
+import {
+  emptySelection,
+  PlusMenu,
+  placeholderFor,
+  type Selection,
+  SelectionChips,
+} from "./Plus.tsx";
+import { useRunStop } from "./RunStop.tsx";
+import { useRunTurn } from "./Runs.tsx";
+import { type ConversationPanel, type ConversationView, href } from "./route.ts";
+import { ShareDialog } from "./Share.tsx";
+import { useThreadSelection } from "./selection.ts";
+import { mergeTurns } from "./turns.ts";
+import {
+  AgentMark,
+  AgentTint,
+  ago,
+  button,
+  field,
+  isWorking,
+  Label,
+  Page,
+  Presence,
+  Problem,
+  primary,
+} from "./ui.tsx";
 
 /**
  * Conversations, channels and shared threads: where people and agents work
@@ -68,10 +92,15 @@ export function postsIn(projects: ProjectView[], name: string): boolean {
 }
 
 /** The title of a project, as a thread's meta line names it. */
-function projectTitle(projects: ProjectView[], name: string, workspace: string,personalProject?:string): string {
+function projectTitle(
+  projects: ProjectView[],
+  name: string,
+  workspace: string,
+  personalProject?: string,
+): string {
   if (name === "") return workspace || defaultCopy.projects.workspace;
   const p = projects.find((x) => x.name === name);
-  return p?.title || (name===personalProject?defaultCopy.projects.personalTitle:name);
+  return p?.title || (name === personalProject ? defaultCopy.projects.personalTitle : name);
 }
 
 /** A person's initial, in a circle: who posted, without a picture to fetch. */
@@ -118,7 +147,8 @@ function written(r: ThreadMention, text: string): string {
 export function postedLine(p: ThreadPosted): string {
   const parts: string[] = [];
   if (p.notified.length > 0) parts.push(words.notified(p.notified));
-  for (const r of p.refused) parts.push(words.refused(written(r, p.message?.text ?? ""), r.refused ?? ""));
+  for (const r of p.refused)
+    parts.push(words.refused(written(r, p.message?.text ?? ""), r.refused ?? ""));
   if (p.rule === "routed" && p.reason) parts.push(p.reason);
   return parts.join(" ");
 }
@@ -127,7 +157,11 @@ export function postedLine(p: ThreadPosted): string {
  * The topics someone answers for in a project, along its chain: the
  * project's, then each project's above it, then the workspace's.
  */
-export function topicsOf(projects: ProjectView[], root: ProjectView | null, name: string): string[] {
+export function topicsOf(
+  projects: ProjectView[],
+  root: ProjectView | null,
+  name: string,
+): string[] {
   const seen = new Set<string>();
   const add = (p: ProjectView | null | undefined) => {
     for (const e of p?.experts ?? []) for (const t of e.topics) seen.add(t);
@@ -188,7 +222,14 @@ function RoomComposer({
   return (
     <div className="flex flex-col gap-2">
       <Problem message={problem} />
-      <Composer placeholder={placeholder} queue={queue} autoFocus={autoFocus} seed={seed} tags={tags} plus={plus} />
+      <Composer
+        placeholder={placeholder}
+        queue={queue}
+        autoFocus={autoFocus}
+        seed={seed}
+        tags={tags}
+        plus={plus}
+      />
       {said && (
         <p role="status" className="px-3 text-aui-xs text-aui-muted">
           {said}
@@ -199,7 +240,17 @@ function RoomComposer({
 }
 
 /** A person's message: who posted it, when, and what it says. */
-function MessageView({ m, focused, onReply, actions }: { m: ThreadMessage; focused: boolean; onReply?: () => void; actions?:ReactNode }) {
+function MessageView({
+  m,
+  focused,
+  onReply,
+  actions,
+}: {
+  m: ThreadMessage;
+  focused: boolean;
+  onReply?: () => void;
+  actions?: ReactNode;
+}) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "center" });
@@ -218,10 +269,15 @@ function MessageView({ m, focused, onReply, actions }: { m: ThreadMessage; focus
           <MessageTime at={m.at} />
           {m.surface_id && <span>{words.fromSlack}</span>}
           {m.answers && <span>{words.answered}</span>}
-
         </p>
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{m.text}</p>
-        <MessageActionRow text={m.text} copyLabel={defaultCopy.conversation.copyMessage} onReply={onReply}>{actions}</MessageActionRow>
+        <MessageActionRow
+          text={m.text}
+          copyLabel={defaultCopy.conversation.copyMessage}
+          onReply={onReply}
+        >
+          {actions}
+        </MessageActionRow>
       </div>
     </article>
   );
@@ -317,32 +373,57 @@ function AnswerView({
   onAsk?: () => void;
   onReply?: () => void;
   onRedirect?: () => void;
-  actions?:ReactNode;
+  actions?: ReactNode;
 }) {
   const { run, control } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(run);
-  const drawn = useMemo(
-    () =>
-      {
-      const base = turn ?? turnOf(run);
-      return run.citations !== undefined ? {...base,citations:run.citations.map(citationOf)} : base;
-    },
-    [turn, run],
-  );
+  const drawn = useMemo(() => {
+    const base = turn ?? turnOf(run);
+    return run.citations !== undefined
+      ? { ...base, citations: run.citations.map(citationOf) }
+      : base;
+  }, [turn, run]);
   const shown = useMemo(() => {
     const asked = askedOf(drawn, ask);
-    return asked.failure ? { ...asked, failure: { ...asked.failure, retryNotOffered: retryInRoom(run, me) } } : asked;
+    return asked.failure
+      ? { ...asked, failure: { ...asked.failure, retryNotOffered: retryInRoom(run, me) } }
+      : asked;
   }, [drawn, run, me, ask]);
   return (
-    <article id={`turn-${run.id}`} className="flex flex-col gap-2" aria-label={`Answered by ${run.agent}`}>
+    <article
+      id={`turn-${run.id}`}
+      className="flex flex-col gap-2"
+      aria-label={`Answered by ${run.agent}`}
+    >
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
-        <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
+        <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
+          {run.text}
+        </p>
       )}
       {/* The answer names its agent; why it joined is said above it. */}
-      {(routed || run.picked) && <p className="pl-11 text-aui-xs text-aui-muted">{[routed, run.picked].filter(Boolean).join(". ")}</p>}
+      {(routed || run.picked) && (
+        <p className="pl-11 text-aui-xs text-aui-muted">
+          {[routed, run.picked].filter(Boolean).join(". ")}
+        </p>
+      )}
       <AgentTint name={run.agent}>
-        <AgentMessage actions={<>{control}{actions}</>} timestamp={<MessageTime at={run.created_at} />} turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} onAskAgent={onAsk} onReply={onReply} onRedirect={onRedirect} />
+        <AgentMessage
+          actions={
+            <>
+              {control}
+              {actions}
+            </>
+          }
+          timestamp={<MessageTime at={run.created_at} />}
+          turn={shown}
+          copy={copyFor(ask)}
+          itemActions={itemActions(run)}
+          capabilities={{ regenerate: false }}
+          onAskAgent={onAsk}
+          onReply={onReply}
+          onRedirect={onRedirect}
+        />
       </AgentTint>
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
@@ -373,7 +454,7 @@ export function ThreadRoom({
   workspaceName,
   canRun,
   artifactActions,
-  canLearn=false,
+  canLearn = false,
   forkActions,
   personalProject,
   focus,
@@ -400,10 +481,10 @@ export function ThreadRoom({
   root: ProjectView | null;
   workspaceName: string;
   canRun: boolean;
-  canLearn?:boolean;
-  artifactActions?: {knowledge:boolean;memory:boolean};
-  forkActions?:ConversationForkActions;
-  personalProject?:string;
+  canLearn?: boolean;
+  artifactActions?: { knowledge: boolean; memory: boolean };
+  forkActions?: ConversationForkActions;
+  personalProject?: string;
   /** A message to open at, as `?message=` names it. */
   focus?: string;
   /** Whether the Share dialog is open, as `/conversations/{id}/share` says. */
@@ -412,7 +493,7 @@ export function ThreadRoom({
   onSharing?: (open: boolean) => void;
   view?: ConversationView;
   onView?: (view: ConversationView) => void;
-  onOpenThread?: (id:string) => void;
+  onOpenThread?: (id: string) => void;
   onOpenChannel: (project: string, channel: string) => void;
   onChanged: () => void;
 }) {
@@ -425,9 +506,18 @@ export function ThreadRoom({
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
-  const shownView = onView ? view ?? {} : localView;
-  const openPanel = (panel?: ConversationPanel, selection: Omit<ConversationView, "panel"> = {}) => {
-    const next = { ...(panel==="activity"&&shownView.panel==="activity"?{filter:shownView.filter,showTools:shownView.showTools}:{}),...selection, panel };
+  const shownView = onView ? (view ?? {}) : localView;
+  const openPanel = (
+    panel?: ConversationPanel,
+    selection: Omit<ConversationView, "panel"> = {},
+  ) => {
+    const next = {
+      ...(panel === "activity" && shownView.panel === "activity"
+        ? { filter: shownView.filter, showTools: shownView.showTools }
+        : {}),
+      ...selection,
+      panel,
+    };
     if (onView) onView(next);
     else setLocalView(next);
   };
@@ -463,14 +553,24 @@ export function ThreadRoom({
   };
 
   const th = page.thread;
-  const tags = useCompletion(th.project, agents, homes, topicsOf(projects, root, th.project), me, handle);
+  const tags = useCompletion(
+    th.project,
+    agents,
+    homes,
+    topicsOf(projects, root, th.project),
+    me,
+    handle,
+  );
   // A thread names its starter as the platform names people elsewhere: by handle, which a subject holding an address is not.
   const started = th.created_by === me || (!!handle && th.created_by === handle);
   const posts = canRun && !th.read_only && postsIn(projects, th.project);
   // A private conversation is published from its header by its starter, or
   // an owner of its project, as the server holds them to it.
-  const owner = (th.project === "" ? root : projects.find((p) => p.name === th.project))?.access?.role === "owner";
-  const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing && (started || owner);
+  const owner =
+    (th.project === "" ? root : projects.find((p) => p.name === th.project))?.access?.role ===
+    "owner";
+  const shareable =
+    posts && th.visibility === "private" && !th.surface && !!onSharing && (started || owner);
   const hasRuns = turns.some((t) => t.run);
   // What the + menu selected for the conversation, shown at once and saved on the thread.
   const { selection, select } = useThreadSelection(id, th, {
@@ -484,13 +584,23 @@ export function ThreadRoom({
     },
     problem: setProblem,
   });
-  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? defaultCopy.chat.projectFromSlack : th.visibility === "shared" ? defaultCopy.chat.projectShared : !started && !owner ? defaultCopy.chat.projectStarter : undefined;
+  const fixedWhy = hasRuns
+    ? defaultCopy.threads.shareProjectFixed
+    : th.surface
+      ? defaultCopy.chat.projectFromSlack
+      : th.visibility === "shared"
+        ? defaultCopy.chat.projectShared
+        : !started && !owner
+          ? defaultCopy.chat.projectStarter
+          : undefined;
   // A run the conversation's selection started says so, as the run recorded
   // it, so an older answer keeps its line whatever the selection becomes.
   const routedOf = (run: Run): string | undefined => {
     const c = defaultCopy.chat;
     // A message routed to one agent alone says only where it went, whatever the mode was.
-    const alone = run.message ? turns.filter((t) => t.run?.message === run.message && t.run?.routed).length <= 1 : false;
+    const alone = run.message
+      ? turns.filter((t) => t.run?.message === run.message && t.run?.routed).length <= 1
+      : false;
     if (run.routed === "all") return alone ? c.routed(run.agent) : c.routedAll(run.agent);
     // Among the selected agents, one that joined says where it went; `picked` says why it joined.
     if (run.routed === "join" || run.routed === "best_fit") return c.routed(run.agent);
@@ -531,33 +641,47 @@ export function ThreadRoom({
     // run does.
     const text = answer.body.action === "reply" ? answer.body.text : undefined;
     const run = turns.find((t) => t.run && t.run.id === answer.run)?.run;
-    const done = text && run ? coworking.post(id, { text, answers: { run: run.id, question: answer.question } }) : api.answer(answer);
+    const done =
+      text && run
+        ? coworking.post(id, { text, answers: { run: run.id, question: answer.question } })
+        : api.answer(answer);
     // A refusal is said under the question, where the words typed for it
     // are still in its box.
-    done
-      .then(onChanged)
-      .catch((e) =>
-        setRefusals((r) => ({
-          ...r,
-          [answer.run]: {
-            question: answer.question,
-            why: e instanceof ApiError && e.status === 403 ? defaultCopy.noPermission : e instanceof ApiError ? e.message : defaultCopy.failure.internal(),
-          },
-        })),
-      );
+    done.then(onChanged).catch((e) =>
+      setRefusals((r) => ({
+        ...r,
+        [answer.run]: {
+          question: answer.question,
+          why:
+            e instanceof ApiError && e.status === 403
+              ? defaultCopy.noPermission
+              : e instanceof ApiError
+                ? e.message
+                : defaultCopy.failure.internal(),
+        },
+      })),
+    );
   };
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1">
       <ConversationPage
         title={title}
-        project={projectTitle(projects, th.project, workspaceName,personalProject)}
+        project={projectTitle(projects, th.project, workspaceName, personalProject)}
         private={th.visibility === "private"}
         agents={answering}
         location={
           <>
             {th.visibility !== "private" && (
-              <button type="button" aria-label={words.sharedIn(projectTitle(projects, th.project, workspaceName,personalProject), th.channel)} onClick={() => onOpenChannel(th.project, th.channel)} className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+              <button
+                type="button"
+                aria-label={words.sharedIn(
+                  projectTitle(projects, th.project, workspaceName, personalProject),
+                  th.channel,
+                )}
+                onClick={() => onOpenChannel(th.project, th.channel)}
+                className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+              >
                 {words.channel(th.channel)}
               </button>
             )}
@@ -565,126 +689,324 @@ export function ThreadRoom({
           </>
         }
         projectRef={shareButton}
-        onProject={shareable ? () => onSharing?.(!sharing) : th.visibility === "shared" ? () => onOpenChannel(th.project, th.channel) : undefined}
+        onProject={
+          shareable
+            ? () => onSharing?.(!sharing)
+            : th.visibility === "shared"
+              ? () => onOpenChannel(th.project, th.channel)
+              : undefined
+        }
         onPanel={(next) => openPanel(next)}
         onArtifact={(id) => openPanel("deliverables", { artifact: id })}
       >
-      <Presence when={!!shareable && !!sharing} ms={220}>{leaving => (
-        <div data-layer="share" className="relative z-10 px-4 pb-2">
-          <ShareDialog
-            open={!leaving}
-            thread={th}
-            hasRuns={hasRuns}
-            onPublished={onOpenThread ? (next) => {onSharing?.(false);onChanged();onOpenThread(next.id);} : undefined}
-            projects={projects.filter((p) => postsIn(projects, p.name))}
-            workspaceName={workspaceName}
-            me={me}
-            handle={handle}
-            onClose={() => {
-              onSharing?.(false);
-              shareButton.current?.focus();
-            }}
-            onShared={(p, asked) => {
-              // Say who was told, and who was not added and why, as the platform decided.
-              const missed = new Set((p.not_added ?? []).map((n) => n.handle));
-              const told = asked.filter((h) => !missed.has(h));
-              // Why someone was not added, in the console's own words, never the server's.
-              const cannot = (p.not_added ?? []).filter((n) => /cannot read this project/.test(n.reason)).map((n) => n.handle);
-              const other = (p.not_added ?? []).filter((n) => !cannot.includes(n.handle)).map((n) => n.handle);
-              const lines = [words.sharedTold(told), words.notAdded(cannot, other)].filter(Boolean);
-              setShareNote(lines.join(" "));
-              setPage(p);
-              setTurns((t) => mergeTurns(t, p.turns));
-              onSharing?.(false);
-              onChanged();
-            }}
-          />
-        </div>
-      )}</Presence>
-      {shareNote && (
-        <p role="status" className="mx-auto w-full max-w-4xl px-4 pb-2 text-aui-xs text-aui-muted">
-          {shareNote}
-        </p>
-      )}
-      {th.fork&&<div className="mx-auto w-full max-w-4xl px-4 py-4"><ForkContext thread={th}/></div>}
-      {posts&&<ConversationForkPanels thread={th} runs={turns.flatMap(turn=>turn.run?[turn.run]:[])} actions={forkActions}/>}
-      <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-        <ThreadList className="mx-auto w-full max-w-4xl flex-1 px-4" busy={busy} label="Thread">
-          {before && (
-            <button type="button" className={`${button} self-center`} onClick={loadEarlier}>
-              {words.olderTurns}
-            </button>
-          )}
-          {turns.map((t) =>
-            t.announcement ? (
-              <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
-            ) : t.message ? (
-              <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} actions={posts&&forkActions?.onFork?<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.message!.id)}><ForkIcon size={16} />{defaultCopy.forking.fromHere}</button>:undefined} onReply={posts ? () => setSeed({ text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `, mode: "prepend" }) : undefined} />
-            ) : t.run ? (
-              <AnswerView
-                key={t.run.id}
-                run={t.run}
-                canStop={posts}
-                actions={!th.read_only&&t.run.status==="completed"?<><OutcomeActions run={t.run} canWrite={canLearn}/>{posts&&forkActions?.onFork&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onFork?.(t.run!.id)}><ForkIcon size={16} />{defaultCopy.forking.fromHere}</button>}{posts&&th.fork&&forkActions?.onBringBack&&<button type="button" className={messageTextActionButton} onClick={()=>forkActions.onBringBack?.(t.run!.id)}><BringBackIcon size={16} />{defaultCopy.forking.bringBack}</button>}</>:undefined}
-                routed={routedOf(t.run)}
-                onAsk={posts ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" }) : undefined}
-                onReply={posts ? () => setSeed({ text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `, mode: "prepend" }) : undefined}
-                onRedirect={posts ? () => setSeed({ text: defaultCopy.conversation.redirectPrompt(t.run!.agent,href({page:"conversation",id,panel:"activity",run:t.run!.id})), mode:"prepend" }) : undefined}
+        <Presence when={!!shareable && !!sharing} ms={220}>
+          {(leaving) => (
+            <div data-layer="share" className="relative z-10 px-4 pb-2">
+              <ShareDialog
+                open={!leaving}
+                thread={th}
+                hasRuns={hasRuns}
+                onPublished={
+                  onOpenThread
+                    ? (next) => {
+                        onSharing?.(false);
+                        onChanged();
+                        onOpenThread(next.id);
+                      }
+                    : undefined
+                }
+                projects={projects.filter((p) => postsIn(projects, p.name))}
+                workspaceName={workspaceName}
                 me={me}
-                ask={t.ask}
-                refused={refusals[t.run.id]}
-                live={t === last || asked.has(t.run.id) || (t.run.status !== "completed" && t.run.status !== "failed")}
+                handle={handle}
+                onClose={() => {
+                  onSharing?.(false);
+                  shareButton.current?.focus();
+                }}
+                onShared={(p, asked) => {
+                  // Say who was told, and who was not added and why, as the platform decided.
+                  const missed = new Set((p.not_added ?? []).map((n) => n.handle));
+                  const told = asked.filter((h) => !missed.has(h));
+                  // Why someone was not added, in the console's own words, never the server's.
+                  const cannot = (p.not_added ?? [])
+                    .filter((n) => /cannot read this project/.test(n.reason))
+                    .map((n) => n.handle);
+                  const other = (p.not_added ?? [])
+                    .filter((n) => !cannot.includes(n.handle))
+                    .map((n) => n.handle);
+                  const lines = [words.sharedTold(told), words.notAdded(cannot, other)].filter(
+                    Boolean,
+                  );
+                  setShareNote(lines.join(" "));
+                  setPage(p);
+                  setTurns((t) => mergeTurns(t, p.turns));
+                  onSharing?.(false);
+                  onChanged();
+                }}
               />
-            ) : null,
+            </div>
           )}
-        </ThreadList>
-      </WebSurface>
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
-        <Problem message={problem} />
-        {canRun && !posts && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
+        </Presence>
+        {shareNote && (
+          <p
+            role="status"
+            className="mx-auto w-full max-w-4xl px-4 pb-2 text-aui-xs text-aui-muted"
+          >
+            {shareNote}
+          </p>
+        )}
+        {th.fork && (
+          <div className="mx-auto w-full max-w-4xl px-4 py-4">
+            <ForkContext thread={th} />
+          </div>
+        )}
         {posts && (
-          <RoomComposer
-            thread={id}
-            seed={seed}
-            placeholder={selection.agents.length > 0 ? placeholderFor(selection) : th.visibility === "private" ? words.message : words.channel(th.channel)}
-            tags={tags}
-            plus={{
-              menu: (close, attach, leave) => (
-                <PlusMenu
-                  onLeave={leave}
-                  agents={tags.agents}
-                  skills={tags.skills}
-                  skillsFailed={tags.skillsFailed}
-                  onSkill={(name) => { setSeed({ text: `$${name} `, mode: "prepend" }); }}
-                  selection={selection}
-                  onChange={select}
-                  onAttach={attach}
-                  onClose={close}
-                  projects={projects.filter((p) => postsIn(projects, p.name))}
-                  personalProject={personalProject}
-                  kinds={root?.kinds}
-                  projectFixed={fixedWhy}
+          <ConversationForkPanels
+            thread={th}
+            runs={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
+            actions={forkActions}
+          />
+        )}
+        <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
+          <ThreadList className="mx-auto w-full max-w-4xl flex-1 px-4" busy={busy} label="Thread">
+            {before && (
+              <button type="button" className={`${button} self-center`} onClick={loadEarlier}>
+                {words.olderTurns}
+              </button>
+            )}
+            {turns.map((t) =>
+              t.announcement ? (
+                <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
+              ) : t.message ? (
+                <MessageView
+                  key={t.message.id}
+                  m={t.message}
+                  focused={focus === t.message.id}
+                  actions={
+                    posts && forkActions?.onFork ? (
+                      <button
+                        type="button"
+                        className={messageTextActionButton}
+                        onClick={() => forkActions.onFork?.(t.message!.id)}
+                      >
+                        <ForkIcon size={16} />
+                        {defaultCopy.forking.fromHere}
+                      </button>
+                    ) : undefined
+                  }
+                  onReply={
+                    posts
+                      ? () =>
+                          setSeed({
+                            text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `,
+                            mode: "prepend",
+                          })
+                      : undefined
+                  }
                 />
-              ),
-              chips: <SelectionChips personalProject={personalProject} selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectFixed />,
-            }}
-            autoFocus={sharing ? false : undefined}
-            onPost={(text) =>
-              // It follows the newest message, so a run it starts reads the conversation so far.
-              coworking.post(id, { text }).then((p) => {
-                // What was posted shows at once: the message, and any run its tags started.
-                setTurns((t) => mergeTurns(t, [{ kind: "message", message: p.message }, ...p.runs.map((run) => ({ kind: "run" as const, run }))]));
-                onChanged();
-                return p;
-              })
+              ) : t.run ? (
+                <AnswerView
+                  key={t.run.id}
+                  run={t.run}
+                  canStop={posts}
+                  actions={
+                    !th.read_only && t.run.status === "completed" ? (
+                      <>
+                        <OutcomeActions run={t.run} canWrite={canLearn} />
+                        {posts && forkActions?.onFork && (
+                          <button
+                            type="button"
+                            className={messageTextActionButton}
+                            onClick={() => forkActions.onFork?.(t.run!.id)}
+                          >
+                            <ForkIcon size={16} />
+                            {defaultCopy.forking.fromHere}
+                          </button>
+                        )}
+                        {posts && th.fork && forkActions?.onBringBack && (
+                          <button
+                            type="button"
+                            className={messageTextActionButton}
+                            onClick={() => forkActions.onBringBack?.(t.run!.id)}
+                          >
+                            <BringBackIcon size={16} />
+                            {defaultCopy.forking.bringBack}
+                          </button>
+                        )}
+                      </>
+                    ) : undefined
+                  }
+                  routed={routedOf(t.run)}
+                  onAsk={
+                    posts
+                      ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
+                      : undefined
+                  }
+                  onReply={
+                    posts
+                      ? () =>
+                          setSeed({
+                            text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `,
+                            mode: "prepend",
+                          })
+                      : undefined
+                  }
+                  onRedirect={
+                    posts
+                      ? () =>
+                          setSeed({
+                            text: defaultCopy.conversation.redirectPrompt(
+                              t.run!.agent,
+                              href({ page: "conversation", id, panel: "activity", run: t.run!.id }),
+                            ),
+                            mode: "prepend",
+                          })
+                      : undefined
+                  }
+                  me={me}
+                  ask={t.ask}
+                  refused={refusals[t.run.id]}
+                  live={
+                    t === last ||
+                    asked.has(t.run.id) ||
+                    (t.run.status !== "completed" && t.run.status !== "failed")
+                  }
+                />
+              ) : null,
+            )}
+          </ThreadList>
+        </WebSurface>
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
+          <Problem message={problem} />
+          {canRun && !posts && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
+          {posts && (
+            <RoomComposer
+              thread={id}
+              seed={seed}
+              placeholder={
+                selection.agents.length > 0
+                  ? placeholderFor(selection)
+                  : th.visibility === "private"
+                    ? words.message
+                    : words.channel(th.channel)
+              }
+              tags={tags}
+              plus={{
+                menu: (close, attach, leave) => (
+                  <PlusMenu
+                    onLeave={leave}
+                    agents={tags.agents}
+                    skills={tags.skills}
+                    skillsFailed={tags.skillsFailed}
+                    onSkill={(name) => {
+                      setSeed({ text: `$${name} `, mode: "prepend" });
+                    }}
+                    selection={selection}
+                    onChange={select}
+                    onAttach={attach}
+                    onClose={close}
+                    projects={projects.filter((p) => postsIn(projects, p.name))}
+                    personalProject={personalProject}
+                    kinds={root?.kinds}
+                    projectFixed={fixedWhy}
+                  />
+                ),
+                chips: (
+                  <SelectionChips
+                    personalProject={personalProject}
+                    selection={selection}
+                    projects={projects}
+                    workspace={workspaceName}
+                    onChange={select}
+                    projectFixed
+                  />
+                ),
+              }}
+              autoFocus={sharing ? false : undefined}
+              onPost={(text) =>
+                // It follows the newest message, so a run it starts reads the conversation so far.
+                coworking
+                  .post(id, { text })
+                  .then((p) => {
+                    // What was posted shows at once: the message, and any run its tags started.
+                    setTurns((t) =>
+                      mergeTurns(t, [
+                        { kind: "message", message: p.message },
+                        ...p.runs.map((run) => ({ kind: "run" as const, run })),
+                      ]),
+                    );
+                    onChanged();
+                    return p;
+                  })
+              }
+            />
+          )}
+        </div>
+      </ConversationPage>
+      <ConversationInfo
+        onShare={
+          shareable
+            ? () => {
+                openPanel();
+                onSharing?.(true);
+              }
+            : undefined
+        }
+        panel={shownView.panel}
+        contextTab={shownView.contextTab}
+        onContextTab={(contextTab) => openPanel("context", { contextTab })}
+        thread={th}
+        project={projectTitle(projects, th.project, workspaceName, personalProject)}
+        onClose={() => openPanel()}
+      />
+      <Presence when={shownView.panel === "deliverables"} ms={220}>
+        {(leaving) => (
+          <Deliverables
+            open={!leaving}
+            promotion={
+              artifactActions
+                ? { project: th.project, shared: th.visibility === "shared", ...artifactActions }
+                : undefined
+            }
+            thread={id}
+            view={shownView}
+            onView={(next) => openPanel("deliverables", next)}
+            onClose={() => openPanel()}
+            onRevise={
+              posts
+                ? (file, slide) => {
+                    setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
+                    openPanel();
+                  }
+                : undefined
             }
           />
         )}
-      </div>
-      </ConversationPage>
-      <ConversationInfo onShare={shareable?()=>{openPanel();onSharing?.(true)}:undefined} panel={shownView.panel} contextTab={shownView.contextTab} onContextTab={contextTab=>openPanel("context",{contextTab})} thread={th} project={projectTitle(projects, th.project, workspaceName,personalProject)} onClose={() => openPanel()} />
-      <Presence when={shownView.panel === "deliverables"} ms={220}>{leaving => <Deliverables open={!leaving} promotion={artifactActions ? {project:th.project,shared:th.visibility==="shared",...artifactActions}:undefined} thread={id} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={posts ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}</Presence>
-      <Presence when={shownView.panel === "activity"} ms={220}>{leaving => <Activity leaving={leaving} filter={shownView.filter} showTools={shownView.showTools} onFilterChange={filter=>openPanel("activity",{run:shownView.run,filter})} onShowToolsChange={showTools=>openPanel("activity",{run:shownView.run,showTools})} isDecision={run=>run.outcome?.kind==="decision"||!!run.outcome?.decisions?.length} turns={turns.flatMap((turn) => turn.run ? [turn.run] : [])} stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")} focus={shownView.run ?? null} onFocus={(run) => openPanel("activity", run ? { run } : {})} onClose={() => openPanel()} onJump={(run) => document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })} />}</Presence>
+      </Presence>
+      <Presence when={shownView.panel === "activity"} ms={220}>
+        {(leaving) => (
+          <Activity
+            leaving={leaving}
+            filter={shownView.filter}
+            showTools={shownView.showTools}
+            onFilterChange={(filter) => openPanel("activity", { run: shownView.run, filter })}
+            onShowToolsChange={(showTools) =>
+              openPanel("activity", { run: shownView.run, showTools })
+            }
+            isDecision={(run) =>
+              run.outcome?.kind === "decision" || !!run.outcome?.decisions?.length
+            }
+            turns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
+            stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")}
+            focus={shownView.run ?? null}
+            onFocus={(run) => openPanel("activity", run ? { run } : {})}
+            onClose={() => openPanel()}
+            onJump={(run) =>
+              document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })
+            }
+          />
+        )}
+      </Presence>
     </section>
   );
 }
@@ -820,14 +1142,22 @@ export function ChannelPage({
   if (missing === "project") {
     const p = defaultCopy.projects;
     return (
-      <Page title={p.missing(project === "" ? "~" : project)} lede={p.missingHint} back={{ label: p.allProjects, onClick: onOpenProjects }}>
+      <Page
+        title={p.missing(project === "" ? "~" : project)}
+        lede={p.missingHint}
+        back={{ label: p.allProjects, onClick: onOpenProjects }}
+      >
         {null}
       </Page>
     );
   }
   if (missing === "channel") {
     return (
-      <Page title={words.missingChannel} lede={words.missingChannelHint(channel)} back={{ label: where, onClick: onOpenProject }}>
+      <Page
+        title={words.missingChannel}
+        lede={words.missingChannelHint(channel)}
+        back={{ label: where, onClick: onOpenProject }}
+      >
         {null}
       </Page>
     );
@@ -835,13 +1165,20 @@ export function ChannelPage({
   return (
     <Page
       title={words.channel(channel)}
-      meta={<span className="inline-flex flex-wrap gap-x-3">{info?.title && <span>{info.title}</span>}<span>{where}</span></span>}
+      meta={
+        <span className="inline-flex flex-wrap gap-x-3">
+          {info?.title && <span>{info.title}</span>}
+          <span>{where}</span>
+        </span>
+      }
       lede={info?.purpose}
       back={{ label: where, onClick: onOpenProject }}
     >
       <Problem message={problem} />
       {info?.archived && <p className="text-aui-xs text-aui-muted">{words.archived}</p>}
-      {threads && threads.length === 0 && <p className="text-aui-sm text-aui-muted">{words.noThreads}</p>}
+      {threads && threads.length === 0 && (
+        <p className="text-aui-sm text-aui-muted">{words.noThreads}</p>
+      )}
       {threads && threads.length > 0 && (
         <ul className="flex flex-col" aria-label="Threads">
           {threads.map((t) => (
@@ -855,7 +1192,9 @@ export function ChannelPage({
         </button>
       )}
       {/* Only a channel known to be there is posted in. */}
-      {canRun && info && !info.archived && !postsIn(projects, project) && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
+      {canRun && info && !info.archived && !postsIn(projects, project) && (
+        <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
+      )}
       {canRun && info && !info.archived && postsIn(projects, project) && (
         <RoomComposer
           seed={seed}
@@ -863,19 +1202,37 @@ export function ChannelPage({
           tags={tags}
           plus={{
             menu: (close, attach, leave) => (
-              <PlusMenu agents={tags.agents} skills={tags.skills} skillsFailed={tags.skillsFailed} onSkill={(name) => { setSeed({ text: `$${name} `, mode: "prepend" }); }} selection={picked} onChange={setPicked} onAttach={attach} onClose={close} onLeave={leave} />
+              <PlusMenu
+                agents={tags.agents}
+                skills={tags.skills}
+                skillsFailed={tags.skillsFailed}
+                onSkill={(name) => {
+                  setSeed({ text: `$${name} `, mode: "prepend" });
+                }}
+                selection={picked}
+                onChange={setPicked}
+                onAttach={attach}
+                onClose={close}
+                onLeave={leave}
+              />
             ),
             chips: <SelectionChips selection={picked} onChange={setPicked} />,
           }}
           onPost={(text) =>
             // Started in a channel, a thread is shared there: the channel is where it was posted.
             coworking
-              .start({ project, channel, text, visibility: "shared", ...(picked.agents.length > 0 ? { agents: picked.agents, mode: picked.mode } : {}) })
+              .start({
+                project,
+                channel,
+                text,
+                visibility: "shared",
+                ...(picked.agents.length > 0 ? { agents: picked.agents, mode: picked.mode } : {}),
+              })
               .then((p) => {
                 rememberSaid(p.thread.id, postedLine(p));
-              onOpenThread(p.thread.id);
-              return p;
-            })
+                onOpenThread(p.thread.id);
+                return p;
+              })
           }
         />
       )}
@@ -905,7 +1262,10 @@ export function ChannelsTab({
     coworking
       .channels(project)
       .then((cs) => live && setChannels(cs))
-      .catch((e) => live && setProblem(e instanceof ApiError ? e.message : defaultCopy.failure.internal()));
+      .catch(
+        (e) =>
+          live && setProblem(e instanceof ApiError ? e.message : defaultCopy.failure.internal()),
+      );
     return () => {
       live = false;
     };
@@ -914,7 +1274,11 @@ export function ChannelsTab({
   const create = () => {
     setProblem(null);
     coworking
-      .createChannel(project, { name: draft.name.trim(), title: draft.title.trim() || undefined, purpose: draft.purpose.trim() || undefined })
+      .createChannel(project, {
+        name: draft.name.trim(),
+        title: draft.title.trim() || undefined,
+        purpose: draft.purpose.trim() || undefined,
+      })
       .then(() => {
         setAdding(false);
         setDraft({ name: "", title: "", purpose: "" });
@@ -944,13 +1308,29 @@ export function ChannelsTab({
           }}
         >
           <Label text={words.channelForm.name} hint={words.channelForm.nameHint}>
-            <input className={field} value={draft.name} required maxLength={40} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            <input
+              className={field}
+              value={draft.name}
+              required
+              maxLength={40}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            />
           </Label>
           <Label text={words.channelForm.title}>
-            <input className={field} value={draft.title} maxLength={80} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+            <input
+              className={field}
+              value={draft.title}
+              maxLength={80}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+            />
           </Label>
           <Label text={words.channelForm.purpose} hint={words.channelForm.purposeHint}>
-            <input className={field} value={draft.purpose} maxLength={200} onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} />
+            <input
+              className={field}
+              value={draft.purpose}
+              maxLength={200}
+              onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
+            />
           </Label>
           <div className="flex gap-2">
             <button type="submit" className={primary} disabled={!draft.name.trim()}>
@@ -974,11 +1354,19 @@ export function ChannelsTab({
                 <span className="text-aui-sm font-medium text-aui-fg">
                   {words.channel(c.name)}
                   {c.title && <span className="pl-2 font-normal text-aui-muted">{c.title}</span>}
-                  {c.archived && <span className="pl-2 font-normal text-aui-muted">{words.archived}</span>}
+                  {c.archived && (
+                    <span className="pl-2 font-normal text-aui-muted">{words.archived}</span>
+                  )}
                 </span>
-                {c.purpose && <span className="truncate text-aui-xs text-aui-muted">{c.purpose}</span>}
+                {c.purpose && (
+                  <span className="truncate text-aui-xs text-aui-muted">{c.purpose}</span>
+                )}
                 <span className="text-aui-xs text-aui-muted">{answersShort(c.answers)}</span>
-                {c.slack && <span className="text-aui-xs text-aui-muted">{words.boundTo(c.slack.client, c.slack.channel)}</span>}
+                {c.slack && (
+                  <span className="text-aui-xs text-aui-muted">
+                    {words.boundTo(c.slack.client, c.slack.channel)}
+                  </span>
+                )}
               </button>
               {canWrite && c.name !== "general" && !c.archived && !c.managed && (
                 <button
@@ -988,7 +1376,11 @@ export function ChannelsTab({
                     coworking
                       .archiveChannel(project, c.name)
                       .then(() => setReads((n) => n + 1))
-                      .catch((e) => setProblem(e instanceof ApiError ? e.message : defaultCopy.failure.internal()))
+                      .catch((e) =>
+                        setProblem(
+                          e instanceof ApiError ? e.message : defaultCopy.failure.internal(),
+                        ),
+                      )
                   }
                 >
                   {words.archiveChannel}
@@ -998,7 +1390,9 @@ export function ChannelsTab({
           ))}
         </ul>
       )}
-      {channels && channels.length <= 1 && <p className="text-aui-xs text-aui-muted">{words.noChannels}</p>}
+      {channels && channels.length <= 1 && (
+        <p className="text-aui-xs text-aui-muted">{words.noChannels}</p>
+      )}
     </section>
   );
 }

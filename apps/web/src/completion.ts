@@ -1,6 +1,13 @@
 import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { coworking, type DirectoryPerson, type MentionItem, type MentionKind, type Revision, type Skill } from "./api.ts";
+import {
+  coworking,
+  type DirectoryPerson,
+  type MentionItem,
+  type MentionKind,
+  type Revision,
+  type Skill,
+} from "./api.ts";
 import { availableOf } from "./availability.ts";
 import { type TagOption, type Typing, tagOptions } from "./tags.ts";
 
@@ -39,9 +46,13 @@ export function useCompletion(
   handle = "",
 ): Completion {
   // undefined while it loads, null when it could not be read.
-  const [names, setNames] = useState<{ all: boolean; names: string[] } | null | undefined>(undefined);
+  const [names, setNames] = useState<{ all: boolean; names: string[] } | null | undefined>(
+    undefined,
+  );
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
-  const [skills, setSkills] = useState<{ project: string; items: Skill[]; failed: boolean } | null>(null);
+  const [skills, setSkills] = useState<{ project: string; items: Skill[]; failed: boolean } | null>(
+    null,
+  );
   const [kinds, setKinds] = useState<MentionKind[] | null>(null);
   const [items, setItems] = useState<{ kind: string; name: string; description?: string }[]>([]);
   const timer = useRef<number | undefined>(undefined);
@@ -96,7 +107,9 @@ export function useCompletion(
           const people = kindsNow.current?.find((k) => k.kind === kind)?.resolves === "people";
           Promise.all([
             coworking.mentionItems(project, kind, q),
-            people ? coworking.people(q, 21).catch(() => [] as DirectoryPerson[]) : Promise.resolve([] as DirectoryPerson[]),
+            people
+              ? coworking.people(q, 21).catch(() => [] as DirectoryPerson[])
+              : Promise.resolve([] as DirectoryPerson[]),
           ])
             .then(([got, found]: [MentionItem[], DirectoryPerson[]]) => {
               if (n !== asked.current) return;
@@ -104,7 +117,13 @@ export function useCompletion(
               mine.add(me);
               if (handle) mine.add(handle);
               const kept = people ? got.filter((i) => !mine.has(i.name)) : got;
-              setItems(kept.slice(0, 20).map((i) => ({ kind, name: i.name, ...(i.description ? { description: i.description } : {}) })));
+              setItems(
+                kept.slice(0, 20).map((i) => ({
+                  kind,
+                  name: i.name,
+                  ...(i.description ? { description: i.description } : {}),
+                })),
+              );
             })
             .catch(() => n === asked.current && setItems([]));
           return;
@@ -128,27 +147,55 @@ export function useCompletion(
         homes,
       ),
     );
-    return agents.filter((a) => offered.has(a.spec.name)).map((a) => ({ name: a.spec.name, ...(a.spec.description ? { description: a.spec.description } : {}) }));
+    return agents
+      .filter((a) => offered.has(a.spec.name))
+      .map((a) => ({
+        name: a.spec.name,
+        ...(a.spec.description ? { description: a.spec.description } : {}),
+      }));
   }, [agents, homes, names]);
 
   const scopedSkills = skills?.project === project ? skills : null;
-  const skillOptions = useMemo(() => skills?.project === project ? skills.items : [], [skills, project]);
+  const skillOptions = useMemo(
+    () => (skills?.project === project ? skills.items : []),
+    [skills, project],
+  );
 
   const options = useMemo(() => {
     // The directory leaves out a subject that holds an address, so the reader is known by their handle too.
-    const others = people.filter((p) => p.subject !== me && p.handle !== me && (!handle || p.handle !== handle));
+    const others = people.filter(
+      (p) => p.subject !== me && p.handle !== me && (!handle || p.handle !== handle),
+    );
     return tagOptions(
       here,
       others,
       topics,
       { experts: defaultCopy.threads.experts, kind: defaultCopy.threads.mentionKind },
       {
-        ...(kinds ? { kinds: kinds.map((k) => ({ kind: k.kind, resolves:k.resolves, ...(k.title ? { title: k.title } : {}) })) } : {}),
+        ...(kinds
+          ? {
+              kinds: kinds.map((k) => ({
+                kind: k.kind,
+                resolves: k.resolves,
+                ...(k.title ? { title: k.title } : {}),
+              })),
+            }
+          : {}),
         items,
-        skills: skillOptions.map((s) => ({ name: s.name, ...(s.description ? { description: s.description } : {}) })),
+        skills: skillOptions.map((s) => ({
+          name: s.name,
+          ...(s.description ? { description: s.description } : {}),
+        })),
       },
     );
   }, [here, people, topics, me, handle, kinds, items, skillOptions]);
 
-  return { label: defaultCopy.threads.typeahead, options, onQuery, agents: names === undefined ? null : here, skills: scopedSkills ? skillOptions : null, skillsFailed: scopedSkills?.failed ?? false };
+  return {
+    label: defaultCopy.threads.typeahead,
+    options,
+    onQuery,
+    agents: names === undefined ? null : here,
+    skills: scopedSkills ? skillOptions : null,
+    skillsFailed: scopedSkills?.failed ?? false,
+  };
 }

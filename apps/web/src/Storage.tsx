@@ -1,13 +1,47 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
-import { bytes, contentUrl, deleteProblem, type Filter, kindWord, type Stored, type StorageTransport, type StorageUse, OVER_LIMIT, overLimit, showsInline, transport as platform, useStorage } from "./storage.ts";
-import { AgentMark, agentOptions, Confirm, ago, button, Chip, Empty, Menu, Page, Problem, primary, rows, SearchField, SkeletonRows, UsageMeter, textLink } from "./ui.tsx";
+import {
+  bytes,
+  contentUrl,
+  deleteProblem,
+  type Filter,
+  kindWord,
+  OVER_LIMIT,
+  overLimit,
+  transport as platform,
+  type StorageTransport,
+  type StorageUse,
+  type Stored,
+  showsInline,
+  useStorage,
+} from "./storage.ts";
+import {
+  AgentMark,
+  agentOptions,
+  ago,
+  button,
+  Chip,
+  Confirm,
+  Empty,
+  Menu,
+  Page,
+  Problem,
+  primary,
+  rows,
+  SearchField,
+  SkeletonRows,
+  textLink,
+  UsageMeter,
+} from "./ui.tsx";
 
 /** How much is stored, against the limit when there is one, and where it is. */
 export function StorageUsed({ use }: { use: StorageUse }) {
   const top = [...use.by_project].sort((a, b) => b.bytes - a.bytes).slice(0, 4);
   return (
-    <section data-testid="storage-use" className="grid grid-cols-1 gap-x-10 gap-y-5 border-[var(--humagen-rule)] border-y py-5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <section
+      data-testid="storage-use"
+      className="grid grid-cols-1 gap-x-10 gap-y-5 border-[var(--humagen-rule)] border-y py-5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+    >
       <UsageMeter
         size="header"
         label={`Stored, ${use.count} ${use.count === 1 ? "artifact" : "artifacts"}`}
@@ -20,7 +54,9 @@ export function StorageUsed({ use }: { use: StorageUse }) {
         <ul className="flex flex-col gap-2" aria-label="Storage by project">
           {top.map((p) => (
             <li key={p.name} className="flex items-baseline justify-between gap-3 text-aui-sm">
-              <span className="min-w-0 truncate text-aui-fg">{p.name || defaultCopy.projects.companyName}</span>
+              <span className="min-w-0 truncate text-aui-fg">
+                {p.name || defaultCopy.projects.companyName}
+              </span>
               <span className="shrink-0 text-aui-xs tabular-nums text-aui-muted">
                 {bytes(p.bytes)}, {p.count} {p.count === 1 ? "artifact" : "artifacts"}
               </span>
@@ -49,7 +85,12 @@ export function DeleteVersion({
   return (
     <div className="flex flex-wrap items-center gap-3 border-[var(--humagen-rule)] border-t pt-3">
       {confirming ? (
-        <Confirm question={defaultCopy.confirm.ask(`version ${version} of this artifact`)} action="Delete Version" onConfirm={onDelete} onKeep={onKeep} />
+        <Confirm
+          question={defaultCopy.confirm.ask(`version ${version} of this artifact`)}
+          action="Delete Version"
+          onConfirm={onDelete}
+          onKeep={onKeep}
+        />
       ) : (
         <button type="button" className={button} onClick={onAsk}>
           Delete
@@ -85,10 +126,16 @@ export function StoredDetail({
   useEffect(() => setConfirming(false), [file.id]);
 
   return (
-    <section data-testid="stored-detail" aria-label={file.title} className="humagen-enter humagen-glass flex flex-col gap-4 rounded-aui-lg p-4">
+    <section
+      data-testid="stored-detail"
+      aria-label={file.title}
+      className="humagen-enter humagen-glass flex flex-col gap-4 rounded-aui-lg p-4"
+    >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="humagen-display truncate text-aui-lg font-semibold text-aui-fg">{file.title}</h2>
+          <h2 className="humagen-display truncate text-aui-lg font-semibold text-aui-fg">
+            {file.title}
+          </h2>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-aui-xs text-aui-muted">
             <span>{kindWord[file.kind]}</span>
             <span>{bytes(file.size)}</span>
@@ -102,7 +149,11 @@ export function StoredDetail({
           </p>
         </div>
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-          {onOpenArtifact && <button type="button" className={button} onClick={() => onOpenArtifact(file)}>Open in Workspace</button>}
+          {onOpenArtifact && (
+            <button type="button" className={button} onClick={() => onOpenArtifact(file)}>
+              Open in Workspace
+            </button>
+          )}
           <a className={primary} href={contentUrl(file.id)} download={file.title}>
             Download
           </a>
@@ -112,7 +163,9 @@ export function StoredDetail({
         </div>
       </header>
 
-      {file.description && <p className="max-w-[68ch] text-aui-sm text-aui-muted">{file.description}</p>}
+      {file.description && (
+        <p className="max-w-[68ch] text-aui-sm text-aui-muted">{file.description}</p>
+      )}
 
       {showsInline(file) ? (
         <img
@@ -121,11 +174,16 @@ export function StoredDetail({
           className="max-h-96 w-auto max-w-full self-start rounded-aui border border-[var(--humagen-rule)] object-contain"
         />
       ) : file.preview ? (
-        <pre data-testid="stored-preview" className="aui-scroll max-h-72 overflow-auto rounded-aui bg-aui-code p-3 font-aui-mono text-aui-xs text-aui-fg">
+        <pre
+          data-testid="stored-preview"
+          className="aui-scroll max-h-72 overflow-auto rounded-aui bg-aui-code p-3 font-aui-mono text-aui-xs text-aui-fg"
+        >
           {file.preview}
         </pre>
       ) : (
-        <p className="text-aui-sm text-aui-muted">No preview for this kind of artifact. Download it to open it.</p>
+        <p className="text-aui-sm text-aui-muted">
+          No preview for this kind of artifact. Download it to open it.
+        </p>
       )}
 
       <p className="flex flex-wrap gap-x-4 gap-y-1 text-aui-xs text-aui-muted">
@@ -150,7 +208,9 @@ export function StoredDetail({
               <li key={v.id} className="flex items-center justify-between gap-3 py-1.5 text-aui-sm">
                 <span className="text-aui-fg">
                   Version {v.version}
-                  {v.id === file.id && <span className="pl-2 text-aui-xs text-aui-muted">shown</span>}
+                  {v.id === file.id && (
+                    <span className="pl-2 text-aui-xs text-aui-muted">shown</span>
+                  )}
                 </span>
                 <span className="flex shrink-0 items-center gap-3 text-aui-xs text-aui-muted">
                   <span className="tabular-nums">{bytes(v.size)}</span>
@@ -165,13 +225,31 @@ export function StoredDetail({
         )}
       </div>
 
-      {canDelete && <DeleteVersion version={file.version} confirming={confirming} onAsk={() => setConfirming(true)} onDelete={() => onDelete(file)} onKeep={() => setConfirming(false)} />}
+      {canDelete && (
+        <DeleteVersion
+          version={file.version}
+          confirming={confirming}
+          onAsk={() => setConfirming(true)}
+          onDelete={() => onDelete(file)}
+          onKeep={() => setConfirming(false)}
+        />
+      )}
     </section>
   );
 }
 
 /** The button under the list that loads the next page, while there is one. */
-export function StorageMore({ hasMore, loading, failed, onMore }: { hasMore: boolean; loading: boolean; failed: boolean; onMore: () => void }) {
+export function StorageMore({
+  hasMore,
+  loading,
+  failed,
+  onMore,
+}: {
+  hasMore: boolean;
+  loading: boolean;
+  failed: boolean;
+  onMore: () => void;
+}) {
   if (!hasMore && !loading) return null;
   return (
     <div className="flex justify-center">
@@ -202,13 +280,21 @@ export function StoredList({
   narrowed: boolean;
   onSelect: (id: string) => void;
 }) {
-  if (state === "failed") return <Empty title="Artifacts could not be loaded">It will be tried again when something changes. Reload the page to try now.</Empty>;
+  if (state === "failed")
+    return (
+      <Empty title="Artifacts could not be loaded">
+        It will be tried again when something changes. Reload the page to try now.
+      </Empty>
+    );
   if (files.length === 0) {
     if (state === "loading") return <SkeletonRows count={5} height="2.5rem" />;
     return narrowed ? (
       <Empty title="No artifacts match">Change the filters or the search to see the rest.</Empty>
     ) : (
-      <Empty title="No artifacts yet">When an agent publishes a file from its sandbox, it is kept here as an artifact, with every later version. Each one also arrives in your inbox.</Empty>
+      <Empty title="No artifacts yet">
+        When an agent publishes a file from its sandbox, it is kept here as an artifact, with every
+        later version. Each one also arrives in your inbox.
+      </Empty>
     );
   }
   return (
@@ -224,17 +310,27 @@ export function StoredList({
           >
             <span className="min-w-0 flex-1">
               <span className="block truncate text-aui-sm font-medium text-aui-fg">{f.title}</span>
-              {f.description && <span className="block truncate text-aui-xs text-aui-muted">{f.description}</span>}
+              {f.description && (
+                <span className="block truncate text-aui-xs text-aui-muted">{f.description}</span>
+              )}
             </span>
             <Chip>{kindWord[f.kind]}</Chip>
-            <span className="hidden w-14 shrink-0 text-right text-aui-xs text-aui-muted @xl:inline">v{f.version}</span>
-            <span className="hidden w-16 shrink-0 text-right text-aui-xs tabular-nums text-aui-muted @lg:inline">{bytes(f.size)}</span>
+            <span className="hidden w-14 shrink-0 text-right text-aui-xs text-aui-muted @xl:inline">
+              v{f.version}
+            </span>
+            <span className="hidden w-16 shrink-0 text-right text-aui-xs tabular-nums text-aui-muted @lg:inline">
+              {bytes(f.size)}
+            </span>
             <span className="hidden w-32 shrink-0 items-center gap-1.5 truncate text-aui-xs text-aui-muted @2xl:inline-flex">
               <AgentMark name={f.agent} size={12} />
               <span className="truncate">{f.agent}</span>
             </span>
-            <span className="hidden w-28 shrink-0 truncate text-aui-xs text-aui-muted @4xl:inline">{f.project ?? ""}</span>
-            <span className="w-24 shrink-0 text-right text-aui-xs text-aui-muted">{ago(f.created_at)}</span>
+            <span className="hidden w-28 shrink-0 truncate text-aui-xs text-aui-muted @4xl:inline">
+              {f.project ?? ""}
+            </span>
+            <span className="w-24 shrink-0 text-right text-aui-xs text-aui-muted">
+              {ago(f.created_at)}
+            </span>
           </button>
         </li>
       ))}
@@ -276,7 +372,10 @@ export function Storage({
   const [query, setQuery] = useState("");
   // The search is the platform's. It is sent once typing pauses, not on every key.
   useEffect(() => {
-    const timer = window.setTimeout(() => setFilter((f) => (f.q === query.trim() ? f : { ...f, q: query.trim() })), 250);
+    const timer = window.setTimeout(
+      () => setFilter((f) => (f.q === query.trim() ? f : { ...f, q: query.trim() })),
+      250,
+    );
     return () => window.clearTimeout(timer);
   }, [query]);
   const [own, setOwn] = useState<string | null>(null);
@@ -291,8 +390,10 @@ export function Storage({
 
   const shown = store.files;
   // An older version, or one past the loaded pages, is found among its versions.
-  const file = store.files.find((f) => f.id === selected) ?? versions?.find((v) => v.id === selected) ?? null;
-  const narrowed = query.trim() !== "" || filter.project !== "" || filter.agent !== "" || filter.kind !== "";
+  const file =
+    store.files.find((f) => f.id === selected) ?? versions?.find((v) => v.id === selected) ?? null;
+  const narrowed =
+    query.trim() !== "" || filter.project !== "" || filter.agent !== "" || filter.kind !== "";
   const over = store.use ? overLimit(store.use) : false;
 
   useEffect(() => {
@@ -320,26 +421,47 @@ export function Storage({
   };
 
   return (
-    <Page title={defaultCopy.conversation.deliverables} lede="Documents, presentations and data from your projects, with their versions and the conversations that produced them.">
+    <Page
+      title={defaultCopy.conversation.deliverables}
+      lede="Documents, presentations and data from your projects, with their versions and the conversations that produced them."
+    >
       {store.use && <StorageUsed use={store.use} />}
       {over && <Problem message={OVER_LIMIT} />}
       <Problem message={problem} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <SearchField label="Search artifacts" placeholder="Search by title" value={query} onChange={setQuery} className="min-w-56 flex-1" />
+        <SearchField
+          label="Search artifacts"
+          placeholder="Search by title"
+          value={query}
+          onChange={setQuery}
+          className="min-w-56 flex-1"
+        />
         <Menu
           label="Project"
           className="w-40"
           value={filter.project}
-          options={[{ value: "", label: "Any project" }, ...projects.map((p) => ({ value: p, label: p }))]}
+          options={[
+            { value: "", label: "Any project" },
+            ...projects.map((p) => ({ value: p, label: p })),
+          ]}
           onChange={(project) => setFilter({ ...filter, project })}
         />
-        <Menu label="Agent" className="w-40" value={filter.agent} options={agentOptions(agents, "Any agent")} onChange={(agent) => setFilter({ ...filter, agent })} />
+        <Menu
+          label="Agent"
+          className="w-40"
+          value={filter.agent}
+          options={agentOptions(agents, "Any agent")}
+          onChange={(agent) => setFilter({ ...filter, agent })}
+        />
         <Menu
           label="Kind"
           className="w-40"
           value={filter.kind}
-          options={[{ value: "", label: "Any kind" }, ...Object.entries(kindWord).map(([value, label]) => ({ value, label }))]}
+          options={[
+            { value: "", label: "Any kind" },
+            ...Object.entries(kindWord).map(([value, label]) => ({ value, label })),
+          ]}
           onChange={(kind) => setFilter({ ...filter, kind })}
         />
       </div>
@@ -365,7 +487,12 @@ export function Storage({
         onSelect={setSelected}
       />
 
-      <StorageMore hasMore={store.hasMore} loading={store.loading === "more"} failed={store.moreFailed} onMore={store.more} />
+      <StorageMore
+        hasMore={store.hasMore}
+        loading={store.loading === "more"}
+        failed={store.moreFailed}
+        onMore={store.more}
+      />
     </Page>
   );
 }

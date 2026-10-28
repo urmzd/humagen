@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { deliverFor, deliverOptions, recapAgent, recapCron, recapName, weeklyRecap } from "./recap.ts";
+import {
+  deliverFor,
+  deliverOptions,
+  recapAgent,
+  recapCron,
+  recapName,
+  weeklyRecap,
+} from "./recap.ts";
 
 test("a recap runs on Monday between 08:01 and 08:59, never on :00 or :30", () => {
   const minutes = new Set<number>();
@@ -34,7 +41,12 @@ test("a recap's schedule name is one a schedule can have", () => {
 });
 
 test("Add Weekly Recap posts the agent's answer to the project", () => {
-  const s = weeklyRecap("Field", "humagen-analyst", "What changed in Field engineering since the last recap?", "Weekly");
+  const s = weeklyRecap(
+    "Field",
+    "humagen-analyst",
+    "What changed in Field engineering since the last recap?",
+    "Weekly",
+  );
   assert.deepEqual(s, {
     name: "field-recap",
     expression: recapCron("Field"),
@@ -56,7 +68,11 @@ test("the workspace's recap is filed in the workspace, ~", () => {
 });
 
 test("only a schedule filed in a project can post to one", () => {
-  const words = { deliverNone: "Keep", deliverInbox: (mine: boolean) => (mine ? "Mine" : "Theirs"), deliverProject: "Post" };
+  const words = {
+    deliverNone: "Keep",
+    deliverInbox: (mine: boolean) => (mine ? "Mine" : "Theirs"),
+    deliverProject: "Post",
+  };
   assert.deepEqual(
     deliverOptions(undefined, words, true).map((o) => o.value),
     ["", "inbox"],

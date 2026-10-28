@@ -1,69 +1,66 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
+  AgentHome,
   AgentSetup,
   AgentSetupPlan,
-  SkillUsage,
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
-  KnowledgeLifecycle,
-  SourceDependencies,
-  KnowledgeSourceConfig,
-  Note as GeneratedNote,
-  NoteInput,
-  PersonalPreferences,
-  AuditRecord,
-  NativeNotification,
-  LibrarySkill,
-  LibraryScope,
-  LibrarySkillDefinition,
-  AnalyticsGroup,
   AnalyticsBucket,
-  ProjectContext,
-  AgentHome,
+  AnalyticsGroup,
+  AuditRecord,
+  Note as GeneratedNote,
+  KnowledgeLifecycle,
+  KnowledgeSourceConfig,
+  LibraryScope,
+  LibrarySkill,
+  LibrarySkillDefinition,
+  MentionItem,
+  MentionKind,
+  NativeNotification,
+  NoteInput,
   Person,
+  PersonalPreferences,
+  PlacementPreview,
   ProjectAgentsInput,
   ProjectAgentsView,
   ProjectChange,
+  ProjectContext,
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
-  ProjectTemplate,
-  ProjectRollup,
   ProjectKnowledge,
   ProjectLimitInput,
   ProjectMembers,
+  ProjectRollup,
+  ProjectSkillRef,
+  ProjectTemplate,
   ProjectUpdate,
   ProjectView,
-  ProjectSkillRef,
-  MentionKind,
-  MentionItem,
+  SkillUsage,
+  SourceDependencies,
   ThreadShare,
-  PlacementPreview,
 } from "../../../packages/client/src/generated/types.ts";
 import type { Run, RunEvent } from "./adapter.ts";
 
 // The project tree's shapes are the generated client's own, from
 // api/openapi.yaml, so this file cannot drift from the contract on them.
 export type {
-  SourceDependencies,
-  ProjectContext,
-  ContextLayer,
   AgentHome,
   AgentOffer,
   AgentPlace,
+  ContextLayer,
   DefaultResolved,
   Person,
   Project,
+  ProjectAccess,
   ProjectAccount,
   ProjectAgentsInput,
   ProjectAgentsView,
   ProjectChange,
-  ProjectAccess,
+  ProjectContext,
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
-  ProjectTemplate,
-  ProjectRollup,
   ProjectKind,
   ProjectKindSpec,
   ProjectKnowledge,
@@ -73,9 +70,12 @@ export type {
   ProjectMember,
   ProjectMembers,
   ProjectRole,
+  ProjectRollup,
   ProjectStep,
+  ProjectTemplate,
   ProjectUpdate,
   ProjectView,
+  SourceDependencies,
 } from "../../../packages/client/src/generated/types.ts";
 
 /** What the caller may do on a project: their permission and their role together. */
@@ -297,7 +297,10 @@ export type AlertRuleConfig = AlertRule;
  * cannot change. Fields left out are cleared, not kept. The server sets who
  * created and updated it.
  */
-export type AlertRuleEdit = Omit<AlertRuleConfig, "name" | "created_by" | "created_by_name" | "created_at" | "updated_by" | "updated_at">;
+export type AlertRuleEdit = Omit<
+  AlertRuleConfig,
+  "name" | "created_by" | "created_by_name" | "created_at" | "updated_by" | "updated_at"
+>;
 
 export interface Alert {
   id: string;
@@ -318,23 +321,38 @@ export interface Alert {
   acked_at?: string;
 }
 
-import type {KnowledgeResource, SourceLinkRule as GeneratedSourceLinkRule, SourceLinkResource, SourceLinkMatch,ListKnowledgeResourcesResponse,SourceLinkSuggestion as GeneratedSourceLinkSuggestion,ListSourceLinkSuggestionsResponse,DecideSourceLinkSuggestionBody,KnowledgeAttachment,ListKnowledgeAttachmentsResponse} from "../../../packages/client/src/generated/types.ts";
-export type SourceResource=KnowledgeResource;
-export type SourceConfiguration=KnowledgeSourceConfig;
-export type SourceLinkRule=GeneratedSourceLinkRule;
-export type SourceRuleResource=SourceLinkResource;
-export type SourceRuleMatch=SourceLinkMatch;
+import type {
+  DecideSourceLinkSuggestionBody,
+  SourceLinkRule as GeneratedSourceLinkRule,
+  SourceLinkSuggestion as GeneratedSourceLinkSuggestion,
+  KnowledgeAttachment,
+  KnowledgeResource,
+  ListKnowledgeAttachmentsResponse,
+  ListKnowledgeResourcesResponse,
+  ListSourceLinkSuggestionsResponse,
+  SourceLinkMatch,
+  SourceLinkResource,
+} from "../../../packages/client/src/generated/types.ts";
+export type SourceResource = KnowledgeResource;
+export type SourceConfiguration = KnowledgeSourceConfig;
+export type SourceLinkRule = GeneratedSourceLinkRule;
+export type SourceRuleResource = SourceLinkResource;
+export type SourceRuleMatch = SourceLinkMatch;
 
-import type { InstallationCapabilities,ClientCapabilityPolicy,PutClientCapabilitiesBodyPart2,SlackBinding,ListClientBindingsResponse } from "../../../packages/client/src/generated/types.ts";
-export type BridgeDirection=NonNullable<SlackBinding["direction"]>;
-export type ClientCapabilities=InstallationCapabilities;
-export type ClientCapabilityInput=ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2;
+import type {
+  ClientCapabilityPolicy,
+  InstallationCapabilities,
+  ListClientBindingsResponse,
+  PutClientCapabilitiesBodyPart2,
+  SlackBinding,
+} from "../../../packages/client/src/generated/types.ts";
+export type BridgeDirection = NonNullable<SlackBinding["direction"]>;
+export type ClientCapabilities = InstallationCapabilities;
+export type ClientCapabilityInput = ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2;
 
+export type SourceLinkSuggestion = GeneratedSourceLinkSuggestion;
 
-export type SourceLinkSuggestion=GeneratedSourceLinkSuggestion;
-
-export type SourceAttachment=KnowledgeAttachment;
-
+export type SourceAttachment = KnowledgeAttachment;
 
 export interface Source {
   lifecycle?: KnowledgeLifecycle;
@@ -483,7 +501,10 @@ export interface Client {
   /** The agents it may route to besides its default. "*" alone means any. */
   agents?: string[];
   bots?: Record<string, string>;
-  slack?: { sessions?: boolean; commands?: { name: string; description: string; argument_hint?: string }[] };
+  slack?: {
+    sessions?: boolean;
+    commands?: { name: string; description: string; argument_hint?: string }[];
+  };
   github?: {
     auto_labels?: Record<string, Record<string, string>>;
     checks?: boolean;
@@ -509,7 +530,10 @@ export interface ClientCaps {
 }
 
 /** A new workspace client. Credential values are written once and never returned. */
-export type ClientCreateInput = Pick<Client, "id" | "name" | "surface" | "identity" | "default_agent" | "agents" | "enabled"> & {
+export type ClientCreateInput = Pick<
+  Client,
+  "id" | "name" | "surface" | "identity" | "default_agent" | "agents" | "enabled"
+> & {
   github?: Client["github"];
   credentials: { token: ToolCredentialInput; signing_secret: ToolCredentialInput };
 };
@@ -532,7 +556,11 @@ export interface ScopeUsage {
   runs: Measure;
   concurrent: Measure;
   /** Micro-USD priced in US dollars. A lower bound when calls had no price or another currency. */
-  spend: Measure & { metered: boolean; unpriced_calls: number; other_costs?: { micros: number; currency: string }[] };
+  spend: Measure & {
+    metered: boolean;
+    unpriced_calls: number;
+    other_costs?: { micros: number; currency: string }[];
+  };
   tokens: Measure;
   max_lease: number;
   state: "ok" | "warn" | "over";
@@ -566,7 +594,7 @@ export interface ToolCredential {
   kind?: "reference" | "value";
   ref?: string;
   updated_at?: string;
- last_used_at?: string;
+  last_used_at?: string;
 }
 
 /** The tools that act as you, and what this workspace lets people give for them. */
@@ -687,51 +715,170 @@ export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
   return edit;
 }
 
-export type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
-import type { AgentControl, AgentControlInput, ActionPolicy, ActionPolicyInput, Assignment, AssignmentInput, HandoffContract, AgentNetwork } from "../../../packages/client/src/generated/types.ts";
+export type {
+  ActionPolicy,
+  ActionPolicyInput,
+  AgentControl,
+  AgentControlInput,
+  AgentNetwork,
+  Assignment,
+  AssignmentInput,
+  HandoffContract,
+} from "../../../packages/client/src/generated/types.ts";
+
+import type {
+  ActionPolicy,
+  ActionPolicyInput,
+  AgentControl,
+  AgentControlInput,
+  AgentNetwork,
+  Assignment,
+  AssignmentInput,
+  HandoffContract,
+} from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
- outcomeLearning:(id:string,scope:"personal"|"project"="personal")=>call<import("../../../packages/client/src/generated/types.ts").OutcomeLearningPreview>("GET",`/api/runs/${encodeURIComponent(id)}/learning?${new URLSearchParams({scope})}`),
- draftOutcomeSkill:(id:string,input:{snapshot:string;scope?:LibraryScope;definition:LibrarySkillDefinition})=>call<LibrarySkill>("POST",`/api/runs/${encodeURIComponent(id)}/skill-draft`,input),
- rememberOutcomeDecision:(id:string,input:{snapshot:string;scope?:LibraryScope;decision:number;text:string})=>call<GeneratedNote>("POST",`/api/runs/${encodeURIComponent(id)}/decision-memory`,input),
+  outcomeLearning: (id: string, scope: "personal" | "project" = "personal") =>
+    call<import("../../../packages/client/src/generated/types.ts").OutcomeLearningPreview>(
+      "GET",
+      `/api/runs/${encodeURIComponent(id)}/learning?${new URLSearchParams({ scope })}`,
+    ),
+  draftOutcomeSkill: (
+    id: string,
+    input: { snapshot: string; scope?: LibraryScope; definition: LibrarySkillDefinition },
+  ) => call<LibrarySkill>("POST", `/api/runs/${encodeURIComponent(id)}/skill-draft`, input),
+  rememberOutcomeDecision: (
+    id: string,
+    input: { snapshot: string; scope?: LibraryScope; decision: number; text: string },
+  ) => call<GeneratedNote>("POST", `/api/runs/${encodeURIComponent(id)}/decision-memory`, input),
 
   projectRollup: (name: string) => call<ProjectRollup>("GET", `${projectAt(name)}/rollup`),
 
-  agentControl: (agent = "") => call<AgentControl>("GET", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls"),
-  saveAgentControl: (agent: string, input: AgentControlInput) => call<AgentControl>("PUT", agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls", input),
-  actionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name = "") => call<ActionPolicy>("GET", operationPolicyPath(scope, name)),
-  saveActionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name: string, input: ActionPolicyInput) => call<ActionPolicy>("PUT", operationPolicyPath(scope, name), input),
-  assignment: (id:string) => call<Assignment>("GET",`/api/assignments/${encodeURIComponent(id)}`),
-  agentRoster:(names:string[]) => call<{controls:Record<string,AgentControl>;window_days:number}>("GET",`/api/agent-roster?${new URLSearchParams({names:names.join(",")})}`).then(r=>r.controls),
-  assignments: (agent?: string) => call<Assignment[]>("GET", `/api/assignments?${new URLSearchParams({limit:"200", ...(agent ? {agent} : {})})}`),
-  saveAssignment: (input: AssignmentInput) => call<Assignment>(input.version === 0 ? "POST" : "PUT", input.version === 0 ? "/api/assignments" : `/api/assignments/${encodeURIComponent(input.id)}`, input),
-  runAssignment: (id: string) => call<Run>("POST", `/api/assignments/${encodeURIComponent(id)}/run`),
-  handoff: (id:string) => call<HandoffContract>("GET",`/api/handoffs/${encodeURIComponent(id)}`),
-  saveHandoff: (id:string,input:import("../../../packages/client/src/generated/types.ts").HandoffUpdate) => call<HandoffContract>("PUT",`/api/handoffs/${encodeURIComponent(id)}`,input),
+  agentControl: (agent = "") =>
+    call<AgentControl>(
+      "GET",
+      agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls",
+    ),
+  saveAgentControl: (agent: string, input: AgentControlInput) =>
+    call<AgentControl>(
+      "PUT",
+      agent ? `/api/agents/${encodeURIComponent(agent)}/control` : "/api/agent-controls",
+      input,
+    ),
+  actionPolicy: (scope: "workspace" | "agent" | "project" | "personal", name = "") =>
+    call<ActionPolicy>("GET", operationPolicyPath(scope, name)),
+  saveActionPolicy: (
+    scope: "workspace" | "agent" | "project" | "personal",
+    name: string,
+    input: ActionPolicyInput,
+  ) => call<ActionPolicy>("PUT", operationPolicyPath(scope, name), input),
+  assignment: (id: string) => call<Assignment>("GET", `/api/assignments/${encodeURIComponent(id)}`),
+  agentRoster: (names: string[]) =>
+    call<{ controls: Record<string, AgentControl>; window_days: number }>(
+      "GET",
+      `/api/agent-roster?${new URLSearchParams({ names: names.join(",") })}`,
+    ).then((r) => r.controls),
+  assignments: (agent?: string) =>
+    call<Assignment[]>(
+      "GET",
+      `/api/assignments?${new URLSearchParams({ limit: "200", ...(agent ? { agent } : {}) })}`,
+    ),
+  saveAssignment: (input: AssignmentInput) =>
+    call<Assignment>(
+      input.version === 0 ? "POST" : "PUT",
+      input.version === 0 ? "/api/assignments" : `/api/assignments/${encodeURIComponent(input.id)}`,
+      input,
+    ),
+  runAssignment: (id: string) =>
+    call<Run>("POST", `/api/assignments/${encodeURIComponent(id)}/run`),
+  handoff: (id: string) => call<HandoffContract>("GET", `/api/handoffs/${encodeURIComponent(id)}`),
+  saveHandoff: (
+    id: string,
+    input: import("../../../packages/client/src/generated/types.ts").HandoffUpdate,
+  ) => call<HandoffContract>("PUT", `/api/handoffs/${encodeURIComponent(id)}`, input),
   handoffs: () => call<HandoffContract[]>("GET", "/api/handoffs?limit=200"),
   agentNetwork: () => call<AgentNetwork>("GET", "/api/agent-network"),
- editPersonalMemory:(id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/me/memory/${encodeURIComponent(id)}`,input),
- editProjectMemory:(project:string,id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/projects/${projectPath(project)}/memory/${encodeURIComponent(id)}`,input),
- editAgentMemory:(agent:string,id:string,input:NoteInput)=>call<GeneratedNote>("PUT",`/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`,input),
-  notifications: () => call<{notifications:NativeNotification[]}>("GET","/api/me/notifications").then(r=>r.notifications??[]),
-  acknowledgeNotification: (id:string) => call<void>("POST",`/api/me/notifications/${encodeURIComponent(id)}/ack`),
-  agentSkillDefaults: (agent:string) => call<AgentSkillDefaults>("GET",`/api/agents/${encodeURIComponent(agent)}/skills`),
-  setAgentSkillDefaults: (agent:string,input:AgentSkillDefaultsUpdate) => call<AgentSkillDefaults>("PUT",`/api/agents/${encodeURIComponent(agent)}/skills`,input),
-  librarySkills: (scope: LibraryScope) => call<{skills:LibrarySkill[]}>("GET", `/api/library/skills?${new URLSearchParams({scope:scope.kind,...(scope.project?{project:scope.project}:{})})}`).then(r=>r.skills),
-  skillAgents: (id:string,version:number) => call<SkillUsage>("GET",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/agents?limit=100`),
-  librarySkill: (id:string) => call<{revisions:LibrarySkill[]}>("GET", `/api/library/skills/${encodeURIComponent(id)}`).then(r=>r.revisions),
-  draftSkill: (scope:LibraryScope, definition:LibrarySkillDefinition, version:number) => call<LibrarySkill>("POST", "/api/library/skills",{scope,definition,version}),
-  testSkill: (id:string, version:number, agent:string, project:string, text:string) => call<Run>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/test`,{agent,project,text}),
-  publishSkill: (id:string,version:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/publish`),
-  promoteSkill: (id:string,version:number,scope:LibraryScope,expected:number) => call<LibrarySkill>("POST",`/api/library/skills/${encodeURIComponent(id)}/versions/${version}/promote`,{scope,version:expected}),
-  promoteMemory: (scope:"personal"|"workspace"|"project"|"agent", owner:string, id:string, destination:string) => call<GeneratedNote>("POST","/api/memory/promote",{scope,owner,id,destination}),
-  memoryFolders: (q = "", selected = "") => call<{folders: import("../../../packages/client/src/generated/types.ts").MemoryFolder[]}>("GET", `/api/library/memory?${new URLSearchParams({q,selected,limit:"50"})}`).then(r => r.folders),
-  personalMemory: () => call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then(r => r.notes),
+  editPersonalMemory: (id: string, input: NoteInput) =>
+    call<GeneratedNote>("PUT", `/api/me/memory/${encodeURIComponent(id)}`, input),
+  editProjectMemory: (project: string, id: string, input: NoteInput) =>
+    call<GeneratedNote>(
+      "PUT",
+      `/api/projects/${projectPath(project)}/memory/${encodeURIComponent(id)}`,
+      input,
+    ),
+  editAgentMemory: (agent: string, id: string, input: NoteInput) =>
+    call<GeneratedNote>(
+      "PUT",
+      `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`,
+      input,
+    ),
+  notifications: () =>
+    call<{ notifications: NativeNotification[] }>("GET", "/api/me/notifications").then(
+      (r) => r.notifications ?? [],
+    ),
+  acknowledgeNotification: (id: string) =>
+    call<void>("POST", `/api/me/notifications/${encodeURIComponent(id)}/ack`),
+  agentSkillDefaults: (agent: string) =>
+    call<AgentSkillDefaults>("GET", `/api/agents/${encodeURIComponent(agent)}/skills`),
+  setAgentSkillDefaults: (agent: string, input: AgentSkillDefaultsUpdate) =>
+    call<AgentSkillDefaults>("PUT", `/api/agents/${encodeURIComponent(agent)}/skills`, input),
+  librarySkills: (scope: LibraryScope) =>
+    call<{ skills: LibrarySkill[] }>(
+      "GET",
+      `/api/library/skills?${new URLSearchParams({ scope: scope.kind, ...(scope.project ? { project: scope.project } : {}) })}`,
+    ).then((r) => r.skills),
+  skillAgents: (id: string, version: number) =>
+    call<SkillUsage>(
+      "GET",
+      `/api/library/skills/${encodeURIComponent(id)}/versions/${version}/agents?limit=100`,
+    ),
+  librarySkill: (id: string) =>
+    call<{ revisions: LibrarySkill[] }>(
+      "GET",
+      `/api/library/skills/${encodeURIComponent(id)}`,
+    ).then((r) => r.revisions),
+  draftSkill: (scope: LibraryScope, definition: LibrarySkillDefinition, version: number) =>
+    call<LibrarySkill>("POST", "/api/library/skills", { scope, definition, version }),
+  testSkill: (id: string, version: number, agent: string, project: string, text: string) =>
+    call<Run>("POST", `/api/library/skills/${encodeURIComponent(id)}/versions/${version}/test`, {
+      agent,
+      project,
+      text,
+    }),
+  publishSkill: (id: string, version: number) =>
+    call<LibrarySkill>(
+      "POST",
+      `/api/library/skills/${encodeURIComponent(id)}/versions/${version}/publish`,
+    ),
+  promoteSkill: (id: string, version: number, scope: LibraryScope, expected: number) =>
+    call<LibrarySkill>(
+      "POST",
+      `/api/library/skills/${encodeURIComponent(id)}/versions/${version}/promote`,
+      { scope, version: expected },
+    ),
+  promoteMemory: (
+    scope: "personal" | "workspace" | "project" | "agent",
+    owner: string,
+    id: string,
+    destination: string,
+  ) => call<GeneratedNote>("POST", "/api/memory/promote", { scope, owner, id, destination }),
+  memoryFolders: (q = "", selected = "") =>
+    call<{ folders: import("../../../packages/client/src/generated/types.ts").MemoryFolder[] }>(
+      "GET",
+      `/api/library/memory?${new URLSearchParams({ q, selected, limit: "50" })}`,
+    ).then((r) => r.folders),
+  personalMemory: () =>
+    call<{ notes: GeneratedNote[] }>("GET", "/api/me/memory").then((r) => r.notes),
   rememberPersonal: (note: NoteInput) => call<GeneratedNote>("POST", "/api/me/memory", note),
-  approvePersonal: (ids:string[]) => call<{approved:number}>("POST","/api/me/memory/approve",{ids}),
+  approvePersonal: (ids: string[]) =>
+    call<{ approved: number }>("POST", "/api/me/memory/approve", { ids }),
   forgetPersonal: (id: string) => call<void>("DELETE", `/api/me/memory/${encodeURIComponent(id)}`),
-  audit: (filters:Record<string,string>={}) => call<{ records: AuditRecord[] }>("GET", `/api/audit?${new URLSearchParams(filters)}`).then(r => r.records),
- readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
+  audit: (filters: Record<string, string> = {}) =>
+    call<{ records: AuditRecord[] }>("GET", `/api/audit?${new URLSearchParams(filters)}`).then(
+      (r) => r.records,
+    ),
+  readAudit: () =>
+    call<{ records: ReadAuditRecord[] }>("GET", "/api/read-audit").then((r) => r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
@@ -741,16 +888,34 @@ export const api = {
    * Every agent, the platform's own by name, where each that lives in a
    * project lives, and which projects enable each ("~" is the workspace).
    */
-  agentHues: (names: string[], path = "/api/agent-hues") => call<{ hues: Record<string, number> }>("GET", `${path}?names=${encodeURIComponent(names.join(","))}`),
-  agentSetup:(name:string)=>call<AgentSetup>("GET",`/api/agent-setups/${encodeURIComponent(name)}`),
-  createAgentSetup:(plan:AgentSetupPlan)=>call<AgentSetup>("POST","/api/agent-setups",plan),
-  resumeAgentSetup:(name:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/resume`),
-  amendAgentSetup:(name:string,version:number,plan:AgentSetupPlan)=>call<AgentSetup>("PUT",`/api/agent-setups/${encodeURIComponent(name)}`,{version,plan}),
-  testAgentSetup:(name:string,text:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/test`,{text}),
-  activateAgentSetup:(name:string)=>call<AgentSetup>("POST",`/api/agent-setups/${encodeURIComponent(name)}/activate`),
-  modelProviders:()=>call<{providers:{name:string;declared:boolean}[]}>("GET","/api/model-providers").then(response=>response.providers),
+  agentHues: (names: string[], path = "/api/agent-hues") =>
+    call<{ hues: Record<string, number> }>(
+      "GET",
+      `${path}?names=${encodeURIComponent(names.join(","))}`,
+    ),
+  agentSetup: (name: string) =>
+    call<AgentSetup>("GET", `/api/agent-setups/${encodeURIComponent(name)}`),
+  createAgentSetup: (plan: AgentSetupPlan) => call<AgentSetup>("POST", "/api/agent-setups", plan),
+  resumeAgentSetup: (name: string) =>
+    call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/resume`),
+  amendAgentSetup: (name: string, version: number, plan: AgentSetupPlan) =>
+    call<AgentSetup>("PUT", `/api/agent-setups/${encodeURIComponent(name)}`, { version, plan }),
+  testAgentSetup: (name: string, text: string) =>
+    call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/test`, { text }),
+  activateAgentSetup: (name: string) =>
+    call<AgentSetup>("POST", `/api/agent-setups/${encodeURIComponent(name)}/activate`),
+  modelProviders: () =>
+    call<{ providers: { name: string; declared: boolean }[] }>("GET", "/api/model-providers").then(
+      (response) => response.providers,
+    ),
   agentList: () =>
-    call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]>; hues?: Record<string, number> }>("GET", "/api/agents"),
+    call<{
+      agents: Revision[];
+      builtin?: string[];
+      homes?: Record<string, string>;
+      enabled_in?: Record<string, string[]>;
+      hues?: Record<string, number>;
+    }>("GET", "/api/agents"),
   /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
@@ -782,8 +947,12 @@ export const api = {
     within?: string;
   }) => {
     const params = new URLSearchParams({ limit: String(q.limit) });
-    for (const k of ["before", "origin", "agent", "standing", "project", "within"] as const) if (q[k]) params.set(k, q[k]);
-    return call<{ threads: ThreadSummary[]; next?: string | null }>("GET", `/api/threads?${params}`);
+    for (const k of ["before", "origin", "agent", "standing", "project", "within"] as const)
+      if (q[k]) params.set(k, q[k]);
+    return call<{ threads: ThreadSummary[]; next?: string | null }>(
+      "GET",
+      `/api/threads?${params}`,
+    );
   },
   /** The agents' turns of a conversation, its newest page. `coworking.thread` reads people's messages too. */
   thread: (id: string) =>
@@ -792,34 +961,56 @@ export const api = {
     ),
   /** Which agents would join a message that names none, in a project, "" for the workspace. Nothing is started. */
   join: (q: string, project = "") =>
-    call<{ decisions: JoinDecision[] }>("GET", `/api/join?${new URLSearchParams(project ? { q, project } : { q })}`).then((r) => r.decisions),
+    call<{ decisions: JoinDecision[] }>(
+      "GET",
+      `/api/join?${new URLSearchParams(project ? { q, project } : { q })}`,
+    ).then((r) => r.decisions),
   settings: () => call<Settings>("GET", "/api/settings"),
   saveSettings: (s: Settings) => call<Settings>("PUT", "/api/settings", s),
   history: (name: string) =>
-    call<{ revisions: Revision[] }>("GET", `/api/agents/${encodeURIComponent(name)}/history`).then((r) => r.revisions),
+    call<{ revisions: Revision[] }>("GET", `/api/agents/${encodeURIComponent(name)}/history`).then(
+      (r) => r.revisions,
+    ),
 
   memory: (agent: string) =>
-    call<{ notes: Note[] }>("GET", `/api/agents/${encodeURIComponent(agent)}/memory`).then((r) => r.notes),
-  addMemory: (agent: string, text: string,details:Partial<NoteInput>={}) =>
-    call<Note>("POST", `/api/agents/${encodeURIComponent(agent)}/memory`, { ...details,text }),
+    call<{ notes: Note[] }>("GET", `/api/agents/${encodeURIComponent(agent)}/memory`).then(
+      (r) => r.notes,
+    ),
+  addMemory: (agent: string, text: string, details: Partial<NoteInput> = {}) =>
+    call<Note>("POST", `/api/agents/${encodeURIComponent(agent)}/memory`, { ...details, text }),
   approveMemory: (agent: string, ids: string[]) =>
-    call<{ approved: number }>("POST", `/api/agents/${encodeURIComponent(agent)}/memory/approve`, { ids }),
-  pendingMemory: () => call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
+    call<{ approved: number }>("POST", `/api/agents/${encodeURIComponent(agent)}/memory/approve`, {
+      ids,
+    }),
+  pendingMemory: () =>
+    call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
   /** Stop a run and everything attached to it. Runs it delegated keep going. */
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
   /** A run's events as they were published, for a run that is no longer streaming. */
   runEvents: (id: string) =>
-    call<{ events: RunEvent[]; complete: boolean }>("GET", `/api/runs/${encodeURIComponent(id)}/events`),
+    call<{ events: RunEvent[]; complete: boolean }>(
+      "GET",
+      `/api/runs/${encodeURIComponent(id)}/events`,
+    ),
   /** Everything recorded about a run and the runs under it, as one document. */
   manifest: (id: string) => call<unknown>("GET", `/api/runs/${encodeURIComponent(id)}/manifest`),
   /** Open and unread count what may need the reader; updates are announcements they have not read, which never grow the badge. */
-  findHelp: (q:string) => call<{suggestions:import("../../../packages/client/src/generated/types.ts").HelpSuggestion[]}>("GET",`/api/find-help?${new URLSearchParams({q})}`).then(response=>response.suggestions),
-  inboxCount: () => call<{ open: number; unread: number; updates: number }>("GET", "/api/inbox/count"),
+  findHelp: (q: string) =>
+    call<{
+      suggestions: import("../../../packages/client/src/generated/types.ts").HelpSuggestion[];
+    }>("GET", `/api/find-help?${new URLSearchParams({ q })}`).then(
+      (response) => response.suggestions,
+    ),
+  inboxCount: () =>
+    call<{ open: number; unread: number; updates: number }>("GET", "/api/inbox/count"),
   /** The id of the message an alert raised, or null when it raised none. */
   inboxFor: (alert: string) =>
-    call<{ messages: { id: string }[] }>("GET", `/api/inbox?alert=${encodeURIComponent(alert)}`).then((r) => r.messages[0]?.id ?? null),
+    call<{ messages: { id: string }[] }>(
+      "GET",
+      `/api/inbox?alert=${encodeURIComponent(alert)}`,
+    ).then((r) => r.messages[0]?.id ?? null),
   clients: () => call<{ clients: Client[]; caps: ClientCaps }>("GET", "/api/clients"),
   createClient: (input: ClientCreateInput) => call<Client>("POST", "/api/clients", input),
   /** Replace a client's record. Secrets are not sent, so the server keeps the ones it has. */
@@ -841,26 +1032,58 @@ export const api = {
   toolCredentials: () => call<ToolCredentials>("GET", "/api/me/credentials"),
   connectTool: (provider: string, input: ToolCredentialInput) =>
     call<ToolCredential>("PUT", `/api/me/credentials/${encodeURIComponent(provider)}`, input),
-  disconnectTool: (provider: string) => call<void>("DELETE", `/api/me/credentials/${encodeURIComponent(provider)}`),
+  disconnectTool: (provider: string) =>
+    call<void>("DELETE", `/api/me/credentials/${encodeURIComponent(provider)}`),
   policies: () => call<{ policies: Policy[] }>("GET", "/api/policies").then((r) => r.policies),
-  savePolicy: (p: Omit<Policy, "version" | "updated_at" | "updated_by" | "action"> & { action?: Policy["action"] }) =>
-    call<Policy>("PUT", "/api/policies", p),
+  savePolicy: (
+    p: Omit<Policy, "version" | "updated_at" | "updated_by" | "action"> & {
+      action?: Policy["action"];
+    },
+  ) => call<Policy>("PUT", "/api/policies", p),
   deletePolicy: (scope: PolicyScope) =>
-    call<void>("DELETE", `/api/policies?${new URLSearchParams({ kind: scope.kind, name: scope.name ?? "" })}`),
-  policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
+    call<void>(
+      "DELETE",
+      `/api/policies?${new URLSearchParams({ kind: scope.kind, name: scope.name ?? "" })}`,
+    ),
+  policyHistory: () =>
+    call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
   /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
-  discover: (q: string, options: { limit?: number; kinds?: string[]; project?: string; content?: boolean } = {}) => {
+  discover: (
+    q: string,
+    options: { limit?: number; kinds?: string[]; project?: string; content?: boolean } = {},
+  ) => {
     const query = new URLSearchParams({ q, limit: String(options.limit ?? 20) });
     if (options.kinds?.length) query.set("kinds", options.kinds.join(","));
     if (options.content) query.set("content", "true");
-    if (options.project !== undefined) query.set("project", options.project === "" ? "~" : options.project);
-    return call<{ items: DiscoveryItem[] }>("GET", `/api/discovery?${query}`).then((result) => result.items);
+    if (options.project !== undefined)
+      query.set("project", options.project === "" ? "~" : options.project);
+    return call<{ items: DiscoveryItem[] }>("GET", `/api/discovery?${query}`).then(
+      (result) => result.items,
+    );
   },
-  projectTemplates: () => call<{ templates: ProjectTemplate[] }>("GET", "/api/project-templates").then((result) => result.templates),
-  forkProject: (source: string, input: { name: string; parent?: string; title?: string; memory?: string[]; sources?: string[]; archive_conversations?: boolean }) => call<ProjectForkOperation>("POST", `/api/projects/${projectPath(source)}/fork`, input),
-  projectFork: (name: string) => call<ProjectForkOperation>("GET", `/api/project-forks/${encodeURIComponent(name)}`),
-  findProjects: (q: string) => call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${new URLSearchParams({ q, limit: "20" })}`).then((page) => page.projects),
+  projectTemplates: () =>
+    call<{ templates: ProjectTemplate[] }>("GET", "/api/project-templates").then(
+      (result) => result.templates,
+    ),
+  forkProject: (
+    source: string,
+    input: {
+      name: string;
+      parent?: string;
+      title?: string;
+      memory?: string[];
+      sources?: string[];
+      archive_conversations?: boolean;
+    },
+  ) => call<ProjectForkOperation>("POST", `/api/projects/${projectPath(source)}/fork`, input),
+  projectFork: (name: string) =>
+    call<ProjectForkOperation>("GET", `/api/project-forks/${encodeURIComponent(name)}`),
+  findProjects: (q: string) =>
+    call<{ projects: ProjectView[]; next: string | null }>(
+      "GET",
+      `/api/projects?${new URLSearchParams({ q, limit: "20" })}`,
+    ).then((page) => page.projects),
   projects: async () => {
     // Read a page at a time, at most the 500 a workspace holds.
     const all: ProjectView[] = [];
@@ -868,7 +1091,10 @@ export const api = {
     for (let page = 0; page < 5; page++) {
       const q = new URLSearchParams({ limit: "100" });
       if (before) q.set("before", before);
-      const r: { projects: ProjectView[]; next: string | null } = await call("GET", `/api/projects?${q}`);
+      const r: { projects: ProjectView[]; next: string | null } = await call(
+        "GET",
+        `/api/projects?${q}`,
+      );
       all.push(...r.projects);
       before = r.next;
       if (!before) break;
@@ -879,14 +1105,16 @@ export const api = {
   project: (name: string) => call<ProjectDetail>("GET", `/api/projects/${projectPath(name)}`),
   createProject: (p: ProjectInput) => call<ProjectView>("POST", "/api/projects", p),
   /** Replace a project's title, description, account and instructions, as a whole, from the version read. */
-  updateProject: (name: string, u: ProjectUpdate) => call<ProjectView>("PUT", `/api/projects/${projectPath(name)}`, u),
+  updateProject: (name: string, u: ProjectUpdate) =>
+    call<ProjectView>("PUT", `/api/projects/${projectPath(name)}`, u),
   /** What a project turns on, what is available there, and who answers untagged messages. "" is the workspace. */
   projectContext: (name: string, agent: string, channel: string) => {
     const query = new URLSearchParams({ agent });
     if (channel) query.set("channel", channel);
     return call<ProjectContext>("GET", `/api/projects/${projectPath(name)}/context?${query}`);
   },
-  projectAgents: (name: string) => call<ProjectAgentsView>("GET", `/api/projects/${projectPath(name)}/agents`),
+  projectAgents: (name: string) =>
+    call<ProjectAgentsView>("GET", `/api/projects/${projectPath(name)}/agents`),
   setProjectAgents: (name: string, input: ProjectAgentsInput) =>
     call<ProjectAgentsView>("PUT", `/api/projects/${projectPath(name)}/agents`, input),
   /** One page of the directory, by handle. `next` is the cursor for the page after, null at the end. */
@@ -896,46 +1124,78 @@ export const api = {
     if (q.before) params.set("before", q.before);
     if (q.limit) params.set("limit", String(q.limit));
     const query = params.toString();
-    return call<{ people: Person[]; next: string | null }>("GET", `/api/people${query ? `?${query}` : ""}`);
+    return call<{ people: Person[]; next: string | null }>(
+      "GET",
+      `/api/people${query ? `?${query}` : ""}`,
+    );
   },
   deleteProject: (name: string) => call<void>("DELETE", `/api/projects/${projectPath(name)}`),
   /** Who holds a role in a project, and who owns it from above. "" is the workspace. */
-  projectMembers: (name: string) => call<ProjectMembers>("GET", `/api/projects/${projectPath(name)}/members`),
+  projectMembers: (name: string) =>
+    call<ProjectMembers>("GET", `/api/projects/${projectPath(name)}/members`),
   setProjectMembers: (name: string, version: number, members: ProjectEntry[]) =>
     call<ProjectMembers>("PUT", `/api/projects/${projectPath(name)}/members`, { version, members }),
   /** Put a project under another, "" for the top level. The parent is a name in the body, never encoded as a path is. */
   moveProject: (name: string, version: number, parent: string) =>
-    call<ProjectView>("POST", `/api/projects/${projectPath(name)}/move`, { version, parent: parent === "" ? "~" : parent }),
+    call<ProjectView>("POST", `/api/projects/${projectPath(name)}/move`, {
+      version,
+      parent: parent === "" ? "~" : parent,
+    }),
   projectHistory: (name: string, before?: string) =>
     call<{ changes: ProjectChange[]; next: string | null }>(
       "GET",
       `/api/projects/${projectPath(name)}/history?${new URLSearchParams(before ? { limit: "50", before } : { limit: "50" })}`,
     ),
   /** A tighten-only limit, as an owner of a project above. */
-  setProjectLimit: (name: string, limits: ProjectLimitInput) => call<Policy>("PUT", `/api/projects/${projectPath(name)}/limits`, limits),
-  deleteProjectLimit: (name: string) => call<void>("DELETE", `/api/projects/${projectPath(name)}/limits`),
-  postAnnouncement: (name: string, a: { subject: string; text: string; severity?: "info" | "warning" }) =>
-    call<unknown>("POST", `/api/projects/${projectPath(name)}/announcements`, a),
+  setProjectLimit: (name: string, limits: ProjectLimitInput) =>
+    call<Policy>("PUT", `/api/projects/${projectPath(name)}/limits`, limits),
+  deleteProjectLimit: (name: string) =>
+    call<void>("DELETE", `/api/projects/${projectPath(name)}/limits`),
+  postAnnouncement: (
+    name: string,
+    a: { subject: string; text: string; severity?: "info" | "warning" },
+  ) => call<unknown>("POST", `/api/projects/${projectPath(name)}/announcements`, a),
   withdrawAnnouncement: (name: string, id: string) =>
-    call<void>("DELETE", `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`),
+    call<void>(
+      "DELETE",
+      `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`,
+    ),
   projectMemory: (project: string) =>
-    call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then((r) => r.notes),
-  addProjectMemory: (project: string, text: string,details:Partial<NoteInput>={}) =>
-    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { ...details,text }),
+    call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then(
+      (r) => r.notes,
+    ),
+  addProjectMemory: (project: string, text: string, details: Partial<NoteInput> = {}) =>
+    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { ...details, text }),
   approveProjectMemory: (project: string, ids: string[]) =>
-    call<{ approved: number }>("POST", `/api/projects/${projectPath(project)}/memory/approve`, { ids }),
+    call<{ approved: number }>("POST", `/api/projects/${projectPath(project)}/memory/approve`, {
+      ids,
+    }),
   removeProjectMemory: (project: string, id: string) =>
     call<void>("DELETE", `/api/projects/${projectPath(project)}/memory/${encodeURIComponent(id)}`),
   removeMemory: (agent: string, id: string) =>
-    call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
+    call<void>(
+      "DELETE",
+      `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`,
+    ),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; pinned_projects?: string[]; muted?: string[]; personal?: PersonalPreferences }) =>
-    call<Preferences>("PUT", "/api/preferences", p),
+  savePreferences: (
+    p: Pick<Preferences, "display_name" | "theme" | "accent"> & {
+      onboarded?: boolean;
+      pinned?: string[];
+      pinned_projects?: string[];
+      muted?: string[];
+      personal?: PersonalPreferences;
+    },
+  ) => call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.
   uploadPhoto: async (file: Blob) => {
-    const res = await fetch("/api/preferences/photo", { method: "PUT", credentials: "same-origin", body: file });
+    const res = await fetch("/api/preferences/photo", {
+      method: "PUT",
+      credentials: "same-origin",
+      body: file,
+    });
     const data = (await res.json().catch(() => ({}))) as Preferences & { error?: string };
     if (!res.ok) throw new ApiError(res.status, data.error ?? "The picture could not be uploaded.");
     return data as Preferences;
@@ -946,19 +1206,27 @@ export const api = {
   saveSuite: (s: Suite) => call<Suite>("PUT", `/api/evals/${encodeURIComponent(s.name)}`, s),
   deleteSuite: (name: string) => call<void>("DELETE", `/api/evals/${encodeURIComponent(name)}`),
   runSuite: (name: string) => call<EvalRun>("POST", `/api/evals/${encodeURIComponent(name)}/run`),
-  schedules: () => call<{ schedules: ScheduleView[] }>("GET", "/api/schedules").then((r) => r.schedules),
+  schedules: () =>
+    call<{ schedules: ScheduleView[] }>("GET", "/api/schedules").then((r) => r.schedules),
   createSchedule: (s: Schedule) => call<ScheduleView>("POST", "/api/schedules", s),
   /** Change a schedule. Its pause state, creator and recent runs are kept. */
   updateSchedule: (name: string, s: ScheduleEdit) =>
     call<ScheduleView>("PUT", `/api/schedules/${encodeURIComponent(name)}`, s),
-  deleteSchedule: (name: string) => call<void>("DELETE", `/api/schedules/${encodeURIComponent(name)}`),
+  deleteSchedule: (name: string) =>
+    call<void>("DELETE", `/api/schedules/${encodeURIComponent(name)}`),
   pauseSchedule: (name: string, paused: boolean) =>
-    call<ScheduleView>("POST", `/api/schedules/${encodeURIComponent(name)}/${paused ? "pause" : "resume"}`),
-  runSchedule: (name: string) => call<Run>("POST", `/api/schedules/${encodeURIComponent(name)}/run`),
+    call<ScheduleView>(
+      "POST",
+      `/api/schedules/${encodeURIComponent(name)}/${paused ? "pause" : "resume"}`,
+    ),
+  runSchedule: (name: string) =>
+    call<Run>("POST", `/api/schedules/${encodeURIComponent(name)}/run`),
 
   analytics: (window: string, interval?: { since?: string; until?: string; bucket?: string }) => {
     const params = new URLSearchParams();
-    for (const [name, value] of Object.entries(interval?.since ? interval : { window, ...interval })) {
+    for (const [name, value] of Object.entries(
+      interval?.since ? interval : { window, ...interval },
+    )) {
       if (value !== undefined) params.set(name, value);
     }
     return call<Summary>("GET", `/api/analytics?${params}`);
@@ -969,16 +1237,19 @@ export const api = {
     for (const [k, v] of Object.entries(params)) for (const one of [v].flat()) query.append(k, one);
     return call<{ entries: Entry[] }>("GET", `/api/journal?${query}`).then((r) => r.entries);
   },
-  trace: (id: string) => call<{ runs: Run[]; spans: Span[] }>("GET", `/api/runs/${encodeURIComponent(id)}/trace`),
+  trace: (id: string) =>
+    call<{ runs: Run[]; spans: Span[] }>("GET", `/api/runs/${encodeURIComponent(id)}/trace`),
 
   alerts: () => call<{ alerts: Alert[] }>("GET", "/api/alerts").then((r) => r.alerts),
   ackAlert: (id: string) => call<Alert>("POST", `/api/alerts/${encodeURIComponent(id)}/ack`),
   alertRules: () => call<{ rules: AlertRule[] }>("GET", "/api/alert-rules").then((r) => r.rules),
   createAlertRule: (r: AlertRule) => call<AlertRule>("POST", "/api/alert-rules", r),
   /** Every rule, of every kind, spend included. */
-  alertRuleConfigs: () => call<{ rules: AlertRuleConfig[] }>("GET", "/api/alert-rules").then((r) => r.rules),
+  alertRuleConfigs: () =>
+    call<{ rules: AlertRuleConfig[] }>("GET", "/api/alert-rules").then((r) => r.rules),
   /** Create a rule of any kind, spend included. */
-  createAlertRuleConfig: (r: AlertRuleConfig) => call<AlertRuleConfig>("POST", "/api/alert-rules", r),
+  createAlertRuleConfig: (r: AlertRuleConfig) =>
+    call<AlertRuleConfig>("POST", "/api/alert-rules", r),
   /** Replace a rule. Its creator, its alerts and its cooldown are kept. */
   updateAlertRule: (name: string, r: AlertRuleEdit) =>
     call<AlertRuleConfig>("PUT", `/api/alert-rules/${encodeURIComponent(name)}`, r),
@@ -988,46 +1259,131 @@ export const api = {
       ...alertRuleEdit(rule),
       paused,
     }),
-  deleteAlertRule: (name: string) => call<void>("DELETE", `/api/alert-rules/${encodeURIComponent(name)}`),
+  deleteAlertRule: (name: string) =>
+    call<void>("DELETE", `/api/alert-rules/${encodeURIComponent(name)}`),
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
-  createSource: (name: string, description: string, configuration?:SourceConfiguration) => call<Source>("POST", "/api/knowledge", { name, description,...(configuration?{configuration}:{}) }),
-  sourceAttachments:(name:string)=>call<ListKnowledgeAttachmentsResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/attachments`).then(result=>result.attachments),
-  detachSource:(name:string,target:SourceAttachment)=>call<void>("DELETE",`/api/knowledge/${encodeURIComponent(name)}/attachment?${new URLSearchParams({project:target.project||"~",...(target.channel?{channel:target.channel}:{})})}`),
-  attachSource:(name:string,target:{project:string;channel?:string})=>call<SourceAttachment>("PUT",`/api/knowledge/${encodeURIComponent(name)}/attachment`,target),
-  sourceResources: (name:string) => call<ListKnowledgeResourcesResponse>("GET",`/api/knowledge/${encodeURIComponent(name)}/resources`),
-  snapshotSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/snapshot`),
-  replaceSource: (name:string) => call<Source>("POST",`/api/knowledge/${encodeURIComponent(name)}/replace`),
-  sourceSyncSettings: (name:string,input:{every_seconds:number;stop_after_seconds:number}) => call<Source>("PUT",`/api/knowledge/${encodeURIComponent(name)}/sync-settings`,input),
-  sourceLinkRules: () => call<SourceLinkRule[]>("GET","/api/source-link-rules"),
-  saveSourceLinkRule: (rule:SourceLinkRule,creating=false) => { const {id,copied_from,...input}=rule; return call<SourceLinkRule>(creating?"POST":"PUT",creating?"/api/source-link-rules":`/api/source-link-rules/${encodeURIComponent(id)}`,input); },
-  deleteSourceLinkRule: (id:string) => call<void>("DELETE",`/api/source-link-rules/${encodeURIComponent(id)}`),
-  previewSourceLinkRules: (resource:SourceRuleResource) => call<{matches:SourceRuleMatch[]}>("POST","/api/source-link-rules/preview",resource),
-  clientCapabilities:(id:string)=>call<ClientCapabilities>("GET",`/api/clients/${encodeURIComponent(id)}/capabilities`),
-  saveClientCapabilities:(id:string,input:ClientCapabilityInput)=>call<ClientCapabilities>("PUT",`/api/clients/${encodeURIComponent(id)}/capabilities`,input),
-  setSlackDirection:(project:string,channel:Channel,direction:BridgeDirection)=>call<Channel>("PUT",`${projectAt(project)}/channels/${encodeURIComponent(channel.name)}`,{version:channel.version,title:channel.title??"",purpose:channel.purpose??"",default:channel.default??"",slack:{...channel.slack,direction}}),
-  clientBindings:(id:string)=>call<ListClientBindingsResponse>("GET",`/api/clients/${encodeURIComponent(id)}/bindings`).then(result=>result.bindings),
+  createSource: (name: string, description: string, configuration?: SourceConfiguration) =>
+    call<Source>("POST", "/api/knowledge", {
+      name,
+      description,
+      ...(configuration ? { configuration } : {}),
+    }),
+  sourceAttachments: (name: string) =>
+    call<ListKnowledgeAttachmentsResponse>(
+      "GET",
+      `/api/knowledge/${encodeURIComponent(name)}/attachments`,
+    ).then((result) => result.attachments),
+  detachSource: (name: string, target: SourceAttachment) =>
+    call<void>(
+      "DELETE",
+      `/api/knowledge/${encodeURIComponent(name)}/attachment?${new URLSearchParams({ project: target.project || "~", ...(target.channel ? { channel: target.channel } : {}) })}`,
+    ),
+  attachSource: (name: string, target: { project: string; channel?: string }) =>
+    call<SourceAttachment>("PUT", `/api/knowledge/${encodeURIComponent(name)}/attachment`, target),
+  sourceResources: (name: string) =>
+    call<ListKnowledgeResourcesResponse>(
+      "GET",
+      `/api/knowledge/${encodeURIComponent(name)}/resources`,
+    ),
+  snapshotSource: (name: string) =>
+    call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/snapshot`),
+  replaceSource: (name: string) =>
+    call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/replace`),
+  sourceSyncSettings: (
+    name: string,
+    input: { every_seconds: number; stop_after_seconds: number },
+  ) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/sync-settings`, input),
+  sourceLinkRules: () => call<SourceLinkRule[]>("GET", "/api/source-link-rules"),
+  saveSourceLinkRule: (rule: SourceLinkRule, creating = false) => {
+    const { id, copied_from, ...input } = rule;
+    return call<SourceLinkRule>(
+      creating ? "POST" : "PUT",
+      creating ? "/api/source-link-rules" : `/api/source-link-rules/${encodeURIComponent(id)}`,
+      input,
+    );
+  },
+  deleteSourceLinkRule: (id: string) =>
+    call<void>("DELETE", `/api/source-link-rules/${encodeURIComponent(id)}`),
+  previewSourceLinkRules: (resource: SourceRuleResource) =>
+    call<{ matches: SourceRuleMatch[] }>("POST", "/api/source-link-rules/preview", resource),
+  clientCapabilities: (id: string) =>
+    call<ClientCapabilities>("GET", `/api/clients/${encodeURIComponent(id)}/capabilities`),
+  saveClientCapabilities: (id: string, input: ClientCapabilityInput) =>
+    call<ClientCapabilities>("PUT", `/api/clients/${encodeURIComponent(id)}/capabilities`, input),
+  setSlackDirection: (project: string, channel: Channel, direction: BridgeDirection) =>
+    call<Channel>("PUT", `${projectAt(project)}/channels/${encodeURIComponent(channel.name)}`, {
+      version: channel.version,
+      title: channel.title ?? "",
+      purpose: channel.purpose ?? "",
+      default: channel.default ?? "",
+      slack: { ...channel.slack, direction },
+    }),
+  clientBindings: (id: string) =>
+    call<ListClientBindingsResponse>("GET", `/api/clients/${encodeURIComponent(id)}/bindings`).then(
+      (result) => result.bindings,
+    ),
 
-  sourceLinkSuggestions:(client?:string,knowledge?:string,state:SourceLinkSuggestion["state"]="suggested")=>call<ListSourceLinkSuggestionsResponse>("GET",`/api/source-link-suggestions?${new URLSearchParams({state,limit:"200",...(client?{client}:{}),...(knowledge?{knowledge}:{})})}`).then(result=>result.suggestions),
-  decideSourceLink:(id:string,action:DecideSourceLinkSuggestionBody["action"],version:number)=>call<SourceLinkSuggestion>("POST",`/api/source-link-suggestions/${encodeURIComponent(id)}/decision`,{action,version}),
-  sourceDependencies: (name: string) => call<SourceDependencies>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
-  configureSource: (name: string, config: SourceConfiguration) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
-  connectSource: (name: string, ref: string) => call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
-  syncSource: (name: string) => call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),
-  deleteSource: (name: string) => call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}`),
+  sourceLinkSuggestions: (
+    client?: string,
+    knowledge?: string,
+    state: SourceLinkSuggestion["state"] = "suggested",
+  ) =>
+    call<ListSourceLinkSuggestionsResponse>(
+      "GET",
+      `/api/source-link-suggestions?${new URLSearchParams({ state, limit: "200", ...(client ? { client } : {}), ...(knowledge ? { knowledge } : {}) })}`,
+    ).then((result) => result.suggestions),
+  decideSourceLink: (
+    id: string,
+    action: DecideSourceLinkSuggestionBody["action"],
+    version: number,
+  ) =>
+    call<SourceLinkSuggestion>(
+      "POST",
+      `/api/source-link-suggestions/${encodeURIComponent(id)}/decision`,
+      { action, version },
+    ),
+  sourceDependencies: (name: string) =>
+    call<SourceDependencies>("GET", `/api/knowledge/${encodeURIComponent(name)}/dependencies`),
+  configureSource: (name: string, config: SourceConfiguration) =>
+    call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/configuration`, config),
+  connectSource: (name: string, ref: string) =>
+    call<Source>("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { ref }),
+  syncSource: (name: string) =>
+    call<Source>("POST", `/api/knowledge/${encodeURIComponent(name)}/sync`),
+  deleteSource: (name: string) =>
+    call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}`),
   documents: (name: string) =>
-    call<{ documents: Doc[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/documents`).then((r) => r.documents),
+    call<{ documents: Doc[] }>("GET", `/api/knowledge/${encodeURIComponent(name)}/documents`).then(
+      (r) => r.documents,
+    ),
   addDocument: (name: string, d: { title: string; uri: string; text: string }) =>
     call<Doc>("POST", `/api/knowledge/${encodeURIComponent(name)}/documents`, d),
   removeDocument: (name: string, id: string) =>
-    call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}/documents/${encodeURIComponent(id)}`),
+    call<void>(
+      "DELETE",
+      `/api/knowledge/${encodeURIComponent(name)}/documents/${encodeURIComponent(id)}`,
+    ),
   excludeDocument: (name: string, id: string, excluded: boolean) =>
-    call<Doc>("PUT", `/api/knowledge/${encodeURIComponent(name)}/documents/${encodeURIComponent(id)}`, { excluded }),
+    call<Doc>(
+      "PUT",
+      `/api/knowledge/${encodeURIComponent(name)}/documents/${encodeURIComponent(id)}`,
+      { excluded },
+    ),
   saveVariant: (name: string, variant: string) =>
-    call<{ name: string }>("POST", `/api/knowledge/${encodeURIComponent(name)}/variants`, { name: variant }),
+    call<{ name: string }>("POST", `/api/knowledge/${encodeURIComponent(name)}/variants`, {
+      name: variant,
+    }),
   deleteVariant: (name: string, variant: string) =>
-    call<void>("DELETE", `/api/knowledge/${encodeURIComponent(name)}/variants/${encodeURIComponent(variant)}`),
-  searchKnowledgeDetailed: (q: string, source: string, variant="") => call<{hits:Hit[];warnings?:{source:string;cause:string}[]}>("GET",`/api/knowledge/search?${new URLSearchParams(variant?{q,source,variant}:{q,source})}`),
+    call<void>(
+      "DELETE",
+      `/api/knowledge/${encodeURIComponent(name)}/variants/${encodeURIComponent(variant)}`,
+    ),
+  searchKnowledgeDetailed: (q: string, source: string, variant = "") =>
+    call<{ hits: Hit[]; warnings?: { source: string; cause: string }[] }>(
+      "GET",
+      `/api/knowledge/search?${new URLSearchParams(variant ? { q, source, variant } : { q, source })}`,
+    ),
   searchKnowledge: (q: string, source: string, variant = "") =>
     call<{ hits: Hit[] }>(
       "GET",
@@ -1166,7 +1522,8 @@ export const callGovernance = {
   setPolicy: (agent: string, policy: CallPolicyInput) =>
     call<CallPolicy>("PUT", `${agentPath(agent)}/call-policy`, policy),
   /** For an agent as a caller, every other agent and whether it may call it. Needs agents:read. */
-  reachable: (agent: string) => call<{ agents: Reach[]; truncated: boolean }>("GET", `${agentPath(agent)}/reachable`),
+  reachable: (agent: string) =>
+    call<{ agents: Reach[]; truncated: boolean }>("GET", `${agentPath(agent)}/reachable`),
   /**
    * An agent's queue of calls waiting for approval: approvals it raised, or
    * that would call it. Only what the caller may see and answer is listed.
@@ -1209,8 +1566,18 @@ export interface Thread {
   mode?: "join" | "all";
   read_only?: boolean;
   fork?: {
-    source_thread: string; through: string; by: string; at: string; sources?: string[];
-    context: { kind: "person" | "agent" | "system"; by: string; name?: string; text: string; at: string }[];
+    source_thread: string;
+    through: string;
+    by: string;
+    at: string;
+    sources?: string[];
+    context: {
+      kind: "person" | "agent" | "system";
+      by: string;
+      name?: string;
+      text: string;
+      at: string;
+    }[];
   };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
@@ -1307,7 +1674,14 @@ export interface ThreadPage {
   answers: ThreadAnswers;
 }
 
-export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default";
+export type ThreadRule =
+  | "tagged"
+  | "people"
+  | "reply"
+  | "post_only"
+  | "routed"
+  | "untagged"
+  | "default";
 
 /** What posting a message did. */
 export interface ThreadPosted {
@@ -1328,7 +1702,7 @@ export interface Channel {
   purpose?: string;
   default?: string;
   /** The Slack channel it is bound to: a Slack thread there is a shared thread here. */
-  slack?: { client: string; channel: string; direction?:BridgeDirection };
+  slack?: { client: string; channel: string; direction?: BridgeDirection };
   archived?: boolean;
   managed?: string;
   version: number;
@@ -1374,19 +1748,46 @@ const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
 
 /** Channels, experts and shared threads: where people and agents work together. */
 export const coworking = {
-  fork: (id: string, input: { through: string; title?: string; agents?: string[]; mode?: "join" | "all"; sources?: string[] }) => call<Thread>("POST", `${threadPath(id)}/fork`, input),
-  bringBack: (id: string, input: { run: string; text?: string }) => call<ThreadMessage>("POST", `${threadPath(id)}/bring-back`, input),
-  participants: (id: string, input: { version: number; add?: { kind: "person" | "agent"; name: string }[]; remove?: string[] }) => call<Thread>("PUT", `${threadPath(id)}/participants`, input),
-  channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
-  createChannel: (project: string, c: { name: string; title?: string; purpose?: string; default?: string }) =>
-    call<Channel>("POST", `${projectAt(project)}/channels`, c),
-  updateChannel: (project: string, name: string, c: { version: number; title: string; purpose: string; default: string }) =>
-    call<Channel>("PUT", `${projectAt(project)}/channels/${encodeURIComponent(name)}`, c),
+  fork: (
+    id: string,
+    input: {
+      through: string;
+      title?: string;
+      agents?: string[];
+      mode?: "join" | "all";
+      sources?: string[];
+    },
+  ) => call<Thread>("POST", `${threadPath(id)}/fork`, input),
+  bringBack: (id: string, input: { run: string; text?: string }) =>
+    call<ThreadMessage>("POST", `${threadPath(id)}/bring-back`, input),
+  participants: (
+    id: string,
+    input: {
+      version: number;
+      add?: { kind: "person" | "agent"; name: string }[];
+      remove?: string[];
+    },
+  ) => call<Thread>("PUT", `${threadPath(id)}/participants`, input),
+  channels: (project: string) =>
+    call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
+  createChannel: (
+    project: string,
+    c: { name: string; title?: string; purpose?: string; default?: string },
+  ) => call<Channel>("POST", `${projectAt(project)}/channels`, c),
+  updateChannel: (
+    project: string,
+    name: string,
+    c: { version: number; title: string; purpose: string; default: string },
+  ) => call<Channel>("PUT", `${projectAt(project)}/channels/${encodeURIComponent(name)}`, c),
   archiveChannel: (project: string, name: string) =>
     call<void>("DELETE", `${projectAt(project)}/channels/${encodeURIComponent(name)}`),
-  experts: (project: string) => call<{ version: number; experts: ProjectExpert[] }>("GET", `${projectAt(project)}/experts`),
+  experts: (project: string) =>
+    call<{ version: number; experts: ProjectExpert[] }>("GET", `${projectAt(project)}/experts`),
   setExperts: (project: string, version: number, experts: ProjectExpert[]) =>
-    call<{ version: number; experts: ProjectExpert[] }>("PUT", `${projectAt(project)}/experts`, { version, experts }),
+    call<{ version: number; experts: ProjectExpert[] }>("PUT", `${projectAt(project)}/experts`, {
+      version,
+      experts,
+    }),
   /** The knowledge sources a project names, and what a run filed in it is grounded in. */
   knowledge: (project: string) => call<ProjectKnowledge>("GET", `${projectAt(project)}/knowledge`),
   /** Replaces the sources a project names, as a whole, from the version read. */
@@ -1394,13 +1795,20 @@ export const coworking = {
     call<ProjectKnowledge>("PUT", `${projectAt(project)}/knowledge`, { version, knowledge }),
   /** One page of a channel's threads, most recently active first. */
   threads: (project: string, channel: string, before?: string) => {
-    const q = new URLSearchParams({ project: project === "" ? "~" : project, channel, limit: "30" });
+    const q = new URLSearchParams({
+      project: project === "" ? "~" : project,
+      channel,
+      limit: "30",
+    });
     if (before) q.set("before", before);
     return call<{ threads: ThreadSummary[]; next: string | null }>("GET", `/api/threads?${q}`);
   },
   /** A thread and one page of its turns, the newest first; `before` reads the page above. */
   thread: (id: string, before?: string) =>
-    call<ThreadPage>("GET", before ? `${threadPath(id)}?${new URLSearchParams({ before })}` : threadPath(id)),
+    call<ThreadPage>(
+      "GET",
+      before ? `${threadPath(id)}?${new URLSearchParams({ before })}` : threadPath(id),
+    ),
   /**
    * Starts a thread: private unless `visibility` says shared, read then by
    * the people in it alone until it is shared. A message starts a run only
@@ -1414,29 +1822,44 @@ export const coworking = {
     visibility?: "shared" | "private";
     agents?: string[];
     mode?: "join" | "all";
-  }) =>
-    call<ThreadPosted>("POST", "/api/threads", { visibility: "private", ...t }),
+  }) => call<ThreadPosted>("POST", "/api/threads", { visibility: "private", ...t }),
   /**
    * Shares a private thread in a project's channel (general unless named)
    * and adds people by handle. The project may change only while the thread
    * has no runs: the server answers 409 otherwise.
    */
-  placement: (id: string, project: string, channel: string) => call<PlacementPreview>("GET", `${threadPath(id)}/placement?${new URLSearchParams({project: project || "~", channel})}`),
-  publishSummary: (id: string, body: {project:string;channel:string;summary:string;placement_token:string}) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
+  placement: (id: string, project: string, channel: string) =>
+    call<PlacementPreview>(
+      "GET",
+      `${threadPath(id)}/placement?${new URLSearchParams({ project: project || "~", channel })}`,
+    ),
+  publishSummary: (
+    id: string,
+    body: { project: string; channel: string; summary: string; placement_token: string },
+  ) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>
-    call<{ skills: Skill[] }>("GET", `/api/skills?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) => r.skills),
+    call<{ skills: Skill[] }>(
+      "GET",
+      `/api/skills?${new URLSearchParams({ project: project === "" ? "~" : project })}`,
+    ).then((r) => r.skills),
   /** The kinds a `@kind:name` mention can take in a project, such as sme and skill. */
   mentionKinds: (project: string) =>
-    call<{ kinds?: MentionKind[] }>("GET", `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) => r.kinds ?? []),
+    call<{ kinds?: MentionKind[] }>(
+      "GET",
+      `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project })}`,
+    ).then((r) => r.kinds ?? []),
   /** At most 20 items of one mention kind, whose names start with `q`. */
   mentionItems: (project: string, kind: string, q: string) =>
-    call<{ items?: MentionItem[] }>("GET", `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project, kind, q })}`).then(
-      (r) => r.items ?? [],
-    ),
-  post: (id: string, m: { text: string; after?: string; answers?: { run: string; question: string } }) =>
-    call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
+    call<{ items?: MentionItem[] }>(
+      "GET",
+      `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project, kind, q })}`,
+    ).then((r) => r.items ?? []),
+  post: (
+    id: string,
+    m: { text: string; after?: string; answers?: { run: string; question: string } },
+  ) => call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
   /** Changes a thread's record: its title, visibility, default, the agents it routes to and how, and while it has no runs, where it lives. */
   update: (
     id: string,
@@ -1450,27 +1873,46 @@ export const coworking = {
       project?: string;
       channel?: string;
     },
-  ) =>
-    call<Thread>("PUT", threadPath(id), t),
+  ) => call<Thread>("PUT", threadPath(id), t),
   /** Renames a conversation, keeping everything else as it stands. */
   rename: (id: string, title: string) =>
     call<ThreadPage>("GET", `${threadPath(id)}?limit=1`).then(({ thread: t }) =>
-      call<Thread>("PUT", threadPath(id), { version: t.version, title, visibility: t.visibility, default: t.default || "", agents: t.agents, mode: t.mode }),
+      call<Thread>("PUT", threadPath(id), {
+        version: t.version,
+        title,
+        visibility: t.visibility,
+        default: t.default || "",
+        agents: t.agents,
+        mode: t.mode,
+      }),
     ),
   /** Archives a conversation: hidden now, queued for an admin to delete in 30 days, or at once with deleteNow. */
-  archive: (id: string, deleteNow = false) => call<Thread>("POST", `${threadPath(id)}/archive`, { delete_now: deleteNow }),
+  archive: (id: string, deleteNow = false) =>
+    call<Thread>("POST", `${threadPath(id)}/archive`, { delete_now: deleteNow }),
   unarchive: (id: string) => call<Thread>("DELETE", `${threadPath(id)}/archive`),
-  deletions: () => call<{ deletions: Deletion[] }>("GET", "/api/deletions").then((r) => r.deletions),
-  approveDeletion: (id: string) => call<void>("POST", `/api/deletions/${encodeURIComponent(id)}/approve`),
-  rejectDeletion: (id: string) => call<void>("POST", `/api/deletions/${encodeURIComponent(id)}/reject`),
+  deletions: () =>
+    call<{ deletions: Deletion[] }>("GET", "/api/deletions").then((r) => r.deletions),
+  approveDeletion: (id: string) =>
+    call<void>("POST", `/api/deletions/${encodeURIComponent(id)}/approve`),
+  rejectDeletion: (id: string) =>
+    call<void>("POST", `/api/deletions/${encodeURIComponent(id)}/reject`),
   /** The workspace's people whose name or handle holds `q`, for the @ typeahead. */
   people: (q: string, limit = 8) =>
-    call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: String(limit) })}`).then((r) => r.people),
+    call<{ people: DirectoryPerson[] }>(
+      "GET",
+      `/api/people?${new URLSearchParams({ q, limit: String(limit) })}`,
+    ).then((r) => r.people),
   /** Which agents may answer in a project, for the @ typeahead. */
   available: (project: string) => call<ProjectAvailability>("GET", `${projectAt(project)}/agents`),
 };
 
-export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };
+export type ReadAuditRecord = {
+  subject: string;
+  project: string;
+  thread?: string;
+  route: string;
+  at: string;
+};
 
 function operationPolicyPath(scope: "workspace" | "agent" | "project" | "personal", name: string) {
   if (scope === "personal") return "/api/me/action-policy";
@@ -1479,7 +1921,26 @@ function operationPolicyPath(scope: "workspace" | "agent" | "project" | "persona
 }
 
 export interface ProjectForkOperation {
- id: string; source: string; destination: string; state: "preparing" | "failed" | "ready"; error?: string; projects: number; agents: number; memory: number; archives: number;
+  id: string;
+  source: string;
+  destination: string;
+  state: "preparing" | "failed" | "ready";
+  error?: string;
+  projects: number;
+  agents: number;
+  memory: number;
+  archives: number;
 }
 
-export interface DiscoveryItem { kind: "project" | "agent" | "conversation" | "message" | "file" | "source"; id: string; title: string; project?: string; channel?: string; hue?: number; snippet?: string; thread?: string; message?: string; source?: string }
+export interface DiscoveryItem {
+  kind: "project" | "agent" | "conversation" | "message" | "file" | "source";
+  id: string;
+  title: string;
+  project?: string;
+  channel?: string;
+  hue?: number;
+  snippet?: string;
+  thread?: string;
+  message?: string;
+  source?: string;
+}

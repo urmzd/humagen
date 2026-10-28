@@ -14,7 +14,8 @@ export function inWords(expression: string): string {
   if (rest.length > 0 || dom !== "*" || month !== "*") return expression;
   if (min === "*" && hour === "*" && dow === "*") return words.everyMinute;
   if (!num(min) || Number(min) > 59) return expression;
-  if (hour === "*" && dow === "*") return Number(min) === 0 ? words.hourly : words.hourlyAt(Number(min));
+  if (hour === "*" && dow === "*")
+    return Number(min) === 0 ? words.hourly : words.hourlyAt(Number(min));
   if (!num(hour) || Number(hour) > 23) return expression;
   const at = `${(hour as string).padStart(2, "0")}:${(min as string).padStart(2, "0")}`;
   if (dow === "*") return words.daily(at);
@@ -25,7 +26,12 @@ export function inWords(expression: string): string {
 }
 
 /** The shapes offered when making a schedule, each with its words. */
-export const presets: { label: string; expression: string }[] = ["* * * * *", "0 * * * *", "0 9 * * *", "0 9 * * 1-5"].map((expression) => ({
+export const presets: { label: string; expression: string }[] = [
+  "* * * * *",
+  "0 * * * *",
+  "0 9 * * *",
+  "0 9 * * 1-5",
+].map((expression) => ({
   expression,
   label: inWords(expression),
 }));

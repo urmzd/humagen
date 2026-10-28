@@ -39,7 +39,8 @@ export function askedOf(turn: Turn, ask: ThreadAsk | undefined): Turn {
   const forOthers = questionFor(ask, turn.agent.name);
   let changed = false;
   const interrupts = turn.interrupts.map((i) => {
-    if (i.id !== ask.question || i.type !== "clarification" || i.answer.kind !== "pending") return i;
+    if (i.id !== ask.question || i.type !== "clarification" || i.answer.kind !== "pending")
+      return i;
     changed = true;
     return { ...i, forOthers };
   });
@@ -47,7 +48,10 @@ export function askedOf(turn: Turn, ask: ThreadAsk | undefined): Turn {
 }
 
 /** The words a turn is drawn with for one reader: a run waiting on someone else does not say it needs them. */
-const othersCopy: Copy = { ...defaultCopy, status: { ...defaultCopy.status, waiting: defaultCopy.threads.waitingOnOthers } };
+const othersCopy: Copy = {
+  ...defaultCopy,
+  status: { ...defaultCopy.status, waiting: defaultCopy.threads.waitingOnOthers },
+};
 
 export function copyFor(ask: ThreadAsk | undefined): Copy {
   return ask && !ask.yours ? othersCopy : defaultCopy;
@@ -69,5 +73,7 @@ export function stillAsks(turn: Turn, question: string): boolean {
 }
 
 function pending(i: Interrupt): boolean {
-  return i.type === "approval" ? i.decision.kind === "pending" || i.decision.kind === "asked" : i.answer.kind === "pending";
+  return i.type === "approval"
+    ? i.decision.kind === "pending" || i.decision.kind === "asked"
+    : i.answer.kind === "pending";
 }

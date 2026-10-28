@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { Label } from "@humagen/render-web/ui/label";
+import type { ReactNode } from "react";
 
 /** Shared reading order for settings: what it changes, then the control. */
 export function SettingsFormRow({

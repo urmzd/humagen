@@ -1,7 +1,9 @@
 import { strFromU8, unzipSync } from "fflate";
 
 export type Slide = { title: string; paragraphs: string[]; notes: string[] };
-export type DocumentBlock = { kind: "paragraph"; text: string } | { kind: "table"; rows: string[][] };
+export type DocumentBlock =
+  | { kind: "paragraph"; text: string }
+  | { kind: "table"; rows: string[][] };
 export type FilePreview =
   | { kind: "document"; paragraphs: string[]; blocks?: DocumentBlock[]; truncated: boolean }
   | { kind: "presentation"; slides: Slide[]; truncated: boolean }
@@ -129,7 +131,9 @@ export function previewOf(bytes: Uint8Array, title: string, mime: string): FileP
       if (!body) throw new Error("The document has no readable body.");
       const blocks: DocumentBlock[] = [];
       const kept: string[] = [];
-      let count = 0, rows = 0, truncated = false;
+      let count = 0,
+        rows = 0,
+        truncated = false;
       const text = (value: string) => {
         const remaining = Math.max(MAX_TEXT - count, 0);
         const result = value.slice(0, remaining);
@@ -142,9 +146,14 @@ export function previewOf(bytes: Uint8Array, title: string, mime: string): FileP
         const element = node as Element;
         if (element.namespaceURI !== WORD) continue;
         if (element.localName === "p") {
-          const value = [...element.getElementsByTagNameNS(WORD, "t")].map((part) => part.textContent ?? "").join("");
+          const value = [...element.getElementsByTagNameNS(WORD, "t")]
+            .map((part) => part.textContent ?? "")
+            .join("");
           if (!value) continue;
-          if (kept.length >= 500 || count >= MAX_TEXT) { truncated = true; continue; }
+          if (kept.length >= 500 || count >= MAX_TEXT) {
+            truncated = true;
+            continue;
+          }
           const paragraph = text(value);
           kept.push(paragraph);
           blocks.push({ kind: "paragraph", text: paragraph });
@@ -152,15 +161,22 @@ export function previewOf(bytes: Uint8Array, title: string, mime: string): FileP
           const values: string[][] = [];
           for (const row of Array.from(element.childNodes)) {
             if (row.nodeType !== 1 || (row as Element).localName !== "tr") continue;
-            if (rows >= MAX_ROWS || count >= MAX_TEXT) { truncated = true; continue; }
+            if (rows >= MAX_ROWS || count >= MAX_TEXT) {
+              truncated = true;
+              continue;
+            }
             const cells: string[] = [];
             for (const cell of Array.from(row.childNodes)) {
               if (cell.nodeType !== 1 || (cell as Element).localName !== "tc") continue;
-              if (cells.length >= MAX_COLUMNS) { truncated = true; continue; }
+              if (cells.length >= MAX_COLUMNS) {
+                truncated = true;
+                continue;
+              }
               const value = paragraphs(cell as Element, WORD).join("\n");
               cells.push(text(value));
             }
-            values.push(cells); rows++;
+            values.push(cells);
+            rows++;
           }
           if (values.length) blocks.push({ kind: "table", rows: values });
         }

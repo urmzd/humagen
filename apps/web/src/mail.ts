@@ -3,7 +3,13 @@
  * shared with every other surface in `@humagen/adapter`. What is the
  * console's own is how it calls: same origin, with the session cookie.
  */
-import { type Http, MailError, mailTransport, projectTransport, type Transport } from "@humagen/adapter";
+import {
+  type Http,
+  MailError,
+  mailTransport,
+  projectTransport,
+  type Transport,
+} from "@humagen/adapter";
 
 export * from "@humagen/adapter/mail";
 
@@ -23,4 +29,5 @@ const http: Http = async <T>(method: string, path: string, json?: unknown): Prom
 export const transport: Transport = mailTransport(http);
 
 /** A project's inbox, read through the same session; with `children`, the projects below it too. */
-export const projectInbox = (project: string, children = false): Transport => projectTransport(http, project, children);
+export const projectInbox = (project: string, children = false): Transport =>
+  projectTransport(http, project, children);

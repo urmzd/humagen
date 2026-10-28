@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { defaultCopy } from "@humagen/components";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { QueuedApproval } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { ApprovalQueue } from "./Governance.tsx";
@@ -22,7 +22,9 @@ const waiting = (question: Partial<Question>): QueuedApproval => ({
   subject: "boss wants to run wiki__search",
   state: "open",
   source: { run: "run-1", agent: "boss" },
-  parts: [{ id: "p1", question: { run: "run-1", id: "q1", prompt: "Search the wiki?", ...question } }],
+  parts: [
+    { id: "p1", question: { run: "run-1", id: "q1", prompt: "Search the wiki?", ...question } },
+  ],
 });
 
 function open(message: QueuedApproval, viewer: string) {
@@ -78,6 +80,9 @@ test("that person, and anyone on any other run, may add one", async () => {
 });
 
 test("a call that acts as the person says so", async () => {
-  open(waiting({ steered_for: "ana", tool: { name: "issues__search", acts_for_person: true } }), "ben");
+  open(
+    waiting({ steered_for: "ana", tool: { name: "issues__search", acts_for_person: true } }),
+    "ben",
+  );
   await screen.findByText(defaultCopy.actsForPerson);
 });

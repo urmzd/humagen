@@ -599,7 +599,7 @@ test("a newly saved personal draft tests with an eligible personal agent in the 
     },
   });
   render(<SkillsLibrary />);
-  const create = await screen.findByRole("button", { name: "New Skill" }) as HTMLButtonElement;
+  const create = (await screen.findByRole("button", { name: "New Skill" })) as HTMLButtonElement;
   await waitFor(() => assert.equal(create.disabled, false));
   fireEvent.click(create);
   fireEvent.change(await screen.findByLabelText("Name"), { target: { value: skill.name } });

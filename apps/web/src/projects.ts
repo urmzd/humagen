@@ -3,7 +3,15 @@
  * return, and the tests check the layout without a browser.
  */
 import { defaultCopy } from "@humagen/components";
-import type { Project, ProjectAccount, ProjectKind, ProjectKindSpec, ProjectStep, ProjectUpdate, ProjectView } from "./api.ts";
+import type {
+  Project,
+  ProjectAccount,
+  ProjectKind,
+  ProjectKindSpec,
+  ProjectStep,
+  ProjectUpdate,
+  ProjectView,
+} from "./api.ts";
 
 const words = defaultCopy.projects;
 
@@ -31,9 +39,16 @@ export function likeOf(kind: ProjectKind, kinds: ProjectKindSpec[] = []): BuiltI
  * humagen's, then the workspace's own by title, then any a project has that the
  * workspace no longer lists, by name.
  */
-export function kindsOf(kinds: ProjectKindSpec[] = [], projects: Pick<ProjectView, "kind">[] = []): ProjectKind[] {
-  const own = [...kinds].sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name)).map((k) => k.name);
-  const left = [...new Set(projects.map((p) => p.kind))].filter((k) => !(KINDS as string[]).includes(k) && !own.includes(k)).sort();
+export function kindsOf(
+  kinds: ProjectKindSpec[] = [],
+  projects: Pick<ProjectView, "kind">[] = [],
+): ProjectKind[] {
+  const own = [...kinds]
+    .sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name))
+    .map((k) => k.name);
+  const left = [...new Set(projects.map((p) => p.kind))]
+    .filter((k) => !(KINDS as string[]).includes(k) && !own.includes(k))
+    .sort();
   return [...KINDS, ...own, ...left];
 }
 
@@ -49,7 +64,10 @@ export const MAX_DEPTH = 4;
 export const narrowAt = (width: number): boolean => width < NARROW_BELOW;
 
 /** What people see for a project: its title, else its name. The workspace is called by the workspace's name. */
-export function titleOf(p: Pick<Project, "name" | "title"> | ProjectStep, workspace = words.workspace): string {
+export function titleOf(
+  p: Pick<Project, "name" | "title"> | ProjectStep,
+  workspace = words.workspace,
+): string {
   return p.name === "" ? workspace : p.title || p.name;
 }
 
@@ -66,7 +84,8 @@ export function titleIn(projects: readonly ProjectRef[], name: string): string {
 }
 
 /** A picker's options for the projects the reader has, each by its title. */
-export const projectOptions = (projects: readonly ProjectRef[]) => projects.map((p) => ({ value: p.name, label: titleOf(p) }));
+export const projectOptions = (projects: readonly ProjectRef[]) =>
+  projects.map((p) => ({ value: p.name, label: titleOf(p) }));
 
 /**
  * A kind in words: "Account", or the title the workspace gives its own. The
@@ -89,7 +108,9 @@ export function above(p: ProjectView): string[] {
 export function matches(p: ProjectView, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [p.name, p.title, p.description, p.account?.customer].some((s) => s?.toLowerCase().includes(q));
+  return [p.name, p.title, p.description, p.account?.customer].some((s) =>
+    s?.toLowerCase().includes(q),
+  );
 }
 
 /** One row of the tree. */
@@ -119,23 +140,30 @@ export interface TreeGroup {
  * the group's left edge and prints its path. On a narrow screen nothing nests
  * deeper than one level.
  */
-export function treeOf(projects: ProjectView[], opts: { narrow: boolean; q?: string; kind?: ProjectKind; kinds?: ProjectKindSpec[] }): TreeGroup[] {
-  const shown = projects.filter((p) => (!opts.kind || p.kind === opts.kind) && matches(p, opts.q ?? ""));
-  return kindsOf(opts.kinds, projects).map((kind) => {
-    const level = new Map<string, number>();
-    const rows = shown
-      .filter((p) => p.kind === kind)
-      .map((p): TreeRow => {
-        const parent = level.get(p.parent ?? "");
-        const depth = parent === undefined ? 0 : parent + 1;
-        level.set(p.name, depth);
-        const indent = opts.narrow ? Math.min(depth, NARROW_INDENT) : depth;
-        // The indent says where a row sits only when it nests at its full depth.
-        const placed = depth > 0 && indent === depth;
-        return { project: p, indent, path: placed ? [] : above(p) };
-      });
-    return { kind, title: groupWord(kind, opts.kinds ?? []), rows };
-  }).filter((g) => g.rows.length > 0);
+export function treeOf(
+  projects: ProjectView[],
+  opts: { narrow: boolean; q?: string; kind?: ProjectKind; kinds?: ProjectKindSpec[] },
+): TreeGroup[] {
+  const shown = projects.filter(
+    (p) => (!opts.kind || p.kind === opts.kind) && matches(p, opts.q ?? ""),
+  );
+  return kindsOf(opts.kinds, projects)
+    .map((kind) => {
+      const level = new Map<string, number>();
+      const rows = shown
+        .filter((p) => p.kind === kind)
+        .map((p): TreeRow => {
+          const parent = level.get(p.parent ?? "");
+          const depth = parent === undefined ? 0 : parent + 1;
+          level.set(p.name, depth);
+          const indent = opts.narrow ? Math.min(depth, NARROW_INDENT) : depth;
+          // The indent says where a row sits only when it nests at its full depth.
+          const placed = depth > 0 && indent === depth;
+          return { project: p, indent, path: placed ? [] : above(p) };
+        });
+      return { kind, title: groupWord(kind, opts.kinds ?? []), rows };
+    })
+    .filter((g) => g.rows.length > 0);
 }
 
 /** Where a new project would sit: the workspace, or a project. */
@@ -149,7 +177,11 @@ export const WORKSPACE: Place = { name: "", kind: "company", depth: 0 };
  * only under the workspace or another company-wide project, and an account
  * never under an account.
  */
-export function fitsUnder(parent: Place, kind: ProjectKind, kinds: ProjectKindSpec[] = []): boolean {
+export function fitsUnder(
+  parent: Place,
+  kind: ProjectKind,
+  kinds: ProjectKindSpec[] = [],
+): boolean {
   if (parent.depth >= MAX_DEPTH) return false;
   const like = likeOf(kind, kinds);
   if (like === "company") return parent.kind === "company";
@@ -158,8 +190,14 @@ export function fitsUnder(parent: Place, kind: ProjectKind, kinds: ProjectKindSp
 }
 
 /** The kinds a person may make under `parent`, humagen's then the workspace's own. Company-wide needs projects:govern. */
-export function kindsUnder(parent: Place, canGovern: boolean, kinds: ProjectKindSpec[] = []): ProjectKind[] {
-  return kindsOf(kinds).filter((k) => fitsUnder(parent, k, kinds) && (k !== "company" || canGovern));
+export function kindsUnder(
+  parent: Place,
+  canGovern: boolean,
+  kinds: ProjectKindSpec[] = [],
+): ProjectKind[] {
+  return kindsOf(kinds).filter(
+    (k) => fitsUnder(parent, k, kinds) && (k !== "company" || canGovern),
+  );
 }
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$/;
@@ -180,7 +218,11 @@ export function nameFrom(title: string): string {
 /** An account with its empty fields left out, or nothing when every field is empty. */
 export function accountOf(a: ProjectAccount | undefined): ProjectAccount | undefined {
   if (!a) return undefined;
-  const kept = Object.fromEntries(Object.entries(a).filter(([, v]) => typeof v === "string" && v.trim() !== "").map(([k, v]) => [k, (v as string).trim()]));
+  const kept = Object.fromEntries(
+    Object.entries(a)
+      .filter(([, v]) => typeof v === "string" && v.trim() !== "")
+      .map(([k, v]) => [k, (v as string).trim()]),
+  );
   return Object.keys(kept).length > 0 ? (kept as ProjectAccount) : undefined;
 }
 
@@ -190,8 +232,17 @@ export function accountOf(a: ProjectAccount | undefined): ProjectAccount | undef
  * out, so each one not changed is carried as it was, and an emptied one is
  * left out to clear it.
  */
-export function updateOf(p: Project, change: Partial<Omit<ProjectUpdate, "version">> = {}): ProjectUpdate {
-  const next = { title: p.title, description: p.description, account: p.account, instructions: p.instructions, ...change };
+export function updateOf(
+  p: Project,
+  change: Partial<Omit<ProjectUpdate, "version">> = {},
+): ProjectUpdate {
+  const next = {
+    title: p.title,
+    description: p.description,
+    account: p.account,
+    instructions: p.instructions,
+    ...change,
+  };
   const account = accountOf(next.account);
   return {
     version: p.version,
