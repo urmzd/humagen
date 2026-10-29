@@ -297,17 +297,10 @@ function Gallery() {
               selected={run}
               onSelect={setRun}
               onClose={() => setRun(null)}
-              onJump={() => {}}
             />
           </div>
           <div className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
-            <ActivityPanel
-              trees={trees}
-              selected="r2a"
-              onSelect={() => {}}
-              onClose={() => {}}
-              onJump={() => {}}
-            />
+            <ActivityPanel trees={trees} selected="r2a" onSelect={() => {}} onClose={() => {}} />
           </div>
           <div className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
             <ActivityPanel trees={[]} selected={null} onSelect={() => {}} onClose={() => {}} />

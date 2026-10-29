@@ -224,7 +224,7 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 	case next.HistoryLimit < MinHistory || next.HistoryLimit > MaxHistory:
 		return fmt.Errorf("%w: the history limit is from %d to %d characters", ErrSettings, MinHistory, MaxHistory)
 	}
-	if err := checkModelPolicies(next.ModelPolicies); err != nil {
+	if err := checkModelPolicies(next.ModelPolicies, p.cfg.Ext.ProviderNames()...); err != nil {
 		return err
 	}
 	if err := p.checkRouter(&next.Router); err != nil {

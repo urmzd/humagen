@@ -99,12 +99,26 @@ export function reduce(turn: Turn, event: TurnEvent): Turn {
       };
     case "text.delta":
       return { ...turn, status: "working", text: turn.text + event.text };
-    case "reasoning.delta":
-      return { ...turn, reasoning: (turn.reasoning ?? "") + event.text };
+    case "reasoning.delta": {
+      // Thinking that goes on with no words or steps since is one piece.
+      const thoughts = turn.thoughts ?? [];
+      const last = thoughts[thoughts.length - 1];
+      const at = turn.text.length;
+      const after = turn.tasks.length;
+      const next =
+        last && last.at === at && last.after === after
+          ? [...thoughts.slice(0, -1), { ...last, text: last.text + event.text }]
+          : [...thoughts, { at, after, text: event.text }];
+      return { ...turn, reasoning: (turn.reasoning ?? "") + event.text, thoughts: next };
+    }
     case "plan.updated":
       return { ...turn, planTitle: event.title };
-    case "task.upserted":
-      return { ...turn, tasks: upsert(turn.tasks, event.task) };
+    case "task.upserted": {
+      // A step keeps the place in the answer where it first appeared.
+      const was = turn.tasks.find((t) => t.id === event.task.id);
+      const at = was?.at ?? event.task.at ?? turn.text.length;
+      return { ...turn, tasks: upsert(turn.tasks, { ...event.task, at }) };
+    }
     case "citation.added":
       return { ...turn, citations: upsert(turn.citations, event.citation) };
     case "interrupt.raised":

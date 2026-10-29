@@ -66,7 +66,10 @@ func (m ModelPolicy) spec(agent string) wire.AgentSpec {
 	return s
 }
 
-func checkModelPolicies(list []ModelPolicy) error {
+// checkModelPolicies checks each policy as fiber checks an agent, against the
+// providers this deployment has: fiber's built-in ones and every model the
+// spec names, such as a second OpenAI-compatible server.
+func checkModelPolicies(list []ModelPolicy, known ...string) error {
 	if len(list) > MaxModelPolicies {
 		return fmt.Errorf("%w: a workspace keeps at most %d model policies", ErrModelPolicy, MaxModelPolicies)
 	}
@@ -89,7 +92,7 @@ func checkModelPolicies(list []ModelPolicy) error {
 		}
 		seen[m.Name] = true
 		// A policy is checked exactly as fiber checks the agent fields it becomes.
-		if err := m.spec("policy-" + m.Name).ValidateWith(wire.KnownProviders()); err != nil {
+		if err := m.spec("policy-" + m.Name).ValidateWith(append(wire.KnownProviders(), known...)); err != nil {
 			return fmt.Errorf("%w: %q: %v", ErrModelPolicy, m.Name, err)
 		}
 	}

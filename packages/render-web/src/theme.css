@@ -702,7 +702,8 @@
 @media (prefers-reduced-motion: reduce) {
   .aui-spinner,
   .aui-streaming > :last-child::after,
-  .aui-verb-in {
+  .aui-verb-in,
+  .aui-initials {
     animation: none;
   }
   /* Travel becomes a short fade: the thing still arrives, it just doesn't move. */
@@ -941,6 +942,43 @@
   /* Spent, not waiting: waiting is neither dimmed nor animated. */
   .aui-art:is([data-phase="denied"], [data-phase="failed"]) .aui-art-base {
     opacity: 0.5;
+  }
+
+  /* ---------- Agent initials ----------
+   * An agent's face: its initials in its own color, inside a thin ring of
+   * that color. No glow: it would spill past the edge of a scrolling thread.
+   * While it works the ring breathes; the orb sits on its corner as the live badge.
+   */
+  .aui-initials {
+    --s: var(--initials-size, 28px);
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--s);
+    height: var(--s);
+    border-radius: 9999px;
+    font-size: calc(var(--s) * 0.38);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    color: var(--aui-accent);
+    background: color-mix(in oklab, var(--aui-accent) 14%, var(--aui-bg, transparent));
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--aui-accent) 45%, transparent);
+    user-select: none;
+  }
+  .aui-initials[data-live="true"] {
+    animation: aui-initials-glow 2.4s ease-in-out infinite;
+  }
+  @keyframes aui-initials-glow {
+    0%,
+    100% {
+      box-shadow: 0 0 0 1px color-mix(in oklab, var(--aui-accent) 45%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--aui-accent) 80%, transparent);
+    }
   }
 
   /* ---------- Agent orb ---------- */

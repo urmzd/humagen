@@ -15,19 +15,3 @@ export function conflictOf(e: unknown): "version" | "project" | "channel" | null
   if (m.includes("stays in its channel")) return "channel";
   return null;
 }
-
-/**
- * What a message did, kept for the conversation it started: Home and a
- * channel start one and then open it at its address, where the line about
- * the first message is said as a later post's is.
- */
-const said = new Map<string, string>();
-
-export function rememberSaid(thread: string, line: string): void {
-  if (line) said.set(thread, line);
-  else said.delete(thread);
-}
-
-export function saidFor(thread: string): string {
-  return said.get(thread) ?? "";
-}

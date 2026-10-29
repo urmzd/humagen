@@ -14,7 +14,7 @@ func TestAgentFallbacks(t *testing.T) {
 	admin := f.machine(t, "acme", everything...)
 
 	spec := `{"name":"steady","provider":"offline","model":"offline","system_prompt":"Help.",
-		"fallbacks":[{"provider":"ollama","model":"llama3.2"},{"provider":"anthropic","model":"claude-haiku-5-5"}]}`
+		"fallbacks":[{"provider":"openai","model":"llama3.2"},{"provider":"anthropic","model":"claude-haiku-5-5"}]}`
 	res, out := f.do(t, nil, "POST", "/api/agents", admin, spec)
 	if res.StatusCode != http.StatusCreated && res.StatusCode != http.StatusOK {
 		t.Fatalf("create = %d %v", res.StatusCode, out)
@@ -28,7 +28,7 @@ func TestAgentFallbacks(t *testing.T) {
 	for name, body := range map[string]string{
 		"repeats the primary": `{"name":"a","provider":"offline","model":"offline","system_prompt":"x","fallbacks":[{"provider":"offline","model":"offline"}]}`,
 		"unknown provider":    `{"name":"b","provider":"offline","model":"offline","system_prompt":"x","fallbacks":[{"provider":"nowhere","model":"m"}]}`,
-		"no model":            `{"name":"c","provider":"offline","model":"offline","system_prompt":"x","fallbacks":[{"provider":"ollama","model":""}]}`,
+		"no model":            `{"name":"c","provider":"offline","model":"offline","system_prompt":"x","fallbacks":[{"provider":"openai","model":""}]}`,
 	} {
 		if res, out := f.do(t, nil, "POST", "/api/agents", admin, body); res.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s: = %d %v, want 400", name, res.StatusCode, out)
@@ -39,13 +39,17 @@ func TestAgentFallbacks(t *testing.T) {
 // A workspace model policy: agents name it, runs use its models, and it cannot
 // be removed while an agent still runs on it.
 func TestModelPolicies(t *testing.T) {
+	// The policy's second model is a local OpenAI-compatible server, which
+	// needs no key; it is never reached, since the first model completes.
+	t.Setenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+	t.Setenv("OPENAI_API_KEY", "")
 	f := newFixture(t)
 	admin := f.machine(t, "acme", everything...)
 
 	_, current := f.do(t, nil, "GET", "/api/settings", admin, "")
 	current["model_policies"] = []any{map[string]any{
 		"name": "steady", "description": "Offline, then offline again.",
-		"models":      []any{map[string]any{"provider": "offline", "model": "offline"}, map[string]any{"provider": "ollama", "model": "llama3.2"}},
+		"models":      []any{map[string]any{"provider": "offline", "model": "offline"}, map[string]any{"provider": "openai", "model": "llama3.2"}},
 		"fallback_on": []any{"unavailable", "rate_limit"},
 	}}
 	body, _ := json.Marshal(current)

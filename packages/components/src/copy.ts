@@ -300,6 +300,7 @@ export const defaultCopy = {
     controls: "Agent Controls",
     alertRules: "Alert Rules",
     usage: "Usage",
+    health: "Health",
     audit: "Audit",
     connections: "Connected Accounts",
     profile: "Profile",
@@ -977,6 +978,26 @@ export const defaultCopy = {
     redirect: "Redirect",
     redirectPrompt: (agent: string, link: string) =>
       `@${agent} redirecting [this outcome](${link}). Please change direction: `,
+    stopAgent: (agent: string) => `Stop ${agent}`,
+    stoppingAgent: (agent: string) => `Stopping ${agent}`,
+    openCall: (agent: string) => `Open ${agent}'s conversation`,
+    callAsked: (caller: string) => `${caller} asked`,
+    callStatus: {
+      in_progress: "Working",
+      waiting: "Waiting for you",
+      error: "Failed",
+      denied: "Not allowed",
+    } as Partial<
+      Record<"pending" | "in_progress" | "waiting" | "complete" | "denied" | "error", string>
+    >,
+    activityAgents: "All runs",
+    activityCalls: (count: number) => `${count} calls`,
+    activityYouAsked: "You asked",
+    activityEmpty: "Nothing has run yet",
+    activityEmptyBody:
+      "Every agent run in this conversation is listed here, oldest first, and opens to what it was asked and answered.",
+    copyConversation: "Copy Conversation",
+    copied: "Copied",
     stopTurn: "Stop Turn",
     stoppingTurn: "Stopping…",
     stopPending: "Stop requested. Waiting for the recorded turn to end.",
@@ -992,6 +1013,8 @@ export const defaultCopy = {
     private: "Private",
     shared: "Project conversation",
     agents: (count: number) => `${count} ${count === 1 ? "agent" : "agents"} took part`,
+    agentsInvolved: (names: string[]) => `Agents involved: ${names.join(", ")}`,
+    agentsMore: (count: number) => `+${count}`,
     sourcesFailed: "Project context could not be loaded.",
     sourcesEmpty: "No sources are attached to this project yet.",
     sourceMode: "Indexed",
@@ -1038,6 +1061,33 @@ export const defaultCopy = {
     tools: (count: number) => `${count} ${count === 1 ? "work step" : "work steps"}`,
     complete: (count: number) => `${count} completed`,
     blocked: (count: number) => `${count} need attention`,
+    /** What a kind of step did, in the past and while it runs. */
+    stepWords: {
+      search: {
+        done: "searched the web",
+        live: "searching the web",
+        one: (t: string) => `searched the web for ${t}`,
+      },
+      read: { done: "read files", live: "reading files", one: (t: string) => `read ${t}` },
+      fetch: {
+        done: "fetched a page",
+        live: "fetching a page",
+        one: (t: string) => `fetched ${t}`,
+      },
+      memory: {
+        done: "checked memory",
+        live: "checking memory",
+        one: (t: string) => `checked memory for ${t}`,
+      },
+      run: { done: "ran a command", live: "running a command", one: (t: string) => `ran ${t}` },
+      write: { done: "made changes", live: "making changes", one: (t: string) => `changed ${t}` },
+      tool: { done: "used a tool", live: "using a tool", one: (t: string) => `used ${t}` },
+    },
+    stepNeedsYou: "waiting for you",
+    openProfile: "Open its profile to see how it is set up",
+    stepFailed: (count: number) => `${count} failed`,
+    workedFor: (time: string) => `Worked for ${time}`,
+    worked: "Worked",
     askAgent: (agent: string) => `Ask ${agent}`,
     reply: "Reply",
     question: "Clarification",
@@ -1409,6 +1459,21 @@ export const defaultCopy = {
     uses: "Uses",
     source: "Provenance",
     never: "No Expiry",
+  },
+  health: {
+    title: "Health",
+    lede: "Whether the platform and each model provider are working, checked every 30 seconds. Each bar is one check, oldest on the left.",
+    loading: "Checking each component.",
+    failed: "Health could not be loaded.",
+    status: { operational: "Operational", degraded: "Degraded", down: "Down" },
+    banner: {
+      operational: "All systems operational",
+      degraded: "Some systems are slow",
+      down: "Some systems are down",
+    },
+    checked: (time: string) => `Checked at ${time}`,
+    uptime: (percent: number, checks: number) =>
+      `${percent}% working over the last ${checks} ${checks === 1 ? "check" : "checks"}`,
   },
   audit: {
     dateRange: "Date Range",
@@ -1996,6 +2061,8 @@ export const defaultCopy = {
     routed: (agent: string) => `Routed to ${agent}`,
     /** Home's suggestions, as a list. */
     suggestions: "Suggestions",
+    scrollBack: "Scroll Back",
+    scrollOn: "Scroll On",
     /** The selection could not be saved on the conversation. */
     saveFailed: "The conversation's agents could not be saved. Try again.",
   },

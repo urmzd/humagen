@@ -32,6 +32,8 @@ export interface QueueControls {
   /** Retain a post that the server did not accept, for editing and explicit retry. */
   reject: () => void;
   resume: () => void;
+  /** Take a reply already in flight as the running turn, so messages queue behind it. */
+  adopt: (text: string) => void;
   setMode: (mode: QueueMode) => void;
   /** A turn is running or stopping. */
   running: boolean;
@@ -81,6 +83,7 @@ export function useQueue({
       turnEnded: (outcome) => dispatch({ type: "turnEnded", outcome }),
       reject: () => dispatch({ type: "rejected" }),
       resume: () => dispatch({ type: "resume" }),
+      adopt: (text) => dispatch({ type: "adopt", message: message(text) }),
       setMode: (m) => dispatch({ type: "setMode", mode: m }),
       running: state.status === "running" || state.status === "stopping",
     }),

@@ -33,7 +33,7 @@ var Builtin = map[string][]string{
 	SlotBlobs:      {"disk", "memory", "s3"},
 	SlotExtensions: {},
 	SlotDeploy:     {"local", "compose", "kubernetes"},
-	SlotModels:     {"anthropic", "openai", "ollama"},
+	SlotModels:     {"anthropic", "openai", "google"},
 	SlotTools:      {"mcp"},
 }
 
@@ -258,8 +258,10 @@ func (s *System) Defaults() {
 	if sp.Execution.MaxFanOut == 0 {
 		sp.Execution.MaxFanOut = 16
 	}
+	// One run calling another needs two places, and one is always kept for
+	// the runs that answer, so four lets calls nest without waiting.
 	if sp.Execution.Concurrency == 0 {
-		sp.Execution.Concurrency = 1
+		sp.Execution.Concurrency = 4
 	}
 }
 
@@ -352,7 +354,7 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &Disk{}, true
 	case "blobs.s3":
 		return &S3{}, true
-	case "models.anthropic", "models.openai", "models.ollama":
+	case "models.anthropic", "models.openai", "models.google":
 		return &ModelBlock{}, true
 	case "tools.mcp":
 		return &MCP{}, true

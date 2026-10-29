@@ -51,6 +51,15 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-021 | Sidebar conversations show agents and people; projects and conversations can be pinned independently | Implemented; saved preferences, access checks, restart and DOM regressions, and responsive sidebar captures |
 | DES-022 | Conversation actions support rename, archive and admin-reviewed deletion | Included in the consolidated branch; bounded API, durable lifecycle and review UI checks |
 | DES-023 | A deployment and each workspace brand the console from the spec, without a fork or a rebuild | Implemented; spec, server, API and console tests pass; browser check of a branded build pending |
+| DES-024 | An agent calling another agent reads as a message, nested under its caller | Implemented in `AgentMessage` (`AgentCalls`); typecheck passes; no test or live check yet (the offline provider makes no calls) |
+| DES-025 | Stop lives on the working agent's mark; the composer sends and queues | Implemented: `StoppableMark`, `useRunStop`, queue `adopt`, Esc; room, core queue and web tests pass; live stop not yet tried on a long run |
+| DES-026 | Activity lists every agent run in time order, each opening a replayable conversation | Implemented; `activity.dom.test.tsx` and `ui.test.tsx` pass; checked in the browser |
+| DES-027 | Drawer headers align with the page header | Implemented with `--humagen-header-h`; measured equal in the browser at desktop width |
+| DES-028 | Share and People & Access are one panel | Implemented: the Share drawer is People & Access; room tests pass |
+| DES-029 | A turn shows a status only when it adds information | Implemented; checked in the browser |
+| DES-030 | One AI disclaimer, centered under the prompt bar | Implemented in `Composer`; checked in the browser |
+| DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room; checked in the browser for a direct answer |
+| DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 
 ### DES-001: Working integrations
 
@@ -588,7 +597,7 @@ reopening, concurrent saves and refusal. Store tests cover bounded private lists
 memory restart, older records and write failure. HTTP tests cover unreadable
 projects, revoked access and independent conversation pins. The
 `sidebar-participants` browser fixture checks save/reload, independent unpinning,
-participant bounds and touch targets at 320, 390 and 1280px in dark mode. Its
+rows that name no participants, and touch targets at 320, 390 and 1280px in dark mode. Its
 multi-person roster is a simulated list response; pin persistence uses the native
 API. The open drawer uses its own bounds checks rather than page-content gutters.
 
@@ -647,3 +656,102 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   `TestTheWelcomeIsTheBrandings`, `TestNotificationEmailsSayTheBrandingsWords`,
   `TestTheProductsOwnSenderIsShownByItsBrandedName`, `TestFontFilesAreServedAndNamedInTheStylesheet`
   (`internal/platform`) and `apps/web/src/branding.test.ts`.
+
+### DES-024: Agent calls read as messages
+
+- A call from one agent to another (subagent, handoff or delegation, all
+  through `pkg/call`) is drawn as a message: the caller's mark, an arrow, the
+  callee's mark and the text the callee was given. The callee's answer follows
+  as its own message.
+- Calls nest under the caller's turn, not flat in the thread. While a call
+  works it is open; once it ends it collapses to one line, which opens again on
+  click or Enter.
+- A call is not drawn as a task row with a work step count.
+- Acceptance: a turn with a subagent shows the call as a message with both
+  agents' marks and the prompt, the answer under it, and collapses when ended.
+
+### DES-025: Stop on the agent's mark
+
+- While an agent works, its mark animates. Hover, keyboard focus or a tap
+  shows a stop square in its place. The mark is a button named
+  `Stop <agent>`, at least 24px, with visible focus.
+- Stopping asks the runtime (`POST /api/runs/{id}/stop`). The mark shows
+  stopping until the run ledger records an end; it never claims the run ended
+  first. Fiber stops runs attached to it; runs it delegated keep going.
+- A run waiting on a person is not working: its mark is still and offers no
+  stop by hover. Anything waiting on a person must not animate.
+- The composer only sends. While the reply to the last message works, a new
+  message queues behind it and the queue shows above the composer. Esc in an
+  empty composer stops the agents the last message started.
+- There is no separate Stop Turn button on an answer.
+- Acceptance: a working run's mark stops it with the pointer, the keyboard and
+  touch; the composer queues a message sent while a reply works and sends it
+  when the reply ends.
+
+### DES-026: Activity is every agent run, in time order
+
+- The Activity drawer opens on every agent run in the conversation, oldest
+  first, one row each: the agent's mark (stoppable as DES-025), its name, who
+  asked it, the last thing it said and when. There is no count line, no
+  filter (All, Handoffs, Tool Calls, Decisions) and no Hide Tools.
+- A row opens that agent's conversation, replayed as a chat in time order:
+  each message it was given and by whom, the exact input a helper was given,
+  its answers, its tool steps as one line each that open on click, and its
+  calls to other agents as messages that open that agent's conversation.
+  Several calls to one agent read as one conversation with a divider for each
+  call, scrolled to the call picked.
+- A trail at the top names the path (`All runs › lead › researcher`); each
+  part opens its level. Each level has an address in `route.ts`.
+- One Copy Conversation in the header copies what is on screen as Markdown.
+  There is no per-item Copy As.
+- Acceptance: from the list, a reader reaches any run's conversation and back
+  by the trail, and Copy Conversation copies what is on screen.
+
+### DES-027: Drawer headers align
+
+- A drawer's header has the page header's height and divider, so their lines
+  meet. Controls in a drawer header never wrap to a second line; what does not
+  fit goes below the line.
+- Acceptance: at desktop width with a drawer open, the divider under the page
+  title and the divider under the drawer header are at the same height.
+
+### DES-028: Share is People & Access
+
+- The header's Share opens the People & Access panel: who is in the
+  conversation, its visibility and its project, with the audience review
+  inline. There is no separate Share dialog. The old address
+  `/conversations/{id}/share` opens the panel.
+- Acceptance: one Share control, one panel; the old link opens it.
+
+### DES-029: Status only when it adds information
+
+- A turn that completed shows no status chip: a still mark and an answer say
+  it. Status shows for working (the mark moves), waiting on a person, failed
+  and stopped.
+- Acceptance: a completed turn has no Done label; the other states still read.
+
+### DES-030: One disclaimer under the prompt bar
+
+- The AI disclaimer is one centered line under the prompt bar, the same before
+  and after the first message. It names the product, from the spec's branding.
+- An agent's answer does not repeat it.
+- Acceptance: a conversation shows the disclaimer once, under the composer, on
+  a new conversation and on one with answers.
+
+### DES-031: Checkpoints, not agent lines
+
+- A person's message has no line under it naming the agent: the answer below
+  names it.
+- When a router picked the agent, or one of several joined, a checkpoint says
+  so between the message and the answer: a rule, a small route icon, the
+  agent's mark and why. Nothing else is drawn for a plain answer.
+- Acceptance: a direct answer has no line under the message; a routed one has
+  one checkpoint naming the agent and the reason.
+
+### DES-032: Who took part, by name
+
+- The conversation header shows the first three agents that took part, each
+  by mark and name, then `+N` for the rest. It does not say a count such as
+  "1 agent took part". Every name is in the group's label and on hover.
+- Acceptance: one agent shows its mark and name; five show three and `+2`.
+

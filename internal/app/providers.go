@@ -1,17 +1,21 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 
 	"github.com/urmzd/saige/agent/provider/anthropic"
-	"github.com/urmzd/saige/agent/provider/ollama"
+	"github.com/urmzd/saige/agent/provider/google"
 	"github.com/urmzd/saige/agent/provider/openai"
 	"github.com/urmzd/saige/agent/provider/retry"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/spec"
 )
@@ -19,7 +23,8 @@ import (
 // The model kinds are built on saige's adapters, as fiber's built-in
 // providers are, so a workspace model named like a built-in behaves like it:
 // Anthropic sends prompt cache breakpoints (the short lifetime fiber uses by
-// default) and Ollama uses its native API. When fiber exposes its provider
+// default) and Google reaches Gemini or Vertex AI. A local server such as
+// Ollama serves the OpenAI API, so it is openai. When fiber exposes its provider
 // construction (an Endpoint with a key function), this file becomes a call
 // to it.
 
@@ -55,9 +60,12 @@ func modelProvider(kind, name string, b spec.ModelBlock, keys credref.Resolver) 
 				a, err = anthropic.New(cfg, append(opts, anthropic.WithPromptCachePolicy(anthropic.DefaultPromptCachePolicy(native.PromptCacheShort)))...)
 			}
 			p = a
-		case "ollama":
-			// The native API, at the daemon's address (no /v1).
-			p, err = ollama.New(ollama.Config{Host: b.BaseURL, Model: saigetypes.ModelID(s.Model)})
+		case "google":
+			var opts []google.Option
+			if b.Vertex != nil {
+				opts = append(opts, google.WithVertex(b.Vertex.Project, b.Vertex.Location))
+			}
+			p, err = google.New(context.Background(), google.Config{APIKey: key, Model: saigetypes.ModelID(s.Model)}, opts...)
 		default:
 			base := b.BaseURL
 			if base == "" {
@@ -69,5 +77,60 @@ func modelProvider(kind, name string, b spec.ModelBlock, keys credref.Resolver) 
 			return nil, fmt.Errorf("%w: agent %q: %v", native.ErrInvalid, s.Name, err)
 		}
 		return retry.New(p, retry.DefaultConfig())
+	}
+}
+
+// modelProbe checks a declared model for Health by listing the provider's
+// models with its key: it proves the address answers and the key is
+// accepted, and spends no tokens. Vertex has no check, since its
+// credentials are the environment's, not a key.
+func modelProbe(kind string, b spec.ModelBlock, keys credref.Resolver) platform.Probe {
+	if b.Vertex != nil {
+		return nil
+	}
+	return func(ctx context.Context) error {
+		var key string
+		if b.Key.Set() {
+			v, err := keys.Resolve(ctx, b.Key.Ref)
+			if err != nil || v == "" {
+				return fmt.Errorf("key %s is not set", b.Key.Ref)
+			}
+			key = v
+		}
+		var (
+			url    string
+			header = http.Header{}
+		)
+		switch kind {
+		case "anthropic":
+			url = strings.TrimSuffix(cmp.Or(b.BaseURL, "https://api.anthropic.com"), "/") + "/v1/models?limit=1"
+			header.Set("x-api-key", key)
+			header.Set("anthropic-version", "2023-06-01")
+		case "google":
+			url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1"
+			header.Set("x-goog-api-key", key)
+		default:
+			url = strings.TrimSuffix(cmp.Or(b.BaseURL, native.DefaultOpenAIBaseURL), "/") + "/models"
+			if key != "" {
+				header.Set("Authorization", "Bearer "+key)
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		req.Header = header
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("unreachable: %v", err)
+		}
+		_ = res.Body.Close()
+		switch {
+		case res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden:
+			return fmt.Errorf("the key was refused (%d)", res.StatusCode)
+		case res.StatusCode >= 400:
+			return fmt.Errorf("answered %d", res.StatusCode)
+		}
+		return nil
 	}
 }

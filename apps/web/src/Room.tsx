@@ -35,13 +35,13 @@ import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
-import { rememberSaid, saidFor } from "./conflicts.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
+import { PersonMark } from "./PersonMark.tsx";
 import {
   emptySelection,
   PlusMenu,
@@ -60,9 +60,11 @@ import {
   AgentTint,
   ago,
   button,
+  Checkpoint,
   field,
   isWorking,
   Label,
+  Mentioned,
   Page,
   Presence,
   Problem,
@@ -101,19 +103,6 @@ function projectTitle(
   if (name === "") return workspace || defaultCopy.projects.workspace;
   const p = projects.find((x) => x.name === name);
   return p?.title || (name === personalProject ? defaultCopy.projects.personalTitle : name);
-}
-
-/** A person's initial, in a circle: who posted, without a picture to fetch. */
-export function PersonMark({ name, size = 28 }: { name: string; size?: number }) {
-  return (
-    <span
-      aria-hidden
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-aui-hover font-medium text-aui-fg"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
-    >
-      {(name.trim()[0] ?? "?").toUpperCase()}
-    </span>
-  );
 }
 
 /** Who answers an untagged message in a channel, as its row in a list says it. */
@@ -200,16 +189,12 @@ function RoomComposer({
   onPost: (text: string) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
-  const [said, setSaid] = useState(() => (thread ? saidFor(thread) : ""));
   // People's messages never wait for an agent: each is posted as it is sent.
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
       onPost(m.text)
         .then((p) => {
-          const line = postedLine(p);
-          setSaid(line);
-          if (thread) rememberSaid(thread, line);
           queue.turnEnded("done");
         })
         .catch((e) => {
@@ -230,11 +215,6 @@ function RoomComposer({
         tags={tags}
         plus={plus}
       />
-      {said && (
-        <p role="status" className="px-3 text-aui-xs text-aui-muted">
-          {said}
-        </p>
-      )}
     </div>
   );
 }
@@ -270,7 +250,9 @@ function MessageView({
           {m.surface_id && <span>{words.fromSlack}</span>}
           {m.answers && <span>{words.answered}</span>}
         </p>
-        <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{m.text}</p>
+        <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
+          <Mentioned text={m.text} />
+        </p>
         <MessageActionRow
           text={m.text}
           copyLabel={defaultCopy.conversation.copyMessage}
@@ -375,7 +357,7 @@ function AnswerView({
   onRedirect?: () => void;
   actions?: ReactNode;
 }) {
-  const { run, control } = useRunStop(originalRun, canStop);
+  const { run, stop } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(run);
   const drawn = useMemo(() => {
     const base = turn ?? turnOf(run);
@@ -398,23 +380,18 @@ function AnswerView({
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
         <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
-          {run.text}
+          <Mentioned text={run.text} />
         </p>
       )}
       {/* The answer names its agent; why it joined is said above it. */}
       {(routed || run.picked) && (
-        <p className="pl-11 text-aui-xs text-aui-muted">
-          {[routed, run.picked].filter(Boolean).join(". ")}
-        </p>
+        <Checkpoint agent={run.agent}>{[routed, run.picked].filter(Boolean).join(". ")}</Checkpoint>
       )}
       <AgentTint name={run.agent}>
         <AgentMessage
-          actions={
-            <>
-              {control}
-              {actions}
-            </>
-          }
+          actions={actions}
+          stop={stop}
+          disclaimer={false}
           timestamp={<MessageTime at={run.created_at} />}
           turn={shown}
           copy={copyFor(ask)}
@@ -512,9 +489,6 @@ export function ThreadRoom({
     selection: Omit<ConversationView, "panel"> = {},
   ) => {
     const next = {
-      ...(panel === "activity" && shownView.panel === "activity"
-        ? { filter: shownView.filter, showTools: shownView.showTools }
-        : {}),
       ...selection,
       panel,
     };
@@ -670,6 +644,7 @@ export function ThreadRoom({
         project={projectTitle(projects, th.project, workspaceName, personalProject)}
         private={th.visibility === "private"}
         agents={answering}
+        people={th.participants.filter((p) => p.kind === "person").map((p) => p.name)}
         location={
           <>
             {th.visibility !== "private" && (
@@ -982,23 +957,11 @@ export function ThreadRoom({
         {(leaving) => (
           <Activity
             leaving={leaving}
-            filter={shownView.filter}
-            showTools={shownView.showTools}
-            onFilterChange={(filter) => openPanel("activity", { run: shownView.run, filter })}
-            onShowToolsChange={(showTools) =>
-              openPanel("activity", { run: shownView.run, showTools })
-            }
-            isDecision={(run) =>
-              run.outcome?.kind === "decision" || !!run.outcome?.decisions?.length
-            }
             turns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
             stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")}
             focus={shownView.run ?? null}
             onFocus={(run) => openPanel("activity", run ? { run } : {})}
             onClose={() => openPanel()}
-            onJump={(run) =>
-              document.getElementById(`turn-${run}`)?.scrollIntoView({ block: "start" })
-            }
           />
         )}
       </Presence>
@@ -1224,7 +1187,6 @@ export function ChannelPage({
                 ...(picked.agents.length > 0 ? { agents: picked.agents, mode: picked.mode } : {}),
               })
               .then((p) => {
-                rememberSaid(p.thread.id, postedLine(p));
                 onOpenThread(p.thread.id);
                 return p;
               })

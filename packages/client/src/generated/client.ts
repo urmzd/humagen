@@ -58,6 +58,7 @@ import type {
   GetUsageResponse,
   HandoffContract,
   HandoffUpdate,
+  Health,
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
@@ -1123,6 +1124,27 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Each component the deployment runs on (the API, its stores and bus,
+and every model provider) with its status and its latest checks,
+oldest first, at most 90. A model provider is checked by listing its
+models with its key, so no tokens are spent. Checks run at most once
+every 30 seconds; a request in between gets the last report. With no
+model provider set up, a `provider:none` component is down.
+ */
+  async getDeploymentHealth(options?: RequestOptions): Promise<Health> {
+    const path = "/api/health";
+    return this.request<Health>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getDeploymentHealthRaw(options?: RequestOptions): Promise<ApiResponse<Health>> {
+    const path = "/api/health";
+    return this.rawRequest<Health>("GET", path, {
       ...options,
     });
   }

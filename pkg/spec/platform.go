@@ -352,7 +352,8 @@ func KindOf(p Project) string {
 }
 
 // Model is a model provider agents name as their provider: a slot
-// (anthropic, openai, ollama) with its name.
+// (anthropic, openai, google) with its name. A local server such as
+// Ollama or vLLM is openai with its base_url: it serves the OpenAI API.
 type Model struct {
 	Slot
 	ModelShared
@@ -370,6 +371,15 @@ func (m Model) MarshalJSON() ([]byte, error)  { return marshalSlot(m.Slot, m.Mod
 type ModelBlock struct {
 	BaseURL string `json:"base_url,omitempty"`
 	Key     *Ref   `json:"key,omitempty"`
+	// Vertex sends google's calls to Vertex AI in a project and location,
+	// with Application Default Credentials when no key is given.
+	Vertex *Vertex `json:"vertex,omitempty"`
+}
+
+// Vertex is where google's calls go on Vertex AI.
+type Vertex struct {
+	Project  string `json:"project"`
+	Location string `json:"location"`
 }
 
 // ModelPolicy is a named, ordered list of models and when a call moves on.
@@ -748,8 +758,17 @@ func checkModel(kind string, b ModelBlock) error {
 			return fmt.Errorf("base_url carries credentials; use key")
 		}
 	}
-	if kind != "ollama" && b.BaseURL == "" && !b.Key.Set() {
-		return fmt.Errorf("a hosted API needs key, as {ref: env:NAME}")
+	if b.Vertex != nil {
+		switch {
+		case kind != "google":
+			return fmt.Errorf("vertex is for kind google")
+		case b.Vertex.Project == "" || b.Vertex.Location == "":
+			return fmt.Errorf("vertex needs project and location")
+		}
+		return nil
+	}
+	if b.BaseURL == "" && !b.Key.Set() {
+		return fmt.Errorf("a hosted API needs key, as {ref: env:NAME}; a local server such as Ollama is kind openai with its base_url")
 	}
 	return nil
 }

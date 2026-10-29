@@ -46,8 +46,12 @@ export function sidebarParticipants(call: Call, thread: string) {
       await page.reload();
       await open();
       const navigation = page.getByRole("complementary", { name: "Navigation" });
-      await navigation.getByRole("group", { name: "Agents: lead, helper" }).first().waitFor();
-      await navigation.getByRole("group", { name: /^People: .*mira, jon, sam$/ }).waitFor();
+      // A conversation's row is its title alone: who takes part is in the conversation.
+      await navigation
+        .getByRole("button", { name: /^Draft the launch checklist with the team/ })
+        .first()
+        .waitFor();
+      assert.equal(await navigation.getByRole("group", { name: /^(Agents|People): / }).count(), 0);
       const projectPin = navigation.getByRole("button", {
         name: "Pin project Launch",
         exact: true,
@@ -86,23 +90,6 @@ export function sidebarParticipants(call: Call, thread: string) {
       assert.equal(
         await navigation.evaluate((element) => element.scrollWidth <= element.clientWidth),
         true,
-      );
-      const people = pinned.getByRole("group", { name: /^People: .*mira, jon, sam$/ });
-      assert.ok((await people.textContent())?.includes("4 people"));
-      assert.equal(
-        await people.evaluate((element) => {
-          const row = element.closest("button")?.getBoundingClientRect();
-          if (!row) return false;
-          return [...element.children].every((child) => {
-            const box = child.getBoundingClientRect();
-            return (
-              child.classList.contains("sr-only") ||
-              (box.left >= row.left && box.right <= row.right)
-            );
-          });
-        }),
-        true,
-        "Participant avatars and their overflow count fit the conversation row",
       );
       const pin = await unpinConversation.boundingBox();
       assert.ok(pin && pin.width >= (phone ? 44 : 32) && pin.height >= (phone ? 44 : 32));

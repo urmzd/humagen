@@ -43,10 +43,14 @@ before(async () => {
   execFileSync("go", ["build", "-o", bin, "./cmd/humagen"], { cwd: root, stdio: "inherit" });
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
-  // Only what the server needs to start. No provider key is passed on.
-  const env = Object.fromEntries(
-    ["PATH", "HOME", "TMPDIR"].flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : [])),
-  );
+  // Only what the server needs to start. No provider key is passed on; the
+  // openai provider points at a local model server, as Ollama serves it.
+  const env = {
+    ...Object.fromEntries(
+      ["PATH", "HOME", "TMPDIR"].flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : [])),
+    ),
+    OPENAI_BASE_URL: "http://127.0.0.1:11434/v1",
+  };
   server = spawn(
     bin,
     [
@@ -252,7 +256,7 @@ test(
         name: "nomodel",
         description: "fails on every attempt",
         model: "no-such-model",
-        provider: "ollama",
+        provider: "openai",
         system_prompt: "x",
       }),
     });
@@ -320,7 +324,7 @@ test(
         name: "stalling",
         description: "never answers",
         model: "no-such-model",
-        provider: "ollama",
+        provider: "openai",
         system_prompt: "x",
       }),
     });

@@ -295,7 +295,7 @@ func openBus(ctx context.Context, o Options, l loaded, kind string, backends pla
 // fileExtensions are the Platform documents' models and tools, as the
 // platform takes them.
 func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credref.Resolver) (platform.Extensions, error) {
-	ext := platform.Extensions{Providers: map[string]native.ProviderFunc{}}
+	ext := platform.Extensions{Providers: map[string]native.ProviderFunc{}, Probes: map[string]platform.Probe{}}
 	for _, p := range cfg.Platforms {
 		tenant := p.Metadata.Name
 		for _, m := range p.Spec.Models {
@@ -303,12 +303,13 @@ func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credre
 				continue // the same model, declared by another workspace
 			}
 			switch m.Kind {
-			case "anthropic", "openai", "ollama":
+			case "anthropic", "openai", "google":
 				b, err := spec.Block[spec.ModelBlock](m.Slot)
 				if err != nil {
 					return ext, err
 				}
 				ext.Providers[m.Name] = modelProvider(m.Kind, m.Name, b, keys)
+				ext.Probes[m.Name] = modelProbe(m.Kind, b, keys)
 			default:
 				fn, err := build[native.ProviderFunc](ctx, o, spec.SlotModels, m.Slot)
 				if err != nil {

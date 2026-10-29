@@ -67,6 +67,7 @@ test("every route survives a round trip through its address", () => {
     { page: "new", agent: "humagen-analyst", ask: "How did runs go today?" },
     { page: "monitor", tab: "overview" },
     { page: "monitor", tab: "rules" },
+    { page: "monitor", tab: "health" },
     { page: "inbox", kind: "alert" },
     { page: "inbox", alert: "a1" },
     { page: "inbox" },
@@ -98,6 +99,7 @@ test("deep links name pages by path", () => {
   assert.equal(href({ page: "artifacts", artifact: "art-2" }), "/artifacts/art-2");
   assert.equal(href({ page: "context", source: "a b", tab: "search" }), "/context/a%20b/search");
   assert.equal(href({ page: "monitor", tab: "rules" }), "/monitor/rules");
+  assert.equal(href({ page: "monitor", tab: "health" }), "/monitor/health");
   assert.equal(href({ page: "inbox", kind: "alert" }), "/inbox?kind=alert");
   assert.equal(href({ page: "connections" }), "/connections");
   assert.equal(href({ page: "connections", provider: "issues" }), "/connections/issues");

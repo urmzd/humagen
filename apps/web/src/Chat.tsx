@@ -22,7 +22,6 @@ import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
-import { rememberSaid } from "./conflicts.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
@@ -39,17 +38,20 @@ import {
   withAgent,
 } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
-import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
+import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
+import { Scroller } from "./Scroller.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { readFromStart } from "./turns.ts";
 import {
   AgentMark,
   AgentTint,
+  Checkpoint,
   cause,
   isWorking,
+  Mentioned,
   Page,
   Presence,
   Problem,
@@ -170,7 +172,7 @@ function TurnView({
   onRedirect?: () => void;
   actions?: ReactNode;
 }) {
-  const { run, control } = useRunStop(originalRun, canStop);
+  const { run, stop } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(run);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
@@ -196,27 +198,17 @@ function TurnView({
       className="flex flex-col gap-3"
       aria-label={`Turn answered by ${run.agent}`}
     >
-      <div className="flex flex-col items-end gap-1">
-        <p className="humagen-glass max-w-[80%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
-          {run.text}
-        </p>
-        <p className="flex flex-wrap items-center justify-end gap-x-2 text-aui-2xs text-aui-muted">
-          <span className="inline-flex items-center gap-1">
-            <AgentMark name={run.agent} size={14} />
-            {run.agent}
-          </span>
-          {run.picked && <span>{run.picked}</span>}
-        </p>
-      </div>
+      <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
+        <Mentioned text={run.text} />
+      </p>
+      {/* The answer names its agent. Only a router's pick, which it does not show, is said. */}
+      {run.picked && <Checkpoint agent={run.agent}>{run.picked}</Checkpoint>}
 
       <AgentTint name={run.agent}>
         <AgentMessage
-          actions={
-            <>
-              {control}
-              {actions}
-            </>
-          }
+          actions={actions}
+          stop={stop}
+          disclaimer={false}
           timestamp={<MessageTime at={run.created_at} />}
           turn={shown}
           copy={copyFor(ask)}
@@ -469,9 +461,6 @@ export function Chat({
     selection: Omit<ConversationView, "panel"> = {},
   ) => {
     const next = {
-      ...(panel === "activity" && shownView.panel === "activity"
-        ? { filter: shownView.filter, showTools: shownView.showTools }
-        : {}),
       ...selection,
       panel,
     };
@@ -565,16 +554,36 @@ export function Chat({
     [threadId, project, onThread, onChanged],
   );
 
+  // The runs the message in flight started. The queue holds the next
+  // message until the ledger says each has ended, and Stop stops them.
+  const replying = useRef<{ ids: string[]; stop: boolean }>({ ids: [], stop: false });
+  const [awaiting, setAwaiting] = useState<string[]>([]);
+  const stopRuns = (ids: string[]) =>
+    Promise.all(ids.map((id) => api.stopRun(id))).catch((e) =>
+      setProblem(e instanceof ApiError ? e.message : defaultCopy.conversation.stopDelayed),
+    );
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
-      const done = () => {
+      replying.current = { ids: [], stop: false };
+      const done = (runs: Run[] = []) => {
         onChanged();
-        queue.turnEnded("done");
+        const ids = runs.filter((r) => isWorking(r.status)).map((r) => r.id);
+        if (ids.length === 0) return queue.turnEnded("done");
+        // Stop was asked while the message was being posted.
+        if (replying.current.stop) void stopRuns(ids);
+        replying.current = { ...replying.current, ids };
+        setAwaiting(ids);
       };
       const failed = (e: unknown) => {
         setProblem(e instanceof ApiError ? e.message : words.failed.post);
         queue.reject();
+        // The first message opens the conversation, so nothing may queue
+        // behind it: one that did not post goes back in the box to send again.
+        if (!threadId) {
+          queue.clear();
+          setSeed({ text: m.text });
+        }
       };
       // Home starts a private conversation in the picked project, or a
       // shared thread when it was opened from a channel. Either opens at
@@ -591,10 +600,8 @@ export function Chat({
               : {}),
           })
           .then((p) => {
-            // What the first message did is said in the conversation it opens.
-            rememberSaid(p.thread.id, postedLine(p));
             onThread(p.thread.id);
-            done();
+            done(p.runs);
           })
           .catch(failed);
         return;
@@ -616,13 +623,60 @@ export function Chat({
                 }
               : r,
           );
-          done();
+          done(p.runs);
         })
         .catch(failed);
     },
-    // Stopping a run in flight is not built: the queue waits for it to end.
-    onInterrupt: () => {},
+    onInterrupt: () => {
+      replying.current = { ...replying.current, stop: true };
+      if (replying.current.ids.length > 0) void stopRuns(replying.current.ids);
+    },
   });
+
+  // A reply already in flight when the conversation is read, such as the
+  // first message sent from Home, is the running turn: new messages queue
+  // behind it and Stop stops it. Only the reader's own last message counts.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: adopt once per read
+  useEffect(() => {
+    if (!room || awaiting.length > 0 || queue.state.status !== "idle") return;
+    const all = room.turns;
+    let last = -1;
+    for (let i = all.length - 1; i >= 0; i--)
+      if (all[i]?.kind === "message") {
+        last = i;
+        break;
+      }
+    const asked = last >= 0 ? all[last]?.message : undefined;
+    if (asked && asked.by !== me) return;
+    const runs = all
+      .slice(last + 1)
+      .flatMap((t) => (t.run && isWorking(t.run.status) ? [t.run] : []));
+    const fallback = !asked && tail && isWorking(tail.status) ? [tail] : [];
+    const live = runs.length > 0 ? runs : fallback;
+    if (live.length === 0) return;
+    const ids = live.map((r) => r.id);
+    replying.current = { ids, stop: false };
+    setAwaiting(ids);
+    queue.adopt(asked?.text ?? live[0]?.text ?? "");
+  }, [room]);
+
+  // The ledger decides when the reply is over: each run it started has ended
+  // or waits on a person, as the conversation was last read.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the queue is read, not watched
+  useEffect(() => {
+    if (awaiting.length === 0) return;
+    const read = awaiting.map((id) => turns.find((t) => t.id === id));
+    if (read.some((r) => !r || isWorking(r.status))) return;
+    setAwaiting([]);
+    replying.current = { ids: [], stop: false };
+    queue.turnEnded(
+      read.some((r) => r?.status === "failed")
+        ? "failed"
+        : read.some((r) => r?.status === "stopped")
+          ? "stopped"
+          : "done",
+    );
+  }, [turns, awaiting]);
 
   // A branch of the first turn starts the conversation again, so it is filed
   // where the turn was: the picker's project is only for a new conversation.
@@ -895,13 +949,13 @@ export function Chat({
           the conversation, as a chip, not an @mention.
         */}
         {canRun && starters.length > 0 && (
-          // Every suggestion remains available and wraps within the reading column.
-          <ul
-            aria-label={defaultCopy.chat.suggestions}
-            className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 px-4 sm:px-5"
+          // Centered under the bar; past its width the row scrolls, with chevrons.
+          <Scroller
+            label={defaultCopy.chat.suggestions}
+            className="mx-auto w-full max-w-4xl px-4 sm:px-5"
           >
             {starters.map((st) => (
-              <li key={`${st.agent}:${st.label}`} className="min-w-0 max-w-full">
+              <li key={`${st.agent}:${st.label}`} className="shrink-0 snap-start">
                 <button
                   type="button"
                   onClick={() => {
@@ -911,14 +965,14 @@ export function Chat({
                     setSelection(next);
                     setSeed({ text: st.text });
                   }}
-                  className="inline-flex min-h-10 max-w-full items-center gap-2 rounded-aui border border-aui-border px-3 py-2 text-left text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-aui border border-aui-border px-3 py-2 text-left text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <AgentMark name={st.agent} size={14} />
                   <span>{st.label}</span>
                 </button>
               </li>
             ))}
-          </ul>
+          </Scroller>
         )}
       </HomePage>
     );
@@ -936,6 +990,7 @@ export function Chat({
         }
         private={room?.thread.visibility === "private"}
         agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
+        people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
         onPanel={(next) => openPanel(next)}
         onArtifact={(id) => openPanel("deliverables", { artifact: id })}
       >
@@ -1070,26 +1125,12 @@ export function Chat({
       <Presence when={activity !== null} ms={220}>
         {(leaving) => (
           <Activity
-            filter={shownView.filter}
-            showTools={shownView.showTools}
-            onFilterChange={(filter) => openPanel("activity", { run: shownView.run, filter })}
-            onShowToolsChange={(showTools) =>
-              openPanel("activity", { run: shownView.run, showTools })
-            }
-            isDecision={(run) =>
-              run.outcome?.kind === "decision" || !!run.outcome?.decisions?.length
-            }
             leaving={leaving}
             turns={path}
             stamp={turns.map((t) => `${t.id}:${t.calls}:${t.status}`).join("|")}
             focus={(activity ?? lastActivity.current)?.focus ?? null}
             onClose={() => openPanel()}
             onFocus={(run) => openPanel("activity", run ? { run } : {})}
-            onJump={(id) =>
-              document
-                .getElementById(`turn-${id}`)
-                ?.scrollIntoView({ block: "start", behavior: "smooth" })
-            }
           />
         )}
       </Presence>

@@ -612,6 +612,8 @@ button.humagen-tick:focus-visible {
   opacity: 0.5;
 }
 
+/* One header height for a page and every drawer beside it, so their dividers meet. */
+:root { --humagen-header-h: 4.5rem; }
 .humagen-conversation-header {
   grid-template-columns: minmax(0, 1fr) auto;
 }

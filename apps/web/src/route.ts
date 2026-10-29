@@ -35,9 +35,9 @@ export const AGENT_TABS: AgentTab[] = [
 export type SourceTab = "documents" | "search" | "variants" | "evals";
 export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "evals"];
 
-/** Monitor: how runs are going (overview), and the rules that watch them. What a rule fires lands in the inbox. */
-export type MonitorTab = "overview" | "rules";
-export const MONITOR_TABS: MonitorTab[] = ["overview", "rules"];
+/** Monitor: how runs are going (overview), the rules that watch them, and the health of what the deployment runs on. What a rule fires lands in the inbox. */
+export type MonitorTab = "overview" | "rules" | "health";
+export const MONITOR_TABS: MonitorTab[] = ["overview", "rules", "health"];
 
 /** The Directory: who and what is in the workspace, for everyone in it. */
 export type DirectoryTab = "people" | "agents" | "projects";

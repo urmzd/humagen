@@ -49,7 +49,7 @@ test("consolidated tabs retain native permissions and alert rule discovery", () 
       { page: "monitor", tab: "rules" },
       (permission) => permission === "alerts:read",
     ).map((tab) => ({ label: tab.label, active: tab.active, href: href(tab.route) })),
-    [],
+    [{ label: "Health", active: false, href: "/monitor/health" }],
   );
   assert.deepEqual(
     hubTabs("operations", { page: "new" }, () => false),

@@ -167,7 +167,8 @@ type Config struct {
 	Bus bus.Bus
 	// Limits bounds every tree of calls.
 	Limits call.Limits
-	// Concurrency is how many runs execute at once. Zero means one.
+	// Concurrency is how many runs execute at once. Zero means
+	// defaultConcurrency.
 	Concurrency int
 	// StopGrace is how long a run asked to stop is given to wrap up before
 	// its turn is cancelled. Zero means the runtime's default, ten seconds.
@@ -219,6 +220,8 @@ type Config struct {
 // Platform is the assembled system.
 type Platform struct {
 	files filesblob.Store
+	// health is the last health report and each component's recent checks.
+	health healthBook
 
 	cfg                    Config
 	log                    *slog.Logger

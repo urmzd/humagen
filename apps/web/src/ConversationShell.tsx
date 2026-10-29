@@ -19,13 +19,62 @@ import {
 } from "./api.ts";
 import { ConversationAccess } from "./ConversationAccess.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
+import { PersonMark } from "./PersonMark.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { type ConversationPanel, href } from "./route.ts";
-import { Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
+import { AgentMark, Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.conversation;
 const control =
   "inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-aui px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
+
+/**
+ * Who took part, at a glance: the first few agents by mark and name, then how
+ * many more. Every name is in the label and on hover.
+ */
+export function Involved({ agents, shown = 3 }: { agents: string[]; shown?: number }) {
+  const first = agents.slice(0, shown);
+  const rest = agents.slice(shown);
+  return (
+    <span
+      role="group"
+      aria-label={words.agentsInvolved(agents)}
+      title={agents.join(", ")}
+      className="inline-flex min-w-0 items-center gap-x-2.5"
+    >
+      {first.map((name) => (
+        <span key={name} className="inline-flex min-w-0 items-center gap-1" aria-hidden>
+          <AgentMark name={name} size={12} />
+          <span className="max-w-28 truncate">{name}</span>
+        </span>
+      ))}
+      {rest.length > 0 && (
+        <span aria-hidden className="tabular-nums">
+          {words.agentsMore(rest.length)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** The people in a conversation as overlapping initials, the first three and how many more. */
+export function Faces({ people, shown = 3 }: { people: string[]; shown?: number }) {
+  const unique = [...new Set(people)];
+  if (unique.length === 0) return null;
+  const rest = unique.length - shown;
+  return (
+    <span aria-hidden title={unique.join(", ")} className="inline-flex items-center">
+      <span className="flex -space-x-1.5">
+        {unique.slice(0, shown).map((name) => (
+          <span key={name} className="rounded-full ring-2 ring-aui-bg">
+            <PersonMark name={name} size={22} />
+          </span>
+        ))}
+      </span>
+      {rest > 0 && <span className="ml-1 tabular-nums">{words.agentsMore(rest)}</span>}
+    </span>
+  );
+}
 
 /** The conversation's own page header, used by a room and by older run-based chats. */
 export function ConversationPage({
@@ -33,6 +82,7 @@ export function ConversationPage({
   project,
   private: personal,
   agents,
+  people = [],
   location,
   onProject,
   projectRef,
@@ -44,6 +94,8 @@ export function ConversationPage({
   project: string;
   private: boolean;
   agents: string[];
+  /** The people in it, by name, drawn as overlapping faces on the Share or People control. */
+  people?: string[];
   location?: ReactNode;
   onProject?: () => void;
   projectRef?: RefObject<HTMLButtonElement | null>;
@@ -66,14 +118,14 @@ export function ConversationPage({
         }
         meta={
           <span className="inline-flex flex-wrap items-center gap-x-3">
-            {personal && <span>{words.private}</span>}
             {location}
-            {agents.length > 0 && <span>{words.agents(new Set(agents).size)}</span>}
+            {agents.length > 0 && <Involved agents={[...new Set(agents)]} />}
           </span>
         }
         actions={
           <>
-            {personal && onProject && (
+            {/* One control for who is in it: Share where it can be shared, else People & Access. Both open the same panel. */}
+            {personal && onProject ? (
               <button
                 ref={projectRef}
                 type="button"
@@ -81,8 +133,18 @@ export function ConversationPage({
                 aria-label={defaultCopy.threads.share}
                 onClick={onProject}
               >
+                <Faces people={people} />
                 <ShareIcon size={18} />
                 <span className="hidden sm:inline">{defaultCopy.threads.share}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={control}
+                aria-label={words.people}
+                onClick={() => onPanel("people")}
+              >
+                {people.length > 0 ? <Faces people={people} /> : <UsersIcon size={18} />}
               </button>
             )}
             <button
@@ -93,14 +155,6 @@ export function ConversationPage({
             >
               <LayersIcon size={18} />
               <span className="hidden xl:inline">{words.context}</span>
-            </button>
-            <button
-              type="button"
-              className={control}
-              aria-label={words.people}
-              onClick={() => onPanel("people")}
-            >
-              <UsersIcon size={18} />
             </button>
             <Popover
               label={words.settings}

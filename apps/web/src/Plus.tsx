@@ -710,7 +710,7 @@ const remove =
   "inline-flex size-6 shrink-0 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
 
 /**
- * What the + menu selected, as text controls below the composer: each
+ * What the + menu selected, as text controls in the composer's bar: each
  * agent with its color, the project with its path (and channel when not
  * general), each removable. With two agents or more, a text control says
  * how an untagged message is routed: Each Decides or All of Them.

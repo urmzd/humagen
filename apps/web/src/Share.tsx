@@ -10,6 +10,7 @@ import {
   type Thread,
   type ThreadShared,
 } from "./api.ts";
+import { ConversationAccess } from "./ConversationAccess.tsx";
 import { conflictOf } from "./conflicts.ts";
 import { button, field, Label, Problem, primary } from "./ui.tsx";
 
@@ -331,7 +332,7 @@ export function ShareDialog({
   return (
     <Inspector
       open={open}
-      title={words.shareTitle}
+      title={defaultCopy.conversation.people}
       onClose={onClose}
       footer={
         <>
@@ -355,6 +356,9 @@ export function ShareDialog({
         </>
       }
     >
+      {/* Who is in it first, then how to share it: one panel for both. */}
+      <ConversationAccess thread={thread} />
+      <h3 className="pt-2 font-medium text-aui-sm">{words.shareTitle}</h3>
       <p className="text-aui-xs text-aui-muted">{words.shareLede}</p>
       <form
         ref={form}

@@ -39,8 +39,6 @@ const MaxNameLen = 64
 const (
 	// ProviderAnthropic is the hosted Anthropic API.
 	ProviderAnthropic = "anthropic"
-	// ProviderOllama is a local Ollama daemon.
-	ProviderOllama = "ollama"
 	// ProviderOpenAI is the OpenAI API or any server compatible with it.
 	ProviderOpenAI = "openai"
 	// ProviderOffline replays a canned script instead of calling a model.
@@ -99,7 +97,7 @@ func FallbackConditions() []string {
 // KnownProviders returns the built-in provider names, sorted. It returns a
 // fresh slice so a caller extending it cannot edit this package's answer.
 func KnownProviders() []string {
-	return []string{ProviderAnthropic, ProviderOffline, ProviderOllama, ProviderOpenAI}
+	return []string{ProviderAnthropic, ProviderOffline, ProviderOpenAI}
 }
 
 // AgentSpec is what an agent IS.

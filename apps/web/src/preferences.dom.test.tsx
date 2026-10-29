@@ -414,46 +414,20 @@ test("overlapping project and conversation saves keep both lists", async () => {
   assert.deepEqual(result.current.prefs.pinned, ["t1", "t0"]);
 });
 
-test("conversation rows identify multiple agents and people, with the full names accessible", async () => {
+test("a conversation row is its title alone: who took part is in the conversation, not the list", async () => {
   const conversation = {
     ...task("t1", "Launch checklist"),
-    agents: ["lead", "helper", "lead"],
-    people: ["ada", "mira", "jon", "sam", "mira"],
+    agents: ["lead", "helper"],
+    people: ["ada", "mira"],
   };
   net = stubFetch({
     "GET /api/preferences": () => saved,
     "GET /api/threads": () => ({ threads: [conversation], next: null }),
   });
   render(<Pins />);
-  const agents = await screen.findByRole("group", { name: "Agents: lead, helper" });
-  assert.equal(agents.textContent, "lead+1");
-  const people = screen.getByRole("group", { name: "People: Ada, mira, jon, sam" });
-  assert.ok(people.textContent?.includes("4 people"));
-  assert.equal(
-    people.querySelectorAll("[aria-hidden] > span").length,
-    3,
-    "only three avatars fit in a compact row",
-  );
-  assert.ok(agents.closest("button")?.textContent?.includes("Launch checklist"));
-});
-
-test("people-only and agent-only conversations show only their actual participants", async () => {
-  net = stubFetch({
-    "GET /api/preferences": () => saved,
-    "GET /api/threads": () => ({
-      threads: [
-        { ...task("people", "Team discussion"), agents: [] },
-        { ...task("agents", "Agent work"), people: [] },
-      ],
-      next: null,
-    }),
-  });
-  render(<Pins />);
-  const person = await screen.findByRole("group", { name: "People: Ada" });
-  assert.ok(person.textContent?.includes("You"));
-  assert.ok(!person.closest("button")?.querySelector('[aria-label^="Agents:"]'));
-  const agent = screen.getByRole("group", { name: "Agents: lead" });
-  assert.ok(!agent.closest("button")?.querySelector('[aria-label^="People:"]'));
+  const row = await screen.findByRole("button", { name: /^Launch checklist/ });
+  assert.equal(row.textContent, "Launch checklist");
+  assert.equal(screen.queryByRole("group", { name: /^Agents:|^People:/ }), null);
 });
 
 test("Archive hides a conversation at once, and Delete asks once more before queueing it for an admin", async () => {

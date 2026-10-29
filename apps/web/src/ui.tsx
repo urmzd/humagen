@@ -8,7 +8,7 @@ import {
   Tooltip,
   XIcon,
 } from "@humagen/render-web";
-import { AgentOrb, type OrbState, usePresence } from "@humagen/web";
+import { AgentInitials, AgentOrb, type OrbState, usePresence } from "@humagen/web";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
 import { builtinAgentKey } from "./legacy.ts";
 
@@ -18,8 +18,10 @@ import { buttonVariants } from "@humagen/render-web/ui/button";
 import { inputClass } from "@humagen/render-web/ui/input";
 import {
   type CSSProperties,
+  createContext,
   type ReactNode,
   type RefObject,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -30,6 +32,7 @@ import {
 import type { Run } from "./adapter.ts";
 import { dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
+import { href } from "./route.ts";
 
 export const field = inputClass;
 
@@ -311,7 +314,7 @@ export function Page({
   if (layout === "conversation") {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="humagen-conversation-header relative z-10 grid shrink-0 items-center gap-x-4 gap-y-2 border-aui-border border-b px-4 py-3 md:px-6">
+        <header className="humagen-conversation-header relative z-10 grid shrink-0 items-center gap-x-4 gap-y-2 border-aui-border border-b px-4 py-3 md:px-6 lg:h-[var(--humagen-header-h,4.5rem)]">
           <div className="humagen-conversation-title min-w-0">
             <h1
               className="truncate text-aui-base font-semibold leading-6 text-aui-fg"
@@ -661,9 +664,11 @@ export function AgentTint({
 }
 
 /**
- * An agent's mark is its orb, in its own color. The same orb sits beside its
- * answers, where it moves with what the agent is doing, so the mark in a list
- * and the presence in a conversation are one thing. At rest it is still.
+ * An agent's mark is its initials in its own color, ringed by a glow that
+ * tells an agent from a person. The same mark sits beside its answers, where
+ * the glow breathes and the orb moves while the agent works, so the mark in a
+ * list and the presence in a conversation are one thing. Below 16px there is
+ * no room for letters, and the mark is the orb alone.
  */
 export function AgentMark({
   name,
@@ -685,7 +690,155 @@ export function AgentMark({
       className="inline-flex shrink-0 items-center align-middle"
       style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}
     >
-      <AgentOrb state={state} size={size} label="" />
+      {size >= 16 ? (
+        <AgentInitials name={name} state={state} size={size} />
+      ) : (
+        <AgentOrb state={state} size={size} label="" />
+      )}
+    </span>
+  );
+}
+
+/**
+ * A checkpoint in a conversation: a quiet line with a small icon saying
+ * something happened between messages, such as where a router sent one.
+ * Said only when the conversation does not already show it.
+ */
+export function Checkpoint({ agent, children }: { agent?: string; children: ReactNode }) {
+  return (
+    <div
+      role="note"
+      className="flex min-w-0 items-center gap-2 text-aui-2xs text-aui-muted"
+      data-testid="checkpoint"
+    >
+      <span aria-hidden className="h-px flex-1 bg-[var(--humagen-rule)]" />
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          width={12}
+          height={12}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="shrink-0"
+        >
+          <path d="M15 10l5 5-5 5M4 4v7a4 4 0 0 0 4 4h12" />
+        </svg>
+        {agent && <AgentMark name={agent} size={12} />}
+        <span className="min-w-0 truncate">{children}</span>
+      </span>
+      <span aria-hidden className="h-px flex-1 bg-[var(--humagen-rule)]" />
+    </div>
+  );
+}
+
+/**
+ * Text with each `@name` of an agent as a link to its profile, so anyone
+ * reading can follow it. A name that is not an agent stays as written.
+ */
+export function Mentioned({ text }: { text: string }) {
+  const parts = text.split(/(@[a-z0-9][a-z0-9_-]*)/gi);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("@") && part.length > 1 ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one text never reorder
+          <MentionLink key={i} name={part.slice(1)} />
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+/** What a mention's hover card says about an agent. */
+export interface AgentProfile {
+  name: string;
+  description?: string;
+  model?: string;
+  provider?: string;
+}
+
+/** How a mention looks up the agent it names. The app provides it; without it, a mention is a plain link. */
+export const AgentProfiles = createContext<
+  ((name: string) => Promise<AgentProfile | undefined>) | null
+>(null);
+
+/**
+ * An agent named in text: a link to its profile that, on hover or focus,
+ * shows who the agent is, so a reader can tell without leaving the page.
+ */
+function MentionLink({ name }: { name: string }) {
+  const hue = useAgentHue(name);
+  const lookup = useContext(AgentProfiles);
+  const [open, setOpen] = useState(false);
+  const [profile, setProfile] = useState<AgentProfile | undefined>();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const id = useId();
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  if (hue === undefined) return <>@{name}</>;
+  const show = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      setOpen(true);
+      if (!profile && lookup) lookup(name).then(setProfile, () => {});
+    }, 250);
+  };
+  const hide = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(false), 120);
+  };
+  const tint = { "--aui-accent-h": hue } as CSSProperties;
+  return (
+    <span className="relative inline-block" onMouseEnter={show} onMouseLeave={hide}>
+      <a
+        href={href({ page: "agent", name, tab: "prompt" })}
+        data-accent="agent"
+        style={tint}
+        aria-describedby={open ? id : undefined}
+        onFocus={show}
+        onBlur={hide}
+        className="font-medium text-aui-accent underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+      >
+        @{name}
+      </a>
+      {open && (
+        <span
+          id={id}
+          role="tooltip"
+          data-accent="agent"
+          style={tint}
+          className="aui-pop-in absolute top-full left-0 z-30 mt-1.5 flex w-72 flex-col gap-2 rounded-aui border border-aui-border bg-aui-bg p-3 text-left text-aui-sm font-normal text-aui-fg shadow-lg"
+        >
+          <span className="flex items-center gap-2.5">
+            <AgentInitials name={name} size={32} />
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-semibold">{name}</span>
+              {profile?.model && (
+                <span className="truncate text-aui-2xs text-aui-muted">
+                  {profile.provider === "policy" ? `Policy ${profile.model}` : profile.model}
+                </span>
+              )}
+            </span>
+          </span>
+          {profile?.description && (
+            <span className="text-aui-xs text-aui-muted">{profile.description}</span>
+          )}
+          <span className="text-aui-2xs text-aui-muted">
+            {defaultCopy.conversation.openProfile}
+          </span>
+        </span>
+      )}
     </span>
   );
 }

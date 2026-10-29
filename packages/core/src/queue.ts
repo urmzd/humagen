@@ -54,6 +54,12 @@ export type QueueAction =
   | { type: "rejected" }
   /** Release a held queue: run the next message. */
   | { type: "resume" }
+  /**
+   * A reply already in flight, found when the conversation was read (one
+   * sent from another page or before a reload). It runs as the current turn,
+   * so new messages queue behind it, and nothing is started.
+   */
+  | { type: "adopt"; message: QueuedMessage }
   | { type: "setMode"; mode: QueueMode };
 
 /** What the host must do after a transition. */
@@ -178,6 +184,10 @@ export function queueReduce(state: QueueState, action: QueueAction): [QueueState
 
     case "resume":
       return state.status === "held" ? startNext(state) : [state, none];
+
+    case "adopt":
+      if (state.status !== "idle") return [state, none];
+      return [{ ...state, status: "running", current: action.message }, none];
 
     case "setMode":
       return [{ ...state, mode: action.mode }, none];

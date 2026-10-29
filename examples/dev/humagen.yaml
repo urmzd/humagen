@@ -1,0 +1,57 @@
+# A local preview that calls real models: `make dev-live`, then `make web`.
+# Providers in order of preference: Anthropic, OpenAI, then Google Gemini.
+# Each reads its key from the shell; one not set, or not reachable, shows on
+# the Health page, and a policy moves on to the next.
+api_version: humagen/v1
+kind: Platform
+metadata:
+  name: default
+  display_name: Humagen
+spec:
+  models:
+    - name: anthropic
+      kind: anthropic
+      anthropic: {key: {ref: env:ANTHROPIC_API_KEY}}
+    - name: openai
+      kind: openai
+      openai: {key: {ref: env:OPENAI_API_KEY}}
+    - name: gemini
+      kind: google
+      google: {key: {ref: env:GOOGLE_API_KEY}}
+  # Each model falls back to the next provider when one is down or rate limited.
+  model_policies:
+    - name: default
+      models:
+        - {provider: anthropic, model: claude-sonnet-5-5}
+        - {provider: openai, model: gpt-5.1}
+        - {provider: gemini, model: gemini-pro-latest}
+      fallback_on: [unavailable, rate_limit]
+    - name: fast
+      models:
+        - {provider: anthropic, model: claude-haiku-5-5}
+        - {provider: openai, model: gpt-5-mini}
+        - {provider: gemini, model: gemini-flash-latest}
+      fallback_on: [unavailable, rate_limit]
+  # Three agents to try calls between agents: lead asks the other two.
+  agents:
+    - spec:
+        name: lead
+        description: Plans the work and asks researcher and writer for their parts
+        provider: policy
+        model: default
+        system_prompt: >-
+          You lead small tasks. Split the work, ask researcher for facts and
+          writer for prose, then answer with what they gave you. Be brief.
+        access: {spawn: [researcher, writer]}
+    - spec:
+        name: researcher
+        description: Finds short, checkable facts
+        provider: policy
+        model: fast
+        system_prompt: Answer with short, checkable facts. No more than asked.
+    - spec:
+        name: writer
+        description: Turns notes into short, clear prose
+        provider: policy
+        model: fast
+        system_prompt: Turn the notes you are given into short, clear prose.

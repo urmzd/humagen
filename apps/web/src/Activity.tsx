@@ -1,59 +1,24 @@
 import { answerOfAction } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
-import type { UiAction } from "@humagen/core";
-import { ChevronRightIcon, WebSurface } from "@humagen/render-web";
-import { AgentMessage, Inspector } from "@humagen/web";
+import { ActionId, type UiAction } from "@humagen/core";
+import { CheckIcon, ChevronRightIcon, CopyIcon, WebSurface } from "@humagen/render-web";
+import { AgentMessage, Inspector, StoppableMark } from "@humagen/web";
 import { useEffect, useMemo, useState } from "react";
 import { type Run, turnOf } from "./adapter.ts";
 import { ApiError, api, type Span } from "./api.ts";
-import { CopyAs } from "./CopyAs.tsx";
-import { toolOf } from "./copyas.ts";
+import { statusWord } from "./copyas.ts";
 import { itemActions } from "./itemActions.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { forRun, type Limits } from "./limits.ts";
+import { MessageTime } from "./MessageTime.tsx";
+import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
-import { RunUsageSummary } from "./RunUsage.tsx";
-import {
-  AgentMark,
-  AgentTint,
-  button,
-  cause,
-  Empty,
-  elapsed,
-  isEnded,
-  SkeletonRows,
-  Status,
-  Stroke,
-  strokeOf,
-  took,
-} from "./ui.tsx";
+import { AgentMark, AgentTint, Empty, isEnded, Mentioned, SkeletonRows } from "./ui.tsx";
 
 /** One turn of the conversation and everything it called: the runs, and what each did. */
 export type Tree = { root: string; runs: Run[]; spans: Span[] };
 
-export type ActivityFilter = "all" | "handoffs" | "tools" | "decisions";
-export interface ActivityControls {
-  filter?: ActivityFilter;
-  showTools?: boolean;
-  onFilterChange?: (filter: ActivityFilter) => void;
-  onShowToolsChange?: (showTools: boolean) => void;
-  /** Typed decisions supplied by a host with access to recorded outcomes. */
-  isDecision?: (run: Run) => boolean;
-}
-
 const live = (r: Run) => !isEnded(r);
-
-/** How a run came to be, as a tag on its row and as a sentence in its detail. */
-const modeWord: Record<NonNullable<Run["mode"]>, string> = {
-  subagent: "Subagent",
-  handoff: "Handoff",
-  delegate: "Delegated",
-};
-const calledAs: Record<NonNullable<Run["mode"]>, string> = {
-  subagent: "Called as a subagent by",
-  handoff: "Handed off from",
-  delegate: "Delegated by",
-};
 
 /** A tree's runs with each parent before its children, so indentation reads as who called whom. */
 export function ordered(tree: Tree): Run[] {
@@ -113,94 +78,116 @@ export function trailOf(runs: Map<string, Run>, id: string): Run[] {
   return path;
 }
 
-function Name({ run, nth }: { run: Run; nth: number }) {
-  return (
-    <span className="truncate text-aui-sm font-medium text-aui-fg">
-      {run.agent}
-      {nth > 1 && <span className="font-normal text-aui-muted"> {nth}</span>}
-    </span>
-  );
+/** Every agent that ran, in the order it first did, with its runs oldest first. */
+export function agentsOf(trees: Tree[]): { agent: string; runs: Run[] }[] {
+  const by = new Map<string, Run[]>();
+  for (const t of trees)
+    for (const r of ordered(t)) by.set(r.agent, [...(by.get(r.agent) ?? []), r]);
+  return [...by.entries()].map(([agent, runs]) => ({
+    agent,
+    runs: runs.sort((a, b) => a.created_at.localeCompare(b.created_at)),
+  }));
 }
 
-/** One run in the list: who, what it was asked, how it stands, and how long it took. */
-function Row({
-  run,
-  nth,
-  tools,
-  base,
-  onOpen,
-}: {
-  run: Run;
-  nth: number;
-  tools: number;
-  base: number;
-  onOpen: () => void;
-}) {
+/** Who gave a run its message: the agent that called it, or the person. */
+function askedBy(run: Run, runs: Map<string, Run>): string {
+  const caller = run.parent ? runs.get(run.parent) : undefined;
+  return caller && run.depth > 0 ? caller.agent : "";
+}
+
+/** A conversation as Markdown: each message an agent was given, and what it answered. */
+export function conversationMarkdown(agent: string, list: Run[], runs: Map<string, Run>): string {
+  return list
+    .map((r) =>
+      [
+        `**${askedBy(r, runs) || "You"} → ${agent}**`,
+        r.text || "No request text",
+        ...(r.answer ? [`**${agent}**`, r.answer] : []),
+        ...(r.status !== "completed" ? [`_${statusWord(r)}_`] : []),
+      ].join("\n\n"),
+    )
+    .join("\n\n---\n\n");
+}
+
+/** What a run says about where it stands, only when a still mark would not say it. */
+function standing(run: Run): string | null {
+  switch (run.status) {
+    case "failed":
+      return "Failed";
+    case "stopped":
+      return "Stopped";
+    case "parked":
+      return "Waiting on a person";
+    default:
+      return null;
+  }
+}
+
+/**
+ * One run in the list: its agent's mark, which stops it while it works, who
+ * asked it, the last thing it said, and when.
+ */
+function RunRow({ run, by, onOpen }: { run: Run; by: string; onOpen: () => void }) {
+  const { run: shown, stop } = useRunStop(run, live(run));
+  const state =
+    shown.status === "failed"
+      ? "error"
+      : shown.status === "parked"
+        ? "waiting"
+        : live(shown)
+          ? "thinking"
+          : "idle";
+  const said = shown.answer?.trim() || shown.text || "";
+  const word = live(shown) ? null : standing(shown);
   return (
-    <li className="humagen-enter" style={{ paddingLeft: Math.max(run.depth - base, 0) * 16 }}>
-      <Stroke agent={run.agent} state={strokeOf(run.status)}>
-        <button
-          type="button"
-          data-testid="activity-row"
-          data-run={run.id}
-          data-status={run.status}
-          onClick={onOpen}
-          className="flex w-full items-start gap-2.5 py-2 pr-2 pl-3 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2"
-        >
-          <span className="pt-0.5">
-            <AgentMark
-              name={run.agent}
-              size={14}
-              state={
-                run.status === "failed"
-                  ? "error"
-                  : run.status === "parked"
-                    ? "waiting"
-                    : live(run)
-                      ? "thinking"
-                      : "idle"
-              }
-            />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex items-baseline justify-between gap-3">
-              <Name run={run} nth={nth} />
-              <span className="shrink-0 text-aui-2xs tabular-nums text-aui-muted">
-                {live(run) ? "Running" : took(elapsed(run))}
+    <li className="humagen-enter flex min-w-0 items-start gap-2 px-3 py-2">
+      <span className="pt-1.5">
+        <StoppableMark agent={run.agent} state={state} stop={stop}>
+          <AgentMark name={run.agent} size={18} state={state} />
+        </StoppableMark>
+      </span>
+      <button
+        type="button"
+        data-testid="activity-row"
+        data-run={run.id}
+        data-status={shown.status}
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-start gap-2 rounded-aui py-1 pr-1 pl-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className="truncate text-aui-sm font-medium text-aui-fg">{run.agent}</span>
+            {by && (
+              <span className="shrink-0 text-aui-2xs text-aui-muted">
+                {defaultCopy.conversation.callAsked(by)}
               </span>
-            </span>
-            <span className="block truncate text-aui-xs text-aui-muted">
-              {run.text || "No request text"}
-            </span>
-            <span className="flex flex-wrap items-center gap-x-3 pt-0.5 text-aui-2xs text-aui-muted">
-              {run.mode && run.depth > 0 && <span>{modeWord[run.mode]}</span>}
-              {tools > 0 && <span>{tools === 1 ? "1 tool call" : `${tools} tool calls`}</span>}
-              {run.status === "failed" && <span className="font-medium text-aui-fg">Failed</span>}
-              {run.status === "stopped" && <span className="font-medium text-aui-fg">Stopped</span>}
-              {run.status === "parked" && (
-                <span className="font-medium text-aui-fg">Waiting on a person</span>
-              )}
+            )}
+            {word && <span className="shrink-0 text-aui-2xs text-aui-fg">{word}</span>}
+            <span className="ml-auto shrink-0 text-aui-2xs text-aui-muted">
+              <MessageTime at={run.created_at} />
             </span>
           </span>
-          <ChevronRightIcon size={14} className="mt-1 text-aui-muted" />
-        </button>
-      </Stroke>
+          <span className="block truncate text-aui-xs text-aui-muted">{said}</span>
+        </span>
+        <ChevronRightIcon size={14} className="mt-1 shrink-0 text-aui-muted" />
+      </button>
     </li>
   );
 }
 
 /**
- * One run's whole conversation: what it was asked, then its reasoning, tool
- * calls and answer, drawn by the same component the chat uses. It follows the
- * run's events while it is running, and falls back to the run's record when
- * the events are no longer held.
+ * One call of an agent, as chat: the message it was given and by whom, then
+ * its answer, tool steps and calls to other agents, drawn by the component
+ * the conversation uses. A call to another agent opens that agent here.
  */
-function Conversation({ run }: { run: Run }) {
+function Call({ run, by, onOpen }: { run: Run; by: string; onOpen: (id: string) => void }) {
   const streamed = useRunTurn(run);
   const turn = useMemo(() => streamed ?? turnOf(run), [streamed, run]);
+  const { stop } = useRunStop(run, live(run));
   const [problem, setProblem] = useState<string | null>(null);
-  // A run called by another can wait on a person too, and is answered here.
   const onAction = (a: UiAction) => {
+    if (a.id === ActionId.openRun) return onOpen(a.payload.target);
+    // A run called by another can wait on a person too, and is answered here.
     const answer = answerOfAction(a);
     if (!answer) return;
     setProblem(null);
@@ -217,17 +204,27 @@ function Conversation({ run }: { run: Run }) {
       );
   };
   return (
-    <div data-testid="activity-conversation" className="flex flex-col gap-3">
+    <section
+      id={`activity-call-${run.id}`}
+      data-testid="activity-conversation"
+      className="flex scroll-mt-4 flex-col gap-3"
+    >
       <div className="flex flex-col items-end gap-1">
+        <p className="text-aui-2xs text-aui-muted">
+          {by ? defaultCopy.conversation.callAsked(by) : defaultCopy.conversation.activityYouAsked}{" "}
+          <MessageTime at={run.created_at} />
+        </p>
         {run.input ? (
-          <div className="flex w-full flex-col gap-3" aria-label="Helper input">
+          <div className="flex w-full flex-col gap-2" aria-label="Helper input">
+            {/* What it was given, as given: a replay can use it again. */}
             <p className="text-aui-xs text-aui-muted">
               Return format: {run.input.input.response_format.type.replaceAll("_", " ")}
             </p>
             {run.input.messages.map((message, index) => (
               <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: a recorded input never reorders
                 key={index}
-                className="humagen-glass whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg"
+                className="humagen-glass ml-auto max-w-[90%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg"
               >
                 <p className="mb-1 text-aui-xs text-aui-muted">
                   {message.role === "assistant" ? "Example response" : "Input message"}
@@ -238,13 +235,19 @@ function Conversation({ run }: { run: Run }) {
           </div>
         ) : (
           <p className="humagen-glass max-w-[90%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
-            {run.text || "No request text"}
+            {run.text ? <Mentioned text={run.text} /> : "No request text"}
           </p>
         )}
       </div>
       <AgentTint name={run.agent}>
         <WebSurface onAction={onAction}>
-          <AgentMessage turn={turn} itemActions={itemActions(run)} />
+          <AgentMessage
+            turn={turn}
+            itemActions={itemActions(run)}
+            stop={stop}
+            disclaimer={false}
+            capabilities={{ regenerate: false, feedback: false }}
+          />
         </WebSurface>
       </AgentTint>
       {problem && (
@@ -252,14 +255,16 @@ function Conversation({ run }: { run: Run }) {
           {problem}
         </p>
       )}
-    </div>
+    </section>
   );
 }
 
 /**
- * Everything a conversation set in motion: each turn's agent, the agents it
- * called, and the tools they used. Choosing one shows its whole conversation.
- * This is the panel with its data given. `Activity` loads the data.
+ * Every agent a conversation set to work, and each one's conversation.
+ * The list has one row per agent. A row opens that agent's calls, oldest
+ * first, as one chat; a call it made opens the agent it called. The trail
+ * at the top leads back up. This is the panel with its data given.
+ * `Activity` loads the data.
  */
 export function ActivityPanel({
   trees,
@@ -269,112 +274,51 @@ export function ActivityPanel({
   limits,
   onSelect,
   onClose,
-  onJump,
-  filter: controlledFilter,
-  showTools: controlledShowTools,
-  onFilterChange,
-  onShowToolsChange,
-  isDecision,
-}: ActivityControls & {
+}: {
   /** The conversation's limits and usage. A selected run then shows what it draws on. */
   limits?: Limits;
   /** The panel is closing: it slides back out before it is removed. See `Presence` in ui.tsx. */
   leaving?: boolean;
   /** One per turn of the conversation, oldest first. */
   trees: Tree[];
+  /** The call open, by its run. Its agent's whole conversation is shown, at that call. */
   selected: string | null;
   loading?: boolean;
   onSelect: (id: string | null) => void;
   onClose: () => void;
-  /** Scroll the conversation to the turn a run belongs to. */
-  onJump?: (turnId: string) => void;
 }) {
-  const [localFilter, setLocalFilter] = useState<ActivityFilter>("all");
-  const [localShowTools, setLocalShowTools] = useState(true);
-  const filter = controlledFilter ?? localFilter;
-  const showTools = controlledShowTools ?? localShowTools;
-  const copy = defaultCopy.activityControls;
-  const changeFilter = (value: ActivityFilter) => {
-    setLocalFilter(value);
-    onFilterChange?.(value);
-  };
-  const toggleTools = () => {
-    setLocalShowTools(!showTools);
-    onShowToolsChange?.(!showTools);
-  };
   const runs = useMemo(
     () => new Map(trees.flatMap((t) => t.runs.map((r) => [r.id, r] as const))),
     [trees],
   );
-  const nth = useMemo(() => ordinals(trees), [trees]);
-  const toolsBy = useMemo(() => {
-    const by = new Map<string, Span[]>();
-    for (const t of trees)
-      for (const s of t.spans)
-        if (s.kind === "tool") by.set(s.run_id, [...(by.get(s.run_id) ?? []), s]);
-    return by;
-  }, [trees]);
-
+  const agents = useMemo(() => agentsOf(trees), [trees]);
+  // Every run, oldest first: the list a reader picks from.
+  const timeline = useMemo(
+    () => [...runs.values()].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    [runs],
+  );
   const run = selected ? runs.get(selected) : undefined;
-  const all = [...runs.values()];
-  const running = all.filter(live).length;
-  const failed = all.filter((r) => r.status === "failed").length;
-  // A turn is in flight if anything it called still is. Newest first within each group.
-  const active = trees.filter((t) => t.runs.some(live)).reverse();
-  const done = trees.filter((t) => !t.runs.some(live)).reverse();
-
-  const matches = (entry: Run) => {
-    switch (filter) {
-      case "handoffs":
-        return entry.mode === "handoff" || entry.mode === "delegate";
-      case "tools":
-        return (toolsBy.get(entry.id)?.length ?? 0) > 0;
-      case "decisions":
-        return (
-          Boolean(entry.question) || entry.assistance === "needed" || Boolean(isDecision?.(entry))
-        );
-      default:
-        return true;
-    }
-  };
-  const filtered = (group: Tree[]) =>
-    group
-      .map((entry) => ({ ...entry, runs: entry.runs.filter(matches) }))
-      .filter((entry) => entry.runs.length > 0);
-  const matched = all.filter(matches);
-  const section = (title: string, group: Tree[]) =>
-    group.length > 0 && (
-      <section data-testid={`activity-${title.toLowerCase()}`} className="flex flex-col">
-        <h3 className="px-3 pt-3 pb-1 text-aui-xs text-aui-muted">
-          {title} ({group.reduce((n, t) => n + t.runs.length, 0)})
-        </h3>
-        <ul className="flex flex-col divide-y divide-[var(--humagen-rule)]">
-          {group.map((t) => {
-            const rows = ordered(t);
-            const base = Math.min(...rows.map((r) => r.depth));
-            return rows.map((r) => (
-              <Row
-                key={r.id}
-                run={r}
-                nth={nth.get(r.id) ?? 1}
-                tools={toolsBy.get(r.id)?.length ?? 0}
-                base={base}
-                onOpen={() => onSelect(r.id)}
-              />
-            ));
-          })}
-        </ul>
-      </section>
-    );
-
+  const calls = run ? (agents.find((a) => a.agent === run.agent)?.runs ?? [run]) : [];
   const trail = run ? trailOf(runs, run.id) : [];
-  const turn = trail[0];
-  const called = run
-    ? all
-        .filter((r) => r.parent === run.id && matches(r))
-        .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    : [];
-  const tools = run ? (toolsBy.get(run.id) ?? []) : [];
+  const [copied, setCopied] = useState(false);
+
+  // Opening a call scrolls the agent's conversation to it.
+  useEffect(() => {
+    if (!run || calls.length < 2) return;
+    document
+      .getElementById(`activity-call-${run.id}`)
+      ?.scrollIntoView({ block: "start", behavior: "instant" as ScrollBehavior });
+  }, [run?.id, calls.length]);
+
+  const copy = () => {
+    const text = run
+      ? conversationMarkdown(run.agent, calls, runs)
+      : agents.map((a) => conversationMarkdown(a.agent, a.runs, runs)).join("\n\n---\n\n");
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   return (
     <Inspector
@@ -382,212 +326,104 @@ export function ActivityPanel({
       title={defaultCopy.conversation.activity}
       onClose={onClose}
       onEscape={() => (selected ? onSelect(null) : onClose())}
-    >
-      <div data-testid="activity" className="flex min-h-0 flex-col">
-        <p className="min-w-0 truncate text-aui-xs text-aui-muted" aria-live="polite">
-          {all.length === 0
-            ? ""
-            : [
-                `${all.length} ${all.length === 1 ? "run" : "runs"}`,
-                running > 0 ? `${running} running` : "",
-                failed > 0 ? `${failed} failed` : "",
-              ]
-                .filter(Boolean)
-                .join(", ")}
-        </p>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-[var(--humagen-rule)] border-b px-3 py-2">
-          <div role="group" aria-label={copy.filters} className="flex flex-wrap gap-1">
-            {(["all", "handoffs", "tools", "decisions"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={filter === value}
-                onClick={() => changeFilter(value)}
-                className={`min-h-9 rounded-aui-sm px-2 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent ${filter === value ? "bg-aui-hover font-medium text-aui-fg" : "text-aui-muted hover:text-aui-fg"}`}
-              >
-                {copy[value]}
-              </button>
-            ))}
-          </div>
+      actions={
+        agents.length > 0 && (
           <button
             type="button"
-            aria-pressed={showTools}
-            onClick={toggleTools}
-            className="min-h-9 rounded-aui-sm px-2 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            data-testid="activity-copy"
+            onClick={copy}
+            className="inline-flex size-9 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            aria-label={
+              copied ? defaultCopy.conversation.copied : defaultCopy.conversation.copyConversation
+            }
+            title={
+              copied ? defaultCopy.conversation.copied : defaultCopy.conversation.copyConversation
+            }
           >
-            {showTools ? copy.hideTools : copy.showTools}
+            {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
           </button>
-        </div>
-
+        )
+      }
+    >
+      <div data-testid="activity" className="-mx-5 -mt-5 flex min-h-0 flex-col">
         {run ? (
-          <div
-            key={run.id}
-            className="humagen-fade aui-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3"
-          >
+          <div key={run.agent} className="humagen-fade flex min-h-0 flex-1 flex-col">
             <nav
               aria-label="Called by"
-              className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-aui-xs text-aui-muted"
+              className="flex flex-wrap items-center gap-x-1 gap-y-0.5 px-5 pt-3 pb-2 text-aui-xs text-aui-muted"
             >
               <button
                 type="button"
                 onClick={() => onSelect(null)}
-                className="rounded-aui-sm underline underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                className="rounded-aui-sm hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
               >
-                All activity
+                {defaultCopy.conversation.activityAgents}
               </button>
               {trail.map((r, i) => (
                 <span key={r.id} className="inline-flex items-center gap-1">
                   <ChevronRightIcon size={12} />
                   {i === trail.length - 1 ? (
-                    <span aria-current="page" className="text-aui-fg">
+                    <span
+                      aria-current="page"
+                      className="inline-flex items-center gap-1 text-aui-fg"
+                    >
+                      <AgentMark name={r.agent} size={12} />
                       {r.agent}
                     </span>
                   ) : (
                     <button
                       type="button"
                       onClick={() => onSelect(r.id)}
-                      className="rounded-aui-sm underline underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      className="inline-flex items-center gap-1 rounded-aui-sm hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
                     >
+                      <AgentMark name={r.agent} size={12} />
                       {r.agent}
                     </button>
                   )}
                 </span>
               ))}
             </nav>
-
-            <Stroke
-              agent={run.agent}
-              state={strokeOf(run.status)}
-              testId="activity-detail"
-              className="flex flex-col gap-1 pl-3"
-            >
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <AgentMark name={run.agent} size={18} />
-                <h3 className="humagen-display text-aui-lg font-semibold text-aui-fg">
-                  {run.agent}
-                  {(nth.get(run.id) ?? 1) > 1 && (
-                    <span className="font-normal text-aui-muted"> {nth.get(run.id)}</span>
+            <div className="flex flex-col gap-4 px-5 pb-5">
+              {calls.map((c, i) => (
+                <div key={c.id} className="flex flex-col gap-4">
+                  {i > 0 && (
+                    <hr aria-label={`Call ${i + 1}`} className="border-[var(--humagen-rule)]" />
                   )}
-                </h3>
-                <Status status={run.status} />
-              </div>
-              <p className="text-aui-xs text-aui-muted">
-                {run.mode && run.depth > 0
-                  ? `${calledAs[run.mode]} ${runs.get(run.parent ?? "")?.agent ?? "another agent"}. `
-                  : ""}
-                {live(run) ? "Running" : `Took ${took(elapsed(run))}`}
-                {tools.length > 0
-                  ? `, ${tools.length === 1 ? "1 tool call" : `${tools.length} tool calls`}`
-                  : ""}
-                .
-              </p>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                {onJump && turn && (
-                  <button
-                    type="button"
-                    className={`${button} h-7 px-2 text-aui-xs`}
-                    onClick={() => onJump(turn.id)}
-                  >
-                    Jump to Message
-                  </button>
-                )}
-                <CopyAs
-                  testId="activity-copy"
-                  item={{
-                    kind: run.depth > 0 ? "call" : "run",
-                    run,
-                    data: { runs: descendants(all, run), spans: trees.flatMap((t) => t.spans) },
-                  }}
-                />
-              </div>
-            </Stroke>
-
-            <Conversation key={run.id} run={run} />
-
-            <RunUsageSummary run={run} />
-
-            {showTools && tools.length > 0 && (
-              <section className="flex flex-col gap-1" data-testid="activity-tools">
-                <h4 className="text-aui-xs text-aui-muted">Tools it used</h4>
-                <ul className="divide-y divide-[var(--humagen-rule)] border-[var(--humagen-rule)] border-y">
-                  {tools.map((s, i) => (
-                    <li
-                      key={i}
-                      className="flex items-center justify-between gap-3 py-1 text-aui-sm"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-aui-fg">{s.name}</span>
-                      <span className="shrink-0 text-aui-xs tabular-nums text-aui-muted">
-                        {s.error
-                          ? `Failed: ${cause(s.error)}`
-                          : s.end
-                            ? took(Date.parse(s.end) - Date.parse(s.start))
-                            : "Running"}
-                      </span>
-                      <CopyAs
-                        align="right"
-                        testId="activity-copy-tool"
-                        item={{ kind: "tool", tool: toolOf(s) }}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            {limits && (
-              <details
-                data-testid="activity-limits"
-                className="border-[var(--humagen-rule)] border-y py-1"
-              >
-                <summary className="cursor-pointer list-none rounded-aui-sm py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
-                  Limits it draws on
-                </summary>
-                <LimitsPanel data={forRun(limits, run.id)} />
-              </details>
-            )}
-
-            {called.length > 0 && (
-              <section className="flex flex-col gap-1" data-testid="activity-called">
-                <h4 className="text-aui-xs text-aui-muted">Agents it called</h4>
-                <ul className="flex flex-col divide-y divide-[var(--humagen-rule)] border-[var(--humagen-rule)] border-y">
-                  {called.map((r) => (
-                    <Row
-                      key={r.id}
-                      run={r}
-                      nth={nth.get(r.id) ?? 1}
-                      tools={toolsBy.get(r.id)?.length ?? 0}
-                      base={r.depth}
-                      onOpen={() => onSelect(r.id)}
-                    />
-                  ))}
-                </ul>
-              </section>
+                  <Call run={c} by={askedBy(c, runs)} onOpen={onSelect} />
+                </div>
+              ))}
+              {limits && (
+                <details
+                  data-testid="activity-limits"
+                  className="border-[var(--humagen-rule)] border-y py-1"
+                >
+                  <summary className="cursor-pointer list-none rounded-aui-sm py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
+                    Limits it draws on
+                  </summary>
+                  <LimitsPanel data={forRun(limits, run.id)} />
+                </details>
+              )}
+            </div>
+          </div>
+        ) : agents.length === 0 ? (
+          <div className="px-5 pt-5">
+            {loading ? (
+              <SkeletonRows count={4} height="3rem" />
+            ) : (
+              <Empty title={defaultCopy.conversation.activityEmpty}>
+                {defaultCopy.conversation.activityEmptyBody}
+              </Empty>
             )}
           </div>
         ) : (
-          <div className="aui-scroll min-h-0 flex-1 overflow-y-auto pb-4">
-            {all.length === 0 ? (
-              <div className="px-4">
-                {loading ? (
-                  <SkeletonRows count={4} height="3rem" />
-                ) : (
-                  <Empty title="Nothing has run yet">
-                    Each answer, and every agent and tool it calls, is listed here once the
-                    conversation starts.
-                  </Empty>
-                )}
-              </div>
-            ) : matched.length === 0 ? (
-              <div className="px-4" role="status">
-                <Empty title={copy.noMatches}>{copy.noMatchesBody}</Empty>
-              </div>
-            ) : (
-              <>
-                {section("Running", filtered(active))}
-                {section("Done", filtered(done))}
-              </>
-            )}
-          </div>
+          <ul
+            aria-label={defaultCopy.conversation.activityAgents}
+            className="flex flex-col divide-y divide-[var(--humagen-rule)] py-1"
+          >
+            {timeline.map((r) => (
+              <RunRow key={r.id} run={r} by={askedBy(r, runs)} onOpen={() => onSelect(r.id)} />
+            ))}
+          </ul>
         )}
       </div>
     </Inspector>
@@ -606,14 +442,8 @@ export function Activity({
   leaving,
   limits,
   onClose,
-  onJump,
   onFocus,
-  filter,
-  showTools,
-  onFilterChange,
-  onShowToolsChange,
-  isDecision,
-}: ActivityControls & {
+}: {
   limits?: Limits;
   leaving?: boolean;
   turns: Run[];
@@ -621,7 +451,6 @@ export function Activity({
   /** A run to open first, such as the turn whose activity was asked for. */
   focus?: string | null;
   onClose: () => void;
-  onJump?: (turnId: string) => void;
   onFocus?: (id: string | null) => void;
 }) {
   const [trees, setTrees] = useState<Tree[]>([]);
@@ -681,12 +510,6 @@ export function Activity({
       limits={limits}
       onSelect={select}
       onClose={onClose}
-      onJump={onJump}
-      filter={filter}
-      showTools={showTools}
-      onFilterChange={onFilterChange}
-      onShowToolsChange={onShowToolsChange}
-      isDecision={isDecision}
     />
   );
 }

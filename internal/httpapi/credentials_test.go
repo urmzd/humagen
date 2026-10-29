@@ -56,7 +56,7 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 	// The Slack app asks for people by their subject alone, so the policy
 	// grants each subject what they may do: ana runs agents, ben reads.
 	f := newFixtureGranting(t, platform.Config{
-		AgentOptions: []native.Option{native.WithProvider(native.ProviderOllama, func(native.Spec) (saigetypes.Provider, error) { return model, nil })},
+		AgentOptions: []native.Option{native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) { return model, nil })},
 		Ext: platform.Extensions{
 			ToolProviders: []platform.ToolProviderSeed{{Provider: toolprovider.Provider{
 				Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: server.URL, CredentialScope: toolprovider.ScopePerson,
@@ -80,7 +80,7 @@ grant viewer to subject "ben"`)
 		t.Fatal(err)
 	}
 	admin := f.machine(t, "acme", everything...)
-	if res, out := f.do(t, nil, "POST", "/api/agents", admin, `{"name":"worker","model":"m","provider":"ollama","system_prompt":"Look it up.","tools":["mcp:issues"]}`); res.StatusCode != http.StatusCreated {
+	if res, out := f.do(t, nil, "POST", "/api/agents", admin, `{"name":"worker","model":"m","provider":"openai","system_prompt":"Look it up.","tools":["mcp:issues"]}`); res.StatusCode != http.StatusCreated {
 		t.Fatalf("create worker = %d %v", res.StatusCode, out)
 	}
 	return f, server, model
@@ -316,7 +316,7 @@ func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	// Choosing another agent for someone else's words makes them nobody's,
 	// until someone writes them again.
 	admin := f.machine(t, "acme", everything...)
-	if res, out := f.do(t, nil, "POST", "/api/agents", admin, `{"name":"other","model":"m","provider":"ollama","system_prompt":"Look it up.","tools":["mcp:issues"]}`); res.StatusCode != http.StatusCreated {
+	if res, out := f.do(t, nil, "POST", "/api/agents", admin, `{"name":"other","model":"m","provider":"openai","system_prompt":"Look it up.","tools":["mcp:issues"]}`); res.StatusCode != http.StatusCreated {
 		t.Fatalf("create other = %d %v", res.StatusCode, out)
 	}
 	edit(ana, "Open bugs?")

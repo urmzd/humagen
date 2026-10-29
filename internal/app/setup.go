@@ -39,8 +39,8 @@ var modelPresets = []struct {
 }{
 	{"Anthropic", "anthropic", "anthropic", "", "env:ANTHROPIC_API_KEY"},
 	{"OpenAI", "openai", "openai", "", "env:OPENAI_API_KEY"},
-	{"Ollama on this machine (no key)", "ollama", "ollama", "", ""},
-	{"Another OpenAI-compatible server", "openai", "custom", "http://127.0.0.1:8000/v1", ""},
+	{"Google Gemini", "google", "gemini", "", "env:GOOGLE_API_KEY"},
+	{"An OpenAI-compatible server, such as Ollama or vLLM", "openai", "local", "http://127.0.0.1:11434/v1", ""},
 }
 
 // runSetup asks for the deployment's choices and writes them to path as a
@@ -104,7 +104,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 		if pr.baseURL != "" {
 			blk.BaseURL = q.text("Base URL", pr.baseURL, nil)
 		}
-		if pr.kind != "ollama" {
+		{
 			ref := q.text("Where is its key? env:NAME, keychain:SERVICE[/ACCOUNT], op://VAULT/ITEM/FIELD, or blank for none", pr.key, func(v string) error {
 				if v == "" {
 					return nil

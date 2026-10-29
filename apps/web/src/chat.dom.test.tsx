@@ -5,7 +5,6 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { Run } from "./adapter.ts";
 import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
-import { saidFor } from "./conflicts.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
 import { globex } from "./projects.fixtures.ts";
 
@@ -880,7 +879,7 @@ test("+ closes the menu it opened, though focus moves to it from the menu first"
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
 });
 
-test("all starter suggestions wrap within the available width without hiding actions", async () => {
+test("all starter suggestions stay in one centered row that scrolls past its width, hiding none", async () => {
   const builtin = [
     ...agents,
     agent("humagen-analyst"),
@@ -889,7 +888,7 @@ test("all starter suggestions wrap within the available width without hiding act
   ];
   openChat(workspace("lead"), { agents: builtin });
   const list = await screen.findByRole("list", { name: chat.suggestions });
-  assert.ok(list.className.split(/\s+/).includes("flex-wrap"));
+  assert.ok(list.className.split(/\s+/).includes("overflow-x-auto"));
   assert.equal(within(list).getAllByRole("button").length, 3);
   assert.ok(
     [...list.querySelectorAll("li")].every((row) => !row.className.split(/\s+/).includes("hidden")),
@@ -985,7 +984,6 @@ test("Home's first message says what it did in the conversation it opens", async
   fireEvent.change(box(), { target: { value: "@nobody hello" } });
   fireEvent.keyDown(box(), { key: "Enter" });
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ad"]));
-  assert.equal(saidFor("th-00000000000000ad"), "@nobody: no agent is called nobody");
 });
 
 test("a conversation of runs has the + menu: its agents are saved on its thread so a follow-up goes to them, and its project is fixed, saying why", async () => {

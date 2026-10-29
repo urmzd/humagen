@@ -118,6 +118,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.putToolCredential))
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
+	// The deployment's status page: each component, checked at most every 30s.
+	mux.HandleFunc("GET /api/health", s.authed(auth.AlertsRead, func(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+		ok(w, http.StatusOK, s.P.Health(r.Context()))
+	}))
 	mux.HandleFunc("GET /api/discovery", s.authed("", s.discover))
 	mux.HandleFunc("GET /api/project-templates", s.authed(auth.ProjectsRead, s.listProjectTemplates))
 	mux.HandleFunc("POST /api/projects/{name}/fork", s.authed(auth.ProjectsWrite, s.seenProject(s.forkProject)))

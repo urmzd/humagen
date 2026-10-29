@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import type { Turn } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
-import { AgentMessage } from "@humagen/web";
+import { AgentMessage, StoppableMark } from "@humagen/web";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import {
@@ -530,7 +530,9 @@ test("a private thread says so where a shared one says where it is shared", asyn
       onChanged={() => {}}
     />,
   );
-  assert.ok(await screen.findByText(words.private));
+  // Private needs no word: Share at the top says it is not shared yet.
+  await screen.findByRole("heading", { level: 1 });
+  assert.ok(!screen.queryByText(words.private), "no Private word");
   assert.ok(
     !screen.queryByRole("button", { name: words.sharedIn(globex.title ?? "Globex", "renewals") }),
   );
@@ -605,6 +607,7 @@ test("a channel's chat bar offers no Private and no Post Only, and a private thr
       onOpenThread={() => {}}
     />,
   );
+  // The private thread's row in the channel says so.
   assert.ok(await screen.findByText(words.private));
   assert.ok(screen.getByPlaceholderText(words.startThread));
   assert.ok(!screen.queryByText(words.startPrivate, { selector: "button" }));
@@ -1902,12 +1905,14 @@ test("Share at the top of a private conversation moves it into a project's chann
     "POST /api/threads/th-00000000000000aa/share": () => ({ ...shared, not_added: [] }),
   });
   render(<Sharing initial={mine} onShared={(o) => opened.push(o)} />);
-  assert.ok(await screen.findByText(words.private));
+  // Private needs no word: Share at the top says it is not shared yet.
+  await screen.findByRole("heading", { level: 1 });
+  assert.ok(!screen.queryByText(words.private), "no Private word");
   // Share sits at the top, not under the chat bar.
   const share = screen.getByRole("button", { name: words.share });
   assert.ok(share.closest("header"), "Share is in the conversation's header");
   fireEvent.click(share);
-  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   const project = within(dialog).getByLabelText(words.shareProject) as HTMLSelectElement;
   assert.equal(project.value, "Globex");
   assert.equal(project.disabled, false, "no agent has run here, so the project may change");
@@ -1968,7 +1973,7 @@ test("completed work requires destination review, and an unseen run refusal stay
   });
   render(<Sharing initial={ran} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
-  let dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  let dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   const fixed = within(dialog).getByLabelText(
     new RegExp(`^${words.shareProject}`),
   ) as HTMLSelectElement;
@@ -2005,7 +2010,7 @@ test("completed work requires destination review, and an unseen run refusal stay
   });
   render(<Sharing initial={mine} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
-  dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   fireEvent.change(within(dialog).getByLabelText(words.shareProject), {
     target: { value: "Initech" },
   });
@@ -2017,8 +2022,8 @@ test("completed work requires destination review, and an unseen run refusal stay
   ) as HTMLSelectElement;
   assert.equal(moved.value, "Globex");
   assert.equal(moved.disabled, true);
-  // Still private, and the dialog stays open to share it where it is.
-  assert.ok(screen.getByText(words.private));
+  // Still not shared: the dialog stays open to share it where it is.
+  assert.ok(dialog.isConnected, "the dialog stays open");
 });
 
 test("agents checked in a conversation's + menu are saved on the thread, and an answer they were routed to says so", async () => {
@@ -2162,7 +2167,9 @@ test("someone added to a private conversation is not offered Share: its starter,
       onChanged={() => {}}
     />,
   );
-  assert.ok(await screen.findByText(words.private));
+  // Private needs no word: Share at the top says it is not shared yet.
+  await screen.findByRole("heading", { level: 1 });
+  assert.ok(!screen.queryByText(words.private), "no Private word");
   assert.equal(screen.queryByRole("button", { name: words.share }), null);
   cleanup();
   // An owner of the project may.
@@ -2559,95 +2566,6 @@ test("what a post did names a refused tag as written, with its kind, and says wh
   );
 });
 
-test("a channel's first message says what it did in the conversation it opens", async () => {
-  const opened: string[] = [];
-  const first = {
-    id: "m-1",
-    thread: "th-00000000000000cc",
-    by: "ana",
-    name: "Ana",
-    text: "@dana can you look?",
-    mentions: [],
-    via: "console",
-    at,
-  };
-  net = stubFetch({
-    "GET /api/projects/Globex/channels": () => ({
-      channels: [
-        {
-          project: "Globex",
-          name: "renewals",
-          version: 1,
-          created_at: at,
-          updated_at: at,
-          answers: { agent: "", from: "" },
-        },
-      ],
-    }),
-    "GET /api/threads": () => ({ threads: [], next: null }),
-    "GET /api/projects/Globex/agents": () => ({
-      version: 1,
-      available: { all: true, names: [] },
-      homes: [],
-      default_resolved: null,
-    }),
-    "POST /api/threads": () => ({
-      thread: { ...page.thread, id: "th-00000000000000cc" },
-      message: first,
-      runs: [],
-      notified: ["dana"],
-      refused: [],
-      rule: "people",
-    }),
-    "GET /api/threads/th-00000000000000cc": () => ({
-      ...page,
-      thread: { ...page.thread, id: "th-00000000000000cc" },
-      turns: [{ kind: "message", message: first }],
-    }),
-  });
-  render(
-    <ChannelPage
-      project="Globex"
-      channel="renewals"
-      tick={0}
-      agents={[helper]}
-      projects={tree}
-      root={null}
-      workspaceName="Acme"
-      canRun
-      onOpenProject={() => {}}
-      onOpenProjects={() => {}}
-      onOpenThread={(id) => opened.push(id)}
-    />,
-  );
-  const box = await screen.findByPlaceholderText(words.startThread);
-  fireEvent.change(box, { target: { value: first.text } });
-  fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000cc"]));
-  cleanup();
-  const room: ThreadPage = {
-    ...page,
-    thread: { ...page.thread, id: "th-00000000000000cc" },
-    turns: [{ kind: "message", message: first }],
-  };
-  render(
-    <ThreadRoom
-      id={room.thread.id}
-      me="ana"
-      initial={room}
-      tick={0}
-      agents={[helper]}
-      projects={tree}
-      root={null}
-      workspaceName="Acme"
-      canRun
-      onOpenChannel={() => {}}
-      onChanged={() => {}}
-    />,
-  );
-  assert.ok(await screen.findByText(words.notified(["dana"])));
-});
-
 test("Share preserves the selected channel and invalidates consent after a stale placement", async () => {
   const ran: ThreadPage = {
     ...mine,
@@ -2689,7 +2607,7 @@ test("Share preserves the selected channel and invalidates consent after a stale
   });
   render(<Sharing initial={ran} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
-  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   const channel = within(dialog).getByLabelText(words.shareChannel) as HTMLSelectElement;
   await waitFor(() => assert.equal(channel.value, "deals"));
   assert.equal(channel.disabled, false);
@@ -2987,7 +2905,7 @@ test("Share says who the platform did not add, and why, beside who was told", as
   });
   render(<Sharing initial={mine} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
-  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   assert.ok(within(dialog).getByText(words.shareLede));
   const who = within(dialog).getByRole("combobox", { name: words.shareAdd }) as HTMLInputElement;
   for (const h of ["dana", "eve"]) {
@@ -3037,27 +2955,31 @@ function StopFixture() {
   return (
     <div>
       <output aria-label="Recorded status">{stopped.run.status}</output>
-      {stopped.control}
+      <StoppableMark agent={run.agent} state="thinking" stop={stopped.stop}>
+        <span>mark</span>
+      </StoppableMark>
     </div>
   );
 }
 
-test("Stop Turn reports a request and waits for the ledger, rather than inventing a stopped turn", async () => {
+test("Stop on the agent's mark waits for the ledger, rather than inventing a stopped turn", async () => {
   let terminal = false;
   net = stubFetch({
     "POST /api/runs/r1/stop": () => ({ ...page.turns[1]?.run, status: "running" }),
     "GET /api/runs/r1": () => ({ ...page.turns[1]?.run, status: terminal ? "stopped" : "running" }),
   });
   render(<StopFixture />);
-  fireEvent.click(screen.getByRole("button", { name: defaultCopy.conversation.stopTurn }));
-  await screen.findByText(defaultCopy.conversation.stopPending);
+  const agent = page.turns[1]?.run?.agent ?? "";
+  fireEvent.click(screen.getByRole("button", { name: `Stop ${agent}` }));
+  const stopping = await screen.findByRole("button", { name: `Stopping ${agent}` });
+  assert.ok((stopping as HTMLButtonElement).disabled);
   assert.equal(screen.getByLabelText("Recorded status").textContent, "running");
   terminal = true;
   await waitFor(
     () => assert.equal(screen.getByLabelText("Recorded status").textContent, "stopped"),
     { timeout: 2000 },
   );
-  assert.equal(screen.queryByText(defaultCopy.conversation.stopPending), null);
+  assert.equal(screen.queryByRole("button", { name: /Stop/ }), null);
 });
 
 test("recorded outcomes lead with recommendations and Redirect prepares human intent without executing it", async () => {

@@ -10,12 +10,16 @@ export const MAX_FALLBACKS = 4;
 export const defaultModel: Record<string, string> = {
   offline: "offline",
   anthropic: "claude-sonnet-5-5",
-  ollama: "llama3.2",
+  openai: "gpt-5.1",
 };
 
 export const providers = [
   { value: "anthropic", label: "anthropic" },
-  { value: "ollama", label: "ollama", hint: "A model running on this machine." },
+  {
+    value: "openai",
+    label: "openai",
+    hint: "OpenAI, or a server that speaks its API, such as Ollama or vLLM.",
+  },
   { value: "offline", label: "offline", hint: "Calls no model. For trying the platform out." },
 ];
 

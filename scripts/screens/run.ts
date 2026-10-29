@@ -1684,6 +1684,7 @@ async function capture(
       });
       const mark = problems.length ? `FAIL ${problems.length}` : "ok";
       console.log(`${mark.padEnd(7)} ${vp.name.padEnd(8)} ${screen}`);
+      for (const p of problems) console.log("   ", p.check, p.detail);
     }
     await context.close();
   }

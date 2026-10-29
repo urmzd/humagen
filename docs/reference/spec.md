@@ -92,7 +92,7 @@ spec:
 
   execution:
     workspace: ""           # agents' files. Empty is the user cache directory
-    concurrency: 1
+    concurrency: 4          # a run that calls another agent waits in one place while it runs in another
     max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
     max_fan_out: 16
     builtin: {provider: "", model: ""}       # the platform's own agents
@@ -202,12 +202,15 @@ spec:
     release_notes: true     # each release's breaking changes and features, posted once in the workspace's inbox from humagen
     inbox_retention: 180d   # how long the inbox keeps what was settled for everyone. Left out: 90d. At least 7d
 
-  models:                   # each a slot: anthropic | openai | ollama
+  models:                   # each a slot: anthropic | openai | google
     - name: anthropic       # what an agent names as its provider
       kind: anthropic
       anthropic: {key: {ref: env:ANTHROPIC_API_KEY}}
+    - name: gemini
+      kind: google          # Gemini; vertex: {project: P, location: us-central1} for Vertex AI
+      google: {key: {ref: env:GOOGLE_API_KEY}}
     - name: local
-      kind: openai          # any OpenAI-compatible server
+      kind: openai          # any OpenAI-compatible server, such as Ollama (http://127.0.0.1:11434/v1) or vLLM
       openai: {base_url: "http://127.0.0.1:8000/v1"}
 
   model_policies:
@@ -795,7 +798,7 @@ when a run uses it, so there is nothing to read or pass when deploying:
 | `system.blobs` | disk, memory, s3 | a `blob.Store` |
 | `system.bus` | memory, postgres | a `bus.Bus` |
 | `system.extensions[]` | none | something with `Run(ctx) error`, run beside the server |
-| `platform.models[]` | anthropic, openai, ollama | a `native.ProviderFunc` |
+| `platform.models[]` | anthropic, openai, google | a `native.ProviderFunc` |
 | `platform.tools[]` | mcp | a `runtime.Catalog` |
 
 `humagen.WithKind(slot, name, factory)` registers one. The factory is given its

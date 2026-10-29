@@ -5,7 +5,7 @@ import { chainProblem, chainWords, starterPolicy } from "./models.ts";
 const m = (provider: string, model: string) => ({ provider, model });
 
 test("a chain is refused before saving when it cannot run", () => {
-  assert.equal(chainProblem([m("anthropic", "claude-sonnet-5-5"), m("ollama", "llama3.2")]), null);
+  assert.equal(chainProblem([m("anthropic", "claude-sonnet-5-5"), m("openai", "gpt-5.1")]), null);
   assert.match(chainProblem([]) ?? "", /at least one/);
   assert.match(chainProblem([m("anthropic", "")]) ?? "", /primary model/);
   assert.match(chainProblem([m("anthropic", "x"), m("anthropic", "x")]) ?? "", /repeats/);
@@ -21,12 +21,12 @@ test("a chain is refused before saving when it cannot run", () => {
 test("a chain reads as a sentence", () => {
   assert.equal(chainWords([m("anthropic", "sonnet")]), "sonnet");
   assert.equal(
-    chainWords([m("anthropic", "sonnet"), m("ollama", "llama")]),
-    "sonnet, then llama, on any recoverable error",
+    chainWords([m("anthropic", "sonnet"), m("openai", "gpt")]),
+    "sonnet, then gpt, on any recoverable error",
   );
   assert.equal(
-    chainWords([m("anthropic", "sonnet"), m("ollama", "llama")], ["unavailable", "rate_limit"]),
-    "sonnet, then llama, on outages, rate limits",
+    chainWords([m("anthropic", "sonnet"), m("openai", "gpt")], ["unavailable", "rate_limit"]),
+    "sonnet, then gpt, on outages, rate limits",
   );
 });
 

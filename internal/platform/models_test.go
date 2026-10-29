@@ -20,7 +20,7 @@ func TestResolveModelPutsThePolicyInPlace(t *testing.T) {
 	set := p.Settings("acme")
 	set.ModelPolicies = []ModelPolicy{{
 		Name:       "steady",
-		Models:     []wire.ModelRef{{Provider: "anthropic", Model: "claude-sonnet-5-5"}, {Provider: "ollama", Model: "llama3.2"}},
+		Models:     []wire.ModelRef{{Provider: "anthropic", Model: "claude-sonnet-5-5"}, {Provider: "openai", Model: "llama3.2"}},
 		FallbackOn: []string{"rate_limit", "unavailable"},
 	}}
 	if err := p.SetSettings(ctx, "acme", set); err != nil {
@@ -57,12 +57,20 @@ func TestCheckModelPolicies(t *testing.T) {
 	if err := checkModelPolicies([]ModelPolicy{ok}); err != nil {
 		t.Fatal(err)
 	}
+	// A model the spec names, such as a second OpenAI-compatible server, is a provider a policy may use.
+	named := ModelPolicy{Name: "named", Models: []wire.ModelRef{{Provider: "anthropic", Model: "a"}, {Provider: "gemini", Model: "g"}}}
+	if err := checkModelPolicies([]ModelPolicy{named}, "gemini"); err != nil {
+		t.Fatalf("a named model: %v", err)
+	}
+	if err := checkModelPolicies([]ModelPolicy{named}); !errors.Is(err, ErrModelPolicy) {
+		t.Fatalf("an unknown provider: %v", err)
+	}
 	for name, list := range map[string][]ModelPolicy{
 		"bad name":        {{Name: "Fast!", Models: ok.Models}},
 		"duplicate":       {ok, ok},
 		"no models":       {{Name: "empty"}},
 		"names a policy":  {{Name: "loop", Models: []wire.ModelRef{{Provider: PolicyProvider, Model: "fast"}}}},
-		"unknown when":    {{Name: "w", Models: []wire.ModelRef{{Provider: "offline", Model: "offline"}, {Provider: "ollama", Model: "m"}}, FallbackOn: []string{"sometimes"}}},
+		"unknown when":    {{Name: "w", Models: []wire.ModelRef{{Provider: "offline", Model: "offline"}, {Provider: "openai", Model: "m"}}, FallbackOn: []string{"sometimes"}}},
 		"repeats a model": {{Name: "r", Models: []wire.ModelRef{{Provider: "offline", Model: "offline"}, {Provider: "offline", Model: "offline"}}}},
 	} {
 		if err := checkModelPolicies(list); !errors.Is(err, ErrModelPolicy) {

@@ -78,6 +78,11 @@ export interface Task {
    * agent, not as a tool call, and opening it emits `ActionId.openRun`.
    */
   subagent?: Subagent;
+  /**
+   * Where in the answer this step happened: the length of the turn's text
+   * when it started. Set once, so steps and words read in the order they came.
+   */
+  at?: number;
 }
 
 /**
@@ -386,6 +391,12 @@ export interface Outcome {
   nextAction?: string;
 }
 
+export interface Thought {
+  at: number;
+  after: number;
+  text: string;
+}
+
 export interface Turn {
   outcome?: Outcome;
   id: string;
@@ -394,6 +405,12 @@ export interface Turn {
   /** Answer text, standard markdown. Cite inline with `[[citation-id]]` markers. */
   text: string;
   reasoning?: string;
+  /**
+   * The reasoning in pieces, each where it happened: `at` is the length of
+   * the text and `after` the number of steps when the piece began. With
+   * `Task.at`, it puts thinking, steps and words back in the order they came.
+   */
+  thoughts?: Thought[];
   /** Plan title when tasks are shown as a plan rather than a timeline. */
   planTitle?: string;
   tasks: Task[];
