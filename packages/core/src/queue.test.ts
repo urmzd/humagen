@@ -117,3 +117,37 @@ describe("queue", () => {
     ]);
   });
 });
+
+describe("adopt", () => {
+  it("takes a reply already in flight as the running turn without starting anything", () => {
+    const { state, effects } = run([
+      { type: "adopt", message: msg("a") },
+      { type: "send", message: msg("b") },
+    ]);
+    expect(state.status).toBe("running");
+    expect(state.current?.id).toBe("a");
+    expect(state.pending.map((m) => m.id)).toEqual(["b"]);
+    expect(effects.map((e) => e.type)).toEqual(["none", "none"]);
+  });
+
+  it("is ignored while a turn already runs", () => {
+    const { state } = run([
+      { type: "send", message: msg("a") },
+      { type: "adopt", message: msg("b") },
+    ]);
+    expect(state.current?.id).toBe("a");
+  });
+
+  it("can be stopped, and releases the queue when it ends", () => {
+    const { state, effects } = run([
+      { type: "adopt", message: msg("a") },
+      { type: "send", message: msg("b") },
+      { type: "turnEnded", outcome: "done" },
+    ]);
+    expect(state.current?.id).toBe("b");
+    expect(effects.at(-1)?.type).toBe("start");
+    expect(
+      queueReduce(run([{ type: "adopt", message: msg("a") }]).state, { type: "stop" })[1].type,
+    ).toBe("interrupt");
+  });
+});

@@ -25,7 +25,7 @@ export function MessageActionRow({
     <div
       role="toolbar"
       aria-label={copy.conversation.messageActions}
-      className="-ml-1.5 mt-1 flex min-w-0 flex-wrap items-center gap-1"
+      className="-ml-2.5 mt-1 flex min-w-0 flex-wrap items-center gap-1"
     >
       {text && (copyControl ?? <CopyButton text={text} label={copyLabel} note="above" />)}
       {onReply && (

@@ -139,6 +139,12 @@ export function hubTabs(
                 visible: can("runs:read"),
               },
               {
+                label: nav.health,
+                route: { page: "monitor", tab: "health" },
+                active: route.page === "monitor" && route.tab === "health",
+                visible: can("alerts:read"),
+              },
+              {
                 label: nav.audit,
                 route: { page: "audit" },
                 active: route.page === "audit",

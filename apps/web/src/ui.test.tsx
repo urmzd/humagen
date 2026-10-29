@@ -3,13 +3,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { emptyTurn, type Turn } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
-import { AgentMessage } from "@humagen/web";
+import { AgentMessage, agentInitials } from "@humagen/web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ActivityPanel, ordered, ordinals, trailOf } from "./Activity.tsx";
 import { sampleTrees } from "./activity.fixtures.ts";
 import { type Run, turnOf } from "./adapter.ts";
 import type { Me, ProjectView, ScheduleView, ThreadSummary } from "./api.ts";
+import { Involved } from "./ConversationShell.tsx";
 import { CopyAs } from "./CopyAs.tsx";
 import { formats } from "./copyas.ts";
 import { isEnded } from "./format.ts";
@@ -1223,7 +1224,6 @@ const activity = (
       selected={selected}
       onSelect={() => {}}
       onClose={() => {}}
-      onJump={() => {}}
       {...over}
     />,
   );
@@ -1258,69 +1258,44 @@ test("ActivityPanel: with nothing run, it says so, and says Loading while it is 
   assert.doesNotMatch(activity(null, []), /data-testid="activity-row"/);
 });
 
-test("ActivityPanel: every run in the conversation is listed, running first, nested by who called whom", () => {
+test("ActivityPanel: every agent run, oldest first, with no filters", () => {
   const out = activity(null);
-  assert.equal(out.match(/data-testid="activity-row"/g)?.length, 7);
-  assert.match(out, /7 runs, 2 running, 1 failed/);
-  assert.ok(
-    out.indexOf('data-testid="activity-running"') < out.indexOf('data-testid="activity-done"'),
-  );
-  assert.match(out, /Running \(2\)/);
-  assert.match(out, /Done \(5\)/);
-  assert.match(
-    out,
-    /padding-left:32px[^>]*>(?:(?!<\/li>).)*List the commits since 2\.3\.0/s,
-    "a run two calls deep is indented twice",
-  );
-  assert.match(out, /1 tool call/);
+  const ids = [...out.matchAll(/data-testid="activity-row" data-run="([^"]+)"/g)].map((m) => m[1]);
+  const all = sampleTrees()
+    .flatMap((t) => t.runs)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((r) => r.id);
+  assert.deepEqual(ids, all);
+  assert.doesNotMatch(out, /Handoffs|Hide Tools|Show Tools|\d+ runs?,/);
 });
 
-test("ActivityPanel: each row carries its agent's stroke and says how it stands in words", () => {
+test("ActivityPanel: a row says how its agent stands only when a still mark would not", () => {
   const out = activity(null);
-  assert.match(out, /data-agent="releaser"[^>]*data-state="failed"/);
-  assert.match(out, /data-agent="oncall"[^>]*data-state="working"/);
-  assert.match(out, /data-agent="helper"[^>]*data-state="done"/);
   assert.match(out, />Failed</);
-  assert.match(out, />Running</);
+  assert.doesNotMatch(out, />Done</);
+  assert.match(out, /aria-label="Stop oncall"/, "a working agent's mark stops it");
 });
 
-test("ActivityPanel: a run shows its whole conversation, its tools, and the agents it called", () => {
+test("ActivityPanel: an agent opens to its conversation: what it was asked, by whom, and how it answered", () => {
   const out = activity("r2a");
-  assert.match(
-    out,
-    /data-testid="activity-detail"[^>]*data-agent="releaser"[^>]*data-state="failed"|data-agent="releaser"[^>]*data-state="failed"[^>]*data-testid="activity-detail"/,
-  );
-  assert.match(out, /Called as a subagent by lead\./);
   assert.match(out, /data-testid="activity-conversation"/);
+  assert.match(out, /lead asked/);
   assert.match(out, /Tag 2\.4\.0 and write the changelog/, "what it was asked");
   assert.match(out, /already exists/, "why it failed");
-  assert.match(out, /data-testid="activity-tools"/);
-  assert.match(out, /git_tag/);
-  assert.match(out, /data-testid="activity-called"/);
-  assert.match(out, /List the commits since 2\.3\.0/);
-  assert.match(out, />Jump to Message</);
 });
 
-test("ActivityPanel: the trail steps back out through each caller", () => {
+test("ActivityPanel: every call of an agent is one conversation, and the trail steps back out through each caller", () => {
+  assert.equal(activity("r2").match(/data-testid="activity-conversation"/g)?.length, 3);
   const out = activity("r2a1");
   const nav = out.match(/<nav aria-label="Called by".*?<\/nav>/s)?.[0] ?? "";
-  assert.match(nav, />All activity</);
-  assert.match(nav, /<button[^>]*>lead<\/button>/);
-  assert.match(nav, /<button[^>]*>releaser<\/button>/);
-  assert.match(nav, /aria-current="page"[^>]*>helper</);
-  assert.match(out, /Delegated by releaser\./);
-});
-
-test("ActivityPanel: a run with no tools and no calls shows neither section", () => {
-  const out = activity("r2");
-  assert.doesNotMatch(out, /data-testid="activity-tools"/);
-  assert.match(out, /data-testid="activity-called"/);
-  const alone = activity("r1", [{ ...sampleTrees()[0]!, spans: [] }]);
-  assert.doesNotMatch(alone, /activity-tools|activity-called/);
+  assert.match(nav, />All runs</);
+  assert.match(nav, /<button[^>]*>.*?lead<\/button>/s);
+  assert.match(nav, /<button[^>]*>.*?releaser<\/button>/s);
+  assert.match(nav, /aria-current="page"[^>]*>.*?helper</s);
 });
 
 test("ActivityPanel: a selection that no longer exists falls back to the list", () => {
-  assert.match(activity("gone"), /data-testid="activity-done"/);
+  assert.match(activity("gone"), /data-testid="activity-row"/);
 });
 
 const second = () => {
@@ -2197,4 +2172,22 @@ test("credential failures give an actionable answer and reference without exposi
   assert.match(markup, /The model credential is unavailable/);
   assert.match(markup, /r-credential/);
   assert.doesNotMatch(markup, /op:\/\/|max attempts|Private\/provider/);
+});
+
+test("Involved: the first three agents by mark and name, then how many more, every name in the label", () => {
+  const out = html(<Involved agents={["lead", "researcher", "writer", "helper", "oncall"]} />);
+  assert.match(out, /aria-label="Agents involved: lead, researcher, writer, helper, oncall"/);
+  assert.match(out, />lead</);
+  assert.match(out, />writer</);
+  assert.doesNotMatch(out, />helper</);
+  assert.match(out, />\+2</);
+  assert.doesNotMatch(html(<Involved agents={["lead"]} />), /\+\d/);
+});
+
+test("an agent's initials: two words give two letters, one word adds A for agent", () => {
+  assert.equal(agentInitials("lead"), "LA");
+  assert.equal(agentInitials("code-reviewer"), "CR");
+  assert.equal(agentInitials("dataAnalyst"), "DA");
+  assert.equal(agentInitials("research_writer"), "RW");
+  assert.equal(agentInitials("--"), "A");
 });

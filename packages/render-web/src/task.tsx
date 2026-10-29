@@ -186,8 +186,14 @@ function ItemSlot({ item }: { item: TurnItem | null }) {
   );
 }
 
-/** Room for the slot, so it never sits on top of the row's own text. */
-const SLOT_ROOM = "group/item pr-7";
+/**
+ * The slot sits over the row's right end, where its time and chevron are, and
+ * those step aside while it shows. No room is kept for it, so a row's time
+ * lines up with the edge of the answer.
+ */
+const SLOT_ROOM = "group/item";
+const UNDER_SLOT =
+  "transition-opacity group-hover/item:opacity-0 group-focus-within/item:opacity-0 motion-reduce:transition-none";
 
 function duration(ms: number): string {
   const s = Math.round(ms / 1000);
@@ -347,6 +353,71 @@ function DecisionControls({
   );
 }
 
+/**
+ * What a step was given and what it gave back, one under the other. Simple
+ * arguments read as labeled values; anything nested stays as JSON. Long
+ * output scrolls inside its own box.
+ */
+export function StepIO({
+  input,
+  output,
+  failed,
+}: {
+  input?: string;
+  output?: string;
+  failed?: boolean;
+}) {
+  const fields = inputFields(input);
+  const label = "text-aui-2xs font-medium uppercase tracking-wide text-aui-muted";
+  const box =
+    "aui-scroll max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-aui-sm bg-aui-hover px-2 py-1.5 font-aui-mono text-aui-2xs";
+  if (!input && !output) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-2 pt-1">
+      {input && (
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className={label}>Input</span>
+          {fields ? (
+            <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-aui-xs">
+              {fields.map(([k, v]) => (
+                <div key={k} className="contents">
+                  <dt className="text-aui-muted">{k}</dt>
+                  <dd className="min-w-0 whitespace-pre-wrap break-words text-aui-fg">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <pre className={box}>{input}</pre>
+          )}
+        </div>
+      )}
+      {output && (
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className={label}>{failed ? "Error" : "Output"}</span>
+          <pre className={`${box} ${failed ? "text-aui-bad" : "text-aui-fg"}`}>
+            {readableToolResult(output)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Arguments as label and value, when every value is a plain string, number or flag. */
+export function inputFields(input?: string): [string, string][] | null {
+  if (!input?.trim()) return null;
+  try {
+    const v = JSON.parse(input) as unknown;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+    const entries = Object.entries(v as Record<string, unknown>);
+    if (entries.length === 0 || entries.length > 8) return null;
+    if (!entries.every(([, x]) => ["string", "number", "boolean"].includes(typeof x))) return null;
+    return entries.map(([k, x]) => [k.replace(/_/g, " "), String(x)]);
+  } catch {
+    return null;
+  }
+}
+
 export function TaskRow({
   id,
   title,
@@ -359,7 +430,6 @@ export function TaskRow({
 }: PrimitiveProps["Task"]) {
   const turn = useTurnMeta();
   const task = turn?.tasks.find((t) => t.id === id);
-  const [technicalTab, setTechnicalTab] = useState<"input" | "output">("output");
   const subagent = task?.subagent;
   const hasSlot = useContext(ItemActionsContext) !== null && Boolean(turn && task);
   const item: TurnItem | null =
@@ -412,7 +482,9 @@ export function TaskRow({
         )}
       </span>
       {task?.durationMs !== undefined && (
-        <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums">
+        <span
+          className={`shrink-0 text-aui-2xs text-aui-muted tabular-nums ${hasSlot ? UNDER_SLOT : ""}`}
+        >
           {(task.durationMs / 1000).toFixed(1)}s
         </span>
       )}
@@ -465,43 +537,7 @@ export function TaskRow({
           <Collapse open={open}>
             <div className="ml-[0.4375rem] flex flex-col gap-1 border-aui-border border-l py-0.5 pr-1 pb-1.5 pl-[0.9375rem] text-aui-xs">
               {shownDetails && <p className="text-aui-muted">{shownDetails}</p>}
-              {output && (
-                <p
-                  className={`whitespace-pre-wrap break-words text-aui-xs ${status === "error" ? "text-aui-bad" : "text-aui-fg"}`}
-                >
-                  {readableToolResult(output)}
-                </p>
-              )}
-              {(task?.input || output) && (
-                <details className="mt-2 min-w-0 rounded-aui border border-aui-border p-2">
-                  <summary className="min-h-6 cursor-pointer text-aui-2xs text-aui-muted">
-                    Technical details
-                  </summary>
-                  <div className="mt-2 flex gap-3">
-                    <button
-                      type="button"
-                      aria-pressed={technicalTab === "input"}
-                      onClick={() => setTechnicalTab("input")}
-                      className="min-h-6 rounded-aui px-1 py-0.5 text-aui-2xs aria-pressed:bg-aui-hover"
-                    >
-                      Input
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={technicalTab === "output"}
-                      onClick={() => setTechnicalTab("output")}
-                      className="min-h-6 rounded-aui px-1 py-0.5 text-aui-2xs aria-pressed:bg-aui-hover"
-                    >
-                      Output
-                    </button>
-                  </div>
-                  <pre className="aui-scroll mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-aui-mono text-aui-2xs">
-                    {technicalTab === "input"
-                      ? (task?.input ?? "Input was not recorded for this step.")
-                      : (output ?? "No output recorded.")}
-                  </pre>
-                </details>
-              )}
+              <StepIO input={task?.input} output={output} failed={status === "error"} />
               {sources && sources.length > 0 && (
                 <SourceChips sources={sources} labels={sourceLabels} />
               )}

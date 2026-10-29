@@ -40,6 +40,7 @@ import { ContextHealth } from "./ContextHealth.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { ForkProject } from "./ForkProject.tsx";
+import { Health } from "./Health.tsx";
 import { type HomeAnnouncement, HomeBoxes, type Loaded } from "./HomePage.tsx";
 import { Integrations } from "./Integrations.tsx";
 import { Knowledge } from "./Knowledge.tsx";
@@ -1073,7 +1074,12 @@ function Console({
             onOpenAgent={(name) => openAgent(name)}
           />
         )}
-        {route.page === "monitor" && (
+        {route.page === "monitor" && route.tab === "health" && (
+          <Page title={defaultCopy.health.title} lede={defaultCopy.health.lede}>
+            <Health />
+          </Page>
+        )}
+        {route.page === "monitor" && route.tab !== "health" && (
           <Monitor
             tab={route.tab}
             embeddedRules={route.tab === "rules"}

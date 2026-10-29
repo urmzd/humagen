@@ -30,7 +30,7 @@ const words = defaultCopy.agentSetup;
 const terminal = (run?: Run) => !!run && ["completed", "failed", "stopped"].includes(run.status);
 
 function TestResult({ run, onRefresh }: { run: Run; onRefresh: () => void }) {
-  const { run: shown, control } = useRunStop(run, !terminal(run));
+  const { run: shown, stop } = useRunStop(run, !terminal(run));
   const live = useRunTurn(shown);
   const [ask, setAsk] = useState<ThreadAsk>();
   const [problem, setProblem] = useState("");
@@ -67,7 +67,7 @@ function TestResult({ run, onRefresh }: { run: Run; onRefresh: () => void }) {
           turn={turn}
           copy={copyFor(ask)}
           timestamp={<MessageTime at={shown.created_at} />}
-          actions={control}
+          stop={stop}
           capabilities={{ regenerate: false }}
         />
       </WebSurface>

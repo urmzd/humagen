@@ -14,8 +14,24 @@ describe("reduce", () => {
       { type: "turn.completed" },
     ]);
     expect(turn.text).toBe("Hello world");
-    expect(turn.tasks).toEqual([{ id: "x", title: "Search", status: "complete" }]);
+    // The step keeps the place it started: before any of the answer.
+    expect(turn.tasks).toEqual([{ id: "x", title: "Search", status: "complete", at: 0 }]);
     expect(turn.status).toBe("done");
+  });
+
+  it("places each step where it happened in the answer", () => {
+    const turn = replay([
+      { type: "turn.started", turnId: "t", agent: { name: "A" } },
+      { type: "text.delta", text: "Looking. " },
+      { type: "task.upserted", task: { id: "a", title: "Read", status: "in_progress" } },
+      { type: "text.delta", text: "Found it." },
+      { type: "task.upserted", task: { id: "a", title: "Read", status: "complete" } },
+      { type: "task.upserted", task: { id: "b", title: "Write", status: "complete" } },
+    ]);
+    expect(turn.tasks.map((t) => [t.id, t.at])).toEqual([
+      ["a", 9],
+      ["b", 18],
+    ]);
   });
 
   it("waits while an interrupt is pending and resumes once resolved", () => {

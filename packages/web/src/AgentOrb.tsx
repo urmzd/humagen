@@ -118,3 +118,54 @@ export function AgentOrb({
     </span>
   );
 }
+
+/**
+ * Two letters for an agent: the first letters of its first two words, or,
+ * for a one-word name, its first letter and A for agent ("lead" is LA).
+ */
+export function agentInitials(name: string): string {
+  const words = name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[\s_\-./]+/)
+    .filter((w) => /[a-z0-9]/i.test(w));
+  const [first = "", second] = words;
+  if (!first) return "A";
+  return `${first[0]}${second ? second[0] : "A"}`.toUpperCase();
+}
+
+/**
+ * An agent's face: its initials in its color, ringed by a glow that tells an
+ * agent from a person. While the agent works the glow breathes and the orb
+ * sits on its corner, moving with what the agent is doing.
+ */
+export function AgentInitials({
+  name,
+  state = "idle",
+  size = 28,
+  className,
+}: {
+  name: string;
+  state?: OrbState;
+  size?: number;
+  className?: string;
+}) {
+  const live = !["idle", "done", "error", "stopped", "waiting"].includes(state);
+  return (
+    <span
+      aria-hidden
+      className={`aui-initials ${className ?? ""}`}
+      data-live={live || undefined}
+      style={{ "--initials-size": `${size}px` } as CSSProperties}
+    >
+      {agentInitials(name)}
+      {live && size >= 20 && (
+        <AgentOrb
+          state={state}
+          size={Math.max(10, Math.round(size * 0.42))}
+          label=""
+          className="absolute -right-1 -bottom-1"
+        />
+      )}
+    </span>
+  );
+}

@@ -10,6 +10,7 @@ import type {
   AuditRecord,
   Branding,
   Note as GeneratedNote,
+  Health as HealthReport,
   KnowledgeLifecycle,
   KnowledgeSourceConfig,
   LibraryScope,
@@ -1243,6 +1244,8 @@ export const api = {
   trace: (id: string) =>
     call<{ runs: Run[]; spans: Span[] }>("GET", `/api/runs/${encodeURIComponent(id)}/trace`),
 
+  /** Each component the deployment runs on, as last checked. */
+  health: () => call<HealthReport>("GET", "/api/health"),
   alerts: () => call<{ alerts: Alert[] }>("GET", "/api/alerts").then((r) => r.alerts),
   ackAlert: (id: string) => call<Alert>("POST", `/api/alerts/${encodeURIComponent(id)}/ack`),
   alertRules: () => call<{ rules: AlertRule[] }>("GET", "/api/alert-rules").then((r) => r.rules),

@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import type { Turn } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
-import { AgentMessage } from "@humagen/web";
+import { AgentMessage, StoppableMark } from "@humagen/web";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import {
@@ -1974,7 +1974,7 @@ test("completed work requires destination review, and an unseen run refusal stay
   });
   render(<Sharing initial={ran} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
-  let dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  let dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   const fixed = within(dialog).getByLabelText(
     new RegExp(`^${words.shareProject}`),
   ) as HTMLSelectElement;
@@ -2011,7 +2011,7 @@ test("completed work requires destination review, and an unseen run refusal stay
   });
   render(<Sharing initial={mine} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
-  dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   fireEvent.change(within(dialog).getByLabelText(words.shareProject), {
     target: { value: "Initech" },
   });
@@ -2697,7 +2697,7 @@ test("Share preserves the selected channel and invalidates consent after a stale
   });
   render(<Sharing initial={ran} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
-  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   const channel = within(dialog).getByLabelText(words.shareChannel) as HTMLSelectElement;
   await waitFor(() => assert.equal(channel.value, "deals"));
   assert.equal(channel.disabled, false);
@@ -2995,7 +2995,7 @@ test("Share says who the platform did not add, and why, beside who was told", as
   });
   render(<Sharing initial={mine} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
-  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   assert.ok(within(dialog).getByText(words.shareLede));
   const who = within(dialog).getByRole("combobox", { name: words.shareAdd }) as HTMLInputElement;
   for (const h of ["dana", "eve"]) {
@@ -3045,27 +3045,31 @@ function StopFixture() {
   return (
     <div>
       <output aria-label="Recorded status">{stopped.run.status}</output>
-      {stopped.control}
+      <StoppableMark agent={run.agent} state="thinking" stop={stopped.stop}>
+        <span>mark</span>
+      </StoppableMark>
     </div>
   );
 }
 
-test("Stop Turn reports a request and waits for the ledger, rather than inventing a stopped turn", async () => {
+test("Stop on the agent's mark waits for the ledger, rather than inventing a stopped turn", async () => {
   let terminal = false;
   net = stubFetch({
     "POST /api/runs/r1/stop": () => ({ ...page.turns[1]?.run, status: "running" }),
     "GET /api/runs/r1": () => ({ ...page.turns[1]?.run, status: terminal ? "stopped" : "running" }),
   });
   render(<StopFixture />);
-  fireEvent.click(screen.getByRole("button", { name: defaultCopy.conversation.stopTurn }));
-  await screen.findByText(defaultCopy.conversation.stopPending);
+  const agent = page.turns[1]?.run?.agent ?? "";
+  fireEvent.click(screen.getByRole("button", { name: `Stop ${agent}` }));
+  const stopping = await screen.findByRole("button", { name: `Stopping ${agent}` });
+  assert.ok((stopping as HTMLButtonElement).disabled);
   assert.equal(screen.getByLabelText("Recorded status").textContent, "running");
   terminal = true;
   await waitFor(
     () => assert.equal(screen.getByLabelText("Recorded status").textContent, "stopped"),
     { timeout: 2000 },
   );
-  assert.equal(screen.queryByText(defaultCopy.conversation.stopPending), null);
+  assert.equal(screen.queryByRole("button", { name: /Stop/ }), null);
 });
 
 test("recorded outcomes lead with recommendations and Redirect prepares human intent without executing it", async () => {

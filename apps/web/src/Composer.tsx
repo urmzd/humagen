@@ -122,7 +122,8 @@ export type ComposerSeed = { text: string; mode?: "prepend" };
 /**
  * The message box. Type, attach text files, or dictate. Enter sends and
  * Shift+Enter adds a line. While a reply is in flight, sending queues the
- * message behind it.
+ * message behind it, Cmd+Enter (Ctrl+Enter) stops the reply and sends it
+ * now, and Esc with nothing typed stops the reply.
  */
 export function Composer({
   placeholder,
@@ -134,7 +135,10 @@ export function Composer({
   seed,
   tags,
   plus,
+  disclaimer = defaultCopy.disclaimer(defaultCopy.product),
 }: {
+  /** The AI disclaimer, said once under the prompt bar. null leaves it out. */
+  disclaimer?: string | null;
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: ComposerSeed;
   placeholder: string;
@@ -313,6 +317,12 @@ export function Composer({
         setTyping(null);
         return;
       }
+    }
+    // Esc with nothing typed stops the reply to the last message.
+    if (e.key === "Escape" && !value && queue.state.status === "running") {
+      e.preventDefault();
+      queue.stop();
+      return;
     }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -572,7 +582,17 @@ export function Composer({
           )}
         </div>
       </form>
-      {plus?.chips && <div className="min-w-0 px-1">{plus.chips}</div>}
+      {/*
+        One line under the prompt bar, the same before and after the first
+        message: what the + menu picked on the left, the disclaimer centered.
+      */}
+      {(plus?.chips || disclaimer) && (
+        <div className="grid min-w-0 grid-cols-1 items-center gap-x-3 gap-y-1 px-1 sm:grid-cols-[1fr_auto_1fr]">
+          <div className="min-w-0">{plus?.chips}</div>
+          {disclaimer && <p className="text-center text-aui-2xs text-aui-muted">{disclaimer}</p>}
+          <div aria-hidden className="hidden sm:block" />
+        </div>
+      )}
     </div>
   );
 }

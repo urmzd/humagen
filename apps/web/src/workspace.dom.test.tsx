@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy, TurnView } from "@humagen/components";
-import { ActionId, type Turn, type UiAction } from "@humagen/core";
+import { ActionId, type Task, type Turn, type UiAction } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, useQueue } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -43,41 +43,53 @@ const turn: Turn = {
   notices: [],
 };
 
-test("completed work is grouped while the answer stays visible, with technical detail available", () => {
+test("each step sits where it happened, as one line that opens to its input and output", () => {
   render(
     <WebSurface>
-      <AgentMessage turn={turn} />
+      <AgentMessage
+        turn={{
+          ...turn,
+          text: "Checking the plan. The launch brief is ready.",
+          tasks: [{ ...(turn.tasks[0] as Task), at: "Checking the plan. ".length }],
+        }}
+      />
     </WebSurface>,
   );
-  assert.ok(screen.getByText("The launch brief is ready."));
-  const group = document.querySelector("details");
-  assert.ok(group);
-  assert.equal(group.open, false);
-  group.open = true;
-  fireEvent(group, new Event("toggle", { bubbles: true }));
+  const text = document.body.textContent ?? "";
+  const before = text.indexOf("Checking the plan.");
+  const step = text.indexOf("Read plan.md");
+  const after = text.indexOf("The launch brief is ready.");
+  assert.ok(before >= 0 && before < step && step < after, `${before} ${step} ${after}`);
+  // Folded, the line says what was done; open, each step shows its input and output.
+  assert.equal(screen.queryByText("Input"), null);
+  fireEvent.click(screen.getByRole("button", { name: "Read plan.md" }));
   fireEvent.click(screen.getByRole("button", { name: /Read the plan/ }));
-  const technical = screen.getByText("Technical details").closest("details");
-  assert.ok(technical);
-  technical.open = true;
-  fireEvent.click(within(technical).getByRole("button", { name: "Input" }));
-  assert.ok(within(technical).getByText('{"path":"plan.md"}'));
-  fireEvent.click(within(technical).getByRole("button", { name: "Output" }));
-  assert.match(technical.textContent ?? "", /"matches":3/);
+  assert.ok(screen.getByText("Input"));
+  assert.ok(screen.getByText("plan.md"));
+  assert.ok(screen.getByText("Output"));
+  assert.match(document.body.textContent ?? "", /The embargo stays on November 12/);
+  // The trace folds under "Worked", leaving the answer.
+  fireEvent.click(screen.getByRole("button", { name: /^Worked/ }));
+  assert.equal(screen.queryByText("Read plan.md"), null);
+  assert.ok(screen.getByText(/The launch brief is ready\./));
 });
 
-test("a tool waiting for approval opens its work group without animating", () => {
+test("a tool waiting for approval opens its step line without animating", () => {
   render(
     <WebSurface>
       <AgentMessage
         turn={{
           ...turn,
           status: "waiting",
-          tasks: [{ id: "step-1", title: "Send vendor notice", status: "waiting" }],
+          tasks: [{ id: "step-1", title: "Send vendor notice", status: "waiting", at: 0 }],
         }}
       />
     </WebSurface>,
   );
-  assert.equal(document.querySelector("details")?.open, true);
+  assert.equal(
+    screen.getByRole("button", { name: /waiting for you/ }).getAttribute("aria-expanded"),
+    "true",
+  );
   assert.ok(screen.getByText("Waiting for approval"));
 });
 

@@ -880,7 +880,7 @@ test("+ closes the menu it opened, though focus moves to it from the menu first"
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
 });
 
-test("all starter suggestions wrap within the available width without hiding actions", async () => {
+test("all starter suggestions stay in one centered row that scrolls past its width, hiding none", async () => {
   const builtin = [
     ...agents,
     agent("humagen-analyst"),
@@ -889,7 +889,7 @@ test("all starter suggestions wrap within the available width without hiding act
   ];
   openChat(workspace("lead"), { agents: builtin });
   const list = await screen.findByRole("list", { name: chat.suggestions });
-  assert.ok(list.className.split(/\s+/).includes("flex-wrap"));
+  assert.ok(list.className.split(/\s+/).includes("overflow-x-auto"));
   assert.equal(within(list).getAllByRole("button").length, 3);
   assert.ok(
     [...list.querySelectorAll("li")].every((row) => !row.className.split(/\s+/).includes("hidden")),

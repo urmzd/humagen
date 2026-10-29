@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { ActivityPanel, type Tree } from "./Activity.tsx";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { ActivityPanel, conversationMarkdown, type Tree } from "./Activity.tsx";
 import type { Run } from "./adapter.ts";
 import { stubFetch } from "./dom.ts";
 
@@ -58,77 +58,71 @@ const tree: Tree = {
 };
 const rows = () =>
   screen.queryAllByTestId("activity-row").map((row) => row.getAttribute("data-run"));
-const copy = defaultCopy.activityControls;
 
-test("Activity filters use recorded modes, tool spans and decisions without treating failures as decisions", () => {
-  rendered = true;
-  render(
-    <ActivityPanel
-      trees={[tree]}
-      selected={null}
-      onSelect={() => {}}
-      onClose={() => {}}
-      isDecision={(entry) => entry.id === "authored"}
-    />,
-  );
-  assert.equal(rows().length, tree.runs.length);
-  fireEvent.click(screen.getByRole("button", { name: copy.handoffs }));
-  assert.deepEqual(rows(), ["handoff", "delegate"]);
-  assert.equal(
-    screen.getByRole("button", { name: copy.handoffs }).getAttribute("aria-pressed"),
-    "true",
-  );
-  fireEvent.click(screen.getByRole("button", { name: copy.tools }));
-  assert.deepEqual(rows(), ["tool"]);
-  fireEvent.click(screen.getByRole("button", { name: copy.decisions }));
-  assert.deepEqual(rows(), ["decision", "question", "authored"]);
-  fireEvent.click(screen.getByRole("button", { name: copy.all }));
-  assert.equal(rows().length, tree.runs.length);
-});
-
-test("Activity controlled filters emit changes and distinguish no matches from no activity", () => {
-  const filters: string[] = [];
-  const toggles: boolean[] = [];
-  rendered = true;
-  const view = render(
-    <ActivityPanel
-      trees={[{ ...tree, spans: [] }]}
-      selected={null}
-      filter="tools"
-      showTools={false}
-      onFilterChange={(value) => filters.push(value)}
-      onShowToolsChange={(value) => toggles.push(value)}
-      onSelect={() => {}}
-      onClose={() => {}}
-    />,
-  );
-  assert.ok(screen.getByText(copy.noMatches));
-  fireEvent.click(screen.getByRole("button", { name: copy.all }));
-  fireEvent.click(screen.getByRole("button", { name: copy.showTools }));
-  assert.deepEqual(filters, ["all"]);
-  assert.deepEqual(toggles, [true]);
-  assert.equal(rows().length, 0);
-  view.rerender(
-    <ActivityPanel
-      trees={[tree]}
-      selected={null}
-      filter="all"
-      showTools
-      onSelect={() => {}}
-      onClose={() => {}}
-    />,
-  );
-  assert.equal(rows().length, tree.runs.length);
-});
-
-test("Activity tool timeline can be hidden and restored without closing the run", () => {
+test("Activity lists every run in time order, opens its agent's conversation, and leads back by the trail", () => {
   restore = stubFetch({}).restore;
   rendered = true;
-  render(<ActivityPanel trees={[tree]} selected="tool" onSelect={() => {}} onClose={() => {}} />);
-  assert.ok(screen.getByTestId("activity-tools"));
-  fireEvent.click(screen.getByRole("button", { name: copy.hideTools }));
-  assert.equal(screen.queryByTestId("activity-tools"), null);
-  assert.ok(screen.getByTestId("activity-detail"));
-  fireEvent.click(screen.getByRole("button", { name: copy.showTools }));
-  assert.ok(screen.getByTestId("activity-tools"));
+  const twice: Tree = {
+    root: "root",
+    runs: [
+      run("root", { depth: 0, agent: "lead", text: "Plan the launch" }),
+      run("a", { parent: "root", agent: "researcher", text: "Find dates", answer: "May 4" }),
+      run("b", {
+        parent: "root",
+        agent: "researcher",
+        text: "Find venues",
+        created_at: "2026-10-26T10:01:00Z",
+        answer: "Hall B",
+      }),
+    ],
+    spans: [],
+  };
+  let selected: string | null = null;
+  const view = render(
+    <ActivityPanel
+      trees={[twice]}
+      selected={selected}
+      onSelect={(id) => {
+        selected = id;
+      }}
+      onClose={() => {}}
+    />,
+  );
+  // Every run, oldest first, with the last thing it said.
+  assert.deepEqual(
+    screen.getAllByTestId("activity-row").map((r) => r.getAttribute("data-run")),
+    ["root", "a", "b"],
+  );
+  assert.ok(screen.getByText("Hall B"));
+  // No filters or tool toggle.
+  assert.equal(screen.queryByRole("group", { name: defaultCopy.activityControls.filters }), null);
+  fireEvent.click(screen.getAllByTestId("activity-row")[2] as HTMLElement);
+  assert.equal(selected, "b");
+  view.rerender(
+    <ActivityPanel
+      trees={[twice]}
+      selected="b"
+      onSelect={(id) => (selected = id)}
+      onClose={() => {}}
+    />,
+  );
+  // Both calls, as one conversation, each with who asked.
+  assert.equal(screen.getAllByTestId("activity-conversation").length, 2);
+  assert.equal(screen.getAllByText(/lead asked/).length, 2);
+  const trail = screen.getByRole("navigation", { name: "Called by" });
+  fireEvent.click(within(trail).getByRole("button", { name: "lead" }));
+  assert.equal(selected, "root");
+  fireEvent.click(within(trail).getByRole("button", { name: "All runs" }));
+  assert.equal(selected, null);
+});
+
+test("Copy Conversation copies the conversation as Markdown", () => {
+  assert.equal(
+    conversationMarkdown(
+      "researcher",
+      [run("a", { parent: "root", agent: "researcher", text: "Find dates", answer: "May 4" })],
+      new Map([["root", run("root", { depth: 0, agent: "lead" })]]),
+    ),
+    "**lead → researcher**\n\nFind dates\n\n**researcher**\n\nMay 4",
+  );
 });

@@ -164,75 +164,55 @@ function PinButton({
   );
 }
 
-/** Agent identity and the people taking part stay separate at sidebar widths. */
-function Participants({
-  task,
-  me,
-  prefs,
+/**
+ * A project's conversations under a header that folds them. The chevron says
+ * which way it is; the group opens itself when the open conversation is in
+ * it, and while folded over the open conversation the header carries the
+ * selection, so where you are never disappears.
+ */
+function ProjectGroup({
+  title,
+  holdsCurrent,
+  children,
 }: {
-  task: ThreadSummary;
-  me: Me;
-  prefs: Preferences | null;
+  title: string;
+  holdsCurrent: boolean;
+  children: ReactNode;
 }) {
-  const words = defaultCopy.sidebar;
-  const agents = [...new Set(task.agents)];
-  const people = [...new Set(task.people)];
-  const isYou = (person: string) => person === me.principal.subject || person === me.handle;
-  const personName = (person: string) =>
-    isYou(person) ? prefs?.display_name || me.principal.name || person : person;
-  if (agents.length === 0 && people.length === 0) return null;
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    if (holdsCurrent) setOpen(true);
+  }, [holdsCurrent]);
   return (
-    <span className="flex min-w-0 items-center gap-2.5 text-aui-2xs text-aui-muted">
-      {agents.length > 0 && (
-        <span
-          role="group"
-          aria-label={words.agents(agents)}
-          title={words.agents(agents)}
-          className="flex min-w-0 flex-1 items-center gap-1.5"
+    <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary
+        aria-current={!open && holdsCurrent ? "true" : undefined}
+        className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-aui pr-12 pl-1.5 text-aui-xs font-medium text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current]:bg-aui-subtle aria-[current]:text-aui-fg aria-[current]:shadow-[inset_2px_0_0_var(--aui-accent)] [&::-webkit-details-marker]:hidden"
+      >
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          width={12}
+          height={12}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.25}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
         >
-          <BotIcon size={13} className="shrink-0" />
-          <span aria-hidden className="flex shrink-0 items-center gap-0.5">
-            {agents.slice(0, 2).map((agent) => (
-              <AgentMark key={agent} name={agent} size={13} />
-            ))}
-          </span>
-          <span className="truncate">{agents[0]}</span>
-          {agents.length > 1 && (
-            <span className="shrink-0">{words.moreParticipants(agents.length - 1)}</span>
-          )}
-        </span>
-      )}
-      {people.length > 0 && (
-        <span
-          role="group"
-          aria-label={words.people(people.map(personName))}
-          title={words.people(people.map(personName))}
-          className="flex max-w-[55%] shrink-0 items-center gap-1.5"
-        >
-          <span aria-hidden className="flex shrink-0 -space-x-1">
-            {people.slice(0, 3).map((person) => (
-              <span key={person} className="rounded-full ring-2 ring-[var(--humagen-plane)]">
-                <Avatar name={personName(person)} prefs={isYou(person) ? prefs : null} size={18} />
-              </span>
-            ))}
-          </span>
-          {people.length === 1 ? (
-            <span className="truncate">
-              {isYou(people[0]!) ? words.you : personName(people[0]!)}
-            </span>
-          ) : (
-            <>
-              <span className="sr-only">{words.peopleCount(people.length)}</span>
-              {people.length > 3 && <span>{words.moreParticipants(people.length - 3)}</span>}
-            </>
-          )}
-        </span>
-      )}
-    </span>
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+        <ProjectIcon size={14} />
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+      </summary>
+      {children}
+    </details>
   );
 }
 
-/** One conversation with its participants and a ⋯ menu to pin, rename, archive or delete it. */
+/** One conversation by its title, with a ⋯ menu to pin, rename, archive or delete it. */
 function TaskRow({
   task,
   projectTitle,
@@ -243,8 +223,6 @@ function TaskRow({
   onRename,
   onArchive,
   flash = null,
-  me,
-  prefs,
 }: {
   task: ThreadSummary;
   projectTitle: string;
@@ -256,8 +234,6 @@ function TaskRow({
   /** Archives it; deleteNow asks an admin to delete it at once. */
   onArchive?: (deleteNow: boolean) => void;
   flash?: Flash | null;
-  me: Me;
-  prefs: Preferences | null;
 }) {
   const title = task.title || "Untitled conversation";
   const state = task.active > 0 ? "In progress" : task.failed > 0 ? "Needs attention" : "Finished";
@@ -299,7 +275,7 @@ function TaskRow({
           onClick={onSelect}
           title={`${title}\n${state}\n${projectTitle}`}
           aria-current={current ? "page" : undefined}
-          className="flex min-h-12 w-full items-center gap-2 rounded-aui py-2 pr-10 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg [@media(pointer:coarse)]:pr-14"
+          className="flex min-h-10 w-full items-center gap-2 rounded-aui py-2 pr-10 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] [@media(pointer:coarse)]:pr-14"
         >
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="flex min-w-0 items-center gap-1.5">
@@ -313,7 +289,6 @@ function TaskRow({
                 />
               )}
             </span>
-            <Participants task={task} me={me} prefs={prefs} />
           </span>
           {task.active > 0 && <span className="sr-only">, running</span>}
           {task.active === 0 && task.failed > 0 && (
@@ -962,8 +937,6 @@ export function Sidebar({
                   <TaskRow
                     key={t.id}
                     task={t}
-                    me={me}
-                    prefs={prefs}
                     projectTitle={projectTitle(t.project)}
                     current={isCurrent(t)}
                     pinned
@@ -1100,11 +1073,12 @@ export function Sidebar({
                     key={project}
                     className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
                   >
-                    <details open>
-                      <summary className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-aui pr-12 pl-2.5 text-aui-xs font-medium text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent">
-                        <ProjectIcon size={14} />
-                        <span className="min-w-0 flex-1 truncate">{projectTitle(project)}</span>
-                      </summary>
+                    <ProjectGroup
+                      title={projectTitle(project)}
+                      holdsCurrent={unpinned.some(
+                        (t) => (t.project || "~") === project && isCurrent(t),
+                      )}
+                    >
                       <ul className="ml-2 border-aui-border border-l pl-1">
                         {unpinned
                           .filter((thread) => (thread.project || "~") === project)
@@ -1112,8 +1086,6 @@ export function Sidebar({
                             <TaskRow
                               key={t.id}
                               task={t}
-                              me={me}
-                              prefs={prefs}
                               projectTitle={projectTitle(t.project)}
                               current={isCurrent(t)}
                               pinned={false}
@@ -1125,7 +1097,7 @@ export function Sidebar({
                             />
                           ))}
                       </ul>
-                    </details>
+                    </ProjectGroup>
                     {onPinProject && can("projects:read") && (
                       <div className="absolute top-2 right-0 h-10 w-10">
                         <PinButton

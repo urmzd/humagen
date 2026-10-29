@@ -39,7 +39,7 @@ and evidence when implementing a requirement.
 - **Evals are deterministic.** A check is a pure function of the output. Do not add a model as a judge without saying so in the suite.
 - **One title per screen, on the page.** There is no top bar. Every page uses `Page` from `apps/web/src/ui.tsx`. What is running shows in the sidebar's Conversations, and a conversation holds the history of every run in it.
 - **Every place has an address.** Pages, tabs and selections are paths in `apps/web/src/route.ts`. A new page or tab adds its route there, with a test.
-- **Agents are told apart by color, not by letters in boxes.** Use `AgentMark`. Controls under the composer are text, not boxes.
+- **An agent is its initials in its color, in a thin ring.** Use `AgentMark` (or `AgentInitials` in shared packages): the ring tells an agent from a person, the orb on its corner shows it working. Controls under the composer are text, not boxes.
 - **The API has one contract.** A route, a handler's answer or a type's JSON
   fields change together with `api/openapi.yaml`, then `make client`. Never edit
   `packages/client/src/generated`.
