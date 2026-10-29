@@ -19,6 +19,15 @@ describe("reduce", () => {
     expect(turn.status).toBe("done");
   });
 
+  it("keeps how long a finished turn worked", () => {
+    const turn = replay([
+      { type: "turn.started", turnId: "t", agent: { name: "A" } },
+      { type: "turn.completed", durationMs: 32_000 },
+    ]);
+    expect(turn.durationMs).toBe(32_000);
+    expect(replay([{ type: "turn.completed" }]).durationMs).toBeUndefined();
+  });
+
   it("places each step where it happened in the answer", () => {
     const turn = replay([
       { type: "turn.started", turnId: "t", agent: { name: "A" } },

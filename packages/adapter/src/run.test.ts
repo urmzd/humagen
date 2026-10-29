@@ -46,7 +46,16 @@ test("a streamed answer is not repeated on completion", () => {
 test("an answer that never streamed arrives with completion", () => {
   const to = adapter();
   const out = [ev("run.accepted.v1"), ev("run.completed.v1", { text: "Done" })].flatMap(to);
-  assert.deepEqual(out.slice(1), [{ type: "text.delta", text: "Done" }, { type: "turn.completed" }]);
+  assert.deepEqual(out.slice(1), [{ type: "text.delta", text: "Done" }, { type: "turn.completed", durationMs: 0 }]);
+});
+
+test("completion says how long the run worked, from its acceptance", () => {
+  const to = adapter();
+  const done = { ...ev("run.completed.v1", { text: "Done" }, 2), time: "2026-10-09T00:00:32Z" };
+  const out = [ev("run.accepted.v1"), done].flatMap(to);
+  assert.deepEqual(out.at(-1), { type: "turn.completed", durationMs: 32_000 });
+  // Without its acceptance, a completion cannot say.
+  assert.deepEqual(adapter()(done).at(-1), { type: "turn.completed" });
 });
 
 test("a stopped run ends the turn as stopped, keeping its partial answer", () => {

@@ -236,7 +236,14 @@ export function collect(): Snapshot {
     // In a sentence (WCAG 2.5.8's inline exception): a control with words of
     // its own, drawn in the flow of a paragraph that says more than it does.
     // An icon beside a heading is not in a sentence, and is measured.
-    const block = el.parentElement;
+    // A wrapper in the flow (a hover card's anchor) is part of the sentence.
+    let block = el.parentElement;
+    while (
+      block &&
+      block.tagName === "SPAN" &&
+      getComputedStyle(block).display.startsWith("inline")
+    )
+      block = block.parentElement;
     const own = (el.textContent ?? "").trim();
     const inline =
       (st.display === "inline" || st.display === "inline-block") &&

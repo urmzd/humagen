@@ -48,10 +48,10 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-018 | Motion and metadata make navigation changes easy to follow | Implemented; Tailwind drawer/menu states, retained inert exits, reduced-motion behavior, named project pills and + New above search |
 | DES-019 | Project work has readable states, scoped filters and honest recovery | Implemented; automated delivery checks pass; final browser/CI verification pending |
 | DES-020 | Workspace previews reuse console controls, fonts and consolidated navigation | Implemented; automated delivery checks pass; final browser/CI verification pending |
-| DES-021 | Sidebar conversations show agents and people; projects and conversations can be pinned independently | Implemented; saved preferences, access checks, restart and DOM regressions, and responsive sidebar captures |
+| DES-021 | Sidebar conversations show their title; projects and conversations can be pinned independently | Implemented; saved preferences, access checks, restart and DOM regressions, and responsive sidebar captures |
 | DES-022 | Conversation actions support rename, archive and admin-reviewed deletion | Included in the consolidated branch; bounded API, durable lifecycle and review UI checks |
 | DES-023 | A deployment and each workspace brand the console from the spec, without a fork or a rebuild | Implemented; spec, server, API and console tests pass; browser check of a branded build pending |
-| DES-024 | An agent calling another agent reads as a message, nested under its caller | Implemented in `AgentMessage` (`AgentCalls`); typecheck passes; no test or live check yet (the offline provider makes no calls) |
+| DES-024 | An agent calling another agent reads as a message, nested under its caller | Implemented in `AgentMessage` (`AgentCall`); checked live: `@lead` called researcher, then writer, with real providers |
 | DES-025 | Stop lives on the working agent's mark; the composer sends and queues | Implemented: `StoppableMark`, `useRunStop`, queue `adopt`, Esc; room, core queue and web tests pass; live stop not yet tried on a long run |
 | DES-026 | Activity lists every agent run in time order, each opening a replayable conversation | Implemented; `activity.dom.test.tsx` and `ui.test.tsx` pass; checked in the browser |
 | DES-027 | Drawer headers align with the page header | Implemented with `--humagen-header-h`; measured equal in the browser at desktop width |
@@ -60,6 +60,11 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-030 | One AI disclaimer, centered under the prompt bar | Implemented in `Composer`; checked in the browser |
 | DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room; checked in the browser for a direct answer |
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
+| DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
+| DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
+| DES-035 | Agents are told apart by initials on their color; a mention opens a profile on hover | Implemented: `AgentInitials`, `MentionLink`; `ui.test.tsx` passes; checked in the browser |
+| DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
+| DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
 
 ### DES-001: Working integrations
 
@@ -576,10 +581,10 @@ not saved workspace changes or live provider execution.
 
 ### DES-021: Conversation participants and independent pins
 
-Conversation rows show a bot glyph and the existing colored `AgentMark`s beside
-agent names, and circular people avatars with an overflow count. Full participant
-lists remain available through accessible labels and titles. Duplicate identities
-are shown once; people-only and agent-only conversations keep their own identity.
+A conversation's row is its title alone. Who took part shows in the
+conversation: its agents in the header (DES-032) and its people as overlapping
+faces on Share. A project group is a disclosure; collapsed, it still marks the
+conversation that is open.
 
 Project headings and individual conversations each have a pin control. A
 project's actions menu also offers Pin Project, including before it has any
@@ -755,3 +760,54 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   "1 agent took part". Every name is in the group's label and on hover.
 - Acceptance: one agent shows its mark and name; five show three and `+2`.
 
+### DES-033: Thinking and steps inline
+
+- A turn reads in the order it happened: words, thinking, steps and calls to
+  other agents, each where it began in the answer (`Task.at`, `Thought.at`).
+  Steps recorded before they had a place follow the answer.
+- A run of steps is one quiet line with an icon that says what they did
+  ("Read plan.md", "Searched the web, read files"). Open, each step shows the
+  input it was given and the output it returned. A step waiting on a person
+  or one that failed keeps its group open.
+- A finished turn folds its steps under one "Worked" line.
+- Acceptance: a turn that read, wrote, then answered shows the read and the
+  write between the words they came between, each with its input and output.
+
+### DES-034: How long a turn worked
+
+- A finished turn's "Worked" line says how long it worked: "Worked for 32s".
+  The time runs from the run's acceptance to its completion on the stream, or
+  from the run record's creation to its last change when the stream is gone.
+- Acceptance: a run accepted at 0s and completed at 32s reads "Worked for 32s".
+
+### DES-035: Initials and mention profiles
+
+- An agent's mark at 16px or more shows its initials on its color: two words
+  give two letters, one word adds A for agent ("LA" for lead). A working
+  agent's mark glows.
+- A mention of an agent is a link to its profile. Hover or focus shows a card
+  with its initials, name, model or model policy and description.
+- Acceptance: `@lead` in a message links to lead, and hovering it shows lead's
+  description and policy.
+
+### DES-036: The composer holds the pick; the first message goes first
+
+- An agent or project picked from the plus menu shows inside the prompt bar,
+  not under it, so the bar keeps its height. Only the disclaimer is below it.
+- Starter suggestions are centered. When they overflow, they scroll sideways
+  with fades and chevrons at the ends.
+- A new conversation's first message posts before anything queued behind it.
+  If it fails, its words return to the composer and nothing queued is sent.
+- Acceptance: a failed first message leaves its text in the composer and an
+  empty queue.
+
+### DES-037: Health
+
+- The Health tab (`/monitor/health`, behind `alerts:read`) is a status page: a banner for
+  the whole deployment, then each model provider and dependency by group, with
+  its status, latency, a bar per recent check and its uptime.
+- With no model provider configured, the deployment reads as down.
+- The page asks again every 30 seconds; the server reuses a report for 30
+  seconds.
+- Acceptance: with Anthropic, OpenAI and Gemini keys set, each reads
+  operational; with none, the banner says the deployment is down.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.36.0 (2026-10-29)
+
+### Features
+
+- **console**: Worked duration, and docs for the agent experience (#111) ([59648b7](https://github.com/urmzd/humagen/commit/59648b74b4187a12b13722aa1914393f77ebc4ef))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.35.0...v0.36.0)
+
+
 ## 0.35.0 (2026-10-29)
 
 ### Breaking

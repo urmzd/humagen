@@ -235,6 +235,8 @@ export function adapter(
 ): (e: RunEvent) => TurnEvent[] {
   const href = opts.href ?? ((path: string) => path);
   let streamed = false;
+  // When the run was accepted, so its end can say how long it worked.
+  let acceptedAt: number | undefined;
   const tools = new Map<string, string>();
   // Publish calls that have not reported yet, oldest first. A file is shown
   // from the moment the agent starts publishing it, and the report that
@@ -294,6 +296,7 @@ export function adapter(
         calling.clear();
         shown.clear();
         asked.clear();
+        acceptedAt = Date.parse(e.time);
         return [{ type: "turn.started", turnId: e.run ?? "", agent: { name: e.agent ?? "" } }];
       case "run.started.v1":
         return [{ type: "activity", activity: "thinking" }];
@@ -473,7 +476,8 @@ export function adapter(
         const out: TurnEvent[] = [];
         const text = e.data?.text;
         if (!streamed && text) out.push({ type: "text.delta", text });
-        out.push({ type: "turn.completed" });
+        const ms = acceptedAt === undefined ? Number.NaN : Date.parse(e.time) - acceptedAt;
+        out.push(Number.isFinite(ms) && ms >= 0 ? { type: "turn.completed", durationMs: ms } : { type: "turn.completed" });
         return out;
       }
       case "run.stopped.v1": {
@@ -576,6 +580,11 @@ export function turnOf(run: Run): Turn {
     })(),
     notices: [],
     activity: run.status === "parked" ? "waiting" : undefined,
+    // A finished run worked from its creation to its last change.
+    ...(() => {
+      const ms = Date.parse(run.updated_at) - Date.parse(run.created_at);
+      return status === "done" && Number.isFinite(ms) && ms >= 0 ? { durationMs: ms } : {};
+    })(),
     failure:
       run.status === "failed"
         ? { kind: "internal", message: lastLine(run.error) || "The run failed.", reference: run.id }
