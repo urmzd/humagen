@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.37.1 (2026-10-29)
+
+### Bug Fixes
+
+- **web**: copy an answer as Markdown in one click (#115) ([f0dbbb1](https://github.com/urmzd/humagen/commit/f0dbbb130534d5ee1ea6d0f410d6a8d58c4c3c7a))
+
+### Misc
+
+- check console screens on every push to main (#113) ([a3c1266](https://github.com/urmzd/humagen/commit/a3c12665422d33243be0093bf61284eca851caeb))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.37.0...v0.37.1)
+
+
 ## 0.37.0 (2026-10-29)
 
 ### Features

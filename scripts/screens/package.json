@@ -1,6 +1,6 @@
 {
   "name": "@humagen/screens",
-  "version": "0.37.0",
+  "version": "0.37.1",
   "private": true,
   "type": "module",
   "description": "Captures every console screen at phone and desktop width and fails on a broken layout.",

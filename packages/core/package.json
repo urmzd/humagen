@@ -1,6 +1,6 @@
 {
   "name": "@humagen/core",
-  "version": "0.37.0",
+  "version": "0.37.1",
   "private": true,
   "type": "module",
   "description": "Surface-agnostic agent UI model: turns, tool calls, approvals, notices, stream events.",
