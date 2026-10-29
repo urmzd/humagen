@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.35.0 (2026-10-29)
+
+### Breaking
+
+- agent experience in the console, Google models and provider health (#110) ([a273654](https://github.com/urmzd/humagen/commit/a273654e175157c06215d58d6f7ae6b988e6135b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.34.0...v0.35.0)
+
+
 ## 0.33.0 (2026-10-29)
 
 ### Features
