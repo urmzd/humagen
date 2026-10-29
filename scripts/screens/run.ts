@@ -453,7 +453,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       path: `/conversations/${ids.privateChat}/activity`,
       act: async (page) => {
         await page.getByTestId("activity-row").first().click();
-        await page.getByTestId("activity-conversation").waitFor();
+        await page.getByTestId("activity-conversation").first().waitFor();
         assert.match(new URL(page.url()).pathname, /\/activity\/.+$/);
         await page.keyboard.press("Escape");
         await page.getByTestId("activity-row").first().waitFor();
