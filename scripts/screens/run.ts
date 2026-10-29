@@ -453,7 +453,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       path: `/conversations/${ids.privateChat}/activity`,
       act: async (page) => {
         await page.getByTestId("activity-row").first().click();
-        await page.getByTestId("activity-detail").waitFor();
+        await page.getByTestId("activity-conversation").waitFor();
         assert.match(new URL(page.url()).pathname, /\/activity\/.+$/);
         await page.keyboard.press("Escape");
         await page.getByTestId("activity-row").first().waitFor();
@@ -1610,7 +1610,10 @@ async function shoot(
     throw new Error(`${vp.name} ${s.name}: ${errors.join("; ")}`);
   }
   // Inspectors must sit above page controls, including the conversation header.
-  const inspectorClose = page.locator("dialog[data-layer='inspector'][open] > header button");
+  // Close is the header's last button; a drawer may put its own actions before it.
+  const inspectorClose = page
+    .locator("dialog[data-layer='inspector'][open] > header button")
+    .last();
   if (await inspectorClose.count()) await inspectorClose.click({ trial: true, timeout: 5_000 });
   await sleep(300);
   const file = join(out, vp.name, `${s.name}.png`);

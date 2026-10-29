@@ -140,7 +140,7 @@ function RunRow({ run, by, onOpen }: { run: Run; by: string; onOpen: () => void 
   const said = shown.answer?.trim() || shown.text || "";
   const word = live(shown) ? null : standing(shown);
   return (
-    <li className="humagen-enter flex min-w-0 items-start gap-2 px-3 py-2">
+    <li className="humagen-enter flex min-w-0 items-start gap-2 px-5 py-2">
       <span className="pt-1.5">
         <StoppableMark agent={run.agent} state={state} stop={stop}>
           <AgentMark name={run.agent} size={18} state={state} />
