@@ -206,7 +206,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	var specFiles files
 	fs.Var(&specFiles, "f", "a spec file or directory of System and Platform documents (docs/spec.md); repeatable. Flags win over it")
 	workspaceDir := fs.String("workspace", "", "directory agents write their files under. Empty means the user cache directory")
-	concurrency := fs.Int("concurrency", 1, "how many runs execute at once")
+	concurrency := fs.Int("concurrency", 4, "how many runs execute at once; a run that calls another agent needs a second")
 	busKind := fs.String("bus", "", `the event bus: "memory", for one process, or "postgres", on the stores' database. Empty means postgres with -state=postgres, and memory otherwise`)
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	parent := o.ctx

@@ -258,8 +258,10 @@ func (s *System) Defaults() {
 	if sp.Execution.MaxFanOut == 0 {
 		sp.Execution.MaxFanOut = 16
 	}
+	// One run calling another needs two places, and one is always kept for
+	// the runs that answer, so four lets calls nest without waiting.
 	if sp.Execution.Concurrency == 0 {
-		sp.Execution.Concurrency = 1
+		sp.Execution.Concurrency = 4
 	}
 }
 
