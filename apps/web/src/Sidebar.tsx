@@ -34,6 +34,7 @@ import {
   type ProjectView,
   type ThreadSummary,
 } from "./api.ts";
+import { type Branding, servedBranding } from "./branding.ts";
 import { type Standing, useRecents } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
@@ -482,6 +483,23 @@ function Label({ children, action }: { children: ReactNode; action?: ReactNode }
  * The console's navigation, laid out like Claude's: one flat list of pages,
  * then pinned tasks, then recent ones. Closed, it is a rail of icons. The open state is the caller's to persist.
  */
+/**
+ * The workspace's logo, or Humagen's mark when it sets none. Until the
+ * branding is read the place is kept empty, so one mark never flashes in
+ * for another.
+ */
+function BrandMark({ branding }: { branding: Branding | null }) {
+  if (!branding) return <span aria-hidden className="inline-block size-[23px] shrink-0" />;
+  if (!branding.logo) return <HumagenMark size={23} />;
+  return (
+    <img
+      src={branding.logo}
+      alt={branding.wordmark ? "" : branding.logo_alt}
+      className="h-[23px] w-auto max-w-[8rem] shrink-0 object-contain"
+    />
+  );
+}
+
 export function Sidebar({
   open,
   onToggle,
@@ -493,6 +511,7 @@ export function Sidebar({
   threads,
   projects = [],
   workspaceName,
+  branding,
   pinned,
   onPin,
   onPinProject,
@@ -513,6 +532,8 @@ export function Sidebar({
   threads: ThreadSummary[];
   projects?: ProjectView[];
   workspaceName?: string;
+  /** The workspace's logo and wordmark, null until read. */
+  branding?: Branding | null;
   /** Pinned conversation ids, most recently pinned first. */
   pinned: string[];
   /** Resolves once the pin is saved, and rejects when it could not be. */
@@ -533,6 +554,8 @@ export function Sidebar({
       : !project || project === "~"
         ? workspaceName || defaultCopy.projects.companyName
         : projects.find((item) => item.name === project)?.title || project;
+  // Left out, as a story or a test does, the page's own name brands it.
+  const brand = branding === undefined ? servedBranding() : branding;
   const who = me.principal;
   const dev = who.subject === "dev";
   const name = prefs?.display_name || who.name || who.email || who.subject;
@@ -794,8 +817,8 @@ export function Sidebar({
         >
           {open && (
             <span className="humagen-display flex min-w-0 items-center gap-2 truncate text-aui-base font-semibold text-aui-fg">
-              <HumagenMark size={23} />
-              humagen
+              <BrandMark branding={brand} />
+              {brand?.wordmark}
             </span>
           )}
           <button

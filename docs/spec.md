@@ -104,6 +104,21 @@ spec:
     default: ["env:HUMAGEN_PERSON_{subject}_"]   # how their references may start, {subject} being the person's; none listed is none
     # deploy local (this machine) may also list "op://People/{subject}/" and "keychain:humagen-people-{subject}/"
 
+  branding:                 # the console's look and name; see Branding below
+    name: Acme              # the product's name. Left out: metadata.display_name
+    logo: {path: ./brand/logo.svg, alt: Acme}
+    icons: ./brand/icons    # favicon.svg, icon-192.png and the rest, by the console's own names
+    manifest: {short_name: Acme, theme_color: "#1a1a2e", background_color: "#fafafa"}
+    palette:
+      accent: {light: "#c2185b", dark: "#f06292"}
+      surface: {light: "#fafafa", dark: "#1a1a2e"}
+      text: {light: "#1a1a2e", dark: "#fafafa"}
+    fonts:
+      ui: "Inter, sans-serif"
+      heading: "Georgia, serif"
+      files: [{family: Inter, path: ./brand/InterVariable.woff2, weight: "100 900"}]   # served for the lists to name
+    email: {subject: "{name} updates", multiple: "{count} updates wait for you in {name}."}
+
   notifications:            # optional outbound delivery; people must also opt in
     email:
       address: smtp.example.test:587
@@ -243,6 +258,10 @@ spec:
       app_token: {ref: env:SLACK_APP_TOKEN}
       operators: [U0123456]
       command: /agent       # `humagen slack manifest -f humagen.yaml` writes the app's manifest
+      description: Acme's agents in Slack     # the manifest's; each left out is Humagen's
+      background_color: "#1a1a2e"
+      command_description: Ask Acme's agents
+      command_usage_hint: "[question]"
       humagen_client:          # how the app signs in to humagen's API. Dev sign-in needs none
         token_url: https://login.example.com/oauth2/v1/token
         client_id: humagen-slack
@@ -256,7 +275,58 @@ spec:
       token: {ref: env:HUMAGEN_GITHUB_TOKEN}
       webhook_secret: {ref: env:HUMAGEN_GITHUB_WEBHOOK_SECRET}
       login: humagen[bot]      # the app's own login; see github.md, "Who a comment asks"
+
+  branding:                 # this workspace's, over the System document's, once its people sign in
+    wordmark: Acme Field
+    palette: {accent: "#2e9e8f"}   # one color is both themes'
+    welcome: {title: "Welcome to {name}", text: Ask the field team anything. Your drafts stay private until you share them.}
+    starters:               # replace the suggestions on an empty conversation; [] shows none
+      - {agent: lead, label: Plan the week, text: "Plan this week's customer visits for "}
+    copy:                   # the console's own text, by key: humagen config copy-keys lists them
+      navigation.projects: Accounts
 ```
+
+### Branding
+
+`branding` is how the console looks and what it calls itself. Everything left
+out is Humagen's own. The System document's is the deployment's, and it alone
+covers what is served before anyone signs in; a Platform document's is that
+workspace's, field by field over the deployment's, applied once a person of
+the workspace signs in.
+
+| Field | What it changes | Where |
+|-------|-----------------|-------|
+| `name` | The product's name: the tab title, the sidebar's wordmark and the installed app's name, unless each is set itself. Left out, `metadata.display_name` | both |
+| `title` | What follows the page's own name in the browser tab, after ` · ` | both |
+| `wordmark` | The text beside the logo in the sidebar. `""` shows the logo alone | both |
+| `logo` | `{path, alt}`: an `.svg`, `.png`, `.webp` or `.jpg` of at most 512 KiB in place of Humagen's mark | both |
+| `icons` | A directory of files that replace the console's icons by name: `favicon.svg`, `favicon-32.png`, `apple-touch-icon.png`, `icon.svg`, `icon-192.png`, `icon-512.png`. One it lacks stays Humagen's; any other name is an error | System |
+| `manifest` | The installable app's `name`, `short_name`, `description`, `theme_color` and `background_color` | System |
+| `palette` | `accent`, `surface` (the page), `plane` (the sidebar and panels), `text` and `rule` (lines), each `{light, dark}` or one color for both themes | both |
+| `fonts` | CSS font-family lists for `ui`, `heading` and `mono` text, and `files`: up to 12 `{family, path, weight, style}` faces (`.woff2`, `.woff`, `.ttf` or `.otf`, at most 2 MiB each) the server serves for those lists to name. A face named without a file must be installed on the device. A workspace's files replace the deployment's | both |
+| `welcome` | `{title, text}` of the announcement a workspace's people find first in its inbox. Left out, Humagen's, with the product's name in place of Humagen. It is posted once, so a change reaches only a workspace not yet welcomed | both |
+| `starters` | Up to 6 `{agent, label, text}` suggestions on an empty conversation, each shown only where its agent can answer. `[]` shows none | both |
+| `copy` | The console's own text by key, such as `navigation.agents: Assistants`. `humagen config copy-keys` lists the keys; an unknown one is an error. A workspace's keys are merged over the deployment's | both |
+| `email` | What notification emails say: `subject`, `single` (one update), `multiple` (with `{count}`) and `footer`. `{name}` is the product's name in each. Left out, Humagen's under the product's name | both |
+
+Colors are hex, `#rgb` or `#rrggbb`. Text must reach 4.5:1 on its surface and
+the accent 3:1 in each theme (WCAG AA), against Humagen's own for a side left
+out; a workspace's palette is checked over the deployment's. The product's own messages in the inbox are shown from its name. The accent is
+the console's default: a person still picks their own under Settings, where
+Workspace returns to it. Paths are read at start, from the working directory,
+like `agents[].file`, so a missing file, an SVG carrying a script, or an icon
+under a name the console does not have fails the start rather than a page.
+
+The server writes the deployment's name, theme color and stylesheet into the
+console's page and manifest as it serves them, so nothing is rebuilt and the
+checkout stays clean. A workspace's reaches the console through
+`GET /api/branding`.
+
+Some of a workspace's identity lives outside Humagen. A Slack app's icon and
+its bot's picture are set on the app's page at api.slack.com: Slack's
+manifest has no field for them. A GitHub App's name and avatar are its
+registration's on GitHub, and every review comment and check run carries
+them; `surfaces.github.login` only tells Humagen what that login is.
 
 ### What the file owns
 
@@ -363,6 +433,14 @@ The app is given its tokens, its workspace and Humagen's address, plus `PATH`,
 `NODE_EXTRA_CA_CERTS`, `NODE_USE_ENV_PROXY` and proxy variables, and
 `SLACK_BRANDING` and `SLACK_SOCKET_*`, when they are set. Nothing else of
 Humagen's environment reaches it.
+
+`humagen slack manifest -f humagen.yaml` writes the app's manifest from the
+surface: its name (`app_name`, else the workspace's or deployment's
+`display_name`), `command`, `description`, `background_color`,
+`command_description` and `command_usage_hint`, each Humagen's when left out.
+What the app says in Slack itself (its tagline, disclaimer and suggested
+prompts) is the `SLACK_BRANDING` file's. The app's icon and its bot's
+picture are set on the app's page at api.slack.com.
 
 It calls Humagen's API with a credential for the server's sign-in. Under `dev` it
 needs none. Under `oidc` or `mock` it needs `humagen_client`: a machine client of
@@ -660,6 +738,8 @@ no longer shows it. The log lines each inbox decision writes
 | Release notes in the workspace's inbox (`workspace.release_notes`) | Platform | it is the workspace's people's news |
 | How long the inbox keeps what was settled (`workspace.inbox_retention`) | Platform | it is the workspace's people's record |
 | Names people see | both | the deployment's, then each workspace's |
+| Branding: name, logo, palette and fonts | both | the deployment's, then each workspace's |
+| Branding: icons and the installable app | System | served before anyone signs in |
 | Models and model policies | Platform | what the workspace's agents run on |
 | MCP tools and pinned schemas | Platform | what its agents may touch |
 | Agents | Platform | the workspace's own |

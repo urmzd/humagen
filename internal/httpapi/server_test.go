@@ -10,16 +10,20 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/internal/branding"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/auth/authtest"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/join"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 const (
@@ -85,7 +89,7 @@ func newFixtureGranting(t *testing.T, cfg platform.Config, grants string) *fixtu
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux.Handle("/", (&Server{P: p, Authn: authn, Log: slog.New(slog.DiscardHandler)}).Handler())
+	mux.Handle("/", (&Server{P: p, Authn: authn, Log: slog.New(slog.DiscardHandler), Branding: fixtureBranding(t)}).Handler())
 	t.Cleanup(func() {
 		srv.Close()
 		cancel()
@@ -515,4 +519,28 @@ func TestErrorsDoNotLeak(t *testing.T) {
 		t.Fatalf("oversized body = %d", res.StatusCode)
 	}
 	_, _ = io.Copy(io.Discard, res.Body)
+}
+
+// fixtureBranding brands workspace acme with a logo and an accent, and leaves
+// every other workspace the deployment's, which sets nothing.
+func fixtureBranding(t *testing.T) *branding.Set {
+	t.Helper()
+	dir := t.TempDir()
+	logo, font := filepath.Join(dir, "logo.svg"), filepath.Join(dir, "face.woff2")
+	if err := os.WriteFile(logo, []byte(brandingSVG), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(font, []byte("wOF2 face"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var cfg spec.Config
+	cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Branding: spec.Branding{
+		Name: "Acme", Logo: &spec.Logo{Path: logo}, Palette: &spec.Palette{Accent: &spec.Pair{Light: "#c2185b", Dark: "#f06292"}},
+		Fonts: &spec.Fonts{UI: "Face, sans-serif", Files: []spec.FontFile{{Family: "Face", Path: font, Weight: "100 900"}}},
+	}}}}
+	b, err := branding.Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

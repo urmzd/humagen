@@ -15,7 +15,7 @@ interface ListChange {
 export const unreadPrefs: Preferences = {
   display_name: "",
   theme: "system",
-  accent: "red",
+  accent: "workspace",
   has_photo: false,
   photo_version: 0,
   pinned: [],

@@ -8,6 +8,7 @@ import type {
   AnalyticsBucket,
   AnalyticsGroup,
   AuditRecord,
+  Branding,
   Note as GeneratedNote,
   KnowledgeLifecycle,
   KnowledgeSourceConfig,
@@ -48,6 +49,7 @@ export type {
   AgentHome,
   AgentOffer,
   AgentPlace,
+  Branding,
   ContextLayer,
   DefaultResolved,
   Person,
@@ -1178,6 +1180,7 @@ export const api = {
       `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`,
     ),
 
+  branding: () => call<Branding>("GET", "/api/branding"),
   preferences: () => call<Preferences>("GET", "/api/preferences"),
   savePreferences: (
     p: Pick<Preferences, "display_name" | "theme" | "accent"> & {

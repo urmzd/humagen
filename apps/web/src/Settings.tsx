@@ -37,6 +37,7 @@ import {
   type Settings as Workspace,
 } from "./api.ts";
 import { BillingSettings } from "./Billing.tsx";
+import { accentAttribute } from "./branding.ts";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
 import { chainProblem, ModelChain, POLICY, starterPolicy } from "./ModelChain.tsx";
@@ -61,11 +62,19 @@ import {
 
 export type Section = SettingsSection;
 
-const accents = (["red", "yellow", "green", "purple", "blue", "teal"] as const).map((id) => ({
-  id,
-  label: defaultCopy.accentPresets[id],
-  icon: <span aria-hidden data-accent={id} className="size-2.5 rounded-full bg-aui-accent" />,
-}));
+const accents = (["workspace", "red", "yellow", "green", "purple", "blue", "teal"] as const).map(
+  (id) => ({
+    id,
+    label: defaultCopy.accentPresets[id],
+    icon: (
+      <span
+        aria-hidden
+        data-accent={accentAttribute(id)}
+        className="size-2.5 rounded-full bg-aui-accent"
+      />
+    ),
+  }),
+);
 
 /** A person's picture, or their initial when they have none. */
 export function Avatar({

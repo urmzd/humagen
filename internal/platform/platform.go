@@ -94,6 +94,9 @@ type Config struct {
 	ProjectTemplates []projects.Template
 	// Email is a configured relay and explicit tenant/subject recipient mapping. Nil disables email.
 	Email *EmailConfig
+	// Wording is each workspace's product name and the welcome and email
+	// text its branding replaces. Nil is Humagen's own.
+	Wording func(tenant string) Wording
 
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges

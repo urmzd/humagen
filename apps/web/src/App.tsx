@@ -19,6 +19,7 @@ import {
   type AlertRule,
   ApiError,
   api,
+  type Branding,
   type Me,
   type Preferences,
   type ProjectView,
@@ -32,6 +33,7 @@ import {
   type ThreadSummary,
   type Settings as Workspace,
 } from "./api.ts";
+import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { YourConnections } from "./Connections.tsx";
 import { ContextHealth } from "./ContextHealth.tsx";
@@ -70,19 +72,20 @@ import { defaultUsageView, Usage } from "./Usage.tsx";
 import { button, Page, Presence, Problem, primary, SkeletonRows, setAgentHues } from "./ui.tsx";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
+import { useBrandingStyle } from "./workspaceBranding.ts";
 
 type Session =
   | { state: "loading" }
   | { state: "signed-out" }
   | { state: "error"; message: string }
-  | { state: "ready"; me: Me };
+  | { state: "ready"; me: Me; branding: Branding };
 
 /** Where sign-in starts, coming back to this page after. */
 function signInUrl(): string {
   return `/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`;
 }
 
-export function App() {
+export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) {
   const [session, setSession] = useState<Session>({ state: "loading" });
 
   useEffect(() => {
@@ -94,7 +97,27 @@ export function App() {
         configureAgentHues(
           huePath ? (names) => api.agentHues(names, huePath).then((r) => r.hues) : undefined,
         );
-        setSession({ state: "ready", me: { ...me, permissions: me.permissions ?? [] } });
+        // The workspace's branding is read before the console draws, so its
+        // text is in place from the first frame and one brand never flashes
+        // in for another.
+        // Read before the console's modules loaded (main.tsx), or now: before
+        // the console draws, so one brand never flashes in for another.
+        const read = preloaded
+          ? Promise.resolve(preloaded)
+          : api
+              .branding()
+              .catch(() => servedBranding())
+              .then((branding) => {
+                brandCopy(defaultCopy, branding);
+                return branding;
+              });
+        return read.then((branding) => {
+          setSession({
+            state: "ready",
+            me: { ...me, permissions: me.permissions ?? [] },
+            branding,
+          });
+        });
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) {
@@ -109,14 +132,14 @@ export function App() {
           message: "The platform is not reachable. Is the server running?",
         });
       });
-  }, []);
+  }, [preloaded]);
 
   if (session.state === "loading") return <Centered>Loading</Centered>;
   if (session.state === "error") return <Centered>{session.message}</Centered>;
   if (session.state === "signed-out") {
     return (
       <Centered>
-        <h1 className="text-aui-lg font-medium text-aui-fg">Humagen</h1>
+        <h1 className="text-aui-lg font-medium text-aui-fg">{servedBranding().name}</h1>
         <p className="text-aui-sm text-aui-muted">You are signed out.</p>
         <a className={primary} href={signInUrl()}>
           Sign In
@@ -127,6 +150,7 @@ export function App() {
   return (
     <Console
       me={session.me}
+      branding={session.branding}
       onSignedOut={() => {
         configureAgentHues(undefined);
         setSession({ state: "signed-out" });
@@ -161,7 +185,7 @@ function useAppearance(prefs: Preferences | null) {
     const apply = () => {
       const theme = prefs?.theme ?? "system";
       root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
-      root.dataset.accent = prefs?.accent ?? "red";
+      root.dataset.accent = accentAttribute(prefs?.accent);
     };
     apply();
     media.addEventListener("change", apply);
@@ -169,7 +193,15 @@ function useAppearance(prefs: Preferences | null) {
   }, [prefs?.theme, prefs?.accent]);
 }
 
-function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
+function Console({
+  me,
+  branding,
+  onSignedOut,
+}: {
+  me: Me;
+  branding: Branding;
+  onSignedOut: () => void;
+}) {
   const can = useCallback((p: string) => me.permissions.includes(p), [me]);
   const [route, go] = useRoute();
   const canNotify = can("runs:read") && me.principal.kind === "user";
@@ -199,9 +231,11 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // counter that tells the page to look again, and a message to open first.
   const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
   const [inboxTick, setInboxTick] = useState(0);
+  useBrandingStyle(branding.style);
+  const product = branding.title;
   useEffect(() => {
-    document.title = documentTitle(route, inboxCounts.unread);
-  }, [route, inboxCounts.unread]);
+    document.title = documentTitle(route, inboxCounts.unread, product);
+  }, [route, inboxCounts.unread, product]);
   // The project tree, null until it is read, and the workspace's own view, which heads it.
   const [projects, setProjects] = useState<ProjectView[] | null>(null);
   const [root, setRoot] = useState<ProjectView | null>(null);
@@ -580,6 +614,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         threads={threads}
         projects={projects ?? []}
         workspaceName={workspaceName}
+        branding={branding}
         pinned={prefs.pinned}
         onPin={pin}
         onPinProject={pinProject}
@@ -830,6 +865,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               `new:${route.page === "new" ? JSON.stringify([route.project, route.channel, route.agent, route.ask]) : ""}`
             }
             threadId={thread}
+            starters={branding.starters}
             me={me.principal.subject}
             handle={me.handle ?? ""}
             startIn={route.page === "new" ? route.project : undefined}

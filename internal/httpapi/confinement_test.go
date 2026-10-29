@@ -508,6 +508,9 @@ func (h hidden) unplaced(path, param string) bool {
 		return true
 	case strings.HasPrefix(path, "/api/knowledge/"), strings.HasPrefix(path, "/api/clients/"):
 		return true
+	case strings.HasPrefix(path, "/api/branding/"):
+		// Branding is the workspace's: everyone in it reads its fonts.
+		return true
 	}
 	return false
 }
@@ -532,6 +535,9 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.source, true
 		case prefix("/api/evals/"):
 			return h.eval, true
+		case prefix("/api/branding/fonts/"):
+			// The hidden workspace's own font, which the fixture brands it with.
+			return "0.woff2", true
 		}
 	case "version":
 		if prefix("/api/library/skills/") {

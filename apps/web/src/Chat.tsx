@@ -266,7 +266,9 @@ function TurnView({
  * the workspace has them. A pick writes the agent's tag and the start of a
  * message in the chat bar.
  */
-export const STARTERS: { agent: string; label: string; text: string }[] = [
+export type Starter = { agent: string; label: string; text: string };
+
+export const STARTERS: Starter[] = [
   {
     agent: "humagen-analyst",
     label: "How are my agents doing?",
@@ -363,7 +365,10 @@ export function Chat({
   banner,
   findHelp,
   personalProject,
+  starters: ownStarters,
 }: {
+  /** The workspace's suggestions on an empty conversation. Null or left out is the console's own. */
+  starters?: Starter[] | null;
   /** Quiet lines under the prompt on Home: what needs the person, and what is new. */
   home?: ReactNode;
   banner?: HomeAnnouncement;
@@ -659,7 +664,7 @@ export function Chat({
   };
 
   // A suggestion is offered only for an agent that can answer where the conversation goes.
-  const starters = STARTERS.filter(
+  const starters = (ownStarters ?? STARTERS).filter(
     (st) =>
       agents.some((a) => a.spec.name === st.agent) && offered !== null && offered.has(st.agent),
   );
@@ -896,7 +901,7 @@ export function Chat({
             className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 px-4 sm:px-5"
           >
             {starters.map((st) => (
-              <li key={st.agent} className="min-w-0 max-w-full">
+              <li key={`${st.agent}:${st.label}`} className="min-w-0 max-w-full">
                 <button
                   type="button"
                   onClick={() => {

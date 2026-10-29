@@ -84,19 +84,41 @@ type slackCommand struct {
 
 // slackManifest builds the manifest for an app called name. Socket Mode is
 // always on: the app dials out, so the platform needs no public endpoint.
-func slackManifest(name, command string) SlackManifest {
+// slackCopy is what the manifest says about the app beyond its name and
+// command: the Slack surface's own fields, each Humagen's when empty.
+type slackCopy struct {
+	Description        string
+	BackgroundColor    spec.Color
+	CommandDescription string
+	CommandUsageHint   string
+}
+
+func slackManifest(name, command string, c slackCopy) SlackManifest {
 	var m SlackManifest
 	m.Metadata.Major, m.Metadata.Minor = 2, 1
 	m.DisplayInformation.Name = name
 	m.DisplayInformation.Description = "Your workspace's agents in Slack. Ask a question, or review what one is waiting on."
+	if c.Description != "" {
+		m.DisplayInformation.Description = c.Description
+	}
 	m.DisplayInformation.BackgroundColor = "#2b50c8"
+	if c.BackgroundColor != "" {
+		m.DisplayInformation.BackgroundColor = c.BackgroundColor.Hex()
+	}
+	commandDescription, usageHint := "Ask "+name+" in this channel", "[question], skills, connections or canvas RUN_ID"
+	if c.CommandDescription != "" {
+		commandDescription = c.CommandDescription
+	}
+	if c.CommandUsageHint != "" {
+		usageHint = c.CommandUsageHint
+	}
 	m.Features.AppHome.HomeTab, m.Features.AppHome.MessagesTab = true, true
 	m.Features.BotUser.DisplayName, m.Features.BotUser.AlwaysOnline = strings.ToLower(name), true
 	m.Features.Shortcuts = []slackShortcut{
 		{Name: "Ask " + name, Type: "global", CallbackID: "aui_ask", Description: "Ask from anywhere. The answer arrives in the app's messages."},
 		{Name: "Ask " + name + " about this", Type: "message", CallbackID: "aui_ask_about", Description: "Answer in this message's thread, using the message as the question."},
 	}
-	m.Features.SlashCommands = []slackCommand{{Command: command, Description: "Ask " + name + " in this channel", UsageHint: "[question], skills, connections or canvas RUN_ID"}, {Command: "/skill", Description: "Run a configured agent skill", UsageHint: "[name] [arguments]"}}
+	m.Features.SlashCommands = []slackCommand{{Command: command, Description: commandDescription, UsageHint: usageHint}, {Command: "/skill", Description: "Run a configured agent skill", UsageHint: "[name] [arguments]"}}
 	// Slack delivers a channel message to the app only when it mentions the
 	// app, so the agent is named after it.
 	m.Features.AgentView.Description = "Your workspace's agents in Slack. Mention @" + name + " and the agent you want, such as @" + name + " @analyst, or message it."
@@ -128,6 +150,7 @@ func slackCmd(args []string, out io.Writer) error {
 		return err
 	}
 	n, c := "Humagen", "/agent"
+	var said slackCopy
 	if len(paths) > 0 {
 		cfg, err := spec.Load(paths...)
 		if err != nil {
@@ -149,6 +172,9 @@ func slackCmd(args []string, out io.Writer) error {
 			if sl != nil && sl.Command != "" {
 				c = sl.Command
 			}
+			if sl != nil {
+				said = slackCopy{Description: sl.Description, BackgroundColor: sl.BackgroundColor, CommandDescription: sl.CommandDescription, CommandUsageHint: sl.CommandUsageHint}
+			}
 			break
 		}
 	}
@@ -161,7 +187,7 @@ func slackCmd(args []string, out io.Writer) error {
 	if !strings.HasPrefix(*command, "/") {
 		return errors.New("-command starts with /")
 	}
-	b, err := json.MarshalIndent(slackManifest(*name, *command), "", "  ")
+	b, err := json.MarshalIndent(slackManifest(*name, *command, said), "", "  ")
 	if err != nil {
 		return err
 	}

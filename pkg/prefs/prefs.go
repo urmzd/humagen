@@ -55,8 +55,10 @@ const (
 	Dark   Theme = "dark"
 )
 
-// Accents are the accent colors the console offers. Legacy choices remain valid.
-var Accents = []string{"red", "yellow", "green", "purple", "blue", "teal"}
+// Accents are the accent colors the console offers. Legacy choices remain
+// valid. workspace, the default, is the workspace's branded accent, which is
+// red when its branding sets none.
+var Accents = []string{"workspace", "red", "yellow", "green", "purple", "blue", "teal"}
 
 // Preferences is one person's choices.
 type Preferences struct {

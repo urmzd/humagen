@@ -50,6 +50,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-020 | Workspace previews reuse console controls, fonts and consolidated navigation | Implemented; automated delivery checks pass; final browser/CI verification pending |
 | DES-021 | Sidebar conversations show agents and people; projects and conversations can be pinned independently | Implemented; saved preferences, access checks, restart and DOM regressions, and responsive sidebar captures |
 | DES-022 | Conversation actions support rename, archive and admin-reviewed deletion | Included in the consolidated branch; bounded API, durable lifecycle and review UI checks |
+| DES-023 | A deployment and each workspace brand the console from the spec, without a fork or a rebuild | Implemented; spec, server, API and console tests pass; browser check of a branded build pending |
 
 ### DES-001: Working integrations
 
@@ -612,3 +613,37 @@ archive/deletion HTTP routes, `DeletionQueue.tsx` and sidebar actions. Store
 regressions cover restart and tombstones; API regressions cover admin authority,
 eligibility, queue bounds and batch refill. DOM regressions cover explicit
 approval, disabled early approval, restoration, refusal and the combined menu.
+
+### DES-023: Branding from the spec
+
+- The console's name, tab title, sidebar logo and wordmark, icons, installable
+  app manifest, palette and typefaces come from `branding` in the spec
+  ([spec.md](docs/spec.md#branding)): the System document's for the
+  deployment and what is served before sign-in, and a Platform document's for
+  its workspace once its people sign in. Everything left out stays Humagen's.
+- The server writes the deployment's branding into the page and manifest it
+  serves, and serves replaced icons by the console's own names, so a branded
+  deployment needs no rebuild and leaves the checkout clean.
+- Colors are checked when the spec is: text at 4.5:1 and the accent at 3:1 on
+  their surface in each theme. The accent is the console's default, `workspace`
+  in a person's settings, and a person may still pick their own.
+- Files are read at start. A missing file, an SVG with a script and an icon
+  under an unknown name fail the start.
+- The text is the spec's too: the welcome announcement, the suggestions on
+  an empty conversation, notification emails and any of the console's own
+  text by key (`branding.copy`, keys from `humagen config copy-keys`). Humagen's
+  own welcome and email text say the product's name in place of Humagen.
+- The console reads the workspace's branding before its modules load, so its
+  text, tab titles and logo are in place from the first frame and one brand
+  never flashes in for another. The product's own inbox messages are shown
+  from its name.
+- Fonts may be files the server serves (`fonts.files`), the deployment's in
+  public like its icons and a workspace's behind sign-in.
+- Evidence: `TestBrandingReads`, `TestBrandingRefuses` (`pkg/spec`),
+  `TestLoadReadsFilesAndMergesWorkspaces`, `TestLoadRefusesWhatCannotBeServed`
+  (`internal/branding`), `TestTheConsoleIsServedBranded`,
+  `TestAWorkspaceSeesItsOwnBranding` (`internal/httpapi`),
+  `TestBrandingTextReads`, `TestBrandingTextRefuses` (`pkg/spec`),
+  `TestTheWelcomeIsTheBrandings`, `TestNotificationEmailsSayTheBrandingsWords`,
+  `TestTheProductsOwnSenderIsShownByItsBrandedName`, `TestFontFilesAreServedAndNamedInTheStylesheet`
+  (`internal/platform`) and `apps/web/src/branding.test.ts`.

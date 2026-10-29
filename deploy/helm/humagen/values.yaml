@@ -9,6 +9,14 @@
 # {ref: env:NAME}; name a Secret you created with `existingSecret`, and its
 # keys become the container's environment, where the references read them.
 
+# -- A local cluster for development only, such as the one `tilt up` drives
+# (deploy/tilt). With loopback on, humagen listens on the pod's own loopback,
+# which `kubectl port-forward` reaches and nothing else does, so dev and mock
+# sign-in may be used; the probes check from inside the pod. An Ingress is
+# refused with it. Never set it on a cluster other people use.
+development:
+  loopback: false
+
 # -- One replica. Keep it at one: humagen's stores are single-writer (the run
 # index, the usage ledger, the admission lock and the schedules all assume one
 # process owns them), and the workspace volume is ReadWriteOnce. A second

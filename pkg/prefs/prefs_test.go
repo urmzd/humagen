@@ -15,14 +15,14 @@ var (
 
 func TestDefaults(t *testing.T) {
 	got := NewStore().Get("acme", "ada")
-	if got.Theme != System || got.Accent != "red" || got.HasPhoto {
+	if got.Theme != System || got.Accent != "workspace" || got.HasPhoto {
 		t.Fatalf("got %+v", got)
 	}
 }
 
 func TestAccentPresetsKeepExistingChoices(t *testing.T) {
 	s := NewStore()
-	for _, accent := range []string{"red", "yellow", "green", "purple", "blue", "teal"} {
+	for _, accent := range []string{"workspace", "red", "yellow", "green", "purple", "blue", "teal"} {
 		got, err := s.Set("acme", "ada", Preferences{Theme: Dark, Accent: accent})
 		if err != nil || got.Accent != accent || s.Get("acme", "ada").Accent != accent {
 			t.Fatalf("accent %s: %+v, %v", accent, got, err)

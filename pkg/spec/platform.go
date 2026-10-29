@@ -32,6 +32,9 @@ type PlatformSpec struct {
 	Tools         []Tool        `json:"tools,omitempty"`
 	Agents        []Agent       `json:"agents,omitempty"`
 	Surfaces      Surfaces      `json:"surfaces,omitzero"`
+	// Branding is the workspace's look and name in the console, over the
+	// deployment's.
+	Branding Branding `json:"branding,omitzero"`
 }
 
 // Workspace is the workspace's settings and its project tree. A field left
@@ -467,6 +470,16 @@ type Slack struct {
 	// deployment's display name.
 	AppName string `json:"app_name,omitempty"`
 	Command string `json:"command,omitempty"`
+	// Description is the app's short description in Slack. Left out,
+	// Humagen's.
+	Description string `json:"description,omitempty"`
+	// BackgroundColor is the app's background color in Slack, a hex color.
+	// Left out, Humagen's.
+	BackgroundColor Color `json:"background_color,omitempty"`
+	// CommandDescription and CommandUsageHint are what Slack shows for the
+	// slash command. Left out, Humagen's.
+	CommandDescription string `json:"command_description,omitempty"`
+	CommandUsageHint   string `json:"command_usage_hint,omitempty"`
 	// HumagenClient is how the app signs in to humagen's API: a machine client of
 	// the identity provider, whose tokens it gets and renews with client
 	// credentials. Sign-in other than dev needs it or HumagenToken.
@@ -506,6 +519,27 @@ func (s *Slack) adoptOld() ([]string, error) {
 		notes = append(notes, "surfaces.slack."+legacy.SlackToken+" still works; write humagen_token")
 	}
 	return notes, nil
+}
+
+// checkCopy checks what the app says about itself in Slack, against
+// Slack's own limits for its manifest.
+func (s *Slack) checkCopy() error {
+	if s == nil {
+		return nil
+	}
+	for _, f := range []struct {
+		name  string
+		v     string
+		limit int
+	}{{"description", s.Description, 140}, {"command_description", s.CommandDescription, 2000}, {"command_usage_hint", s.CommandUsageHint, 1000}} {
+		if err := checkText(f.v, f.limit, false); err != nil {
+			return fmt.Errorf("%s: %w", f.name, err)
+		}
+	}
+	if err := checkColor(s.BackgroundColor); err != nil {
+		return fmt.Errorf("background_color: %w", err)
+	}
+	return nil
 }
 
 // ClientCredentials is a machine client of an identity provider: where it
@@ -576,6 +610,12 @@ func (p Platform) check(kinds Kinds) error {
 	}
 	if err := checkSchedules(sp); err != nil {
 		return fmt.Errorf("%s: %w", where, err)
+	}
+	if err := sp.Branding.check(false); err != nil {
+		return fmt.Errorf("%s: %w", where, err)
+	}
+	if err := sp.Surfaces.Slack.checkCopy(); err != nil {
+		return fmt.Errorf("%s: surfaces.slack.%w", where, err)
 	}
 	seen := map[string]bool{}
 	for i, m := range sp.Models {
@@ -724,6 +764,12 @@ func (c Config) Check(kinds Kinds) error {
 	for _, p := range c.Platforms {
 		if err := p.check(kinds); err != nil {
 			return err
+		}
+		if p.Spec.Branding.Palette != nil {
+			merged := MergeBranding(c.System.Spec.Branding, p.Spec.Branding)
+			if err := merged.Palette.checkContrast(); err != nil {
+				return fmt.Errorf("platform %q: branding.palette.%w, over the System document's", p.Metadata.Name, err)
+			}
 		}
 		if s := p.Spec.Surfaces.Slack; s != nil && s.Enabled {
 			if err := s.CheckSignIn(c.System.Spec.Auth.Kind); err != nil {

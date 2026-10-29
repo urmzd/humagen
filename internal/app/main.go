@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
-
+	"github.com/urmzd/humagen/internal/branding"
 	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
@@ -79,6 +79,7 @@ const usage = `usage: humagen start [-f PATH] [flags]     run the platform here;
        humagen deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
        humagen setup                      answer a few questions and write humagen.yaml
        humagen config check|print -f PATH check a spec, or print it with every default
+       humagen config copy-keys           list the console's text branding.copy may replace
        humagen slack manifest [flags]     print the Slack app manifest
        humagen authz check FILE | authz explain [flags] PERMISSION
        humagen version`
@@ -241,6 +242,12 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := fs.Parse(append(file.args, args...)); err != nil {
 		return err
 	}
+	// Branding's files are read now, so one that is missing fails the start
+	// rather than a page.
+	brand, err := branding.Load(file.cfg)
+	if err != nil {
+		return err
+	}
 	// Said once every flag is known: a console -web or the file names is
 	// served, and one turned off was turned off on purpose.
 	if d.notes != nil && *webDir == "" && !given(fs, "web") {
@@ -323,6 +330,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	cfg := platform.Config{
 		Email:    emailConfiguration(file.cfg.System, *publicURL, keys),
+		Wording:  brand.Wording,
 		Backends: backends,
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.
@@ -407,7 +415,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           (&httpapi.Server{P: p, Authn: authn, Log: log, WebDir: *webDir}).Handler(),
+		Handler:           (&httpapi.Server{P: p, Authn: authn, Log: log, WebDir: *webDir, Branding: brand}).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

@@ -52,9 +52,18 @@ strict spec decoder to refuse. Never mutate the release's values. */}}
 {{- end -}}
 {{- end -}}
 {{- $auth := $spec.auth | default dict -}}
+{{/* An auth block a values file turned off with null, such as oidc under
+development, is omitted the same way. */}}
+{{- range $key, $value := $auth -}}
+{{- if eq $value nil -}}
+{{- $_ := unset $auth $key -}}
+{{- end -}}
+{{- end -}}
 {{- $kind := $auth.kind | default "dev" -}}
-{{- if has $kind (list "dev" "mock" "tailscale") -}}
-{{- fail (printf "system.spec.auth.kind=%s trusts loopback and cannot serve a pod; use oidc. An empty kind means dev" $kind) -}}
+{{- $loopback := (($.Values.development | default dict).loopback) | default false -}}
+{{- if and $loopback (has $kind (list "dev" "mock")) -}}
+{{- else if has $kind (list "dev" "mock" "tailscale") -}}
+{{- fail (printf "system.spec.auth.kind=%s trusts loopback and cannot serve a pod; use oidc, or development.loopback on a local cluster for dev and mock. An empty kind means dev" $kind) -}}
 {{- end -}}
 {{- if eq $kind "oidc" -}}
 {{- $oidc := $auth.oidc | default dict -}}

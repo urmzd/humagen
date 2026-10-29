@@ -24,6 +24,7 @@ import type {
   Assignment,
   AssignmentInput,
   AttachKnowledgeSourceBody,
+  Branding,
   BringBackThreadResultBody,
   CallPolicy,
   CallPolicyInput,
@@ -881,6 +882,38 @@ export class ApiClient {
   async getHealthRaw(options?: RequestOptions): Promise<ApiResponse<string>> {
     const path = "/healthz";
     return this.rawRequest<string>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The System document's branding logo, public like the console's icons, since the page shows it before sign-in. */
+  async getDeploymentLogo(options?: RequestOptions): Promise<Blob> {
+    const path = "/branding/logo";
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getDeploymentLogoRaw(options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    const path = "/branding/logo";
+    return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A font file the System document's branding.fonts.files names, public like the console's icons, since the page uses it before sign-in. */
+  async getDeploymentFont(name: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/branding/fonts/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getDeploymentFontRaw(name: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/branding/fonts/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Blob>("GET", path, {
       ...options,
     });
   }
@@ -4308,6 +4341,68 @@ grounds nothing until a source of that name is made again.
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{variant}", encodeURIComponent(String(variant)));
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** The name, wordmark, tab title, logo and stylesheet the console brands itself with, the workspace's over the deployment's (docs/spec.md#branding). */
+  async getBranding(options?: RequestOptions): Promise<Branding> {
+    const path = "/api/branding";
+    return this.request<Branding>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getBrandingRaw(options?: RequestOptions): Promise<ApiResponse<Branding>> {
+    const path = "/api/branding";
+    return this.rawRequest<Branding>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Get the caller's workspace logo */
+  async getBrandingLogo(options?: RequestOptions): Promise<Blob> {
+    const path = "/api/branding/logo";
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getBrandingLogoRaw(options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    const path = "/api/branding/logo";
+    return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The palette and typefaces as CSS over the console's own tokens. Empty when the branding sets neither. */
+  async getBrandingStyle(options?: RequestOptions): Promise<string> {
+    const path = "/api/branding/style.css";
+    return this.request<string>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getBrandingStyleRaw(options?: RequestOptions): Promise<ApiResponse<string>> {
+    const path = "/api/branding/style.css";
+    return this.rawRequest<string>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A font file branding.fonts.files names, as its stylesheet refers to it, by its place in the list and its extension, such as 0.woff2. */
+  async getBrandingFont(name: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/api/branding/fonts/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getBrandingFontRaw(name: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/api/branding/fonts/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Blob>("GET", path, {
       ...options,
     });
   }

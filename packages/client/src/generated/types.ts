@@ -1992,8 +1992,8 @@ cannot be removed (409).
   setup_by?: string;
 }
 
-/** The caller's interaction accent. Existing saved choices remain supported. */
-export type Accent = "red" | "yellow" | "green" | "purple" | "blue" | "teal";
+/** The caller's interaction accent. Existing saved choices remain supported. workspace is the workspace's branded accent, red when its branding sets none. */
+export type Accent = "workspace" | "red" | "yellow" | "green" | "purple" | "blue" | "teal";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -2009,6 +2009,36 @@ export interface PersonalPreferences {
   timezone: string;
   remember: boolean;
   use_personal_memory_in_projects: boolean;
+}
+
+/** How the console brands itself for the caller's workspace. */
+export interface Branding {
+  /** The product's name. */
+  name: string;
+  /** The text beside the logo in the sidebar. Empty shows the logo alone. */
+  wordmark: string;
+  /** What follows the page's name in the browser tab. */
+  title: string;
+  /** Where the logo is served. Null is Humagen's mark. */
+  logo: string | null;
+  /** The logo's text for a screen reader. */
+  logo_alt: string;
+  /** Where the stylesheet of the palette and typefaces is served. Null when the branding sets neither. */
+  style: string | null;
+  /** The suggestions on an empty conversation, each shown only where its agent can answer. Null is the console's own; empty shows none. */
+  starters: BrandingStarter[] | null;
+  /** The console's own text the branding replaces, by key (humagen config copy-keys). */
+  copy: Record<string, string>;
+}
+
+/** A suggestion on an empty conversation. */
+export interface BrandingStarter {
+  /** The agent a pick adds. */
+  agent: string;
+  /** What the suggestion says. */
+  label: string;
+  /** The start of the message a pick writes. */
+  text: string;
 }
 
 /** A person's own settings. */

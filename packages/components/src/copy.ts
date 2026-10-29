@@ -17,6 +17,7 @@ const OUTCOMES: Record<string, string> = {
 
 export const defaultCopy = {
   accentPresets: {
+    workspace: "Workspace",
     red: "Red",
     yellow: "Yellow",
     green: "Green",

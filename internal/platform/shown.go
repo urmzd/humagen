@@ -93,6 +93,10 @@ type Names struct{ s *shower }
 // Names is how one answer in a tenant calls people.
 func (p *Platform) Names(tenant string) Names { return Names{s: p.shower(tenant)} }
 
+// Product is what the product posting as itself is called in this tenant:
+// its branded name, else Humagen.
+func (n Names) Product() string { return n.s.p.wording(n.s.tenant).Name }
+
 // Of is what a subject is called: the person's name, else their handle,
 // else the subject itself when it holds no address (a machine's, or a word
 // such as system), else someone. No subject is called nothing.

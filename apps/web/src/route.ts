@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components/copy";
 import { useCallback, useEffect, useState } from "react";
 
 /**
@@ -232,13 +233,40 @@ const PAGE_TITLES: Record<Page, string> = {
   settings: "Settings",
 };
 
+/**
+ * The pages titled as the sidebar names them, so a title follows the
+ * workspace's own words for them (branding.copy).
+ */
+const NAVIGATION_TITLES: Partial<Record<Page, keyof typeof defaultCopy.navigation>> = {
+  library: "library",
+  operations: "operations",
+  assignments: "assignments",
+  "agent-network": "network",
+  "agent-control": "controls",
+  "action-policy": "policies",
+  audit: "audit",
+  usage: "usage",
+  you: "you",
+  notifications: "notifications",
+  inbox: "notifications",
+  projects: "projects",
+  schedules: "schedules",
+  agents: "agents",
+};
+
+function pageTitle(page: Page): string {
+  const key = NAVIGATION_TITLES[page];
+  const named = key ? defaultCopy.navigation[key] : undefined;
+  return typeof named === "string" ? named : PAGE_TITLES[page];
+}
+
 /** The browser tab's title for a route: the place first, then the product, with the unread count in front. */
-export function documentTitle(r: Route, unread = 0): string {
-  let place = PAGE_TITLES[r.page];
+export function documentTitle(r: Route, unread = 0, product = "Humagen"): string {
+  let place = pageTitle(r.page);
   if (r.page === "agent" && r.name) place = r.name;
   else if (r.page === "project") place = r.name === "" ? "Workspace" : r.name;
   else if (r.page === "channel") place = `#${r.channel}`;
-  return `${unread > 0 ? `(${unread}) ` : ""}${place} · Humagen`;
+  return `${unread > 0 ? `(${unread}) ` : ""}${place} · ${product}`;
 }
 
 /** The address of a route, path and query. */
