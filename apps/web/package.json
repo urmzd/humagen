@@ -16,7 +16,7 @@
     "@humagen/primitives": "workspace:*",
     "@humagen/render-web": "workspace:*",
     "@humagen/web": "workspace:*",
-    "fflate": "0.8.2",
+    "fflate": "0.8.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
