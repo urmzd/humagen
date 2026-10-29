@@ -530,7 +530,9 @@ test("a private thread says so where a shared one says where it is shared", asyn
       onChanged={() => {}}
     />,
   );
-  assert.ok(await screen.findByText(words.private));
+  // Private needs no word: Share at the top says it is not shared yet.
+  await screen.findByRole("heading", { level: 1 });
+  assert.ok(!screen.queryByText(words.private), "no Private word");
   assert.ok(
     !screen.queryByRole("button", { name: words.sharedIn(globex.title ?? "Globex", "renewals") }),
   );
@@ -605,7 +607,9 @@ test("a channel's chat bar offers no Private and no Post Only, and a private thr
       onOpenThread={() => {}}
     />,
   );
-  assert.ok(await screen.findByText(words.private));
+  // Private needs no word: Share at the top says it is not shared yet.
+  await screen.findByRole("heading", { level: 1 });
+  assert.ok(!screen.queryByText(words.private), "no Private word");
   assert.ok(screen.getByPlaceholderText(words.startThread));
   assert.ok(!screen.queryByText(words.startPrivate, { selector: "button" }));
   assert.ok(!screen.queryByText(words.postOnly, { selector: "button" }));
@@ -1902,12 +1906,14 @@ test("Share at the top of a private conversation moves it into a project's chann
     "POST /api/threads/th-00000000000000aa/share": () => ({ ...shared, not_added: [] }),
   });
   render(<Sharing initial={mine} onShared={(o) => opened.push(o)} />);
-  assert.ok(await screen.findByText(words.private));
+  // Private needs no word: Share at the top says it is not shared yet.
+  await screen.findByRole("heading", { level: 1 });
+  assert.ok(!screen.queryByText(words.private), "no Private word");
   // Share sits at the top, not under the chat bar.
   const share = screen.getByRole("button", { name: words.share });
   assert.ok(share.closest("header"), "Share is in the conversation's header");
   fireEvent.click(share);
-  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   const project = within(dialog).getByLabelText(words.shareProject) as HTMLSelectElement;
   assert.equal(project.value, "Globex");
   assert.equal(project.disabled, false, "no agent has run here, so the project may change");
@@ -2162,7 +2168,9 @@ test("someone added to a private conversation is not offered Share: its starter,
       onChanged={() => {}}
     />,
   );
-  assert.ok(await screen.findByText(words.private));
+  // Private needs no word: Share at the top says it is not shared yet.
+  await screen.findByRole("heading", { level: 1 });
+  assert.ok(!screen.queryByText(words.private), "no Private word");
   assert.equal(screen.queryByRole("button", { name: words.share }), null);
   cleanup();
   // An owner of the project may.
