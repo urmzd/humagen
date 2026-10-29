@@ -51,4 +51,6 @@ deploy/compose/.env
 
 # Tilt: the staged image context and your own values
 .tilt/
+.humagen-dev/
+.env.dev
 deploy/tilt/values.local.yaml

@@ -1,4 +1,4 @@
-.PHONY: all init build test integration lint fmt check start dev dev-live dev-signin web screens up down chart-check image client client-check spec-lint oag-install
+.PHONY: all init build test integration lint fmt check start dev dev-live dev-signin web tilt screens up down chart-check image client client-check spec-lint oag-install
 
 BIN := humagen
 
@@ -70,6 +70,12 @@ dev-signin: build
 web:
 	pnpm install
 	pnpm --filter @humagen/console dev
+
+# The API, the console with hot reload and Postgres in Docker under Tilt, each
+# restarted only when its own sources change (docs/guides/develop.md). Stop
+# with `tilt down -f dev.Tiltfile`; the database is kept.
+tilt:
+	tilt up -f dev.Tiltfile
 
 # Every console screen at phone (390x844) and desktop (1280x800) width, from a
 # humagen seeded with example data, with the layout checks that fail the run

@@ -17,6 +17,7 @@
 | [Native console notifications](architecture/native-notifications.md) | Architecture | The Notifications page, badge and delivery preferences |
 | [Usage and Activity](architecture/usage-and-activity.md) | Architecture | How Usage intervals and Activity classifications are computed |
 | [Typed learning dependencies](architecture/learning-dependencies.md) | Architecture | How skills and reviewed memory link back to the runs that produced them |
+| [Develop with Tilt](guides/develop.md) | Guide | One `tilt up` for the API, the console with hot reload and Postgres, reusable by projects built on Humagen |
 | [Deploy](guides/deploy.md) | Guide | Run Humagen locally, with Compose, Helm, Flux or `humagen deploy` |
 | [GitHub and Slack trial](guides/integrations.md) | Guide | Set up a local trial with a GitHub installation and a Slack app |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |

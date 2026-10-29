@@ -8,6 +8,7 @@ process with its stores beside it.
 | Where | What | Files |
 |-------|------|-------|
 | Your machine, no containers | `humagen start`, or `make dev` and `make web` | [README](../../README.md#quick-start) |
+| Your machine, while developing | `make tilt`: API, console with hot reload, Postgres, restarted as you edit | [develop](develop.md) |
 | Your machine or one host | Docker Compose: Humagen, Postgres, optional MinIO | [`deploy/compose`](../../deploy/compose) |
 | Kubernetes | A Helm chart | [`deploy/helm/humagen`](../../deploy/helm/humagen) |
 | Kubernetes, from Git | Flux deploying that chart | [`deploy/flux`](../../deploy/flux) |

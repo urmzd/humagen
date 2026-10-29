@@ -158,6 +158,12 @@ make dev
 make web
 ```
 
+Or start everything with one command under [Tilt](https://docs.tilt.dev/): the API, the console with hot reload and Postgres, so conversations survive a restart, each restarted only when its own sources or the spec change. Projects built on Humagen load the same workflow as a Tilt extension. See [docs/guides/develop.md](docs/guides/develop.md).
+
+```sh
+make tilt
+```
+
 | Task | Command |
 |------|---------|
 | Set up hooks and modules | `make init` |
