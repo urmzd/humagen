@@ -535,6 +535,24 @@ paths:
               schema: {type: string, format: binary}
         "404": {$ref: "#/components/responses/NotFound"}
 
+  /branding/fonts/{name}:
+    get:
+      operationId: getDeploymentFont
+      tags: [health]
+      summary: Get one of the deployment's font files
+      description: A font file the System document's branding.fonts.files names, public like the console's icons, since the page uses it before sign-in.
+      x-permission: public
+      security: []
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: The font file, with its type.
+          content:
+            font/*:
+              schema: {type: string, format: binary}
+        "404": {$ref: "#/components/responses/NotFound"}
+
   /auth/login:
     get:
       operationId: startLogin
@@ -4729,6 +4747,24 @@ paths:
             text/css:
               schema: {type: string}
         "401": {$ref: "#/components/responses/Unauthorized"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/branding/fonts/{name}:
+    get:
+      operationId: getBrandingFont
+      tags: [preferences]
+      summary: Get one of the caller's workspace font files
+      description: A font file branding.fonts.files names, as its stylesheet refers to it, by its place in the list and its extension, such as 0.woff2.
+      x-permission: authenticated
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: The font file, with its type.
+          content:
+            font/*:
+              schema: {type: string, format: binary}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/preferences:
     get:

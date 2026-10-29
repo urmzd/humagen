@@ -298,7 +298,8 @@ func named(names Names, m inbox.Message) inbox.Message {
 		m.From.Display = names.Of(m.From.Name)
 	case IsProduct(m.From):
 		// The product, whatever name the record keeps: warp, before the rename.
-		m.From.Display = SystemDisplay
+		// It is shown by the workspace's branded name.
+		m.From.Display = names.Product()
 	}
 	for i := range m.Parts {
 		if o := m.Parts[i].Outcome; o != nil {

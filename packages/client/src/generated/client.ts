@@ -901,6 +901,23 @@ export class ApiClient {
     });
   }
 
+  /** A font file the System document's branding.fonts.files names, public like the console's icons, since the page uses it before sign-in. */
+  async getDeploymentFont(name: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/branding/fonts/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getDeploymentFontRaw(name: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/branding/fonts/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
   /** Redirects to the identity provider (authorization code flow with
 PKCE) and sets a short-lived `humagen_login` cookie. Under
 development auth it redirects straight to `/`. A browser navigates
@@ -4369,6 +4386,23 @@ grounds nothing until a source of that name is made again.
   async getBrandingStyleRaw(options?: RequestOptions): Promise<ApiResponse<string>> {
     const path = "/api/branding/style.css";
     return this.rawRequest<string>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A font file branding.fonts.files names, as its stylesheet refers to it, by its place in the list and its extension, such as 0.woff2. */
+  async getBrandingFont(name: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/api/branding/fonts/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getBrandingFontRaw(name: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/api/branding/fonts/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Blob>("GET", path, {
       ...options,
     });
   }

@@ -154,7 +154,7 @@ func (p *Platform) operationEscalation(tenant, kind, id, project, thread, run, a
 		p.log.Error("platform: previous operation attention could not be settled", "error", err)
 		return
 	}
-	m := inbox.Message{Kind: inbox.KindOperation, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: "Humagen"}, Severity: inbox.Warning, Source: inbox.Source{Project: project, Thread: thread, Run: run, Agent: agent}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartOperation, Operation: &inbox.OperationPart{Kind: kind, ID: id, Reason: reason}}}}
+	m := inbox.Message{Kind: inbox.KindOperation, Subject: "Agent work needs a person", From: inbox.From{Kind: "system", Name: SystemSender}, Severity: inbox.Warning, Source: inbox.Source{Project: project, Thread: thread, Run: run, Agent: agent}, Parts: []inbox.Part{{ID: "blocker", Type: inbox.PartOperation, Operation: &inbox.OperationPart{Kind: kind, ID: id, Reason: reason}}}}
 	m.Audience = slices.Clone(fallbackApprovers)
 	if owner != "" {
 		m.Audience = append(m.Audience, owner)

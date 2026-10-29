@@ -113,7 +113,10 @@ spec:
       accent: {light: "#c2185b", dark: "#f06292"}
       surface: {light: "#fafafa", dark: "#1a1a2e"}
       text: {light: "#1a1a2e", dark: "#fafafa"}
-    fonts: {ui: "Inter, sans-serif", heading: "Georgia, serif"}
+    fonts:
+      ui: "Inter, sans-serif"
+      heading: "Georgia, serif"
+      files: [{family: Inter, path: ./brand/InterVariable.woff2, weight: "100 900"}]   # served for the lists to name
     email: {subject: "{name} updates", multiple: "{count} updates wait for you in {name}."}
 
   notifications:            # optional outbound delivery; people must also opt in
@@ -300,7 +303,7 @@ the workspace signs in.
 | `icons` | A directory of files that replace the console's icons by name: `favicon.svg`, `favicon-32.png`, `apple-touch-icon.png`, `icon.svg`, `icon-192.png`, `icon-512.png`. One it lacks stays Humagen's; any other name is an error | System |
 | `manifest` | The installable app's `name`, `short_name`, `description`, `theme_color` and `background_color` | System |
 | `palette` | `accent`, `surface` (the page), `plane` (the sidebar and panels), `text` and `rule` (lines), each `{light, dark}` or one color for both themes | both |
-| `fonts` | CSS font-family lists for `ui`, `heading` and `mono` text. A face must be installed on the device or bundled with the console; none is downloaded | both |
+| `fonts` | CSS font-family lists for `ui`, `heading` and `mono` text, and `files`: up to 12 `{family, path, weight, style}` faces (`.woff2`, `.woff`, `.ttf` or `.otf`, at most 2 MiB each) the server serves for those lists to name. A face named without a file must be installed on the device. A workspace's files replace the deployment's | both |
 | `welcome` | `{title, text}` of the announcement a workspace's people find first in its inbox. Left out, Humagen's, with the product's name in place of Humagen. It is posted once, so a change reaches only a workspace not yet welcomed | both |
 | `starters` | Up to 6 `{agent, label, text}` suggestions on an empty conversation, each shown only where its agent can answer. `[]` shows none | both |
 | `copy` | The console's own text by key, such as `navigation.agents: Assistants`. `humagen config copy-keys` lists the keys; an unknown one is an error. A workspace's keys are merged over the deployment's | both |
@@ -308,7 +311,7 @@ the workspace signs in.
 
 Colors are hex, `#rgb` or `#rrggbb`. Text must reach 4.5:1 on its surface and
 the accent 3:1 in each theme (WCAG AA), against Humagen's own for a side left
-out; a workspace's palette is checked over the deployment's. The accent is
+out; a workspace's palette is checked over the deployment's. The product's own messages in the inbox are shown from its name. The accent is
 the console's default: a person still picks their own under Settings, where
 Workspace returns to it. Paths are read at start, from the working directory,
 like `agents[].file`, so a missing file, an SVG carrying a script, or an icon

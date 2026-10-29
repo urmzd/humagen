@@ -525,13 +525,18 @@ func TestErrorsDoNotLeak(t *testing.T) {
 // every other workspace the deployment's, which sets nothing.
 func fixtureBranding(t *testing.T) *branding.Set {
 	t.Helper()
-	logo := filepath.Join(t.TempDir(), "logo.svg")
+	dir := t.TempDir()
+	logo, font := filepath.Join(dir, "logo.svg"), filepath.Join(dir, "face.woff2")
 	if err := os.WriteFile(logo, []byte(brandingSVG), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(font, []byte("wOF2 face"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var cfg spec.Config
 	cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Branding: spec.Branding{
 		Name: "Acme", Logo: &spec.Logo{Path: logo}, Palette: &spec.Palette{Accent: &spec.Pair{Light: "#c2185b", Dark: "#f06292"}},
+		Fonts: &spec.Fonts{UI: "Face, sans-serif", Files: []spec.FontFile{{Family: "Face", Path: font, Weight: "100 900"}}},
 	}}}}
 	b, err := branding.Load(cfg)
 	if err != nil {

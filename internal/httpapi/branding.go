@@ -20,8 +20,12 @@ func (s *Server) brandingRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/branding", s.authed("", s.getBranding))
 	mux.HandleFunc("GET /api/branding/logo", s.authed("", s.getBrandingLogo))
 	mux.HandleFunc("GET /api/branding/style.css", s.authed("", s.getBrandingStyle))
+	mux.HandleFunc("GET /api/branding/fonts/{name}", s.authed("", s.getBrandingFont))
 	mux.HandleFunc("GET /branding/logo", func(w http.ResponseWriter, r *http.Request) {
 		serveAsset(w, r, s.Branding.For("").Logo)
+	})
+	mux.HandleFunc("GET /branding/fonts/{name}", func(w http.ResponseWriter, r *http.Request) {
+		serveFont(w, r, s.Branding.For(""))
 	})
 }
 
@@ -62,6 +66,23 @@ func (s *Server) getBrandingLogo(w http.ResponseWriter, r *http.Request, who aut
 func (s *Server) getBrandingStyle(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	css := s.Branding.For(who.Tenant).CSS
 	serveAsset(w, r, &branding.Asset{Type: "text/css; charset=utf-8", Body: []byte(css)})
+}
+
+func (s *Server) getBrandingFont(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	serveFont(w, r, s.Branding.For(who.Tenant))
+}
+
+// serveFont answers one of a brand's font files by the name it is served
+// under, cached for a day: a change of file is a restart, which a
+// stylesheet read again picks up.
+func serveFont(w http.ResponseWriter, r *http.Request, b branding.Brand) {
+	a, ok := b.Fonts[r.PathValue("name")]
+	if !ok {
+		fail(w, http.StatusNotFound, "no font of that name")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	serveAsset(w, r, &a)
 }
 
 func serveAsset(w http.ResponseWriter, r *http.Request, a *branding.Asset) {

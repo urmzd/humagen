@@ -2048,6 +2048,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(globex, "GET", "/api/branding/logo", "/api/branding/logo", "", http.StatusNotFound)
 	c.call(acme, "GET", "/api/branding/style.css", "/api/branding/style.css", "", http.StatusOK)
+	if font := c.call(acme, "GET", "/api/branding/fonts/{name}", "/api/branding/fonts/0.woff2", "", http.StatusOK); font.header.Get("Content-Type") != "font/woff2" {
+		t.Fatalf("font type = %q", font.header.Get("Content-Type"))
+	}
+	c.call(acme, "GET", "/api/branding/fonts/{name}", "/api/branding/fonts/1.woff2", "", http.StatusNotFound)
 	c.call(acme, "GET", "/api/preferences/photo", "/api/preferences/photo", "", http.StatusNotFound)
 	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
 	c.call(acme, "PUT", "/api/preferences/photo", "/api/preferences/photo", png, http.StatusOK)

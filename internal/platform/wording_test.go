@@ -40,6 +40,27 @@ func TestTheWelcomeIsTheBrandings(t *testing.T) {
 	}
 }
 
+func TestTheProductsOwnSenderIsShownByItsBrandedName(t *testing.T) {
+	p, err := platform.New(platform.Config{Backends: platform.Backends{State: state.NewMemory()}, Workspace: t.TempDir(),
+		Wording: func(string) platform.Wording { return platform.Wording{Name: "Acme"} }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	posted, err := p.PostWelcome(tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ada := auth.Principal{Tenant: tenant, Subject: "ada", Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
+	m, err := p.InboxGet(ada, posted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.From.Name != platform.SystemSender || m.From.Display != "Acme" {
+		t.Fatalf("from = %+v", m.From)
+	}
+}
+
 func TestNotificationEmailsSayTheBrandingsWords(t *testing.T) {
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
 	policy, err := auth.ParsePolicy("email-test", `role reader { allow read on * } grant reader to subject "ada"`)

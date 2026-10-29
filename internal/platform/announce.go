@@ -278,10 +278,11 @@ func (p *Platform) noticeReader(tree *projects.Tree, who auth.Principal) inbox.R
 
 // SystemSender is the name the platform posts under as itself. Records
 // written before the rename keep the old one (legacy.SystemSender); every
-// system sender is shown as SystemDisplay.
+// system sender is shown as the workspace's product name (Names.Product),
+// SystemDisplay when it has none.
 const SystemSender = "humagen"
 
-// SystemDisplay is what the product's own sender is called.
+// SystemDisplay is what the product's own sender is called without branding.
 const SystemDisplay = "Humagen"
 
 // IsProduct reports whether from is the product posting as itself, under

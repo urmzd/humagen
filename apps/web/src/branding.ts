@@ -55,3 +55,13 @@ export function applyCopy(target: object, overrides: Record<string, string>): vo
 export function accentAttribute(accent?: string): string {
   return !accent || accent === "workspace" ? "brand" : accent;
 }
+
+/**
+ * Brand the console's text: the product's own sender is called by the
+ * product's name, then the workspace's text by key goes over the console's
+ * own, so a copy key for the sender still wins.
+ */
+export function brandCopy(target: { product?: unknown }, branding: Branding): void {
+  if (typeof target.product === "string") target.product = branding.name;
+  applyCopy(target, branding.copy ?? {});
+}

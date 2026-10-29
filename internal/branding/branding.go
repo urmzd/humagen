@@ -26,6 +26,7 @@ const DefaultWordmark = "humagen"
 const (
 	maxLogo = 512 << 10
 	maxIcon = 1 << 20
+	maxFont = 2 << 20
 )
 
 // Asset is a file read at start.
@@ -33,6 +34,13 @@ type Asset struct {
 	Type string
 	Body []byte
 }
+
+// Where font files are served: the deployment's, public like its icons, and
+// a workspace's, to its signed-in people.
+const (
+	SystemFonts    = "/branding/fonts/"
+	WorkspaceFonts = "/api/branding/fonts/"
+)
 
 // Brand is one level's branding, resolved: the deployment's, or a
 // workspace's over it.
@@ -44,6 +52,9 @@ type Brand struct {
 	LogoAlt  string
 	// CSS is the stylesheet of the palette and fonts, empty with neither.
 	CSS string
+	// Fonts are the font files the stylesheet names, by the name each is
+	// served under: its place in the list and its extension, such as 0.woff2.
+	Fonts map[string]Asset
 	// Spec is the merged block, for what is derived again per request.
 	Spec spec.Branding
 }
@@ -65,7 +76,7 @@ func Load(cfg spec.Config) (*Set, error) {
 	}
 	s := &Set{Icons: map[string]Asset{}, Workspaces: map[string]Brand{}}
 	var err error
-	if s.System, err = resolve(sys); err != nil {
+	if s.System, err = resolve(sys, SystemFonts); err != nil {
 		return nil, fmt.Errorf("system: %w", err)
 	}
 	if sys.Manifest != nil {
@@ -80,7 +91,7 @@ func Load(cfg spec.Config) (*Set, error) {
 		if p.Spec.Branding.IsZero() {
 			continue
 		}
-		b, err := resolve(spec.MergeBranding(sys, p.Spec.Branding))
+		b, err := resolve(spec.MergeBranding(sys, p.Spec.Branding), WorkspaceFonts)
 		if err != nil {
 			return nil, fmt.Errorf("platform %q: %w", p.Metadata.Name, err)
 		}
@@ -116,12 +127,12 @@ func (s *Set) Wording(tenant string) platform.Wording {
 
 // Default is Humagen's own branding.
 func Default() Brand {
-	b, _ := resolve(spec.Branding{})
+	b, _ := resolve(spec.Branding{}, SystemFonts)
 	return b
 }
 
-func resolve(b spec.Branding) (Brand, error) {
-	out := Brand{Spec: b, Name: b.Name}
+func resolve(b spec.Branding, fontURL string) (Brand, error) {
+	out := Brand{Spec: b, Name: b.Name, Fonts: map[string]Asset{}}
 	if out.Name == "" {
 		out.Name = spec.DefaultName
 	}
@@ -153,7 +164,18 @@ func resolve(b spec.Branding) (Brand, error) {
 			out.LogoAlt = out.Name
 		}
 	}
-	out.CSS = CSS(b)
+	if b.Fonts != nil {
+		for i, f := range b.Fonts.Files {
+			a, err := readFile(f.Path, maxFont)
+			if err != nil {
+				return out, fmt.Errorf("branding.fonts.files[%d]: %w", i, err)
+			}
+			ext := strings.ToLower(filepath.Ext(f.Path))
+			a.Type = spec.FontTypes[ext]
+			out.Fonts[fontName(i, ext)] = a
+		}
+	}
+	out.CSS = CSS(b, fontURL)
 	return out, nil
 }
 
@@ -221,9 +243,12 @@ func checkSVG(b []byte) error {
 	return nil
 }
 
+func fontName(i int, ext string) string { return fmt.Sprintf("%d%s", i, ext) }
+
 // CSS is the stylesheet for a block's palette and fonts, written over the
-// console's own tokens. Empty with neither.
-func CSS(b spec.Branding) string {
+// console's own tokens, with each font file served under fontURL. Empty
+// with neither.
+func CSS(b spec.Branding, fontURL string) string {
 	var sb strings.Builder
 	p := b.Palette
 	if p != nil {
@@ -291,6 +316,17 @@ func CSS(b spec.Branding) string {
 		}
 	}
 	if f := b.Fonts; f != nil {
+		for i, file := range f.Files {
+			weight, style := file.Weight, file.Style
+			if weight == "" {
+				weight = "400"
+			}
+			if style == "" {
+				style = "normal"
+			}
+			fmt.Fprintf(&sb, "@font-face { font-family: %q; src: url(%q); font-weight: %s; font-style: %s; font-display: swap; }\n",
+				file.Family, fontURL+fontName(i, strings.ToLower(filepath.Ext(file.Path))), weight, style)
+		}
 		var decls []string
 		if f.UI != "" {
 			decls = append(decls, "--font-aui-sans: "+f.UI)

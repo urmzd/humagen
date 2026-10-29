@@ -33,7 +33,7 @@ import {
   type ThreadSummary,
   type Settings as Workspace,
 } from "./api.ts";
-import { accentAttribute, applyCopy, servedBranding } from "./branding.ts";
+import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { YourConnections } from "./Connections.tsx";
 import { ContextHealth } from "./ContextHealth.tsx";
@@ -85,7 +85,7 @@ function signInUrl(): string {
   return `/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`;
 }
 
-export function App() {
+export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) {
   const [session, setSession] = useState<Session>({ state: "loading" });
 
   useEffect(() => {
@@ -100,17 +100,24 @@ export function App() {
         // The workspace's branding is read before the console draws, so its
         // text is in place from the first frame and one brand never flashes
         // in for another.
-        return api
-          .branding()
-          .catch(() => servedBranding())
-          .then((branding) => {
-            applyCopy(defaultCopy, branding.copy);
-            setSession({
-              state: "ready",
-              me: { ...me, permissions: me.permissions ?? [] },
-              branding,
-            });
+        // Read before the console's modules loaded (main.tsx), or now: before
+        // the console draws, so one brand never flashes in for another.
+        const read = preloaded
+          ? Promise.resolve(preloaded)
+          : api
+              .branding()
+              .catch(() => servedBranding())
+              .then((branding) => {
+                brandCopy(defaultCopy, branding);
+                return branding;
+              });
+        return read.then((branding) => {
+          setSession({
+            state: "ready",
+            me: { ...me, permissions: me.permissions ?? [] },
+            branding,
           });
+        });
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) {
@@ -125,7 +132,7 @@ export function App() {
           message: "The platform is not reachable. Is the server running?",
         });
       });
-  }, []);
+  }, [preloaded]);
 
   if (session.state === "loading") return <Centered>Loading</Centered>;
   if (session.state === "error") return <Centered>{session.message}</Centered>;

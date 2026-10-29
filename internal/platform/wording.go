@@ -25,7 +25,7 @@ func (p *Platform) wording(tenant string) Wording {
 	}
 	name := w.Name
 	if name == "" {
-		name = "Humagen"
+		name = SystemDisplay
 	}
 	pick := func(own, humagen string) string {
 		if own == "" {

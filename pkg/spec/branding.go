@@ -44,8 +44,8 @@ type Branding struct {
 	Manifest *Manifest `json:"manifest,omitempty"`
 	// Palette replaces the console's colors in either theme.
 	Palette *Palette `json:"palette,omitempty"`
-	// Fonts replaces the console's typefaces. A face must be installed on
-	// the device or be one the console bundles; none is downloaded.
+	// Fonts replaces the console's typefaces, with font files the server
+	// serves for them, or faces installed on the device.
 	Fonts *Fonts `json:"fonts,omitempty"`
 	// Welcome is the announcement a workspace's people find first in its
 	// inbox. Left out, Humagen's, under the product's name.
@@ -128,6 +128,59 @@ type Fonts struct {
 	Heading string `json:"heading,omitempty"`
 	// Mono is code and identifiers.
 	Mono string `json:"mono,omitempty"`
+	// Files are typefaces the console downloads, from this server, for
+	// the families above to name. A workspace's replace the deployment's.
+	Files []FontFile `json:"files,omitempty"`
+}
+
+// FontFile is one face of a typeface: a .woff2, .woff, .ttf or .otf file,
+// read at start, of at most 2 MiB.
+type FontFile struct {
+	// Family is the name the lists above use for it.
+	Family string `json:"family"`
+	Path   string `json:"path"`
+	// Weight is one weight, such as 400, or a variable face's range, such
+	// as 100 900. Left out, 400.
+	Weight string `json:"weight,omitempty"`
+	// Style is normal or italic. Left out, normal.
+	Style string `json:"style,omitempty"`
+}
+
+// MaxFontFiles is the most font files one branding block may serve.
+const MaxFontFiles = 12
+
+// FontTypes are the font file types, by extension.
+var FontTypes = map[string]string{
+	".woff2": "font/woff2",
+	".woff":  "font/woff",
+	".ttf":   "font/ttf",
+	".otf":   "font/otf",
+}
+
+var (
+	fontFamilyName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$`)
+	fontWeight     = regexp.MustCompile(`^[1-9]00( [1-9]00)?$`)
+)
+
+func checkFontFiles(fs []FontFile) error {
+	if len(fs) > MaxFontFiles {
+		return fmt.Errorf("branding.fonts.files: at most %d", MaxFontFiles)
+	}
+	for i, f := range fs {
+		if !fontFamilyName.MatchString(f.Family) {
+			return fmt.Errorf("branding.fonts.files[%d].family is a name of letters, digits, spaces, dashes and underscores", i)
+		}
+		if _, ok := FontTypes[strings.ToLower(path.Ext(f.Path))]; !ok {
+			return fmt.Errorf("branding.fonts.files[%d].path is a .woff2, .woff, .ttf or .otf file", i)
+		}
+		if f.Weight != "" && !fontWeight.MatchString(f.Weight) {
+			return fmt.Errorf("branding.fonts.files[%d].weight is one weight, such as 400, or a range, such as 100 900", i)
+		}
+		if f.Style != "" && f.Style != "normal" && f.Style != "italic" {
+			return fmt.Errorf("branding.fonts.files[%d].style is normal or italic", i)
+		}
+	}
+	return nil
 }
 
 // Color is a hex color, #rgb or #rrggbb.
@@ -274,6 +327,9 @@ func (b Branding) check(system bool) error {
 			if x.v != "" && !fontFamily.MatchString(x.v) {
 				return fmt.Errorf("branding.fonts.%s is a CSS font-family list: letters, digits, spaces, commas, quotes, dots, dashes and underscores", x.name)
 			}
+		}
+		if err := checkFontFiles(f.Files); err != nil {
+			return err
 		}
 	}
 	if err := checkWelcome(b.Welcome); err != nil {
@@ -426,6 +482,9 @@ func MergeBranding(sys, ws Branding) Branding {
 		}
 		if f.Mono != "" {
 			merged.Mono = f.Mono
+		}
+		if f.Files != nil {
+			merged.Files = f.Files
 		}
 		out.Fonts = &merged
 	}

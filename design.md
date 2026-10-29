@@ -633,13 +633,17 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   an empty conversation, notification emails and any of the console's own
   text by key (`branding.copy`, keys from `humagen config copy-keys`). Humagen's
   own welcome and email text say the product's name in place of Humagen.
-- The console reads the workspace's branding before it draws, so its text
-  and logo are in place from the first frame and one brand never flashes in
-  for another. Text a module reads once, as it loads, keeps the console's own.
+- The console reads the workspace's branding before its modules load, so its
+  text, tab titles and logo are in place from the first frame and one brand
+  never flashes in for another. The product's own inbox messages are shown
+  from its name.
+- Fonts may be files the server serves (`fonts.files`), the deployment's in
+  public like its icons and a workspace's behind sign-in.
 - Evidence: `TestBrandingReads`, `TestBrandingRefuses` (`pkg/spec`),
   `TestLoadReadsFilesAndMergesWorkspaces`, `TestLoadRefusesWhatCannotBeServed`
   (`internal/branding`), `TestTheConsoleIsServedBranded`,
   `TestAWorkspaceSeesItsOwnBranding` (`internal/httpapi`),
   `TestBrandingTextReads`, `TestBrandingTextRefuses` (`pkg/spec`),
-  `TestTheWelcomeIsTheBrandings`, `TestNotificationEmailsSayTheBrandingsWords`
+  `TestTheWelcomeIsTheBrandings`, `TestNotificationEmailsSayTheBrandingsWords`,
+  `TestTheProductsOwnSenderIsShownByItsBrandedName`, `TestFontFilesAreServedAndNamedInTheStylesheet`
   (`internal/platform`) and `apps/web/src/branding.test.ts`.

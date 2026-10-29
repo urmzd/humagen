@@ -140,3 +140,40 @@ func TestLoadRefusesWhatCannotBeServed(t *testing.T) {
 		})
 	}
 }
+
+func TestFontFilesAreServedAndNamedInTheStylesheet(t *testing.T) {
+	dir := t.TempDir()
+	face := write(t, filepath.Join(dir, "Inter.WOFF2"), "wOF2 inter")
+	italic := write(t, filepath.Join(dir, "inter-italic.ttf"), "ttf italic")
+	var cfg spec.Config
+	cfg.System.Spec.Branding = spec.Branding{Fonts: &spec.Fonts{UI: "Inter, sans-serif", Files: []spec.FontFile{
+		{Family: "Inter", Path: face, Weight: "100 900"},
+		{Family: "Inter", Path: italic, Style: "italic"},
+	}}}
+	cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: "north"}, Spec: spec.PlatformSpec{Branding: spec.Branding{Name: "North"}}}}
+	s, err := Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys := s.For("default")
+	if a := sys.Fonts["0.woff2"]; a.Type != "font/woff2" || string(a.Body) != "wOF2 inter" || sys.Fonts["1.ttf"].Type != "font/ttf" {
+		t.Fatalf("fonts = %v", sys.Fonts)
+	}
+	for _, want := range []string{
+		`@font-face { font-family: "Inter"; src: url("/branding/fonts/0.woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }`,
+		`src: url("/branding/fonts/1.ttf"); font-weight: 400; font-style: italic;`,
+	} {
+		if !strings.Contains(sys.CSS, want) {
+			t.Errorf("the deployment's stylesheet lacks %s:\n%s", want, sys.CSS)
+		}
+	}
+	north := s.For("north")
+	if !strings.Contains(north.CSS, `url("/api/branding/fonts/0.woff2")`) || len(north.Fonts) != 2 {
+		t.Errorf("a workspace serves the fonts it has from behind sign-in:\n%s", north.CSS)
+	}
+
+	cfg.System.Spec.Branding.Fonts.Files[0].Path = filepath.Join(dir, "gone.woff2")
+	if _, err := Load(cfg); err == nil || !strings.Contains(err.Error(), "branding.fonts.files[0]") {
+		t.Fatalf("a missing font file: %v", err)
+	}
+}
