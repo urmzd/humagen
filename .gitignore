@@ -48,3 +48,7 @@ deploy/compose/.env
 # rename (.warp/)
 .humagen/
 .warp/
+
+# Tilt: the staged image context and your own values
+.tilt/
+deploy/tilt/values.local.yaml

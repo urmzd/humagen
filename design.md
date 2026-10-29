@@ -629,10 +629,17 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   in a person's settings, and a person may still pick their own.
 - Files are read at start. A missing file, an SVG with a script and an icon
   under an unknown name fail the start.
-- Until a workspace's branding is read the sidebar keeps the mark's place
-  empty, so one brand never flashes in for another.
+- The text is the spec's too: the welcome announcement, the suggestions on
+  an empty conversation, notification emails and any of the console's own
+  text by key (`branding.copy`, keys from `humagen config copy-keys`). Humagen's
+  own welcome and email text say the product's name in place of Humagen.
+- The console reads the workspace's branding before it draws, so its text
+  and logo are in place from the first frame and one brand never flashes in
+  for another. Text a module reads once, as it loads, keeps the console's own.
 - Evidence: `TestBrandingReads`, `TestBrandingRefuses` (`pkg/spec`),
   `TestLoadReadsFilesAndMergesWorkspaces`, `TestLoadRefusesWhatCannotBeServed`
   (`internal/branding`), `TestTheConsoleIsServedBranded`,
-  `TestAWorkspaceSeesItsOwnBranding` (`internal/httpapi`) and
-  `apps/web/src/branding.test.ts`.
+  `TestAWorkspaceSeesItsOwnBranding` (`internal/httpapi`),
+  `TestBrandingTextReads`, `TestBrandingTextRefuses` (`pkg/spec`),
+  `TestTheWelcomeIsTheBrandings`, `TestNotificationEmailsSayTheBrandingsWords`
+  (`internal/platform`) and `apps/web/src/branding.test.ts`.

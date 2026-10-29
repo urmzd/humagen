@@ -138,7 +138,8 @@ func (p *Platform) DeliverEmailNotifications(ctx context.Context) (int, error) {
 			if count == 0 {
 				continue
 			}
-			message := notifications.EmailMessage{ID: delivery.ID, To: r.address, Subject: emailSubject, Body: fmt.Sprintf("%s\n\n%s/inbox\n\n%s", emailIntro(count), strings.TrimRight(p.cfg.Email.PublicURL, "/"), emailFooter)}
+			w := p.wording(r.tenant)
+			message := notifications.EmailMessage{ID: delivery.ID, To: r.address, Subject: w.EmailSubject, Body: fmt.Sprintf("%s\n\n%s/inbox\n\n%s", emailIntro(w, count), strings.TrimRight(p.cfg.Email.PublicURL, "/"), w.EmailFooter)}
 			if err := p.cfg.Email.Sender.Send(ctx, message); err != nil {
 				return sent, err
 			}
@@ -168,11 +169,11 @@ func (p *Platform) runEmailNotifications(ctx context.Context) error {
 	}
 }
 
-func emailIntro(count int) string {
+func emailIntro(w Wording, count int) string {
 	if count == 1 {
-		return emailSingle
+		return w.EmailSingle
 	}
-	return strings.ReplaceAll(emailMultiple, "{count}", fmt.Sprint(count))
+	return strings.ReplaceAll(w.EmailMultiple, "{count}", fmt.Sprint(count))
 }
 
 // Attribute exceptional reads to this worker, while preserving Seer’s own

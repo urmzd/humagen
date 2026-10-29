@@ -19,6 +19,7 @@ import {
   type AlertRule,
   ApiError,
   api,
+  type Branding,
   type Me,
   type Preferences,
   type ProjectView,
@@ -32,7 +33,7 @@ import {
   type ThreadSummary,
   type Settings as Workspace,
 } from "./api.ts";
-import { accentAttribute, servedBranding } from "./branding.ts";
+import { accentAttribute, applyCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { YourConnections } from "./Connections.tsx";
 import { ContextHealth } from "./ContextHealth.tsx";
@@ -71,13 +72,13 @@ import { defaultUsageView, Usage } from "./Usage.tsx";
 import { button, Page, Presence, Problem, primary, SkeletonRows, setAgentHues } from "./ui.tsx";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
-import { useBranding } from "./workspaceBranding.ts";
+import { useBrandingStyle } from "./workspaceBranding.ts";
 
 type Session =
   | { state: "loading" }
   | { state: "signed-out" }
   | { state: "error"; message: string }
-  | { state: "ready"; me: Me };
+  | { state: "ready"; me: Me; branding: Branding };
 
 /** Where sign-in starts, coming back to this page after. */
 function signInUrl(): string {
@@ -96,7 +97,20 @@ export function App() {
         configureAgentHues(
           huePath ? (names) => api.agentHues(names, huePath).then((r) => r.hues) : undefined,
         );
-        setSession({ state: "ready", me: { ...me, permissions: me.permissions ?? [] } });
+        // The workspace's branding is read before the console draws, so its
+        // text is in place from the first frame and one brand never flashes
+        // in for another.
+        return api
+          .branding()
+          .catch(() => servedBranding())
+          .then((branding) => {
+            applyCopy(defaultCopy, branding.copy);
+            setSession({
+              state: "ready",
+              me: { ...me, permissions: me.permissions ?? [] },
+              branding,
+            });
+          });
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) {
@@ -129,6 +143,7 @@ export function App() {
   return (
     <Console
       me={session.me}
+      branding={session.branding}
       onSignedOut={() => {
         configureAgentHues(undefined);
         setSession({ state: "signed-out" });
@@ -171,7 +186,15 @@ function useAppearance(prefs: Preferences | null) {
   }, [prefs?.theme, prefs?.accent]);
 }
 
-function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
+function Console({
+  me,
+  branding,
+  onSignedOut,
+}: {
+  me: Me;
+  branding: Branding;
+  onSignedOut: () => void;
+}) {
   const can = useCallback((p: string) => me.permissions.includes(p), [me]);
   const [route, go] = useRoute();
   const canNotify = can("runs:read") && me.principal.kind === "user";
@@ -201,8 +224,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // counter that tells the page to look again, and a message to open first.
   const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
   const [inboxTick, setInboxTick] = useState(0);
-  const branding = useBranding();
-  const product = (branding ?? servedBranding()).title;
+  useBrandingStyle(branding.style);
+  const product = branding.title;
   useEffect(() => {
     document.title = documentTitle(route, inboxCounts.unread, product);
   }, [route, inboxCounts.unread, product]);
@@ -835,6 +858,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               `new:${route.page === "new" ? JSON.stringify([route.project, route.channel, route.agent, route.ask]) : ""}`
             }
             threadId={thread}
+            starters={branding.starters}
             me={me.principal.subject}
             handle={me.handle ?? ""}
             startIn={route.page === "new" ? route.project : undefined}

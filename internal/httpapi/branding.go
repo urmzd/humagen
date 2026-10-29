@@ -10,6 +10,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/branding"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // brandingRoutes serves the branding a person's workspace has: what the
@@ -32,11 +33,17 @@ type brandingView struct {
 	Logo     *string `json:"logo"`
 	LogoAlt  string  `json:"logo_alt"`
 	Style    *string `json:"style"`
+	// Starters are null for the console's own.
+	Starters []spec.Starter    `json:"starters"`
+	Copy     map[string]string `json:"copy"`
 }
 
 func (s *Server) getBranding(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	b := s.Branding.For(who.Tenant)
-	v := brandingView{Name: b.Name, Wordmark: b.Wordmark, Title: b.Title, LogoAlt: b.LogoAlt}
+	v := brandingView{Name: b.Name, Wordmark: b.Wordmark, Title: b.Title, LogoAlt: b.LogoAlt, Starters: b.Spec.Starters, Copy: b.Spec.Copy}
+	if v.Copy == nil {
+		v.Copy = map[string]string{}
+	}
 	if b.Logo != nil {
 		u := "/api/branding/logo"
 		v.Logo = &u

@@ -21,3 +21,7 @@ deploy/helm/check.sh
 *.log
 .env
 **/.env
+# The Tilt image is built from its own context (.tilt/image).
+deploy/tilt
+.tilt
+Tiltfile

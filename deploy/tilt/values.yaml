@@ -1,0 +1,47 @@
+# Values for `tilt up` (the Tiltfile at the repository root): humagen on a
+# local cluster with development sign-in, memory stores, example agents and
+# the offline model, so it needs no identity provider, database or key.
+#
+# development.loopback puts the listener on the pod's own loopback, which
+# only `kubectl port-forward` reaches: Tilt forwards http://127.0.0.1:8080.
+# Never use these values on a cluster other people use.
+development:
+  loopback: true
+
+image:
+  # The Tiltfile builds this image and puts its own tag in.
+  repository: humagen-dev
+  pullPolicy: IfNotPresent
+
+system:
+  metadata:
+    name: humagen-dev
+    display_name: Humagen
+  spec:
+    server:
+      public_url: http://127.0.0.1:8080
+    auth:
+      kind: dev
+      oidc: null
+    stores:
+      kind: memory
+      postgres: null
+    bus:
+      kind: memory
+    blobs:
+      kind: disk
+
+platforms:
+  - metadata:
+      name: default
+    spec: {}
+
+# Example agents that need no model key, as `make dev` seeds.
+extraArgs:
+  - -seed
+  - -builtin-provider=offline
+  - -builtin-model=offline
+
+# State is in memory, so the workspace volume need not outlive the pod.
+persistence:
+  enabled: false

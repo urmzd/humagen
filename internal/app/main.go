@@ -79,6 +79,7 @@ const usage = `usage: humagen start [-f PATH] [flags]     run the platform here;
        humagen deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
        humagen setup                      answer a few questions and write humagen.yaml
        humagen config check|print -f PATH check a spec, or print it with every default
+       humagen config copy-keys           list the console's text branding.copy may replace
        humagen slack manifest [flags]     print the Slack app manifest
        humagen authz check FILE | authz explain [flags] PERMISSION
        humagen version`
@@ -329,6 +330,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	cfg := platform.Config{
 		Email:    emailConfiguration(file.cfg.System, *publicURL, keys),
+		Wording:  brand.Wording,
 		Backends: backends,
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.

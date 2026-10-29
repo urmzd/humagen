@@ -81,6 +81,7 @@ and evidence when implementing a requirement.
 | Test | `make test` |
 | Preview | `make dev`, then `make web` |
 | Preview with sign-in | `make dev-signin`, then `make web` |
+| Preview on a local Kubernetes cluster | `tilt up` (docs/deploy.md#local-kubernetes-with-tilt) |
 | Web checks | `cd apps/web && pnpm typecheck && pnpm test` |
 | Adapter checks | `cd packages/adapter && pnpm typecheck && pnpm test` |
 | Slack app checks | `cd apps/slack && pnpm exec biome check && pnpm typecheck && pnpm test` |

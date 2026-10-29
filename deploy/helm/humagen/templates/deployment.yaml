@@ -3,6 +3,10 @@
 {{- end }}
 {{- include "humagen.keepOldNames" . -}}
 {{- $fullname := include "humagen.fullname" . -}}
+{{- $loopback := ((.Values.development | default dict).loopback) | default false -}}
+{{- if and $loopback .Values.ingress.enabled }}
+{{- fail "development.loopback listens on the pod's loopback only, for kubectl port-forward; it cannot sit behind an Ingress" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -52,7 +56,12 @@ spec:
           args:
             - serve
             - -f=/etc/warp/humagen.yaml
+            {{- if $loopback }}
+            # Development: only kubectl port-forward reaches the pod's loopback.
+            - -addr=127.0.0.1:8080
+            {{- else }}
             - -addr=0.0.0.0:8080
+            {{- end }}
             - -web=/usr/share/warp/web
             {{- if .Values.webhooks.enabled }}
             - -webhook-addr=0.0.0.0:{{ .Values.webhooks.port }}
@@ -84,17 +93,18 @@ spec:
               containerPort: {{ .Values.webhooks.port }}
               protocol: TCP
             {{- end }}
-          {{- with .Values.startupProbe }}
-          startupProbe:
+          {{- range $name, $probe := dict "startupProbe" .Values.startupProbe "livenessProbe" .Values.livenessProbe "readinessProbe" .Values.readinessProbe }}
+          {{- with $probe }}
+          {{ $name }}:
+            {{- if $loopback }}
+            {{- /* The kubelet cannot reach the pod's loopback, so the check runs inside it. */}}
+            exec:
+              command: [wget, -qO-, "http://127.0.0.1:8080/healthz"]
+            {{- toYaml (omit . "httpGet" "tcpSocket" "grpc" "exec") | nindent 12 }}
+            {{- else }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
-          {{- with .Values.livenessProbe }}
-          livenessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.readinessProbe }}
-          readinessProbe:
-            {{- toYaml . | nindent 12 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/spec"
 )
 
@@ -76,7 +77,7 @@ func Load(cfg spec.Config) (*Set, error) {
 		}
 	}
 	for _, p := range cfg.Platforms {
-		if p.Spec.Branding == (spec.Branding{}) {
+		if p.Spec.Branding.IsZero() {
 			continue
 		}
 		b, err := resolve(spec.MergeBranding(sys, p.Spec.Branding))
@@ -97,6 +98,20 @@ func (s *Set) For(tenant string) Brand {
 		return b
 	}
 	return s.System
+}
+
+// Wording is a tenant's product name and the welcome and email text its
+// branding replaces, for the platform to fill in with Humagen's own.
+func (s *Set) Wording(tenant string) platform.Wording {
+	b := s.For(tenant)
+	w := platform.Wording{Name: b.Name}
+	if x := b.Spec.Welcome; x != nil {
+		w.WelcomeTitle, w.WelcomeText = x.Title, x.Text
+	}
+	if e := b.Spec.Email; e != nil {
+		w.EmailSubject, w.EmailSingle, w.EmailMultiple, w.EmailFooter = e.Subject, e.Single, e.Multiple, e.Footer
+	}
+	return w
 }
 
 // Default is Humagen's own branding.

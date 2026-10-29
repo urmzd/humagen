@@ -47,6 +47,19 @@ type Branding struct {
 	// Fonts replaces the console's typefaces. A face must be installed on
 	// the device or be one the console bundles; none is downloaded.
 	Fonts *Fonts `json:"fonts,omitempty"`
+	// Welcome is the announcement a workspace's people find first in its
+	// inbox. Left out, Humagen's, under the product's name.
+	Welcome *Welcome `json:"welcome,omitempty"`
+	// Starters replace the suggestions on an empty conversation. Each is
+	// shown only where its agent can answer; [] shows none. Left out,
+	// Humagen's.
+	Starters []Starter `json:"starters,omitempty"`
+	// Copy replaces the console's own text by key, such as
+	// navigation.agents: Assistants. `humagen config copy-keys` lists the
+	// keys.
+	Copy map[string]string `json:"copy,omitempty"`
+	// Email is what notification emails say.
+	Email *EmailCopy `json:"email,omitempty"`
 }
 
 // Logo is an image file, SVG, PNG, WebP or JPEG, read at start.
@@ -263,7 +276,16 @@ func (b Branding) check(system bool) error {
 			}
 		}
 	}
-	return nil
+	if err := checkWelcome(b.Welcome); err != nil {
+		return err
+	}
+	if err := checkStarters(b.Starters); err != nil {
+		return err
+	}
+	if err := checkCopy(b.Copy); err != nil {
+		return err
+	}
+	return checkEmail(b.Email)
 }
 
 func checkName(s string) error {
@@ -390,6 +412,7 @@ func MergeBranding(sys, ws Branding) Branding {
 		merged.Rule = pick(merged.Rule, p.Rule)
 		out.Palette = &merged
 	}
+	mergeCopy(sys, ws, &out)
 	if f := ws.Fonts; f != nil {
 		var merged Fonts
 		if sys.Fonts != nil {

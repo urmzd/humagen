@@ -25,7 +25,7 @@ fi
 
 "$helm" lint --strict "$chart" -f "$chart/ci/default-values.yaml"
 
-for values in "$chart"/ci/*.yaml "$root/deploy/flux/app/values.yaml"; do
+for values in "$chart"/ci/*.yaml "$root/deploy/flux/app/values.yaml" "$root/deploy/tilt/values.yaml"; do
 	name=$(basename "$(dirname "$values")")-$(basename "$values" .yaml)
 	out="$work/$name.yaml"
 	"$helm" lint --strict "$chart" -f "$values" >/dev/null
@@ -58,6 +58,10 @@ refuse() {
 refuse --set replicaCount=2
 refuse --set system.spec.auth.kind=dev
 refuse --set system.spec.auth.kind=tailscale
+# development.loopback lets dev sign-in through only on the pod's loopback,
+# never tailscale, and never behind an Ingress.
+refuse -f "$root/deploy/tilt/values.yaml" --set system.spec.auth.kind=tailscale
+refuse -f "$root/deploy/tilt/values.yaml" --set ingress.enabled=true
 refuse --set system.spec.auth.oidc.issuer=
 refuse --set image.tag=0.20.2
 refuse --set image.tag=v0.9.0

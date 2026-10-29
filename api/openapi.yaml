@@ -10430,7 +10430,7 @@ components:
     Branding:
       description: How the console brands itself for the caller's workspace.
       type: object
-      required: [name, wordmark, title, logo, logo_alt, style]
+      required: [name, wordmark, title, logo, logo_alt, style, starters, copy]
       properties:
         name: {type: string, description: The product's name.}
         wordmark: {type: string, description: The text beside the logo in the sidebar. Empty shows the logo alone.}
@@ -10442,6 +10442,22 @@ components:
         style:
           type: [string, "null"]
           description: Where the stylesheet of the palette and typefaces is served. Null when the branding sets neither.
+        starters:
+          type: [array, "null"]
+          description: The suggestions on an empty conversation, each shown only where its agent can answer. Null is the console's own; empty shows none.
+          items: {$ref: "#/components/schemas/BrandingStarter"}
+        copy:
+          type: object
+          description: The console's own text the branding replaces, by key (humagen config copy-keys).
+          additionalProperties: {type: string}
+    BrandingStarter:
+      description: A suggestion on an empty conversation.
+      type: object
+      required: [agent, label, text]
+      properties:
+        agent: {type: string, description: The agent a pick adds.}
+        label: {type: string, description: What the suggestion says.}
+        text: {type: string, description: The start of the message a pick writes.}
     Preferences:
       description: A person's own settings.
       type: object

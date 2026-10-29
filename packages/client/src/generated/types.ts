@@ -2025,6 +2025,20 @@ export interface Branding {
   logo_alt: string;
   /** Where the stylesheet of the palette and typefaces is served. Null when the branding sets neither. */
   style: string | null;
+  /** The suggestions on an empty conversation, each shown only where its agent can answer. Null is the console's own; empty shows none. */
+  starters: BrandingStarter[] | null;
+  /** The console's own text the branding replaces, by key (humagen config copy-keys). */
+  copy: Record<string, string>;
+}
+
+/** A suggestion on an empty conversation. */
+export interface BrandingStarter {
+  /** The agent a pick adds. */
+  agent: string;
+  /** What the suggestion says. */
+  label: string;
+  /** The start of the message a pick writes. */
+  text: string;
 }
 
 /** A person's own settings. */

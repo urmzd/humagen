@@ -702,8 +702,15 @@ func slackApps(cfg spec.Config, keys credref.Resolver, getenv func(string) strin
 
 // configCmd is `humagen config check|print -f PATH`.
 func configCmd(o Options, args []string, out io.Writer) error {
+	if len(args) == 1 && args[0] == "copy-keys" {
+		// The console's own text, by key, for branding.copy.
+		for _, k := range spec.CopyKeys() {
+			fmt.Fprintln(out, k)
+		}
+		return nil
+	}
 	if len(args) == 0 || (args[0] != "check" && args[0] != "print") {
-		return errors.New("usage: humagen config check|print -f PATH [-f PATH]")
+		return errors.New("usage: humagen config check|print -f PATH [-f PATH], or humagen config copy-keys")
 	}
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
 	var paths files

@@ -49,6 +49,8 @@ func brandedServer(t *testing.T, tenant string) (http.Handler, string) {
 	}
 	cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: "north"}, Spec: spec.PlatformSpec{Branding: spec.Branding{
 		Name: "North", Logo: &spec.Logo{Path: filepath.Join(dir, "north.png"), Alt: "North logo"},
+		Starters: []spec.Starter{{Agent: "lead", Label: "Plan the week", Text: "Plan "}},
+		Copy:     map[string]string{"navigation.agents": "Assistants"},
 	}}}}
 	brand, err := branding.Load(cfg)
 	if err != nil {
@@ -107,6 +109,9 @@ func TestAWorkspaceSeesItsOwnBranding(t *testing.T) {
 	if v["name"] != "North" || v["title"] != "North" || v["wordmark"] != "North" || v["logo"] != "/api/branding/logo" || v["logo_alt"] != "North logo" || v["style"] != "/api/branding/style.css" {
 		t.Fatalf("branding = %v", v)
 	}
+	if st, _ := v["starters"].([]any); len(st) != 1 || v["copy"].(map[string]any)["navigation.agents"] != "Assistants" {
+		t.Fatalf("starters and copy = %v %v", v["starters"], v["copy"])
+	}
 	if res, body := brandGet(t, h, "/api/branding/logo"); res.Header.Get("Content-Type") != "image/png" || body != "\x89PNG north" {
 		t.Fatalf("logo: %s %q", res.Header.Get("Content-Type"), body)
 	}
@@ -115,7 +120,7 @@ func TestAWorkspaceSeesItsOwnBranding(t *testing.T) {
 	}
 
 	other, _ := brandedServer(t, "default")
-	if _, body := brandGet(t, other, "/api/branding"); !strings.Contains(body, `"name":"Acme"`) {
+	if _, body := brandGet(t, other, "/api/branding"); !strings.Contains(body, `"name":"Acme"`) || !strings.Contains(body, `"starters":null`) || !strings.Contains(body, `"copy":{}`) {
 		t.Fatalf("a workspace with none has the deployment's: %s", body)
 	}
 }

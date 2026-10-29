@@ -213,6 +213,34 @@ beside `values.yaml` and turn on the `decryption` block shown in the file. Once
 an image and chart are published to a registry, an `OCIRepository` can replace
 the `GitRepository`; nothing is published yet.
 
+## Local Kubernetes with Tilt
+
+The [`Tiltfile`](../Tiltfile) at the root runs humagen on a local cluster
+through this chart, rebuilding as you edit:
+
+```sh
+kind create cluster      # or k3d, minikube, Docker Desktop, Rancher Desktop, OrbStack
+tilt up                  # then open http://127.0.0.1:8080
+```
+
+It needs Docker, helm, Go and pnpm beside Tilt. The binary and the console
+are built on the host, where Go's and pnpm's caches keep a change to seconds,
+then copied into a small image ([`deploy/tilt/Dockerfile`](../deploy/tilt/Dockerfile))
+that the chart runs with [`deploy/tilt/values.yaml`](../deploy/tilt/values.yaml):
+development sign-in, memory stores, example agents and the offline model, so
+nothing needs a key, a database or an identity provider.
+
+Development sign-in signs every request in as an admin, which the chart
+otherwise refuses in a pod. `development.loopback: true` is what lets it
+through: humagen listens on the pod's own loopback, which `kubectl
+port-forward` (Tilt's forward of port 8080) reaches and nothing else does,
+and the probes run `wget` inside the pod. The chart refuses it with an
+Ingress. Never set it on a cluster other people use.
+
+Your own overrides go in `deploy/tilt/values.local.yaml`, which git ignores
+and the Tiltfile applies last: a `system.spec.branding` block to try a brand,
+a model provider with an `existingSecret`, more `platforms`.
+
 ## What has been checked
 
 The compose files pass `docker compose config`, and both compose specs pass
@@ -225,5 +253,6 @@ override), and `humagen config check` on each rendered `humagen.yaml`. The Flux
 manifests pass `kubeconform` after `kustomize build`. `config check` does not
 resolve references or read the files a spec names, so an unset variable or a
 missing file shows only at start. The image has not been built and run here (no
-Docker daemon), and nothing has been deployed to a cluster. See the
+Docker daemon), and nothing has been deployed to a cluster. The Tilt setup's values render
+through `make chart-check`; `tilt up` itself has not been run here. See the
 [status table](architecture.md#status).

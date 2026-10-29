@@ -18,7 +18,34 @@ export function servedBranding(name = servedName()): Branding {
     logo: null,
     logo_alt: name,
     style: null,
+    starters: null,
+    copy: {},
   };
+}
+
+/**
+ * Write the workspace's text over the console's own, in place, by key such
+ * as navigation.agents. Only a key that names a string is written: the
+ * server checks the keys, and this keeps a stale one from breaking a page.
+ * Text a module reads once, as it loads, keeps the console's own.
+ */
+export function applyCopy(target: object, overrides: Record<string, string>): void {
+  for (const [key, value] of Object.entries(overrides)) {
+    const path = key.split(".");
+    const last = path.pop();
+    let node: unknown = target;
+    for (const part of path) {
+      node = node && typeof node === "object" ? (node as Record<string, unknown>)[part] : undefined;
+    }
+    if (
+      last &&
+      node &&
+      typeof node === "object" &&
+      typeof (node as Record<string, unknown>)[last] === "string"
+    ) {
+      (node as Record<string, unknown>)[last] = value;
+    }
+  }
 }
 
 /**
