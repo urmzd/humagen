@@ -4,7 +4,7 @@ import "strings"
 
 // Fiber was called mandatum before its rename. These names are read only so
 // that a database from then can be moved forward, and a run it still holds
-// can be recognized and ended. docs/renaming.md has the history.
+// can be recognized and ended. docs/guides/renaming.md has the history.
 
 // FiberPrefixBeforeRename is the prefix fiber's Postgres objects had before
 // the rename. Each now starts with fiber_.

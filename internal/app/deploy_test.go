@@ -464,7 +464,7 @@ func TestDeploySaysPeoplesVariablesAreTheTargetsToSet(t *testing.T) {
 // The reference's System example deploys where it says: its person_refs are
 // ones its deploy target can read.
 func TestTheReferenceExampleDeploysItsPeoplesReferences(t *testing.T) {
-	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec.md"))
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "spec.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

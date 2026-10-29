@@ -60,7 +60,7 @@ type Options struct {
 	// option names yet.
 	Platform func(*platform.Config) error
 	// Kinds are the kinds a binary registered, by slot and name, that a
-	// spec file selects (docs/spec.md).
+	// spec file selects (docs/reference/spec.md).
 	Kinds map[string]map[string]Factory
 
 	// ctx, ready and slackDone are for tests: the parent context, a call
@@ -204,7 +204,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	secretRefsFlag := fs.String("secret-refs", "", `environment variables each tenant's clients may reference as secrets, as "tenant=NAME,NAME;tenant=NAME". A tenant not listed may reference none`)
 	agentSpecs := fs.String("agent-specs", "", "comma-separated agent JSON files to register on startup")
 	var specFiles files
-	fs.Var(&specFiles, "f", "a spec file or directory of System and Platform documents (docs/spec.md); repeatable. Flags win over it")
+	fs.Var(&specFiles, "f", "a spec file or directory of System and Platform documents (docs/reference/spec.md); repeatable. Flags win over it")
 	workspaceDir := fs.String("workspace", "", "directory agents write their files under. Empty means the user cache directory")
 	concurrency := fs.Int("concurrency", 1, "how many runs execute at once")
 	busKind := fs.String("bus", "", `the event bus: "memory", for one process, or "postgres", on the stores' database. Empty means postgres with -state=postgres, and memory otherwise`)

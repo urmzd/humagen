@@ -212,7 +212,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Wrote %s. Edit it any time (docs/spec.md); `humagen setup` asks again.\n", path)
+	fmt.Fprintf(out, "Wrote %s. Edit it any time (docs/reference/spec.md); `humagen setup` asks again.\n", path)
 	return nil
 }
 

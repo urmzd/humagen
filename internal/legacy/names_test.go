@@ -18,9 +18,9 @@ import (
 // wholeFiles may name warp anywhere, each for its reason.
 var wholeFiles = []struct{ pattern, why string }{
 	{"CHANGELOG.md", "release history, never edited"},
-	{"docs/renaming.md", "the history of names"},
+	{"docs/guides/renaming.md", "the history of names"},
 	{"fiber/CHANGELOG.md", "fiber's release history, never edited"},
-	{"docs/upgrading-from-warp.md", "what changed, for operators"},
+	{"docs/guides/upgrading-from-warp.md", "what changed, for operators"},
 	{"internal/legacy/*", "the one Go package that reads old names"},
 	{"apps/*/src/legacy.ts", "the one module per app that reads old names"},
 	{"deploy/compose/*", "compose identities existing stacks keep"},
@@ -29,7 +29,7 @@ var wholeFiles = []struct{ pattern, why string }{
 	{"deploy/flux/*/*/*", "Flux objects the example prunes by name"},
 	{"deploy/helm/check.sh", "checks that a warp release keeps its names"},
 	{"scripts/verify-upgrade.sh", "live upgrade tests exercise the old chart, settings and resource names"},
-	{"docs/rename-verification.md", "verification commands deliberately exercise the old binary name"},
+	{"docs/guides/rename-verification.md", "verification commands deliberately exercise the old binary name"},
 	{".gitignore", "where deploy wrote before the rename"},
 	{".dockerignore", "where deploy wrote before the rename"},
 	{"*_test.go", "tests exercise the old names"},
@@ -62,9 +62,9 @@ var fileTokens = []struct {
 	{"deploy/helm/humagen/*", regexp.MustCompile(`"warp"|\bwarp chart\b|Set to warp\b`), "the guard for a release the warp chart installed"},
 	{"deploy/helm/humagen/*/*", regexp.MustCompile(`"warp"|\bwarp chart\b|Set to warp\b`), "the guard for a release the warp chart installed"},
 	{"internal/app/deploy.go", regexp.MustCompile(`\bwarp chart\b`), "deploy keeps a warp release's names"},
-	{"docs/deploy.md", regexp.MustCompile("`warp`"), "Flux object names the example keeps"},
+	{"docs/guides/deploy.md", regexp.MustCompile("`warp`"), "Flux object names the example keeps"},
 	{"Dockerfile", regexp.MustCompile(`\.\.\. warp\b`), "the command's old name still runs it"},
-	{"docs/integrations.md", regexp.MustCompile(`Warp integrations`), "the owner's 1Password item, named before the rename"},
+	{"docs/guides/integrations.md", regexp.MustCompile(`Warp integrations`), "the owner's 1Password item, named before the rename"},
 }
 
 // explains is a phrase that says why a name from before the rename is
@@ -84,7 +84,7 @@ var fiberWord = regexp.MustCompile(`(?i)mandatum`)
 var fiberFiles = []struct{ pattern, why string }{
 	{"CHANGELOG.md", "release history, never edited"},
 	{"fiber/CHANGELOG.md", "fiber's release history, never edited"},
-	{"docs/renaming.md", "the history of names"},
+	{"docs/guides/renaming.md", "the history of names"},
 	{"internal/legacy/*", "the one Go package that reads old names"},
 }
 

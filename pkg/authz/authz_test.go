@@ -18,7 +18,7 @@ var perms = []string{
 }
 
 const example = `
-# The example from docs/authorization.md, on a smaller vocabulary.
+# The example from docs/reference/authorization.md, on a smaller vocabulary.
 role viewer   { allow read on * }
 role operator extends viewer {
   allow write on runs, schedules

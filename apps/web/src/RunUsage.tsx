@@ -9,7 +9,7 @@ import { contextFill, contextWords, costWords, count, tokenWords } from "./usage
  * are the runtime's. While the run works they are the calls reported so far.
  *
  * humagen has no usage summary for a run yet, so this is the console's own;
- * see docs/clients.md. Presentational: it fetches nothing.
+ * see docs/reference/clients.md. Presentational: it fetches nothing.
  */
 export function RunUsageSummary({ run }: { run: Run }) {
   const u = run.usage;

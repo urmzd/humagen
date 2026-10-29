@@ -10,7 +10,7 @@ info:
     The JSON API, the event stream and the sign-in routes served by
     `internal/httpapi`. This file is the contract every surface codes against.
     `internal/httpapi/openapi_test.go` fails when it and the server disagree,
-    and `packages/client` is generated from it. See `docs/api.md`.
+    and `packages/client` is generated from it. See `docs/reference/api.md`.
 
     ## Rules that hold for every `/api` route
 
@@ -31,7 +31,7 @@ info:
     `POST /connectors/github`, `POST /connectors/slack` and
     `POST /connectors/slack/commands` are signed webhook ingress. Slack and
     GitHub call them, authenticated by a client's signing secret, and no API
-    client should. They are described in `docs/clients.md`.
+    client should. They are described in `docs/reference/clients.md`.
 servers:
   - url: http://127.0.0.1:8080
     description: A local server started with `make dev`.
@@ -4708,7 +4708,7 @@ paths:
       operationId: getBranding
       tags: [preferences]
       summary: Get the caller's workspace branding
-      description: The name, wordmark, tab title, logo and stylesheet the console brands itself with, the workspace's over the deployment's (docs/spec.md#branding).
+      description: The name, wordmark, tab title, logo and stylesheet the console brands itself with, the workspace's over the deployment's (docs/reference/spec.md#branding).
       x-permission: authenticated
       responses:
         "200":
@@ -11967,7 +11967,7 @@ components:
           type: array
           items: {type: string}
         login:
-          description: The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md).
+          description: The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/reference/github.md).
           type: string
     ClientInput:
       description: A client as a caller writes it. The tenant, who manages it and its version are the server's to say.

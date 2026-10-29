@@ -11,7 +11,7 @@
 //		))
 //	}
 //
-// The common cases need no Go at all: a spec file (docs/spec.md) declares
+// The common cases need no Go at all: a spec file (docs/reference/spec.md) declares
 // stores, models, MCP tools, agents and surfaces, and `humagen setup` writes one.
 // Go adds what a file cannot: a kind the file then selects by name
 // (WithKind), or a provider, tool source or connector directly. Options and
@@ -208,7 +208,7 @@ func WithPlatform(fn func(*platform.Config) error) Option {
 	}
 }
 
-// Slots a kind can be registered in. See docs/spec.md.
+// Slots a kind can be registered in. See docs/reference/spec.md.
 const (
 	Blobs      = spec.SlotBlobs
 	Bus        = spec.SlotBus

@@ -5,7 +5,7 @@
 #
 #   docker build -t humagen .
 #
-# Then run it with a spec (docs/spec.md) in /etc/warp. Its System document
+# Then run it with a spec (docs/reference/spec.md) in /etc/warp. Its System document
 # must sign in with OIDC: dev, mock and tailscale listen only on loopback, so
 # they cannot be reached through a published container port. Credentials are
 # references in the spec, read from the environment:
@@ -16,8 +16,8 @@
 #
 # The paths in the image (/var/lib/warp, /etc/warp, /usr/share/warp/web) and
 # the uid keep the names they had before the product was renamed, so volumes
-# and specs written for those paths keep working. See docs/deploy.md and
-# docs/upgrading-from-warp.md.
+# and specs written for those paths keep working. See docs/guides/deploy.md and
+# docs/guides/upgrading-from-warp.md.
 
 # At least the go directive in go.mod: the golang image sets GOTOOLCHAIN=local,
 # so it cannot fetch a newer toolchain.

@@ -13,7 +13,7 @@ image:
   repository: ghcr.io/your-org/humagen
   tag: "YOUR_TAG"
 
-# The System document (docs/spec.md#system).
+# The System document (docs/reference/spec.md#system).
 system:
   metadata:
     display_name: Acme
@@ -34,7 +34,7 @@ system:
         access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID}
         secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY}
 
-# One Platform document per workspace (docs/spec.md#platform).
+# One Platform document per workspace (docs/reference/spec.md#platform).
 platforms:
   - metadata:
       name: default

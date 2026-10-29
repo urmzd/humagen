@@ -5,14 +5,14 @@
 A Go module that composes saige, playscape and anchor into one agent platform
 and its web and Slack presentation in one repository. fiber, its transport,
 lives in `fiber/` in the same module and is no longer an upstream dependency. The design is in
-[docs/architecture.md](docs/architecture.md). Current console design requirements
-and their acceptance criteria are tracked in [design.md](design.md). Read it
+[docs/architecture/overview.md](docs/architecture/overview.md). Current console design requirements
+and their acceptance criteria are tracked in [docs/reference/design-requirements.md](docs/reference/design-requirements.md). Read it
 before changing presentation or integrations, and update its requirement status
 and evidence when implementing a requirement.
 
 ## Rules
 
-- **Every choice is a file or an interface, never a fork.** A new backend is a kind in a spec slot (`pkg/spec`, `humagen.WithKind`); a new setting is a spec field with a default, documented in docs/spec.md, whose examples are tested.
+- **Every choice is a file or an interface, never a fork.** A new backend is a kind in a spec slot (`pkg/spec`, `humagen.WithKind`); a new setting is a spec field with a default, documented in docs/reference/spec.md, whose examples are tested.
 
 - **Compose, don't reimplement.** If saige, playscape or anchor owns a
   concern, use it or change it upstream. fiber is in `fiber/`: change it here,
@@ -44,13 +44,13 @@ and evidence when implementing a requirement.
   fields change together with `api/openapi.yaml`, then `make client`. Never edit
   `packages/client/src/generated`.
 - **Old names live in one place.** The product was called warp, and fiber
-  had an earlier name of its own (docs/renaming.md#fiber, the only doc that
+  had an earlier name of its own (docs/guides/renaming.md#fiber, the only doc that
   spells it). A name from either is read only through `internal/legacy` (Go)
   or `apps/*/src/legacy.ts`, and a name stored data depends on is kept and
   pinned by a test. `TestNoNewOldName` fails on any other mention;
-  docs/upgrading-from-warp.md lists both kinds.
+  docs/guides/upgrading-from-warp.md lists both kinds.
 - **Keep the status table honest.** When a piece lands, update
-  `docs/architecture.md#status` in the same change.
+  `docs/architecture/overview.md#status` in the same change.
 
 ## Layout
 
@@ -67,7 +67,7 @@ and evidence when implementing a requirement.
 - `pkg/agents`: each tenant's agent definitions on `pkg/state`, a `definition.Source`. `internal/legacy` moves the old registry into it once.
 - `internal/wire`: the one seam onto fiber's run model: a trigger's request and context, connector meta keys, event types and bodies, and agent definitions (`AgentCatalog`). Nothing else touches them; `TestSeam` checks.
 - `internal/platform`: the composition root. `internal/httpapi`: routes, sessions, event stream.
-- `pkg/spec`: the configuration language, System and Platform documents (docs/spec.md). `internal/app`: the command tree (`start`, `serve`, `deploy`, `setup`, `config`, `slack manifest`, `authz`) and the composition root, which turns a spec and flags into a running platform. The module root package `humagen` (`humagen.go`): its public face, `humagen.Main` and the options a downstream program passes instead of forking. `cmd/humagen`: `humagen.Main` with no options. `pkg/credref`: credential references (`env:`, `keychain:`, `op://`), read when used and never stored. `pkg/credentials`: the credential each person gives for a person-scoped tool provider: a reference, or a value kept in the secrets store client secrets are kept in.
+- `pkg/spec`: the configuration language, System and Platform documents (docs/reference/spec.md). `internal/app`: the command tree (`start`, `serve`, `deploy`, `setup`, `config`, `slack manifest`, `authz`) and the composition root, which turns a spec and flags into a running platform. The module root package `humagen` (`humagen.go`): its public face, `humagen.Main` and the options a downstream program passes instead of forking. `cmd/humagen`: `humagen.Main` with no options. `pkg/credref`: credential references (`env:`, `keychain:`, `op://`), read when used and never stored. `pkg/credentials`: the credential each person gives for a person-scoped tool provider: a reference, or a value kept in the secrets store client secrets are kept in.
 - `cmd/humagen`: the binary. `apps/web`: the console, built on the shared UI packages. `apps/slack`: the Slack app, a client of the API.
 - `packages/adapter`: the one adapter between the platform's wire shapes and the shared UI model. The console and the Slack app both use it; nothing surface-specific goes in it.
 - `api/openapi.yaml`: the API contract, checked by `internal/httpapi/openapi_test.go`. `packages/client`: the TypeScript client generated from it by oag.
@@ -81,7 +81,7 @@ and evidence when implementing a requirement.
 | Test | `make test` |
 | Preview | `make dev`, then `make web` |
 | Preview with sign-in | `make dev-signin`, then `make web` |
-| Preview on a local Kubernetes cluster | `tilt up` (docs/deploy.md#local-kubernetes-with-tilt) |
+| Preview on a local Kubernetes cluster | `tilt up` (docs/guides/deploy.md#local-kubernetes-with-tilt) |
 | Web checks | `cd apps/web && pnpm typecheck && pnpm test` |
 | Adapter checks | `cd packages/adapter && pnpm typecheck && pnpm test` |
 | Slack app checks | `cd apps/slack && pnpm exec biome check && pnpm typecheck && pnpm test` |

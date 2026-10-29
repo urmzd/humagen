@@ -1,6 +1,6 @@
 // Hand-written. Everything under ./generated is written by oag from
 // api/openapi.yaml and must not be edited; this file is the thin layer over it
-// for the things the generator does not do. Each is listed in docs/api.md.
+// for the things the generator does not do. Each is listed in docs/reference/api.md.
 import {
   ApiClient,
   ApiError,

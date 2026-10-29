@@ -13,10 +13,10 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 )
 
-// The reference's own examples load, so docs/spec.md cannot drift from the
+// The reference's own examples load, so docs/reference/spec.md cannot drift from the
 // language it describes.
 func TestTheReferenceExamplesLoad(t *testing.T) {
-	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec.md"))
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "spec.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,13 +296,13 @@ func TestAnAgentPolicyNeedsAnAgentMdFile(t *testing.T) {
 
 // The reference's .agent.md example reads as the agent it describes.
 func TestTheReferenceAgentFileReads(t *testing.T) {
-	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec.md"))
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "spec.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := regexp.MustCompile("(?s)```markdown\n(---\napiVersion: saige/v1.*?)```").FindStringSubmatch(string(doc))
 	if m == nil {
-		t.Fatal("docs/spec.md has no .agent.md example")
+		t.Fatal("docs/reference/spec.md has no .agent.md example")
 	}
 	s, err := wire.SpecOfAgentFile(m[1], wire.DefinitionPolicy{TaggedOnly: true})
 	if err != nil {

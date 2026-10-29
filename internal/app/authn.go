@@ -22,7 +22,7 @@ import (
 )
 
 // policyEnv names the file holding the authorization policy. Unset means the
-// built-in policy. See docs/authorization.md.
+// built-in policy. See docs/reference/authorization.md.
 const policyEnv = "HUMAGEN_AUTHZ_POLICY"
 
 // mockAudience is the API audience the mock provider issues access tokens for.

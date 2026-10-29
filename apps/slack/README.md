@@ -8,7 +8,7 @@ console uses, into one shared UI turn, and that turn is rendered by
 
 It is the experience of Humagen's Slack sandbox (`apps/slack-sandbox` in
 Humagen), driven by real runs instead of fixtures. For how it relates to the Go
-webhook connector, see [Slack](../../docs/slack.md#two-ways-to-answer-in-slack).
+webhook connector, see [Slack](../../docs/reference/slack.md#two-ways-to-answer-in-slack).
 
 ## Run it
 
@@ -73,7 +73,7 @@ and register `/skill`.
 
 Skills use the existing client's `slack.commands` list; the agent receives the
 configured command and its arguments through the normal run path. A command
-whose name is a skill the project declares (see docs/projects.md, Skills) also
+whose name is a skill the project declares (see docs/architecture/projects.md, Skills) also
 gives the runs it starts that skill's instructions. Changes appear
 in a code channel on its next message after the client cache refreshes (30 seconds).
 Ordinary Slack channels use `/skill`; Slack's dynamic command API applies only to
@@ -194,7 +194,7 @@ buttons. A click is answered through Humagen as the Slack person, only when
 credential and whose `slack.people` maps them; anyone else is told they cannot,
 and Humagen is not asked. The same mapping makes the runs a mapped person
 asks for theirs. A reply is typed in the console for now. See
-[clients](../../docs/clients.md#people-a-slack-app-answers-for).
+[clients](../../docs/reference/clients.md#people-a-slack-app-answers-for).
 
 A refusal or error from Humagen is shown in Humagen's failure words; the
 platform's own text goes to the log. A Slack write that fails mid-turn stops

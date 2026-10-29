@@ -3119,7 +3119,7 @@ export interface GitHubOptions {
   guides?: boolean;
   mutations?: boolean;
   read_repositories?: string[];
-  /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md). */
+  /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/reference/github.md). */
   login?: string;
 }
 
