@@ -200,6 +200,16 @@ const CALL_AGENT = "call_agent";
 /** fiber names the tool that hands work to another agent after that agent. */
 const DELEGATE = /^tag_(.+)$/;
 
+/** The agent a call_agent or delegate_task call names in its arguments. */
+function calledAgent(input?: string): string | undefined {
+  try {
+    const args = JSON.parse(input ?? "") as { agent?: unknown };
+    return typeof args.agent === "string" && args.agent ? args.agent : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The agent a tool call hands work to, when the tool is a call to another agent. */
 export function delegateOf(tool?: string): string | undefined {
   return DELEGATE.exec(tool ?? "")?.[1];
@@ -249,7 +259,12 @@ export function adapter(
     const all = { ...shown.get(id), ...rest };
     shown.set(id, all);
     const run = started.get(id);
-    const to = delegateOf(name) ?? run?.agent;
+    // A call that never started a run (refused, or failed on the way) is
+    // still a call to that agent: its arguments name it.
+    const to =
+      delegateOf(name) ??
+      run?.agent ??
+      (name === CALL_AGENT || name === HAND_ON ? calledAgent(all.input) : undefined);
     return to
       ? {
           id,

@@ -210,6 +210,22 @@ export function callPrompt(task: Task): string {
       const v = args[key];
       if (typeof v === "string" && v.trim()) return v.trim();
     }
+    // A call in chat form: the text of its messages, in order.
+    if (Array.isArray(args.messages)) {
+      const said = (args.messages as { content?: unknown }[])
+        .flatMap((m) =>
+          typeof m.content === "string"
+            ? [m.content]
+            : Array.isArray(m.content)
+              ? (m.content as { text?: unknown }[]).flatMap((c) =>
+                  typeof c.text === "string" ? [c.text] : [],
+                )
+              : [],
+        )
+        .join("\n")
+        .trim();
+      if (said) return said;
+    }
   } catch {
     // Not JSON: the arguments are the prompt.
   }
@@ -269,7 +285,11 @@ function AgentCall({
             </p>
           )}
           {answer && <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{answer}</p>}
-          {!answer && sub.summary && <p className="text-aui-xs text-aui-muted">{sub.summary}</p>}
+          {task.status === "error" && task.output ? (
+            <p className="whitespace-pre-wrap text-aui-bad text-aui-xs">{task.output}</p>
+          ) : (
+            !answer && sub.summary && <p className="text-aui-xs text-aui-muted">{sub.summary}</p>
+          )}
           {runId && (
             <button
               type="button"
