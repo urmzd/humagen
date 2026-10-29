@@ -83,8 +83,10 @@ export function settled(turn: Turn, run: Run): TurnEvent[] {
       ? [{ type: "text.delta", text: run.answer.slice(turn.text.length) }]
       : [];
   switch (run.status) {
-    case "completed":
-      return [...rest, { type: "turn.completed" }];
+    case "completed": {
+      const { durationMs } = turnOf(run);
+      return [...rest, durationMs === undefined ? { type: "turn.completed" } : { type: "turn.completed", durationMs }];
+    }
     case "failed": {
       const failure = turnOf(run).failure;
       return failure ? [{ type: "turn.failed", failure }] : [];
