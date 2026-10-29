@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -49,6 +50,8 @@ type Brand struct {
 	Wordmark string
 	Title    string
 	Logo     *Asset
+	// LogoDark is the logo in the dark theme, nil to draw Logo in both.
+	LogoDark *Asset
 	LogoAlt  string
 	// CSS is the stylesheet of the palette and fonts, empty with neither.
 	CSS string
@@ -149,19 +152,18 @@ func resolve(b spec.Branding, fontURL string) (Brand, error) {
 		out.Wordmark = out.Name
 	}
 	if l := b.Logo; l != nil {
-		a, err := readFile(l.Path, maxLogo)
+		a, err := readLogo(l.Path)
 		if err != nil {
 			return out, fmt.Errorf("branding.logo: %w", err)
 		}
-		a.Type = spec.LogoTypes[strings.ToLower(filepath.Ext(l.Path))]
-		if a.Type == "image/svg+xml" {
-			if err := checkSVG(a.Body); err != nil {
-				return out, fmt.Errorf("branding.logo: %s: %w", l.Path, err)
-			}
-		}
-		out.Logo, out.LogoAlt = &a, l.Alt
+		out.Logo, out.LogoAlt = a, l.Alt
 		if out.LogoAlt == "" {
 			out.LogoAlt = out.Name
+		}
+		if l.Dark != "" {
+			if out.LogoDark, err = readLogo(l.Dark); err != nil {
+				return out, fmt.Errorf("branding.logo.dark: %w", err)
+			}
 		}
 	}
 	if b.Fonts != nil {
@@ -177,6 +179,20 @@ func resolve(b spec.Branding, fontURL string) (Brand, error) {
 	}
 	out.CSS = CSS(b, fontURL)
 	return out, nil
+}
+
+func readLogo(path string) (*Asset, error) {
+	a, err := readFile(path, maxLogo)
+	if err != nil {
+		return nil, err
+	}
+	a.Type = spec.LogoTypes[strings.ToLower(filepath.Ext(path))]
+	if a.Type == "image/svg+xml" {
+		if err := checkSVG(a.Body); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+	}
+	return &a, nil
 }
 
 func readFile(path string, limit int64) (Asset, error) {
@@ -351,7 +367,16 @@ func CSS(b spec.Branding, fontURL string) string {
 // files are served as they were built.
 func (s *Set) plain() bool {
 	b := s.System
-	return b.Name == spec.DefaultName && b.Title == spec.DefaultName && b.CSS == "" && s.Manifest == (spec.Manifest{})
+	return b.Name == spec.DefaultName && b.Title == spec.DefaultName && b.CSS == "" && s.Manifest == (spec.Manifest{}) && !s.darkIcons()
+}
+
+func (s *Set) darkIcons() bool {
+	for _, dark := range spec.DarkIcons {
+		if _, ok := s.Icons[dark]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Page is the console's index.html with the deployment's branding: its
@@ -374,6 +399,7 @@ func (s *Set) Page(index []byte) []byte {
 	if d := s.Manifest.Description; d != "" {
 		page = replaceAttr(page, `<meta name="description" content="`, html.EscapeString(d))
 	}
+	page = s.darkFavicons(page)
 	var head strings.Builder
 	if c := s.Manifest.ThemeColor; c != "" {
 		page = dropThemeColors(page)
@@ -386,6 +412,31 @@ func (s *Set) Page(index []byte) []byte {
 		page = strings.Replace(page, "</head>", head.String()+"</head>", 1)
 	}
 	return []byte(page)
+}
+
+// darkFavicons limits each favicon with a dark variant to the light theme
+// and adds the variant after it for the dark, so the tab follows the device.
+func (s *Set) darkFavicons(page string) string {
+	for _, light := range slices.Sorted(maps.Keys(spec.DarkIcons)) {
+		dark := spec.DarkIcons[light]
+		if _, ok := s.Icons[dark]; !ok {
+			continue
+		}
+		link := `<link rel="icon" href="/` + light + `"`
+		i := strings.Index(page, link)
+		if i < 0 {
+			continue
+		}
+		j := strings.Index(page[i:], ">")
+		if j < 0 {
+			continue
+		}
+		tag := page[i : i+j+1]
+		lit := strings.Replace(tag, link, link+` media="(prefers-color-scheme: light)"`, 1)
+		dk := strings.Replace(tag, `href="/`+light+`"`, `href="/`+dark+`" media="(prefers-color-scheme: dark)"`, 1)
+		page = page[:i] + lit + "\n    " + dk + page[i+j+1:]
+	}
+	return page
 }
 
 func replaceTag(page, open, close, inner string) string {

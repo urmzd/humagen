@@ -2047,6 +2047,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Fatalf("logo type = %q", logo.header.Get("Content-Type"))
 	}
 	c.call(globex, "GET", "/api/branding/logo", "/api/branding/logo", "", http.StatusNotFound)
+	c.call(acme, "GET", "/api/branding/logo/dark", "/api/branding/logo/dark", "", http.StatusOK)
+	c.call(globex, "GET", "/api/branding/logo/dark", "/api/branding/logo/dark", "", http.StatusNotFound)
 	c.call(acme, "GET", "/api/branding/style.css", "/api/branding/style.css", "", http.StatusOK)
 	if font := c.call(acme, "GET", "/api/branding/fonts/{name}", "/api/branding/fonts/0.woff2", "", http.StatusOK); font.header.Get("Content-Type") != "font/woff2" {
 		t.Fatalf("font type = %q", font.header.Get("Content-Type"))

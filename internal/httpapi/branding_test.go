@@ -19,7 +19,10 @@ import (
 	"github.com/urmzd/humagen/pkg/spec"
 )
 
-const brandingSVG = `<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>`
+const (
+	brandingSVG     = `<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>`
+	brandingDarkSVG = `<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1" fill="#fff"/></svg>`
+)
 
 func brandedServer(t *testing.T, tenant string) (http.Handler, string) {
 	t.Helper()
@@ -27,12 +30,14 @@ func brandedServer(t *testing.T, tenant string) (http.Handler, string) {
 	web := filepath.Join(dir, "web")
 	icons := filepath.Join(dir, "icons")
 	for path, body := range map[string]string{
-		filepath.Join(web, "index.html"):           `<html><head><title>Humagen</title><meta name="application-name" content="Humagen" /></head><body></body></html>`,
+		filepath.Join(web, "index.html"):           `<html><head><title>Humagen</title><meta name="application-name" content="Humagen" /><link rel="icon" href="/favicon.svg" type="image/svg+xml" /></head><body></body></html>`,
 		filepath.Join(web, "manifest.webmanifest"): `{"name":"Humagen","short_name":"Humagen"}`,
 		filepath.Join(web, "favicon.svg"):          `<svg>humagen</svg>`,
 		filepath.Join(web, "icon.svg"):             `<svg>humagen</svg>`,
 		filepath.Join(icons, "favicon.svg"):        brandingSVG,
+		filepath.Join(icons, "favicon-dark.svg"):   brandingDarkSVG,
 		filepath.Join(dir, "logo.svg"):             brandingSVG,
+		filepath.Join(dir, "logo-dark.svg"):        brandingDarkSVG,
 		filepath.Join(dir, "north.png"):            "\x89PNG north",
 	} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -44,7 +49,7 @@ func brandedServer(t *testing.T, tenant string) (http.Handler, string) {
 	}
 	var cfg spec.Config
 	cfg.System.Spec.Branding = spec.Branding{
-		Name: "Acme", Logo: &spec.Logo{Path: filepath.Join(dir, "logo.svg")}, Icons: icons,
+		Name: "Acme", Logo: &spec.Logo{Path: filepath.Join(dir, "logo.svg"), Dark: filepath.Join(dir, "logo-dark.svg")}, Icons: icons,
 		Palette: &spec.Palette{Surface: &spec.Pair{Light: "#fafafa"}},
 	}
 	cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: "north"}, Spec: spec.PlatformSpec{Branding: spec.Branding{
@@ -96,6 +101,38 @@ func TestTheConsoleIsServedBranded(t *testing.T) {
 	}
 	if res, body := brandGet(t, h, "/branding/logo"); res.StatusCode != http.StatusOK || body != brandingSVG {
 		t.Fatalf("the deployment's logo: %d %q", res.StatusCode, body)
+	}
+	if res, body := brandGet(t, h, "/branding/logo/dark"); res.StatusCode != http.StatusOK || body != brandingDarkSVG {
+		t.Fatalf("the deployment's dark logo: %d %q", res.StatusCode, body)
+	}
+	if res, body := brandGet(t, h, "/favicon-dark.svg"); res.StatusCode != http.StatusOK || body != brandingDarkSVG {
+		t.Fatalf("the dark favicon: %d %q", res.StatusCode, body)
+	}
+	_, page := brandGet(t, h, "/")
+	for _, want := range []string{
+		`<link rel="icon" href="/favicon.svg" media="(prefers-color-scheme: light)" type="image/svg+xml" />`,
+		`<link rel="icon" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" type="image/svg+xml" />`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the page lacks %s:\n%s", want, page)
+		}
+	}
+}
+
+func TestAThemedLogoIsListedOnlyWhenSet(t *testing.T) {
+	h, _ := brandedServer(t, "default")
+	if _, body := brandGet(t, h, "/api/branding"); !strings.Contains(body, `"logo_dark":"/api/branding/logo/dark"`) {
+		t.Fatalf("the deployment's dark logo: %s", body)
+	}
+	if _, body := brandGet(t, h, "/api/branding/logo/dark"); body != brandingDarkSVG {
+		t.Fatalf("dark logo: %q", body)
+	}
+	north, _ := brandedServer(t, "north")
+	if _, body := brandGet(t, north, "/api/branding"); !strings.Contains(body, `"logo_dark":null`) {
+		t.Fatalf("a workspace logo with no dark variant is drawn in both themes: %s", body)
+	}
+	if res, _ := brandGet(t, north, "/api/branding/logo/dark"); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("no dark logo: %d", res.StatusCode)
 	}
 }
 

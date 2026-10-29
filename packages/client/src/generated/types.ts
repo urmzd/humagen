@@ -2021,6 +2021,8 @@ export interface Branding {
   title: string;
   /** Where the logo is served. Null is Humagen's mark. */
   logo: string | null;
+  /** Where the logo for the dark theme is served. Null draws logo in both themes. */
+  logo_dark: string | null;
   /** The logo's text for a screen reader. */
   logo_alt: string;
   /** Where the stylesheet of the palette and typefaces is served. Null when the branding sets neither. */

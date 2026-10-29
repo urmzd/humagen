@@ -1270,6 +1270,10 @@ func spa(dir string, brand *branding.Set) http.Handler {
 		clean := filepath.Clean("/" + r.URL.Path)
 		p := filepath.Join(dir, filepath.FromSlash(clean))
 		if info, err := os.Stat(p); err != nil || info.IsDir() || clean == "/index.html" {
+			// A dark favicon is branding's alone: the console has none.
+			if clean != "/index.html" && brandedFile(w, r, dir, filepath.ToSlash(clean), brand) {
+				return
+			}
 			if !brandedFile(w, r, dir, "/index.html", brand) {
 				http.ServeFile(w, r, filepath.Join(dir, "index.html"))
 			}

@@ -65,6 +65,9 @@ type Branding struct {
 // Logo is an image file, SVG, PNG, WebP or JPEG, read at start.
 type Logo struct {
 	Path string `json:"path"`
+	// Dark is the logo drawn in the dark theme, such as one in light ink.
+	// Left out, Path is drawn in both.
+	Dark string `json:"dark,omitempty"`
 	// Alt is the logo's text for a screen reader. Left out, the name.
 	Alt string `json:"alt,omitempty"`
 }
@@ -245,8 +248,12 @@ const (
 )
 
 // BrandingIcons are the console's icon files, which branding.icons may
-// replace.
-var BrandingIcons = []string{"favicon.svg", "favicon-32.png", "apple-touch-icon.png", "icon.svg", "icon-192.png", "icon-512.png"}
+// replace. The -dark favicons are added, not replaced: the tab shows them
+// while the device is in its dark theme.
+var BrandingIcons = []string{"favicon.svg", "favicon-32.png", "favicon-dark.svg", "favicon-dark-32.png", "apple-touch-icon.png", "icon.svg", "icon-192.png", "icon-512.png"}
+
+// DarkIcons are each favicon's dark variant, by the favicon it stands in for.
+var DarkIcons = map[string]string{"favicon.svg": "favicon-dark.svg", "favicon-32.png": "favicon-dark-32.png"}
 
 // LogoTypes are the image types a logo may be, by extension.
 var LogoTypes = map[string]string{
@@ -281,6 +288,9 @@ func (b Branding) check(system bool) error {
 		}
 		if _, ok := LogoTypes[strings.ToLower(path.Ext(l.Path))]; !ok {
 			return errors.New("branding.logo.path is an .svg, .png, .webp or .jpg file")
+		}
+		if _, ok := LogoTypes[strings.ToLower(path.Ext(l.Dark))]; l.Dark != "" && !ok {
+			return errors.New("branding.logo.dark is an .svg, .png, .webp or .jpg file")
 		}
 		if err := checkName(l.Alt); err != nil {
 			return fmt.Errorf("branding.logo.alt: %w", err)

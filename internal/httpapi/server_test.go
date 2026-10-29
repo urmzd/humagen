@@ -527,6 +527,10 @@ func fixtureBranding(t *testing.T) *branding.Set {
 	t.Helper()
 	dir := t.TempDir()
 	logo, font := filepath.Join(dir, "logo.svg"), filepath.Join(dir, "face.woff2")
+	dark := filepath.Join(dir, "logo-dark.svg")
+	if err := os.WriteFile(dark, []byte(brandingDarkSVG), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(logo, []byte(brandingSVG), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +539,7 @@ func fixtureBranding(t *testing.T) *branding.Set {
 	}
 	var cfg spec.Config
 	cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Branding: spec.Branding{
-		Name: "Acme", Logo: &spec.Logo{Path: logo}, Palette: &spec.Palette{Accent: &spec.Pair{Light: "#c2185b", Dark: "#f06292"}},
+		Name: "Acme", Logo: &spec.Logo{Path: logo, Dark: dark}, Palette: &spec.Palette{Accent: &spec.Pair{Light: "#c2185b", Dark: "#f06292"}},
 		Fonts: &spec.Fonts{UI: "Face, sans-serif", Files: []spec.FontFile{{Family: "Face", Path: font, Weight: "100 900"}}},
 	}}}}
 	b, err := branding.Load(cfg)

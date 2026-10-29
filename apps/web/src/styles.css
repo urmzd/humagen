@@ -57,11 +57,11 @@ body,
    * page. One curve for arriving, which settles gently, and a quicker one for
    * leaving, which gets out of the way.
    */
-  --humagen-dur-fast: 110ms;
-  --humagen-dur: 180ms;
-  --humagen-dur-slow: 260ms;
-  --humagen-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --humagen-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --humagen-dur-fast: var(--aui-dur-press);
+  --humagen-dur: var(--aui-dur-row);
+  --humagen-dur-slow: var(--aui-dur-page);
+  --humagen-ease-out: var(--aui-ease-arrive);
+  --humagen-ease-in: var(--aui-ease-leave);
 }
 html[data-theme="dark"],
 html[data-theme="dark"] [data-theme="dark"] {
@@ -476,8 +476,41 @@ button.humagen-tick:focus-visible {
   animation: humagen-fade-out var(--humagen-dur-fast) var(--humagen-ease-in) both;
 }
 
+/*
+ * The sidebar. Its width eases open, and what only an open sidebar shows
+ * fades in a beat behind it, so labels are not seen squeezed into a narrow
+ * rail. On a phone it is a drawer from the left over a fading backdrop.
+ */
+.humagen-sidebar {
+  transition: width var(--humagen-dur-slow) var(--humagen-ease-out);
+}
+.humagen-sidebar-reveal {
+  animation: humagen-fade var(--humagen-dur) var(--humagen-ease-out) 60ms backwards;
+}
+@media (max-width: 47.99rem) {
+  .humagen-sidebar {
+    animation: humagen-drawer-left var(--humagen-dur-slow) var(--humagen-ease-out) backwards;
+  }
+  .humagen-sidebar-reveal {
+    animation: none;
+  }
+}
+@keyframes humagen-drawer-left {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
 /* With motion reduced, nothing travels. Things that arrive or leave only fade, briefly. */
 @media (prefers-reduced-motion: reduce) {
+  .humagen-sidebar {
+    transition: none;
+  }
+  .humagen-switch,
+  .humagen-switch::after {
+    transition: none;
+  }
   .humagen-press:active:not(:disabled) {
     transform: none;
   }
@@ -551,7 +584,7 @@ button.humagen-tick:focus-visible {
   border-radius: 9999px;
   background: var(--aui-neutral);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background-color var(--humagen-dur) var(--humagen-ease-out);
 }
 .humagen-switch::after {
   content: "";
@@ -562,7 +595,7 @@ button.humagen-tick:focus-visible {
   height: calc(1.125rem - 4px);
   border-radius: 9999px;
   background: white;
-  transition: transform 0.15s ease;
+  transition: transform var(--humagen-dur) var(--humagen-ease-out);
 }
 .humagen-switch:checked {
   background: var(--aui-accent);

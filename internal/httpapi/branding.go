@@ -19,10 +19,14 @@ import (
 func (s *Server) brandingRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/branding", s.authed("", s.getBranding))
 	mux.HandleFunc("GET /api/branding/logo", s.authed("", s.getBrandingLogo))
+	mux.HandleFunc("GET /api/branding/logo/dark", s.authed("", s.getBrandingLogoDark))
 	mux.HandleFunc("GET /api/branding/style.css", s.authed("", s.getBrandingStyle))
 	mux.HandleFunc("GET /api/branding/fonts/{name}", s.authed("", s.getBrandingFont))
 	mux.HandleFunc("GET /branding/logo", func(w http.ResponseWriter, r *http.Request) {
 		serveAsset(w, r, s.Branding.For("").Logo)
+	})
+	mux.HandleFunc("GET /branding/logo/dark", func(w http.ResponseWriter, r *http.Request) {
+		serveAsset(w, r, s.Branding.For("").LogoDark)
 	})
 	mux.HandleFunc("GET /branding/fonts/{name}", func(w http.ResponseWriter, r *http.Request) {
 		serveFont(w, r, s.Branding.For(""))
@@ -35,6 +39,8 @@ type brandingView struct {
 	Wordmark string  `json:"wordmark"`
 	Title    string  `json:"title"`
 	Logo     *string `json:"logo"`
+	// LogoDark is null to draw Logo in both themes.
+	LogoDark *string `json:"logo_dark"`
 	LogoAlt  string  `json:"logo_alt"`
 	Style    *string `json:"style"`
 	// Starters are null for the console's own.
@@ -52,6 +58,10 @@ func (s *Server) getBranding(w http.ResponseWriter, _ *http.Request, who auth.Pr
 		u := "/api/branding/logo"
 		v.Logo = &u
 	}
+	if b.LogoDark != nil {
+		u := "/api/branding/logo/dark"
+		v.LogoDark = &u
+	}
 	if b.CSS != "" {
 		u := "/api/branding/style.css"
 		v.Style = &u
@@ -61,6 +71,10 @@ func (s *Server) getBranding(w http.ResponseWriter, _ *http.Request, who auth.Pr
 
 func (s *Server) getBrandingLogo(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	serveAsset(w, r, s.Branding.For(who.Tenant).Logo)
+}
+
+func (s *Server) getBrandingLogoDark(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	serveAsset(w, r, s.Branding.For(who.Tenant).LogoDark)
 }
 
 func (s *Server) getBrandingStyle(w http.ResponseWriter, r *http.Request, who auth.Principal) {
