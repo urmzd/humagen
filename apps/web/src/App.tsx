@@ -32,6 +32,7 @@ import {
   type ThreadSummary,
   type Settings as Workspace,
 } from "./api.ts";
+import { accentAttribute, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { YourConnections } from "./Connections.tsx";
 import { ContextHealth } from "./ContextHealth.tsx";
@@ -70,6 +71,7 @@ import { defaultUsageView, Usage } from "./Usage.tsx";
 import { button, Page, Presence, Problem, primary, SkeletonRows, setAgentHues } from "./ui.tsx";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
+import { useBranding } from "./workspaceBranding.ts";
 
 type Session =
   | { state: "loading" }
@@ -116,7 +118,7 @@ export function App() {
   if (session.state === "signed-out") {
     return (
       <Centered>
-        <h1 className="text-aui-lg font-medium text-aui-fg">Humagen</h1>
+        <h1 className="text-aui-lg font-medium text-aui-fg">{servedBranding().name}</h1>
         <p className="text-aui-sm text-aui-muted">You are signed out.</p>
         <a className={primary} href={signInUrl()}>
           Sign In
@@ -161,7 +163,7 @@ function useAppearance(prefs: Preferences | null) {
     const apply = () => {
       const theme = prefs?.theme ?? "system";
       root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
-      root.dataset.accent = prefs?.accent ?? "red";
+      root.dataset.accent = accentAttribute(prefs?.accent);
     };
     apply();
     media.addEventListener("change", apply);
@@ -199,9 +201,11 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // counter that tells the page to look again, and a message to open first.
   const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
   const [inboxTick, setInboxTick] = useState(0);
+  const branding = useBranding();
+  const product = (branding ?? servedBranding()).title;
   useEffect(() => {
-    document.title = documentTitle(route, inboxCounts.unread);
-  }, [route, inboxCounts.unread]);
+    document.title = documentTitle(route, inboxCounts.unread, product);
+  }, [route, inboxCounts.unread, product]);
   // The project tree, null until it is read, and the workspace's own view, which heads it.
   const [projects, setProjects] = useState<ProjectView[] | null>(null);
   const [root, setRoot] = useState<ProjectView | null>(null);
@@ -580,6 +584,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         threads={threads}
         projects={projects ?? []}
         workspaceName={workspaceName}
+        branding={branding}
         pinned={prefs.pinned}
         onPin={pin}
         onPinProject={pinProject}

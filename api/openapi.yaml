@@ -519,6 +519,22 @@ paths:
             text/plain:
               schema: {type: string}
 
+  /branding/logo:
+    get:
+      operationId: getDeploymentLogo
+      tags: [health]
+      summary: Get the deployment's logo
+      description: The System document's branding logo, public like the console's icons, since the page shows it before sign-in.
+      x-permission: public
+      security: []
+      responses:
+        "200":
+          description: The logo, with its image type.
+          content:
+            image/*:
+              schema: {type: string, format: binary}
+        "404": {$ref: "#/components/responses/NotFound"}
+
   /auth/login:
     get:
       operationId: startLogin
@@ -4669,6 +4685,51 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/branding:
+    get:
+      operationId: getBranding
+      tags: [preferences]
+      summary: Get the caller's workspace branding
+      description: The name, wordmark, tab title, logo and stylesheet the console brands itself with, the workspace's over the deployment's (docs/spec.md#branding).
+      x-permission: authenticated
+      responses:
+        "200":
+          description: The branding.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Branding"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/branding/logo:
+    get:
+      operationId: getBrandingLogo
+      tags: [preferences]
+      summary: Get the caller's workspace logo
+      x-permission: authenticated
+      responses:
+        "200":
+          description: The logo, with its image type.
+          content:
+            image/*:
+              schema: {type: string, format: binary}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/branding/style.css:
+    get:
+      operationId: getBrandingStyle
+      tags: [preferences]
+      summary: Get the caller's workspace stylesheet
+      description: The palette and typefaces as CSS over the console's own tokens. Empty when the branding sets neither.
+      x-permission: authenticated
+      responses:
+        "200":
+          description: The stylesheet.
+          content:
+            text/css:
+              schema: {type: string}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/preferences:
     get:
       operationId: getPreferences
@@ -10343,10 +10404,10 @@ components:
           format: date-time
         setup_by: {type: string}
     Accent:
-      description: The caller's interaction accent. Existing saved choices remain supported.
+      description: The caller's interaction accent. Existing saved choices remain supported. workspace is the workspace's branded accent, red when its branding sets none.
       type: string
-      enum: [red, yellow, green, purple, blue, teal]
-      default: red
+      enum: [workspace, red, yellow, green, purple, blue, teal]
+      default: workspace
     Theme:
       type: string
       enum: [system, light, dark]
@@ -10366,6 +10427,21 @@ components:
         timezone: {type: string}
         remember: {type: boolean}
         use_personal_memory_in_projects: {type: boolean}
+    Branding:
+      description: How the console brands itself for the caller's workspace.
+      type: object
+      required: [name, wordmark, title, logo, logo_alt, style]
+      properties:
+        name: {type: string, description: The product's name.}
+        wordmark: {type: string, description: The text beside the logo in the sidebar. Empty shows the logo alone.}
+        title: {type: string, description: What follows the page's name in the browser tab.}
+        logo:
+          type: [string, "null"]
+          description: Where the logo is served. Null is Humagen's mark.
+        logo_alt: {type: string, description: The logo's text for a screen reader.}
+        style:
+          type: [string, "null"]
+          description: Where the stylesheet of the palette and typefaces is served. Null when the branding sets neither.
     Preferences:
       description: A person's own settings.
       type: object

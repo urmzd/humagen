@@ -472,6 +472,43 @@ spec:
 	}
 }
 
+func TestTheSlackManifestTakesItsCopyFromTheSpec(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
+kind: Platform
+metadata: {name: default, display_name: Acme}
+spec:
+  surfaces:
+    slack:
+      enabled: true
+      team: T1
+      bot_token: {ref: "env:B"}
+      app_token: {ref: "env:A"}
+      description: Acme's field agents in Slack
+      background_color: "#1A1A2E"
+      command_description: Ask Acme's agents
+      command_usage_hint: "[question]"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got bytes.Buffer
+	if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"description": "Acme's field agents in Slack"`, `"background_color": "#1a1a2e"`, `"description": "Ask Acme's agents"`, `"usage_hint": "[question]"`} {
+		if !strings.Contains(got.String(), want) {
+			t.Errorf("manifest lacks %s:\n%s", want, got.String())
+		}
+	}
+	got.Reset()
+	if err := slackCmd([]string{"manifest"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.String(), `"background_color": "#2b50c8"`) || !strings.Contains(got.String(), `"description": "Ask Humagen in this channel"`) {
+		t.Errorf("with nothing set, the manifest is Humagen's:\n%s", got.String())
+	}
+}
+
 // Projects moved from runs:* to projects:*, so config check warns about a
 // configured machine that reads runs but not projects.
 func TestConfigCheckWarnsOfAMachineThatReadsRunsButNotProjects(t *testing.T) {

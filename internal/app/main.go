@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
-
+	"github.com/urmzd/humagen/internal/branding"
 	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
@@ -241,6 +241,12 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := fs.Parse(append(file.args, args...)); err != nil {
 		return err
 	}
+	// Branding's files are read now, so one that is missing fails the start
+	// rather than a page.
+	brand, err := branding.Load(file.cfg)
+	if err != nil {
+		return err
+	}
 	// Said once every flag is known: a console -web or the file names is
 	// served, and one turned off was turned off on purpose.
 	if d.notes != nil && *webDir == "" && !given(fs, "web") {
@@ -407,7 +413,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           (&httpapi.Server{P: p, Authn: authn, Log: log, WebDir: *webDir}).Handler(),
+		Handler:           (&httpapi.Server{P: p, Authn: authn, Log: log, WebDir: *webDir, Branding: brand}).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

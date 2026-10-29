@@ -24,7 +24,7 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/bus"
 	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 	"github.com/urmzd/humagen/fiber/pkg/event"
-
+	"github.com/urmzd/humagen/internal/branding"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
@@ -66,6 +66,8 @@ type Server struct {
 	Log   *slog.Logger
 	// WebDir, when set, is a built web console to serve at /.
 	WebDir string
+	// Branding is the deployment's and each workspace's. Nil is Humagen's.
+	Branding *branding.Set
 }
 
 // Handler returns the server's routes.
@@ -190,10 +192,11 @@ func (s *Server) Handler() http.Handler {
 	s.threadRoutes(mux)
 	s.billingRoutes(mux)
 	s.clientRoutes(mux)
+	s.brandingRoutes(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "no such route") })
 
 	if s.WebDir != "" {
-		mux.Handle("/", spa(s.WebDir))
+		mux.Handle("/", spa(s.WebDir, s.Branding))
 	}
 
 	// A cookie authenticates a browser without the page's consent, so a
@@ -1255,7 +1258,7 @@ func orEmpty[T any](s []T) []T {
 
 // spa serves a built single-page app, falling back to index.html for routes the
 // app handles itself.
-func spa(dir string) http.Handler {
+func spa(dir string, brand *branding.Set) http.Handler {
 	// The web app manifest has its own type, which not every system's table knows.
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	files := http.FileServer(http.Dir(dir))
@@ -1264,9 +1267,15 @@ func spa(dir string) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		p := filepath.Join(dir, filepath.FromSlash(filepath.Clean("/"+r.URL.Path)))
-		if info, err := os.Stat(p); err != nil || info.IsDir() {
-			http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+		clean := filepath.Clean("/" + r.URL.Path)
+		p := filepath.Join(dir, filepath.FromSlash(clean))
+		if info, err := os.Stat(p); err != nil || info.IsDir() || clean == "/index.html" {
+			if !brandedFile(w, r, dir, "/index.html", brand) {
+				http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+			}
+			return
+		}
+		if brandedFile(w, r, dir, filepath.ToSlash(clean), brand) {
 			return
 		}
 		files.ServeHTTP(w, r)
