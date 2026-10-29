@@ -32,28 +32,19 @@ export function itemOf(run: Run, item: TurnItem): Item | null {
 }
 
 /**
- * "Copy as" on every item humagen draws in a turn: each tool call, each call
- * to another agent, and the answer. Pass the result to `AgentMessage` as
- * `itemActions`.
+ * "Copy as" on the items humagen draws in a turn: each tool call and each call
+ * to another agent. Pass the result to `AgentMessage` as `itemActions`.
  *
- * On the answer this is the only copy control. humagen draws its own plain
- * copy button there only when a host returns nothing for the answer, so there
- * is one icon and never two. Return null itself to get that button back: an
- * element that renders nothing would leave the answer with no way to copy it.
+ * The answer gets no menu: null leaves humagen's own copy button, which puts
+ * the answer's Markdown on the clipboard in one click, as a person's message
+ * does. Return null itself, never an element that renders nothing, or the
+ * answer is left with no way to copy it.
  */
 export function itemActions(run: Run): ItemActions {
   return (item) => {
+    if (item.kind === "answer") return null;
     const found = itemOf(run, item);
     if (!found) return null;
-    // The answer's toolbar starts at the left edge, so its menu opens rightward. Rows have theirs at the right edge.
-    return (
-      <CopyAs
-        compact
-        align={item.kind === "answer" ? "left" : "right"}
-        label={item.kind === "answer" ? "Copy answer as" : "Copy as"}
-        testId="item-copy"
-        item={found}
-      />
-    );
+    return <CopyAs compact align="right" label="Copy as" testId="item-copy" item={found} />;
   };
 }

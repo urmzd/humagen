@@ -3022,14 +3022,27 @@ test("recorded outcomes lead with recommendations and Redirect prepares human in
   assert.equal(net?.seen.filter((call) => call.method === "POST").length, 0);
 });
 
-test("answer copy is an action menu and never exposes an empty-selection sentinel", async () => {
-  room();
-  const answer = await screen.findByRole("article", { name: "helper message" });
-  const copy = within(answer).getByRole("button", { name: "Copy answer as" });
-  assert.equal(copy.getAttribute("aria-label"), "Copy answer as");
-  fireEvent.click(copy);
-  assert.ok(await screen.findByRole("listbox"));
-  assert.ok(!copy.getAttribute("aria-label")?.includes("none"));
+test("copying an answer puts its Markdown on the clipboard in one click, with no menu", async () => {
+  const copied: string[] = [];
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text: string) => void copied.push(text) },
+  });
+  try {
+    room();
+    const answer = await screen.findByRole("article", { name: "helper message" });
+    const copy = within(answer).getByRole("button", { name: "Copy answer" });
+    assert.equal(copy.getAttribute("aria-haspopup"), null);
+    fireEvent.click(copy);
+    assert.ok(await within(answer).findByText("Copied"));
+    assert.equal(copied.length, 1);
+    assert.ok((copied[0] ?? "").length > 0);
+    assert.equal(screen.queryByRole("listbox"), null);
+  } finally {
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+    else delete (navigator as { clipboard?: unknown }).clipboard;
+  }
 });
 
 test("private source history publishes only a reviewed summary and stale consent preserves the draft", async () => {
