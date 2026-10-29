@@ -1,0 +1,285 @@
+# humagen_dev: the whole platform on this machine, for working on humagen or
+# on a project built on it, with one `tilt up`. See docs/guides/develop.md.
+#
+# In this repository, dev.Tiltfile at the root calls it. A project built on
+# humagen loads it as a Tilt extension, pinned to the release its go.mod uses:
+#
+#   v1alpha1.extension_repo(name='humagen', url='https://github.com/urmzd/humagen', ref='v0.38.0')
+#   v1alpha1.extension(name='humagen-dev', repo_name='humagen', repo_path='deploy/tilt/dev')
+#   load('ext://humagen-dev', 'humagen_dev')
+#   humagen_dev(name='ignite', go_package='./cmd/ignite', specs=['config'])
+#
+# Resources, each in Tilt's UI:
+#
+#   binary        go build, again when a watched Go file changes
+#   doctor        versions, addresses, the spec checked, missing credentials;
+#                 again when a spec file changes, and the API waits on it
+#   postgres      the database conversations are kept in (Docker), unless
+#                 state is "memory" or postgres_url names your own
+#   api           humagen serve, restarted when the binary or a spec file
+#                 (branding, agents) changes; ready when /healthz answers
+#   console-deps  pnpm install, again when the lockfile changes
+#   console       the Vite dev server: hot reload, never restarts the API
+#
+# Nothing here supervises a process: Tilt starts, restarts and stops them.
+# deploy/tilt/dev/run.sh only checks the port and execs, so Tilt's signal
+# reaches the process itself. `tilt down` also stops the database and keeps
+# its volume; `docker volume rm NAME_postgres-data` forgets it.
+
+_HERE = os.path.dirname(__file__)
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))
+
+# What rebuilds the binary when it is built from this checkout.
+_HUMAGEN_GO = ['cmd', 'internal', 'pkg', 'fiber', 'humagen.go', 'go.mod', 'go.sum', 'api', 'CHANGELOG.md', 'deploy/chart.go', 'deploy/helm/humagen']
+
+def _abs(base, p):
+    if p.startswith('/'):
+        return p
+    return os.path.join(base, p)
+
+def _dotenv(path):
+    """KEY=VALUE lines of a file, without comments, blank lines or quotes."""
+    out = {}
+    if not path or not os.path.exists(path):
+        return out
+    for line in str(read_file(path)).splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        if line.startswith('export '):
+            line = line[len('export '):].strip()
+        key, value = line.split('=', 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in '"\'':
+            value = value[1:-1]
+        out[key.strip()] = value
+    return out
+
+def humagen_dev(
+        name = 'humagen',
+        specs = [],
+        agent_specs = [],
+        go_dir = None,
+        go_package = './cmd/humagen',
+        go_watch = None,
+        humagen_dir = None,
+        port = 8080,
+        console = True,
+        console_port = 5173,
+        auth = 'dev',
+        seed = None,
+        state = 'postgres',
+        postgres_url = None,
+        postgres_port = 5434,
+        data_dir = '.humagen-dev',
+        env_file = None,
+        env = {},
+        credentials = [],
+        strict_credentials = False,
+        extra_args = [],
+        labels = ['humagen']):
+    """Run humagen's API, console and database under Tilt.
+
+    Relative paths are from the Tiltfile that calls this (config.main_dir).
+
+    name: names the database's Docker project, and so its volume: projects
+        with different names keep different conversations.
+    specs: spec files or directories (System and Platform documents: branding,
+        agents, models). Watched: a change is checked, then the API restarts.
+    agent_specs: agent JSON files, passed as -agent-specs, watched the same way.
+    go_dir, go_package: the Go module and package of the binary. go_dir
+        defaults to the calling Tiltfile's directory, go_package to humagen's
+        own command; a project built on humagen names its own main package.
+    go_watch: what rebuilds the binary. Defaults to humagen's Go sources when
+        building humagen, else go_dir.
+    humagen_dir: the humagen checkout the console runs from. Defaults to the
+        one this file is in: this repository, or the extension's clone.
+    port, console_port: the API's and console's loopback ports.
+    console: False runs the API alone (give -web in extra_args to serve a
+        built console from it).
+    auth: -auth. "dev" signs everyone in as admin on loopback; "mock" offers
+        personas from a loopback identity provider on 127.0.0.1:8081.
+    seed: -seed, the example agents on the offline model. Defaults to on when
+        no spec is given.
+    state: "postgres" keeps conversations across restarts; "memory" does not;
+        None leaves it to the spec.
+    postgres_url: a database of your own instead of the one in Docker.
+    postgres_port: the loopback port of the database in Docker.
+    data_dir: agents' files and published files, kept across restarts, and
+        the built binary. Add it to .gitignore.
+    env_file: KEY=VALUE lines added to every process's environment, such as
+        model keys. Read when Tilt loads the Tiltfile.
+    env: more variables, over the env_file's.
+    credentials: variables the project needs, such as ANTHROPIC_API_KEY.
+        doctor says which are not set.
+    strict_credentials: True holds the API back while one is missing.
+    extra_args: more flags for humagen serve; they win over the spec.
+    """
+    main = config.main_dir
+    root = _abs(main, humagen_dir) if humagen_dir else _ROOT
+    go_dir = _abs(main, go_dir) if go_dir else main
+    data = _abs(main, data_dir)
+    specs = [_abs(main, p) for p in specs]
+    agent_specs = [_abs(main, p) for p in agent_specs]
+    building_humagen = go_dir == root and go_package == './cmd/humagen'
+    if go_watch == None:
+        go_watch = _HUMAGEN_GO if building_humagen else ['.']
+    go_watch = [_abs(go_dir, p) for p in go_watch]
+    if seed == None:
+        seed = not specs and not agent_specs
+    if state not in ['postgres', 'memory', None]:
+        fail('humagen_dev: state is "postgres", "memory" or None, not %r' % state)
+
+    bin = os.path.join(data, 'bin', 'humagen')
+    api = 'http://127.0.0.1:%d' % port
+    ui = 'http://127.0.0.1:%d' % console_port if console else api
+    run = os.path.join(_HERE, 'run.sh')
+
+    shared = dict(_dotenv(_abs(main, env_file) if env_file else None))
+    shared.update(env)
+
+    # The database. Its own Docker project, so `tilt down` stops only it,
+    # and a named volume, so `tilt down` keeps what is in it.
+    db_deps = []
+    waits = []
+    state_words = None
+    if state == 'postgres':
+        if postgres_url:
+            shared['HUMAGEN_POSTGRES_URL'] = postgres_url
+            state_words = 'postgres, from postgres_url'
+        else:
+            compose = {
+                'name': '%s-dev' % name,
+                'services': {
+                    'postgres': {
+                        'image': 'postgres:17-alpine',
+                        'environment': {
+                            'POSTGRES_USER': 'humagen',
+                            'POSTGRES_PASSWORD': 'humagen',
+                            'POSTGRES_DB': 'humagen',
+                        },
+                        'ports': ['127.0.0.1:%d:5432' % postgres_port],
+                        'volumes': ['postgres-data:/var/lib/postgresql/data'],
+                        'healthcheck': {
+                            'test': ['CMD-SHELL', 'pg_isready -U humagen -d humagen'],
+                            'interval': '2s',
+                            'timeout': '3s',
+                            'retries': 30,
+                        },
+                    },
+                },
+                'volumes': {'postgres-data': {}},
+            }
+            docker_compose(encode_yaml(compose), project_name = '%s-dev' % name)
+            dc_resource('postgres', labels = labels)
+            shared['HUMAGEN_POSTGRES_URL'] = 'postgres://humagen:humagen@127.0.0.1:%d/humagen?sslmode=disable' % postgres_port
+            db_deps = ['postgres']
+            waits = ['--wait', '127.0.0.1:%d' % postgres_port]
+            state_words = 'postgres in Docker, volume %s-dev_postgres-data (kept by tilt down)' % name
+    elif state == 'memory':
+        state_words = 'memory, lost on every restart'
+    else:
+        state_words = 'as the spec says'
+
+    local_resource(
+        'binary',
+        cmd = 'mkdir -p %s && go build -trimpath -ldflags "-X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none)" -o %s %s' % (
+            shlex.quote(os.path.dirname(bin)), shlex.quote(bin), shlex.quote(go_package)),
+        dir = go_dir,
+        deps = go_watch,
+        ignore = ['**/node_modules', '**/.git', '**/*_test.go', data, '**/dist', '**/.turbo'],
+        labels = labels,
+    )
+
+    urls = ['api=%s' % api]
+    if console:
+        urls.append('console=%s' % ui)
+    if auth == 'mock':
+        urls.append('sign-in=%s/auth/login' % ui)
+    doctor_env = dict(shared)
+    doctor_env.update({
+        'HUMAGEN_DEV_BIN': bin,
+        'HUMAGEN_DEV_ROOT': root,
+        'HUMAGEN_DEV_GO_DIR': go_dir,
+        'HUMAGEN_DEV_SPECS': '\n'.join(specs),
+        'HUMAGEN_DEV_CREDENTIALS': ' '.join(credentials),
+        'HUMAGEN_DEV_STATE': state_words,
+        'HUMAGEN_DEV_URLS': '\n'.join(urls),
+        'HUMAGEN_DEV_STRICT': '1' if strict_credentials else '0',
+    })
+    local_resource(
+        'doctor',
+        cmd = ['bash', os.path.join(_HERE, 'doctor.sh')],
+        env = doctor_env,
+        deps = specs + agent_specs + ([_abs(main, env_file)] if env_file else []),
+        resource_deps = ['binary'],
+        labels = labels,
+    )
+
+    args = [
+        bin, 'serve',
+        '-addr', '127.0.0.1:%d' % port,
+        '-auth', auth,
+        '-public-url', ui,
+        '-workspace', os.path.join(data, 'workspace'),
+    ]
+    for p in specs:
+        args += ['-f', p]
+    if agent_specs:
+        args += ['-agent-specs', ','.join(agent_specs)]
+    if seed:
+        args += ['-seed', '-builtin-provider', 'offline', '-builtin-model', 'offline']
+    if state:
+        args += ['-state', state]
+    args += extra_args
+
+    ports = ['--port', str(port)]
+    if auth == 'mock':
+        ports += ['--port', '8081']
+    links = [link(api + '/healthz', 'health')]
+    if not console:
+        links = [link(api, 'humagen')] + links
+    local_resource(
+        'api',
+        serve_cmd = ['bash', run] + ports + waits + ['--'] + args,
+        serve_env = shared,
+        serve_dir = main,
+        # The binary's file and the spec: a new build or a changed spec
+        # restarts the server. Console sources are not here.
+        deps = [bin] + specs + agent_specs,
+        resource_deps = ['binary', 'doctor'] + db_deps,
+        readiness_probe = probe(
+            period_secs = 2,
+            failure_threshold = 3,
+            http_get = http_get_action(port = port, path = '/healthz'),
+        ),
+        links = links,
+        labels = labels,
+    )
+
+    if not console:
+        return
+
+    web = os.path.join(root, 'apps', 'web')
+    local_resource(
+        'console-deps',
+        cmd = 'pnpm install --frozen-lockfile',
+        dir = root,
+        deps = [os.path.join(root, 'pnpm-lock.yaml')],
+        labels = labels,
+    )
+    local_resource(
+        'console',
+        # Vite itself, not pnpm around it, so Tilt's signal stops the server.
+        serve_cmd = ['bash', run, '--port', str(console_port), '--',
+                     os.path.join(web, 'node_modules', '.bin', 'vite'), '--port', str(console_port), '--strictPort'],
+        serve_dir = web,
+        serve_env = {'HUMAGEN_API': api},
+        resource_deps = ['console-deps'],
+        readiness_probe = probe(
+            period_secs = 2,
+            http_get = http_get_action(port = console_port, path = '/'),
+        ),
+        links = [link(ui, 'console')] + ([link(ui + '/auth/login', 'sign in')] if auth == 'mock' else []),
+        labels = labels,
+    )

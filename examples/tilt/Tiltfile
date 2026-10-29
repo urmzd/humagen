@@ -1,0 +1,32 @@
+# A project built on humagen (a main package that calls humagen.Main with its
+# own options, and a spec of its own) running its development stack with
+# humagen's workflow instead of a launcher of its own. Copy this to the
+# project's root. See docs/guides/develop.md.
+#
+#   tilt up       # API, console with hot reload, Postgres; open http://127.0.0.1:5173
+#   tilt down     # stops them all and keeps the database
+#
+# Pin ref to the humagen release go.mod requires: the binary is built from the
+# project's go.mod, the console from this checkout, and doctor warns when the
+# two differ. While changing humagen beside the project, drop the extension
+# lines and load from a local checkout instead:
+#
+#   load('../humagen/deploy/tilt/dev/Tiltfile', 'humagen_dev')
+
+v1alpha1.extension_repo(name = 'humagen', url = 'https://github.com/urmzd/humagen', ref = 'v0.38.0')
+v1alpha1.extension(name = 'humagen-dev', repo_name = 'humagen', repo_path = 'deploy/tilt/dev')
+load('ext://humagen-dev', 'humagen_dev')
+
+humagen_dev(
+    # Separates this project's database (volume ignite-dev_postgres-data)
+    # from any other project's.
+    name = 'ignite',
+    # The project's own command: humagen.Main with its options.
+    go_package = './cmd/ignite',
+    # Branding and agents, as System and Platform documents. A change is
+    # checked, then the API restarts; the console reloads on its own.
+    specs = ['config'],
+    # Model keys and other secrets the spec references, from a file git ignores.
+    env_file = '.env.dev',
+    credentials = ['ANTHROPIC_API_KEY'],
+)
