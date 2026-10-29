@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.34.0 (2026-10-29)
+
+### Features
+
+- dark-theme branding assets and smoother console motion (#109) ([69ea342](https://github.com/urmzd/humagen/commit/69ea342fda4ba9fda2c4825c1f9eda1692932ed5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.33.0...v0.34.0)
+
+
 ## 0.33.0 (2026-10-29)
 
 ### Features
