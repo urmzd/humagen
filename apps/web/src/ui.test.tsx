@@ -1729,42 +1729,23 @@ test("motion: loading lists are skeletons that still say Loading to a screen rea
   assert.ok((out.match(/aui-skeleton/g)?.length ?? 0) >= 3);
 });
 
-test("an answer has exactly one copy control: the console's Copy as, in place of humagen's button", () => {
+test("an answer has exactly one copy control: humagen's button, which copies at once", () => {
   const run = runOf({ answer: "2.4 could not be tagged." });
   const turn = {
     ...emptyTurn(run.id, { name: run.agent }),
     status: "done" as const,
     text: "2.4 could not be tagged.",
   };
-  const draw = (withSlot: boolean) =>
-    html(
+  for (const withSlot of [true, false]) {
+    const out = html(
       <WebSurface onAction={() => {}}>
         <AgentMessage turn={turn} itemActions={withSlot ? itemActions(run) : undefined} />
       </WebSurface>,
     );
-  const hosted = draw(true);
-  assert.equal(
-    hosted.match(/data-testid="item-copy"/g)?.length,
-    1,
-    "the console's control is there once",
-  );
-  assert.doesNotMatch(
-    hosted,
-    /aria-label="Copy answer"/,
-    "humagen's own button is not drawn beside it",
-  );
-  assert.match(hosted, /aria-label="Copy answer as"/, "it is an icon with a name, opened on click");
-  assert.match(hosted, /aria-haspopup="listbox"/);
-  assert.match(hosted, /role="status"[^>]*aria-live="polite"/, "the confirmation is announced");
-  assert.doesNotMatch(hosted, />Copied</);
-
-  const plain = draw(false);
-  assert.equal(
-    plain.match(/aria-label="Copy answer"/g)?.length,
-    1,
-    "with no host control, humagen's button is the one",
-  );
-  assert.doesNotMatch(plain, /data-testid="item-copy"/);
+    assert.equal(out.match(/aria-label="Copy answer"/g)?.length, 1, "one button, no menu");
+    assert.doesNotMatch(out, /data-testid="item-copy"/);
+    assert.doesNotMatch(out, /aria-haspopup="listbox"/);
+  }
 });
 
 test("a stopped run is over, is not a failure, and says why when the platform does", () => {
