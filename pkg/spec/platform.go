@@ -171,7 +171,7 @@ type ProjectKind struct {
 }
 
 // Agents is what a project turns on: which agents are available there and
-// below, and which answers a message that tags none (docs/projects.md).
+// below, and which answers a message that tags none (docs/architecture/projects.md).
 type Agents struct {
 	// Enable is platform agents available here and below: agents in this
 	// file or the platform's own. "*" alone is every platform agent. It

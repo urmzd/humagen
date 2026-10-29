@@ -20,7 +20,7 @@ import (
 )
 
 // Agents in projects: which agents may run where, who answers a message that
-// tags none, and where an agent lives (docs/projects.md, "Agents in
+// tags none, and where an agent lives (docs/architecture/projects.md, "Agents in
 // projects"). The project tree decides availability; the platform asks it
 // once, at admission, and again sooner wherever an answer helps a person:
 // writing a schedule or a default, and previewing who would join a message.

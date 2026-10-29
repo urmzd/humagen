@@ -4367,7 +4367,7 @@ grounds nothing until a source of that name is made again.
     });
   }
 
-  /** The name, wordmark, tab title, logo and stylesheet the console brands itself with, the workspace's over the deployment's (docs/spec.md#branding). */
+  /** The name, wordmark, tab title, logo and stylesheet the console brands itself with, the workspace's over the deployment's (docs/reference/spec.md#branding). */
   async getBranding(options?: RequestOptions): Promise<Branding> {
     const path = "/api/branding";
     return this.request<Branding>("GET", path, {

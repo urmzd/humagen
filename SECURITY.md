@@ -15,6 +15,6 @@ a reproduction if you have one.
 
 ## Security boundaries
 
-The rules the code holds are listed in [docs/security.md](docs/security.md).
+The rules the code holds are listed in [docs/architecture/security.md](docs/architecture/security.md).
 A change to `pkg/auth`, `pkg/call`, `internal/httpapi/session.go` or the
 tenant checks in `internal/httpapi` needs tests proving those rules still hold.

@@ -1245,7 +1245,7 @@ type Call = ReturnType<typeof api>;
 
 /** Office files are visual fixtures; the surrounding conversation runs on the seeded platform. */
 async function artifactFixtures(page: Page, thread: string): Promise<void> {
-  const exports = join(repo, "docs/design/humagen-workspace/exports");
+  const exports = join(repo, "docs/assets/workspace-prototype/exports");
   const source = [
     {
       id: "sample-deck-v2",

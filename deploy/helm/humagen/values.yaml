@@ -1,6 +1,6 @@
 # Values for the humagen chart. Every key is documented where it is set.
 #
-# humagen is configured by the documents in docs/spec.md. `system` and
+# humagen is configured by the documents in docs/reference/spec.md. `system` and
 # `platforms` below are rendered verbatim into one humagen.yaml the pod reads
 # with `humagen serve -f`. Everything else is the chart's own: image, volume,
 # Service, Ingress, probes.
@@ -38,7 +38,7 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# -- The System document: how and where humagen runs (docs/spec.md#system).
+# -- The System document: how and where humagen runs (docs/reference/spec.md#system).
 # Null store entries are omitted; other values are rendered as written.
 # The chart passes -addr=0.0.0.0:8080 and
 # -web=/usr/share/warp/web as flags, which win over server.addr and
@@ -87,7 +87,7 @@ system:
       max_depth: 4
       max_fan_out: 16
 
-# -- Platform documents, one per workspace (docs/spec.md#platform). Each item
+# -- Platform documents, one per workspace (docs/reference/spec.md#platform). Each item
 # is {metadata, spec} and is rendered with api_version and kind added;
 # metadata.name is the workspace's tenant. An agent can come from `files`:
 #   agents: [{file: /etc/warp/reviewer.json}]

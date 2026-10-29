@@ -46,7 +46,7 @@ export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
 /**
  * A project's tabs. The inbox is the default, so `/projects/{name}` opens what
  * is new there; an unknown tab falls back to it. More arrive with later phases
- * of docs/projects.md.
+ * of docs/architecture/projects.md.
  */
 export type ProjectTab =
   | "inbox"

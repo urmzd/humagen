@@ -73,7 +73,7 @@ func TestFiberStoredNamesAreKept(t *testing.T) {
 }
 
 // keptFiberTables are the tables fiber's stores create. Each is in
-// docs/upgrading-from-warp.md.
+// docs/guides/upgrading-from-warp.md.
 var keptFiberTables = []string{
 	"fiber_definition_retirements",
 	"fiber_definitions",
@@ -125,13 +125,13 @@ func TestFiberTablesAreKept(t *testing.T) {
 	if !slices.Equal(got, keptFiberTables) {
 		t.Errorf("fiber's stores create %q, want %q", got, keptFiberTables)
 	}
-	doc, err := os.ReadFile("../../docs/upgrading-from-warp.md")
+	doc, err := os.ReadFile("../../docs/guides/upgrading-from-warp.md")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range keptFiberTables {
 		if !strings.Contains(string(doc), "`"+name+"`") {
-			t.Errorf("docs/upgrading-from-warp.md does not list %s", name)
+			t.Errorf("docs/guides/upgrading-from-warp.md does not list %s", name)
 		}
 	}
 }

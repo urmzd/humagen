@@ -96,7 +96,7 @@ upgrade, Flux and humagen deploy; helm template sees nothing and renders.
 {{- range $d := ($found.items | default list) -}}
 {{- $sel := (($d.spec | default dict).selector | default dict).matchLabels | default dict -}}
 {{- if and (eq (index $sel "app.kubernetes.io/instance" | default "") $.Release.Name) (eq (index $sel "app.kubernetes.io/name" | default "") "warp") -}}
-{{- fail (printf "release %s was installed by the warp chart: set nameOverride: warp to keep its Deployment, Service and volume (docs/upgrading-from-warp.md#kubernetes)" $.Release.Name) -}}
+{{- fail (printf "release %s was installed by the warp chart: set nameOverride: warp to keep its Deployment, Service and volume (docs/guides/upgrading-from-warp.md#kubernetes)" $.Release.Name) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -111,7 +111,7 @@ the server down. A tag that is not a release version (a commit) is not dated.
 {{- $tag := toString (.Values.image.tag | default .Chart.AppVersion) -}}
 {{- if regexMatch "^v?[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" $tag -}}
 {{- if semverCompare "<0.21.0-0" (trimPrefix "v" $tag) -}}
-{{- fail (printf "image tag %s is a release from before the rename, which cannot read the spec this chart writes; use 0.21.0 or later (docs/upgrading-from-warp.md#kubernetes)" $tag) -}}
+{{- fail (printf "image tag %s is a release from before the rename, which cannot read the spec this chart writes; use 0.21.0 or later (docs/guides/upgrading-from-warp.md#kubernetes)" $tag) -}}
 {{- end -}}
 {{- end -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}

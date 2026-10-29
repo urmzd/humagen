@@ -771,7 +771,7 @@ func configCmd(o Options, args []string, out io.Writer) error {
 
 // machineWarnings is what config check says about the machines a spec
 // configures. Projects moved from runs:* to projects:*, so a machine whose
-// scopes read runs but not projects lists no projects (docs/projects.md,
+// scopes read runs but not projects lists no projects (docs/architecture/projects.md,
 // Migration phase 1); a person is unaffected under the built-in policy.
 func machineWarnings(cfg spec.Config) []string {
 	var out []string
@@ -789,7 +789,7 @@ func machineWarnings(cfg spec.Config) []string {
 				p.Metadata.Name, legacy.ScopePrefix, auth.ScopePrefix))
 		}
 		if has(auth.RunsRead) && !has(auth.ProjectsRead) {
-			out = append(out, fmt.Sprintf("platform %q: the Slack app's humagen_client has %s%s but not %s%s, so it lists no projects; add %s%s (see docs/authorization.md)",
+			out = append(out, fmt.Sprintf("platform %q: the Slack app's humagen_client has %s%s but not %s%s, so it lists no projects; add %s%s (see docs/reference/authorization.md)",
 				p.Metadata.Name, auth.ScopePrefix, auth.RunsRead, auth.ScopePrefix, auth.ProjectsRead, auth.ScopePrefix, auth.ProjectsRead))
 		}
 	}

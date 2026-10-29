@@ -3,7 +3,7 @@ package platform
 import "strings"
 
 // Wording is a workspace's product name and the text its branding replaces
-// (docs/spec.md#branding). An empty field is Humagen's own.
+// (docs/reference/spec.md#branding). An empty field is Humagen's own.
 type Wording struct {
 	// Name is the product's name, which Humagen's own text says in place of
 	// "Humagen" and a replacement says for {name}.

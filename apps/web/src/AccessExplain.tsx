@@ -85,7 +85,7 @@ export function AccessExplain({
               {shown.fix}{" "}
               <a
                 className="text-aui-fg underline"
-                href="https://github.com/urmzd/humagen/blob/main/docs/authorization.md"
+                href="https://github.com/urmzd/humagen/blob/main/docs/reference/authorization.md"
                 target="_blank"
                 rel="noreferrer"
               >
