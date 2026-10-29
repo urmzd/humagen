@@ -65,6 +65,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-035 | Agents are told apart by initials on their color; a mention opens a profile on hover | Implemented: `AgentInitials`, `MentionLink`; `ui.test.tsx` passes; checked in the browser |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
+| DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
 
 ### DES-001: Working integrations
 
@@ -183,7 +184,7 @@ is supplied; naming an agent explicitly remains a separate routing path.
 | Requirement | Implementation and evidence | Remaining work |
 | --- | --- | --- |
 | DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract. Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. Reproducible phone/desktop captures cover Slack and GitHub forms, pending requests and server refusal; new copy lives in `packages/components/src/copy.ts`. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. OAuth installation and GitHub token refresh remain separate backend work. |
-| DES-002 | All 26 board HTML files render in Chromium without separator dots. Main evidence fields wrap without horizontal overflow at 390px. `ConversationShell.tsx`, `Room.tsx`, `Clients.tsx`, and web `AgentMessage.tsx` use gaps or readable phrases. | Older untouched console and shared presentation copy needs review as it changes. |
+| DES-002 | All 26 board HTML files render in Chromium without separator dots. Main evidence fields wrap without horizontal overflow at 390px. `ConversationShell.tsx`, `Room.tsx`, `Clients.tsx`, and web `AgentMessage.tsx` use gaps or readable phrases. The `Mailbox.tsx` row says "N to decide" as its own label beside the preview (DES-038). | Older untouched console and shared presentation copy needs review as it changes. |
 | DES-003 | `boards/ForkConversation.html` and `assets/boards.css` reveal actions on hover/focus, retain touch availability, and navigate to the existing prototype panel. Chromium checked hover, focus, target focus, and stable message dimensions. | A native fork needs a saved conversation operation, lineage, permissions, routes, and isolation tests. The board action is a prototype. |
 | DES-004 | Human messages and announcements in `Room.tsx` use recorded timestamps with full local date, time, and timezone on hover, focus, and tap. Room DOM tests cover the recorded instant, accessible description, and dismissal. A Chromium phone regression reproduced tooltip overflow before the fix; phone and desktop captures verify placement through the existing panel-gutter helper. | Carry real recorded timestamps through agent-message presentation. |
 | DES-005 | Root `AGENTS.md` links this record and requires keeping it current. | Update evidence with each subsequent implementation. |
@@ -811,3 +812,29 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   seconds.
 - Acceptance: with Anthropic, OpenAI and Gemini keys set, each reads
   operational; with none, the banner says the deployment is down.
+
+### DES-038: Ready to read, quiet at rest
+
+- Notifications on a wide screen shows the first message in the reading pane
+  instead of an empty one (`Mailbox` `previewFirst`, set only by the
+  Notifications page). A preview is not a read: `ActionId.read` is sent only
+  when a row is picked or deep linked. Narrow screens keep the list until a
+  row is picked.
+- A row that asks for more than one decision says "N to decide" as its own
+  label, with a gap and no dot before the preview (DES-002).
+- A screen filters one way. Context Health keeps its count-bearing status
+  pills, labelled as one group, and drops the dropdown that repeated them.
+  Agents puts its state filter and search on one row, and the header holds
+  only actions: Review Drafts is the filter's Drafts option.
+- Message action rows (`MessageActionRow`) rest at 40% opacity on a fine
+  pointer and come up when their message (`group/message` on `Room.tsx`
+  `MessageView` and web `AgentMessage`) is hovered or holds focus. Touch,
+  keyboard focus and a pressed control keep the row at full strength. Only
+  opacity changes, so the thread never shifts. This is the reveal DES-003
+  needs; the Fork action itself is still pending there.
+- Home's Needs you box opens Notifications and says so (Open Notifications,
+  copy key `home.openInbox` kept). Its urgency word keeps coming first, in
+  words, with the same tint as the Notifications list.
+- Acceptance: `/notifications` at 1280px shows a message without a click and
+  sends no read; Context Health has no `Filter Sources` select; `home.test.tsx`
+  checks the tinted urgency word before the time.
