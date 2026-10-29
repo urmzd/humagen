@@ -118,7 +118,7 @@ export function Disclosure({
         {header}
         <ChevronDownIcon
           size={14}
-          className={`ml-auto text-aui-muted transition-transform duration-200 group-hover:text-aui-fg motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
+          className={`ml-auto text-aui-muted transition-[color,rotate,transform] duration-(--aui-dur-row) group-hover:text-aui-fg motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
         />
       </button>
       <Collapse open={open} id={id}>

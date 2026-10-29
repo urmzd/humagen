@@ -78,12 +78,12 @@ export function SidebarItem({
       }`}
     >
       {icon}
-      {open && <span className="flex-1 truncate text-left">{label}</span>}
+      {open && <span className="humagen-sidebar-reveal flex-1 truncate text-left">{label}</span>}
       {count > 0 &&
         (open ? (
           <span
             aria-hidden
-            className="rounded-full bg-aui-accent-soft px-1.5 text-aui-2xs font-medium text-aui-fg"
+            className="humagen-sidebar-reveal rounded-full bg-aui-accent-soft px-1.5 text-aui-2xs font-medium text-aui-fg"
           >
             {count}
           </span>
@@ -484,19 +484,23 @@ function Label({ children, action }: { children: ReactNode; action?: ReactNode }
  * then pinned tasks, then recent ones. Closed, it is a rail of icons. The open state is the caller's to persist.
  */
 /**
- * The workspace's logo, or Humagen's mark when it sets none. Until the
+ * The workspace's logo, in the theme's variant when it has one, or
+ * Humagen's mark when it sets none. Until the
  * branding is read the place is kept empty, so one mark never flashes in
  * for another.
  */
 function BrandMark({ branding }: { branding: Branding | null }) {
   if (!branding) return <span aria-hidden className="inline-block size-[23px] shrink-0" />;
   if (!branding.logo) return <HumagenMark size={23} />;
+  const alt = branding.wordmark ? "" : branding.logo_alt;
+  const img = "h-[23px] w-auto max-w-[8rem] shrink-0 object-contain";
+  if (!branding.logo_dark) return <img src={branding.logo} alt={alt} className={img} />;
+  // One per theme, so a logo in dark ink is not lost on a dark sidebar.
   return (
-    <img
-      src={branding.logo}
-      alt={branding.wordmark ? "" : branding.logo_alt}
-      className="h-[23px] w-auto max-w-[8rem] shrink-0 object-contain"
-    />
+    <>
+      <img src={branding.logo} alt={alt} className={`${img} dark:hidden`} />
+      <img src={branding.logo_dark} alt={alt} className={`${img} hidden dark:block`} />
+    </>
   );
 }
 
@@ -800,13 +804,13 @@ export function Sidebar({
           tabIndex={-1}
           aria-label="Dismiss navigation"
           onClick={onToggle}
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          className="humagen-fade fixed inset-0 z-40 bg-black/40 md:hidden"
         />
       )}
       <aside
         ref={sidebar}
         aria-label="Navigation"
-        className={`humagen-glass-bar flex h-full min-h-0 shrink-0 flex-col border-[var(--humagen-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
+        className={`humagen-glass-bar humagen-sidebar flex h-full min-h-0 shrink-0 flex-col border-[var(--humagen-rule)] border-r ${
           open
             ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]"
             : "w-12 max-md:hidden"
@@ -816,7 +820,7 @@ export function Sidebar({
           className={`flex h-12 shrink-0 items-center ${open ? "justify-between pr-2 pl-3.5" : "justify-center"}`}
         >
           {open && (
-            <span className="humagen-display flex min-w-0 items-center gap-2 truncate text-aui-base font-semibold text-aui-fg">
+            <span className="humagen-display humagen-sidebar-reveal flex min-w-0 items-center gap-2 truncate text-aui-base font-semibold text-aui-fg">
               <BrandMark branding={brand} />
               {brand?.wordmark}
             </span>
@@ -858,8 +862,8 @@ export function Sidebar({
                 <SearchIcon size={18} />
                 {open && (
                   <>
-                    <span className="flex-1 text-left">{nav.search}</span>
-                    <kbd className="text-aui-2xs">⌘ K</kbd>
+                    <span className="humagen-sidebar-reveal flex-1 text-left">{nav.search}</span>
+                    <kbd className="humagen-sidebar-reveal text-aui-2xs">⌘ K</kbd>
                   </>
                 )}
               </button>
@@ -912,7 +916,10 @@ export function Sidebar({
           </nav>
 
           {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
-            <section aria-label="Pinned" className="flex shrink-0 flex-col pt-4">
+            <section
+              aria-label="Pinned"
+              className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
+            >
               <Label>{defaultCopy.sidebar.pinned}</Label>
               <ul className="px-2">
                 {readableProjectPins.map((project) => (
@@ -979,7 +986,10 @@ export function Sidebar({
           )}
 
           {open && can("runs:read") && (
-            <section aria-label="Conversations" className="flex shrink-0 flex-col pt-4">
+            <section
+              aria-label="Conversations"
+              className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
+            >
               {/* The label stays in reach while the list scrolls under it. */}
               <Label
                 action={
@@ -1194,7 +1204,7 @@ export function Sidebar({
                 <>
                   <Avatar name={name} prefs={prefs} size={26} />
                   {open && (
-                    <span className="min-w-0 flex-1">
+                    <span className="humagen-sidebar-reveal min-w-0 flex-1">
                       <span className="block truncate text-aui-sm text-aui-fg">{name}</span>
                       <span className="block truncate text-aui-2xs text-aui-muted">{subtitle}</span>
                     </span>

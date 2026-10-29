@@ -139,7 +139,7 @@ export function TurnRail({
   return (
     <nav
       aria-label="Jump to a turn"
-      className={`group/rail absolute top-1/2 left-0 z-20 hidden -translate-y-1/2 transition-opacity duration-300 focus-within:opacity-100 hover:opacity-100 md:block ${scrolling ? "opacity-100" : "opacity-40"}`}
+      className={`group/rail absolute top-1/2 left-0 z-20 hidden -translate-y-1/2 transition-opacity duration-(--aui-dur-page) focus-within:opacity-100 hover:opacity-100 md:block ${scrolling ? "opacity-100" : "opacity-40"}`}
     >
       <ol className="flex max-h-[70vh] flex-col items-start gap-[3px] overflow-visible py-1 pr-2 pl-1">
         {turns.map((t, i) => {
