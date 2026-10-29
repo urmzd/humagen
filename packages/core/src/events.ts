@@ -26,7 +26,8 @@ export type TurnEvent =
   | { type: "notice"; notice: Notice }
   /** `rating: null` takes the rating back. A comment or reason attaches to the rating it names. */
   | { type: "feedback"; rating: Rating | null; comment?: string; reason?: string }
-  | { type: "turn.completed" }
+  /** `durationMs` is the run's wall time, from accepted to done, when the host knows it. */
+  | { type: "turn.completed"; durationMs?: number }
   | { type: "attachment.upserted"; attachment: Attachment }
   | { type: "turn.failed"; failure: Failure }
   | { type: "turn.stopped" }
@@ -152,7 +153,11 @@ export function reduce(turn: Turn, event: TurnEvent): Turn {
     case "outcome.updated":
       return { ...turn, outcome: event.outcome };
     case "turn.completed":
-      return { ...turn, status: "done" };
+      return {
+        ...turn,
+        status: "done",
+        ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
+      };
     case "turn.failed":
       return { ...turn, status: "failed", failure: event.failure };
     case "turn.stopped":

@@ -34,26 +34,3 @@ export function usageScreens(path = "/operations/usage") {
     },
   ];
 }
-
-/** Controls operate on recorded activity, without mocked activity API responses. */
-export async function activityFilters(page: Page): Promise<void> {
-  const words = defaultCopy.activityControls;
-  const filters = page.getByRole("group", { name: words.filters });
-  await filters.getByRole("button", { name: words.handoffs, exact: true }).click();
-  assert.equal(
-    await filters
-      .getByRole("button", { name: words.handoffs, exact: true })
-      .getAttribute("aria-pressed"),
-    "true",
-  );
-  await filters.getByRole("button", { name: words.tools, exact: true }).click();
-  await page.getByRole("button", { name: words.hideTools, exact: true }).click();
-  await page.getByRole("button", { name: words.showTools, exact: true }).waitFor();
-  await filters.getByRole("button", { name: words.decisions, exact: true }).click();
-  assert.equal(
-    await filters
-      .getByRole("button", { name: words.decisions, exact: true })
-      .getAttribute("aria-pressed"),
-    "true",
-  );
-}

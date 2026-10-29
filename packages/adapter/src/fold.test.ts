@@ -133,3 +133,11 @@ test("persisted citations recover without events and an explicit projected empty
   f.settle({ ...record, citations: [] });
   assert.deepEqual(f.turn.citations, []);
 });
+
+test("a run settled from its record worked from its creation to its last change", () => {
+  const turn = turnOf(run({ status: "completed", answer: "Done.", updated_at: "2026-10-09T00:01:05Z" }));
+  assert.equal(turn.durationMs, 65_000);
+  assert.equal(turnOf(run({ status: "running", updated_at: "2026-10-09T00:01:05Z" })).durationMs, undefined);
+  const f = streamed("Done.");
+  assert.equal(f.settle(run({ status: "completed", answer: "Done.", updated_at: "2026-10-09T00:00:12Z" })).durationMs, 12_000);
+});
