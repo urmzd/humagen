@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.38.1 (2026-10-29)
+
+### Bug Fixes
+
+- **deps**: patch vulnerable dependencies (#117) ([7e61ec6](https://github.com/urmzd/humagen/commit/7e61ec6daf80b81b64d3fe9de2ff08321693802f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.38.0...v0.38.1)
+
+
 ## 0.38.0 (2026-10-29)
 
 ### Features
