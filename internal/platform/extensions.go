@@ -27,6 +27,9 @@ type Extensions struct {
 	// name runs on what the function builds, and a built-in of the same name
 	// is replaced.
 	Providers map[string]native.ProviderFunc
+	// Probes check a provider of the same name for Health, without a
+	// completion. A provider with none is listed, unchecked.
+	Probes map[string]Probe
 	// Catalogs resolve tool names no connector or built-in tool does, in order.
 	Catalogs []runtime.Catalog
 	// ToolProviders are MCP servers recorded at startup, each with the tools
@@ -55,6 +58,7 @@ func (e Extensions) ProviderNames() []string { return slices.Sorted(maps.Keys(e.
 func (e Extensions) Merge(o Extensions) (Extensions, error) {
 	out := Extensions{
 		Providers:       maps.Clone(e.Providers),
+		Probes:          maps.Clone(e.Probes),
 		SourceProviders: maps.Clone(e.SourceProviders),
 		Catalogs:        slices.Concat(e.Catalogs, o.Catalogs),
 		ToolStore:       e.ToolStore, Resolver: e.Resolver,
@@ -68,6 +72,10 @@ func (e Extensions) Merge(o Extensions) (Extensions, error) {
 		}
 		out.Providers[name] = fn
 	}
+	if out.Probes == nil {
+		out.Probes = map[string]Probe{}
+	}
+	maps.Copy(out.Probes, o.Probes)
 	if out.SourceProviders == nil {
 		out.SourceProviders = map[string]knowledge.Provider{}
 	}

@@ -958,13 +958,13 @@ func (c *contract) settled(tok, id string) reply {
 }
 
 func TestResponsesMatchTheSpec(t *testing.T) {
-	// An agent on the "ollama" provider asks a person, so a run can park on
+	// An agent on the "anthropic" provider asks a person, so a run can park on
 	// a question here. Every other agent is offline.
 	f := newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
-		native.WithProvider(native.ProviderOllama, func(native.Spec) (saigetypes.Provider, error) {
+		native.WithProvider(native.ProviderAnthropic, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
 				agenttest.ToolCallResponse("call-ask", "ask_person", map[string]any{"question": "Which colour?", "options": []any{"red", "blue"}}),
 				agenttest.TextResponse("Red."),
@@ -1213,7 +1213,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	// A run that asks a person: its question on the run and in the inbox,
 	// and answered in place.
-	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"asker","model":"x","provider":"ollama","system_prompt":"Ask.","tools":["ask_person"],"answerers":["svc-acme"]}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"asker","model":"x","provider":"anthropic","system_prompt":"Ask.","tools":["ask_person"],"answerers":["svc-acme"]}`, http.StatusCreated)
 	parked := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"asker","text":"Pick"}`, http.StatusAccepted)
 	var question string
 	for deadline := time.Now().Add(10 * time.Second); question == "" && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
@@ -2153,6 +2153,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":1,"accepted":true}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":2,"accepted":true}`, http.StatusBadRequest)
 	c.call(globex, "POST", "/api/artifacts/{id}/promote-memory", memoryPath, `{"version":1,"accepted":true}`, http.StatusNotFound)
+
+	c.call(auditAdmin, "GET", "/api/health", "/api/health", "", http.StatusOK)
 
 	setupPlanJSON := `{"spec":{"name":"reviewed-setup","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help with reviewed company work."},"project":"Launch"}`
 	setupPlanJSON = strings.Replace(setupPlanJSON, `"project":"Launch"`, `"project":"Launch","skills":[{"id":"`+libraryID+`","version":1}]`, 1)

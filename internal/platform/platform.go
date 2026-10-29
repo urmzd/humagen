@@ -219,6 +219,8 @@ type Config struct {
 // Platform is the assembled system.
 type Platform struct {
 	files filesblob.Store
+	// health is the last health report and each component's recent checks.
+	health healthBook
 
 	cfg                    Config
 	log                    *slog.Logger

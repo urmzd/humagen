@@ -33,7 +33,7 @@ var Builtin = map[string][]string{
 	SlotBlobs:      {"disk", "memory", "s3"},
 	SlotExtensions: {},
 	SlotDeploy:     {"local", "compose", "kubernetes"},
-	SlotModels:     {"anthropic", "openai", "ollama"},
+	SlotModels:     {"anthropic", "openai", "google"},
 	SlotTools:      {"mcp"},
 }
 
@@ -352,7 +352,7 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &Disk{}, true
 	case "blobs.s3":
 		return &S3{}, true
-	case "models.anthropic", "models.openai", "models.ollama":
+	case "models.anthropic", "models.openai", "models.google":
 		return &ModelBlock{}, true
 	case "tools.mcp":
 		return &MCP{}, true

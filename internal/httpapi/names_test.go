@@ -26,11 +26,11 @@ const patSubject = "tailscale:pat@example.com"
 
 // namesFixture is a workspace with two admins: Ana, who has a name, and Pat,
 // known by an address and their handle. Field engineering is Pat's, Globex
-// under it Ana's. An agent on the "ollama" provider asks Pat a question.
+// under it Ana's. An agent on the "openai" provider asks Pat a question.
 func namesFixture(t *testing.T) (f *fixture, ana, pat string) {
 	t.Helper()
 	f = newFixtureWith(t, platform.Config{AgentOptions: []native.Option{
-		native.WithProvider(native.ProviderOllama, func(native.Spec) (saigetypes.Provider, error) {
+		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
 				agenttest.ToolCallResponse("call-ask", "ask_person", map[string]any{"question": "Which colour?", "options": []any{"red", "blue"}}),
 				agenttest.TextResponse("Red."),
@@ -200,7 +200,7 @@ func TestAgentsAndWhatWatchesThemCallTheirPeopleByName(t *testing.T) {
 // inbox, by subject and by name.
 func TestWhoAnsweredAQuestionIsCalledByName(t *testing.T) {
 	f, ana, pat := namesFixture(t)
-	want(t, f, ana, "POST", "/api/agents", `{"name":"asker","model":"x","provider":"ollama","system_prompt":"Ask.","tools":["ask_person"],"answerers":["`+patSubject+`"]}`, http.StatusCreated)
+	want(t, f, ana, "POST", "/api/agents", `{"name":"asker","model":"x","provider":"openai","system_prompt":"Ask.","tools":["ask_person"],"answerers":["`+patSubject+`"]}`, http.StatusCreated)
 	run := want(t, f, ana, "POST", "/api/runs", `{"agent":"asker","text":"Pick"}`, http.StatusAccepted)
 	id := run["id"].(string)
 	var question string

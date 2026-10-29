@@ -249,10 +249,10 @@ func TestTriggerTagCannotClaimAgentOrigin(t *testing.T) {
 // though fiber publishes no final event once the retries run out.
 func TestARunThatExhaustsItsRetriesEnds(t *testing.T) {
 	// Nothing listens here, so every attempt fails the same way.
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:1")
+	t.Setenv("OPENAI_BASE_URL", "http://127.0.0.1:1/v1")
 	p := start(t, call.Limits{})
 	ctx := t.Context()
-	broken := wire.AgentSpec{Name: "broken", Model: "none", Provider: "ollama", SystemPrompt: "x"}
+	broken := wire.AgentSpec{Name: "broken", Model: "none", Provider: "openai", SystemPrompt: "x"}
 	if _, err := p.Agents.Create(ctx, tenant, broken, "test"); err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-.PHONY: all init build test integration lint fmt check start dev dev-signin web screens up down chart-check image client client-check spec-lint oag-install
+.PHONY: all init build test integration lint fmt check start dev dev-live dev-signin web screens up down chart-check image client client-check spec-lint oag-install
 
 BIN := humagen
 
@@ -54,6 +54,11 @@ start: build
 # Local preview: no sign-in, loopback only, two example agents.
 dev: build
 	./bin/$(BIN) serve -auth=dev -seed -builtin-provider offline -builtin-model offline
+
+# Local preview on real models: Anthropic, then OpenAI, then Gemini, each
+# with its key from the shell (examples/dev/humagen.yaml). Use with `make web`.
+dev-live: build
+	./bin/$(BIN) serve -auth=dev -f examples/dev/humagen.yaml -builtin-provider anthropic -builtin-model claude-haiku-5-5
 
 # Local preview with sign-in: a development identity provider on loopback
 # (127.0.0.1:8081) and personas to pick from, no passwords. Use with `make web`

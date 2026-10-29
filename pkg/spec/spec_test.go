@@ -34,7 +34,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.System.Spec.Stores.Kind != "postgres" || len(cfg.Platforms) != 1 || len(cfg.Platforms[0].Spec.Models) != 2 {
+	if cfg.System.Spec.Stores.Kind != "postgres" || len(cfg.Platforms) != 1 || len(cfg.Platforms[0].Spec.Models) != 3 {
 		t.Fatalf("config = %+v", cfg)
 	}
 	oidc, err := Block[OIDC](cfg.System.Spec.Auth.Slot)
@@ -310,5 +310,25 @@ func TestTheReferenceAgentFileReads(t *testing.T) {
 	}
 	if s.Name != "reviewer" || s.Provider != "anthropic" || s.SystemPrompt == "" || !s.TaggedOnly {
 		t.Fatalf("the example reads as %+v", s)
+	}
+}
+
+func TestModelKinds(t *testing.T) {
+	key := &Ref{Ref: "env:K"}
+	for name, c := range map[string]struct {
+		kind string
+		b    ModelBlock
+		ok   bool
+	}{
+		"gemini":              {"google", ModelBlock{Key: key}, true},
+		"vertex":              {"google", ModelBlock{Vertex: &Vertex{Project: "p", Location: "us-central1"}}, true},
+		"vertex half":         {"google", ModelBlock{Vertex: &Vertex{Project: "p"}}, false},
+		"vertex not google":   {"openai", ModelBlock{Vertex: &Vertex{Project: "p", Location: "l"}}, false},
+		"local openai server": {"openai", ModelBlock{BaseURL: "http://127.0.0.1:11434/v1"}, true},
+		"hosted with no key":  {"anthropic", ModelBlock{}, false},
+	} {
+		if err := checkModel(c.kind, c.b); (err == nil) != c.ok {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

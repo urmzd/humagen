@@ -747,6 +747,28 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/health:
+    get:
+      operationId: getDeploymentHealth
+      x-permission: alerts:read
+      tags: [health]
+      summary: The deployment's health, by component
+      description: |
+        Each component the deployment runs on (the API, its stores and bus,
+        and every model provider) with its status and its latest checks,
+        oldest first, at most 90. A model provider is checked by listing its
+        models with its key, so no tokens are spent. Checks run at most once
+        every 30 seconds; a request in between gets the last report. With no
+        model provider set up, a `provider:none` component is down.
+      responses:
+        "200":
+          description: The latest report.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Health"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+
   /api/agent-hues:
     get:
       operationId: getAgentHues
@@ -7180,6 +7202,37 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
   schemas:
+    HealthStatus:
+      type: string
+      enum: [operational, degraded, down]
+    Health:
+      type: object
+      required: [status, checked_at, components]
+      properties:
+        status: {$ref: "#/components/schemas/HealthStatus"}
+        checked_at: {type: string, format: date-time}
+        components:
+          type: array
+          items: {$ref: "#/components/schemas/HealthComponent"}
+    HealthComponent:
+      type: object
+      required: [id, name, group, status, latency_ms, history]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        group: {type: string}
+        status: {$ref: "#/components/schemas/HealthStatus"}
+        detail: {type: string}
+        latency_ms: {type: integer, format: int64}
+        history:
+          type: array
+          maxItems: 90
+          items:
+            type: object
+            required: [at, status]
+            properties:
+              at: {type: string, format: date-time}
+              status: {$ref: "#/components/schemas/HealthStatus"}
     ClientCapabilityPolicy:
       type: object
       required: [events, actions, deliver_outcomes]

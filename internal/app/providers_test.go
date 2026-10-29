@@ -11,15 +11,16 @@ import (
 
 func TestEveryModelKindBuildsWithItsKey(t *testing.T) {
 	keys := credref.Resolver{LookupEnv: func(string) (string, bool) { return "k", true }}
-	for _, kind := range []string{"anthropic", "openai", "ollama"} {
+	for _, kind := range []string{"anthropic", "openai", "google"} {
 		b := spec.ModelBlock{Key: &spec.Ref{Ref: "env:K"}}
-		if kind == "ollama" {
-			b = spec.ModelBlock{BaseURL: "http://127.0.0.1:11434"}
-		}
 		p, err := modelProvider(kind, kind, b, keys)(native.Spec{Name: "a", Model: "m"})
 		if err != nil || p == nil {
 			t.Errorf("%s: %v", kind, err)
 		}
+	}
+	// A local server such as Ollama serves the OpenAI API and needs no key.
+	if p, err := modelProvider("openai", "local", spec.ModelBlock{BaseURL: "http://127.0.0.1:11434/v1"}, keys)(native.Spec{Name: "a", Model: "m"}); err != nil || p == nil {
+		t.Errorf("a local openai server: %v", err)
 	}
 	if _, err := modelProvider("anthropic", "a", spec.ModelBlock{Key: &spec.Ref{Ref: "env:K"}}, credref.Resolver{LookupEnv: func(string) (string, bool) { return "", false }})(native.Spec{Name: "a", Model: "m"}); err == nil {
 		t.Error("an unset key built a provider")

@@ -1,0 +1,20 @@
+# A local preview that calls real models: `make dev-live`, then `make web`.
+# Providers in order of preference: Anthropic, OpenAI, then Google Gemini.
+# Each reads its key from the shell; one not set, or not reachable, shows on
+# the Health page, and a policy moves on to the next.
+api_version: humagen/v1
+kind: Platform
+metadata:
+  name: default
+  display_name: Humagen
+spec:
+  models:
+    - name: anthropic
+      kind: anthropic
+      anthropic: {key: {ref: env:ANTHROPIC_API_KEY}}
+    - name: openai
+      kind: openai
+      openai: {key: {ref: env:OPENAI_API_KEY}}
+    - name: gemini
+      kind: google
+      google: {key: {ref: env:GOOGLE_API_KEY}}
