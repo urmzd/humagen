@@ -607,9 +607,8 @@ test("a channel's chat bar offers no Private and no Post Only, and a private thr
       onOpenThread={() => {}}
     />,
   );
-  // Private needs no word: Share at the top says it is not shared yet.
-  await screen.findByRole("heading", { level: 1 });
-  assert.ok(!screen.queryByText(words.private), "no Private word");
+  // The private thread's row in the channel says so.
+  assert.ok(await screen.findByText(words.private));
   assert.ok(screen.getByPlaceholderText(words.startThread));
   assert.ok(!screen.queryByText(words.startPrivate, { selector: "button" }));
   assert.ok(!screen.queryByText(words.postOnly, { selector: "button" }));
@@ -2023,8 +2022,8 @@ test("completed work requires destination review, and an unseen run refusal stay
   ) as HTMLSelectElement;
   assert.equal(moved.value, "Globex");
   assert.equal(moved.disabled, true);
-  // Still private, and the dialog stays open to share it where it is.
-  assert.ok(screen.getByText(words.private));
+  // Still not shared: the dialog stays open to share it where it is.
+  assert.ok(dialog.isConnected, "the dialog stays open");
 });
 
 test("agents checked in a conversation's + menu are saved on the thread, and an answer they were routed to says so", async () => {
