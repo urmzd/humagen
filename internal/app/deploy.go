@@ -319,7 +319,7 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	case b.Image != "":
 		if tag := legacy.ImageTag(b.Image); legacy.BeforeRename(tag) {
 			return fmt.Errorf("deploy: compose.image %s is a release from before the rename, which cannot read the spec this release writes; "+
-				"use an image of %s or later, or build one (docs/upgrading-from-warp.md#compose)", b.Image, legacy.FirstRelease)
+				"use an image of %s or later, or build one (docs/guides/upgrading-from-warp.md#compose)", b.Image, legacy.FirstRelease)
 		}
 		svc["image"] = b.Image
 	default:
@@ -434,7 +434,7 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	}
 	if legacy.BeforeRename(b.Image.Tag) {
 		return fmt.Errorf("deploy: kubernetes image.tag %s is a release from before the rename, which cannot read the spec this release writes; "+
-			"use %s or later (docs/upgrading-from-warp.md#kubernetes)", b.Image.Tag, legacy.FirstRelease)
+			"use %s or later (docs/guides/upgrading-from-warp.md#kubernetes)", b.Image.Tag, legacy.FirstRelease)
 	}
 	people, err := remotePersonRefs(cfg, "kubernetes")
 	if err != nil {

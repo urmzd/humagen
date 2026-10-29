@@ -3,7 +3,7 @@
 // (listeners, sign-in, stores, bus, files, limits, extensions) and belongs to
 // whoever runs the process. A Platform document says what one workspace
 // offers (its models, tools, agents, surfaces and settings) and belongs to
-// that workspace's admins. docs/spec.md is the reference.
+// that workspace's admins. docs/reference/spec.md is the reference.
 //
 // Four rules hold for every field:
 //

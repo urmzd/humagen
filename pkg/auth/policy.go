@@ -29,7 +29,7 @@ func permissionNames() []string {
 }
 
 // Policy decides what a person's roles allow, and which roles their verified
-// claims earn. See docs/authorization.md for the language.
+// claims earn. See docs/reference/authorization.md for the language.
 type Policy struct {
 	c *authz.Policy
 }

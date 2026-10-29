@@ -1,0 +1,392 @@
+# Clients
+
+A client is one installation of the platform on a surface: a Slack app in a
+team, or a GitHub App installation on some accounts. A workspace has as many as
+it needs. One client for everything, several that route to different agents, or
+one per agent are all the same record with different values.
+
+## The record
+
+| Field | Meaning |
+|-------|---------|
+| `id`, `name` | The id names the client in its workspace and is what a run records. Left out, it is made from the name. |
+| `surface` | `slack` or `github`. It cannot change after the client is created. |
+| `identity` | The external identity the client answers for. Slack: `team` (required) and `app_id`. GitHub: `owners` (required), `installation` and `app_id`. |
+| `credentials` | `token` and `signing_secret`. Written, never read back. See [Secrets](#secrets). |
+| `default_agent` | Answers a request that named no agent. `"*"` asks each agent the client routes to whether to join (see [the dynamic router](../architecture/projects.md#the-dynamic-router)); `auto` reads as `"*"`. |
+| `agents` | The agents the client may route to, besides its default. |
+| `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. These three, and `github.auto_labels`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
+| `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
+| `github` | `auto_labels`, `checks`, `guides`, `mutations`, `read_repositories`, and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). |
+| `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is one of its channels, not archived; left out, `general`. Left out entirely, the workspace's `general`. A Slack thread outside a bound channel is filed here, private for a direct message (see [Slack coworking](slack.md#coworking-channels-threads-and-mentions)). A home in a project the reader may not read is not shown to them, and their change that names no home keeps it. |
+| `enabled` | A disabled client answers nothing and carries nothing. |
+
+The options under `slack` and `github` are the ones [Slack](slack.md) and
+[GitHub](github.md) describe.
+
+### Agents a reader may not read
+
+A client names agents in its default, its list, its bots and its
+auto-labels. A reader is shown only the agents they may read: one that lives
+in a project they may not read is left out of each, as if it were not there,
+as a home there is. The machine that hosts the client's surface, its
+`slack.machine`, is shown every agent the client names, since it routes by
+them. Naming the machine is trusted as the machine is: a writer who names
+themselves the `slack.machine` is that machine from then on, and is shown
+every agent the client names, as they read every thread on its surface and
+act for its people (see
+[People a Slack app answers for](#people-a-slack-app-answers-for)).
+
+Every agent a client saved through the API names is one that exists and that
+the writer may read. Any other is refused with one 400, "there is no agent
+called ...", whether it does not exist or lives in a project the writer may
+not read, so writing a name learns nothing. On an update, a name the record
+already holds and the writer is shown is kept as it is.
+
+A writer who saves the client as they read it, as the console does, keeps
+what they were not shown:
+
+| What they were not shown | Kept unless they |
+|--------------------------|------------------|
+| The default | Name another default. The one they were not shown joins the list, so the client still routes to it |
+| An agent in the list | Write `"*"`, which reaches it too |
+| A bot or an auto-label | Map the same bot or label themselves, or stop serving its repository's account |
+
+An agent the client routed to stays one it routes to, so a bot or an
+auto-label kept for it still stands.
+
+A default a person may not read is never available where they read, so it
+answers nothing for them, and it is passed over for them, as if it were not
+set: who answers them on the client's surface is the next default along, a
+channel's or a project's, and what their message, or their turn through the
+client, did never names it; an agent they may not read is never asked to
+join for them.
+
+### Which agents a client reaches
+
+Default deny. A client routes to its default agent and to the agents listed in
+`agents`. With neither, it routes to nothing. `"agents": ["*"]` means any agent
+in the workspace, and has to be written.
+
+The list is applied three times: a bot or an auto-label that names an agent
+outside it is refused when the client is saved, a name in a message that is
+outside it is not read as an agent, and a tag for an agent outside it is
+dropped before it reaches the platform. In Humagen's threads it holds for every
+message the client's machine posts for a person, on the client's own surface
+or in any other thread, such as one started in the console: an agent outside
+it and a default outside it are refused there, never swapped, and for a
+default of `*` only the agents on the list are asked to join. The person
+posting as themselves is held to no client's list.
+
+A client lends its actions (posting a message, reading a pull request) under the
+same rule. A run gets the actions of the client that raised it. On another
+surface it gets the oldest client in its workspace that may route to its agent,
+so a Slack run reads GitHub only through a GitHub client that lists its agent.
+
+## People a Slack app answers for
+
+A Slack app built on the API (`apps/slack`) signs in as a machine. To ask for
+a run or answer a question as the Slack person who clicked, it sends
+`act_as: {"client": "<id>", "user": "<Slack user id>"}`. That is honoured only
+when the client:
+
+| Field | Meaning |
+|-------|---------|
+| `slack.machine` | The subject of the credential the app signs in with. No other credential may act for the client's people. |
+| `slack.people` | Slack user ids in the client's team, each mapped to the principal it is in this workspace, by subject. At most 500. |
+
+Anyone the map does not name is refused with 403, and the app does not ask on
+their behalf. To ask for a run or to answer, the person's own grant must include `runs:write`. A Slack click
+carries no groups, so someone who holds a role only through a group (`grant
+operator to group "..."`) holds nothing here and cannot ask or answer from Slack:
+grant them by `subject` too, or they use the console. A disabled client maps nobody. The mapped principal's roles, for
+`role:<name>` approvers, are what the workspace's authorization policy grants
+their subject (`grant ... to subject "..."` or `anyone`), since a Slack click
+carries no sign-in. Who may answer is then the run's spec's to say, as for
+anyone. A run asked for this way is the person's, so they do not approve its
+calls. The same maps name whoever a Slack connector run was raised by, so they
+do not approve its calls either: the Slack user is looked up in every Slack
+client of the run's team, not only the one that received the message, and
+the names are pinned when the run starts.
+
+A run asked for this way also acts for the person: a tool that acts as each
+person (`credential_scope: person`, see [the spec](spec.md#tools-that-act-as-you))
+reaches its service with that person's own credential, and the app's own runs,
+asked as itself, act for nobody and get no such tools. A Slack connector's run
+acts for the one person the team's enabled Slack clients map its Slack user
+to; a user two clients map to different people acts for nobody.
+
+The same credential, and no other, records where the app posted an inbox
+message: `PUT /api/inbox/{id}/deliveries/{client}` with `{channel, ts}`. The
+receipt shows in that message's `deliveries` and its history, to that machine
+only, wherever the message is read, a project's inbox included, so after a restart, an edit
+or a withdrawal the app updates its post instead of posting again. Recording
+the same post again after the message changed moves the receipt's `at` on,
+so it says the post shows the message as it stands, and the app catches up
+from its receipts each time its event stream opens (see [Slack](slack.md)).
+For anyone else the answer is 404.
+
+The trust model: the credential named as `machine` holds the vote of every
+person mapped here and can raise runs as them, and so use the tools that act as
+them with their credentials. The platform cannot check which Slack user really
+clicked; it trusts the app. Treat that credential like the mapped people's own
+sign-ins. See [security](../architecture/security.md#rules-the-code-holds).
+
+## Routing a request to a client
+
+Every Slack request arrives at `/connectors/slack` or
+`/connectors/slack/commands`, and every GitHub delivery at `/connectors/github`,
+whichever client it is for. A request has no session, so nothing in it is
+believed until a secret has verified it.
+
+1. The request states an identity in bytes nobody has verified yet: Slack's
+   `api_app_id` and `team_id`, or GitHub's hook target header, `installation.id`
+   and repository owner.
+2. It is offered, oldest first, to every enabled client that statement does not
+   disagree with. A field the request leaves out disagrees with nothing, which
+   is how Slack's URL verification and GitHub's ping reach a client.
+3. The first client whose own signing secret verifies the exact bytes takes it.
+   The tenant, the client and the agents it may reach come from that client's
+   record. A `tenant` in the payload is ignored.
+
+| Outcome | Status |
+|---------|--------|
+| No client is offered the request: unknown, disabled, or no clients at all | 404 |
+| Clients were offered it and none could verify it | 401 |
+
+So a request signed with one client's secret and claiming another's identity is
+offered to the other and fails its secret. Guessing an identity gains nothing.
+
+Within a workspace, two clients a request could not tell apart are refused when
+the second is saved. Two Slack apps in one team must each state their `app_id`.
+Two GitHub clients may not serve the same account unless their `app_id` or
+`installation` differ.
+
+Two workspaces may each register the same identity. The request goes to
+whichever holds the secret that verifies it, and if both do, to the older.
+Refusing the second would tell one workspace what another has.
+
+A run id is the runtime's, derived from the workspace and the event id
+together. The same event id through another workspace's client is a run of
+that workspace's own, with its own id, and never joins or touches the first.
+
+## Secrets
+
+A record holds no secret. Each of `token` and `signing_secret` is written in one
+of two ways:
+
+| Written as | Where the secret lives | What a read shows |
+|------------|------------------------|-------------------|
+| `{"value": "xoxb-..."}` | In the server's secret store: in memory, or in the database with `-state=postgres` | `{"set": true}` |
+| `{"ref": "env:HUMAGEN_SLACK_TOKEN_DOCS"}` | In the server's environment | `{"set": true, "ref": "env:..."}` |
+
+### Which variables a workspace may reference
+
+The environment belongs to the whole process, and a reference uses a secret
+without knowing its value. So a reference is default deny: a variable is read
+for a workspace only if the operator gave that exact name to that workspace.
+
+```sh
+humagen serve -secret-refs 'acme=HUMAGEN_SLACK_TOKEN_DOCS,HUMAGEN_SLACK_SECRET_DOCS;globex=HUMAGEN_GH_GLOBEX'
+```
+
+| Rule | Detail |
+|------|--------|
+| Who sets it | The operator, with `-secret-refs` at startup. Nothing in the API can read or change it. |
+| A workspace not listed | May reference nothing. It can still write its secrets as values. |
+| Names | Must start with `HUMAGEN_`, and not `HUMAGEN_OIDC_`. Anything else fails startup. |
+| The default clients | Their variables are given to the server's `-tenant` and to no other workspace. |
+| Where it is checked | Where the secret is read, which every create, every update and every restart goes through. |
+
+The check sits at the read, not only at the write, so a record that carries a
+reference its workspace was never given does not start, however it got into the
+store. It verifies nothing and signs nothing.
+
+A refused reference is one 400 with one message, whether the variable is unset,
+set, given to another workspace, or not a reference at all. The response does
+not repeat the name. A caller cannot use it to learn what the server's
+environment holds or what another workspace was given.
+
+The variable is read when the client is created or changed. A listed variable
+that is unset is refused the same way, so check the server's environment first
+when a reference you listed is refused.
+
+No response and no log line carries a secret. The stored type has no field for
+one, and the type a secret is written through hides its value from formatting.
+A secret left out of an update is kept.
+
+The secret store is in memory like every other store unless the server keeps
+its state in Postgres (`-state=postgres`). In memory, a value written through
+the API is lost on restart and has to be written again. In Postgres it is kept
+as written, so the database holds it in the clear and is to be guarded as the
+secret is. A reference keeps no value and survives either way, because the
+environment does. A secret manager goes behind the same three-method
+`clients.Secrets` interface.
+
+For GitHub, the token is an installation access token. The server does not mint
+or refresh one. A fix grant is signed with the client's own webhook secret, so
+one client's grant is worth nothing to another.
+
+## Defaults
+
+With nothing configured, no client exists and the webhook routes answer 404.
+
+The `HUMAGEN_SLACK_*` and `HUMAGEN_GITHUB_*` variables that used to
+configure the one installation per surface now create one default client per
+surface, `default-slack` and `default-github`, in the server's `-tenant`. It
+behaves as that installation did: any agent in the workspace (`"*"`), the same
+options, its secrets left in the environment. It is marked `managed: env` and
+is changed in the environment, not through the API. `HUMAGEN_SLACK_APP`,
+`HUMAGEN_GITHUB_APP` and `HUMAGEN_GITHUB_INSTALLATION` state its identity
+more exactly and are optional.
+
+## Limits
+
+Limits on clients are policies, checked by the same admission as every other
+limit. See the status table for what a policy can set.
+
+| Limit | Where it is set | Default |
+|-------|-----------------|---------|
+| Clients in the workspace | `max_clients` on the tenant's policy | 10 |
+| Clients on one surface | `max_clients_per_surface` on the tenant's policy | 5 |
+| Runs a client raises in a period | `max_runs` on a policy with scope `{"kind":"client","name":"<id>"}` | None |
+| Runs a client has in flight | `max_concurrent` on the same policy | None |
+| What a client's runs spend in a period | `spend_limit` (micro-USD) on the same policy | None |
+| Tokens a client's runs use in a period | `max_tokens` on the same policy | None |
+
+A policy may set the client caps as high as 100. The count and the insert are
+one step, so racing creates cannot pass a cap. Lowering a cap below what exists
+removes nothing and refuses the next create.
+
+A client's policy can only tighten what the workspace allows, like a project's
+or an agent's. A run called by an agent counts against the client that raised
+the run at the root of its tree. A refusal is recorded in the usage ledger with
+the client, the policy version and the limit, and raises a budget alert.
+
+Slack and GitHub are still answered 200 for a request whose run a limit
+refused: the request was genuine and retrying it would not help.
+
+Spend and tokens are enforced like any scope's: see
+[usage and spend](../architecture/overview.md#usage-and-spend). Not built: a storage limit
+per client. Published files are not counted by client.
+
+## Usage on a turn
+
+The console shows what a run used on its Activity page, the context gauge and
+Analytics, and not on the turn in the conversation. The Slack app shows none.
+The rule is that a surface shows usage on a turn only if every surface the
+shared adapter feeds can, and Humagen has no usage summary for Slack:
+`@humagen/web` renders `Turn.usage` as a chip, `@humagen/components` renders
+nothing. So the adapter leaves `Turn.usage` unset and the two agree. The run's
+`usage` is on the API for any client that wants it.
+
+What Humagen should have for this:
+
+- A `RunUsage` summary in `@humagen/components` (Slack context line and web)
+  taking integer micros, a currency and an unpriced count, so neither surface
+  formats money itself. `Turn.usage.costUsd` is a float of dollars today.
+- A context gauge (`ContextWindow` exists in `@humagen/core` session state,
+  with no component that renders it from a run).
+- A limit meter with a lower-bound state, for spend that left calls out.
+
+## API
+
+| Route | Permission |
+|-------|------------|
+| `GET /api/clients` | `clients:read` |
+| `POST /api/clients` | `clients:write` |
+| `GET /api/clients/{id}` | `clients:read` |
+| `PUT /api/clients/{id}` | `clients:write` |
+| `DELETE /api/clients/{id}` | `clients:write` |
+
+Every role can read. Only an admin can write, because a client hands the
+workspace's agents a credential. The tenant comes from the caller. Another
+workspace's client is a 404 on every route. A list holds one workspace's
+clients and never more than 100, with the caps beside it.
+
+```sh
+# The server was started with
+#   -secret-refs '<tenant>=HUMAGEN_SLACK_TOKEN_DOCS,HUMAGEN_SLACK_SECRET_DOCS'
+curl -X POST "$HUMAGEN/api/clients" -H "Authorization: Bearer $TOKEN" -d '{
+  "name": "Docs bot",
+  "surface": "slack",
+  "identity": {"team": "T01ABCDEF", "app_id": "A0DOCS"},
+  "default_agent": "docs-bot",
+  "slack": {"sessions": true},
+  "credentials": {
+    "token": {"ref": "env:HUMAGEN_SLACK_TOKEN_DOCS"},
+    "signing_secret": {"ref": "env:HUMAGEN_SLACK_SECRET_DOCS"}
+  }
+}'
+```
+
+A second Slack app in the same team, answering as another agent, is the same
+call with another `app_id`, agent and secrets. Limit what it may raise:
+
+```sh
+curl -X PUT "$HUMAGEN/api/policies" -H "Authorization: Bearer $TOKEN" -d '{
+  "scope": {"kind": "client", "name": "docs-bot"},
+  "period": "day", "max_runs": 200, "max_concurrent": 2
+}'
+```
+
+`PUT` replaces the record. Changing a client rebuilds its connector, so the
+runs it was carrying lose their place on the surface: a Slack session's stop
+button no longer finds them, and an answer still streaming starts a new message.
+Deleting a client removes its secrets and its policy. Runs it raised keep their
+record of it.
+
+A body that carries `tenant`, `managed` or `version` is rejected.
+
+## Per client, not per process
+
+Each client has its own connector, so everything a connector remembers is the
+client's alone: which Slack sessions hold which runs, where commands were
+offered, the message a run is editing, a GitHub guide's lock. A Slack app's stop
+button stops only runs that app raised, in its own workspace.
+
+An event goes out through the client that raised its run. A run with a route to
+another surface goes out through the one client in its workspace that serves
+the address and may route to its agent. With none, or with more than one, the
+event is undeliverable.
+
+## In the console
+
+Settings, Connections lists a workspace's clients: what each answers for, the
+agents it reaches, where its secrets live and its limits. An admin can disable
+or remove one. Creating a client and setting its limits are API calls.
+
+## What is not built
+
+- Encrypting secret values at rest. With `-state=postgres` records and values
+  are kept in the database, values as written.
+- Creating and editing a client in the console, and setting a client's limits
+  there.
+- Minting or refreshing GitHub installation tokens.
+- Slack OAuth installation. A client is given a bot token.
+- Jira and email clients. The two surfaces are Slack and GitHub.
+
+## Installation controls and bridge direction
+
+`GET /api/clients/{id}/capabilities` lists supported verified event families and
+native actions actually registered by the current adapter. A versioned `PUT`
+saves explicit event/action lists and `deliver_outcomes`. Empty lists disable
+those capabilities. Existing installations without a saved policy keep their
+configured behavior. These controls only narrow the installation's agent,
+project and action-policy grants. Managed installations are read-only.
+
+A Slack channel binding optionally sets `direction`: `two_way` (the legacy
+default), `inbound`, or `outcomes`. Inbound mirrors mapped human messages
+passively, without waking agents or posting automated Slack output. Outcomes
+ignores incoming human messages and sends permitted final outcomes and decisions.
+Two-way permits both. Bound bridges do not stream Activity or retained source
+metadata. The native host asks the current server delivery guard before writing
+a run outside Humagen; private threads or private source/library context are
+withheld. Explicit action-policy Ask still requires the native approval path;
+automatic delivery cannot grant it. Direction edits preserve binding identity and
+require the channel's current version and existing project/client permissions.
+
+GitHub installations may set `github.people`, a bounded exact GitHub-login to
+workspace-subject map. Only that verified installation's map applies. Bot,
+unmapped and disabled-installation actors act for nobody. A mapping does not
+grant membership or permissions; current project and policy checks still apply.

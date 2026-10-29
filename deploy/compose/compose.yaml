@@ -6,7 +6,7 @@
 #   docker compose --profile s3 up -d --build   # and MinIO
 #
 # `make up` and `make down` at the repository root wrap these, and take the
-# profiles from COMPOSE_PROFILES in .env. See docs/deploy.md.
+# profiles from COMPOSE_PROFILES in .env. See docs/guides/deploy.md.
 #
 # The project, service, volume and Postgres names stay warp, as before the
 # product was renamed: the volumes are named for the project, and Postgres

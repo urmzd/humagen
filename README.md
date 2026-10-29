@@ -5,7 +5,7 @@
     <br /><br />
     <a href="#installation">Install</a> &middot;
     <a href="https://github.com/urmzd/humagen/issues">Report Bug</a> &middot;
-    <a href="docs/deploy.md">Deploy</a>
+    <a href="docs/guides/deploy.md">Deploy</a>
   </p>
 </p>
 
@@ -20,7 +20,7 @@
 </p>
 <p align="center"><em>Local preview with seeded example data, captured with teasr. No model calls.</em></p>
 
-Formerly warp. Old settings, config files and specs still work, with a note at start. See [docs/upgrading-from-warp.md](docs/upgrading-from-warp.md).
+Formerly warp. Old settings, config files and specs still work, with a note at start. See [docs/guides/upgrading-from-warp.md](docs/guides/upgrading-from-warp.md).
 
 ## Features
 
@@ -34,7 +34,7 @@ Formerly warp. Old settings, config files and specs still work, with a note at s
 - **GitHub**: ask the app in a comment, through signed webhook ingress.
 - **Per-person MCP tools**: agents act with each person's own credential, never a shared one.
 
-**Early development:** pre-1.0, one replica per database, sessions in memory, Slack and GitHub tested against simulated APIs. See the [status table](docs/architecture.md#status).
+**Early development:** pre-1.0, one replica per database, sessions in memory, Slack and GitHub tested against simulated APIs. See the [status table](docs/architecture/overview.md#status).
 
 ## Installation
 
@@ -95,11 +95,11 @@ Set `ANTHROPIC_API_KEY` before starting and configure an agent with provider `an
 
 ### Connect Slack and GitHub
 
-A workspace answers through one or more [clients](docs/clients.md): a Slack app or a GitHub installation, each with its own identity, secrets, agents and limits. Follow the [integration guide](docs/integrations.md), then [Slack](docs/slack.md) or [GitHub](docs/github.md).
+A workspace answers through one or more [clients](docs/reference/clients.md): a Slack app or a GitHub installation, each with its own identity, secrets, agents and limits. Follow the [integration guide](docs/guides/integrations.md), then [Slack](docs/reference/slack.md) or [GitHub](docs/reference/github.md).
 
 ### Deploy
 
-Run the same config on your own infrastructure with compose, Helm or Flux. Point `stores` at Postgres, `blobs` at S3 and `auth` at your identity provider. See [deploy](docs/deploy.md) and [security](docs/security.md) for real sign-in, roles and machine tokens.
+Run the same config on your own infrastructure with compose, Helm or Flux. Point `stores` at Postgres, `blobs` at S3 and `auth` at your identity provider. See [deploy](docs/guides/deploy.md) and [security](docs/architecture/security.md) for real sign-in, roles and machine tokens.
 
 ## How it works
 
@@ -112,7 +112,7 @@ One repository holds the whole platform. Its transport, [fiber](fiber/README.md)
 | **Definition** | An agent is a saige definition, stored per workspace and versioned. A run pins its name, version and digest, and fails rather than replay a prompt that moved |
 | **Runtime** | One turn of a run. The default wraps saige inside a playscape sandbox; `humagen.WithRuntime` plugs in another. Anchor keeps runs durable |
 
-A message in the console, Slack or GitHub is an event, the agent's answer streams back as `run.*` events on the same channel, and each surface renders them. See [architecture](docs/architecture.md) and [fiber's event design](fiber/docs/architecture/events.md).
+A message in the console, Slack or GitHub is an event, the agent's answer streams back as `run.*` events on the same channel, and each surface renders them. See [architecture](docs/architecture/overview.md) and [fiber's event design](fiber/docs/architecture/events.md).
 
 ## Configuration
 
@@ -123,11 +123,11 @@ One file, two documents:
 | `System` | Sign-in, stores, bus, files, limits |
 | `Platform` | Models, tools, agents, Slack, GitHub, workspace settings (one per workspace) |
 
-Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`). Humagen reads it when used and never stores it. Flags override the file (`humagen start -addr 127.0.0.1:9090`). See [the spec](docs/spec.md).
+Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`). Humagen reads it when used and never stores it. Flags override the file (`humagen start -addr 127.0.0.1:9090`). See [the spec](docs/reference/spec.md).
 
 ## API
 
-[`api/openapi.yaml`](api/openapi.yaml) is the contract: every route, its permission, request, response and event stream. Tests fail when it and the server disagree. [`packages/client`](packages/client) is the generated TypeScript client. See [the API guide](docs/api.md).
+[`api/openapi.yaml`](api/openapi.yaml) is the contract: every route, its permission, request, response and event stream. Tests fail when it and the server disagree. [`packages/client`](packages/client) is the generated TypeScript client. See [the API guide](docs/reference/api.md).
 
 | Route | Permission |
 |-------|------------|
@@ -175,14 +175,14 @@ make web
 
 ## Documentation
 
-- [Roadmap](docs/roadmap.md)
-- [Architecture and status](docs/architecture.md)
-- [API contract and events](docs/api.md)
-- [The spec](docs/spec.md)
+- [Roadmap](docs/plans/roadmap.md)
+- [Architecture and status](docs/architecture/overview.md)
+- [API contract and events](docs/reference/api.md)
+- [The spec](docs/reference/spec.md)
 - [fiber: events, channels, definitions and the Runtime](fiber/docs/architecture/events.md)
-- [Projects](docs/projects.md)
-- [Agent calls](docs/agent-calls.md)
-- [Authorization](docs/authorization.md)
+- [Projects](docs/architecture/projects.md)
+- [Agent calls](docs/architecture/agent-calls.md)
+- [Authorization](docs/reference/authorization.md)
 
 ## License
 

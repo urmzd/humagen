@@ -1,6 +1,6 @@
 // Package credentials keeps the credentials people give humagen for themselves:
 // at most one per person for each person-scoped tool provider (an MCP server
-// whose credential scope is person, docs/spec.md), so a run that acts for
+// whose credential scope is person, docs/reference/spec.md), so a run that acts for
 // someone reaches that provider as them and as nobody else.
 //
 // # References and values

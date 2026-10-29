@@ -27,7 +27,7 @@ import (
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
-// Shared threads (docs/projects.md, "Channels and threads"): the
+// Shared threads (docs/architecture/projects.md, "Channels and threads"): the
 // conversations people and agents have together in a project's channel.
 //
 // A person posts a message; it starts no run of its own. What it starts is
