@@ -94,17 +94,21 @@ jobs:
 
   screens:
     name: Console screens
-    # On pull requests that change the console, the shared UI or this check.
-    if: github.event_name == 'pull_request'
+    # On pull requests that change the console, the shared UI or this check,
+    # and on every push to main, so a break that lands is seen when it lands.
+    # Release calls this workflow too; it is checked once, by CI itself.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.workflow == 'CI')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Did the pull request change the console?
+      - name: Did the change touch the console?
         id: changed
         run: |
-          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(apps/web/|packages/|scripts/screens/|Makefile$|pnpm-lock\.yaml$|\.github/workflows/ci\.yml$)'; then
+          if [ "${{ github.event_name }}" = push ]; then
+            echo "ui=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(apps/web/|packages/|scripts/screens/|Makefile$|pnpm-lock\.yaml$|\.github/workflows/ci\.yml$)'; then
             echo "ui=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.changed.outputs.ui == 'true'
