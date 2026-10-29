@@ -239,6 +239,9 @@ export function workspaceScreens(call: Call): Screen[] {
           (await call<{ pinned: string[] }>("GET", "/api/preferences")).pinned.includes(thread),
         );
         await page.reload();
+        // Ready as the runner counts it: the page has drawn its title. The
+        // console reads its branding before it draws, so it is not drawn at load.
+        await page.waitForSelector("h1");
         await reveal();
         await control.waitFor();
         await choose(/^Unpin\b/);
