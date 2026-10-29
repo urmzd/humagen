@@ -35,7 +35,6 @@ import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
-import { rememberSaid, saidFor } from "./conflicts.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
 import { itemActions } from "./itemActions.tsx";
@@ -190,16 +189,12 @@ function RoomComposer({
   onPost: (text: string) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
-  const [said, setSaid] = useState(() => (thread ? saidFor(thread) : ""));
   // People's messages never wait for an agent: each is posted as it is sent.
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
       onPost(m.text)
         .then((p) => {
-          const line = postedLine(p);
-          setSaid(line);
-          if (thread) rememberSaid(thread, line);
           queue.turnEnded("done");
         })
         .catch((e) => {
@@ -220,11 +215,6 @@ function RoomComposer({
         tags={tags}
         plus={plus}
       />
-      {said && (
-        <p role="status" className="px-3 text-aui-xs text-aui-muted">
-          {said}
-        </p>
-      )}
     </div>
   );
 }
@@ -1197,7 +1187,6 @@ export function ChannelPage({
                 ...(picked.agents.length > 0 ? { agents: picked.agents, mode: picked.mode } : {}),
               })
               .then((p) => {
-                rememberSaid(p.thread.id, postedLine(p));
                 onOpenThread(p.thread.id);
                 return p;
               })

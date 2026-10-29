@@ -22,7 +22,6 @@ import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
-import { rememberSaid } from "./conflicts.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
@@ -39,7 +38,7 @@ import {
   withAgent,
 } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
-import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
+import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
@@ -579,6 +578,12 @@ export function Chat({
       const failed = (e: unknown) => {
         setProblem(e instanceof ApiError ? e.message : words.failed.post);
         queue.reject();
+        // The first message opens the conversation, so nothing may queue
+        // behind it: one that did not post goes back in the box to send again.
+        if (!threadId) {
+          queue.clear();
+          setSeed({ text: m.text });
+        }
       };
       // Home starts a private conversation in the picked project, or a
       // shared thread when it was opened from a channel. Either opens at
@@ -595,8 +600,6 @@ export function Chat({
               : {}),
           })
           .then((p) => {
-            // What the first message did is said in the conversation it opens.
-            rememberSaid(p.thread.id, postedLine(p));
             onThread(p.thread.id);
             done(p.runs);
           })

@@ -5,7 +5,6 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { Run } from "./adapter.ts";
 import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
-import { saidFor } from "./conflicts.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
 import { globex } from "./projects.fixtures.ts";
 
@@ -985,7 +984,6 @@ test("Home's first message says what it did in the conversation it opens", async
   fireEvent.change(box(), { target: { value: "@nobody hello" } });
   fireEvent.keyDown(box(), { key: "Enter" });
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ad"]));
-  assert.equal(saidFor("th-00000000000000ad"), "@nobody: no agent is called nobody");
 });
 
 test("a conversation of runs has the + menu: its agents are saved on its thread so a follow-up goes to them, and its project is fixed, saying why", async () => {

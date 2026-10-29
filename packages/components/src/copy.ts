@@ -1084,6 +1084,7 @@ export const defaultCopy = {
       tool: { done: "used a tool", live: "using a tool", one: (t: string) => `used ${t}` },
     },
     stepNeedsYou: "waiting for you",
+    openProfile: "Open its profile to see how it is set up",
     stepFailed: (count: number) => `${count} failed`,
     workedFor: (time: string) => `Worked for ${time}`,
     worked: "Worked",

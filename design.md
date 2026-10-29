@@ -597,7 +597,7 @@ reopening, concurrent saves and refusal. Store tests cover bounded private lists
 memory restart, older records and write failure. HTTP tests cover unreadable
 projects, revoked access and independent conversation pins. The
 `sidebar-participants` browser fixture checks save/reload, independent unpinning,
-participant bounds and touch targets at 320, 390 and 1280px in dark mode. Its
+rows that name no participants, and touch targets at 320, 390 and 1280px in dark mode. Its
 multi-person roster is a simulated list response; pin persistence uses the native
 API. The open drawer uses its own bounds checks rather than page-content gutters.
 

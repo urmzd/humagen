@@ -396,6 +396,7 @@ var copyKeyList = []string{
 	"conversation.memory",
 	"conversation.messageActions",
 	"conversation.more",
+	"conversation.openProfile",
 	"conversation.outcomeDecisions",
 	"conversation.outcomeKind.decision",
 	"conversation.outcomeKind.recommendation",

@@ -546,7 +546,8 @@ export function Composer({
             </button>
           )}
           {leading}
-          <div className="min-w-0 flex-1" />
+          {/* What the + menu picked sits in the bar, beside +, so nothing under it moves. */}
+          <div className="min-w-0 flex-1">{plus?.chips}</div>
           {trailing}
           {/*
           One button in one place. With nothing to send it listens, and once
@@ -582,17 +583,8 @@ export function Composer({
           )}
         </div>
       </form>
-      {/*
-        One line under the prompt bar, the same before and after the first
-        message: what the + menu picked on the left, the disclaimer centered.
-      */}
-      {(plus?.chips || disclaimer) && (
-        <div className="grid min-w-0 grid-cols-1 items-center gap-x-3 gap-y-1 px-1 sm:grid-cols-[1fr_auto_1fr]">
-          <div className="min-w-0">{plus?.chips}</div>
-          {disclaimer && <p className="text-center text-aui-2xs text-aui-muted">{disclaimer}</p>}
-          <div aria-hidden className="hidden sm:block" />
-        </div>
-      )}
+      {/* One line under the prompt bar, the same before and after the first message. */}
+      {disclaimer && <p className="px-1 text-center text-aui-2xs text-aui-muted">{disclaimer}</p>}
     </div>
   );
 }
