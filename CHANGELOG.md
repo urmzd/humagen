@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.37.0 (2026-10-29)
+
+### Features
+
+- **console**: quieter, ready-to-read console screens (#112) ([20deae0](https://github.com/urmzd/humagen/commit/20deae0a812c7b5a2c9e605c5b96b2ae413bc99d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.36.0...v0.37.0)
+
+
 ## 0.36.0 (2026-10-29)
 
 ### Features
