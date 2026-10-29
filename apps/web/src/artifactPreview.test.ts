@@ -108,7 +108,10 @@ test("the editable sample decks expose six slides, correct titles and speaker no
 
 test("the saved DOCX is read as text, including its title and decisions", async () => {
   const bytes = await readFile(
-    new URL("../../../docs/assets/workspace-prototype/exports/Launch-plan-v4.docx", import.meta.url),
+    new URL(
+      "../../../docs/assets/workspace-prototype/exports/Launch-plan-v4.docx",
+      import.meta.url,
+    ),
   );
   const preview = previewOf(
     bytes,
