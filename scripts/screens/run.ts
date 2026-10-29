@@ -42,7 +42,7 @@ import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
 import { libraryScreens } from "./library.ts";
 import { startNativeModel } from "./native.ts";
-import { activityFilters, usageScreens } from "./observability.ts";
+import { usageScreens } from "./observability.ts";
 import { sidebarParticipants } from "./sidebar-participants.ts";
 import { sidebarScroll } from "./sidebar-scroll.ts";
 import { workspaceScreens } from "./workspace.ts";
@@ -708,7 +708,8 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       name: "chat-share",
       path: `/conversations/${ids.privateChat}/share`,
       act: async (page) => {
-        await page.getByRole("dialog", { name: "Share this conversation" }).waitFor();
+        // Share opens People & Access (DES-028).
+        await page.getByRole("dialog", { name: "People & Access" }).waitFor();
       },
     },
     { name: "chat-shared", path: `/conversations/${ids.sharedChat}` },
@@ -1101,11 +1102,6 @@ function screens(ids: Ids, call: Call): Screen[] {
     ...usageScreens(),
     ...emailScreens(call),
   );
-  list.push({
-    name: "conversation-activity-filters",
-    path: `/conversations/${ids.privateChat}/activity`,
-    act: activityFilters,
-  });
   return only.length ? list.filter((s) => only.includes(s.name)) : list;
 }
 

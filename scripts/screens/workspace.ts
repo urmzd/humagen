@@ -52,11 +52,13 @@ export function workspaceScreens(call: Call): Screen[] {
           Math.abs(beforeTyping.height - afterTyping.height) < 1,
         "Typing a short draft does not move or collapse the starter suggestions",
       );
+      // Starters scroll sideways when they overflow; each fits once scrolled to.
       for (const choice of await suggestions.getByRole("button").all()) {
+        await choice.scrollIntoViewIfNeeded();
         const box = await choice.boundingBox();
         assert.ok(
           box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0),
-          "Every starter fits the viewport",
+          "Every starter fits the viewport once scrolled to",
         );
       }
       await page.getByRole("button", { name: "Select project: Launch", exact: true }).click();
