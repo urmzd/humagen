@@ -39,6 +39,10 @@ func TestAgentFallbacks(t *testing.T) {
 // A workspace model policy: agents name it, runs use its models, and it cannot
 // be removed while an agent still runs on it.
 func TestModelPolicies(t *testing.T) {
+	// The policy's second model is a local OpenAI-compatible server, which
+	// needs no key; it is never reached, since the first model completes.
+	t.Setenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+	t.Setenv("OPENAI_API_KEY", "")
 	f := newFixture(t)
 	admin := f.machine(t, "acme", everything...)
 
