@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.33.0 (2026-10-29)
+
+### Features
+
+- brand the console, its text and emails from the spec; run on Tilt (#107) ([d479987](https://github.com/urmzd/humagen/commit/d479987cc06a3bd84ea3cc8915cf70dec81e6bda))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.32.0...v0.33.0)
+
+
 ## 0.32.0 (2026-10-28)
 
 ### Breaking

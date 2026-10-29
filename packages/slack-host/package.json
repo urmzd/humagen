@@ -1,6 +1,6 @@
 {
   "name": "@humagen/slack-host",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "private": true,
   "type": "module",
   "description": "The Slack host loop: a Web API client and one turn kept in step with Slack (reactions, session status, native streaming, overflow), shared by every Slack app built on humagen.",
