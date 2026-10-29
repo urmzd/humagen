@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.38.0 (2026-10-29)
+
+### Features
+
+- **dev**: reusable Tilt development workflow (#116) ([872fb61](https://github.com/urmzd/humagen/commit/872fb6188085d69cc285914f68023e3a17161299))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.37.1...v0.38.0)
+
+
 ## 0.37.1 (2026-10-29)
 
 ### Bug Fixes
