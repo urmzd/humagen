@@ -10,7 +10,6 @@ import {
   EmptyTitle,
 } from "@humagen/render-web/ui/empty";
 import { Input } from "@humagen/render-web/ui/input";
-import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Source } from "./api.ts";
 import { href } from "./route.ts";
@@ -120,7 +119,7 @@ export function ContextHealth({
       ) : (
         sources && (
           <>
-            <div className="flex flex-wrap gap-2" aria-label={words.filter}>
+            <div role="group" className="flex flex-wrap gap-2" aria-label={words.filter}>
               <Button
                 variant={filter === "" ? "secondary" : "ghost"}
                 size="sm"
@@ -145,7 +144,7 @@ export function ContextHealth({
                 </Button>
               ))}
             </div>
-            <div className="grid min-w-0 max-w-3xl gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]">
+            <div className="min-w-0 max-w-md">
               <label className="flex min-w-0 flex-col gap-2 text-sm font-medium">
                 {words.search}
                 <span className="relative">
@@ -158,17 +157,6 @@ export function ContextHealth({
                     onChange={(event) => setQuery(event.target.value)}
                   />
                 </span>
-              </label>
-              <label className="flex min-w-0 flex-col gap-2 text-sm font-medium">
-                {words.filter}
-                <NativeSelect value={filter} onChange={(event) => setFilter(event.target.value)}>
-                  <option value="">{words.all}</option>
-                  {groups.map((group) => (
-                    <option key={group.value} value={group.value}>
-                      {group.label}
-                    </option>
-                  ))}
-                </NativeSelect>
               </label>
             </div>
             {selected && !current && <Problem message={words.selectedMissing} />}

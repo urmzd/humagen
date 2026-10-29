@@ -65,6 +65,12 @@ export interface MailboxProps {
   selectedMessage?: InboxMessage;
   onSelect?: (id: string | null) => void;
   /**
+   * On a wide container with nothing selected, show the first message in the
+   * reading pane instead of an empty one. A preview is not a read: it sends no
+   * `ActionId.read` until the person picks the row.
+   */
+  previewFirst?: boolean;
+  /**
    * Every click, in the shared contract: `payload.turnId` is the message id and
    * `payload.target` the part. Opening an unread message sends `ActionId.read`;
    * Dismiss sends `ActionId.dismiss`, Snooze `ActionId.snooze` with the time in
@@ -274,6 +280,7 @@ export function Mailbox({
   selectedId,
   selectedMessage,
   onSelect,
+  previewFirst = false,
   onAction = () => {},
   viewer,
   renderers = {},
@@ -319,6 +326,8 @@ export function Mailbox({
   const selected =
     messages.find((m) => m.id === current) ??
     (selectedMessage?.id === current ? selectedMessage : null);
+  // Narrow screens never see the preview: the pane stays hidden until a row is picked.
+  const shownInPane = selected ?? (previewFirst ? (ordered[0] ?? null) : null);
   const count = openCount ?? openMessageCount(messages, now);
 
   // Reading is showing: a row click and a deep link (`selectedId`) both mark it read, once.
@@ -367,10 +376,10 @@ export function Mailbox({
   };
 
   const onPaneKey = (e: KeyboardEvent) => {
-    if (e.key !== "Escape" || !selected) return;
+    if (e.key !== "Escape" || !shownInPane) return;
     e.preventDefault();
     list.current
-      ?.querySelector<HTMLElement>(`[data-message="${CSS.escape(selected.id)}"]`)
+      ?.querySelector<HTMLElement>(`[data-message="${CSS.escape(shownInPane.id)}"]`)
       ?.focus();
   };
 
@@ -384,7 +393,7 @@ export function Mailbox({
           type="button"
           data-message={m.id}
           data-template={messageTemplate(m)}
-          aria-current={m.id === current ? "true" : undefined}
+          aria-current={m.id === shownInPane?.id ? "true" : undefined}
           onClick={() => select(m.id)}
           className="flex w-full min-w-0 items-start gap-3 rounded-aui px-3 py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 aria-[current]:bg-aui-accent-soft motion-reduce:transition-none"
         >
@@ -418,13 +427,14 @@ export function Mailbox({
             >
               {m.subject}
             </span>
-            <span className="flex min-w-0 items-baseline gap-1.5 text-aui-xs">
+            <span className="flex min-w-0 items-baseline gap-2 text-aui-xs">
               <TemplateTag message={m} />
-              <span className="min-w-0 flex-1 truncate text-aui-muted">
-                {asks && openParts(m).length > 1
-                  ? `${openParts(m).length} to decide · ${messagePreview(m)}`
-                  : messagePreview(m)}
-              </span>
+              {asks && openParts(m).length > 1 && (
+                <span className="shrink-0 font-medium text-aui-fg tabular-nums">
+                  {openParts(m).length} to decide
+                </span>
+              )}
+              <span className="min-w-0 flex-1 truncate text-aui-muted">{messagePreview(m)}</span>
               {!open && (
                 <span className="shrink-0 text-aui-2xs text-aui-muted capitalize">
                   {/* Put away by this reader alone: hidden, as Hide for Me says. */}
@@ -460,19 +470,19 @@ export function Mailbox({
     </li>
   );
 
-  const reading = selected ? (
+  const reading = shownInPane ? (
     <ReadingPane
-      message={selected}
+      message={shownInPane}
       now={now}
       viewer={viewer}
       renderers={renderers}
       renderSender={renderSender}
       onAction={onAction}
       onBack={() => select(null)}
-      onDismiss={() => dismiss(selected)}
-      onSnooze={() => snooze(selected)}
-      onUnhide={() => unhide(selected)}
-      actions={messageActions?.(selected)}
+      onDismiss={() => dismiss(shownInPane)}
+      onSnooze={() => snooze(shownInPane)}
+      onUnhide={() => unhide(shownInPane)}
+      actions={messageActions?.(shownInPane)}
     />
   ) : (
     <div className="flex flex-1 flex-col items-center justify-center gap-1 py-16 text-center">
@@ -571,7 +581,7 @@ export function Mailbox({
           onKeyDown={onPaneKey}
           className={`min-h-0 min-w-0 flex-1 flex-col outline-none @2xl:flex @2xl:pl-6 ${selected ? "flex" : "hidden"}`}
         >
-          {selected && renderFrame ? renderFrame(selected, reading) : reading}
+          {shownInPane && renderFrame ? renderFrame(shownInPane, reading) : reading}
         </section>
       </div>
     </section>
