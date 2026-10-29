@@ -106,7 +106,7 @@ test("Needs you is a box of the five newest things waiting on the person, from w
     updates: ready([update("a-1", "Launch moves", "Launch", true)]),
   });
   assert.deepEqual(headings(html), ["Needs you, 9", "What&#x27;s new"]);
-  assert.match(html, />Open Inbox</);
+  assert.match(html, />Open Notifications</);
   const shown = [...html.matchAll(/published (report-m-\d)\.md|(triage failed)/g)].map(
     (m) => m[1] ?? m[2],
   );
@@ -133,7 +133,11 @@ test("an item above normal says so in words before when it came, and a normal on
   const html = boxes({
     notifications: ready({ items: [urgent, need("m-2", 10)], inbox: { total: 2 } }),
   });
-  assert.match(html, /triage failed<\/span><span[^>]*>Urgent [^<]+</);
+  // The word comes first and carries the same tint as the Notifications list.
+  assert.match(
+    html,
+    /triage failed<\/span><span[^>]*><span class="font-medium text-aui-bad">Urgent<\/span> [^<]+</,
+  );
   assert.match(html, /report-m-2\.md<\/span><span[^>]*>(?!Urgent|Warning)[^<]+</);
 });
 
@@ -176,7 +180,7 @@ test("empty Home boxes do not duplicate the retained announcement banner", () =>
   });
   assert.deepEqual(headings(html), []);
   assert.equal(html, "");
-  assert.doesNotMatch(html, /Nothing needs you|Open Inbox/);
+  assert.doesNotMatch(html, /Nothing needs you|Open Notifications/);
 });
 
 test("while Home reads, its boxes say so without moving, and a read that failed says where to look instead", () => {

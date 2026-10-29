@@ -2271,7 +2271,7 @@ export const defaultCopy = {
     nothingNew: "Nothing new from your projects.",
     moreUpdates: (n: number) => `${n} more under What's new`,
     /** The console's Needs you box: its way to the rest. */
-    openInbox: "Open Inbox",
+    openInbox: "Open Notifications",
     /** What's new's way to every announcement in the inbox. */
     seeAll: "See All",
     /** A box on Home before what it lists has been read. */

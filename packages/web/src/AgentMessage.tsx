@@ -491,7 +491,7 @@ export function AgentMessage({
       aria-busy={busy || undefined}
       data-turn-id={turn.id}
       data-aui-still={turn.detached || undefined}
-      className="aui-fade-up grid min-w-0 scroll-mt-4 grid-cols-[1.75rem_minmax(0,1fr)] gap-x-2.5"
+      className="group/message aui-fade-up grid min-w-0 scroll-mt-4 grid-cols-[1.75rem_minmax(0,1fr)] gap-x-2.5"
     >
       <StoppableMark agent={turn.agent.name} state={orb} stop={stop} copy={copy}>
         <AgentAvatar agent={turn.agent} state={orb} />

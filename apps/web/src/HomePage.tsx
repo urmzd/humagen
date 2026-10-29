@@ -12,6 +12,12 @@ import { Button } from "@humagen/render-web/ui/button";
 import type { ReactNode } from "react";
 import { ago, RowButton, Section, textAction } from "./ui.tsx";
 
+/** The urgency word's tint, the same tones the Notifications list uses. */
+const URGENCY_TINT: Partial<Record<string, string>> = {
+  critical: "text-aui-bad",
+  warning: "text-aui-warn",
+};
+
 /** Before the first message, the prompt is the page. Chat owns its controls and submission. */
 export function HomePage({
   greeting,
@@ -138,9 +144,18 @@ export function HomeBoxes({
                       </>
                     }
                     detail={
-                      [n.severity ? c.urgency[n.severity] : null, n.at ? ago(n.at) : null]
-                        .filter(Boolean)
-                        .join(" ") || undefined
+                      n.severity || n.at ? (
+                        <>
+                          {n.severity && c.urgency[n.severity] && (
+                            // Said in words first; the tint matches the Notifications list.
+                            <span className={`font-medium ${URGENCY_TINT[n.severity] ?? ""}`}>
+                              {c.urgency[n.severity]}
+                            </span>
+                          )}
+                          {n.severity && c.urgency[n.severity] && n.at && " "}
+                          {n.at && ago(n.at)}
+                        </>
+                      ) : undefined
                     }
                   />
                 </li>

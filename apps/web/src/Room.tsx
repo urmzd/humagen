@@ -240,7 +240,7 @@ function MessageView({
       ref={ref}
       id={`message-${m.id}`}
       aria-label={`Message from ${m.name || m.by}`}
-      className={`flex gap-3 rounded-aui ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
+      className={`group/message flex gap-3 rounded-aui ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
     >
       <PersonMark name={m.name || m.by} />
       <div className="min-w-0 flex-1">

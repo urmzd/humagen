@@ -130,11 +130,6 @@ export function Agents({
         canWrite || onBuild ? (
           <div className="flex flex-wrap gap-2">
             {operational && canWrite && (
-              <button type="button" className={button} onClick={() => setState("draft")}>
-                {words.reviewDrafts}
-              </button>
-            )}
-            {operational && canWrite && (
               <button
                 type="button"
                 className={button}
@@ -159,33 +154,38 @@ export function Agents({
       }
     >
       <Problem message={problem} />
-      {operational && (
-        <Label text={words.filter}>
-          <select
-            className={`${field} max-w-sm`}
-            value={state}
-            onChange={(event) => setState(event.target.value)}
-          >
-            <option value="">{words.all}</option>
-            <option value="draft">{words.reviewDrafts}</option>
-            {Object.entries(words.states).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </Label>
-      )}
-      {/* A long list is found by name, not by scrolling. */}
-      {agents.length > 6 && (
-        <input
-          type="search"
-          aria-label="Find an agent"
-          placeholder={`Find among ${agents.length} agents`}
-          className={`${field} h-9 max-w-sm`}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+      {/* Filters share one row; the header keeps only actions. */}
+      {(operational || agents.length > 6) && (
+        <div className="flex flex-wrap items-end gap-3">
+          {operational && (
+            <Label text={words.filter}>
+              <select
+                className={`${field} h-9 w-56`}
+                value={state}
+                onChange={(event) => setState(event.target.value)}
+              >
+                <option value="">{words.all}</option>
+                <option value="draft">{words.reviewDrafts}</option>
+                {Object.entries(words.states).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Label>
+          )}
+          {/* A long list is found by name, not by scrolling. */}
+          {agents.length > 6 && (
+            <input
+              type="search"
+              aria-label="Find an agent"
+              placeholder={`Find among ${agents.length} agents`}
+              className={`${field} h-9 min-w-0 max-w-sm flex-1 basis-56`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          )}
+        </div>
       )}
       {agents.length === 0 ? (
         <Empty title="No agents yet">

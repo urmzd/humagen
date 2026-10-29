@@ -46,7 +46,7 @@ test("Home's rows open what they name, and each box's text control goes to the r
   );
   fireEvent.click(screen.getByRole("button", { name: /triage failed/ }));
   fireEvent.click(screen.getByRole("button", { name: /Launch moves to November 4/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Open Inbox" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Notifications" }));
   fireEvent.click(screen.getByRole("button", { name: "See All" }));
   assert.deepEqual(did, ["open m-5", "update m-4", "inbox", "updates"]);
   // Each box is a region named by its heading.

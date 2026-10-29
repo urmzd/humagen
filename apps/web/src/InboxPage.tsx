@@ -209,7 +209,10 @@ export function MailboxView({
   emptyOpen,
   heading,
   groupByAction,
+  previewFirst,
 }: {
+  /** Show the first message in the empty reading pane on a wide screen. */
+  previewFirst?: boolean;
   /** `false` where the page is the inbox, so its title and count are the page's. */
   heading?: 2 | false;
   groupByAction?: boolean;
@@ -251,6 +254,7 @@ export function MailboxView({
       openCount={openCount}
       heading={heading}
       groupByAction={groupByAction}
+      previewFirst={previewFirst}
       show={show}
       onShow={onShow}
       messageActions={messageActions && ((m) => messageActions(m as PlatformMessage))}
@@ -420,6 +424,7 @@ export function InboxPage({
           <MailboxView
             heading={false}
             groupByAction={false}
+            previewFirst
             query={query}
             messages={inbox.messages}
             selectedId={selected}
