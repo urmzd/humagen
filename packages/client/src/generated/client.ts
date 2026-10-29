@@ -901,6 +901,21 @@ export class ApiClient {
     });
   }
 
+  /** The System document's branding logo.dark, public like its logo. */
+  async getDeploymentLogoDark(options?: RequestOptions): Promise<Blob> {
+    const path = "/branding/logo/dark";
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getDeploymentLogoDarkRaw(options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    const path = "/branding/logo/dark";
+    return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
   /** A font file the System document's branding.fonts.files names, public like the console's icons, since the page uses it before sign-in. */
   async getDeploymentFont(name: string, options?: RequestOptions): Promise<Blob> {
     let path = "/branding/fonts/{name}";
@@ -4370,6 +4385,21 @@ grounds nothing until a source of that name is made again.
 
   async getBrandingLogoRaw(options?: RequestOptions): Promise<ApiResponse<Blob>> {
     const path = "/api/branding/logo";
+    return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Get the caller's workspace logo for the dark theme */
+  async getBrandingLogoDark(options?: RequestOptions): Promise<Blob> {
+    const path = "/api/branding/logo/dark";
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getBrandingLogoDarkRaw(options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    const path = "/api/branding/logo/dark";
     return this.rawRequest<Blob>("GET", path, {
       ...options,
     });

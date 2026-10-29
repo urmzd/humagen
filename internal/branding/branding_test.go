@@ -123,13 +123,14 @@ func TestLoadRefusesWhatCannotBeServed(t *testing.T) {
 		b    spec.Branding
 		want string
 	}{
-		"a missing logo":           {spec.Branding{Logo: &spec.Logo{Path: filepath.Join(dir, "none.svg")}}, "no such file"},
-		"an SVG with a script":     {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "bad.svg"), `<svg><script>alert(1)</script></svg>`)}}, "script"},
-		"an SVG with a handler":    {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "on.svg"), `<svg onload="x()"></svg>`)}}, "script"},
-		"a file that is no SVG":    {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "text.svg"), `hello`)}}, "not an SVG"},
-		"a logo too large":         {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "big.png"), strings.Repeat("x", maxLogo+1))}}, "at most"},
-		"an icon of no such name":  {spec.Branding{Icons: filepath.Dir(write(t, filepath.Join(dir, "icons", "favicon.ico"), "x"))}, `no icon called "favicon.ico"`},
-		"a missing icon directory": {spec.Branding{Icons: filepath.Join(dir, "nowhere")}, "no such file"},
+		"a missing logo":            {spec.Branding{Logo: &spec.Logo{Path: filepath.Join(dir, "none.svg")}}, "no such file"},
+		"a dark logo with a script": {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "ok.svg"), logo), Dark: write(t, filepath.Join(dir, "dark.svg"), `<svg><script>x()</script></svg>`)}}, "branding.logo.dark"},
+		"an SVG with a script":      {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "bad.svg"), `<svg><script>alert(1)</script></svg>`)}}, "script"},
+		"an SVG with a handler":     {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "on.svg"), `<svg onload="x()"></svg>`)}}, "script"},
+		"a file that is no SVG":     {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "text.svg"), `hello`)}}, "not an SVG"},
+		"a logo too large":          {spec.Branding{Logo: &spec.Logo{Path: write(t, filepath.Join(dir, "big.png"), strings.Repeat("x", maxLogo+1))}}, "at most"},
+		"an icon of no such name":   {spec.Branding{Icons: filepath.Dir(write(t, filepath.Join(dir, "icons", "favicon.ico"), "x"))}, `no icon called "favicon.ico"`},
+		"a missing icon directory":  {spec.Branding{Icons: filepath.Join(dir, "nowhere")}, "no such file"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var cfg spec.Config

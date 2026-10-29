@@ -535,6 +535,22 @@ paths:
               schema: {type: string, format: binary}
         "404": {$ref: "#/components/responses/NotFound"}
 
+  /branding/logo/dark:
+    get:
+      operationId: getDeploymentLogoDark
+      tags: [health]
+      summary: Get the deployment's logo for the dark theme
+      description: The System document's branding logo.dark, public like its logo.
+      x-permission: public
+      security: []
+      responses:
+        "200":
+          description: The logo, with its image type.
+          content:
+            image/*:
+              schema: {type: string, format: binary}
+        "404": {$ref: "#/components/responses/NotFound"}
+
   /branding/fonts/{name}:
     get:
       operationId: getDeploymentFont
@@ -4723,6 +4739,21 @@ paths:
       operationId: getBrandingLogo
       tags: [preferences]
       summary: Get the caller's workspace logo
+      x-permission: authenticated
+      responses:
+        "200":
+          description: The logo, with its image type.
+          content:
+            image/*:
+              schema: {type: string, format: binary}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/branding/logo/dark:
+    get:
+      operationId: getBrandingLogoDark
+      tags: [preferences]
+      summary: Get the caller's workspace logo for the dark theme
       x-permission: authenticated
       responses:
         "200":
@@ -10466,7 +10497,7 @@ components:
     Branding:
       description: How the console brands itself for the caller's workspace.
       type: object
-      required: [name, wordmark, title, logo, logo_alt, style, starters, copy]
+      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy]
       properties:
         name: {type: string, description: The product's name.}
         wordmark: {type: string, description: The text beside the logo in the sidebar. Empty shows the logo alone.}
@@ -10474,6 +10505,9 @@ components:
         logo:
           type: [string, "null"]
           description: Where the logo is served. Null is Humagen's mark.
+        logo_dark:
+          type: [string, "null"]
+          description: Where the logo for the dark theme is served. Null draws logo in both themes.
         logo_alt: {type: string, description: The logo's text for a screen reader.}
         style:
           type: [string, "null"]

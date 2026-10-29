@@ -16,6 +16,7 @@ export function servedBranding(name = servedName()): Branding {
     wordmark: name === "Humagen" ? "humagen" : name,
     title: name,
     logo: null,
+    logo_dark: null,
     logo_alt: name,
     style: null,
     starters: null,

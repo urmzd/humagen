@@ -16,6 +16,7 @@ test("before the workspace's branding is read, the served name brands the consol
     wordmark: "humagen",
     title: "Humagen",
     logo: null,
+    logo_dark: null,
     logo_alt: "Humagen",
     style: null,
     starters: null,

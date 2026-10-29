@@ -106,7 +106,7 @@ spec:
 
   branding:                 # the console's look and name; see Branding below
     name: Acme              # the product's name. Left out: metadata.display_name
-    logo: {path: ./brand/logo.svg, alt: Acme}
+    logo: {path: ./brand/logo.svg, dark: ./brand/logo-dark.svg, alt: Acme}
     icons: ./brand/icons    # favicon.svg, icon-192.png and the rest, by the console's own names
     manifest: {short_name: Acme, theme_color: "#1a1a2e", background_color: "#fafafa"}
     palette:
@@ -299,8 +299,8 @@ the workspace signs in.
 | `name` | The product's name: the tab title, the sidebar's wordmark and the installed app's name, unless each is set itself. Left out, `metadata.display_name` | both |
 | `title` | What follows the page's own name in the browser tab, after ` · ` | both |
 | `wordmark` | The text beside the logo in the sidebar. `""` shows the logo alone | both |
-| `logo` | `{path, alt}`: an `.svg`, `.png`, `.webp` or `.jpg` of at most 512 KiB in place of Humagen's mark | both |
-| `icons` | A directory of files that replace the console's icons by name: `favicon.svg`, `favicon-32.png`, `apple-touch-icon.png`, `icon.svg`, `icon-192.png`, `icon-512.png`. One it lacks stays Humagen's; any other name is an error | System |
+| `logo` | `{path, dark, alt}`: an `.svg`, `.png`, `.webp` or `.jpg` of at most 512 KiB in place of Humagen's mark. `dark` is the same kind of file drawn in the dark theme; left out, `path` is drawn in both | both |
+| `icons` | A directory of files that replace the console's icons by name: `favicon.svg`, `favicon-32.png`, `apple-touch-icon.png`, `icon.svg`, `icon-192.png`, `icon-512.png`. `favicon-dark.svg` and `favicon-dark-32.png` are added for the tab while the device is in its dark theme; an SVG favicon may instead carry its own `prefers-color-scheme` style. One it lacks stays Humagen's; any other name is an error | System |
 | `manifest` | The installable app's `name`, `short_name`, `description`, `theme_color` and `background_color` | System |
 | `palette` | `accent`, `surface` (the page), `plane` (the sidebar and panels), `text` and `rule` (lines), each `{light, dark}` or one color for both themes | both |
 | `fonts` | CSS font-family lists for `ui`, `heading` and `mono` text, and `files`: up to 12 `{family, path, weight, style}` faces (`.woff2`, `.woff`, `.ttf` or `.otf`, at most 2 MiB each) the server serves for those lists to name. A face named without a file must be installed on the device. A workspace's files replace the deployment's | both |
