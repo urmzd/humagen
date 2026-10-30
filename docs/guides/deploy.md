@@ -54,6 +54,31 @@ process with its stores beside it.
   Redis to run. `bus.kind: memory` keeps it in the process. See
   [Storage](../architecture/overview.md#storage). **Published files** go to `blobs.kind: disk` (the workspace
   volume) or `s3`, any S3-compatible bucket.
+- **Tools need a sandbox driver.** A run's file tools, its shell and its
+  stdio MCP servers execute in the driver `sandbox` names
+  ([the spec](../reference/spec.md#sandbox)). See
+  [Upgrading: choose a sandbox](#upgrading-choose-a-sandbox).
+
+### Upgrading: choose a sandbox
+
+From this release, a System document that names no `sandbox` gets `docker`
+on `runsc` (gVisor): each run's tools execute in containers of their own.
+The image has no Docker CLI and the chart's pod and the compose container
+have no Docker socket, so a deployment that upgrades without choosing keeps
+answering, logs `sandbox: docker is unavailable` at start, and every file
+tool and stdio MCP server refuses with that reason. Nothing falls back to
+the host. Choose one:
+
+| `sandbox.kind` | What it means here |
+|----------------|--------------------|
+| `unisolated` | Tools run in Humagen's own container with its privileges, as before this release. The `shell` tool is refused. What the chart and the compose stack now set explicitly |
+| `docker` | An instance per run. Humagen needs the Docker CLI and a daemon. Giving it the Docker socket is root on that host, so run it only where the host exists to run sandboxes, never on a shared Kubernetes node |
+| `local` | Host processes in Humagen's container, not isolated. Development only |
+
+A Kubernetes driver that runs each run's instance as its own pod is the
+production target and is not built yet
+([status](../architecture/overview.md#status)). `humagen deploy` deploys the
+spec you give it: set `sandbox` there for compose and kubernetes targets too.
 
 ## The image
 

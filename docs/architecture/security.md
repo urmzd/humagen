@@ -159,6 +159,18 @@ no permission, grants nothing.
   beats every allow.
 - **A bad policy stops the server.** One that does not parse or compile is an
   error at start, never at decision time.
+- **A run's tools execute in its sandbox, and the sandbox's driver is a
+  trust boundary of its own.** With `sandbox: docker` each run's file tools,
+  shell and stdio MCP servers run in containers with no network, a read-only
+  root, no capabilities and a non-root user, and the agent loop and model
+  keys stay in the server ([spec](../reference/spec.md#sandbox)). Starting
+  those containers needs the Docker socket, and **access to the Docker socket
+  is host-root equivalent**: a compromised Humagen process could start a
+  privileged container and own the host. Run the `docker` driver only on a
+  host dedicated to sandboxes. A remote or Kubernetes driver, where Humagen
+  asks for instances without holding root anywhere, is the production target
+  and is not built. `unisolated` and `local` run tools with Humagen's own
+  privileges, and the shell is refused under `unisolated`.
 - **Tenant is never taken from a request.** It comes from the deployment or a
   verified token claim. A body that carries a `tenant` field is rejected.
 - **Another tenant's objects do not exist.** Reads, deletes, calls and stops

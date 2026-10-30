@@ -175,6 +175,8 @@ type serveDefaults struct {
 	// notes, when set, is where serve tells the person at a terminal what
 	// it chose for them: that it found no console to serve.
 	notes io.Writer
+	// sandboxRuntime is -sandbox-runtime's default. Empty is runsc.
+	sandboxRuntime string
 }
 
 func serve(o Options, args []string, d serveDefaults) error {
@@ -191,6 +193,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	groupsClaim := fs.String("groups-claim", "groups", "token claim that lists a person's groups")
 	groups := addGroupFlags(fs)
 	storage := addStorageFlags(fs)
+	sandboxing := addSandboxFlags(fs, d.sandboxRuntime)
 	stateKind := addStateFlags(fs, os.Getenv)
 	mockAddr := fs.String("mock-idp-addr", "127.0.0.1:8081", "with -auth=mock, the loopback address the development identity provider listens on")
 	mockPersonas := fs.String("mock-personas", "", `with -auth=mock, a JSON file of {"people": [...], "machines": [...]} to sign in as. Empty means the built-in set`)
@@ -309,6 +312,12 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return err
 		}
 	}
+	// Where each run's tools execute.
+	sbx, closeSandbox, err := openSandbox(ctx, o, file, sandboxing, log)
+	if err != nil {
+		return err
+	}
+	defer closeSandbox()
 	// Model and tool providers: the spec's Platform documents for the common
 	// cases, options for the rest. Keys are references, read when used.
 	fromFile, err := fileExtensions(ctx, o, file.cfg, keys)
@@ -352,6 +361,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Blobs:            blobs,
 		Bus:              broker,
 		Workspace:        *workspaceDir,
+		Sandbox:          sbx,
 		Concurrency:      *concurrency,
 		// How a conversation with many readers is read and admitted.
 		Rooms: rooms.Config{CoalesceAbove: *roomCoalesce, TailInterval: *roomTail, RoomRunsPerMinute: *roomRate, PersonRuns: *personRuns},

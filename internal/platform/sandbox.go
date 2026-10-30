@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
@@ -134,27 +135,18 @@ type sandboxFile struct {
 	Size int64  `json:"size"`
 }
 
-// listSandbox returns the regular files in a scratch directory. Links are not
-// followed and not listed.
-func listSandbox(root *os.Root) ([]sandboxFile, int64, error) {
-	var files []sandboxFile
+// listSandbox returns the regular files in a working directory. Links are
+// not followed and not listed.
+func listSandbox(ctx context.Context, area fileArea) ([]sandboxFile, int64, error) {
+	files, err := area.list(ctx)
 	var total int64
-	err := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		files = append(files, sandboxFile{Path: p, Size: info.Size()})
-		total += info.Size()
-		return nil
-	})
+	for _, f := range files {
+		total += f.Size
+	}
 	return files, total, err
 }
 
-func writeSandbox(root *os.Root, name, content string) (sandboxFile, error) {
+func writeSandbox(ctx context.Context, area fileArea, name, content string) (sandboxFile, error) {
 	clean, err := cleanPath(name)
 	if err != nil {
 		return sandboxFile{}, err
@@ -162,7 +154,7 @@ func writeSandbox(root *os.Root, name, content string) (sandboxFile, error) {
 	if len(content) > MaxFileBytes {
 		return sandboxFile{}, fmt.Errorf("%w: a file is at most %d bytes, and this is %d", ErrSandbox, MaxFileBytes, len(content))
 	}
-	files, total, err := listSandbox(root)
+	files, total, err := listSandbox(ctx, area)
 	if err != nil {
 		return sandboxFile{}, fmt.Errorf("platform: sandbox: %w", err)
 	}
@@ -178,39 +170,91 @@ func writeSandbox(root *os.Root, name, content string) (sandboxFile, error) {
 	if total-max(replacing, 0)+int64(len(content)) > MaxSandboxBytes {
 		return sandboxFile{}, fmt.Errorf("%w: this conversation may hold %d bytes in all", ErrSandbox, MaxSandboxBytes)
 	}
-	// A link where the file would go is refused rather than written through.
-	if st, err := root.Lstat(clean); err == nil && !st.Mode().IsRegular() {
-		return sandboxFile{}, fmt.Errorf("%w: %q is not a file that can be written", ErrSandbox, name)
-	}
-	if dir := path.Dir(clean); dir != "." {
-		if err := root.MkdirAll(dir, 0o700); err != nil {
-			return sandboxFile{}, fmt.Errorf("%w: %q cannot be created there", ErrSandbox, name)
-		}
-	}
-	if err := root.WriteFile(clean, []byte(content), 0o600); err != nil {
-		return sandboxFile{}, fmt.Errorf("%w: %q cannot be written", ErrSandbox, name)
+	if err := area.write(ctx, clean, content); err != nil {
+		return sandboxFile{}, err
 	}
 	return sandboxFile{Path: clean, Size: int64(len(content))}, nil
 }
 
-func readSandbox(root *os.Root, name string) ([]byte, string, error) {
+func readSandbox(ctx context.Context, area fileArea, name string) ([]byte, string, error) {
 	clean, err := cleanPath(name)
 	if err != nil {
 		return nil, "", err
 	}
-	st, err := root.Lstat(clean)
-	if err != nil || !st.Mode().IsRegular() {
-		return nil, "", fmt.Errorf("%w: there is no file at %q", ErrSandbox, name)
-	}
-	if st.Size() > MaxFileBytes {
-		return nil, "", fmt.Errorf("%w: %q is larger than %d bytes", ErrSandbox, name, MaxFileBytes)
-	}
-	b, err := root.ReadFile(clean)
+	b, err := area.read(ctx, clean)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: there is no file at %q", ErrSandbox, name)
+		return nil, "", err
 	}
 	return b, clean, nil
 }
+
+// fileArea is a working directory the file tools read and write: a
+// conversation's scratch directory on this host (rootArea), or the work
+// directory of a run's isolated instance (workArea). The bounds and the
+// path rules are the callers'; an area refuses what it cannot hold safely.
+type fileArea interface {
+	// list returns the regular files, with their sizes.
+	list(ctx context.Context) ([]sandboxFile, error)
+	// read returns a regular file of at most MaxFileBytes.
+	read(ctx context.Context, clean string) ([]byte, error)
+	// write replaces a file, refusing to write through a link.
+	write(ctx context.Context, clean, content string) error
+	close() error
+}
+
+// rootArea is a directory on this host, opened as an os.Root.
+type rootArea struct{ root *os.Root }
+
+func (a rootArea) close() error { return a.root.Close() }
+
+func (a rootArea) list(context.Context) ([]sandboxFile, error) {
+	var files []sandboxFile
+	err := fs.WalkDir(a.root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		files = append(files, sandboxFile{Path: p, Size: info.Size()})
+		return nil
+	})
+	return files, err
+}
+
+func (a rootArea) read(_ context.Context, clean string) ([]byte, error) {
+	st, err := a.root.Lstat(clean)
+	if err != nil || !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: there is no file at %q", ErrSandbox, clean)
+	}
+	if st.Size() > MaxFileBytes {
+		return nil, fmt.Errorf("%w: %q is larger than %d bytes", ErrSandbox, clean, MaxFileBytes)
+	}
+	b, err := a.root.ReadFile(clean)
+	if err != nil {
+		return nil, fmt.Errorf("%w: there is no file at %q", ErrSandbox, clean)
+	}
+	return b, nil
+}
+
+func (a rootArea) write(_ context.Context, clean, content string) error {
+	// A link where the file would go is refused rather than written through.
+	if st, err := a.root.Lstat(clean); err == nil && !st.Mode().IsRegular() {
+		return fmt.Errorf("%w: %q is not a file that can be written", ErrSandbox, clean)
+	}
+	if dir := path.Dir(clean); dir != "." {
+		if err := a.root.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("%w: %q cannot be created there", ErrSandbox, clean)
+		}
+	}
+	if err := a.root.WriteFile(clean, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("%w: %q cannot be written", ErrSandbox, clean)
+	}
+	return nil
+}
+
+func (a rootArea) remove(clean string) error { return a.root.Remove(clean) }
 
 // textTypes are what a text file is called by its extension. The bytes decide
 // whether a file is text at all; the name only says which kind of text.
@@ -277,8 +321,9 @@ func (p *Platform) PutFile(tenant, thread, name, content string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = root.Close() }()
-	_, err = writeSandbox(root, name, content)
+	area := rootArea{root}
+	defer func() { _ = area.close() }()
+	_, err = writeSandbox(context.Background(), area, name, content)
 	return err
 }
 
@@ -299,8 +344,15 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 	if err != nil {
 		return artifacts.Artifact{}, err
 	}
-	defer func() { _ = root.Close() }()
-	b, clean, err := readSandbox(root, pub.Path)
+	area := rootArea{root}
+	defer func() { _ = area.close() }()
+	return p.publishFrom(ctx, area, pub)
+}
+
+// publishFrom publishes a file from area: a conversation's directory, or
+// the work directory of the run that publishes it.
+func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publication) (artifacts.Artifact, error) {
+	b, clean, err := readSandbox(ctx, area, pub.Path)
 	if err != nil {
 		return artifacts.Artifact{}, err
 	}
@@ -517,7 +569,12 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 	// The conversation is looked up when a tool is used, not when the turn
 	// starts. A turn delegated by another agent inside its own turn has no
 	// run of its own, so it has no conversation and no files.
-	where := func() (thread, project string, root *os.Root, err error) {
+	//
+	// In an isolated run the working directory is the run's instance's,
+	// loaded from the conversation's when the instance was leased and
+	// written back when it is released (runFiles). Unisolated, it is the
+	// conversation's directory on this host, as it always was.
+	where := func(ctx context.Context) (thread, project string, area fileArea, err error) {
 		if req.RunID == "" {
 			return "", "", nil, fmt.Errorf("%w: files are not available to a turn another agent delegated", ErrSandbox)
 		}
@@ -529,8 +586,18 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 		if thread == "" {
 			thread = run.ID
 		}
-		root, err = p.openSandbox(req.Tenant, thread)
-		return thread, run.Project, root, err
+		if claim, ok := isolation.RunFrom(ctx); ok && claim.Isolated() {
+			inst, err := claim.Instance(ctx)
+			if err != nil {
+				return "", "", nil, fmt.Errorf("%w: the run's sandbox could not start: %v", ErrSandbox, err)
+			}
+			return thread, run.Project, workArea{ws: inst.Files()}, nil
+		}
+		root, err := p.openSandbox(req.Tenant, thread)
+		if err != nil {
+			return "", "", nil, err
+		}
+		return thread, run.Project, rootArea{root}, nil
 	}
 	tool := func(name, desc string, params saigetypes.ParameterSchema, fn func(ctx context.Context, args map[string]any) (string, error)) saigetypes.Tool {
 		return &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name, Description: desc, Parameters: params}, Fn: fn}
@@ -564,17 +631,18 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				}
 				return "Recorded the authored outcome. This granted no approval and executed no external action.", nil
 			}),
+		ToolShell:     p.shellTool(req, action),
 		ToolDelegate:  p.delegateTool(req, action),
 		ToolCallAgent: p.callAgentTool(req, action),
 		ToolFileWrite: tool(ToolFileWrite,
 			"Write a file in this conversation's working directory, replacing it if it exists. For editable Office output use format=native with a .docx, .pptx, .xlsx or .pdf path and JSON content: {title?, paragraphs?:string[], slides?:[{title,body:string[],notes?,sources?:string[]}], rows?:string[][], sources?:string[]}. DOCX supports title, paragraphs, rows and sources; PPTX supports title, slides and sources; XLSX supports rows only; PDF supports title and sources with either paragraphs/rows or slides. Unsupported meaningful fields are rejected. Wait for a successful file_write before dependent file_read or publish calls; do not batch dependent calls in parallel. Max 100 slides, 1000 rows, 100 columns, 500 paragraphs, 32000 bytes per text, 1 MB JSON. PDF uses Windows-1252 text and refuses unsupported characters instead of dropping them. Other formats use plain text. Publish with publish_artifact to give it to the person.",
 			schema([]string{"path", "content"}, map[string]string{"path": "Relative path, such as report.md or data/q3.csv", "content": "The whole file content; for format=native, the complete revision JSON", "format": "native for editable DOCX, PPTX, XLSX or PDF; omit for text"}),
-			func(_ context.Context, args map[string]any) (string, error) {
-				_, _, root, err := where()
+			func(ctx context.Context, args map[string]any) (string, error) {
+				_, _, area, err := where(ctx)
 				if err != nil {
 					return "", err
 				}
-				defer func() { _ = root.Close() }()
+				defer func() { _ = area.close() }()
 				content := arg(args, "content")
 				switch format := arg(args, "format"); format {
 				case "native":
@@ -587,7 +655,7 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				default:
 					return "", fmt.Errorf("%w: format must be text or native", ErrSandbox)
 				}
-				f, err := writeSandbox(root, arg(args, "path"), content)
+				f, err := writeSandbox(ctx, area, arg(args, "path"), content)
 				if err != nil {
 					return "", err
 				}
@@ -600,11 +668,11 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				if requested := arg(args, "path"); strings.HasPrefix(requested, "skill:") {
 					return p.readPinnedSkillFile(req, requested)
 				}
-				thread, _, root, err := where()
+				thread, _, area, err := where(ctx)
 				if err != nil {
 					return "", err
 				}
-				defer func() { _ = root.Close() }()
+				defer func() { _ = area.close() }()
 				var b []byte
 				requested := arg(args, "path")
 				if strings.HasPrefix(requested, "artifact:") {
@@ -624,7 +692,7 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 						return "", fmt.Errorf("%w: that file exceeds the read limit", ErrSandbox)
 					}
 				} else {
-					b, _, err = readSandbox(root, requested)
+					b, _, err = readSandbox(ctx, area, requested)
 				}
 				if err != nil {
 					return "", err
@@ -640,13 +708,13 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 		ToolFileList: tool(ToolFileList,
 			"List the files in this conversation's working directory.",
 			schema(nil, nil),
-			func(context.Context, map[string]any) (string, error) {
-				_, _, root, err := where()
+			func(ctx context.Context, _ map[string]any) (string, error) {
+				_, _, area, err := where(ctx)
 				if err != nil {
 					return "", err
 				}
-				defer func() { _ = root.Close() }()
-				files, _, err := listSandbox(root)
+				defer func() { _ = area.close() }()
+				files, _, err := listSandbox(ctx, area)
 				if err != nil {
 					return "", fmt.Errorf("platform: sandbox: %w", err)
 				}
@@ -668,12 +736,12 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				"description": "One line on what is in it",
 			}),
 			func(ctx context.Context, args map[string]any) (string, error) {
-				thread, project, root, err := where()
+				thread, project, area, err := where(ctx)
 				if err != nil {
 					return "", err
 				}
-				_ = root.Close()
-				a, err := p.Publish(ctx, Publication{
+				defer func() { _ = area.close() }()
+				a, err := p.publishFrom(ctx, area, Publication{
 					Tenant: req.Tenant, Thread: thread, Run: req.RunID, Agent: req.Agent(), Project: project, By: "agent:" + req.Agent(),
 					Path: arg(args, "path"), Title: arg(args, "title"), Kind: arg(args, "kind"), Description: arg(args, "description"),
 				})
