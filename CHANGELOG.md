@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.48.2 (2026-10-30)
+
+### Bug Fixes
+
+- **deps**: bump saige to v0.44.0 so Gemini runs are priced (#143) ([5644167](https://github.com/urmzd/humagen/commit/5644167a2c0402bd530d34f86ac5212247db19c3))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.48.1...v0.48.2)
+
+
 ## 0.48.1 (2026-10-30)
 
 ### Bug Fixes

@@ -1,6 +1,6 @@
 {
   "name": "@humagen/slack",
-  "version": "0.48.1",
+  "version": "0.48.2",
   "private": true,
   "type": "module",
   "description": "Socket Mode Slack app: Humagen runs rendered with shared components, streamed natively, with a stop button and an inbox.",
