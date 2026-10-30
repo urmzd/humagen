@@ -84,8 +84,14 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if err := p.checkAgentSkillDefaults(req); err != nil {
 		return req, err
 	}
-	req, err := p.resolveModel(req)
+	req, err := preferRunContext(req)
 	if err != nil {
+		return req, err
+	}
+	if req, err = p.resolveModel(req); err != nil {
+		return req, err
+	}
+	if req, err = boundRunContext(req); err != nil {
 		return req, err
 	}
 	if err := p.CheckAssignmentSourceHealth(req); err != nil {

@@ -29,6 +29,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/spec"
 )
 
@@ -385,6 +386,9 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 	}
 	for _, doc := range cfg.Platforms {
 		tenant := doc.Metadata.Name
+		if err := applyRunSettings(p, tenant, doc.Spec.Workspace); err != nil {
+			return err
+		}
 		if err := applyProjects(p, tenant, doc.Spec.Workspace); err != nil {
 			return err
 		}
@@ -469,6 +473,26 @@ func applyWorkspace(ctx context.Context, p *platform.Platform, doc spec.Platform
 	}
 	if err := p.SetSettings(ctx, tenant, s); err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
+	}
+	return nil
+}
+
+// applyRunSettings hands the platform the file's run settings: the
+// workspace's and each project's. They are the file's alone, so a project
+// the file leaves out, or one only the console made, sets none.
+func applyRunSettings(p *platform.Platform, tenant string, w spec.Workspace) error {
+	var workspace settings.Layer
+	if w.Run != nil {
+		workspace = *w.Run
+	}
+	byProject := map[string]settings.Layer{}
+	for _, pr := range w.Projects {
+		if pr.Run != nil {
+			byProject[pr.Name] = *pr.Run
+		}
+	}
+	if err := p.SetRunSettings(tenant, workspace, byProject); err != nil {
+		return fmt.Errorf("platform %q: %w", tenant, err)
 	}
 	return nil
 }

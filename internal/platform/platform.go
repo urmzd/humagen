@@ -73,6 +73,7 @@ import (
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
@@ -231,16 +232,20 @@ type Platform struct {
 	sourceDependencyReader SourceDependencyReader
 
 	// Agents keeps agent definitions. Read them through Catalog.
-	Agents               wire.AgentStore
-	Runs                 *runs.Index
-	Schedules            *Schedules
-	Journal              *journal.Journal
-	Alerts               *alerts.Engine
-	Knowledge            *knowledge.Store
-	SourceLinks          *sourcelinks.Store
-	Evals                *evals.Store
-	Feedback             *feedback.Store
-	Prefs                *prefs.Store
+	Agents      wire.AgentStore
+	Runs        *runs.Index
+	Schedules   *Schedules
+	Journal     *journal.Journal
+	Alerts      *alerts.Engine
+	Knowledge   *knowledge.Store
+	SourceLinks *sourcelinks.Store
+	Evals       *evals.Store
+	Feedback    *feedback.Store
+	Prefs       *prefs.Store
+	// PersonContexts is what each person brings to the runs that act for
+	// them: their run settings, tool servers and memory volume.
+	PersonContexts       *personctx.Store
+	runSettings          runSettings
 	Memory               *memory.Store
 	SkillLibrary         *library.Store
 	AgentSkillDefaults   *library.DefaultsStore
@@ -631,6 +636,9 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if err != nil {
 		return runs.Run{}, err
 	}
+	if tag, err = p.pinRunContext(tag, edge, project, within); err != nil {
+		return runs.Run{}, err
+	}
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
@@ -805,7 +813,11 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 		}
 		req.Lease = left
 	}
-	tag, err := call.New(parent.Tag(), req, parent.State(), p.cfg.Limits, p.now())
+	lim, err := p.callLimits(parent, req.Agent)
+	if err != nil {
+		return runs.Run{}, err
+	}
+	tag, err := call.New(parent.Tag(), req, parent.State(), lim, p.now())
 	if err != nil {
 		return runs.Run{}, err
 	}
