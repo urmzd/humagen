@@ -24,15 +24,17 @@ import (
 // sandbox).
 type sandboxFlags struct {
 	kind, runtime, image, connectorsImage, workRoot *string
+	insecure                                        *bool
 }
 
-func addSandboxFlags(fs *flag.FlagSet, runtime string) sandboxFlags {
+func addSandboxFlags(fs *flag.FlagSet, runtime string, insecure bool) sandboxFlags {
 	if runtime == "" {
 		runtime = spec.RuntimeGVisor
 	}
 	return sandboxFlags{
 		kind:            fs.String("sandbox", "docker", `where a run's tools execute: "docker", an isolated instance per run; "local" or "unisolated", on this host, for development only`),
-		runtime:         fs.String("sandbox-runtime", runtime, `with -sandbox=docker, the OCI runtime: "runsc" (gVisor) or "runc", which shares the host's kernel and is for trusted tools`),
+		runtime:         fs.String("sandbox-runtime", runtime, `with -sandbox=docker, the OCI runtime: "runsc" (gVisor) or "runc", which shares the host's kernel and is refused without -sandbox-insecure-development-runtime`),
+		insecure:        fs.Bool("sandbox-insecure-development-runtime", insecure, `with -sandbox=docker, accept a runtime that shares the host's kernel, such as runc. For development machines without gVisor, running your own code`),
 		image:           fs.String("sandbox-image", spec.DefaultSandboxImage, "with -sandbox=docker, the image a run's shell and files are in"),
 		connectorsImage: fs.String("sandbox-connectors-image", "", "with -sandbox=docker, the image stdio MCP servers run in. Empty means -sandbox-image"),
 		workRoot:        fs.String("sandbox-work-root", "", "with -sandbox=docker, the host directory runs' work directories are made in; the Docker daemon must be able to mount it. With -sandbox=local, where instances are made. Empty means the system temporary directory"),
@@ -76,7 +78,12 @@ func openSandbox(ctx context.Context, o Options, l loaded, f sandboxFlags, log *
 			delete(cfg.Labels, "humagen.deployment")
 		}
 		cfg.Pool.OnError = func(err error) { log.Warn("sandbox: background work failed", "sandbox", name, "error", err) }
-		d, err := docker.New(docker.Config{Runtime: runtime, WorkRoot: sandboxWorkRoot(*f.workRoot)})
+		d, err := docker.New(docker.Config{
+			Runtime:                    runtime,
+			InsecureDevelopmentRuntime: *f.insecure,
+			Log:                        warnWriter{log: log, sandbox: name},
+			WorkRoot:                   sandboxWorkRoot(*f.workRoot),
+		})
 		if err != nil {
 			// Fail closed, not at start: the server answers, and every
 			// tool that needs an instance says why it has none.
@@ -124,6 +131,18 @@ func closer(l *poolleaser.Leaser) func() {
 		defer cancel()
 		_ = l.Close(ctx)
 	}
+}
+
+// warnWriter logs what playscape writes, such as its warning that a
+// runtime shares the host's kernel, as a warning.
+type warnWriter struct {
+	log     *slog.Logger
+	sandbox string
+}
+
+func (w warnWriter) Write(p []byte) (int, error) {
+	w.log.Warn("sandbox: "+strings.TrimSpace(string(p)), "sandbox", w.sandbox)
+	return len(p), nil
 }
 
 // unavailable is a sandbox whose driver could not be built: every lease

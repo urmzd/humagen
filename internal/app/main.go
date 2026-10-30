@@ -177,6 +177,10 @@ type serveDefaults struct {
 	notes io.Writer
 	// sandboxRuntime is -sandbox-runtime's default. Empty is runsc.
 	sandboxRuntime string
+	// sandboxInsecure is -sandbox-insecure-development-runtime's default:
+	// whether a runtime that shares the host's kernel, such as runc, is
+	// accepted.
+	sandboxInsecure bool
 }
 
 func serve(o Options, args []string, d serveDefaults) error {
@@ -193,7 +197,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	groupsClaim := fs.String("groups-claim", "groups", "token claim that lists a person's groups")
 	groups := addGroupFlags(fs)
 	storage := addStorageFlags(fs)
-	sandboxing := addSandboxFlags(fs, d.sandboxRuntime)
+	sandboxing := addSandboxFlags(fs, d.sandboxRuntime, d.sandboxInsecure)
 	stateKind := addStateFlags(fs, os.Getenv)
 	mockAddr := fs.String("mock-idp-addr", "127.0.0.1:8081", "with -auth=mock, the loopback address the development identity provider listens on")
 	mockPersonas := fs.String("mock-personas", "", `with -auth=mock, a JSON file of {"people": [...], "machines": [...]} to sign in as. Empty means the built-in set`)

@@ -90,7 +90,8 @@ system:
     # servers (docs/reference/spec.md#sandbox). Set it on purpose:
     #   unisolated  tools run in this pod with humagen's privileges, as before
     #               the sandbox; the shell is refused. What this chart ships.
-    #   docker      an instance per run, on runsc (gVisor) or runc. This image
+    #   docker      an instance per run, on runsc (gVisor), or runc only
+    #               with insecure_development_runtime. This image
     #               has no Docker CLI and the pod no Docker socket, so here
     #               every file tool and stdio server would refuse. Mounting the
     #               node's Docker socket gives humagen root on the node: do not.

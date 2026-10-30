@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log/slog"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/urmzd/playscape/pkg/isolate/docker"
+
 	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/pkg/credref"
 )
@@ -17,7 +20,7 @@ import (
 func openSandboxWith(t *testing.T, l loaded, runtimeDefault string, args ...string) (isolation.Sandbox, error) {
 	t.Helper()
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	f := addSandboxFlags(fs, runtimeDefault)
+	f := addSandboxFlags(fs, runtimeDefault, runtimeDefault == "runc")
 	if err := fs.Parse(args); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +66,40 @@ func TestADockerSandboxWithoutDockerFailsClosed(t *testing.T) {
 	}
 }
 
+// runc shares the host's kernel: it is refused unless it is named as a
+// development runtime, and the refusal reaches every lease. gVisor needs no
+// such word.
+func TestRuncNeedsTheInsecureDevelopmentRuntime(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	lease := func(args ...string) error {
+		t.Helper()
+		fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+		f := addSandboxFlags(fs, "", false)
+		if err := fs.Parse(args); err != nil {
+			t.Fatal(err)
+		}
+		s, closeIt, err := openSandbox(t.Context(), Options{}, loaded{}, f, slog.New(slog.DiscardHandler))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(closeIt)
+		_, err = s.Leaser.Lease(context.Background(), isolation.Request{Run: "r"})
+		return err
+	}
+	if err := lease("-sandbox-runtime=runc"); !errors.Is(err, docker.ErrInsecureRuntime) {
+		t.Fatalf("runc without the option = %v", err)
+	}
+	// With the option, the only thing missing is the docker CLI.
+	for _, args := range [][]string{
+		{"-sandbox-runtime=runc", "-sandbox-insecure-development-runtime"},
+		{"-sandbox-runtime=runsc"},
+	} {
+		if err := lease(args...); err == nil || errors.Is(err, docker.ErrInsecureRuntime) {
+			t.Fatalf("%v = %v", args, err)
+		}
+	}
+}
+
 // A System document's sandbox becomes serve's flags, and a malformed one is
 // refused when the file is read.
 func TestTheSpecsSandboxBecomesFlags(t *testing.T) {
@@ -74,11 +111,11 @@ func TestTheSpecsSandboxBecomesFlags(t *testing.T) {
 		}
 		return path
 	}
-	l, err := loadFiles(t.Context(), Options{}, []string{write("  sandbox:\n    kind: docker\n    docker: {runtime: runc, image: alpine:3.20, connectors_image: node:22-alpine, warm: 2, max: 8}\n")}, credref.Resolver{})
+	l, err := loadFiles(t.Context(), Options{}, []string{write("  sandbox:\n    kind: docker\n    docker: {runtime: runc, insecure_development_runtime: true, image: alpine:3.20, connectors_image: node:22-alpine, warm: 2, max: 8}\n")}, credref.Resolver{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"-sandbox=docker", "-sandbox-runtime=runc", "-sandbox-image=alpine:3.20", "-sandbox-connectors-image=node:22-alpine"} {
+	for _, want := range []string{"-sandbox=docker", "-sandbox-runtime=runc", "-sandbox-insecure-development-runtime=true", "-sandbox-image=alpine:3.20", "-sandbox-connectors-image=node:22-alpine"} {
 		if !slices.Contains(l.args, want) {
 			t.Errorf("args %v lack %s", l.args, want)
 		}

@@ -206,6 +206,11 @@ type DockerSandbox struct {
 	// Runtime is the OCI runtime: runsc (gVisor, the default) or runc,
 	// which shares the host's kernel and is for trusted tools.
 	Runtime string `json:"runtime,omitempty"`
+	// InsecureDevelopmentRuntime accepts a runtime that shares the host's
+	// kernel, such as runc. Without it such a runtime is refused and every
+	// tool that needs an instance says why. Set it only for development
+	// machines without gVisor, where the code that runs is your own.
+	InsecureDevelopmentRuntime bool `json:"insecure_development_runtime,omitempty"`
 	// Image is the workload's image: it must have sh and sleep. Empty is
 	// DefaultSandboxImage.
 	Image string `json:"image,omitempty"`

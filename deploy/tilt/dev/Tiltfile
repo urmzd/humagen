@@ -224,7 +224,10 @@ def humagen_dev(
         '-workspace', os.path.join(data, 'workspace'),
         # Each run's tools in a container of its own, on runc: the runtime
         # Docker has on a developer's machine (make dev does the same).
+        # playscape refuses runc, which shares the host's kernel, unless it
+        # is named as a development runtime.
         '-sandbox-runtime', 'runc',
+        '-sandbox-insecure-development-runtime',
     ]
     for p in specs:
         args += ['-f', p]
