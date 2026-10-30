@@ -169,6 +169,33 @@ saige's memory policy still screens what is written to project memory. Notes
 in `pkg/memory` are exported to files once. `pkg/memory` becomes a read
 adapter over the files, and is removed when nothing reads it.
 
+### Where the files live
+
+A file is two records: its content and its place.
+
+| Store | Holds | Role |
+|-------|-------|------|
+| **Database** | The manifest: path, content hash, version, owner, access, and the version history | Metadata, durability, restore |
+| **Blob store** | The content, addressed by its hash | Bytes, shared by every run that reads them |
+| **Platform cache** | Recent manifests and blobs, in memory | Fast reads for the platform and for leases |
+
+At lease time the platform installs the manifest's files into the instance.
+Content comes from a per-host cache keyed by hash, so a million runs over one
+project fetch its memory once per host. When a run ends, the platform diffs
+the run's layer, uploads changed content, and writes new manifest entries:
+committed for `/me`, proposed for project memory. Restore is checking out an
+earlier manifest version.
+
+Queries do not go through the files. A `memory_search` tool calls the API,
+which answers from the index with ranking and access checks. The files are for
+reading and editing. The API is for finding.
+
+A live mount (FUSE) that reads through to the API was considered and
+rejected: it needs `/dev/fuse` and extra privileges inside the sandbox, which
+gVisor restricts, every read becomes a network round trip, and a stalled read
+stalls the agent. Fetching large trees lazily, by manifest entry, can come
+later without changing this shape.
+
 ## A million people in one room
 
 Isolation is the easy part. One process is the hard limit. The target has
