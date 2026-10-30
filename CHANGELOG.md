@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.41.0 (2026-10-30)
+
+### Features
+
+- **rooms**: large rooms, coalesced reads and per-room admission (RFC 0004) (#125) ([f28d631](https://github.com/urmzd/humagen/commit/f28d6318dc645bdaad024cf4e0c1472c5f9c3423))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.40.0...v0.41.0)
+
+
 ## 0.40.0 (2026-10-30)
 
 ### Features
