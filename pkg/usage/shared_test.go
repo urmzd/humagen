@@ -66,10 +66,7 @@ func TestSharedAdmissionHoldsTheLimitAcrossProcesses(t *testing.T) {
 		wg.Go(func() {
 			l := ls[i%len(ls)]
 			ok, err := l.Admit(Entry{Tenant: "acme", Project: "Launch", Agent: "lead", RunID: fmt.Sprintf("r%d", i), At: t0.Add(time.Duration(i) * time.Second)},
-				func(read Reader) (bool, error) {
-					u, err := read(launch, t0)
-					return u.Runs < limit, err
-				})
+				nil, Quota{Scope: launch, Kind: QuotaRuns, Since: t0, Max: limit})
 			if err != nil {
 				t.Error(err)
 			}
@@ -93,20 +90,17 @@ func TestSharedAdmissionHoldsTheLimitAcrossProcesses(t *testing.T) {
 // other process's next admission sees the room.
 func TestSharedConcurrencyIsReleasedAcrossProcesses(t *testing.T) {
 	ls, _ := processes(t, 2)
-	underOne := func(read Reader) (bool, error) {
-		u, err := read(all, t0)
-		return u.Concurrent < 1, err
-	}
-	if ok, err := ls[0].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r1", At: t0}, underOne); err != nil || !ok {
+	underOne := Quota{Scope: all, Kind: QuotaConcurrent, Max: 1}
+	if ok, err := ls[0].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r1", At: t0}, nil, underOne); err != nil || !ok {
 		t.Fatalf("first admission: %v, %v", ok, err)
 	}
-	if ok, err := ls[1].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r2", At: t0}, underOne); err != nil || ok {
+	if ok, err := ls[1].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r2", At: t0}, nil, underOne); err != nil || ok {
 		t.Fatalf("second process admitted beside a run in flight: %v, %v", ok, err)
 	}
 	if _, err := ls[0].Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := ls[1].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r2", At: t0.Add(time.Minute)}, underOne); err != nil || !ok {
+	if ok, err := ls[1].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r2", At: t0.Add(time.Minute)}, nil, underOne); err != nil || !ok {
 		t.Fatalf("second process refused after the first run ended: %v, %v", ok, err)
 	}
 }
@@ -204,7 +198,8 @@ func TestSharedCountersAreFilledFromTheLedger(t *testing.T) {
 	}
 }
 
-// Without counters, many racers in one process admit exactly the limit.
+// Without counters, many racers in one process admit exactly the limit, and
+// so does a judge, which reads under the ledger's lock.
 func TestAdmitHoldsTheLimitInMemory(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		l, err := Open(open(t))
@@ -216,10 +211,7 @@ func TestAdmitHoldsTheLimitInMemory(t *testing.T) {
 		var wg sync.WaitGroup
 		for i := range 50 {
 			wg.Go(func() {
-				ok, err := l.Admit(Entry{Tenant: "acme", Agent: "lead", RunID: fmt.Sprintf("r%d", i), At: t0}, func(read Reader) (bool, error) {
-					u, err := read(all, t0)
-					return u.Runs < limit, err
-				})
+				ok, err := l.Admit(Entry{Tenant: "acme", Agent: "lead", RunID: fmt.Sprintf("r%d", i), At: t0}, nil, Quota{Scope: all, Kind: QuotaRuns, Since: t0, Max: limit})
 				if err != nil {
 					t.Error(err)
 				}

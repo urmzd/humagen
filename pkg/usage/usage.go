@@ -31,10 +31,12 @@
 //
 // Opened WithCounters, the counts a policy is judged on are kept in the
 // database every process shares (Counters), not in memory, and an entry is
-// written in the same transaction that moves them. Admit judges and counts an
-// admission in one step there, so two processes cannot both let in the last
-// run a limit allows. The ledger still folds every entry into its own memory,
-// for Notices, Entries and RunSpend.
+// written in the same transaction that moves them. The counts an admission
+// moves, runs started and runs in flight, are striped, and Admit takes a
+// Quota of them exactly: two processes cannot both let in the last run a
+// limit allows, and admissions that do not near a limit do not wait on each
+// other. The ledger still folds every entry into its own memory, for
+// Notices, Entries and RunSpend.
 //
 // # Spend, counted once
 //
@@ -435,7 +437,7 @@ func (l *Ledger) Flush() error {
 		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
 		defer cancel()
 		for len(l.retry) > 0 {
-			n, _, _, err := l.shared.record(ctx, l.retry[0], nil)
+			n, _, _, err := l.shared.record(ctx, l.retry[0])
 			if err != nil {
 				return fmt.Errorf("usage: write: %w", err)
 			}
@@ -499,37 +501,104 @@ func (l *Ledger) Append(e Entry) (bool, error) {
 func (l *Ledger) Record(e Entry) (Spend, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.record(e, nil)
+	return l.record(e)
 }
 
-// Admit judges an admission and, if the judge lets it in, records it, as one
-// step: the counts the judge reads include every run already admitted, by
-// this process or, with shared counters, by any other. It reports whether
-// the run was admitted. An error is a judge's, or a write that failed, and
-// the run is not admitted.
-func (l *Ledger) Admit(e Entry, judge Judge) (bool, error) {
-	e.Kind = Admitted
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.shared == nil {
-		ok, err := judge(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
-			return l.usage(e.Tenant, scope, since), nil
-		})
-		if err != nil || !ok {
-			return false, err
-		}
-	}
-	_, ok, err := l.record(e, judge)
+// QuotaKind is what a Quota bounds.
+type QuotaKind string
+
+const (
+	// QuotaRuns bounds the runs a scope starts from Since.
+	QuotaRuns QuotaKind = "runs"
+	// QuotaConcurrent bounds the runs a scope has in flight.
+	QuotaConcurrent QuotaKind = "concurrent"
+)
+
+// Quota is a bound on what an admission counts, held exactly: an admission
+// that would take a scope past Max is refused, whichever process admits it.
+type Quota struct {
+	Scope policy.Scope
+	Kind  QuotaKind
+	// Since is the start of the period QuotaRuns counts from, the start of
+	// a UTC day.
+	Since time.Time
+	Max   int
+}
+
+// Admit judges an admission and, if the judge lets it in and every quota
+// has room, records it. Quotas are taken as one step with the record: with
+// shared counters, no other process admits between the check and the count.
+// The judge reads the counts as they are, without holding them, so a limit
+// that must hold exactly is a quota; a judge decides what admission does not
+// count, such as spend. It reports whether the run was admitted. An error is
+// a judge's, or a write that failed, and the run is not admitted.
+func (l *Ledger) Admit(e Entry, judge Judge, quotas ...Quota) (bool, error) {
+	ok, _, err := l.AdmitQuotas(e, judge, quotas)
 	return ok, err
 }
 
-// record is Record, with a judge for an admission. The caller holds the lock.
-func (l *Ledger) record(e Entry, judge Judge) (Spend, bool, error) {
+// AdmitQuotas is Admit, and on a refusal by a quota, the quota that had no
+// room. A run the judge refused has none.
+func (l *Ledger) AdmitQuotas(e Entry, judge Judge, quotas []Quota) (ok bool, full *Quota, err error) {
+	e.Kind = Admitted
+	if judge == nil {
+		judge = func(Reader) (bool, error) { return true, nil }
+	}
+	if l.shared != nil {
+		return l.admitShared(e, judge, quotas)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	in, err := judge(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
+		return l.usage(e.Tenant, scope, since), nil
+	})
+	if err != nil || !in {
+		return false, nil, err
+	}
+	for _, q := range quotas {
+		u := l.usage(e.Tenant, q.Scope, q.Since)
+		used := u.Runs
+		if q.Kind == QuotaConcurrent {
+			used = u.Concurrent
+		}
+		if used+1 > q.Max {
+			return false, &q, nil
+		}
+	}
+	_, ok, err = l.record(e)
+	return ok, nil, err
+}
+
+// admitShared admits through the shared counters, without the ledger's lock:
+// admissions in one process do not wait on each other here, only, near a
+// limit, in the database. The admission is folded into memory after.
+func (l *Ledger) admitShared(e Entry, judge Judge, quotas []Quota) (bool, *Quota, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	n, ok, full, err := l.shared.admit(ctx, e, judge, quotas)
+	if err != nil || !ok {
+		return false, full, err
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.place(n)
+	l.seqs = append(l.seqs, n)
+	l.entries = append(l.entries, e)
+	_ = l.apply(e)
+	l.prune(e.At)
+	if len(l.stale) > 0 {
+		_ = l.write(0, nil)
+	}
+	return true, nil, nil
+}
+
+// record is Record. The caller holds the lock.
+func (l *Ledger) record(e Entry) (Spend, bool, error) {
 	if (e.Kind == Spent || e.Kind == Settled) && (e.Key == "" || e.Spend == nil || l.of(e.Tenant).keys[e.Key]) {
 		return Spend{}, false, nil
 	}
 	if l.shared != nil {
-		return l.recordShared(e, judge)
+		return l.recordShared(e)
 	}
 	var werr error
 	if l.kept.Enabled() {
@@ -556,10 +625,10 @@ func (l *Ledger) record(e Entry, judge Judge) (Spend, bool, error) {
 // recordShared records an entry through the shared counters, then folds it
 // into this process's ledger. What it added is the shared counters' figure,
 // which counts calls other processes saw.
-func (l *Ledger) recordShared(e Entry, judge Judge) (Spend, bool, error) {
+func (l *Ledger) recordShared(e Entry) (Spend, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
 	defer cancel()
-	n, added, ok, err := l.shared.record(ctx, e, judge)
+	n, added, ok, err := l.shared.record(ctx, e)
 	if err != nil {
 		if e.Kind == Admitted {
 			return Spend{}, false, err
