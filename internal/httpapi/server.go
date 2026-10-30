@@ -45,6 +45,7 @@ import (
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
@@ -117,6 +118,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me/credentials", s.authed(auth.RunsRead, s.listToolCredentials))
 	mux.HandleFunc("PUT /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.putToolCredential))
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
+	// What the caller brings to their own runs: reading it needs what
+	// reading runs does, and changing it what starting one does.
+	mux.HandleFunc("GET /api/me/context", s.authed(auth.RunsRead, s.getPersonContext))
+	mux.HandleFunc("PUT /api/me/context", s.authed(auth.RunsWrite, s.putPersonContext))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
 	// The deployment's status page: each component, checked at most every 30s.
 	mux.HandleFunc("GET /api/health", s.authed(auth.AlertsRead, func(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
@@ -1067,7 +1072,7 @@ func eventFilter(r *http.Request) (platform.EventFilter, bool) {
 // problem maps a domain error to a response. Anything unrecognized is logged
 // and reported without detail, so an internal error never leaks through.
 func (s *Server) problem(w http.ResponseWriter, err error) {
-	if errors.Is(err, prefs.ErrVersion) {
+	if errors.Is(err, prefs.ErrVersion) || errors.Is(err, personctx.ErrVersion) {
 		fail(w, http.StatusConflict, err.Error())
 		return
 	}
@@ -1188,7 +1193,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, call.ErrInvalid), errors.Is(err, wire.ErrInvalidPage), errors.Is(err, wire.ErrInvalidAgent),
 		errors.Is(err, event.ErrInvalid), errors.Is(err, cron.ErrSchedule),
 		errors.Is(err, alerts.ErrInvalid), errors.Is(err, knowledge.ErrInvalid), errors.Is(err, evals.ErrInvalid),
-		errors.Is(err, prefs.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid),
+		errors.Is(err, prefs.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid), errors.Is(err, personctx.ErrInvalid),
 		errors.Is(err, inbox.ErrInvalid), errors.Is(err, platform.ErrAction):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, platform.ErrSandbox), errors.Is(err, artifacts.ErrInvalid):

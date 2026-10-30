@@ -668,6 +668,55 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/me/context:
+    get:
+      operationId: getPersonContext
+      tags: [credentials]
+      summary: What the caller brings to their own runs
+      description: >-
+        The caller's own run settings, the tool servers they added for
+        themselves and the memory volume that is theirs. A person who has
+        written nothing has version 0. A machine has none (403).
+      x-permission: runs:read
+      responses:
+        "200":
+          description: The caller's context.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PersonContext"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: putPersonContext
+      tags: [credentials]
+      summary: Replace what the caller brings to their own runs
+      description: >-
+        Replaces the caller's run settings and tool servers. It only narrows:
+        ceilings tighten the workspace's and the project's, preferences
+        choose within them, and a tool server reaches a run only on a host
+        the run's ceilings list. A tool server's credential is a reference
+        under one of the caller's own starts, never a value. `version` is
+        the one read (409 when it changed). Runs already admitted keep the
+        context they were admitted with.
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PersonContextInput"}
+      responses:
+        "200":
+          description: The caller's context as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PersonContext"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/me/credentials:
     get:
       operationId: listToolCredentials
@@ -8345,6 +8394,78 @@ components:
           description: How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given.
           type: array
           items: {type: string}
+    RunSettings:
+      description: One level of the run settings. Ceilings bound a run and the strictest level wins; preferences choose within them and the nearest level wins.
+      type: object
+      properties:
+        ceilings: {$ref: "#/components/schemas/RunCeilings"}
+        preferences: {$ref: "#/components/schemas/RunPreferences"}
+    RunCeilings:
+      description: A list left out narrows nothing at its level; an empty list allows nothing. Tool servers are default deny.
+      type: object
+      properties:
+        tools:
+          description: "Tool names an agent's tools may keep, at most 64."
+          type: array
+          items: {type: string}
+        models:
+          description: "Models a run may call, each `provider/model` or `provider/*`, at most 64."
+          type: array
+          items: {type: string}
+        call_depth:
+          description: How deep a run's calls may go, 0 to 16. It never deepens the deployment's limit.
+          type: integer
+        tool_servers:
+          description: Hosts a person's own tool servers may be on, at most 64.
+          type: array
+          items: {type: string}
+    RunPreferences:
+      type: object
+      properties:
+        model:
+          description: "`provider/model`, or `policy/<name>` for a workspace model policy, used in place of the agent's own when the ceilings allow it."
+          type: string
+        compaction_tokens:
+          description: Input size, in tokens, past which a run's history is summarized, 1024 to 2000000.
+          type: integer
+    PersonToolServer:
+      description: An MCP server a person adds for themselves. Its credential is a reference, never a secret.
+      type: object
+      required: [name, url]
+      properties:
+        name: {type: string}
+        url:
+          description: The server's https address, with no user or password in it.
+          type: string
+        credential:
+          description: A reference (`env:`, `keychain:` or `op://`) under one of the person's own starts.
+          type: string
+    PersonContext:
+      description: What one person brings to the runs that act for them.
+      type: object
+      required: [run, tool_servers, version]
+      properties:
+        run: {$ref: "#/components/schemas/RunSettings"}
+        tool_servers:
+          type: array
+          items: {$ref: "#/components/schemas/PersonToolServer"}
+        memory:
+          description: The person's memory volume, given on their first write. Absent before it.
+          type: string
+        version: {type: integer}
+        updated_at: {type: string, format: date-time}
+    PersonContextInput:
+      type: object
+      required: [version]
+      properties:
+        run: {$ref: "#/components/schemas/RunSettings"}
+        tool_servers:
+          description: At most 16.
+          type: array
+          items: {$ref: "#/components/schemas/PersonToolServer"}
+        version:
+          description: The version the change was made from.
+          type: integer
     ToolCredential:
       description: A tool provider that is reached with each person's own credential, and whether the caller has connected one. A value is never shown.
       type: object
