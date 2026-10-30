@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/bus"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/rooms"
 )
 
 // Slot names, for a binary registering a kind.
@@ -62,6 +64,9 @@ type SystemSpec struct {
 	// unisolated run them on this host and are for development only.
 	Sandbox   Slot                `json:"sandbox,omitzero"`
 	SecretEnv map[string][]string `json:"secret_env,omitempty"`
+	// Rooms is how a conversation with many readers is read, and how fast
+	// runs start in it (RFC 0004).
+	Rooms Rooms `json:"rooms,omitzero"`
 	// PersonRefs is where each workspace's people may keep their own tool
 	// credentials, by tenant: how the references they give may start, each
 	// naming the person whose references it holds with {subject}
@@ -256,6 +261,41 @@ type Execution struct {
 	Builtin     BuiltinModel `json:"builtin,omitzero"`
 }
 
+// Rooms is how a conversation with many readers is read, and how fast runs
+// start in it (pkg/rooms). Each default is far above what an ordinary
+// conversation reaches, so leaving it out changes nothing for one.
+type Rooms struct {
+	// CoalesceAbove is how many readers a conversation has on one server
+	// before each is sent at once only what involves them, and the rest as
+	// a page every TailInterval. Left out, 200.
+	CoalesceAbove int `json:"coalesce_above,omitempty"`
+	// TailInterval is how often a large conversation's page is sent, a Go
+	// duration from 500ms to 1m. Left out, 3s.
+	TailInterval string `json:"tail_interval,omitempty"`
+	// MaxRunsPerMinute is how many runs one conversation starts in any
+	// minute. Left out, 600.
+	MaxRunsPerMinute int `json:"max_runs_per_minute,omitempty"`
+	// MaxRunsPerPerson is how many runs one person has in flight at once.
+	// Left out, 25.
+	MaxRunsPerPerson int `json:"max_runs_per_person,omitempty"`
+}
+
+// Config is the rooms block as pkg/rooms reads it, its defaults filled.
+func (r Rooms) Config() (rooms.Config, error) {
+	c := rooms.Config{CoalesceAbove: r.CoalesceAbove, RoomRunsPerMinute: r.MaxRunsPerMinute, PersonRuns: r.MaxRunsPerPerson}
+	if r.TailInterval != "" {
+		d, err := time.ParseDuration(r.TailInterval)
+		if err != nil {
+			return c, fmt.Errorf("rooms: tail_interval %q is not a duration, such as 3s", r.TailInterval)
+		}
+		c.TailInterval = d
+	}
+	if err := c.Check(); err != nil {
+		return c, err
+	}
+	return c.Defaults(), nil
+}
+
 // BuiltinModel is the model the platform's own agents run on.
 type BuiltinModel struct {
 	Provider string `json:"provider,omitempty"`
@@ -316,6 +356,18 @@ func (s *System) Defaults() {
 	if sp.Execution.Concurrency == 0 {
 		sp.Execution.Concurrency = 4
 	}
+	if sp.Rooms.CoalesceAbove == 0 {
+		sp.Rooms.CoalesceAbove = rooms.DefaultCoalesceAbove
+	}
+	if sp.Rooms.TailInterval == "" {
+		sp.Rooms.TailInterval = rooms.DefaultTailInterval.String()
+	}
+	if sp.Rooms.MaxRunsPerMinute == 0 {
+		sp.Rooms.MaxRunsPerMinute = rooms.DefaultRoomRunsPerMinute
+	}
+	if sp.Rooms.MaxRunsPerPerson == 0 {
+		sp.Rooms.MaxRunsPerPerson = rooms.DefaultPersonRuns
+	}
 }
 
 // Tenant is the fixed tenant, or empty when it comes from a claim.
@@ -369,6 +421,9 @@ func (s System) check(kinds Kinds) error {
 	// more, so the deepest child must stay within the bus's hop limit.
 	if d := sp.Execution.MaxDepth; d < 0 || d > bus.DefaultMaxHops-1 {
 		return fmt.Errorf("system: execution.max_depth: %d is outside 1 to %d, the bus's hop limit less one", d, bus.DefaultMaxHops-1)
+	}
+	if _, err := sp.Rooms.Config(); err != nil {
+		return fmt.Errorf("system: %w", err)
 	}
 	if sp.Bus.Kind == "redis" {
 		return errors.New("system: bus: the redis bus was removed; use kind: postgres, which shares the stores' database, or leave bus out")

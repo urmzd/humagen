@@ -233,12 +233,12 @@ export interface ErrorBody {
 /** Why a limit refused a run. */
 export interface Refusal {
   error: string;
-  limit: PolicyLimit;
+  limit: RefusalLimit;
   /** What was left of the limit when the run was refused. */
   remaining: number;
   /** The policy that refused, when one did. */
   policy?: RefusalPolicy;
-  /** When the count starts again. Present for the `runs`, `spend` and `tokens` limits, which count over a period. */
+  /** When the count starts again. Present for the `runs`, `spend` and `tokens` limits, which count over a period, and for `room_rate`, when a place is next free. */
   resets_at?: string;
 }
 
@@ -558,6 +558,102 @@ export interface Note {
   /** What the person who wrote it is called, their name, else their handle, never a subject that holds an address. `by` is the subject. */
   by_name?: string;
   at: string;
+}
+
+/** A memory tree. Project "" is the workspace. */
+export interface DriveTree {
+  kind: "person" | "project" | "agent";
+  person?: string;
+  project?: string;
+  agent?: string;
+}
+
+export interface DriveEntry {
+  path: string;
+  /** The SHA-256 of the content, in hex. */
+  hash: string;
+  size: number;
+}
+
+export interface DriveChange {
+  path: string;
+  hash?: string;
+  size?: number;
+  delete?: boolean;
+}
+
+/** A change to a tree that waits for someone who may decide it. */
+export interface DriveProposal {
+  id: string;
+  tree: DriveTree;
+  /** The version it was proposed on. */
+  base: number;
+  changes: DriveChange[];
+  by?: string;
+  at?: string;
+  message?: string;
+  origin?: string;
+}
+
+export interface DriveVersion {
+  tree: DriveTree;
+  version: number;
+  parent?: number;
+  /** Absent from a history listing. */
+  entries: DriveEntry[] | null;
+  by?: string;
+  at?: string;
+  message?: string;
+  origin?: string;
+  /** The version this one restored. */
+  restored?: number;
+  /** The proposals this version applied. */
+  resolves?: string[];
+}
+
+export interface DriveHit {
+  tree: DriveTree;
+  path: string;
+  version: number;
+  /** How many of the query's words the file holds. */
+  score: number;
+  snippet: string;
+}
+
+export interface MemoryFiles {
+  tree: DriveTree;
+  /** Where a run finds the tree. */
+  mount: string;
+  version: number;
+  by?: string;
+  at?: string;
+  entries: DriveEntry[];
+  proposals: DriveProposal[];
+}
+
+export interface MemoryFile {
+  path: string;
+  hash: string;
+  size: number;
+  /** The version asked for, 0 for the newest. */
+  version: number;
+  /** The file as text, empty when it is not text. */
+  content: string;
+  binary?: boolean;
+}
+
+export interface MemoryRestoreInput {
+  scope: "me" | "project" | "agent";
+  project?: string;
+  agent?: string;
+  version: number;
+}
+
+export interface MemoryDecisionInput {
+  scope: "me" | "project" | "agent";
+  project?: string;
+  agent?: string;
+  decision: "approve" | "discard";
 }
 
 export interface NoteList {
@@ -1376,6 +1472,24 @@ export interface ThreadPosted {
   reason?: string;
   /** The message was posted before, by its surface's id. This is what it did then; nothing was started again. */
   repeated?: boolean;
+}
+
+/** A large conversation's tail: how much happened in it since the page
+before, and nothing about what. Every reader of the room is sent the
+same page. Fetch the conversation's newest turns to see it.
+ */
+export interface RoomPage {
+  thread: string;
+  /** Orders a room's pages on the server that sent them, from 1. A reader that missed one is sent the newest. */
+  seq: number;
+  /** How many notices of messages posted or settled, or of the record changing, it folds. */
+  messages: number;
+  /** How many run events it folds. */
+  events: number;
+  /** How many readers the room had on the server when the page was made. */
+  viewers: number;
+  from: string;
+  through: string;
 }
 
 /** Says that something happened in a thread, and nothing about what. Fetch the thread to see it. */
@@ -2993,6 +3107,12 @@ export type PolicyAction = "block" | "approve";
 
 export type PolicyLimit = "runs" | "concurrent" | "spend" | "lease" | "tokens";
 
+/** The limit that refused a run: a policy's (`PolicyLimit`), or the
+deployment's for a conversation's runs in a minute (`room_rate`) and
+a person's runs in flight (`person_runs`), which no policy sets.
+ */
+export type RefusalLimit = "runs" | "concurrent" | "spend" | "lease" | "tokens" | "room_rate" | "person_runs";
+
 export interface PolicyScope {
   kind: PolicyScopeKind;
   /** The project, agent or client. Absent for the tenant scope. */
@@ -4096,6 +4216,14 @@ export interface ListPendingMemoryResponse {
   proposals: MemoryProposal[];
 }
 
+export interface ListMemoryHistoryResponse {
+  versions: DriveVersion[];
+}
+
+export interface SearchMemoryResponse {
+  hits: DriveHit[];
+}
+
 export interface PreviewJoinResponse {
   decisions: JoinDecision[];
 }
@@ -4403,5 +4531,5 @@ export interface GetAgentRosterResponse {
 }
 
 /** SSE event union type for streaming responses. */
-export type StreamEventsStreamEvent = RunEvent | UnknownEvent | InboxNotice | ThreadNotice;
+export type StreamEventsStreamEvent = RunEvent | UnknownEvent | InboxNotice | ThreadNotice | RoomPage;
 

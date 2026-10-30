@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -159,6 +160,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/me/memory/{id}", s.authed(auth.RunsWrite, s.forgetPersonalMemory))
 	mux.HandleFunc("POST /api/memory/promote", s.authed(auth.ProjectsWrite, s.promoteMemory))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
+	mux.HandleFunc("GET /api/memory/files", s.authed(auth.RunsRead, s.listMemoryFiles))
+	mux.HandleFunc("GET /api/memory/files/content", s.authed(auth.RunsRead, s.readMemoryFile))
+	mux.HandleFunc("GET /api/memory/files/history", s.authed(auth.RunsRead, s.memoryHistory))
+	mux.HandleFunc("POST /api/memory/files/restore", s.authed(auth.RunsWrite, s.restoreMemory))
+	mux.HandleFunc("POST /api/memory/files/proposals/{id}", s.authed(auth.RunsWrite, s.decideMemoryProposal))
+	mux.HandleFunc("GET /api/memory/search", s.authed(auth.RunsRead, s.searchMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
 	mux.HandleFunc("GET /api/threads", s.authed(auth.RunsRead, s.listThreads))
@@ -888,6 +895,17 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		fail(w, http.StatusBadRequest, "inbox is true or false, and inbox=true takes no channel, type, run, topic or from")
 		return
 	}
+	// thread is one conversation's room (rooms.go), which takes a type
+	// filter and nothing else.
+	if r.URL.Query().Has("thread") {
+		q := r.URL.Query()
+		if q.Has("channel") || q.Has("run") || q.Has("topic") || q.Has("from") || q.Has("inbox") || q.Get("thread") == "" {
+			fail(w, http.StatusBadRequest, "thread names one conversation, and takes type alone: no channel, run, topic, from or inbox")
+			return
+		}
+		s.roomEvents(w, r, who, q.Get("thread"), sel.Types)
+		return
+	}
 	var from uint64
 	if raw := r.URL.Query().Get("from"); raw != "" {
 		if _, err := fmt.Sscan(raw, &from); err != nil {
@@ -1005,20 +1023,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// behind is ended here rather than fed a gap.
 				return
 			}
-			if !gate.seen(e.Run) || !s.P.CitationEventVisible(who, e) {
-				continue
-			}
-			v, shown := s.P.ShownAPI(who, e)
-			if !shown {
-				continue
-			}
-			// Who answered a question is called by name (shownEvent).
-			v = shownEvent(s.P.Names(who.Tenant), v)
-			b, err := json.Marshal(v)
-			if err != nil {
-				continue
-			}
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+			if err := s.sendRunEvent(w, who, gate, e); err != nil {
 				return
 			}
 		}
@@ -1026,6 +1031,26 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			return
 		}
 	}
+}
+
+// sendRunEvent writes one run event to a reader's stream, when the reader
+// may read it, as they are shown it. An error is the connection's.
+func (s *Server) sendRunEvent(w io.Writer, who auth.Principal, gate *runGate, e event.Envelope) error {
+	if !gate.seen(e.Run) || !s.P.CitationEventVisible(who, e) {
+		return nil
+	}
+	v, shown := s.P.ShownAPI(who, e)
+	if !shown {
+		return nil
+	}
+	// Who answered a question is called by name (shownEvent).
+	v = shownEvent(s.P.Names(who.Tenant), v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	_, err = fmt.Fprintf(w, "data: %s\n\n", b)
+	return err
 }
 
 // inboxFlag reads inbox, which is absent, true or false.

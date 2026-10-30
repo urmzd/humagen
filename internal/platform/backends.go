@@ -19,10 +19,12 @@ import (
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auditrefs"
+	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -39,6 +41,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
@@ -81,6 +84,9 @@ type Backends struct {
 	// database State is on, shared by every process that opens it. Nil
 	// keeps them in this process, which is right for one process only.
 	Counters *usage.Counters
+	// RoomCounters are a room's rate and each person's runs in flight
+	// (pkg/rooms) on the same database. Nil keeps them in this process.
+	RoomCounters *rooms.PostgresCounters
 }
 
 // OpenPostgres puts every backend on one Postgres database: humagen's state
@@ -130,7 +136,11 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters}, st.Close, nil
+	roomCounters, err := rooms.OpenPostgres(ctx, pool)
+	if err != nil {
+		return Backends{}, nil, err
+	}
+	return Backends{State: st, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters, RoomCounters: roomCounters}, st.Close, nil
 }
 
 func (b Backends) check() error {
@@ -190,8 +200,23 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("email notifications", err)
 	p.SkillLibrary, err = library.Open(st)
 	keep("skill library", err)
-	p.Memory, err = memory.Open(st)
-	keep("memory", err)
+	// Memory is files: manifests on st, content in the configured blob
+	// store. With none, or one in memory, the content is kept beside the
+	// manifests, so a restart that keeps the notes' places keeps their text.
+	driveState := st
+	if driveState == nil {
+		driveState = state.NewMemory()
+	}
+	var driveBlobs blob.Store = blob.NewState(driveState)
+	if _, inMemory := cfg.Blobs.(*blob.Memory); cfg.Blobs != nil && !inMemory {
+		driveBlobs = cfg.Blobs
+	}
+	p.Drive, err = drive.Open(driveState, driveBlobs, drive.WithScreen(memory.Screen), drive.WithClock(p.now))
+	keep("drive", err)
+	if err == nil {
+		p.Memory, err = memory.Open(st, p.Drive)
+		keep("memory", err)
+	}
 	// A deleted name is forgotten only once nothing is filed under it.
 	p.ProjectForks, err = projectforks.Open(st)
 	keep("project forks", err)

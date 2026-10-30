@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -204,7 +205,8 @@ func TestExpiredAndPersonalMemoryDoesNotEnterPrompt(t *testing.T) {
 func TestRenderedMemoryUseSurvivesReplayWithoutCountingPreview(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
-		s, err := Open(st)
+		blobs := blob.NewMemory()
+		s, err := openOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,7 +225,7 @@ func TestRenderedMemoryUseSurvivesReplayWithoutCountingPreview(t *testing.T) {
 		if err := s.UsedRendered("acme", "lead", preview, now.Add(2*time.Hour)); err != nil {
 			t.Fatal(err)
 		}
-		s, err = Open(st)
+		s, err = openOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -240,7 +242,8 @@ func TestRenderedMemoryUseSurvivesReplayWithoutCountingPreview(t *testing.T) {
 func TestCorrectionRetainsProvenanceReviewAndExpiryAcrossReplay(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
-		s, err := Open(st)
+		blobs := blob.NewMemory()
+		s, err := openOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -253,7 +256,7 @@ func TestCorrectionRetainsProvenanceReviewAndExpiryAcrossReplay(t *testing.T) {
 		if err != nil || edited.Source != Artifact || edited.By != note.By || edited.Status != Pending || !edited.ExpiresAt.Equal(note.ExpiresAt) {
 			t.Fatalf("correction lost provenance/review: %+v %v", edited, err)
 		}
-		s, err = Open(st)
+		s, err = openOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}

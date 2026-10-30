@@ -559,6 +559,44 @@ machine tokens; use OIDC mode for those deployments.
   exports are logged with who and when.
 - The platform's own agents cannot be created or revised through the API.
 
+## Memory files
+
+Memory is files, kept by `pkg/drive` ([RFC 0004](../rfcs/0004-isolated-runs-and-person-context.md#memory)).
+A note is `notes/<id>.md` in its owner's tree; a run may write other files
+beside it.
+
+- **A person's memory is theirs alone.** Their tree (`/me/memory` in a run)
+  is read, written and restored only by the person it belongs to. No grant,
+  role, `projects:govern` or machine credential reaches it, in the API, in
+  search or in a run, and it is installed only in runs that act for them,
+  where their notes would reach the turn anyway
+  (`TestAPersonsTreeIsTheirsAlone`, `TestARunsMemoryIsInstalledAndItsChangesKept`).
+- **A run proposes; a person decides.** What a run changes in its own
+  requester's tree is committed at its end. What it changes in an agent's or
+  a project's tree is a proposal, one per file, raised in the inbox and
+  applied only when someone who may change those notes approves it, in the
+  inbox for a note or with `POST /api/memory/files/proposals/{id}` for any
+  file, checked against the version it was proposed on. Mounts
+  above the run's own project are read-only, and changes in them are dropped.
+- **Project memory is screened.** Every file written or proposed to a tree
+  that is not a person's own passes saige's memory policy, a note's text and
+  any other file's whole content, and is refused when it carries personal
+  data. A note's header (who wrote it, when) is not screened, since a
+  reviewer's subject may be an address.
+- **Search does not widen reads.** `memory_search` and
+  `GET /api/memory/search` read only the trees the caller may read, at most
+  50 of them, and answer at most 100 hits. A tree the caller may not read is
+  404 on every route, as if it did not exist.
+- **Content stays in its tenant.** Content is kept once per tenant, by hash,
+  never across tenants, so how fast a write returns says nothing about what
+  another workspace holds. A tenant's content is under a hashed directory of
+  its own, and a read checks the bytes against the hash.
+- **History is bounded and restorable.** A tree keeps its last 200 versions;
+  restoring writes the earlier version as the newest, keeping the history.
+  Restoring a project's tree takes whoever may change its notes, an agent's
+  `agents:write`; the API route checks `runs:write` and records an audit
+  entry.
+
 ## The inbox
 
 Every inbox route asks only for `runs:read`. What a caller sees and may do is

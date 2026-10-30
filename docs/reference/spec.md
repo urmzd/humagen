@@ -79,7 +79,9 @@ spec:
   bus:                      # slot: memory | postgres. Leave it out and it
     kind: postgres          # follows the stores: postgres on Postgres stores
 
-  blobs:                    # slot: disk | memory | s3
+  blobs:                    # slot: disk | memory | s3. Published files and
+                            # memory's content. With memory, memory's content
+                            # is kept with the stores instead
     kind: s3
     s3:
       bucket: humagen-files
@@ -106,6 +108,12 @@ spec:
       work_root: ""         # empty is humagen/sandbox in the user cache directory
       warm: 1               # instances kept started ahead of runs, per shape
       max: 64               # every instance at once
+
+  rooms:                    # a conversation with many readers (RFC 0004); each default is far above an ordinary one
+    coalesce_above: 200     # readers on one server above which each is sent at once only what involves them, the rest as a page
+    tail_interval: 3s       # how often a large conversation's page is sent: 500ms to 1m
+    max_runs_per_minute: 600   # runs one conversation starts in any minute
+    max_runs_per_person: 25    # runs one person has in flight at once
 
   secret_env:               # variables a workspace's clients may reference, by tenant
     default: [HUMAGEN_SLACK_TOKEN]
@@ -197,6 +205,27 @@ Flags override the block: `-sandbox`, `-sandbox-runtime`, `-sandbox-image`,
 `-sandbox-connectors-image` and `-sandbox-work-root`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
 factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
+
+### Rooms
+
+`rooms` protects the server from a conversation with a great many readers
+(RFC 0004, "A million people in one room"). A conversation's stream
+(`GET /api/events?thread=<id>`) is sent every event as it happens while the
+conversation has at most `coalesce_above` readers on the server. Past that,
+each reader is sent at once only the messages they posted or are named in,
+the runs they asked for and the questions put to them, and the rest as one
+page every `tail_interval`, which says how much happened; the console then
+reads the conversation's newest turns. What one server delivers each second
+is then bounded by the events that involve someone plus the readers divided
+by the interval, whatever the conversation's message rate.
+
+`max_runs_per_minute` and `max_runs_per_person` are admission limits beside
+a workspace's policies: a run past either is refused with 429 and a
+`Refusal` whose `limit` is `room_rate` or `person_runs`, and a tag in a
+message past them is refused in the message's `refused`. Only a run a person
+or a surface started counts: a call between agents is its root's work, and a
+schedule's or an eval's run is asked by nobody. With `stores.kind: postgres`
+the counts are shared by every replica.
 
 ## Platform
 
@@ -736,6 +765,11 @@ Both are checked again on every run, so a value is not used once values are
 turned off, and a reference is not used once it is no longer the person's
 own under a listed start.
 
+Memory is files ([RFC 0004](../rfcs/0004-isolated-runs-and-person-context.md#memory)):
+an agent's notes, a project's and a person's own are each a versioned tree,
+whose files an agent with the `memory_search` tool can search. Nothing in the
+spec configures it beyond `blobs`.
+
 What a person's tools found is not remembered. Memory is shared: an agent's
 notes are sent to every run of that agent, and a project's to every run in
 it and below it, whoever the run acts for. So the memory agent is not asked
@@ -827,6 +861,7 @@ no longer shows it. The log lines each inbox decision writes
 | Stores, bus, files | System | where state lives is the operator's choice |
 | Concurrency, depth and fan-out | System | protects the process |
 | Where a run's tools execute (`sandbox`) | System | the isolation boundary is the host's |
+| A conversation's readers, run rate and runs per person (`rooms`) | System | protects the process |
 | Variables a workspace may reference | System | the environment is the process's |
 | Where people may keep their own tool credentials (`person_refs`) | System | a reference is read with the process's own access |
 | Whether people may store a tool credential's value (`workspace.person_credentials`) | Platform | it is the workspace's people's data |

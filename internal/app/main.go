@@ -33,6 +33,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/rooms"
 )
 
 // Version is the build metadata `humagen version` reports.
@@ -210,6 +211,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 	fs.Var(&specFiles, "f", "a spec file or directory of System and Platform documents (docs/reference/spec.md); repeatable. Flags win over it")
 	workspaceDir := fs.String("workspace", "", "directory agents write their files under. Empty means the user cache directory")
 	concurrency := fs.Int("concurrency", 4, "how many runs execute at once; a run that calls another agent needs a second")
+	roomCoalesce := fs.Int("room-coalesce-above", rooms.DefaultCoalesceAbove, "readers of one conversation on this server above which each is sent at once only what involves them, and the rest as a page")
+	roomTail := fs.Duration("room-tail-interval", rooms.DefaultTailInterval, "how often a large conversation's page is sent")
+	roomRate := fs.Int("room-max-runs-per-minute", rooms.DefaultRoomRunsPerMinute, "most runs one conversation starts in any minute")
+	personRuns := fs.Int("room-max-runs-per-person", rooms.DefaultPersonRuns, "most runs one person has in flight at once")
 	busKind := fs.String("bus", "", `the event bus: "memory", for one process, or "postgres", on the stores' database. Empty means postgres with -state=postgres, and memory otherwise`)
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	parent := o.ctx
@@ -358,7 +363,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Workspace:        *workspaceDir,
 		Sandbox:          sbx,
 		Concurrency:      *concurrency,
-		Ext:              ext,
+		// How a conversation with many readers is read and admitted.
+		Rooms: rooms.Config{CoalesceAbove: *roomCoalesce, TailInterval: *roomTail, RoomRunsPerMinute: *roomRate, PersonRuns: *personRuns},
+		Ext:   ext,
 		// What a person a client's own connector maps holds: the roles
 		// the policy grants their subject, as for every other caller.
 		Policy: pol,

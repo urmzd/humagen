@@ -7,6 +7,8 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/blob"
+	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -59,7 +61,11 @@ func TestMemoryPromotionNeedsExplicitReviewAndDropsPrivateProvenance(t *testing.
 			t.Fatal("unreviewed child learning reached destination")
 		}
 
-		replay, err := memory.Open(st)
+		d, err := drive.Open(st, blob.NewState(st))
+		if err != nil {
+			t.Fatal(err)
+		}
+		replay, err := memory.Open(st, d)
 		if err != nil {
 			t.Fatal(err)
 		}
