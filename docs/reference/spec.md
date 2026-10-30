@@ -201,6 +201,9 @@ spec:
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]   # the workspace's own
     project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
     agent_posts: review     # what agents scheduled in the workspace itself post waits for its owners
+    run:                    # every run's settings: ceilings bound it, preferences choose within them
+      ceilings: {models: ["anthropic/*", "gemini/*"], call_depth: 2, tool_servers: [mcp.acme.example]}
+      preferences: {model: anthropic/claude-sonnet-4-5}
     projects:               # merged into the tree at every start, parents first
       - {name: Launch, description: Everything for the Q4 launch}
       - name: Field
@@ -213,6 +216,9 @@ spec:
           - {name: review, description: Review a renewal., argument_hint: "[account]", instructions: Check the renewal terms against the contract and list what changed.}
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
         agent_posts: publish  # what its scheduled agents post goes out at once
+        run:                  # tightens the workspace's for runs filed here and below
+          ceilings: {tools: [file_read, file_list, "mcp:github"], call_depth: 1}
+          preferences: {compaction_tokens: 120000}
         schedules:            # the file's: filed here, paused and run in the console, changed only here
           - {name: field-recap, cron: "41 8 * * 1", agent: humagen-analyst, text: "What changed in Field this week?", deliver: project}
       - name: Globex
@@ -565,6 +571,42 @@ names another kind or parent for a project that already exists changes it as
 the console's move would, under the same rules: a move into its own subtree,
 past four levels, or that breaks a kind or openness rule fails the start.
 
+### Run settings
+
+`run` on `workspace` or on a project sets what every run filed there and
+below may do, and what it prefers. A person adds their own level through
+`PUT /api/me/context`. Each setting is one of two kinds:
+
+| Setting | Kind | Left out everywhere | Rule |
+|---------|------|---------------------|------|
+| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none |
+| `ceilings.models` | ceiling | narrows nothing | at most 64 `provider/model`, or `provider/*` for all of a provider's. The run's model and fallbacks outside it are dropped, and a run with none left is refused |
+| `ceilings.call_depth` | ceiling | the deployment's depth | 0 to 16: how deep a run's calls to other agents may go. 0 calls none. It never deepens the deployment's own limit |
+| `ceilings.tool_servers` | ceiling | none | at most 64 hosts, in lower case, a person's own tool servers may be on. Default deny: only `workspace.run` opens it, and a project or a person only narrows it |
+| `preferences.model` | preference | the agent's model | `provider/model`, or `policy/<name>` for one of the workspace's model policies, used in place of the agent's own. One the ceilings do not allow is passed over |
+| `preferences.compaction_tokens` | preference | never compacts | 1,024 to 2,000,000: the input size, in tokens, past which a run's history is summarized before its next model call |
+
+A **ceiling** is held by the strictest level: the workspace, each project from
+the root down to the run's, then the person. A level below can only tighten
+it. A **preference** is taken from the nearest level that sets one the
+ceilings allow: the person, the run's project, each project above it, the
+workspace, then the default.
+
+The settings are resolved once, when a run is admitted, together with who it
+acts for (whoever posted the message that started it, in a shared thread
+too), that person's tool servers on the allowed hosts and their memory
+volume. The result is pinned to the run with a digest, as its agent's
+definition is: a retry or a replay sees exactly what the first attempt saw,
+and a change made while the run works reaches only the runs after it. A run
+another agent calls inherits its caller's context and can only narrow it.
+A run acting for a person may call only agents that person may read.
+
+A person's own tool servers are kept as an https address and a credential
+reference, never a secret, and the reference must be under the person's own
+start (System `person_refs`). They are pinned to the run but not yet
+connected: they wait for the sandbox's connector compartment
+([RFC 0004](../rfcs/0004-isolated-runs-and-person-context.md)).
+
 ### Channels and experts
 
 Every project, the workspace included, has a `general` channel, and at most
@@ -778,6 +820,7 @@ no longer shows it. The log lines each inbox decision writes
 | History | Platform | how it behaves |
 | Project tree, kinds, instructions, channels, experts, knowledge sources, skills, mention kinds and which agents are available where | Platform | the workspace's own |
 | Spend and run limits | Platform, in the console | versioned, scoped policies (`pkg/policy`) |
+| Ceilings and preferences of every run (`workspace.run`, a project's `run`) | Platform, then each person | the strictest ceiling and the nearest preference win |
 
 ## Deploying it
 

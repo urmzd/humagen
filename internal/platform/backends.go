@@ -33,6 +33,7 @@ import (
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
@@ -185,6 +186,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("feedback", err)
 	p.Prefs, err = prefs.Open(st)
 	keep("prefs", err)
+	p.PersonContexts, err = personctx.Open(st)
+	keep("person contexts", err)
 	p.ContextFlags, err = contextflags.Open(st)
 	keep("private context flags", err)
 	p.Notifications, err = notifications.Open(st)

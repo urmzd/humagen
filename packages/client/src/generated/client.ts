@@ -116,6 +116,8 @@ import type {
   NoteList,
   NoteSelection,
   OutcomeLearningPreview,
+  PersonContext,
+  PersonContextInput,
   PlacementPreview,
   Policy,
   PolicyInput,
@@ -1041,6 +1043,40 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<AccessDecision>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The caller's own run settings, the tool servers they added for themselves and the memory volume that is theirs. A person who has written nothing has version 0. A machine has none (403). */
+  async getPersonContext(options?: RequestOptions): Promise<PersonContext> {
+    const path = "/api/me/context";
+    return this.request<PersonContext>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getPersonContextRaw(options?: RequestOptions): Promise<ApiResponse<PersonContext>> {
+    const path = "/api/me/context";
+    return this.rawRequest<PersonContext>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Replaces the caller's run settings and tool servers. It only narrows: ceilings tighten the workspace's and the project's, preferences choose within them, and a tool server reaches a run only on a host the run's ceilings list. A tool server's credential is a reference under one of the caller's own starts, never a value. `version` is the one read (409 when it changed). Runs already admitted keep the context they were admitted with. */
+  async putPersonContext(body: PersonContextInput, options?: RequestOptions): Promise<PersonContext> {
+    const path = "/api/me/context";
+    return this.request<PersonContext>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putPersonContextRaw(body: PersonContextInput, options?: RequestOptions): Promise<ApiResponse<PersonContext>> {
+    const path = "/api/me/context";
+    return this.rawRequest<PersonContext>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
