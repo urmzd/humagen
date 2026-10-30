@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.38.2 (2026-10-30)
+
+### Bug Fixes
+
+- **docker**: copy fiber into the Go build stage (#118) ([b8505b8](https://github.com/urmzd/humagen/commit/b8505b89eeb1238993151787657f21079b017a36))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.38.1...v0.38.2)
+
+
 ## 0.38.1 (2026-10-29)
 
 ### Bug Fixes
