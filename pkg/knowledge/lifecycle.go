@@ -314,6 +314,7 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 	for _, seq := range src.seqs {
 		b.Delete(tenant, docKey(name, seq))
 		b.Delete(tenant, textKey(name, seq))
+		b.Delete(tenant, vecKey(name, seq))
 	}
 	seq := s.seq
 	for _, d := range docs {
@@ -357,6 +358,7 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 	s.rememberVersion(tenant, name, next.ContentVersion)
 	s.seq = seq
 	s.tenants[tenant][name] = next
+	s.dense.nudge()
 	return cloneSource(next.Source), nil
 }
 

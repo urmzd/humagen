@@ -178,6 +178,9 @@ type Config struct {
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
+	// Embedder gives knowledge passages vectors for hybrid search, filled in
+	// the background while Run runs. Nil keeps search lexical.
+	Embedder knowledge.Embedder
 	// Bus carries every run's events. Nil means in memory, for one process.
 	Bus bus.Bus
 	// Limits bounds every tree of calls.
@@ -1137,6 +1140,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer p.stopWakers()
+	p.Knowledge.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 
 	var wg sync.WaitGroup
 	errc := make(chan error, 8)

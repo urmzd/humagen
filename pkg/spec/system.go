@@ -20,6 +20,7 @@ const (
 	SlotStores     = "stores"
 	SlotBus        = "bus"
 	SlotBlobs      = "blobs"
+	SlotEmbedder   = "embedder"
 	SlotExtensions = "extensions"
 	SlotDeploy     = "deploy"
 	SlotSandbox    = "sandbox"
@@ -34,6 +35,7 @@ var Builtin = map[string][]string{
 	SlotStores:     {"memory", "postgres"},
 	SlotBus:        {"memory", "postgres"},
 	SlotBlobs:      {"disk", "memory", "s3"},
+	SlotEmbedder:   {"none", "hashing", "openai", "vertex"},
 	SlotExtensions: {},
 	SlotDeploy:     {"local", "compose", "kubernetes"},
 	SlotSandbox:    {"docker", "local", "unisolated"},
@@ -57,7 +59,9 @@ type SystemSpec struct {
 	Stores        Slot                 `json:"stores,omitzero"`
 	Bus           Slot                 `json:"bus,omitzero"`
 	Blobs         Slot                 `json:"blobs,omitzero"`
-	Execution     Execution            `json:"execution,omitzero"`
+	// Knowledge is how knowledge sources are searched (RFC 0005).
+	Knowledge Knowledge `json:"knowledge,omitzero"`
+	Execution Execution `json:"execution,omitzero"`
 	// Sandbox is where a run's tools execute: the file tools, the shell
 	// and stdio MCP servers, in an instance of the run's own. docker (the
 	// default, with the runsc runtime) isolates them; local and
@@ -241,6 +245,39 @@ const (
 	RuntimeRunc   = "runc"
 )
 
+// Knowledge is how knowledge sources are searched.
+type Knowledge struct {
+	// Embedder gives passages vectors, and search then fuses vector and
+	// lexical rankings: none (the default, lexical only), hashing, openai or
+	// vertex.
+	Embedder Slot `json:"embedder,omitzero"`
+}
+
+// HashingEmbedder is the hashing embedder kind's block: deterministic, no
+// model and no network. It matches shared words and word stems, not meaning.
+type HashingEmbedder struct {
+	Dimensions int `json:"dimensions,omitempty"`
+}
+
+// OpenAIEmbedder is the openai embedder kind's block: any server with an
+// OpenAI-compatible /embeddings endpoint.
+type OpenAIEmbedder struct {
+	BaseURL    string `json:"base_url,omitempty"`
+	Model      string `json:"model"`
+	Dimensions int    `json:"dimensions"`
+	Key        *Ref   `json:"key,omitempty"`
+}
+
+// VertexEmbedder is the vertex embedder kind's block: Vertex AI with
+// Application Default Credentials. Model and dimensions default to
+// gemini-embedding-001 at 768.
+type VertexEmbedder struct {
+	Project    string `json:"project"`
+	Location   string `json:"location,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Dimensions int    `json:"dimensions,omitempty"`
+}
+
 // S3 is the s3 blob kind's block.
 type S3 struct {
 	Bucket    string `json:"bucket"`
@@ -345,6 +382,9 @@ func (s *System) Defaults() {
 	if sp.Blobs.Kind == "" {
 		sp.Blobs.Kind = "disk"
 	}
+	if sp.Knowledge.Embedder.Kind == "" {
+		sp.Knowledge.Embedder.Kind = "none"
+	}
 	if sp.Execution.MaxDepth == 0 {
 		sp.Execution.MaxDepth = 4
 	}
@@ -410,7 +450,7 @@ func (s System) check(kinds Kinds) error {
 	slots := []struct {
 		name string
 		slot Slot
-	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotDeploy, sp.Deploy}, {SlotSandbox, sp.Sandbox}}
+	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotEmbedder, sp.Knowledge.Embedder}, {SlotDeploy, sp.Deploy}, {SlotSandbox, sp.Sandbox}}
 	for _, e := range sp.Extensions {
 		slots = append(slots, struct {
 			name string
@@ -436,6 +476,25 @@ func (s System) check(kinds Kinds) error {
 			return fmt.Errorf("system: %s: %w", x.name, err)
 		}
 	}
+	return checkEmbedder(sp.Knowledge.Embedder)
+}
+
+// checkEmbedder refuses an embedder that could not be built at start.
+func checkEmbedder(e Slot) error {
+	switch e.Kind {
+	case "hashing":
+		if b, err := Block[HashingEmbedder](e); err != nil || b.Dimensions < 0 {
+			return errors.New("system: knowledge.embedder: hashing dimensions must not be negative")
+		}
+	case "openai":
+		if b, err := Block[OpenAIEmbedder](e); err != nil || b.Model == "" || b.Dimensions <= 0 {
+			return errors.New("system: knowledge.embedder: openai needs model and dimensions")
+		}
+	case "vertex":
+		if b, err := Block[VertexEmbedder](e); err != nil || b.Project == "" || b.Dimensions < 0 {
+			return errors.New("system: knowledge.embedder: vertex needs project")
+		}
+	}
 	return nil
 }
 
@@ -443,7 +502,7 @@ func (s System) check(kinds Kinds) error {
 // checked when the file is read.
 func builtinBlock(slot, kind string) (any, bool) {
 	switch slot + "." + kind {
-	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local", "sandbox.unisolated":
+	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local", "sandbox.unisolated", "embedder.none":
 		return &struct{}{}, true
 	case "deploy.compose":
 		return &Compose{}, true
@@ -462,6 +521,12 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &Disk{}, true
 	case "blobs.s3":
 		return &S3{}, true
+	case "embedder.hashing":
+		return &HashingEmbedder{}, true
+	case "embedder.openai":
+		return &OpenAIEmbedder{}, true
+	case "embedder.vertex":
+		return &VertexEmbedder{}, true
 	case "models.anthropic", "models.openai", "models.google":
 		return &ModelBlock{}, true
 	case "tools.mcp":

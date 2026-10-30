@@ -76,7 +76,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 func TestNoFileIsAWorkingDefault(t *testing.T) {
 	var s System
 	s.Defaults()
-	if s.Spec.Auth.Kind != "dev" || s.Spec.Server.Addr != "127.0.0.1:8080" || s.Spec.Stores.Kind != "memory" || s.Tenant() != "default" {
+	if s.Spec.Auth.Kind != "dev" || s.Spec.Server.Addr != "127.0.0.1:8080" || s.Spec.Stores.Kind != "memory" || s.Tenant() != "default" || s.Spec.Knowledge.Embedder.Kind != "none" {
 		t.Fatalf("defaults = %+v", s)
 	}
 }
@@ -109,9 +109,12 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a person reference that is nobody's own":      {sys + "  person_refs: {default: ['op://People/']}\n", "person_refs.default"},
 		"two workspaces' people in one place": {sys + "  person_refs: {default: ['op://People/{subject}/'], globex: ['op://People/{subject}/']}\n",
 			"could name one reference for two people"},
-		"an inbox kept less than a week":  {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
-		"a call depth past the hop limit": {sys + "  execution: {max_depth: 8}\n", "execution.max_depth: 8"},
-		"an inbox kept for no time":       {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
+		"an inbox kept less than a week":    {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
+		"a call depth past the hop limit":   {sys + "  execution: {max_depth: 8}\n", "execution.max_depth: 8"},
+		"an inbox kept for no time":         {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
+		"a vertex embedder with no project": {sys + "  knowledge: {embedder: {kind: vertex, vertex: {location: us-central1}}}\n", "vertex needs project"},
+		"an openai embedder with no width":  {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m}}}\n", "openai needs model and dimensions"},
+		"an embedder key as a value":        {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m, dimensions: 8, key: {ref: sk-123}}}}\n", "use env:NAME"},
 	} {
 		path := filepath.Join(t.TempDir(), "humagen.yaml")
 		writeFile(t, path, tc.body)
@@ -138,6 +141,21 @@ func TestAKindIsOneTheBinaryHas(t *testing.T) {
 	var blk struct{ Bucket string }
 	if err := cfg.System.Spec.Blobs.Decode(&blk); err != nil || blk.Bucket != "b" {
 		t.Fatalf("its block: %+v %v", blk, err)
+	}
+}
+
+func TestAnEmbedderIsOneTheBinaryHas(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  knowledge: {embedder: {kind: pinecone}}\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Check(Kinds{}); err == nil || !strings.Contains(err.Error(), "none, hashing, openai, vertex") {
+		t.Fatalf("an unregistered embedder: %v", err)
+	}
+	if err := cfg.Check(Kinds{SlotEmbedder: {"pinecone"}}); err != nil {
+		t.Fatalf("a registered embedder: %v", err)
 	}
 }
 

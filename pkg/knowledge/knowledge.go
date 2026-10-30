@@ -3,10 +3,11 @@
 // A source is a named collection in one tenant. A document added to it is cut
 // into passages, and Search ranks passages against a query with BM25.
 //
-// The store is in memory and lexical only: no embeddings. Built with Open, it
-// writes every change through a state.Store, passages included, and reads
-// them back when it is built again. It is the smallest thing that makes a
-// source real enough to fill, search and assign to an agent.
+// The store is in memory. Search is lexical unless an embedder is given with
+// UseEmbedder; then each passage also gets a vector, computed in the
+// background, and the two rankings are fused (vectors.go). Built with Open, it
+// writes every change through a state.Store, passages and vectors included,
+// and reads them back when it is built again.
 package knowledge
 
 import (
@@ -110,6 +111,10 @@ type passage struct {
 	text  string
 	terms map[string]int
 	n     int
+	// vec is the passage's unit vector from model, or nil. A vector from
+	// another model than the store's embedder is ignored and computed again.
+	vec   []float32
+	model string
 }
 
 type source struct {
@@ -129,6 +134,8 @@ type Store struct {
 	// kept is where sources and documents are written. Nil keeps them only
 	// in memory.
 	kept *state.Table[stored]
+	// dense is the embedder and its background indexer; nil is lexical only.
+	dense *denseIndex
 }
 
 // stored is one record: a source, a document, or a document's passages. A
@@ -137,6 +144,7 @@ type Store struct {
 type stored struct {
 	Clock    *contentClock `json:"clock,omitempty"`
 	Source   *Source       `json:"source,omitempty"`
+	Vectors  *vectorRecord `json:"vectors,omitempty"`
 	Document *Document     `json:"document,omitempty"`
 	Passages []string      `json:"passages,omitempty"`
 }
@@ -162,6 +170,7 @@ func Open(st state.Store) (*Store, error) {
 	type doc struct {
 		d        *Document
 		passages []string
+		vectors  *vectorRecord
 	}
 	docs := map[[2]string]map[int64]*doc{} // (tenant, source) -> seq -> doc
 	at := func(tenant, key, kind string) (string, int64, bool) {
@@ -216,6 +225,10 @@ func Open(st state.Store) (*Store, error) {
 			if name, seq, ok := at(tenant, key, "text"); ok {
 				of(tenant, name, seq).passages = r.Passages
 			}
+		case r.Vectors != nil:
+			if name, seq, ok := at(tenant, key, "vec"); ok {
+				of(tenant, name, seq).vectors = r.Vectors
+			}
 		}
 		return nil
 	})
@@ -239,7 +252,9 @@ func Open(st state.Store) (*Store, error) {
 			}
 			src.docs = append(src.docs, d.d)
 			src.seqs[d.d.ID] = seq
-			src.passages = append(src.passages, passagesOf(d.d, d.passages)...)
+			ps := passagesOf(d.d, d.passages)
+			d.vectors.attach(ps)
+			src.passages = append(src.passages, ps...)
 		}
 		src.Documents, src.Passages = len(src.docs), len(src.passages)
 		src.recount()
@@ -359,6 +374,7 @@ func (s *Store) deleteWithScope(tenant, name string, expected *SourceConfig, gua
 	for _, seq := range src.seqs {
 		b.Delete(tenant, docKey(name, seq))
 		b.Delete(tenant, textKey(name, seq))
+		b.Delete(tenant, vecKey(name, seq))
 	}
 	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: version}})
 	if err := b.Commit(); err != nil {
@@ -492,6 +508,7 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	src.passages = append(src.passages, added...)
 	src.docs = append(src.docs, doc)
 	src.Source = meta
+	s.dense.nudge() // under the write lock, which UseEmbedder takes to set it
 	return *doc, nil
 }
 
@@ -537,6 +554,7 @@ func (s *Store) removeWithScope(tenant, name, id string, at time.Time, expected 
 	b := s.kept.Batch()
 	b.Delete(tenant, docKey(name, seq))
 	b.Delete(tenant, textKey(name, seq))
+	b.Delete(tenant, vecKey(name, seq))
 	b.Put(tenant, sourceKey(name), stored{Source: &next.Source})
 	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: next.ContentVersion}})
 	if err := b.Commit(); err != nil {
@@ -730,6 +748,11 @@ func (s *Store) search(tenant string, names []string, query string, limit int, v
 	if limit <= 0 || limit > 50 {
 		limit = 8
 	}
+	// Embedded before the lock: it may call a model. Nil is lexical only.
+	s.mu.RLock()
+	d := s.dense
+	s.mu.RUnlock()
+	qv, model := d.query(query)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -795,7 +818,7 @@ func (s *Store) search(tenant string, names []string, query string, limit int, v
 		return []Hit{}, nil
 	}
 	avg := float64(total) / float64(count)
-	hits := []Hit{}
+	var lexical []scored
 	for _, src := range in {
 		for _, p := range src.passages {
 			if skip(p) {
@@ -811,38 +834,54 @@ func (s *Store) search(tenant string, names []string, query string, limit int, v
 				score += idf * tf * (k1 + 1) / (tf + k1*(1-b+b*float64(p.n)/avg))
 			}
 			if score > 0 {
-				hit := Hit{Source: src.Name, DocumentID: p.doc.ID, Title: p.doc.Title, URI: p.doc.URI, Index: p.index, Text: p.text, Score: score, Mode: Indexed}
-				if src.Lifecycle != nil {
-					hit.Mode = Indexed
-					if len(src.Lifecycle.Attempts) > 0 {
-						hit.RefreshFailed = src.Lifecycle.Attempts[len(src.Lifecycle.Attempts)-1].Status == "failed"
-					}
-					if src.Lifecycle.LastGoodAt != nil {
-						at := *src.Lifecycle.LastGoodAt
-						hit.CopyAt = &at
-					}
-				}
-				if hit.CopyAt == nil && (src.Lifecycle == nil || src.Lifecycle.Provider == "manual") && !p.doc.AddedAt.IsZero() {
-					at := p.doc.AddedAt
-					hit.CopyAt = &at
-				}
-				hits = append(hits, hit)
+				lexical = append(lexical, scored{src: src, p: p, score: score})
 			}
 		}
 	}
-	slices.SortStableFunc(hits, func(a, b Hit) int {
-		switch {
-		case a.Score > b.Score:
-			return -1
-		case a.Score < b.Score:
-			return 1
+	byScore(lexical)
+
+	ranked := lexical
+	if qv != nil {
+		// The dense arm sees exactly the passages the lexical arm may see.
+		var dense []scored
+		for _, src := range in {
+			for _, p := range src.passages {
+				if skip(p) || p.vec == nil || p.model != model {
+					continue
+				}
+				dense = append(dense, scored{src: src, p: p, score: dot(qv, p.vec)})
+			}
 		}
-		return 0
-	})
-	if len(hits) > limit {
-		hits = hits[:limit]
+		byScore(dense)
+		ranked = fuse(lexical, dense)
+	}
+	if len(ranked) > limit {
+		ranked = ranked[:limit]
+	}
+	hits := make([]Hit, 0, len(ranked))
+	for _, c := range ranked {
+		hits = append(hits, hitOf(c.src, c.p, c.score))
 	}
 	return hits, nil
+}
+
+// hitOf is a passage as a search result.
+func hitOf(src *source, p *passage, score float64) Hit {
+	hit := Hit{Source: src.Name, DocumentID: p.doc.ID, Title: p.doc.Title, URI: p.doc.URI, Index: p.index, Text: p.text, Score: score, Mode: Indexed}
+	if src.Lifecycle != nil {
+		if len(src.Lifecycle.Attempts) > 0 {
+			hit.RefreshFailed = src.Lifecycle.Attempts[len(src.Lifecycle.Attempts)-1].Status == "failed"
+		}
+		if src.Lifecycle.LastGoodAt != nil {
+			at := *src.Lifecycle.LastGoodAt
+			hit.CopyAt = &at
+		}
+	}
+	if hit.CopyAt == nil && (src.Lifecycle == nil || src.Lifecycle.Provider == "manual") && !p.doc.AddedAt.IsZero() {
+		at := p.doc.AddedAt
+		hit.CopyAt = &at
+	}
+	return hit
 }
 
 // split cuts text into passages on blank lines, joining short paragraphs and
