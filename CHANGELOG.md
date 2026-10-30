@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.46.0 (2026-10-30)
+
+### Features
+
+- **knowledge**: hybrid search with a configurable embedder (RFC 0005, change 1) (#132) ([c7c6736](https://github.com/urmzd/humagen/commit/c7c6736367f23c13d5e0a5814f4a9133fdaa20db))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.45.0...v0.46.0)
+
+
 ## 0.45.0 (2026-10-30)
 
 ### Features
