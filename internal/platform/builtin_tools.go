@@ -85,6 +85,7 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope)
 			}),
 		ToolProjectChanges: p.projectChangesTool(req),
+		ToolMemorySearch:   p.memorySearchTool(req),
 		ToolListAlerts: tool(ToolListAlerts,
 			"List the alert rules the workspace has, what each watches for, and the alerts that are still open.",
 			schema(nil, nil),

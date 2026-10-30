@@ -21,6 +21,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/notifications"
@@ -65,6 +66,7 @@ type hidden struct {
 	sourceSuggestion                                              string
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
+	memoryProposal                                                string
 	personalNote                                                  string
 	handle, alert, channel, announcement, provider                string
 	// open is, in a sweep inside the workspace, a Slack client the outsider
@@ -167,6 +169,11 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	h.sourceSuggestion = suggestions[0].ID
 	h.projectNote = str(must("POST", "/api/projects/"+h.project+"/memory", `{"text":"Project note `+marker+`."}`, http.StatusCreated), "id")
 	h.agentNote = str(must("POST", "/api/agents/"+h.agent+"/memory", `{"text":"Agent note `+marker+`."}`, http.StatusCreated), "id")
+	proposal, err := f.p.Drive.Propose(t.Context(), "acme", drive.System, drive.Project(h.project), drive.ProposeInput{Changes: []drive.Change{{Path: "plan.md", Data: []byte("Plan " + marker + ".")}}, By: "canary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.memoryProposal = proposal.ID
 	personal, err := f.p.Memory.Add("acme", memory.PersonalOwner("canary-memory-owner"), "Personal note "+marker+".", memory.Person, memory.Approved, "canary-memory-owner", time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -555,6 +562,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.agentNote, true
 		case prefix("/api/projects/{name}/memory/"):
 			return h.projectNote, true
+		case prefix("/api/memory/files/proposals/"):
+			return h.memoryProposal, true
 		case prefix("/api/knowledge/{name}/documents/"):
 			return h.doc, true
 		case prefix("/api/source-link-suggestions/"):
@@ -723,7 +732,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing"}
+	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md"}
 
 	var keys []string
 	for key := range s.ops {

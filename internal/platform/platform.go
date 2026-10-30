@@ -60,6 +60,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -257,6 +258,7 @@ type Platform struct {
 	PersonContexts       *personctx.Store
 	runSettings          runSettings
 	Memory               *memory.Store
+	Drive                *drive.Store // the versioned file trees memory is kept in
 	SkillLibrary         *library.Store
 	AgentSkillDefaults   *library.DefaultsStore
 	skillDefaultsMu      sync.Mutex
