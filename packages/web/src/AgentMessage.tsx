@@ -501,7 +501,7 @@ export function AgentMessage({
           {onAskAgent ? (
             <button
               type="button"
-              className="min-h-6 max-w-full break-words rounded-aui text-left font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="min-h-6 pointer-coarse:min-h-11 max-w-full break-words rounded-aui text-left font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
               aria-label={copy.conversation.askAgent(turn.agent.name)}
               onClick={onAskAgent}
             >

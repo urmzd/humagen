@@ -375,7 +375,12 @@ export function Page({
           </div>
         </header>
         {tabs && (
-          <div className="aui-chrome humagen-sticky sticky top-0 z-10 -mx-1 px-1">{tabs}</div>
+          <div
+            data-layer="sticky"
+            className="aui-chrome humagen-sticky sticky top-0 z-10 -mx-1 px-1"
+          >
+            {tabs}
+          </div>
         )}
         {/*
           Under tabs, what a tab shows is one column of its own. The tab strip draws a rule,
@@ -416,7 +421,7 @@ function CountBadge({ n }: { n: number }) {
  * phone too, where nothing hovers.
  */
 export const textAction =
-  "inline-flex min-h-6 items-center gap-1 rounded-aui text-aui-sm font-medium text-aui-fg underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "inline-flex min-h-6 pointer-coarse:min-h-11 items-center gap-1 rounded-aui text-aui-sm font-medium text-aui-fg underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent";
 
 /**
  * A control inside a line of text, a row's details or a table cell: "Open the
@@ -860,7 +865,7 @@ export function Switch({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <label className="flex min-h-6 items-start justify-between gap-4">
+    <label className="flex min-h-6 pointer-coarse:min-h-11 items-start justify-between gap-4">
       <span className="min-w-0">
         <span className="block text-aui-sm text-aui-fg">{label}</span>
         {hint && <span className="block text-aui-xs text-aui-muted">{hint}</span>}
@@ -904,7 +909,7 @@ export function Segmented<T extends string>({
             type="button"
             aria-pressed={value === o.id}
             onClick={() => onChange(o.id)}
-            className="inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg motion-reduce:transition-none"
+            className="inline-flex h-8 pointer-coarse:h-11 pointer-coarse:min-w-11 justify-center shrink-0 items-center gap-1.5 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg motion-reduce:transition-none"
           >
             {o.icon}
             {o.label}
@@ -1223,7 +1228,7 @@ export function MoreMenu({
         close();
         item.onSelect();
       }}
-      className={`flex min-h-9 w-full items-center rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover ${item.destructive ? "text-aui-bad" : "text-aui-fg"}`}
+      className={`flex min-h-9 pointer-coarse:min-h-11 w-full items-center rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover ${item.destructive ? "text-aui-bad" : "text-aui-fg"}`}
     >
       {item.label}
     </button>
@@ -1722,7 +1727,7 @@ export function Menu<T extends string>({
         className={
           quiet
             ? "inline-flex h-7 max-w-60 items-center gap-1 rounded-aui px-1.5 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
-            : "flex h-8 w-full min-w-0 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:border-aui-ring focus-visible:border-aui-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aui-ring disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:border-aui-accent"
+            : "flex h-8 pointer-coarse:h-11 w-full min-w-0 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:border-aui-ring focus-visible:border-aui-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aui-ring disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:border-aui-accent"
         }
       >
         {shows === undefined && chosen?.mark}

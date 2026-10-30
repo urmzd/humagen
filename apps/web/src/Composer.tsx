@@ -112,10 +112,10 @@ const MIC =
 // The send and speak buttons share one size and one place, so nothing moves
 // when one takes over from the other.
 const action =
-  "inline-flex size-9 shrink-0 items-center justify-center rounded-full transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
+  "inline-flex size-9 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-full transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
 
 const tool =
-  "inline-flex size-9 items-center justify-center rounded-full text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40";
+  "inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-full text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40";
 
 export type ComposerSeed = { text: string; mode?: "prepend" };
 
@@ -399,7 +399,7 @@ export function Composer({
                   e.preventDefault();
                   pickTag(o);
                 }}
-                className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg aria-selected:bg-aui-hover"
+                className="flex cursor-pointer pointer-coarse:min-h-11 items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg aria-selected:bg-aui-hover"
               >
                 {o.kind === "agent" ? (
                   <AgentMark name={o.token} size={16} />
@@ -501,7 +501,7 @@ export function Composer({
           aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
           aria-autocomplete={tags ? "list" : undefined}
           aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
-          className="max-h-[200px] min-h-10 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
+          className="max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
         />
         {notice && (
           <p role="status" className="px-3 text-aui-xs text-aui-muted">

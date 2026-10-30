@@ -200,7 +200,7 @@ export function StepGroup({
         type="button"
         aria-expanded={shown}
         onClick={() => setOpen(!shown)}
-        className="group -mx-1 flex max-w-full min-w-0 items-center gap-2 rounded-aui-sm px-1 py-0.5 text-left text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        className="group -mx-1 flex max-w-full min-w-0 pointer-coarse:min-h-11 items-center gap-2 rounded-aui-sm px-1 py-0.5 text-left text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
       >
         {first && <StepIcon kind={stepKind(first)} />}
         <span className="min-w-0 truncate">
@@ -241,7 +241,7 @@ export function WorkedFor({
       type="button"
       aria-expanded={open}
       onClick={onToggle}
-      className="group flex w-full min-w-0 items-center gap-1.5 border-aui-border border-b pb-1.5 text-left text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+      className="group flex w-full min-w-0 pointer-coarse:min-h-11 items-center gap-1.5 border-aui-border border-b pb-1.5 text-left text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
     >
       {time ? copy.conversation.workedFor(time) : copy.conversation.worked}
       <svg

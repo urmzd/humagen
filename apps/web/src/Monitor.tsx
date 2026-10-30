@@ -354,7 +354,7 @@ export function Monitor({
                               {onOpenAlert ? (
                                 <button
                                   type="button"
-                                  className={`${textLink} min-w-0 truncate text-left`}
+                                  className={`${textLink} min-w-0 truncate pointer-coarse:py-2.5 text-left`}
                                   onClick={() => onOpenAlert(a)}
                                 >
                                   {a.title}

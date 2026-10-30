@@ -275,7 +275,7 @@ function TaskRow({
           onClick={onSelect}
           title={`${title}\n${state}\n${projectTitle}`}
           aria-current={current ? "page" : undefined}
-          className="flex min-h-10 w-full items-center gap-2 rounded-aui py-2 pr-10 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] [@media(pointer:coarse)]:pr-14"
+          className="flex min-h-10 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-2 pr-10 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg aria-[current=page]:shadow-[inset_2px_0_0_var(--aui-accent)] [@media(pointer:coarse)]:pr-14"
         >
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="flex min-w-0 items-center gap-1.5">
@@ -500,8 +500,14 @@ export function Sidebar({
   onTheme,
   onSearch,
   notificationCount,
+  drawer = false,
 }: {
   open: boolean;
+  /**
+   * Open as a drawer over the page, on a phone: it takes focus, Escape or a
+   * swipe toward the edge puts it away, and the page under it is inert.
+   */
+  drawer?: boolean;
   onToggle: () => void;
   route: Route;
   go: (next: Route) => void;
@@ -563,6 +569,33 @@ export function Sidebar({
   const { flash, say, clear: unsay } = useFlash();
   const [flashed, setFlashed] = useState<string | null>(null);
   const sidebar = useRef<HTMLElement>(null);
+  const closer = useRef<HTMLButtonElement>(null);
+  const toggleRef = useRef(onToggle);
+  toggleRef.current = onToggle;
+  // The drawer is modal: focus goes into it and comes back to the button that
+  // opened it, and Escape closes it unless something inside used the key.
+  useEffect(() => {
+    if (!drawer) return;
+    const aside = sidebar.current;
+    closer.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      toggleRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const inside = !document.activeElement || aside?.contains(document.activeElement);
+      if (!inside) return;
+      requestAnimationFrame(() => {
+        const now = document.activeElement;
+        if (now && now !== document.body && !aside?.contains(now)) return;
+        document.querySelector<HTMLElement>("[data-testid='drawer-button']")?.focus();
+      });
+    };
+  }, [drawer]);
+  const swipe = useRef<{ x: number; y: number } | null>(null);
   const pinFocus = useRef<{ kind: "conversation" | "project"; id: string; pinned: boolean } | null>(
     null,
   );
@@ -777,14 +810,34 @@ export function Sidebar({
         <button
           type="button"
           tabIndex={-1}
-          aria-label="Dismiss navigation"
+          aria-label={defaultCopy.sidebar.dismiss}
           onClick={onToggle}
-          className="humagen-fade fixed inset-0 z-40 bg-black/40 md:hidden"
+          className="humagen-fade fixed inset-0 z-40 touch-none bg-black/40 md:hidden"
         />
       )}
       <aside
         ref={sidebar}
         aria-label="Navigation"
+        // A swipe toward the edge it came from closes the drawer; the close
+        // button and Escape do the same for anyone who cannot swipe.
+        onTouchStart={
+          drawer
+            ? (e) => {
+                const t = e.touches[0];
+                swipe.current = t && e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+              }
+            : undefined
+        }
+        onTouchEnd={
+          drawer
+            ? (e) => {
+                const from = swipe.current;
+                const t = e.changedTouches[0];
+                swipe.current = null;
+                if (from && t && drawerSwiped(from, { x: t.clientX, y: t.clientY })) onToggle();
+              }
+            : undefined
+        }
         className={`aui-chrome humagen-glass-bar humagen-sidebar flex h-full min-h-0 shrink-0 flex-col max-md:border-aui-border max-md:border-r ${
           open
             ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]"
@@ -802,10 +855,11 @@ export function Sidebar({
           )}
           <button
             type="button"
+            ref={closer}
             onClick={onToggle}
             aria-expanded={open}
             aria-label={open ? "Close sidebar" : "Open sidebar"}
-            className="inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            className="inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
             {open ? <PanelLeftCloseIcon size={18} /> : <PanelLeftOpenIcon size={18} />}
           </button>
@@ -970,7 +1024,7 @@ export function Sidebar({
                     narrow
                     align="right"
                     label={defaultCopy.chat.filter(filters)}
-                    className="relative inline-flex size-6 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
+                    className="relative inline-flex size-6 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
                     button={
                       <>
                         <SlidersIcon size={14} />
@@ -1278,15 +1332,29 @@ export function DrawerButton({
       data-testid="drawer-button"
       onClick={onOpen}
       aria-label={inboxCount > 0 ? `Open sidebar, ${inboxCount} need you` : "Open sidebar"}
-      className="fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-4 z-30 inline-flex size-9 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent md:hidden"
+      className="fixed top-[calc(0.25rem+env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-30 inline-flex size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent md:hidden"
     >
       <PanelLeftOpenIcon size={20} />
       {inboxCount > 0 && (
         <span
           aria-hidden
-          className="absolute top-1.5 right-1.5 size-2 rounded-full bg-aui-accent"
+          className="absolute top-2.5 right-2.5 size-2 rounded-full bg-aui-accent"
         />
       )}
     </button>
   );
+}
+
+/**
+ * Whether a touch that went from `from` to `to` swiped the drawer shut: at
+ * least 56px toward the left edge, and more sideways than up or down, so
+ * scrolling its lists never closes it.
+ */
+export function drawerSwiped(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): boolean {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  return dx <= -56 && Math.abs(dx) > Math.abs(dy) * 1.5;
 }

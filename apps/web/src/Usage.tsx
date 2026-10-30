@@ -64,7 +64,7 @@ function DayChart({
         <div
           role="group"
           aria-label={words.chartLabel}
-          className="flex h-48 items-stretch gap-1"
+          className="flex h-48 items-stretch gap-1 overflow-x-auto overscroll-x-contain"
           style={{ minWidth: buckets.length * 28 }}
         >
           {buckets.map((b, i) => {
@@ -97,7 +97,7 @@ function DayChart({
                   const at = buckets[next];
                   if (at) onDay(at.start.slice(0, 10));
                 }}
-                className="flex min-w-6 flex-1 flex-col items-center justify-end gap-1 rounded-aui px-1 py-1 text-aui-2xs tabular-nums text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg"
+                className="flex min-w-6 pointer-coarse:min-w-11 flex-1 flex-col items-center justify-end gap-1 rounded-aui px-1 py-1 text-aui-2xs tabular-nums text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg"
               >
                 <span aria-hidden className="flex h-36 w-full max-w-7 flex-col justify-end gap-px">
                   {v.other > 0 && (
@@ -177,7 +177,7 @@ function DaysTable({
                   onClick={() => onDay(key)}
                   aria-pressed={day === key}
                   aria-label={words.dayLabel(dayName(b.start), totalOf(b), v.alone, v.needed)}
-                  className="min-h-6 max-w-full break-words rounded-aui py-1 text-left text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  className="min-h-6 pointer-coarse:min-h-11 max-w-full break-words rounded-aui py-1 text-left text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   {dayName(b.start)}
                 </button>
@@ -407,7 +407,11 @@ export function Usage({
                   : `${dayName(summary.since)} – ${dayName(summary.until)}`}
               </span>
               {view.day && (
-                <button type="button" className={textLink} onClick={clear}>
+                <button
+                  type="button"
+                  className={`${textLink} pointer-coarse:py-2.5`}
+                  onClick={clear}
+                >
                   {words.clearDay}
                 </button>
               )}

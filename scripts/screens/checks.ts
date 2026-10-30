@@ -39,6 +39,8 @@ export interface Control {
   size: { width: number; height: number };
   /** A link inside a sentence, which is exempt from the target size, as WCAG 2.5.8 allows. */
   inline: boolean;
+  /** A field a person types into: its text size, which below 16px makes Safari zoom on focus. */
+  font?: number;
 }
 
 export interface Snapshot {
@@ -52,7 +54,7 @@ export interface Snapshot {
   controls: Control[];
 }
 
-export type Check = "overflow" | "gutter" | "target" | "title" | "overlap";
+export type Check = "overflow" | "gutter" | "target" | "title" | "overlap" | "zoom";
 
 export interface Problem {
   check: Check;
@@ -64,11 +66,19 @@ export interface Rules {
   gutter?: number;
   /** The smallest a control may be, in pixels, on each side. */
   target: number;
+  /** The smallest text a field may have, so a phone does not zoom when it takes focus. */
+  fieldText?: number;
 }
 
-/** WCAG 2.5.8 asks for 24 by 24. A phone keeps 16 pixels clear on each side. */
-export const PHONE: Rules = { gutter: 16, target: 24 };
+/**
+ * WCAG 2.5.8 asks for 24 by 24, and 2.5.5 for 44 by 44, which a touch screen
+ * keeps: a control's target there includes the margin styles.css gives it.
+ * A phone keeps 16 pixels clear on each side and fields at 16px text.
+ */
+export const PHONE: Rules = { gutter: 16, target: 44, fieldText: 16 };
 export const DESKTOP: Rules = { target: 24 };
+/** A phone on its side: as wide as a small desktop, still pressed with a finger. */
+export const LANDSCAPE: Rules = { target: 44, fieldText: 16 };
 
 /** Sub-pixel rounding is not a broken layout. */
 const SLACK = 0.5;
@@ -124,6 +134,9 @@ export function judge(s: Snapshot, rules: Rules): Problem[] {
     const h = c.size.height;
     if (w + SLACK < rules.target || h + SLACK < rules.target) {
       problems.push({ check: "target", detail: `control "${c.label}" is ${px(w)} by ${px(h)}px` });
+    }
+    if (rules.fieldText !== undefined && c.font !== undefined && c.font + SLACK < rules.fieldText) {
+      problems.push({ check: "zoom", detail: `field "${c.label}" has ${px(c.font)}px text` });
     }
   }
   // Lines of text in the main column never cover one another. Two lines that
@@ -231,7 +244,30 @@ export function collect(): Snapshot {
     if (!box) continue;
     // Pressing a field's or a checkbox's label works it, so the label is its target.
     const target = (el.matches("input, select, textarea") && el.closest("label")) || el;
-    const whole = target.getBoundingClientRect();
+    const drawn = target.getBoundingClientRect();
+    // On a touch screen a small control is given an invisible margin, its
+    // ::after (styles.css), which a finger lands on too. What its scrolling
+    // or clipping parents hide of the margin is not there to press.
+    const after = getComputedStyle(target, "::after");
+    let whole: { width: number; height: number } = drawn;
+    if (after.content !== "none" && after.position === "absolute") {
+      const grow = (v: string) => Math.max(0, -Number.parseFloat(v) || 0);
+      const top = grow(after.top);
+      const left = grow(after.left);
+      const right = grow(after.right);
+      const bottom = grow(after.bottom);
+      const pad = cut(target, {
+        left: drawn.left - left,
+        right: drawn.right + right,
+        top: drawn.top - top,
+        bottom: drawn.bottom + bottom,
+      });
+      if (pad)
+        whole = {
+          width: Math.max(drawn.width, pad.right - pad.left),
+          height: Math.max(drawn.height, pad.bottom - pad.top),
+        };
+    }
     const st = getComputedStyle(el);
     // In a sentence (WCAG 2.5.8's inline exception): a control with words of
     // its own, drawn in the flow of a paragraph that says more than it does.
@@ -266,11 +302,26 @@ export function collect(): Snapshot {
       .trim()
       .replace(/\s+/g, " ")
       .slice(0, 48);
+    const typed =
+      el.matches("textarea, select, [contenteditable=true]") ||
+      (el.matches("input") &&
+        ![
+          "checkbox",
+          "radio",
+          "range",
+          "color",
+          "file",
+          "button",
+          "submit",
+          "reset",
+          "image",
+        ].includes((el as HTMLInputElement).type));
     controls.push({
       label: label || el.tagName.toLowerCase(),
       box,
       size: { width: whole.width, height: whole.height },
       inline,
+      ...(typed ? { font: Number.parseFloat(st.fontSize) } : {}),
     });
   }
 

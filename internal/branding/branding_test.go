@@ -109,11 +109,14 @@ func TestLoadReadsFilesAndMergesWorkspaces(t *testing.T) {
 	}
 
 	var m map[string]any
-	if err := json.Unmarshal(s.WebManifest([]byte(`{"name":"Humagen","short_name":"Humagen","theme_color":"#000000","start_url":"/inbox"}`)), &m); err != nil {
+	if err := json.Unmarshal(s.WebManifest([]byte(`{"name":"Humagen","short_name":"Humagen","theme_color":"#000000","start_url":"/inbox","screenshots":[{"src":"/screenshots/phone.png"}]}`)), &m); err != nil {
 		t.Fatal(err)
 	}
 	if m["name"] != "Acme" || m["short_name"] != "Acme" || m["theme_color"] != "#1a1a2e" || m["start_url"] != "/inbox" {
 		t.Fatalf("manifest = %v", m)
+	}
+	if _, ok := m["screenshots"]; ok {
+		t.Fatalf("a branded install sheet shows no Humagen screenshots: %v", m)
 	}
 }
 

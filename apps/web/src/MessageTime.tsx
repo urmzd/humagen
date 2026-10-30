@@ -32,7 +32,7 @@ export function MessageTime({ at }: { at: string }) {
         type="button"
         aria-label={words.posted(exact)}
         aria-describedby={open ? id : undefined}
-        className="min-h-6 rounded-aui text-left focus-visible:outline-2 focus-visible:outline-aui-accent"
+        className="min-h-6 pointer-coarse:min-h-11 rounded-aui text-left focus-visible:outline-2 focus-visible:outline-aui-accent"
         onFocus={() => {
           setFocused(true);
           setDismissed(false);
