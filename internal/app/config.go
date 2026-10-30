@@ -244,6 +244,9 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		b, _ := spec.Block[spec.DockerSandbox](sp.Sandbox)
 		set("sandbox", "docker")
 		set("sandbox-runtime", b.Runtime)
+		if b.InsecureDevelopmentRuntime {
+			set("sandbox-insecure-development-runtime", "true")
+		}
 		set("sandbox-image", b.Image)
 		set("sandbox-connectors-image", b.ConnectorsImage)
 		set("sandbox-work-root", b.WorkRoot)

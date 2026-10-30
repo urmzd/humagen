@@ -80,6 +80,17 @@ production target and is not built yet
 ([status](../architecture/overview.md#status)). `humagen deploy` deploys the
 spec you give it: set `sandbox` there for compose and kubernetes targets too.
 
+### Upgrading: runc is refused by default
+
+playscape v0.10.0 refuses a runtime that shares the host's kernel. A spec
+with `sandbox.docker.runtime: runc` now logs `sandbox: docker is unavailable`
+and every tool that needs an instance refuses, until it also sets
+`insecure_development_runtime: true` (or the server gets
+`-sandbox-insecure-development-runtime`). Set it only on a development
+machine without gVisor. Every container also starts with a seccomp profile
+stricter than Docker's default, which denies `ptrace`, `mount`, `unshare`,
+`bpf`, `keyctl` and similar syscalls a tool has no use for.
+
 ## The image
 
 The [`Dockerfile`](../../Dockerfile) at the root builds the console (`pnpm

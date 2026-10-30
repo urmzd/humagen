@@ -49,7 +49,8 @@ spec:
     #   unisolated  tools run in this container with humagen's privileges, as
     #               before the sandbox; the shell is refused. What this stack
     #               ships.
-    #   docker      an instance per run, on runsc (gVisor) or runc. The image
+    #   docker      an instance per run, on runsc (gVisor), or runc only
+    #               with insecure_development_runtime. The image
     #               has no Docker CLI and the container no Docker socket, so
     #               here every file tool and stdio server would refuse. Mounting
     #               /var/run/docker.sock gives humagen root on this host: use

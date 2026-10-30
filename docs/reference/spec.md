@@ -112,6 +112,7 @@ spec:
     kind: docker            # the default: an instance per run, destroyed when the run ends
     docker:
       runtime: runsc        # gVisor, the default; runc shares the host's kernel and is for trusted tools
+      insecure_development_runtime: false   # true accepts runc; without it runc is refused
       image: python:3.13-alpine           # the shell and the file tools; needs sh and sleep
       connectors_image: node:22-alpine    # stdio MCP servers; empty is image
       work_root: ""         # empty is humagen/sandbox in the user cache directory
@@ -190,16 +191,21 @@ follow-up turn sees what the last one wrote.
 
 | `sandbox.kind` | Where tools run | Use |
 |----------------|-----------------|-----|
-| `docker` (default) | Containers with no network, a read-only root, no capabilities, a non-root user and resource limits, on `runtime: runsc` (gVisor) unless it says `runc` | Production |
+| `docker` (default) | Containers with no network, a read-only root, no capabilities, a non-root user, a seccomp profile stricter than Docker's default and resource limits, on `runtime: runsc` (gVisor) unless it says `runc` with `insecure_development_runtime: true` | Production |
 | `local` | Host processes, with the server's privileges, in a directory laid out like an instance. The shell works | Development without Docker |
 | `unisolated` | This host, as before the sandbox: files in the conversation's directory, stdio servers as host processes. The shell is refused | Development and tests |
 
 The server says at start which one it runs. `local` and `unisolated` are
-never chosen for you: name them in the spec or with `-sandbox`. `humagen
-start` and the `make dev` targets use `docker` with `runc`, the runtime
-Docker has on a developer's machine. A `docker` sandbox whose CLI is missing
-does not stop the server: it logs why, and every tool that needs an instance
-refuses with that reason; nothing falls back to the host. A server in a
+never chosen for you: name them in the spec or with `-sandbox`. The Docker
+daemon must have `runsc` registered for the default. `runc` shares the host's
+kernel, so a kernel bug is a way out of every instance: it is refused unless
+`insecure_development_runtime` (or `-sandbox-insecure-development-runtime`)
+is set, and then the server warns at start. `humagen start`, the `make dev`
+targets and the Tilt stack use `docker` with `runc`, the runtime Docker has
+on a developer's machine, and set it for you. A `docker` sandbox whose CLI is
+missing, or whose runtime is refused, does not stop the server: it logs why,
+and every tool that needs an instance refuses with that reason; nothing falls
+back to the host. A server in a
 container needs the Docker CLI and a daemon it may use (a mounted socket) to
 run tools. **Giving Humagen the Docker socket is root on that host**:
 whoever can start containers through it can mount the host's filesystem. So
@@ -210,7 +216,8 @@ which starts instances somewhere Humagen holds no root, is the production
 target and is not built yet. Until the egress gate lands, an instance has no network at all,
 so a stdio MCP server that calls an API cannot reach it under `docker`.
 
-Flags override the block: `-sandbox`, `-sandbox-runtime`, `-sandbox-image`,
+Flags override the block: `-sandbox`, `-sandbox-runtime`,
+`-sandbox-insecure-development-runtime`, `-sandbox-image`,
 `-sandbox-connectors-image` and `-sandbox-work-root`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
 factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
