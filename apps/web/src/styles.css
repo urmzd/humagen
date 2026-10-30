@@ -104,9 +104,13 @@ body {
   box-shadow: var(--humagen-bevel);
 }
 
-/* A quiet glass plane, with one thin, static brand streak along the chrome. */
+/*
+ * The sidebar's glass (aui-chrome in the theme), with one thin, static brand
+ * streak along its top. On a desktop it sits on the frame, so the sidebar
+ * and the frame read as one; on a phone it is a drawer over the page, which
+ * blurs behind it.
+ */
 .humagen-glass-bar {
-  background-color: color-mix(in oklch, var(--humagen-plane) 96%, transparent);
   background-image: linear-gradient(
     90deg,
     color-mix(in oklch, var(--aui-brand-red) 38%, transparent),
@@ -115,8 +119,47 @@ body {
   );
   background-repeat: no-repeat;
   background-size: 100% 1px;
-  -webkit-backdrop-filter: blur(var(--aui-glass-blur));
-  backdrop-filter: blur(var(--aui-glass-blur));
+}
+
+/*
+ * The app frame. On a tablet or a desktop the sidebar sits on the frame and
+ * the page is one opaque panel inset in it, edged by a hairline, so the
+ * sidebar reads as part of the frame rather than a block beside the page.
+ * The inspector, docked beside the page, is a panel on the same frame.
+ */
+@media (min-width: 48rem) {
+  .humagen-shell {
+    --aui-chrome-bg: color-mix(in oklab, var(--humagen-plane) 72%, transparent);
+    --aui-chrome-solid: var(--humagen-plane);
+    background: var(--humagen-plane);
+  }
+  .humagen-content {
+    margin: 0.5rem 0.5rem 0.5rem 0;
+    background: var(--aui-bg);
+    border: var(--aui-stroke);
+    border-radius: 0.75rem;
+    box-shadow: var(--aui-shadow-sm);
+  }
+}
+
+/* The first screen, hidden while its reads land (App.tsx), so nothing on it moves into place. */
+.humagen-content[data-arriving] > * {
+  visibility: hidden;
+}
+
+/* On a phone the sidebar is a drawer over the dimmed page: denser glass, so its rows read. */
+@media (max-width: 47.99rem) {
+  .humagen-sidebar {
+    --aui-chrome-bg: color-mix(in oklab, var(--humagen-plane) 90%, transparent);
+    --aui-chrome-solid: var(--humagen-plane);
+  }
+}
+
+/* A header that sticks while the page scrolls under it: glass over the page. */
+.humagen-sticky {
+  --aui-chrome-bg: color-mix(in oklab, var(--aui-bg) 78%, transparent);
+  --aui-chrome-solid: var(--aui-bg);
+  box-shadow: none;
 }
 
 /* Project work has a stable row rhythm. Status belongs to the work it names. */
@@ -199,10 +242,14 @@ body {
   .humagen-work-chevron { grid-column: 3; grid-row: 1 / 3; }
 }
 
-/* Floating text stays opaque during parent motion; glass comes from its edge and shadow. */
+/*
+ * Menus and popovers keep an opaque surface (DES-015), so nothing under a
+ * menu shows through its rows; their glass is the hairline edge, the bevel
+ * and the shadow.
+ */
 .humagen-glass-pop {
   background: var(--aui-pop);
-  border: 1px solid var(--humagen-glass-border);
+  border: var(--aui-hairline) solid var(--humagen-glass-border);
   box-shadow: 0 18px 50px oklch(0 0 0 / 0.22), var(--humagen-bevel);
 }
 
@@ -614,6 +661,9 @@ button.humagen-tick:focus-visible {
 
 /* One header height for a page and every drawer beside it, so their dividers meet. */
 :root { --humagen-header-h: 4.5rem; }
+/* The composer's height under a conversation, held while the conversation is read (Chat.tsx). Its disclaimer wraps on a phone. */
+:root { --humagen-composer-h: 7.5rem; }
+@media (max-width: 40rem) { :root { --humagen-composer-h: 8.5rem; } }
 .humagen-conversation-header {
   grid-template-columns: minmax(0, 1fr) auto;
 }
@@ -631,8 +681,9 @@ button.humagen-tick:focus-visible {
     overflow: clip;
     transition: width 200ms var(--aui-ease-arrive);
   }
-  .humagen-inspector-dock:has(> .humagen-inspector[open]) { width: clamp(20rem, 28vw, 26rem); }
-  .humagen-inspector-dock:has(> .humagen-inspector[data-wide][open]) { width: min(44rem, 42vw); }
+  /* Open, it is a panel on the frame, a gap from the page. */
+  .humagen-inspector-dock:has(> .humagen-inspector[open]) { width: calc(clamp(20rem, 28vw, 26rem) + 0.5rem); padding: 0.5rem 0.5rem 0.5rem 0; }
+  .humagen-inspector-dock:has(> .humagen-inspector[data-wide][open]) { width: calc(min(44rem, 42vw) + 0.5rem); }
   .humagen-inspector-dock > .humagen-inspector {
     position: relative;
     inset: auto;
@@ -642,6 +693,11 @@ button.humagen-tick:focus-visible {
     flex-shrink: 0;
   }
   .humagen-inspector-dock > .humagen-inspector[data-wide] { width: min(44rem, 42vw); }
+  .humagen-inspector-dock > .humagen-inspector {
+    border: var(--aui-stroke);
+    border-radius: 0.75rem;
+    overflow: hidden;
+  }
 }
 .humagen-composer-menu[data-leaving="true"] [data-plus-menu] {
   pointer-events: none;
@@ -665,6 +721,67 @@ button.humagen-tick:focus-visible {
   .humagen-switch,
   .humagen-switch::after {
     transition: none;
+  }
+}
+
+/*
+ * Changing screens (transition.ts). The sidebar and the page's title are
+ * named, so they hold their place; only the content area gives way, and the
+ * next screen rises into it. Nothing else on the page is animated by it.
+ */
+.humagen-sidebar { view-transition-name: humagen-sidebar; }
+.humagen-content { view-transition-name: humagen-content; }
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-group(humagen-sidebar),
+::view-transition-old(humagen-sidebar),
+::view-transition-new(humagen-sidebar) {
+  animation-duration: var(--aui-dur-route-out);
+}
+::view-transition-old(humagen-content) {
+  animation: humagen-route-out var(--aui-dur-route-out) var(--aui-ease-leave) both;
+}
+::view-transition-new(humagen-content) {
+  animation: humagen-route-in var(--aui-dur-route) var(--aui-ease-arrive) backwards;
+}
+::view-transition-group(humagen-title) {
+  animation-duration: var(--aui-dur-route);
+  animation-timing-function: var(--aui-ease-arrive);
+}
+/* Titles of different lengths cross-fade at their own size rather than stretch. */
+::view-transition-old(humagen-title),
+::view-transition-new(humagen-title) {
+  height: 100%;
+  object-fit: none;
+  object-position: left center;
+  animation-duration: var(--aui-dur-route);
+}
+@keyframes humagen-route-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes humagen-route-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--aui-route-rise));
+  }
+}
+/* The transition fades the new screen in, so its own fade does not play twice. */
+:root[data-route-swap] .humagen-fade {
+  animation-duration: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(humagen-content) {
+    animation: humagen-fade var(--aui-dur-press) linear backwards;
+  }
+  ::view-transition-old(humagen-content) {
+    animation: humagen-fade-out var(--aui-dur-press) linear both;
+  }
+  ::view-transition-group(humagen-title) {
+    animation: none;
   }
 }
 

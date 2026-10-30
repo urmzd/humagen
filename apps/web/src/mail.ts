@@ -10,10 +10,15 @@ import {
   projectTransport,
   type Transport,
 } from "@humagen/adapter";
+import { track } from "./transition.ts";
 
 export * from "@humagen/adapter/mail";
 
-const http: Http = async <T>(method: string, path: string, json?: unknown): Promise<T> => {
+// Reads are tracked, so a change of screen can wait for the next one's (transition.ts).
+const http: Http = <T>(method: string, path: string, json?: unknown): Promise<T> =>
+  method === "GET" ? track(send<T>(method, path, json)) : send<T>(method, path, json);
+
+const send = async <T>(method: string, path: string, json?: unknown): Promise<T> => {
   const res = await fetch(path, {
     method,
     credentials: "same-origin",

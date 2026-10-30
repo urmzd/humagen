@@ -55,7 +55,6 @@ import {
   Page,
   Presence,
   Problem,
-  SkeletonRows,
 } from "./ui.tsx";
 
 const words = defaultCopy.threads;
@@ -342,6 +341,7 @@ export function Chat({
   summary,
   tick,
   agents,
+  agentsRead = true,
   homes = {},
   projects,
   canRun,
@@ -394,6 +394,8 @@ export function Chat({
   /** Changes whenever any run starts or ends. */
   tick: number;
   agents: Revision[];
+  /** Whether the agents have been read. Until they are, Home holds the composer's place rather than saying none are set up. */
+  agentsRead?: boolean;
   /** Where each agent that lives in a project lives, so completion offers only what may answer here. */
   homes?: Record<string, string>;
   /** The project tree a new conversation can be filed in, or null while it loads. */
@@ -920,17 +922,13 @@ export function Chat({
   }
   if (threadId && path.length === 0 && (read === "reading" || read === "failed")) {
     return (
-      <section
-        aria-label="Conversation"
-        aria-busy={read === "reading"}
-        className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-4 pt-4"
-      >
+      <ConversationLoading title={summary?.title} busy={read === "reading"}>
         {read === "failed" ? (
           <Problem message={defaultCopy.threads.readFailed} />
         ) : (
-          <SkeletonRows count={3} height="2.5rem" />
+          <ConversationSkeleton />
         )}
-      </section>
+      </ConversationLoading>
     );
   }
 
@@ -940,7 +938,7 @@ export function Chat({
         banner={banner}
         greeting={greeting}
         canRun={canRun}
-        hasAgents={agents.length > 0}
+        hasAgents={!agentsRead || agents.length > 0}
         below={home}
       >
         {composer}
@@ -1135,5 +1133,71 @@ export function Chat({
         )}
       </Presence>
     </section>
+  );
+}
+
+/**
+ * A conversation while it is read: its header, with the title the sidebar
+ * already knows, the column its messages will fill and the composer's place,
+ * so nothing moves when it lands.
+ */
+function ConversationLoading({
+  title,
+  busy,
+  children,
+}: {
+  title?: string;
+  busy: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-label="Conversation" aria-busy={busy} className="flex min-h-0 min-w-0 flex-1">
+      <Page
+        layout="conversation"
+        title={
+          title ?? (
+            <span aria-hidden className="aui-skeleton aui-skeleton-delay inline-block h-4 w-48" />
+          )
+        }
+      >
+        <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-4">
+          {children}
+        </div>
+        <div className="mx-auto w-full max-w-4xl px-4 pb-4">
+          <div
+            aria-hidden
+            className="aui-skeleton-delay h-[var(--humagen-composer-h)] rounded-aui-lg border border-aui-border"
+          />
+        </div>
+      </Page>
+    </section>
+  );
+}
+
+/** Messages that stand in for a conversation's: a mark, a name and lines of text. */
+function ConversationSkeleton() {
+  return (
+    <div role="status" data-testid="skeleton" className="aui-skeleton-delay flex flex-col gap-7">
+      <span className="sr-only">Loading</span>
+      {[
+        { key: "first", lines: 3 },
+        { key: "second", lines: 2 },
+        { key: "third", lines: 4 },
+      ].map(({ key, lines }) => (
+        <div key={key} aria-hidden className="flex gap-3">
+          <span className="aui-skeleton size-7 shrink-0 rounded-full" />
+          <div className="flex min-w-0 flex-1 flex-col gap-2 pt-1">
+            <span className="aui-skeleton block h-3 w-28" />
+            {Array.from({ length: lines }, (_, j) => `${key}-${j}`).map((line, j) => (
+              <span
+                key={line}
+                className="aui-skeleton block h-3"
+                style={{ width: `${j === lines - 1 ? 48 : 92 - j * 6}%` }}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

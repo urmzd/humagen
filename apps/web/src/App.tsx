@@ -69,6 +69,7 @@ import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
 import { Storage } from "./Storage.tsx";
 import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
+import { arrive, FIRST_HOLD_MS, settled } from "./transition.ts";
 import { defaultUsageView, Usage } from "./Usage.tsx";
 import {
   type AgentProfile,
@@ -145,7 +146,7 @@ export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) 
       });
   }, [preloaded]);
 
-  if (session.state === "loading") return <Centered>Loading</Centered>;
+  if (session.state === "loading") return <ShellLoading />;
   if (session.state === "error") return <Centered>{session.message}</Centered>;
   if (session.state === "signed-out") {
     return (
@@ -167,6 +168,24 @@ export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) 
         setSession({ state: "signed-out" });
       }}
     />
+  );
+}
+
+/**
+ * The console's frame while the session is read: the sidebar's place and the
+ * page's, so the console draws into a frame already there rather than over a
+ * blank page. It shows only after a beat, so a fast start never flashes it.
+ */
+function ShellLoading() {
+  return (
+    <div className="humagen-shell flex h-full min-h-0 overflow-hidden" role="status">
+      <span className="sr-only">Loading</span>
+      <div
+        aria-hidden
+        className={`aui-chrome humagen-glass-bar shrink-0 max-md:hidden ${sidebarStartsOpen(window.innerWidth) ? "w-64" : "w-12"}`}
+      />
+      <main aria-hidden className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col" />
+    </div>
   );
 }
 
@@ -286,6 +305,22 @@ function Console({
   const [live, setLive] = useState(false);
   // Bumped whenever a run starts or ends, so pages that aggregate refetch.
   const [tick, setTick] = useState(0);
+  // The first screen is drawn hidden until its reads land (or FIRST_HOLD_MS
+  // passes, when it shows with its skeletons), then fades in, so it arrives
+  // whole rather than filling in piece by piece under the reader's eyes.
+  const content = useRef<HTMLElement>(null);
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void settled(FIRST_HOLD_MS).then(() => {
+      if (!live) return;
+      setArrived(true);
+      arrive(content.current);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useAppearance(prefs);
 
@@ -673,7 +708,11 @@ function Console({
         </Presence>
         <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
         {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
+        <main
+          ref={content}
+          data-arriving={arrived ? undefined : ""}
+          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]"
+        >
           {workspaceHub(route) && (
             <WorkspaceTabs
               label={defaultCopy.navigation[workspaceHub(route)!]}
@@ -948,6 +987,7 @@ function Console({
               summary={threads.find((t) => t.id === thread)}
               tick={tick}
               agents={agents}
+              agentsRead={agentRead !== "loading"}
               homes={homes}
               projects={can("projects:read") ? projects : []}
               canRun={can("runs:write")}
@@ -1237,7 +1277,7 @@ function Console({
             route.name !== null &&
             (!editing ? (
               agentRead === "loading" ? (
-                <Page title={defaultCopy.navigation.agents}>
+                <Page title={route.name}>
                   <SkeletonRows count={3} />
                 </Page>
               ) : agentRead === "error" ? (

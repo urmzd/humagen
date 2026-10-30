@@ -44,6 +44,7 @@ import type {
   ThreadShare,
 } from "../../../packages/client/src/generated/types.ts";
 import type { Run, RunEvent } from "./adapter.ts";
+import { track } from "./transition.ts";
 
 // The project tree's shapes are the generated client's own, from
 // api/openapi.yaml, so this file cannot drift from the contract on them.
@@ -694,7 +695,12 @@ export function projectPath(name: string): string {
 
 // Same-origin only. The session is an HttpOnly cookie the page cannot read,
 // so there is no token here to leak.
-async function call<T>(method: string, path: string, json?: unknown): Promise<T> {
+// Reads are tracked, so a change of screen can wait for the next one's (transition.ts).
+function call<T>(method: string, path: string, json?: unknown): Promise<T> {
+  return method === "GET" ? track(send<T>(method, path, json)) : send<T>(method, path, json);
+}
+
+async function send<T>(method: string, path: string, json?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
     credentials: "same-origin",

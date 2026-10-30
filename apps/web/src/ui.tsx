@@ -374,7 +374,9 @@ export function Page({
             )}
           </div>
         </header>
-        {tabs && <div className="sticky top-0 z-10 -mx-1 bg-[var(--aui-bg)] px-1">{tabs}</div>}
+        {tabs && (
+          <div className="aui-chrome humagen-sticky sticky top-0 z-10 -mx-1 px-1">{tabs}</div>
+        )}
         {/*
           Under tabs, what a tab shows is one column of its own. The tab strip draws a rule,
           so a section that opens the column, and draws its rule only after something, draws none.
@@ -1540,7 +1542,8 @@ export function FlashNote({
 /**
  * Rows that stand in for a list while it loads, at the height the real rows
  * will have, so nothing jumps when they arrive. Says "Loading" to a screen
- * reader. The shimmer stops when motion is reduced.
+ * reader. They show only after a beat (aui-skeleton-delay), so a fast load
+ * never flashes them. The shimmer stops when motion is reduced.
  */
 export function SkeletonRows({
   count = 4,
@@ -1552,7 +1555,11 @@ export function SkeletonRows({
   className?: string;
 }) {
   return (
-    <div role="status" data-testid="skeleton" className={`flex flex-col gap-2 py-2 ${className}`}>
+    <div
+      role="status"
+      data-testid="skeleton"
+      className={`aui-skeleton-delay flex flex-col gap-2 py-2 ${className}`}
+    >
       <span className="sr-only">Loading</span>
       {Array.from({ length: count }, (_, i) => (
         <span

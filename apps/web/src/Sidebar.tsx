@@ -447,7 +447,7 @@ function RowMenu({
 /** A small section label, as Claude's sidebar draws Pinned and Recents. */
 function Label({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-1 bg-[var(--humagen-plane)] pr-2 pl-2">
+    <div className="aui-chrome sticky top-0 z-10 flex h-8 items-center justify-between gap-1 pr-2 pl-2 shadow-none">
       <p className="px-2 text-aui-xs text-aui-muted">{children}</p>
       {action}
     </div>
@@ -785,7 +785,7 @@ export function Sidebar({
       <aside
         ref={sidebar}
         aria-label="Navigation"
-        className={`humagen-glass-bar humagen-sidebar flex h-full min-h-0 shrink-0 flex-col border-[var(--humagen-rule)] border-r ${
+        className={`aui-chrome humagen-glass-bar humagen-sidebar flex h-full min-h-0 shrink-0 flex-col max-md:border-aui-border max-md:border-r ${
           open
             ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]"
             : "w-12 max-md:hidden"
