@@ -2914,9 +2914,20 @@ paths:
         the stream's end, and the ledger (`getRun`) decides whether a run is
         over, not silence on the stream.
 
-        There is no filter for one conversation. To follow a conversation,
-        subscribe to everything and keep the events whose `run` is one of its
-        turns.
+        `thread` follows one conversation, read as its room (RFC 0004). It
+        takes `type` and nothing else, and answers 404 for a conversation
+        the caller may not read. In a room with at most the deployment's
+        `rooms.coalesce_above` readers on the server (200 by default), every
+        reader is sent each of the conversation's run events and thread
+        notices as they happen, as the workspace's stream sends them. In a
+        larger room a reader is sent at once only what involves them: the
+        messages they posted or are named in, the runs they asked for, and
+        the questions put to them. The rest arrives folded into a message
+        with `event: page`, carrying one `RoomPage`, at most once every
+        `rooms.tail_interval` (3 seconds by default). A page says how much
+        happened and nothing about what: fetch the conversation's newest
+        turns (`getThread`) to see it. A conversation's stream does not
+        replay what the bus holds: fetch the conversation when it connects.
 
         Note for generators: the schema below describes the JSON carried in
         each message's `data` field, which is how the oag generator reads
@@ -2963,6 +2974,12 @@ paths:
             `agent:<name>` one agent, `agent:<name>:<run>` one run (read as
             `run`). It cannot be combined with `channel`, `type` or `run`.
           schema: {type: string}
+        - name: thread
+          in: query
+          description: |
+            One conversation, read as its room: its run events and thread
+            notices, and in a large room pages. Takes `type` alone.
+          schema: {type: string}
       responses:
         "200":
           description: The stream.
@@ -2974,9 +2991,11 @@ paths:
                   - $ref: "#/components/schemas/UnknownEvent"
                   - $ref: "#/components/schemas/InboxNotice"
                   - $ref: "#/components/schemas/ThreadNotice"
+                  - $ref: "#/components/schemas/RoomPage"
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
   /api/settings:
@@ -7278,6 +7297,11 @@ components:
         spend has reached its limit, to the micro-dollar, refuses every new
         run. The body names the limit, what was left, the policy and its
         version that set it, and when the count starts again.
+
+        A conversation's rate (`room_rate`) and a person's runs in flight
+        (`person_runs`) are the deployment's limits (the System document's
+        `rooms`), not a policy's: they answer 429 with no `policy`, and
+        `room_rate` sends `Retry-After` and `resets_at`.
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Refusal"}
@@ -7822,7 +7846,7 @@ components:
       required: [error, limit, remaining]
       properties:
         error: {type: string}
-        limit: {$ref: "#/components/schemas/PolicyLimit"}
+        limit: {$ref: "#/components/schemas/RefusalLimit"}
         remaining:
           description: What was left of the limit when the run was refused.
           type: integer
@@ -7836,7 +7860,7 @@ components:
             version: {type: integer}
             period: {$ref: "#/components/schemas/PolicyPeriod"}
         resets_at:
-          description: When the count starts again. Present for the `runs`, `spend` and `tokens` limits, which count over a period.
+          description: When the count starts again. Present for the `runs`, `spend` and `tokens` limits, which count over a period, and for `room_rate`, when a place is next free.
           type: string
           format: date-time
 
@@ -9547,6 +9571,34 @@ components:
         repeated:
           description: The message was posted before, by its surface's id. This is what it did then; nothing was started again.
           type: boolean
+    RoomPage:
+      description: |
+        A large conversation's tail: how much happened in it since the page
+        before, and nothing about what. Every reader of the room is sent the
+        same page. Fetch the conversation's newest turns to see it.
+      type: object
+      required: [thread, seq, messages, events, viewers, from, through]
+      properties:
+        thread: {type: string}
+        seq:
+          description: Orders a room's pages on the server that sent them, from 1. A reader that missed one is sent the newest.
+          type: integer
+          format: int64
+          minimum: 1
+        messages:
+          description: How many notices of messages posted or settled, or of the record changing, it folds.
+          type: integer
+          minimum: 0
+        events:
+          description: How many run events it folds.
+          type: integer
+          minimum: 0
+        viewers:
+          description: How many readers the room had on the server when the page was made.
+          type: integer
+          minimum: 0
+        from: {type: string, format: date-time}
+        through: {type: string, format: date-time}
     ThreadNotice:
       description: Says that something happened in a thread, and nothing about what. Fetch the thread to see it.
       type: object
@@ -11910,6 +11962,13 @@ components:
     PolicyLimit:
       type: string
       enum: [runs, concurrent, spend, lease, tokens]
+    RefusalLimit:
+      description: |
+        The limit that refused a run: a policy's (`PolicyLimit`), or the
+        deployment's for a conversation's runs in a minute (`room_rate`) and
+        a person's runs in flight (`person_runs`), which no policy sets.
+      type: string
+      enum: [runs, concurrent, spend, lease, tokens, room_rate, person_runs]
     PolicyScope:
       type: object
       required: [kind]

@@ -38,6 +38,7 @@ import type {
   ProjectTemplate,
   ProjectUpdate,
   ProjectView,
+  RoomPage,
   SkillUsage,
   SourceDependencies,
   ThreadShare,
@@ -1417,7 +1418,8 @@ export const runStateTypes = [
  * state resets that state in `onOpen`.
  */
 export function subscribe(
-  filter: { run?: string; type?: readonly string[] },
+  /** `thread` follows one conversation as its room, and takes `type` alone. */
+  filter: { run?: string; thread?: string; type?: readonly string[] },
   handlers: {
     onOpen?: () => void;
     onEvent: (e: RunEvent) => void;
@@ -1426,11 +1428,14 @@ export function subscribe(
     onInbox?: () => void;
     /** Something happened in a shared thread: a message was posted, or its record changed. */
     onThread?: () => void;
+    /** A large conversation's tail: how much happened, to be read from the conversation. */
+    onPage?: (page: RoomPage) => void;
   },
 ): () => void {
   const query = new URLSearchParams();
   for (const t of filter.type ?? []) query.append("type", t);
   if (filter.run) query.set("run", filter.run);
+  if (filter.thread) query.set("thread", filter.thread);
   const qs = query.toString();
   const source = new EventSource(`/api/events${qs ? `?${qs}` : ""}`);
   source.onopen = () => {
@@ -1447,6 +1452,13 @@ export function subscribe(
   };
   source.addEventListener("inbox", () => handlers.onInbox?.());
   source.addEventListener("thread", () => handlers.onThread?.());
+  source.addEventListener("page", (m) => {
+    try {
+      handlers.onPage?.(JSON.parse((m as MessageEvent).data as string) as RoomPage);
+    } catch {
+      // A page that does not read is ignored, as a frame is.
+    }
+  });
   return () => source.close();
 }
 
