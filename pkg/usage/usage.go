@@ -27,6 +27,15 @@
 // happened, so it is counted whether or not it could be written, and one
 // that could not is written with the next entry or by Flush.
 //
+// # Shared counts
+//
+// Opened WithCounters, the counts a policy is judged on are kept in the
+// database every process shares (Counters), not in memory, and an entry is
+// written in the same transaction that moves them. Admit judges and counts an
+// admission in one step there, so two processes cannot both let in the last
+// run a limit allows. The ledger still folds every entry into its own memory,
+// for Notices, Entries and RunSpend.
+//
 // # Spend, counted once
 //
 // What a run spends is counted from two sources, and never twice:
@@ -50,6 +59,8 @@
 package usage
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -322,17 +333,41 @@ type Ledger struct {
 	seq     int64
 	pending map[int64]Entry
 	stale   []int64
+
+	// shared, when set, holds the counts every process judges by, and
+	// gives entries their keys. retry is entries counted here whose shared
+	// write failed, written by Flush.
+	shared *Counters
+	retry  []Entry
 }
+
+// Option configures a ledger opened with Open.
+type Option func(*Ledger)
+
+// WithCounters keeps the counts in shared counters, so every process that
+// opens a ledger on them admits, and judges spend, against the same counts.
+// The ledger still keeps its own entries in memory, for Notices and Entries,
+// and RunSpend from them.
+func WithCounters(c *Counters) Option { return func(l *Ledger) { l.shared = c } }
 
 // NewLedger returns an empty ledger in memory.
 func NewLedger() *Ledger { return &Ledger{tenants: map[string]*tenant{}} }
 
 // Open returns a ledger that keeps its entries in st, rebuilt from what st
 // already has. A nil st is NewLedger.
-func Open(st state.Store) (*Ledger, error) {
+//
+// With WithCounters, st must be the state store on the counters' database,
+// and the counters are filled from st's entries the first time.
+func Open(st state.Store, opts ...Option) (*Ledger, error) {
 	l := NewLedger()
+	for _, o := range opts {
+		o(l)
+	}
 	l.kept = state.NewTable[Entry](st, "usage")
 	if st == nil {
+		if l.shared != nil {
+			return nil, errors.New("usage: shared counters need a store")
+		}
 		return l, nil
 	}
 	l.pending = map[int64]Entry{}
@@ -353,6 +388,13 @@ func Open(st state.Store) (*Ledger, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("usage: load: %w", err)
+	}
+	if l.shared != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		defer cancel()
+		if err := l.shared.seed(ctx, l); err != nil {
+			return nil, fmt.Errorf("usage: counters: %w", err)
+		}
 	}
 	if !last.IsZero() {
 		l.prune(last)
@@ -389,10 +431,30 @@ func (l *Ledger) Flush() error {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.shared != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		defer cancel()
+		for len(l.retry) > 0 {
+			n, _, _, err := l.shared.record(ctx, l.retry[0], nil)
+			if err != nil {
+				return fmt.Errorf("usage: write: %w", err)
+			}
+			if n > 0 {
+				l.place(n)
+			}
+			l.retry = l.retry[1:]
+		}
+	}
 	if len(l.pending) == 0 && len(l.stale) == 0 {
 		return nil
 	}
 	return l.write(0, nil)
+}
+
+// place notes a key the shared counters gave an entry already in l.entries,
+// written after it was appended. The caller holds the lock.
+func (l *Ledger) place(n int64) {
+	l.seq = max(l.seq, n)
 }
 
 func (l *Ledger) of(name string) *tenant {
@@ -437,8 +499,37 @@ func (l *Ledger) Append(e Entry) (bool, error) {
 func (l *Ledger) Record(e Entry) (Spend, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.record(e, nil)
+}
+
+// Admit judges an admission and, if the judge lets it in, records it, as one
+// step: the counts the judge reads include every run already admitted, by
+// this process or, with shared counters, by any other. It reports whether
+// the run was admitted. An error is a judge's, or a write that failed, and
+// the run is not admitted.
+func (l *Ledger) Admit(e Entry, judge Judge) (bool, error) {
+	e.Kind = Admitted
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.shared == nil {
+		ok, err := judge(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
+			return l.usage(e.Tenant, scope, since), nil
+		})
+		if err != nil || !ok {
+			return false, err
+		}
+	}
+	_, ok, err := l.record(e, judge)
+	return ok, err
+}
+
+// record is Record, with a judge for an admission. The caller holds the lock.
+func (l *Ledger) record(e Entry, judge Judge) (Spend, bool, error) {
 	if (e.Kind == Spent || e.Kind == Settled) && (e.Key == "" || e.Spend == nil || l.of(e.Tenant).keys[e.Key]) {
 		return Spend{}, false, nil
+	}
+	if l.shared != nil {
+		return l.recordShared(e, judge)
 	}
 	var werr error
 	if l.kept.Enabled() {
@@ -460,6 +551,41 @@ func (l *Ledger) Record(e Entry) (Spend, bool, error) {
 		_ = l.write(0, nil)
 	}
 	return added, true, werr
+}
+
+// recordShared records an entry through the shared counters, then folds it
+// into this process's ledger. What it added is the shared counters' figure,
+// which counts calls other processes saw.
+func (l *Ledger) recordShared(e Entry, judge Judge) (Spend, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	n, added, ok, err := l.shared.record(ctx, e, judge)
+	if err != nil {
+		if e.Kind == Admitted {
+			return Spend{}, false, err
+		}
+		// It happened all the same: it is counted here and written by
+		// Flush, as an entry that could not be written is without counters.
+		l.retry = append(l.retry, e)
+		l.entries = append(l.entries, e)
+		l.seqs = append(l.seqs, 0)
+		added = l.apply(e)
+		l.prune(e.At)
+		return added, true, err
+	}
+	if !ok {
+		// Refused by the judge, or a key another process counted.
+		return Spend{}, false, nil
+	}
+	l.place(n)
+	l.seqs = append(l.seqs, n)
+	l.entries = append(l.entries, e)
+	_ = l.apply(e)
+	l.prune(e.At)
+	if len(l.stale) > 0 {
+		_ = l.write(0, nil)
+	}
+	return added, true, nil
 }
 
 func (l *Ledger) apply(e Entry) Spend {
@@ -569,9 +695,26 @@ func matches(s policy.Scope, a admission) bool {
 // flight now, and what model calls since that time spent. A day that starts
 // at or after since is read from its totals; only a day since falls inside is
 // read entry by entry.
+//
+// With shared counters, a since at the start of a UTC day (as every period
+// starts) is read from them, so it counts what every process counted. A
+// since inside a day, or a read that fails, is answered from this process's
+// own counts.
 func (l *Ledger) Usage(tenantName string, scope policy.Scope, since time.Time) policy.Usage {
+	if l.shared != nil && since.Equal(policy.PeriodStart(policy.Day, since)) {
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		defer cancel()
+		if u, err := l.shared.Usage(ctx, tenantName, scope, since); err == nil {
+			return u
+		}
+	}
 	l.mu.RLock()
 	defer l.mu.RUnlock()
+	return l.usage(tenantName, scope, since)
+}
+
+// usage is Usage from this process's counts. The caller holds the lock.
+func (l *Ledger) usage(tenantName string, scope policy.Scope, since time.Time) policy.Usage {
 	t, ok := l.tenants[tenantName]
 	if !ok {
 		return policy.Usage{}
