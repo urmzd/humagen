@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.42.0 (2026-10-30)
+
+### Features
+
+- memory as files (RFC 0004, change 6) (#128) ([7e5c673](https://github.com/urmzd/humagen/commit/7e5c673e6b0ac70c5dff615438accab1b0756541))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.41.0...v0.42.0)
+
+
 ## 0.41.0 (2026-10-30)
 
 ### Features
