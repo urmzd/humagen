@@ -1601,6 +1601,158 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/memory/files:
+    get:
+      operationId: listMemoryFiles
+      tags: [agents]
+      summary: Read a memory tree's files at a version
+      description: "Memory is files. A version is a whole manifest: each file's path, content hash and size. Your own tree is yours alone; a project's or an agent's is read where you see it. A tree you may not read is 404."
+      x-permission: runs:read
+      parameters:
+        - {name: scope, in: query, required: true, description: "me for your own memory, project for a project's, agent for an agent's.", schema: {type: string, enum: [me, project, agent]}}
+        - {name: project, in: query, description: "The project. Empty is the workspace.", schema: {type: string}}
+        - {name: agent, in: query, description: "The agent, for scope agent.", schema: {type: string}}
+        - {name: version, in: query, description: "A version. Absent or 0 is the newest.", schema: {type: integer, minimum: 0}}
+      responses:
+        "200":
+          description: The manifest and the tree's open proposals.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemoryFiles"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/memory/files/content:
+    get:
+      operationId: readMemoryFile
+      tags: [agents]
+      summary: Read one memory file
+      x-permission: runs:read
+      parameters:
+        - {name: scope, in: query, required: true, description: "me for your own memory, project for a project's, agent for an agent's.", schema: {type: string, enum: [me, project, agent]}}
+        - {name: project, in: query, description: "The project. Empty is the workspace.", schema: {type: string}}
+        - {name: agent, in: query, description: "The agent, for scope agent.", schema: {type: string}}
+        - {name: file, in: query, required: true, description: "The file's path in the tree.", schema: {type: string, maxLength: 512}}
+        - {name: version, in: query, description: "A version. Absent or 0 is the newest.", schema: {type: integer, minimum: 0}}
+      responses:
+        "200":
+          description: The file.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemoryFile"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/memory/files/history:
+    get:
+      operationId: listMemoryHistory
+      tags: [agents]
+      summary: List a memory tree's versions, newest first
+      description: A tree keeps its last 200 versions.
+      x-permission: runs:read
+      parameters:
+        - {name: scope, in: query, required: true, description: "me for your own memory, project for a project's, agent for an agent's.", schema: {type: string, enum: [me, project, agent]}}
+        - {name: project, in: query, description: "The project. Empty is the workspace.", schema: {type: string}}
+        - {name: agent, in: query, description: "The agent, for scope agent.", schema: {type: string}}
+        - {name: before, in: query, description: Versions older than this one. Absent starts at the newest., schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, description: "At most this many, and at most 100.", schema: {type: integer, minimum: 0, maximum: 100}}
+      responses:
+        "200":
+          description: The versions, without their manifests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    maxItems: 100
+                    items: {$ref: "#/components/schemas/DriveVersion"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/memory/files/restore:
+    post:
+      operationId: restoreMemoryFiles
+      tags: [agents]
+      summary: Restore a memory tree to an earlier version
+      description: "The earlier version becomes the newest; the history is kept. Your own tree you restore yourself; a project's takes whoever may change its notes, an agent's agents:write."
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MemoryRestoreInput"}
+      responses:
+        "200":
+          description: The tree as restored.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemoryFiles"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/memory/files/proposals/{id}:
+    post:
+      operationId: decideMemoryProposal
+      tags: [agents]
+      summary: Approve or discard a proposal to a memory tree
+      description: "What a run changed in memory it may only propose to waits here. Approving applies it to the newest version, checked against the version it was proposed on, and takes the same right as restoring."
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MemoryDecisionInput"}
+      responses:
+        "200":
+          description: The tree after the decision.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemoryFiles"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/memory/search:
+    get:
+      operationId: searchMemory
+      tags: [agents]
+      summary: Find files in the memory you may read
+      description: Your own memory first, then every project's and agent's you see, at most 50 trees. Ranked by how many of the query's words a file holds.
+      x-permission: runs:read
+      parameters:
+        - {name: q, in: query, required: true, description: The words to find. An empty query answers 400., schema: {type: string, maxLength: 1000}}
+        - {name: limit, in: query, description: "At most this many hits, and at most 100.", schema: {type: integer, minimum: 0, maximum: 100}}
+      responses:
+        "200":
+          description: The files that matched, best first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hits]
+                properties:
+                  hits:
+                    type: array
+                    maxItems: 100
+                    items: {$ref: "#/components/schemas/DriveHit"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/join:
     get:
       operationId: previewJoin
@@ -8325,6 +8477,117 @@ components:
           description: What the person who wrote it is called, their name, else their handle, never a subject that holds an address. `by` is the subject.
           type: string
         at: {type: string, format: date-time}
+    DriveTree:
+      description: A memory tree. Project "" is the workspace.
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [person, project, agent]}
+        person: {type: string}
+        project: {type: string}
+        agent: {type: string}
+    DriveEntry:
+      type: object
+      required: [path, hash, size]
+      properties:
+        path: {type: string}
+        hash: {description: "The SHA-256 of the content, in hex.", type: string}
+        size: {type: integer, minimum: 0}
+    DriveChange:
+      type: object
+      required: [path]
+      properties:
+        path: {type: string}
+        hash: {type: string}
+        size: {type: integer, minimum: 0}
+        delete: {type: boolean}
+    DriveProposal:
+      description: A change to a tree that waits for someone who may decide it.
+      type: object
+      required: [id, tree, base, changes]
+      properties:
+        id: {type: string}
+        tree: {$ref: "#/components/schemas/DriveTree"}
+        base: {description: The version it was proposed on., type: integer, minimum: 0}
+        changes:
+          type: array
+          items: {$ref: "#/components/schemas/DriveChange"}
+        by: {type: string}
+        at: {type: string, format: date-time}
+        message: {type: string}
+        origin: {type: string}
+    DriveVersion:
+      type: object
+      required: [tree, version, entries]
+      properties:
+        tree: {$ref: "#/components/schemas/DriveTree"}
+        version: {type: integer, minimum: 0}
+        parent: {type: integer, minimum: 0}
+        entries:
+          description: Absent from a history listing.
+          type: [array, "null"]
+          items: {$ref: "#/components/schemas/DriveEntry"}
+        by: {type: string}
+        at: {type: string, format: date-time}
+        message: {type: string}
+        origin: {type: string}
+        restored: {description: The version this one restored., type: integer, minimum: 0}
+        resolves:
+          description: The proposals this version applied.
+          type: array
+          items: {type: string}
+    DriveHit:
+      type: object
+      required: [tree, path, version, score, snippet]
+      properties:
+        tree: {$ref: "#/components/schemas/DriveTree"}
+        path: {type: string}
+        version: {type: integer, minimum: 0}
+        score: {description: How many of the query's words the file holds., type: integer, minimum: 1}
+        snippet: {type: string}
+    MemoryFiles:
+      type: object
+      required: [tree, mount, version, entries, proposals]
+      properties:
+        tree: {$ref: "#/components/schemas/DriveTree"}
+        mount: {description: Where a run finds the tree., type: string}
+        version: {type: integer, minimum: 0}
+        by: {type: string}
+        at: {type: string, format: date-time}
+        entries:
+          type: array
+          items: {$ref: "#/components/schemas/DriveEntry"}
+        proposals:
+          type: array
+          items: {$ref: "#/components/schemas/DriveProposal"}
+    MemoryFile:
+      type: object
+      required: [path, hash, size, version, content]
+      properties:
+        path: {type: string}
+        hash: {type: string}
+        size: {type: integer, minimum: 0}
+        version: {description: "The version asked for, 0 for the newest.", type: integer, minimum: 0}
+        content: {description: "The file as text, empty when it is not text.", type: string}
+        binary: {type: boolean}
+    MemoryRestoreInput:
+      type: object
+      additionalProperties: false
+      required: [scope, version]
+      properties:
+        scope: {type: string, enum: [me, project, agent]}
+        project: {type: string}
+        agent: {type: string}
+        version: {type: integer, minimum: 1}
+    MemoryDecisionInput:
+      type: object
+      additionalProperties: false
+      required: [scope, decision]
+      properties:
+        scope: {type: string, enum: [me, project, agent]}
+        project: {type: string}
+        agent: {type: string}
+        decision: {type: string, enum: [approve, discard]}
     NoteList:
       type: object
       required: [notes]

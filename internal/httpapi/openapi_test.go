@@ -45,6 +45,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
@@ -598,7 +599,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
-		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
+		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
@@ -1063,6 +1064,37 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), "", http.StatusNoContent)
 	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/missing", "", http.StatusNotFound)
+	// The note was a file: written, corrected and removed, three versions.
+	const files, content, history = "/api/memory/files", "/api/memory/files/content", "/api/memory/files/history"
+	c.call(auditAdmin, "GET", files, files+"?scope=me", "", http.StatusOK)
+	c.call(auditAdmin, "GET", files, files+"?scope=me&version=1", "", http.StatusOK)
+	c.call(auditAdmin, "GET", files, files+"?scope=nowhere", "", http.StatusBadRequest)
+	c.call(acme, "GET", files, files+"?scope=me", "", http.StatusNotFound)
+	c.call(auditAdmin, "GET", content, content+"?scope=me&version=1&file=notes/"+personalNote.str("id")+".md", "", http.StatusOK)
+	c.call(auditAdmin, "GET", content, content+"?scope=me&file=../x", "", http.StatusBadRequest)
+	c.call(auditAdmin, "GET", content, content+"?scope=me&file=notes/missing.md", "", http.StatusNotFound)
+	c.call(auditAdmin, "GET", history, history+"?scope=me&limit=2", "", http.StatusOK)
+	c.call(auditAdmin, "GET", history, history+"?scope=me&limit=101", "", http.StatusBadRequest)
+	c.call(acme, "GET", history, history+"?scope=me", "", http.StatusNotFound)
+	restored := c.call(auditAdmin, "POST", "/api/memory/files/restore", "/api/memory/files/restore", `{"scope":"me","version":2}`, http.StatusOK)
+	if len(sliceOf(restored.field("entries"))) != 1 {
+		t.Errorf("the restored tree holds %v", restored.field("entries"))
+	}
+	c.call(auditAdmin, "POST", "/api/memory/files/restore", "/api/memory/files/restore", `{"scope":"me","version":0}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/memory/files/restore", "/api/memory/files/restore", `{"scope":"me","version":1}`, http.StatusNotFound)
+	const decide = "/api/memory/files/proposals/{id}"
+	proposal, err := f.p.Drive.Propose(t.Context(), "acme", drive.System, drive.Person("audit-admin"), drive.ProposeInput{Changes: []drive.Change{{Path: "plan.md", Data: []byte("Draft plan")}}, By: "run-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"maybe"}`, http.StatusBadRequest)
+	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"approve"}`, http.StatusOK)
+	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"discard"}`, http.StatusNotFound)
+	found := c.call(auditAdmin, "GET", "/api/memory/search", "/api/memory/search?q=concise", "", http.StatusOK)
+	if len(sliceOf(found.field("hits"))) != 1 {
+		t.Errorf("search found %v", found.field("hits"))
+	}
+	c.call(auditAdmin, "GET", "/api/memory/search", "/api/memory/search?q=x&limit=500", "", http.StatusBadRequest)
 	c.sweep(globex)
 	c.call("", "GET", "/api/me", "/api/me", "", http.StatusUnauthorized)
 	c.call(f.machine(t, "acme"), "GET", "/api/agents", "/api/agents", "", http.StatusForbidden)
@@ -2406,6 +2438,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/share":      `{}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
+		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
