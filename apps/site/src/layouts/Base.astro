@@ -16,10 +16,12 @@ const canonical = new URL(page.path, site.url).href;
     <title>{page.title}</title>
     <meta name="description" content={page.description} />
     <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
-    <meta name="theme-color" content="#edf0ea" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#111914" media="(prefers-color-scheme: dark)" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={site.name} />
     <meta property="og:title" content={page.title} />
@@ -28,10 +30,14 @@ const canonical = new URL(page.path, site.url).href;
     <meta name="twitter:card" content="summary" />
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
   </head>
-  <body>
-    <a class="skip" href="#main">Skip to content</a>
+  <body class="min-h-dvh">
+    <a
+      href="#main"
+      class="absolute top-[-4rem] left-4 z-20 rounded-aui bg-aui-primary px-3 py-2 text-aui-sm font-medium text-aui-primary-fg focus:top-2"
+      >Skip to content</a
+    >
     <Header />
-    <main id="main" tabindex="-1">
+    <main id="main" tabindex="-1" class="outline-none">
       <slot />
     </main>
     <Footer />

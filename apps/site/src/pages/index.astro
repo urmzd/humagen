@@ -3,8 +3,22 @@ import { Image } from "astro:assets";
 import agentsShot from "../assets/console/agents.png";
 import homeShot from "../assets/console/home.png";
 import turnShot from "../assets/console/ui-agent-turn.png";
-import { contact, hero, pages, points, screens, selfHost, site, why } from "../content/site";
+import Agent from "../components/Agent.astro";
+import Icon from "../components/Icon.astro";
+import {
+  actions,
+  contact,
+  hero,
+  pages,
+  points,
+  roster,
+  screens,
+  selfHost,
+  site,
+  why,
+} from "../content/site";
 import Base from "../layouts/Base.astro";
+import { type IconName, outlineButton, primaryButton } from "../lib/console";
 import { inline } from "../lib/inline";
 
 const jsonLd = {
@@ -18,331 +32,173 @@ const jsonLd = {
   license: "https://www.apache.org/licenses/LICENSE-2.0",
   sameAs: site.repo,
 };
-const shotWidths = [640, 960, 1280];
+const widths = [640, 960, 1280];
+const shot = "block h-auto w-full rounded-aui-lg border border-aui-border";
+const caption = "pt-2 text-aui-xs text-aui-muted";
+const h2 = "humagen-display text-aui-xl font-semibold text-aui-fg";
+const body = "site-text text-aui-base text-aui-muted";
 ---
 <Base page={pages.home} jsonLd={jsonLd}>
-  <section class="hero" aria-labelledby="hero-title">
-    <div class="wrap hero-text">
-      <h1 id="hero-title">{hero.title}</h1>
-      <p class="lede">{hero.lede}</p>
-      <div class="actions">
-        <a class="button" href={pages.deploy.path}>Deploy your own</a>
-        <a href={site.repo}>Read the source on GitHub</a>
-        <a href={contact.href}>{contact.label}</a>
+  <div class="mx-auto flex w-full max-w-[68rem] flex-col px-5 md:px-10">
+    <section aria-labelledby="hero-title" class="flex flex-col gap-4 pt-12 md:pt-16">
+      <h1
+        id="hero-title"
+        class="humagen-display max-w-[20ch] text-[1.875rem] leading-[1.15] font-semibold text-aui-fg md:text-[2.5rem]"
+      >
+        {hero.title}
+      </h1>
+      <p class="max-w-[62ch] text-aui-lg text-aui-muted">{hero.lede}</p>
+      <div class="flex flex-wrap items-center gap-2 pt-2">
+        <a class={primaryButton} href={pages.deploy.path}>{actions.deploy}</a>
+        <a class={outlineButton} href={site.repo}>
+          {actions.github}
+          <Icon name="external" />
+        </a>
+        <a class={outlineButton} href={contact.href}>{contact.label}</a>
       </div>
-      <p class="status">{hero.status}</p>
-    </div>
-    <figure class="wrap shot shot-hero">
-      <Image
-        src={homeShot}
-        alt={screens.home.alt}
-        widths={shotWidths}
-        sizes="(min-width: 72rem) 68rem, calc(100vw - 2rem)"
-        format="webp"
-        loading="eager"
-        fetchpriority="high"
-      />
-      <figcaption>{screens.home.caption}</figcaption>
-    </figure>
-  </section>
+      <p class="text-aui-xs text-aui-muted">{hero.status}</p>
+      <figure class="m-0 pt-6">
+        <Image
+          src={homeShot}
+          alt={screens.home.alt}
+          widths={widths}
+          sizes="(min-width: 68rem) 63rem, calc(100vw - 2.5rem)"
+          format="webp"
+          loading="eager"
+          fetchpriority="high"
+          class={`${shot} shadow-aui-md`}
+        />
+        <figcaption class={caption}>{screens.home.caption}</figcaption>
+      </figure>
+    </section>
 
-  <section class="section wrap feature" aria-labelledby="together-title">
-    <div class="feature-text">
-      <h2 id="together-title">{points.together.title}</h2>
-      <p set:html={inline(points.together.body)} />
-    </div>
-    <figure class="shot">
-      <Image src={turnShot} alt={screens.turn.alt} widths={shotWidths} sizes="(min-width: 64rem) 40rem, calc(100vw - 2rem)" format="webp" />
-      <figcaption>{screens.turn.caption}</figcaption>
-    </figure>
-  </section>
-
-  <section class="section wrap feature feature-flip" aria-labelledby="operate-title">
-    <div class="feature-text">
-      <h2 id="operate-title">{points.operate.title}</h2>
-      <p set:html={inline(points.operate.body)} />
-    </div>
-    <figure class="shot">
-      <Image src={agentsShot} alt={screens.agents.alt} widths={shotWidths} sizes="(min-width: 64rem) 40rem, calc(100vw - 2rem)" format="webp" />
-      <figcaption>{screens.agents.caption}</figcaption>
-    </figure>
-  </section>
-
-  <section class="section wrap" aria-labelledby="grid-title">
-    <h2 id="grid-title" class="grid-title">Everything a team of agents needs</h2>
-    <dl class="points">
-      {
-        points.grid.map((p) => (
-          <div>
-            <dt>{p.title}</dt>
-            <dd set:html={inline(p.body)} />
-          </div>
-        ))
-      }
-    </dl>
-  </section>
-
-  <section class="section wrap why" aria-labelledby="why-title">
-    <div class="why-text">
-      <h2 id="why-title">{why.heading}</h2>
-      {why.intro.map((p) => <p>{p}</p>)}
-    </div>
-    <div class="table-scroll" role="region" aria-labelledby="why-title" tabindex="0">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col"><span class="sr-only">Aspect</span></th>
-            <th scope="col">{why.columns[1]}</th>
-            <th scope="col">{why.columns[2]}</th>
-          </tr>
-        </thead>
-        <tbody>
+    <section
+      aria-labelledby="together-title"
+      class="mt-16 grid items-center gap-6 border-t border-aui-border pt-12 lg:grid-cols-[1fr_1.35fr] lg:gap-12"
+    >
+      <div class="flex flex-col gap-3">
+        <h2 id="together-title" class={h2}>{points.together.title}</h2>
+        <p class={body} set:html={inline(points.together.body)} />
+        <ul class="mt-2 flex flex-col rounded-aui-lg border border-aui-border" aria-label={roster.caption}>
           {
-            why.rows.map(([aspect, ours, theirs]) => (
-              <tr>
-                <th scope="row">{aspect}</th>
-                <td>{ours}</td>
-                <td>{theirs}</td>
-              </tr>
+            roster.agents.map((a) => (
+              <li class="flex items-center gap-3 border-aui-border px-3 py-2.5 not-first:border-t">
+                <Agent name={a.name} hue={a.hue} />
+                <span class="min-w-0">
+                  <span class="block font-[family-name:var(--font-aui-mono)] text-aui-sm text-aui-fg">
+                    {a.name}
+                  </span>
+                  <span class="block text-aui-xs text-aui-muted">{a.model}</span>
+                </span>
+              </li>
             ))
           }
-        </tbody>
-      </table>
-    </div>
-  </section>
+        </ul>
+        <p class="text-aui-xs text-aui-muted">{roster.caption}</p>
+      </div>
+      <figure class="m-0">
+        <Image src={turnShot} alt={screens.turn.alt} widths={widths} sizes="(min-width: 64rem) 36rem, calc(100vw - 2.5rem)" format="webp" class={shot} />
+        <figcaption class={caption}>{screens.turn.caption}</figcaption>
+      </figure>
+    </section>
 
-  <section id="self-host" class="selfhost" aria-labelledby="selfhost-title">
-    <div class="wrap">
-      <h2 id="selfhost-title">{selfHost.heading}</h2>
-      <p class="selfhost-intro">{selfHost.intro}</p>
-      <ul class="selfhost-points">
+    <section
+      aria-labelledby="operate-title"
+      class="mt-12 grid items-center gap-6 border-t border-aui-border pt-12 lg:grid-cols-[1.35fr_1fr] lg:gap-12"
+    >
+      <div class="flex flex-col gap-3 lg:order-2">
+        <h2 id="operate-title" class={h2}>{points.operate.title}</h2>
+        <p class={body} set:html={inline(points.operate.body)} />
+      </div>
+      <figure class="m-0">
+        <Image src={agentsShot} alt={screens.agents.alt} widths={widths} sizes="(min-width: 64rem) 36rem, calc(100vw - 2.5rem)" format="webp" class={shot} />
+        <figcaption class={caption}>{screens.agents.caption}</figcaption>
+      </figure>
+    </section>
+
+    <section aria-labelledby="grid-title" class="mt-12 border-t border-aui-border pt-12">
+      <h2 id="grid-title" class={h2}>What it does</h2>
+      <ul class="mt-6 grid gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
         {
-          selfHost.points.map((p) => (
-            <li>
-              <h3>{p.title}</h3>
-              <p>{p.body}</p>
+          points.grid.map((p) => (
+            <li class="flex flex-col gap-1.5 border-t border-aui-border py-4">
+              <span class="flex items-center gap-2 text-aui-base font-medium text-aui-fg">
+                <Icon name={p.icon as IconName} class="text-aui-muted" />
+                {p.title}
+              </span>
+              <span class="site-text text-aui-sm text-aui-muted" set:html={inline(p.body)} />
             </li>
           ))
         }
       </ul>
-      <p class="selfhost-link"><a href={pages.deploy.path}>Read the step-by-step deploy guide</a></p>
-    </div>
-  </section>
+    </section>
 
-  <section class="section wrap closing" aria-labelledby="closing-title">
-    <h2 id="closing-title">Questions before you run it?</h2>
-    <p>
-      Write to the founder at <a href={contact.href}>{contact.email}</a>, or open an issue on{" "}
-      <a href={`${site.repo}/issues`}>GitHub</a>.
-    </p>
-  </section>
+    <section
+      aria-labelledby="why-title"
+      class="mt-12 grid gap-6 border-t border-aui-border pt-12 lg:grid-cols-[1fr_1.3fr] lg:gap-12"
+    >
+      <div class="flex flex-col gap-3">
+        <h2 id="why-title" class={h2}>{why.heading}</h2>
+        {why.intro.map((p) => <p class={body}>{p}</p>)}
+      </div>
+      <div
+        class="overflow-x-auto rounded-aui-lg border border-aui-border"
+        role="region"
+        aria-labelledby="why-title"
+        tabindex="0"
+      >
+        <table class="w-full border-collapse text-left text-aui-sm">
+          <thead>
+            <tr class="border-b border-aui-border text-aui-xs text-aui-muted">
+              <th scope="col" class="px-3 py-2 font-medium"><span class="sr-only">Aspect</span></th>
+              <th scope="col" class="px-3 py-2 font-medium">{why.columns[1]}</th>
+              <th scope="col" class="px-3 py-2 font-medium">{why.columns[2]}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              why.rows.map(([aspect, ours, theirs]) => (
+                <tr class="border-aui-border align-top not-last:border-b">
+                  <th scope="row" class="px-3 py-2.5 font-medium text-aui-fg">{aspect}</th>
+                  <td class="px-3 py-2.5 text-aui-fg">{ours}</td>
+                  <td class="px-3 py-2.5 text-aui-muted">{theirs}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="self-host" aria-labelledby="selfhost-title" class="mt-12 border-t border-aui-border pt-12">
+      <div class="flex flex-col gap-3">
+        <h2 id="selfhost-title" class={h2}>{selfHost.heading}</h2>
+        <p class={`${body} max-w-[62ch]`}>{selfHost.intro}</p>
+      </div>
+      <ul class="mt-6 grid gap-3 md:grid-cols-3">
+        {
+          selfHost.points.map((p) => (
+            <li class="flex flex-col gap-1.5 rounded-aui-lg border border-aui-border bg-aui-surface p-4">
+              <span class="text-aui-base font-medium text-aui-fg">{p.title}</span>
+              <span class="text-aui-sm text-aui-muted">{p.body}</span>
+            </li>
+          ))
+        }
+      </ul>
+      <div class="mt-6">
+        <a class={outlineButton} href={pages.deploy.path}>
+          {actions.guide}
+          <Icon name="chevron" />
+        </a>
+      </div>
+    </section>
+
+    <section aria-labelledby="closing-title" class="mt-12 border-t border-aui-border pt-12">
+      <h2 id="closing-title" class={h2}>Questions before you run it?</h2>
+      <p class={`${body} mt-3`}>
+        Write to the founder at <a href={contact.href}>{contact.email}</a>, or open an issue on{" "}
+        <a href={`${site.repo}/issues`}>GitHub</a>.
+      </p>
+    </section>
+  </div>
 </Base>
-
-<style>
-  .hero {
-    padding-top: var(--space-12);
-  }
-
-  .hero h1 {
-    font-size: var(--text-hero);
-    letter-spacing: -0.04em;
-    line-height: 0.98;
-    max-width: 13ch;
-  }
-
-  .lede {
-    margin-top: var(--space-6);
-    font-size: var(--text-lg);
-    max-width: 44ch;
-  }
-
-  .hero .actions {
-    margin-top: var(--space-8);
-  }
-
-  .status {
-    margin-top: var(--space-6);
-    font-size: var(--text-sm);
-    color: var(--ink-muted);
-  }
-
-  .shot {
-    margin: 0;
-  }
-
-  .shot img {
-    display: block;
-    width: 100%;
-    height: auto;
-    border: 1px solid var(--rule-strong);
-    border-radius: var(--radius-md);
-    background: #fff;
-  }
-
-  .shot figcaption {
-    margin-top: var(--space-3);
-    font-size: 0.875rem;
-    color: var(--ink-muted);
-  }
-
-  .shot-hero {
-    margin-top: var(--space-12);
-  }
-
-  .shot-hero img {
-    box-shadow: 0 1.5rem 3rem -1.5rem color-mix(in srgb, var(--ink) 35%, transparent);
-  }
-
-  .feature {
-    display: grid;
-    gap: var(--space-6);
-    align-items: center;
-  }
-
-  .feature-text {
-    max-width: 34rem;
-  }
-
-  .feature-text p {
-    margin-top: var(--space-4);
-    color: var(--ink-muted);
-  }
-
-  .grid-title {
-    max-width: 18ch;
-    margin-bottom: var(--space-8);
-  }
-
-  .points {
-    display: grid;
-    margin: 0;
-    border-top: 2px solid var(--ink);
-  }
-
-  .points > div {
-    padding-block: var(--space-4) var(--space-6);
-    border-bottom: 1px solid var(--rule);
-  }
-
-  .points dt {
-    font-weight: 700;
-    font-size: var(--text-lg);
-    letter-spacing: -0.01em;
-  }
-
-  .points dd {
-    margin: var(--space-2) 0 0;
-    color: var(--ink-muted);
-  }
-
-  .why {
-    display: grid;
-    gap: var(--space-8);
-  }
-
-  .why-text {
-    max-width: var(--measure);
-  }
-
-  .why-text p {
-    margin-top: var(--space-4);
-  }
-
-  .why tbody td:first-of-type {
-    font-weight: 600;
-  }
-
-  .selfhost {
-    margin-top: var(--space-16);
-    padding-block: var(--space-16);
-    background: var(--band);
-    color: var(--on-band);
-  }
-
-  .selfhost h2 {
-    max-width: 16ch;
-  }
-
-  .selfhost-intro {
-    margin-top: var(--space-4);
-    max-width: 52ch;
-    font-size: var(--text-lg);
-  }
-
-  .selfhost-points {
-    list-style: none;
-    padding: 0;
-    margin-top: var(--space-8);
-    display: grid;
-    gap: var(--space-6);
-  }
-
-  .selfhost-points li {
-    border-top: 1px solid var(--band-rule);
-    padding-top: var(--space-4);
-  }
-
-  .selfhost-points p {
-    margin-top: var(--space-2);
-    color: var(--on-band-muted);
-  }
-
-  .selfhost-link {
-    margin-top: var(--space-8);
-    font-size: var(--text-lg);
-    font-weight: 600;
-  }
-
-  .selfhost a {
-    color: var(--band-link);
-  }
-
-  .selfhost :focus-visible {
-    outline-color: var(--band-link);
-  }
-
-  .closing p {
-    margin-top: var(--space-4);
-    max-width: var(--measure);
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  @media (min-width: 48rem) {
-    .points {
-      grid-template-columns: 1fr 1fr;
-      column-gap: var(--space-8);
-    }
-    .selfhost-points {
-      grid-template-columns: repeat(3, 1fr);
-      gap: var(--space-8);
-    }
-  }
-
-  @media (min-width: 64rem) {
-    .hero {
-      padding-top: var(--space-16);
-    }
-    .feature {
-      grid-template-columns: 1fr 1.35fr;
-      gap: var(--space-12);
-    }
-    .feature-flip .feature-text {
-      order: 2;
-    }
-    .points {
-      grid-template-columns: repeat(4, 1fr);
-    }
-    .why {
-      grid-template-columns: 1fr 1.3fr;
-      align-items: start;
-    }
-  }
-</style>

@@ -22,41 +22,64 @@ const toc = [
   { id: "alternatives", label: alternatives.heading },
   { id: "limits", label: limits.heading },
 ];
+const h2 = "humagen-display scroll-mt-16 text-aui-xl font-semibold text-aui-fg";
+const text = "site-text max-w-[70ch] space-y-3 text-aui-base text-aui-muted";
+const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
 ---
 <Base page={pages.deploy}>
-  <div class="wrap guide">
-    <header class="guide-head">
-      <h1>Deploy your own Humagen</h1>
-      <div class="prose lede">
+  <div class="mx-auto grid w-full max-w-[68rem] gap-8 px-5 pt-8 pb-12 md:px-10 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-x-12">
+    <header class="flex flex-col gap-3 lg:col-span-2">
+      <h1 class="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg">
+        Deploy your own Humagen
+      </h1>
+      <div class="flex max-w-[70ch] flex-col gap-3 text-aui-base text-aui-muted">
         {deployIntro.map((p) => <p>{p}</p>)}
       </div>
     </header>
 
-    <nav class="toc" aria-labelledby="toc-title">
-      <h2 id="toc-title">On this page</h2>
-      <ol>
-        {toc.map((t) => <li><a href={`#${t.id}`}>{t.label}</a></li>)}
+    <nav aria-labelledby="toc-title" class="self-start lg:sticky lg:top-16">
+      <h2 id="toc-title" class="text-aui-xs font-medium text-aui-muted">On this page</h2>
+      <ol class="mt-2 flex flex-col">
+        {
+          toc.map((t) => (
+            <li>
+              <a
+                href={`#${t.id}`}
+                class="flex min-h-8 items-center rounded-aui px-2 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg"
+              >
+                {t.label}
+              </a>
+            </li>
+          ))
+        }
       </ol>
     </nav>
 
-    <div class="guide-body">
-      <section id="prerequisites" aria-labelledby="prerequisites-title">
-        <h2 id="prerequisites-title">Prerequisites</h2>
-        <ul class="prose list">
+    <div class="flex min-w-0 flex-col gap-10">
+      <section id="prerequisites" aria-labelledby="prerequisites-title" class={`${section} scroll-mt-16`}>
+        <h2 id="prerequisites-title" class={h2}>Prerequisites</h2>
+        <ul class={`${text} list-disc pl-5`}>
           {prerequisites.map((p) => <li set:html={inline(p)} />)}
         </ul>
-        <p class="prose note" set:html={inline(sizing)} />
+        <p class={text} set:html={inline(sizing)} />
       </section>
 
-      <section id="architecture" aria-labelledby="architecture-title">
-        <h2 id="architecture-title">Architecture</h2>
-        <figure class="arch">
-          <div class="arch-grid">
+      <section id="architecture" aria-labelledby="architecture-title" class={`${section} scroll-mt-16`}>
+        <h2 id="architecture-title" class={h2}>Architecture</h2>
+        <figure class="m-0">
+          <div class="grid gap-3 md:grid-cols-[1fr_1.3fr_1fr]">
             {
               architecture.zones.map((z, i) => (
-                <section class={`zone zone-${i + 1}`} aria-label={z.name}>
-                  <h3>{z.name}</h3>
-                  <ul>
+                <section
+                  aria-label={z.name}
+                  class:list={[
+                    "rounded-aui-lg border p-4",
+                    i === 1 ? "border-aui-fg bg-aui-surface" : "border-aui-border",
+                    i === 3 && "border-dashed md:col-start-2",
+                  ]}
+                >
+                  <h3 class="text-aui-sm font-medium text-aui-fg">{z.name}</h3>
+                  <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
                     {z.items.map((item) => (
                       <li set:html={inline(item)} />
                     ))}
@@ -65,60 +88,67 @@ const toc = [
               ))
             }
           </div>
-          <figcaption>{architecture.caption}</figcaption>
+          <figcaption class="max-w-[70ch] pt-2 text-aui-xs text-aui-muted">{architecture.caption}</figcaption>
         </figure>
       </section>
 
-      <ol class="steps">
-        {
-          steps.map((s, i) => (
-            <li id={s.id}>
-              <section aria-labelledby={`${s.id}-title`}>
-                <h2 id={`${s.id}-title`}>
-                  <span class="step-n" aria-hidden="true">
-                    {i + 1}
-                  </span>
-                  {s.title}
-                </h2>
-                <div class="prose">
-                  {s.body.map((p) => (
-                    <p set:html={inline(p)} />
-                  ))}
-                </div>
-                {s.code && <Code label={s.code.label} text={s.code.text} />}
-                {s.after && (
-                  <div class="prose after">
-                    {s.after.map((p) => (
-                      <p set:html={inline(p)} />
-                    ))}
-                  </div>
-                )}
-                {s.id === "sign-in" && <Code label={policySnippet.label} text={policySnippet.text} />}
-              </section>
-            </li>
-          ))
-        }
-      </ol>
+      {
+        steps.map((s, i) => (
+          <section id={s.id} aria-labelledby={`${s.id}-title`} class={`${section} scroll-mt-16`}>
+            <h2 id={`${s.id}-title`} class={`${h2} flex items-baseline gap-3`}>
+              <span
+                aria-hidden="true"
+                class="inline-flex size-7 shrink-0 translate-y-[-0.1em] items-center justify-center rounded-full border border-aui-border text-aui-sm font-medium text-aui-muted"
+              >
+                {i + 1}
+              </span>
+              <span>
+                <span class="sr-only">Step {i + 1}: </span>
+                {s.title}
+              </span>
+            </h2>
+            <div class={text}>
+              {s.body.map((p) => (
+                <p set:html={inline(p)} />
+              ))}
+            </div>
+            {s.code && <Code label={s.code.label} text={s.code.text} />}
+            {s.after && (
+              <div class={text}>
+                {s.after.map((p) => (
+                  <p set:html={inline(p)} />
+                ))}
+              </div>
+            )}
+            {s.id === "sign-in" && <Code label={policySnippet.label} text={policySnippet.text} />}
+          </section>
+        ))
+      }
 
-      <section id="alternatives" aria-labelledby="alternatives-title">
-        <h2 id="alternatives-title">{alternatives.heading}</h2>
-        <p class="prose">{alternatives.intro}</p>
-        <div class="table-scroll" role="region" aria-labelledby="alternatives-title" tabindex="0">
-          <table>
+      <section id="alternatives" aria-labelledby="alternatives-title" class={`${section} scroll-mt-16`}>
+        <h2 id="alternatives-title" class={h2}>{alternatives.heading}</h2>
+        <p class={text}>{alternatives.intro}</p>
+        <div
+          class="overflow-x-auto rounded-aui-lg border border-aui-border"
+          role="region"
+          aria-labelledby="alternatives-title"
+          tabindex="0"
+        >
+          <table class="w-full border-collapse text-left text-aui-sm">
             <thead>
-              <tr>
-                <th scope="col">Setup</th>
-                <th scope="col">When</th>
-                <th scope="col">What you get</th>
+              <tr class="border-b border-aui-border text-aui-xs text-aui-muted">
+                <th scope="col" class="px-3 py-2 font-medium">Setup</th>
+                <th scope="col" class="px-3 py-2 font-medium">When</th>
+                <th scope="col" class="px-3 py-2 font-medium">What you get</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody class="site-text">
               {
                 alternatives.rows.map((r) => (
-                  <tr>
-                    <th scope="row" set:html={inline(r.name)} />
-                    <td>{r.when}</td>
-                    <td>
+                  <tr class="border-aui-border align-top not-last:border-b">
+                    <th scope="row" class="px-3 py-2.5 font-medium text-aui-fg" set:html={inline(r.name)} />
+                    <td class="px-3 py-2.5 text-aui-muted">{r.when}</td>
+                    <td class="px-3 py-2.5 text-aui-muted">
                       <span set:html={inline(r.what)} /> <a href={r.link.href}>{r.link.label}</a>
                     </td>
                   </tr>
@@ -129,227 +159,19 @@ const toc = [
         </div>
       </section>
 
-      <section id="limits" aria-labelledby="limits-title">
-        <h2 id="limits-title">{limits.heading}</h2>
-        <p class="prose">{limits.intro}</p>
-        <ul class="prose list limits">
+      <section id="limits" aria-labelledby="limits-title" class={`${section} scroll-mt-16`}>
+        <h2 id="limits-title" class={h2}>{limits.heading}</h2>
+        <p class={text}>{limits.intro}</p>
+        <ul class={`${text} list-disc pl-5 [&_strong]:font-medium [&_strong]:text-aui-fg`}>
           {limits.items.map((item) => <li set:html={inline(item)} />)}
         </ul>
-        <p class="prose"><a href={limits.link.href}>{limits.link.label}</a></p>
-        <p class="prose help">
-          Stuck, or running it somewhere else? Write to <a href={contact.href}>{contact.email}</a>.
+        <p class={text}><a href={limits.link.href}>{limits.link.label}</a></p>
+        <p class={text}>
+          <span>
+            Stuck, or running it somewhere else? Write to <a href={contact.href}>{contact.email}</a>.
+          </span>
         </p>
       </section>
     </div>
   </div>
 </Base>
-
-<style>
-  .guide {
-    padding-top: var(--space-12);
-    display: grid;
-    gap: var(--space-8);
-  }
-
-  .guide-head h1 {
-    font-size: var(--text-2xl);
-    letter-spacing: -0.03em;
-  }
-
-  @media (min-width: 48rem) {
-    .guide-head h1 {
-      font-size: var(--text-hero);
-      max-width: 14ch;
-    }
-  }
-
-  .lede {
-    margin-top: var(--space-6);
-    font-size: var(--text-lg);
-  }
-
-  .toc {
-    border: 1px solid var(--rule);
-    border-radius: var(--radius-md);
-    padding: var(--space-4) var(--space-6);
-    background: var(--surface);
-    font-size: var(--text-sm);
-    align-self: start;
-  }
-
-  .toc h2 {
-    font-size: var(--text-base);
-  }
-
-  .toc ol {
-    list-style: none;
-    padding: 0;
-    margin-top: var(--space-2);
-    display: grid;
-    gap: var(--space-1);
-  }
-
-  .toc a {
-    display: inline-block;
-    padding-block: var(--space-1);
-  }
-
-  .guide-body {
-    min-width: 0;
-    display: grid;
-    gap: var(--space-16);
-  }
-
-  .guide-body h2 {
-    font-size: var(--text-xl);
-    margin-bottom: var(--space-4);
-  }
-
-  .list {
-    padding-left: 1.25rem;
-  }
-
-  .list li + li {
-    margin-top: var(--space-2);
-  }
-
-  .note {
-    margin-top: var(--space-4);
-    color: var(--ink-muted);
-  }
-
-  .after {
-    margin-top: var(--space-6);
-  }
-
-  .guide-body > *,
-  .steps > li,
-  .steps section {
-    min-width: 0;
-  }
-
-  .steps {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: grid;
-    gap: var(--space-16);
-  }
-
-  .steps h2 {
-    display: flex;
-    gap: var(--space-3);
-    align-items: baseline;
-  }
-
-  .step-n {
-    flex: none;
-    display: inline-grid;
-    place-items: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 50%;
-    border: 1.5px solid var(--action);
-    color: var(--action);
-    font-size: 1rem;
-    transform: translateY(-0.15em);
-  }
-
-  .arch {
-    margin: 0;
-  }
-
-  .arch-grid {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .zone {
-    border: 1px solid var(--rule-strong);
-    border-radius: var(--radius-md);
-    padding: var(--space-4);
-    background: var(--surface);
-  }
-
-  .zone h3 {
-    font-size: var(--text-base);
-  }
-
-  .zone ul {
-    margin-top: var(--space-2);
-    padding-left: 1.1rem;
-    font-size: var(--text-sm);
-    line-height: 1.5;
-  }
-
-  .zone li + li {
-    margin-top: var(--space-1);
-  }
-
-  .zone-2 {
-    border: 2px solid var(--action);
-  }
-
-  .zone-4 {
-    border-style: dashed;
-  }
-
-  .arch figcaption {
-    margin-top: var(--space-3);
-    font-size: 0.875rem;
-    color: var(--ink-muted);
-    max-width: var(--measure);
-  }
-
-  .limits strong {
-    font-weight: 700;
-  }
-
-  .help {
-    margin-top: var(--space-6);
-  }
-
-  #alternatives .table-scroll,
-  #limits .list {
-    margin-top: var(--space-4);
-  }
-
-  #limits .prose + .prose {
-    margin-top: var(--space-4);
-  }
-
-  @media (min-width: 48rem) {
-    .arch-grid {
-      grid-template-columns: 1fr 1.3fr 1fr;
-      grid-template-areas:
-        "tailnet vm outbound"
-        ". ci .";
-    }
-    .zone-1 {
-      grid-area: tailnet;
-    }
-    .zone-2 {
-      grid-area: vm;
-    }
-    .zone-3 {
-      grid-area: outbound;
-    }
-    .zone-4 {
-      grid-area: ci;
-    }
-  }
-
-  @media (min-width: 64rem) {
-    .guide {
-      grid-template-columns: 15rem minmax(0, 1fr);
-      column-gap: var(--space-12);
-    }
-    .guide-head {
-      grid-column: 1 / -1;
-    }
-    .toc {
-      position: sticky;
-      top: var(--space-6);
-    }
-  }
-</style>
