@@ -66,21 +66,29 @@ func (p *Platform) admit(tag event.Envelope, edge call.Edge, project string, wit
 	}
 	now := p.now()
 	entry := usage.Entry{Tenant: tag.Tenant, Project: project, Within: within, Agent: tag.Agent, Client: client, RunID: runtime.RunID(tag.Tenant, tag.ID), At: now}
-	// The limits are judged on counts read in the step that counts the run,
-	// so with shared counters no other process admits between the two.
+	// The limits on what admission counts, runs started and runs in flight,
+	// are quotas the ledger takes in the step that counts the run, so with
+	// shared counters no other process admits past them. The judge decides
+	// the rest (spend, tokens, a lease's size) and warns, on the counts as
+	// they are.
+	chain := chainOf(project, within)
 	var d policy.Decision
-	in, err := p.Usage.Admit(entry, func(read usage.Reader) (bool, error) {
-		applied, err := p.appliedBy(read, tag.Tenant, chainOf(project, within), tag.Agent, client, now)
-		if err != nil {
+	var applied []policy.Applied
+	in, full, err := p.Usage.AdmitQuotas(entry, func(read usage.Reader) (bool, error) {
+		var err error
+		if applied, err = p.appliedBy(read, tag.Tenant, chain, tag.Agent, client, now); err != nil {
 			return false, err
 		}
 		d = policy.Decide(applied, policy.Request{Lease: edge.Lease})
 		return d.Verdict != policy.Deny && d.Verdict != policy.NeedsApproval, nil
-	})
+	}, quotasOf(p.Policies.For(tag.Tenant, chain, tag.Agent, client), now))
 	if err != nil {
 		// A run whose admission could not be kept is not let in: a restart
 		// would forget it was counted.
 		return fmt.Errorf("platform: the run could not be counted: %w", err)
+	}
+	if full != nil {
+		d = fullDecision(applied, *full, edge.Lease)
 	}
 	if d.Policy != nil {
 		entry.Scope, entry.Version, entry.Limit, entry.Reason = &d.Policy.Scope, d.Policy.Version, d.Limit, d.Reason
@@ -98,6 +106,51 @@ func (p *Platform) admit(tag event.Envelope, edge call.Edge, project string, wit
 		p.budgetAlert(tag.Tenant, d, alerts.Warning, "", string(d.Verdict))
 	}
 	return nil
+}
+
+// quotasOf is the limits of policies on what admission counts, as quotas.
+func quotasOf(pols []policy.Policy, now time.Time) []usage.Quota {
+	var out []usage.Quota
+	for _, pol := range pols {
+		if pol.MaxRuns > 0 {
+			out = append(out, usage.Quota{Scope: pol.Scope, Kind: usage.QuotaRuns, Since: policy.PeriodStart(pol.Period, now), Max: pol.MaxRuns})
+		}
+		if pol.MaxConcurrent > 0 {
+			out = append(out, usage.Quota{Scope: pol.Scope, Kind: usage.QuotaConcurrent, Max: pol.MaxConcurrent})
+		}
+	}
+	return out
+}
+
+// fullDecision is the decision for a run a quota refused: the policy that
+// set it, judged as it stands at its limit, so the reason and the verdict
+// (a refusal, or one waiting on approval) are the policy's own.
+func fullDecision(applied []policy.Applied, q usage.Quota, lease int64) policy.Decision {
+	at := make([]policy.Applied, 0, 1)
+	for _, a := range applied {
+		if a.Policy.Scope != q.Scope {
+			continue
+		}
+		switch {
+		case q.Kind == usage.QuotaRuns && a.Policy.MaxRuns == q.Max:
+			a.Usage.Runs = q.Max
+		case q.Kind == usage.QuotaConcurrent && a.Policy.MaxConcurrent == q.Max:
+			a.Usage.Concurrent = q.Max
+		default:
+			continue
+		}
+		at = append(at, a)
+	}
+	d := policy.Decide(at, policy.Request{Lease: lease})
+	if d.Verdict != policy.Deny && d.Verdict != policy.NeedsApproval {
+		// The policy changed between the quota and the judge's read: the
+		// quota still refused the run.
+		d = policy.Decision{Verdict: policy.Deny, Limit: policy.LimitRuns, Reason: fmt.Sprintf("%s has reached its limit", q.Scope)}
+		if q.Kind == usage.QuotaConcurrent {
+			d.Limit = policy.LimitConcurrent
+		}
+	}
+	return d
 }
 
 // appendUsage appends an entry the platform has nobody to report a failed
