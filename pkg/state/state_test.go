@@ -46,6 +46,48 @@ func TestTable(t *testing.T) {
 	})
 }
 
+func TestTablePerRequest(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		tab := state.NewTable[doc](open(t), "docs")
+		b := tab.Batch()
+		b.Create("t", "a", doc{Name: "a", N: 1})
+		b.Create("t", "b", doc{Name: "b", N: 2})
+		if err := b.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		it, err := tab.Lookup("t", "a")
+		if err != nil || it.Value != (doc{Name: "a", N: 1}) || it.Version != 1 || it.Key != "a" {
+			t.Fatalf("Lookup = %+v, %v", it, err)
+		}
+		b = tab.Batch()
+		b.PutAt("t", "a", doc{Name: "a", N: 3}, it.Version)
+		if err := b.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		b = tab.Batch()
+		b.PutAt("t", "a", doc{Name: "a", N: 4}, it.Version)
+		if err := b.Commit(); !errors.Is(err, state.ErrConflict) {
+			t.Fatalf("a stale PutAt = %v", err)
+		}
+		b = tab.Batch()
+		b.DeleteAt("t", "b", 0)
+		if err := b.Commit(); !errors.Is(err, state.ErrInvalid) {
+			t.Fatalf("DeleteAt(0) = %v", err)
+		}
+		items, next, err := tab.List("t", state.Query{Limit: 1})
+		if err != nil || len(items) != 1 || items[0].Value.N != 3 || items[0].Version != 2 || next != "a" {
+			t.Fatalf("List = %+v, %q, %v", items, next, err)
+		}
+		items, next, err = tab.List("t", state.Query{After: next, Limit: 1})
+		if err != nil || len(items) != 1 || items[0].Key != "b" || next != "" {
+			t.Fatalf("List after = %+v, %q, %v", items, next, err)
+		}
+		if _, err := tab.Lookup("t", "c"); !errors.Is(err, state.ErrNotFound) {
+			t.Fatalf("Lookup(missing) = %v", err)
+		}
+	})
+}
+
 func TestNilTableKeepsNothing(t *testing.T) {
 	tab := state.NewTable[doc](nil, "docs")
 	if tab.Enabled() {
@@ -61,6 +103,19 @@ func TestNilTableKeepsNothing(t *testing.T) {
 	}
 	if err := tab.Load(func(string, string, doc) error { t.Fatal("loaded from nothing"); return nil }); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := tab.Lookup("t", "a"); !errors.Is(err, state.ErrNotFound) {
+		t.Fatalf("Lookup = %v", err)
+	}
+	if items, next, err := tab.List("t", state.Query{Limit: 1}); len(items) != 0 || next != "" || err != nil {
+		t.Fatal("a nil table listed something")
+	}
+	b = tab.Batch()
+	b.Create("t", "a", doc{})
+	b.PutAt("t", "a", doc{}, 0)
+	b.DeleteAt("t", "a", 0)
+	if b.Len() != 0 || b.Commit() != nil {
+		t.Fatal("a nil table's batch collected a conditional change")
 	}
 }
 

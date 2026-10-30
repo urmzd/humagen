@@ -59,7 +59,7 @@ and evidence when implementing a requirement.
 - `pkg/memory`: what an agent carries between conversations. `internal/platform/hooks.go`: housekeeping runs.
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/join`: whether each agent takes a message that names none (the dynamic router). `pkg/prefs`: a person's own settings.
-- `pkg/state`: the record store every Humagen store writes through, in memory or in Postgres, with the `statetest` suite. A store keeps its logic in memory and gains `Open(state.Store)`; `internal/platform/backends.go` chooses the backends.
+- `pkg/state`: the record store every Humagen store writes through, in memory or in Postgres, with the `statetest` suite. A store keeps its logic in memory and gains `Open(state.Store)`, or reads and writes per request (`Lookup`, `List`, versioned ops) with the tenant as its shard key (docs/architecture/overview.md#storage); `internal/platform/backends.go` chooses the backends.
 - `fiber/`: fiber, folded into this module and imported as `github.com/urmzd/humagen/fiber/...`. Its own guide is `fiber/AGENTS.md`.
   - `fiber/pkg/event`: the envelope, the sealed bodies and the catalog. `fiber/pkg/bus`: the bus, by channel and type prefix. `fiber/pkg/egress`: delivery of a run's events to its channel's sink.
   - `fiber/pkg/definition`: saige definitions plus a policy, and the pin a run carries. `fiber/pkg/turn`: the `Runtime` interface, with `turn/native` (saige) and `turn/sandbox` (playscape around any Runtime).

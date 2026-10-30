@@ -20,7 +20,13 @@ const table = "warp_state"
 //
 // The names are COLLATE "C" so that Load orders keys as bytes, as Memory does,
 // and a store that pads a sequence number into its keys reads them back in
-// the order it wrote them.
+// the order it wrote them. The primary key is also the index a List pages:
+// one namespace, one tenant, a range of keys.
+//
+// version was added after the table: a row an older release wrote is at
+// version 1. An older release does not move it, which is safe only because
+// that release takes the lock and so never runs beside a store that reads
+// versions without it.
 const schema = `
 CREATE TABLE IF NOT EXISTS ` + table + ` (
 	namespace  text        COLLATE "C" NOT NULL,
@@ -30,6 +36,7 @@ CREATE TABLE IF NOT EXISTS ` + table + ` (
 	updated_at timestamptz NOT NULL DEFAULT now(),
 	PRIMARY KEY (namespace, tenant, key)
 );
+ALTER TABLE ` + table + ` ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 1;
 `
 
 // lockClass is the first half of the advisory locks this package takes. The
@@ -99,26 +106,82 @@ func (p *Postgres) Close() error {
 
 // Get implements Store.
 func (p *Postgres) Get(ctx context.Context, namespace, tenant, key string) ([]byte, error) {
-	var v []byte
-	err := p.pool.QueryRow(ctx, `SELECT value FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, tenant, key).Scan(&v)
+	r, err := p.Lookup(ctx, namespace, tenant, key)
+	return r.Value, err
+}
+
+// Lookup implements Store.
+func (p *Postgres) Lookup(ctx context.Context, namespace, tenant, key string) (Record, error) {
+	r := Record{Tenant: tenant, Key: key}
+	err := p.pool.QueryRow(ctx, `SELECT value, version FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, tenant, key).Scan(&r.Value, &r.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
+		return Record{}, ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("state: get: %w", err)
+		return Record{}, fmt.Errorf("state: get: %w", err)
 	}
-	return v, nil
+	return r, nil
+}
+
+// List implements Store.
+func (p *Postgres) List(ctx context.Context, namespace, tenant string, q Query) ([]Record, string, error) {
+	limit, err := checkQuery(namespace, q)
+	if err != nil {
+		return nil, "", err
+	}
+	sql := `SELECT key, value, version FROM ` + table + ` WHERE namespace = $1 AND tenant = $2`
+	args := []any{namespace, tenant}
+	arg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if q.Prefix != "" {
+		sql += ` AND key >= ` + arg(q.Prefix)
+		if end, ok := prefixEnd(q.Prefix); ok {
+			sql += ` AND key < ` + arg(end)
+		}
+	}
+	order := ` ORDER BY key`
+	if q.After != "" {
+		if q.Desc {
+			sql += ` AND key < ` + arg(q.After)
+		} else {
+			sql += ` AND key > ` + arg(q.After)
+		}
+	}
+	if q.Desc {
+		order += ` DESC`
+	}
+	sql += order + ` LIMIT ` + arg(limit+1)
+	rows, err := p.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("state: list: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Record, error) {
+		r := Record{Tenant: tenant}
+		err := row.Scan(&r.Key, &r.Value, &r.Version)
+		return r, err
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("state: list: %w", err)
+	}
+	next := ""
+	if len(out) > limit {
+		out = out[:limit]
+		next = out[limit-1].Key
+	}
+	return out, next, nil
 }
 
 // Load implements Store.
 func (p *Postgres) Load(ctx context.Context, namespace string) ([]Record, error) {
-	rows, err := p.pool.Query(ctx, `SELECT tenant, key, value FROM `+table+` WHERE namespace = $1 ORDER BY tenant, key`, namespace)
+	rows, err := p.pool.Query(ctx, `SELECT tenant, key, value, version FROM `+table+` WHERE namespace = $1 ORDER BY tenant, key`, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("state: load: %w", err)
 	}
 	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Record, error) {
 		var r Record
-		err := row.Scan(&r.Tenant, &r.Key, &r.Value)
+		err := row.Scan(&r.Tenant, &r.Key, &r.Value, &r.Version)
 		return r, err
 	})
 	if err != nil {
@@ -138,6 +201,9 @@ func (p *Postgres) Write(ctx context.Context, namespace string, ops ...Op) error
 	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		return WriteTx(ctx, tx, namespace, ops...)
 	})
+	if errors.Is(err, ErrConflict) {
+		return ErrConflict
+	}
 	if err != nil {
 		return fmt.Errorf("state: write: %w", err)
 	}
@@ -147,7 +213,8 @@ func (p *Postgres) Write(ctx context.Context, namespace string, ops ...Op) error
 // WriteTx applies ops in a transaction the caller holds, as Write does in one
 // of its own. It lets another table's change commit with the records it
 // depends on: the usage ledger's shared counters commit with the entry that
-// moved them.
+// moved them. A conditional op that fails returns ErrConflict, and the caller
+// must roll the transaction back.
 func WriteTx(ctx context.Context, tx pgx.Tx, namespace string, ops ...Op) error {
 	if err := checkNames(namespace, ops); err != nil {
 		return err
@@ -157,13 +224,34 @@ func WriteTx(ctx context.Context, tx pgx.Tx, namespace string, ops ...Op) error 
 	}
 	b := &pgx.Batch{}
 	for _, op := range ops {
-		if op.Value == nil {
+		switch {
+		case op.Value == nil && op.If == 0:
 			b.Queue(`DELETE FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, op.Tenant, op.Key)
-			continue
+		case op.Value == nil:
+			b.Queue(`DELETE FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = $3 AND version = $4`, namespace, op.Tenant, op.Key, op.If)
+		case op.If == Missing:
+			b.Queue(`INSERT INTO `+table+` (namespace, tenant, key, value) VALUES ($1, $2, $3, $4) ON CONFLICT (namespace, tenant, key) DO NOTHING`,
+				namespace, op.Tenant, op.Key, op.Value)
+		case op.If > 0:
+			b.Queue(`UPDATE `+table+` SET value = $4, version = version + 1, updated_at = now()
+				WHERE namespace = $1 AND tenant = $2 AND key = $3 AND version = $5`, namespace, op.Tenant, op.Key, op.Value, op.If)
+		default:
+			b.Queue(`INSERT INTO `+table+` (namespace, tenant, key, value) VALUES ($1, $2, $3, $4)
+				ON CONFLICT (namespace, tenant, key) DO UPDATE SET value = EXCLUDED.value, version = `+table+`.version + 1, updated_at = now()`,
+				namespace, op.Tenant, op.Key, op.Value)
 		}
-		b.Queue(`INSERT INTO `+table+` (namespace, tenant, key, value) VALUES ($1, $2, $3, $4)
-			ON CONFLICT (namespace, tenant, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-			namespace, op.Tenant, op.Key, op.Value)
 	}
-	return tx.SendBatch(ctx, b).Close()
+	br := tx.SendBatch(ctx, b)
+	for _, op := range ops {
+		tag, err := br.Exec()
+		if err != nil {
+			_ = br.Close()
+			return err
+		}
+		if op.If != 0 && tag.RowsAffected() == 0 {
+			_ = br.Close()
+			return ErrConflict
+		}
+	}
+	return br.Close()
 }
