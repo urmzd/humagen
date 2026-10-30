@@ -3379,3 +3379,87 @@ test("the journal is asked for each type prefix once", async () => {
     "/api/journal?window=1h&type=run.completed.v1&type=run.failed.v1",
   );
 });
+
+/**
+ * An EventSource that keeps every source opened and its named listeners, so
+ * a test can hand a conversation's stream a page.
+ */
+function roomEventSource() {
+  const g = globalThis as { EventSource?: unknown };
+  const real = g.EventSource;
+  const open: {
+    url: string;
+    named: Map<string, (m: { data: string }) => void>;
+    closed: boolean;
+  }[] = [];
+  g.EventSource = class {
+    onopen: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onmessage: ((m: { data: string }) => void) | null = null;
+    me: (typeof open)[number];
+    constructor(url: string) {
+      this.me = { url, named: new Map(), closed: false };
+      open.push(this.me);
+    }
+    addEventListener(name: string, fn: (m: { data: string }) => void) {
+      this.me.named.set(name, fn);
+    }
+    close() {
+      this.me.closed = true;
+    }
+  };
+  return { open, restore: () => (g.EventSource = real) };
+}
+
+test("a conversation follows its own room, and a page reads its newest turns again", async () => {
+  const es = roomEventSource();
+  try {
+    const newer: ThreadPage = {
+      ...page,
+      turns: [
+        ...page.turns,
+        {
+          kind: "message",
+          message: {
+            id: "m-2",
+            thread: "th-0123456789abcdef",
+            by: "bo",
+            name: "Bo",
+            text: "Someone else in a large room said this.",
+            mentions: [],
+            via: "console",
+            at,
+          },
+        },
+      ],
+    };
+    let reads = 0;
+    room({ "GET /api/threads/th-0123456789abcdef": () => (++reads > 1 ? newer : page) });
+    await waitFor(() => assert.equal(reads, 1));
+    const stream = es.open.find((s) => s.url.includes("thread="));
+    assert.ok(stream, "the conversation opened its own stream");
+    const query = new URL(stream.url, "http://localhost/").searchParams;
+    assert.equal(query.get("thread"), "th-0123456789abcdef");
+    assert.deepEqual(query.getAll("type"), [...runStateTypes]);
+    // A page says how much happened, not what: the room reads its turns.
+    act(() =>
+      stream.named.get("page")?.({
+        data: JSON.stringify({
+          thread: "th-0123456789abcdef",
+          seq: 1,
+          messages: 1,
+          events: 0,
+          viewers: 900,
+          from: at,
+          through: at,
+        }),
+      }),
+    );
+    assert.ok(await screen.findByText("Someone else in a large room said this."));
+    assert.equal(reads, 2);
+    cleanup();
+    assert.equal(stream.closed, true, "leaving the conversation closes its stream");
+  } finally {
+    es.restore();
+  }
+});
