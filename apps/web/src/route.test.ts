@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { documentTitle, href, parse, type Route } from "./route.ts";
+import { documentTitle, href, parse, type Route, screenOf } from "./route.ts";
 
 const at = (url: string) => {
   const u = new URL(url, "http://x");
@@ -467,4 +467,25 @@ test("Notifications deep links preserve the selected message and combined feed k
     page: "notifications",
     alert: "rule-one",
   });
+});
+
+test("a change of screen is told from a change on the same screen", () => {
+  const same = (a: Route, b: Route) => screenOf(a) === screenOf(b);
+  // Another page, or the same page about another thing, is another screen.
+  assert.ok(!same({ page: "agents" }, { page: "projects" }));
+  assert.ok(!same({ page: "conversation", id: "a" }, { page: "conversation", id: "b" }));
+  assert.ok(!same({ page: "library", section: "skills" }, { page: "library", section: "memory" }));
+  // A tab, a panel or a filter on the same screen is not.
+  assert.ok(
+    same(
+      { page: "project", name: "launch", tab: "inbox" },
+      { page: "project", name: "launch", tab: "agents" },
+    ),
+  );
+  assert.ok(
+    same({ page: "conversation", id: "a" }, { page: "conversation", id: "a", share: true }),
+  );
+  assert.ok(same({ page: "projects" }, { page: "projects", q: "launch" }));
+  // The old inbox address is the Notifications screen.
+  assert.ok(same({ page: "inbox" }, { page: "notifications" }));
 });
