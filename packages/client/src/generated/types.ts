@@ -560,6 +560,102 @@ export interface Note {
   at: string;
 }
 
+/** A memory tree. Project "" is the workspace. */
+export interface DriveTree {
+  kind: "person" | "project" | "agent";
+  person?: string;
+  project?: string;
+  agent?: string;
+}
+
+export interface DriveEntry {
+  path: string;
+  /** The SHA-256 of the content, in hex. */
+  hash: string;
+  size: number;
+}
+
+export interface DriveChange {
+  path: string;
+  hash?: string;
+  size?: number;
+  delete?: boolean;
+}
+
+/** A change to a tree that waits for someone who may decide it. */
+export interface DriveProposal {
+  id: string;
+  tree: DriveTree;
+  /** The version it was proposed on. */
+  base: number;
+  changes: DriveChange[];
+  by?: string;
+  at?: string;
+  message?: string;
+  origin?: string;
+}
+
+export interface DriveVersion {
+  tree: DriveTree;
+  version: number;
+  parent?: number;
+  /** Absent from a history listing. */
+  entries: DriveEntry[] | null;
+  by?: string;
+  at?: string;
+  message?: string;
+  origin?: string;
+  /** The version this one restored. */
+  restored?: number;
+  /** The proposals this version applied. */
+  resolves?: string[];
+}
+
+export interface DriveHit {
+  tree: DriveTree;
+  path: string;
+  version: number;
+  /** How many of the query's words the file holds. */
+  score: number;
+  snippet: string;
+}
+
+export interface MemoryFiles {
+  tree: DriveTree;
+  /** Where a run finds the tree. */
+  mount: string;
+  version: number;
+  by?: string;
+  at?: string;
+  entries: DriveEntry[];
+  proposals: DriveProposal[];
+}
+
+export interface MemoryFile {
+  path: string;
+  hash: string;
+  size: number;
+  /** The version asked for, 0 for the newest. */
+  version: number;
+  /** The file as text, empty when it is not text. */
+  content: string;
+  binary?: boolean;
+}
+
+export interface MemoryRestoreInput {
+  scope: "me" | "project" | "agent";
+  project?: string;
+  agent?: string;
+  version: number;
+}
+
+export interface MemoryDecisionInput {
+  scope: "me" | "project" | "agent";
+  project?: string;
+  agent?: string;
+  decision: "approve" | "discard";
+}
+
 export interface NoteList {
   notes: Note[];
 }
@@ -4118,6 +4214,14 @@ export interface ListReachableAgentsResponse {
 
 export interface ListPendingMemoryResponse {
   proposals: MemoryProposal[];
+}
+
+export interface ListMemoryHistoryResponse {
+  versions: DriveVersion[];
+}
+
+export interface SearchMemoryResponse {
+  hits: DriveHit[];
 }
 
 export interface PreviewJoinResponse {

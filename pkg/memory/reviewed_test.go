@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -13,8 +14,9 @@ import (
 func TestRememberDecisionIsAtomicAndNeverApprovesPendingDuplicates(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
+		blobs := blob.NewMemory()
 		fault := statetest.NewFaulty(st)
-		store, err := memory.Open(fault)
+		store, err := memory.OpenOn(fault, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +50,7 @@ func TestRememberDecisionIsAtomicAndNeverApprovesPendingDuplicates(t *testing.T)
 		if repeat, err := store.RememberDecision("acme", owner, "Use a clear owner", "other-reviewer", at.Add(time.Hour)); err != nil || repeat.ID != note.ID || repeat.ReviewedBy != "ada" {
 			t.Fatal("idempotent retry forged review", err)
 		}
-		again, err := memory.Open(st)
+		again, err := memory.OpenOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -43,7 +43,7 @@ func (s *Store) RememberDecision(tenant, owner, text, reviewer string, at time.T
 	if err != nil {
 		return Note{}, err
 	}
-	note := Note{ID: "m_" + rand.Text(), Text: text, Details: Details{Kind: Decision}, Source: Person, Status: Approved, By: reviewer, At: at, ReviewedBy: reviewer, ReviewedAt: at}
+	note := Note{ID: "m_" + rand.Text(), Text: text, Details: Details{Kind: Decision}, Source: Person, Status: Approved, By: reviewer, At: at, ReviewedBy: reviewer, ReviewedAt: at, seq: s.next + 1}
 	origins := maps.Clone(s.origins[k])
 	if len(trustedRun) == 1 {
 		if origins == nil {
