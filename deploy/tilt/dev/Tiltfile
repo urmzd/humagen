@@ -222,6 +222,9 @@ def humagen_dev(
         '-auth', auth,
         '-public-url', ui,
         '-workspace', os.path.join(data, 'workspace'),
+        # Each run's tools in a container of its own, on runc: the runtime
+        # Docker has on a developer's machine (make dev does the same).
+        '-sandbox-runtime', 'runc',
     ]
     for p in specs:
         args += ['-f', p]

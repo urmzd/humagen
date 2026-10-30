@@ -1190,6 +1190,9 @@ spec:
       `-web=${web}`,
       "-builtin-provider=offline",
       "-builtin-model=offline",
+      // The fixture's file tools run on this host, as they did before the
+      // sandbox; CI has Docker but not gVisor.
+      "-sandbox=unisolated",
     ],
     { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] },
   );

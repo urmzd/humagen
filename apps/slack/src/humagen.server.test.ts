@@ -57,6 +57,7 @@ before(async () => {
       "serve",
       "-auth=dev",
       "-seed",
+      "-sandbox=unisolated",
       "-workspace",
       join(dir, "workspace"),
       "-addr",
