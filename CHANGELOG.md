@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.44.0 (2026-10-30)
+
+### Features
+
+- run a run's tools in its isolated instance (RFC 0004, layer 4) (#127) ([3b4f288](https://github.com/urmzd/humagen/commit/3b4f2883246f9d5cb7bde39435f219ed73488cc3))
+- **console**: keep the New Source intro fixed while the catalog scrolls (#129) ([cd683a8](https://github.com/urmzd/humagen/commit/cd683a8e8e9fdd4c9a5064f087a25f3201dfb36f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.43.0...v0.44.0)
+
+
 ## 0.42.0 (2026-10-30)
 
 ### Features
