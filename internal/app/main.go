@@ -318,6 +318,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 	defer closeSandbox()
+	embedder, err := openEmbedder(ctx, o, file, getenv)
+	if err != nil {
+		return err
+	}
 	// Model and tool providers: the spec's Platform documents for the common
 	// cases, options for the rest. Keys are references, read when used.
 	fromFile, err := fileExtensions(ctx, o, file.cfg, keys)
@@ -359,6 +363,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		BuiltinProvider:  *builtinProvider,
 		BuiltinModel:     *builtinModel,
 		Blobs:            blobs,
+		Embedder:         embedder,
 		Bus:              broker,
 		Workspace:        *workspaceDir,
 		Sandbox:          sbx,

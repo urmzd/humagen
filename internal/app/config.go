@@ -222,6 +222,12 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 			return l, err
 		}
 	}
+	if e := sp.Knowledge.Embedder; e.Kind == "openai" {
+		b, _ := spec.Block[spec.OpenAIEmbedder](e)
+		if err := secret(embedderKeyEnv, b.Key); err != nil {
+			return l, err
+		}
+	}
 	if declaredStores != "" {
 		set("state", declaredStores)
 	}

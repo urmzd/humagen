@@ -92,6 +92,15 @@ spec:
       access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID}       # both left out: the AWS chain
       secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY}
 
+  knowledge:
+    embedder:               # slot: none | hashing | openai | vertex. Left out: none, lexical search only
+      kind: vertex
+      vertex: {project: my-gcp-project, location: us-central1}   # model gemini-embedding-001 and 768 dimensions by default
+      # kind: openai
+      # openai: {base_url: "http://127.0.0.1:11434/v1", model: nomic-embed-text, dimensions: 768, key: {ref: env:EMBEDDINGS_KEY}}
+      # kind: hashing
+      # hashing: {dimensions: 256}   # no model: matches words and word stems, not meaning
+
   execution:
     workspace: ""           # agents' files. Empty is the user cache directory
     concurrency: 4          # a run that calls another agent waits in one place while it runs in another
@@ -205,6 +214,28 @@ Flags override the block: `-sandbox`, `-sandbox-runtime`, `-sandbox-image`,
 `-sandbox-connectors-image` and `-sandbox-work-root`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
 factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
+
+### Knowledge search
+
+`knowledge.embedder` turns on hybrid search for knowledge sources
+([RFC 0005](../rfcs/0005-federated-retrieval-and-catalog.md)). Each passage
+gets a vector, computed in the background after it is added, so an upload never
+waits on a model. Search then ranks passages both by vector similarity and with
+BM25, and fuses the two lists by reciprocal rank fusion. It finds passages that
+share no word with the query and still puts an exact identifier first.
+
+| Kind | Block | Credentials |
+|------|-------|-------------|
+| `none` | none | Lexical only, the default |
+| `hashing` | `dimensions` (256 when left out) | None: deterministic, no network. Matches word stems, not meaning |
+| `openai` | `base_url`, `model`, `dimensions` (required), `key` | `key`, a reference, for any OpenAI-compatible `/embeddings` endpoint |
+| `vertex` | `project` (required), `location`, `model`, `dimensions` | Application Default Credentials: the VM's service account on GCE, `gcloud` credentials locally |
+
+Vectors are stored beside the passages and read back at start. Changing the
+model or its dimensions computes them again; until then those passages rank
+lexically. If the embedder fails, writes still succeed and search is lexical.
+Search sees exactly the documents it would without vectors: the same sources,
+exclusions, variants and access checks.
 
 ### Rooms
 
