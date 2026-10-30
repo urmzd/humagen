@@ -13,7 +13,7 @@ import {
 import { Evals } from "./Evals.tsx";
 import { ConnectSource } from "./Integrations.tsx";
 import type { SourceTab } from "./route.ts";
-import { SourceCatalog, type SourceChoice } from "./SourceCatalog.tsx";
+import { SourceCatalog, SourceCatalogLead, type SourceChoice } from "./SourceCatalog.tsx";
 import {
   SourceAttachments,
   SourceLifecycle,
@@ -150,6 +150,7 @@ export function Knowledge({
       <Inspector
         open={creating}
         title={defaultCopy.sourceCatalog.title}
+        lead={sourceKind ? undefined : <SourceCatalogLead />}
         onClose={() => setCreating(false)}
       >
         {!sourceKind ? (

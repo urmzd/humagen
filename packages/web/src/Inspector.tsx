@@ -13,6 +13,7 @@ export function Inspector({
   wide = false,
   footer,
   actions,
+  lead,
 }: {
   /** Controls in the header, before Close. They stay on its one line. */
   actions?: ReactNode;
@@ -24,15 +25,17 @@ export function Inspector({
   onEscape?: () => void;
   wide?: boolean;
   footer?: ReactNode;
+  /** Stays under the header while the body scrolls, such as an intro line. */
+  lead?: ReactNode;
 }) {
   const root = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const label = useId();
   const [dock, setDock] = useState<HTMLElement | null>(null);
   const { mounted } = usePresence(open, 220);
-  const snapshot = useRef({ children, title, footer });
-  if (open) snapshot.current = { children, title, footer };
-  const shown = open ? { children, title, footer } : snapshot.current;
+  const snapshot = useRef({ children, title, footer, lead });
+  if (open) snapshot.current = { children, title, footer, lead };
+  const shown = open ? { children, title, footer, lead } : snapshot.current;
   useLayoutEffect(() => {
     setDock(document.getElementById("humagen-inspector-dock"));
   }, []);
@@ -99,6 +102,9 @@ export function Inspector({
           <XIcon size={16} />
         </button>
       </header>
+      {shown.lead && (
+        <div className="shrink-0 border-aui-border border-b px-5 py-4">{shown.lead}</div>
+      )}
       <div className="aui-scroll min-h-0 min-w-0 flex-1 overflow-y-auto p-5">{shown.children}</div>
       {shown.footer && (
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-aui-border border-t px-5 py-4">
