@@ -44,12 +44,85 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    # The Postgres and Redis backends are held to the same suites as the
+    # in-memory ones (pkg/state/statetest, fiber/pkg/*/postgres_test.go). The
+    # image is the one `make integration` uses: the knowledge store needs
+    # pgvector.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: humagen
+          POSTGRES_PASSWORD: humagen
+          POSTGRES_DB: humagen
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U humagen -d humagen"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      HUMAGEN_POSTGRES_TEST_URL: postgres://humagen:humagen@localhost:5432/humagen?sslmode=disable
+      FIBER_POSTGRES_TEST_URL: postgres://humagen:humagen@localhost:5432/humagen?sslmode=disable
+      FIBER_REDIS_ADDR: localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test ./... -race
+      - name: Test, with Postgres and Redis
+        run: |
+          set -o pipefail
+          go test ./... -race -v 2>&1 | tee test.log | grep -vE '^(=== (RUN|PAUSE|CONT|NAME)|\s*--- PASS|PASS$)'
+      # Each backend suite skips when its variable is unset, so a renamed
+      # variable would turn them into silent passes. Fail on any such skip.
+      - name: Fail if a backend suite skipped
+        run: |
+          if grep -nE 'set (HUMAGEN_POSTGRES_TEST_URL|FIBER_POSTGRES_TEST_URL|FIBER_REDIS_ADDR)' test.log; then
+            echo "A Postgres or Redis suite skipped. Check the variable names above."
+            exit 1
+          fi
+
+  image:
+    name: Container image
+    # On pull requests that change what the image is built from, and on every
+    # push to main. Release calls this workflow too; it is checked once, by CI
+    # itself. Nothing is pushed.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.workflow == 'CI')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Did the change touch the image?
+        id: changed
+        # Everything but docs/ and Markdown counts; CHANGELOG.md is embedded.
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -vP '^docs/|^(?!CHANGELOG\.md$).*\.md$' | grep -q .; then
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changed.outputs.image == 'true'
+        uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        if: steps.changed.outputs.image == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   helm:
     name: Helm chart
