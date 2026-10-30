@@ -8,13 +8,13 @@ require (
 	github.com/urmzd/anchor v0.5.1
 	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213
 	github.com/urmzd/playscape v0.10.0
-	github.com/urmzd/saige v0.41.0
+	github.com/urmzd/saige v0.44.0
 	golang.org/x/oauth2 v0.37.0
 )
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.81.0 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.22 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.25 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.6 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.6 // indirect
@@ -67,7 +67,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.9
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
-	github.com/aws/smithy-go v1.28.5
+	github.com/aws/smithy-go v1.28.7
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3

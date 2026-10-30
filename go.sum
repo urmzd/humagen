@@ -10,8 +10,8 @@ github.com/anthropics/anthropic-sdk-go v1.81.0 h1:3WAxA6xMSSHKExnFN3t/qIwJUC8l6z
 github.com/anthropics/anthropic-sdk-go v1.81.0/go.mod h1:GThfYqPJoaQ/6pmibCI98Cr4y5su2FXMUHn3NrSSnIc=
 github.com/aws/aws-sdk-go-v2 v1.47.3 h1:HRoT/MkNi3bjO5xF4dCzLzvVmkvRGHj3/cLINDnJejk=
 github.com/aws/aws-sdk-go-v2 v1.47.3/go.mod h1:xSl+OSI5ZUw6bSMupWc218zE5Pl+65MCCu3ySWFY99A=
-github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.22 h1:oiEmPz/YMMeh/JvAE8xSxNCIsvWE6lpFe4ZPlyFykQI=
-github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.22/go.mod h1:QWUDuRi9PFjBHIU2iH1Pkldbe7zqLfXJC4wWLbF8nuQ=
+github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.25 h1:MW0Iql1SOTgQPj8mCxrU/eH/K/AIDWi08ItOsXaWRLU=
+github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.25/go.mod h1:+ucVYmHYB3JqVueY0E1RHahdXAnKQbIHqybSbvOUbOM=
 github.com/aws/aws-sdk-go-v2/config v1.33.9 h1:Hv6bcQUJVnmuWaKjqD6Ot8sE75NrWsWV20oGT5aWle0=
 github.com/aws/aws-sdk-go-v2/config v1.33.9/go.mod h1:ivowmrZNfBQLcg4QkaItgi5wae4Bzot9RzIdbY1hfTg=
 github.com/aws/aws-sdk-go-v2/credentials v1.20.9 h1:SNO55PnWhaDafsOcv16lCA0kdoFMl/YlegWoVsU02s0=
@@ -42,8 +42,8 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 h1:j6c+HA4AoS0EBEjArPjavFEB
 github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4/go.mod h1:RhghaXUk9q66VtOQUX1FdPddQuHnqQZzbB0fEYXmPRA=
 github.com/aws/aws-sdk-go-v2/service/sts v1.51.4 h1:OKEfbf2tcfsF2pBk/S9QqNpo6alaAtiBs4hysCsBjPw=
 github.com/aws/aws-sdk-go-v2/service/sts v1.51.4/go.mod h1:mCd6qGo9b8hTtfjgsmNkFlzwjyce4owd7HDVFnCLXhM=
-github.com/aws/smithy-go v1.28.5 h1:OqbqKtzY9NUnr2yAe9+hiTdFb20tNaK/lI0PMOGXX9k=
-github.com/aws/smithy-go v1.28.5/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
+github.com/aws/smithy-go v1.28.7 h1:h/n1SHrwVtaDYLz8mR1/Kq4Xh4RaFbFW7bOYckg9mfE=
+github.com/aws/smithy-go v1.28.7/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
 github.com/bahlo/generic-list-go v0.2.0/go.mod h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg=
 github.com/bmatcuk/doublestar/v4 v4.10.3 h1:1UIv1+fqH3++ViVkpnaPTB+Pi1UHycnPFAq14zgK+gI=
@@ -138,8 +138,8 @@ github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213 h
 github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213/go.mod h1:bdzIJ9pJENypV5GFcEjCaLb14PxRdefezz9tMbSTfLs=
 github.com/urmzd/playscape v0.10.0 h1:2+l4E1FKgS20Ht7D9o6cWP3PnhzT+zNLYv/rgwsXW3c=
 github.com/urmzd/playscape v0.10.0/go.mod h1:0bGEI/XZ/l8xk6ceWKWnhvm/dXfrHVmILPWMP2lOMKk=
-github.com/urmzd/saige v0.41.0 h1:5g75IZrA0MD0f8Y9xqFfGZbGGhoIeHEOKabimcn+oQo=
-github.com/urmzd/saige v0.41.0/go.mod h1:bAsySW9+nJMHzv9+XcEBHoU46QnnE+G7rgFZSgq49gs=
+github.com/urmzd/saige v0.44.0 h1:tNrk9C7+u9HRvH6F03OKHYV0KPlGEStSCoWKtlGWlGk=
+github.com/urmzd/saige v0.44.0/go.mod h1:qRqdoUGPB1UswjfivAGDYFGyMmbI9+28syfXkc6Zje4=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
 github.com/yosida95/uritemplate/v3 v3.0.2/go.mod h1:ILOh0sOhIJR3+L/8afwt/kE++YT040gmv5BQTMR2HP4=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
