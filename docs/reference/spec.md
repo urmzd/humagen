@@ -79,7 +79,9 @@ spec:
   bus:                      # slot: memory | postgres. Leave it out and it
     kind: postgres          # follows the stores: postgres on Postgres stores
 
-  blobs:                    # slot: disk | memory | s3
+  blobs:                    # slot: disk | memory | s3. Published files and
+                            # memory's content. With memory, memory's content
+                            # is kept with the stores instead
     kind: s3
     s3:
       bucket: humagen-files
@@ -686,6 +688,11 @@ A person connects a credential in one of two ways:
 Both are checked again on every run, so a value is not used once values are
 turned off, and a reference is not used once it is no longer the person's
 own under a listed start.
+
+Memory is files ([RFC 0004](../rfcs/0004-isolated-runs-and-person-context.md#memory)):
+an agent's notes, a project's and a person's own are each a versioned tree,
+whose files an agent with the `memory_search` tool can search. Nothing in the
+spec configures it beyond `blobs`.
 
 What a person's tools found is not remembered. Memory is shared: an agent's
 notes are sent to every run of that agent, and a project's to every run in
