@@ -1,0 +1,126 @@
+{
+  "label": "before",
+  "latency": 300,
+  "total": {
+    "cls": 0.1,
+    "clsNoInput": 0.0099
+  },
+  "results": [
+    {
+      "step": "conversation",
+      "frames": 122,
+      "blankFrames": 19,
+      "skeletonFrames": 19,
+      "titles": [
+        "Good afternoon, Developer",
+        null,
+        "Draft the launch checklist"
+      ],
+      "heightChanges": 0,
+      "shift": 0.04,
+      "shiftNoInput": 0,
+      "sources": [
+        "SECTION.flex min-h-0 flex-1"
+      ]
+    },
+    {
+      "step": "library",
+      "frames": 122,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Draft the launch checklist",
+        "Sources"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    },
+    {
+      "step": "agents",
+      "frames": 122,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Sources",
+        "Agents"
+      ],
+      "heightChanges": 0,
+      "shift": 0.0049,
+      "shiftNoInput": 0.0049,
+      "sources": [
+        "SPAN.grid grid-cols-3 gap-4",
+        "DIV.humagen-tape ",
+        "SPAN.line-clamp-1 text-aui-sm text-aui-muted",
+        "SPAN.inline-flex min-h-5 max-w-full shrink-0 items-center rounded"
+      ]
+    },
+    {
+      "step": "home",
+      "frames": 122,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Agents",
+        "Good afternoon, Developer"
+      ],
+      "heightChanges": 0,
+      "shift": 0.0101,
+      "shiftNoInput": 0,
+      "sources": [
+        "DIV.my-auto w-full min-w-0"
+      ]
+    },
+    {
+      "step": "projects",
+      "frames": 122,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Good afternoon, Developer",
+        "Projects"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    },
+    {
+      "step": "conversation",
+      "frames": 122,
+      "blankFrames": 19,
+      "skeletonFrames": 19,
+      "titles": [
+        "Projects",
+        null,
+        "Draft the launch checklist"
+      ],
+      "heightChanges": 0,
+      "shift": 0.04,
+      "shiftNoInput": 0,
+      "sources": [
+        "SECTION.flex min-h-0 flex-1"
+      ]
+    },
+    {
+      "step": "agents",
+      "frames": 122,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Draft the launch checklist",
+        "Agents"
+      ],
+      "heightChanges": 0,
+      "shift": 0.0049,
+      "shiftNoInput": 0.0049,
+      "sources": [
+        "SPAN.grid grid-cols-3 gap-4",
+        "DIV.humagen-tape ",
+        "SPAN.line-clamp-1 text-aui-sm text-aui-muted",
+        "SPAN.inline-flex min-h-5 max-w-full shrink-0 items-center rounded"
+      ]
+    }
+  ]
+}

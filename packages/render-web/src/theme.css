@@ -28,6 +28,27 @@
   --aui-dur-page: 260ms; /* drawers, pages, arriving messages */
   --aui-ease-arrive: cubic-bezier(0.16, 1, 0.3, 1);
   --aui-ease-leave: cubic-bezier(0.4, 0, 1, 1);
+  /*
+   * Changing screens. The screen that is leaving gives way quickly, the next
+   * one settles in over a short rise, and a load gets a beat before a
+   * skeleton shows, so a fast one never flashes.
+   */
+  --aui-dur-route: 220ms;
+  --aui-dur-route-out: 120ms;
+  --aui-route-rise: 6px;
+  --aui-skeleton-delay: 150ms;
+  /* One hairline for chrome and panels. */
+  --aui-hairline: 1px;
+  /*
+   * Chrome glass: the frame around the content (a sidebar, a sticky header, a
+   * menu, a dialog), never the content itself. Translucent over a blur, a
+   * hairline edge, a sheen along the top and a soft shadow. Where blur is not
+   * supported, or transparency is reduced, it is solid.
+   */
+  --aui-chrome-blur: 20px;
+  --aui-chrome-saturate: 160%;
+  --aui-chrome-sheen: 55%;
+  --aui-chrome-shadow: 0 1px 2px oklch(0 0 0 / 0.04), 0 16px 40px -20px oklch(0 0 0 / 0.22);
   --aui-accent-h: 27;
   --aui-accent-shift: 0;
   --aui-mode-accent-l: 0.5;
@@ -102,6 +123,7 @@
     --aui-glass-bg: oklch(0.2 0 0 / 94%);
     --aui-glass-border: oklch(1 0 0 / 8%);
     --aui-glass-shadow: 0 8px 32px oklch(0 0 0 / 0.3);
+    --aui-chrome-sheen: 6%;
     --aui-scrollbar-thumb: oklch(0.4 0 0 / 50%);
     color-scheme: dark;
   }
@@ -134,6 +156,7 @@
   --aui-glass-bg: oklch(0.2 0 0 / 94%);
   --aui-glass-border: oklch(1 0 0 / 8%);
   --aui-glass-shadow: 0 8px 32px oklch(0 0 0 / 0.3);
+  --aui-chrome-sheen: 6%;
   --aui-scrollbar-thumb: oklch(0.4 0 0 / 50%);
   color-scheme: dark;
 }
@@ -169,6 +192,14 @@
 [data-accent="yellow"] {
   --aui-accent-h: 88;
   --aui-accent-c: 0.12;
+}
+
+:root,
+[data-theme] {
+  --aui-stroke: var(--aui-hairline) solid var(--aui-border);
+  --aui-chrome-bg: color-mix(in oklab, var(--aui-surface) 72%, transparent);
+  --aui-chrome-solid: var(--aui-surface);
+  --aui-chrome-highlight: inset 0 1px 0 oklch(1 0 0 / var(--aui-chrome-sheen));
 }
 
 :root,
@@ -783,10 +814,55 @@
     background: var(--aui-glass-bg);
     -webkit-backdrop-filter: blur(var(--aui-glass-blur)) saturate(180%);
     backdrop-filter: blur(var(--aui-glass-blur)) saturate(180%);
-    border: 1px solid var(--aui-glass-border);
+    border: var(--aui-hairline) solid var(--aui-glass-border);
     box-shadow:
       inset 0 1px 0 color-mix(in oklab, var(--aui-fg) 7%, transparent),
       var(--aui-glass-shadow);
+  }
+
+  /* The frame: a sidebar, a sticky header. Its edge is drawn where it meets the content. */
+  .aui-chrome {
+    background-color: var(--aui-chrome-bg);
+    -webkit-backdrop-filter: blur(var(--aui-chrome-blur)) saturate(var(--aui-chrome-saturate));
+    backdrop-filter: blur(var(--aui-chrome-blur)) saturate(var(--aui-chrome-saturate));
+    box-shadow: var(--aui-chrome-highlight);
+  }
+
+  /* Without a blur behind it, or with transparency reduced, glass is solid. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .aui-chrome {
+      background-color: var(--aui-chrome-solid);
+    }
+    .aui-glass {
+      background: var(--aui-pop);
+    }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .aui-chrome {
+      background-color: var(--aui-chrome-solid);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+    .aui-glass {
+      background: var(--aui-pop);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
+  /*
+   * What stands in for content while it loads stays invisible for a beat, so
+   * a load that finishes quickly never flashes a skeleton. Its space is held
+   * from the start, so nothing moves when it shows or when the content lands.
+   */
+  .aui-skeleton-delay {
+    animation: aui-skeleton-reveal var(--aui-dur-row) var(--aui-ease-arrive)
+      var(--aui-skeleton-delay) backwards;
+  }
+  @keyframes aui-skeleton-reveal {
+    from {
+      opacity: 0;
+    }
   }
 
   .aui-scroll {
@@ -1285,6 +1361,9 @@
     .aui-skeleton {
       animation: none;
       opacity: 0.75;
+    }
+    .aui-skeleton-delay {
+      animation-duration: 1ms;
     }
     [data-aui="composer"][data-running="true"] {
       animation: none;

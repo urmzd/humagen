@@ -1,5 +1,6 @@
 import { defaultCopy } from "@humagen/components/copy";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { swap } from "./transition.ts";
 
 /**
  * Where the console is, as an address. Every page, tab and selection a person
@@ -649,12 +650,59 @@ export const same = (x: Route, y: Route) => href(x) === href(y);
  * The route on screen and a way to go elsewhere. Going somewhere adds a history
  * entry unless `replace` is set; back and forward move between them.
  */
+/**
+ * Which screen a route draws: its page and the one thing the page is about.
+ * Going to another screen is drawn as a transition; a tab, a filter or a
+ * selection on the same screen changes in place.
+ */
+export function screenOf(r: Route): string {
+  switch (r.page) {
+    case "conversation":
+      return `conversation:${r.id}`;
+    case "project":
+      return `project:${r.name}`;
+    case "channel":
+      return `channel:${r.project}/${r.channel}`;
+    case "agent":
+    case "agent-setup":
+      return `${r.page}:${r.name ?? ""}`;
+    case "agent-control":
+      return `agent-control:${r.agent ?? ""}`;
+    case "action-policy":
+      return `action-policy:${r.scope ?? ""}:${r.name ?? ""}`;
+    case "library":
+    case "operations":
+    case "you":
+    case "settings":
+      return `${r.page}:${r.section}`;
+    case "inbox":
+      return "notifications";
+    default:
+      return r.page;
+  }
+}
+
 export function useRoute(): [Route, (next: Route, opts?: { replace?: boolean }) => void] {
   const [route, setRoute] = useState<Route>(() =>
     parse(window.location.pathname, window.location.search),
   );
+  // The route on view, read by `go` without making it change on every route.
+  const shown = useRef(route);
+  shown.current = route;
+  // A change of screen is a transition; anything on the same screen, or put in
+  // place of the address (typing in a filter), is applied at once. The address
+  // changes in the same step as the screen, so the two always agree.
+  const show = useCallback((next: Route, transition: boolean, address?: () => void) => {
+    const apply = () => {
+      address?.();
+      shown.current = next;
+      setRoute(next);
+    };
+    if (transition && screenOf(next) !== screenOf(shown.current)) swap(apply);
+    else apply();
+  }, []);
   useEffect(() => {
-    const back = () => setRoute(parse(window.location.pathname, window.location.search));
+    const back = () => show(parse(window.location.pathname, window.location.search), true);
     window.addEventListener("popstate", back);
     // An old `?view=` link is rewritten to the page's own address.
     const canonical = href(parse(window.location.pathname, window.location.search));
@@ -666,19 +714,23 @@ export function useRoute(): [Route, (next: Route, opts?: { replace?: boolean }) 
       }
     }
     return () => window.removeEventListener("popstate", back);
-  }, []);
-  const go = useCallback((next: Route, opts?: { replace?: boolean }) => {
-    const to = href(next);
-    try {
-      if (to !== window.location.pathname + window.location.search) {
-        if (opts?.replace) window.history.replaceState(null, "", to);
-        else window.history.pushState(null, "", to);
-      }
-    } catch {
-      // The address just does not follow.
-    }
-    setRoute(next);
-    window.scrollTo?.(0, 0);
-  }, []);
+  }, [show]);
+  const go = useCallback(
+    (next: Route, opts?: { replace?: boolean }) => {
+      const to = href(next);
+      show(next, !opts?.replace, () => {
+        try {
+          if (to !== window.location.pathname + window.location.search) {
+            if (opts?.replace) window.history.replaceState(null, "", to);
+            else window.history.pushState(null, "", to);
+          }
+        } catch {
+          // The address just does not follow.
+        }
+      });
+      window.scrollTo?.(0, 0);
+    },
+    [show],
+  );
   return [route, go];
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { within } from "./timeout.ts";
+import { track } from "./transition.ts";
 
 /** A file an agent published from its sandbox. One row per title; `version` is its latest. */
 export interface Stored {
@@ -56,7 +57,12 @@ export interface StorageTransport {
   use(): Promise<StorageUse>;
 }
 
-async function http<T>(method: string, path: string): Promise<T> {
+// Reads are tracked, so a change of screen can wait for the next one's (transition.ts).
+function http<T>(method: string, path: string): Promise<T> {
+  return method === "GET" ? track(send<T>(method, path)) : send<T>(method, path);
+}
+
+async function send<T>(method: string, path: string): Promise<T> {
   const res = await fetch(path, { method, credentials: "same-origin" });
   if (res.status === 204) return undefined as T;
   const data = (await res.json().catch(() => ({}))) as { error?: string };

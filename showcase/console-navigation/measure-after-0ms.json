@@ -1,0 +1,108 @@
+{
+  "label": "after",
+  "latency": 0,
+  "total": {
+    "cls": 0,
+    "clsNoInput": 0
+  },
+  "results": [
+    {
+      "step": "conversation",
+      "frames": 117,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Good afternoon, Developer",
+        "Draft the launch checklist"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    },
+    {
+      "step": "library",
+      "frames": 120,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Draft the launch checklist",
+        "Sources"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    },
+    {
+      "step": "agents",
+      "frames": 119,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Sources",
+        "Agents"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    },
+    {
+      "step": "home",
+      "frames": 119,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Agents",
+        "Good afternoon, Developer"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    },
+    {
+      "step": "projects",
+      "frames": 120,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Good afternoon, Developer",
+        "Projects"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    },
+    {
+      "step": "conversation",
+      "frames": 119,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Projects",
+        "Draft the launch checklist"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    },
+    {
+      "step": "agents",
+      "frames": 119,
+      "blankFrames": 0,
+      "skeletonFrames": 0,
+      "titles": [
+        "Draft the launch checklist",
+        "Agents"
+      ],
+      "heightChanges": 0,
+      "shift": 0,
+      "shiftNoInput": 0,
+      "sources": []
+    }
+  ]
+}

@@ -66,6 +66,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
+| DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 
 ### DES-001: Working integrations
 
@@ -838,3 +839,78 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 - Acceptance: `/notifications` at 1280px shows a message without a click and
   sends no read; Context Health has no `Filter Sources` select; `home.test.tsx`
   checks the tinted urgency word before the time.
+
+### DES-039: Smooth screen changes and a glass frame
+
+Owner feedback: moving between pages made "big jumps without loading". The
+content blanked or snapped when a route changed and its data loaded, and the
+sidebar looked like a separate block beside the page.
+
+Found before the change (desktop 1280px, dev server, `make dev`):
+
+- Opening a conversation replaced the whole screen with three bars and no
+  header or composer (`Chat.tsx` reading branch), then snapped the header,
+  messages and composer in: layout shift 0.04 on every open.
+- Home said "An agent needs to be configured" until the agents were read
+  (`hasAgents={agents.length > 0}`), then swapped in the composer, the
+  suggestions, the welcome banner and the Home boxes one by one around a
+  vertically centered column: 0.09 to 0.11 on load.
+- The session read drew a centered "Loading" on a blank page before the
+  console appeared all at once (`App.tsx`).
+- Every route change was an instant swap with nothing to bridge it, and
+  `SkeletonRows` showed on the first frame, so a fast read flashed a skeleton.
+- An agent opened before the agents were read showed the title Agents, then
+  the agent's name.
+
+Rules:
+
+- A change of screen (`screenOf` in `route.ts`: a page and the one thing it
+  is about) runs through `swap` in `transition.ts`. The current screen stays
+  on view while the next one's reads are in flight, up to `HOLD_MS` (320ms),
+  then the content area cross-fades and rises into place with the View
+  Transitions API. The sidebar (`humagen-sidebar`) and the page's title
+  (`humagen-title`) are named, so only the content moves. A tab, a filter or
+  anything written with `replace` changes in place, and the address changes
+  in the same step as the screen. Without view transitions the swap is
+  instant.
+- Reads are counted where they are made (`call` in `api.ts`, `mail.ts`,
+  `storage.ts`). The first screen is drawn hidden until they land, up to
+  `FIRST_HOLD_MS`, then fades in once; the session read draws the empty
+  frame, not a blank page.
+- A skeleton has the shape of what it stands for and is shown only after
+  `--aui-skeleton-delay` (150ms), with its space held from the first frame.
+  A conversation being read draws its header with the title the sidebar
+  knows, message-shaped rows and the composer's height
+  (`--humagen-composer-h`). Home holds the composer until the agents are read.
+  Home's boxes keep their still "Loading" text: they wait on a person.
+- On a tablet or desktop the sidebar sits on the app frame
+  (`--humagen-plane`) and the page is one opaque panel inset in it, edged
+  with a hairline (`--aui-stroke`); a docked Inspector is a panel on the same
+  frame, with its header level with the page's (DES-027).
+- Glass (`aui-chrome`: translucent surface, blur and saturation, a sheen and
+  a soft shadow) is limited to chrome: the sidebar, sticky tabs, the
+  sidebar's sticky Conversations header, the search modal and the Inspector
+  (`aui-glass`). Menus and popovers keep the opaque surface DES-015 requires,
+  with a hairline edge and shadow. Without `backdrop-filter`, or with
+  `prefers-reduced-transparency`, glass is solid.
+- The durations, rise, skeleton delay, hairline and glass tokens are in
+  `packages/render-web/src/theme.css`, shared with the product site. Reduced
+  motion turns the transition into a short fade with no travel. Nothing that
+  waits on a person animates.
+
+Evidence: navigation through Home, a conversation, Library, Agents and
+Projects, recorded with Playwright, with layout shift summed from
+`PerformanceObserver`:
+
+| Case | Before | After |
+|------|--------|-------|
+| Navigation, no added latency | CLS 0.08; 2 blank frames | CLS 0; 0 blank frames |
+| Navigation, 300ms per read | CLS 0.10; 38 blank frames | CLS 0.006; 0 blank frames |
+| Load `/`, no added latency | 0.106 | 0 |
+| Load `/`, 300ms per read | 0.090 | 0 |
+| Load a conversation | 0.04 | 0 |
+
+The remaining 0.006 at 300ms per read is the Agents roster's state chip,
+which arrives after two sequential reads, past the hold. `cd apps/web &&
+pnpm test` and `make screens` pass.
+
