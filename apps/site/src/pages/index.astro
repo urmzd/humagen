@@ -20,6 +20,7 @@ import {
 import Base from "../layouts/Base.astro";
 import { type IconName, outlineButton, primaryButton } from "../lib/console";
 import { inline } from "../lib/inline";
+import { ogImage } from "../lib/og";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -30,6 +31,7 @@ const jsonLd = {
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Linux, macOS",
   license: "https://www.apache.org/licenses/LICENSE-2.0",
+  image: (await ogImage("home")).url,
   sameAs: site.repo,
 };
 const widths = [640, 960, 1280];
@@ -158,10 +160,11 @@ const body = "site-text text-aui-base text-aui-muted";
         data-reveal
         class="glass overflow-x-auto rounded-aui-lg"
         role="region"
-        aria-labelledby="why-title"
+        aria-labelledby="why-table-title"
         tabindex="0"
       >
         <table class="w-full border-collapse text-left text-aui-sm">
+          <caption id="why-table-title" class="sr-only">{why.caption}</caption>
           <thead>
             <tr class="border-b border-aui-border text-aui-xs text-aui-muted">
               <th scope="col" class="px-3.5 py-2.5 font-medium"><span class="sr-only">Aspect</span></th>

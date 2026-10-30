@@ -17,7 +17,10 @@ export const site = {
 /** A link into the repository's docs on GitHub. */
 export const doc = (path: string) => `${site.repo}/blob/main/${path}`;
 
-export type Page = { path: string; title: string; description: string };
+/** A page's social preview card (src/lib/og.ts): a title and one line. */
+export type Card = { title: string; line: string };
+
+export type Page = { path: string; title: string; description: string; card?: Card };
 
 export const pages = {
   home: {
@@ -25,12 +28,20 @@ export const pages = {
     title: "Humagen: the control plane for your team's agents",
     description:
       "Humagen is the self-hosted control plane for your team's agents: many agents on any model, working beside your people, in your cloud, under your rules.",
+    card: {
+      title: "The control plane for your team's agents",
+      line: "Many agents on any model, working beside your people, in your cloud, under your rules.",
+    },
   },
   deploy: {
     path: "/deploy",
     title: "Deploy your own Humagen",
     description:
       "The recommended setup: one private Google Cloud VM per team, reached only over Tailscale, with Gemini on Vertex AI and Terraform applied by GitHub Actions.",
+    card: {
+      title: "Deploy your own Humagen",
+      line: "One private Google Cloud VM per team, reached only over Tailscale, with Gemini on Vertex AI.",
+    },
   },
 } satisfies Record<string, Page>;
 
@@ -141,6 +152,7 @@ export const why = {
     "Hosted assistants such as Claude in Slack, OpenAI Dots and Grok Bot put one vendor's model in your chat. They fit when one model and one vendor's cloud are enough.",
     "Humagen is for teams that need more: several agents, more than one model, and rules that belong to them. Your models, your cloud, your rules.",
   ],
+  caption: "Humagen compared with a hosted assistant",
   columns: ["", "Humagen", "A hosted assistant"],
   rows: [
     ["Models", "Any provider you configure, per agent", "The vendor's models"],
@@ -437,6 +449,7 @@ export const policySnippet = { label: "config/policy.authz", lang: "text", text:
 export const alternatives = {
   heading: "Other ways to run it",
   intro: "Every setup runs the same process with the same spec.",
+  caption: "Setups compared: when to use each and what you get",
   rows: [
     {
       name: "`humagen start`",

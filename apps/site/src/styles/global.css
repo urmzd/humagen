@@ -185,6 +185,42 @@ body::before {
 }
 
 /*
+ * The header's menu. The three links fit beside the name from 22.5rem; below
+ * that, with JavaScript on, they fold behind a Menu button into a solid panel
+ * under the header, each a full-width 44px row.
+ */
+.site-menu-btn {
+  display: none;
+}
+
+@media (max-width: 22.49rem) {
+  .js .site-menu-btn {
+    display: inline-flex;
+  }
+
+  .js .site-menu {
+    display: none;
+    position: absolute;
+    inset: 100% 0 auto;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.5rem 1rem 0.75rem;
+    background: var(--aui-bg);
+    border-bottom: 1px solid var(--aui-border);
+    box-shadow: var(--aui-shadow-md);
+  }
+
+  .js .site-menu[data-open] {
+    display: flex;
+  }
+
+  .js .site-menu a {
+    display: flex;
+    min-height: 2.75rem;
+  }
+}
+
+/*
  * Arrival. A section fades and rises 8px once, its items a step apart. The
  * hidden state exists only with JavaScript on (html.js) and motion allowed,
  * so without either the page renders complete.
@@ -197,7 +233,8 @@ body::before {
     transition-delay: calc(var(--i, 0) * 60ms);
   }
 
-  .js [data-reveal-group]:not(.in) [data-reveal] {
+  /* Focus moving into a section shows it at once, so focus is never invisible. */
+  .js [data-reveal-group]:not(.in):not(:focus-within) [data-reveal] {
     opacity: 0;
     transform: translateY(8px);
   }

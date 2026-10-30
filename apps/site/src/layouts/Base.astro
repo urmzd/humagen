@@ -2,11 +2,13 @@
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import { type Page, site } from "../content/site";
+import { ogImageFor } from "../lib/og";
 import "../styles/global.css";
 
-type Props = { page: Page; jsonLd?: Record<string, unknown> };
-const { page, jsonLd } = Astro.props;
+type Props = { page: Page; type?: "website" | "article"; jsonLd?: Record<string, unknown> };
+const { page, type = "website", jsonLd } = Astro.props;
 const canonical = new URL(page.path, site.url).href;
+const og = await ogImageFor(page);
 ---
 <!doctype html>
 <html lang="en">
@@ -22,12 +24,22 @@ const canonical = new URL(page.path, site.url).href;
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={type} />
     <meta property="og:site_name" content={site.name} />
     <meta property="og:title" content={page.title} />
     <meta property="og:description" content={page.description} />
     <meta property="og:url" content={canonical} />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content={og.url} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content={String(og.width)} />
+    <meta property="og:image:height" content={String(og.height)} />
+    <meta property="og:image:alt" content={og.alt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={page.title} />
+    <meta name="twitter:description" content={page.description} />
+    <meta name="twitter:image" content={og.url} />
+    <meta name="twitter:image:alt" content={og.alt} />
     <script is:inline>document.documentElement.classList.add("js");</script>
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
   </head>

@@ -8,6 +8,7 @@ The public website at https://withhumagen.com: the product page and the deploy g
 | `/deploy` | The recommended deployment, step by step, then the alternatives and current limits |
 | `/llms.txt` | The same content for agents, generated from the content module |
 | `/sitemap.xml`, `/robots.txt` | For crawlers |
+| `/og/<page>-<hash>.png` | Each page's 1200x630 social preview, drawn at build time |
 
 ## Develop
 
@@ -17,6 +18,7 @@ pnpm --filter @humagen/site dev            # http://127.0.0.1:4321
 pnpm --filter @humagen/site build          # writes apps/site/dist
 pnpm --filter @humagen/site preview        # serves dist
 pnpm --filter @humagen/site test           # content checks
+pnpm --filter @humagen/site test:dist      # after a build: preview tags, image sizes, JSON-LD
 pnpm --filter @humagen/site typecheck
 ```
 
@@ -24,6 +26,7 @@ pnpm --filter @humagen/site typecheck
 
 - `src/content/site.ts`: every fact and every line of copy. Pages, metadata and `llms.txt` read it, so change copy there, not in a page. Inline code is written in backticks and bold in `**`, rendered by `src/lib/inline.ts`.
 - `src/lib/llms.ts`: builds `llms.txt` from the content module.
+- `src/lib/og.ts`: draws each page's social preview from its `card` in the content module, the Humagen mark, the console's light tokens (read from render-web's `theme.css`) and the IBM Plex `.woff` files, with satori and resvg. The file name carries a hash of the image, because the deploy caches images as immutable. `src/layouts/Base.astro` writes the Open Graph and Twitter tags.
 - `src/styles/global.css`: imports the console's theme and fonts, and adds the few rules a document page needs.
 - `src/assets/console/`: real console screens, copied from the repository's `showcase/` (captured by teasr from a local preview with seeded data). Astro converts them to WebP at build.
 
