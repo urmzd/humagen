@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.43.0 (2026-10-30)
+
+### Features
+
+- **state**: per-request reads and versioned writes (#124) ([8b45274](https://github.com/urmzd/humagen/commit/8b452741274044342a5f58d198145a1144d74f84))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.42.0...v0.43.0)
+
+
 ## 0.42.0 (2026-10-30)
 
 ### Features
