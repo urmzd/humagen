@@ -50,7 +50,7 @@ export const actions = {
 export const hero = {
   title: "The control plane for your team's agents",
   lede: "Run agents on the models you choose, next to the people they work with, on machines you own. One workspace, one set of rules and one record of every run.",
-  status: "Open source under Apache 2.0. Early development: pre-1.0, one replica per database.",
+  status: "Open source under Apache 2.0.",
 };
 
 /** Real console screens, captured from a local preview with seeded example data. */
@@ -470,7 +470,7 @@ export const alternatives = {
 
 export const limits = {
   heading: "Know before you deploy",
-  intro: "Humagen is pre-1.0. These limits come from the status table in the repository.",
+  intro: "What this setup does not do yet, from the status table in the repository.",
   items: [
     "**One replica.** The stores are single-writer, and a second process on the same database is refused at start.",
     "**Sessions are in memory.** A restart signs everyone out.",
