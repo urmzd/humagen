@@ -250,6 +250,213 @@ func Run(t *testing.T, open func(t *testing.T) state.Store) {
 		}
 	})
 
+	t.Run("versions", func(t *testing.T) {
+		st := open(t)
+		must(t, st.Write(ctx, "ns", state.Put("t", "k", []byte("1"))))
+		r, err := st.Lookup(ctx, "ns", "t", "k")
+		if err != nil || r.Version != 1 || string(r.Value) != "1" || r.Tenant != "t" || r.Key != "k" {
+			t.Fatalf("Lookup = %+v, %v", r, err)
+		}
+		must(t, st.Write(ctx, "ns", state.Put("t", "k", []byte("2"))))
+		if r, _ := st.Lookup(ctx, "ns", "t", "k"); r.Version != 2 {
+			t.Fatalf("after a second put, version = %d", r.Version)
+		}
+		recs, err := st.Load(ctx, "ns")
+		if err != nil || len(recs) != 1 || recs[0].Version != 2 {
+			t.Fatalf("Load = %+v, %v", recs, err)
+		}
+		if _, err := st.Lookup(ctx, "ns", "t", "missing"); !errors.Is(err, state.ErrNotFound) {
+			t.Fatalf("Lookup(missing) = %v", err)
+		}
+		// A deleted key starts again at 1.
+		must(t, st.Write(ctx, "ns", state.Delete("t", "k"), state.Put("t", "k", []byte("3"))))
+		if r, _ := st.Lookup(ctx, "ns", "t", "k"); r.Version != 1 {
+			t.Fatalf("after delete and put, version = %d", r.Version)
+		}
+	})
+
+	t.Run("conditional writes", func(t *testing.T) {
+		st := open(t)
+		must(t, st.Write(ctx, "ns", state.Create("t", "k", []byte("a"))))
+		if err := st.Write(ctx, "ns", state.Create("t", "k", []byte("b"))); !errors.Is(err, state.ErrConflict) {
+			t.Fatalf("creating a key that has a record = %v, want ErrConflict", err)
+		}
+		must(t, st.Write(ctx, "ns", state.PutAt("t", "k", []byte("b"), 1)))
+		if err := st.Write(ctx, "ns", state.PutAt("t", "k", []byte("c"), 1)); !errors.Is(err, state.ErrConflict) {
+			t.Fatalf("a put at a stale version = %v, want ErrConflict", err)
+		}
+		if err := st.Write(ctx, "ns", state.PutAt("t", "gone", []byte("c"), 1)); !errors.Is(err, state.ErrConflict) {
+			t.Fatalf("a put at a version of a missing key = %v, want ErrConflict", err)
+		}
+		if err := st.Write(ctx, "ns", state.DeleteAt("t", "k", 1)); !errors.Is(err, state.ErrConflict) {
+			t.Fatalf("a delete at a stale version = %v, want ErrConflict", err)
+		}
+		if v, _ := st.Get(ctx, "ns", "t", "k"); string(v) != "b" {
+			t.Fatalf("after refused writes = %q", v)
+		}
+		// A failed condition applies nothing, before it or after it.
+		err := st.Write(ctx, "ns", state.Put("t", "before", []byte("1")), state.PutAt("t", "k", []byte("x"), 9), state.Put("t", "after", []byte("1")))
+		if !errors.Is(err, state.ErrConflict) {
+			t.Fatalf("a write with a stale op = %v, want ErrConflict", err)
+		}
+		for _, k := range []string{"before", "after"} {
+			if _, err := st.Get(ctx, "ns", "t", k); !errors.Is(err, state.ErrNotFound) {
+				t.Fatalf("a conflicting write left %q behind: %v", k, err)
+			}
+		}
+		// Conditions see the ops before them in the same write.
+		must(t, st.Write(ctx, "ns", state.Create("t", "n", []byte("1")), state.PutAt("t", "n", []byte("2"), 1), state.DeleteAt("t", "k", 2)))
+		if r, _ := st.Lookup(ctx, "ns", "t", "n"); r.Version != 2 || string(r.Value) != "2" {
+			t.Fatalf("create then put at 1 = %+v", r)
+		}
+		if _, err := st.Get(ctx, "ns", "t", "k"); !errors.Is(err, state.ErrNotFound) {
+			t.Fatalf("delete at version = %v", err)
+		}
+		// A condition names a version or Missing, and a delete a version.
+		for _, op := range []state.Op{{Tenant: "t", Key: "k", Value: []byte("1"), If: -2}, {Tenant: "t", Key: "k", If: state.Missing}} {
+			if err := st.Write(ctx, "ns", op); !errors.Is(err, state.ErrInvalid) {
+				t.Fatalf("op %+v = %v, want ErrInvalid", op, err)
+			}
+		}
+		// A condition is per tenant.
+		must(t, st.Write(ctx, "ns", state.Create("u", "n", []byte("1"))))
+	})
+
+	t.Run("compare and set racers", func(t *testing.T) {
+		st := open(t)
+		must(t, st.Write(ctx, "ns", state.Create("t", "count", []byte("0"))))
+		const racers, each = 8, 10
+		var wg sync.WaitGroup
+		for range racers {
+			wg.Go(func() {
+				for range each {
+					for {
+						r, err := st.Lookup(ctx, "ns", "t", "count")
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						var n int
+						_, _ = fmt.Sscan(string(r.Value), &n)
+						err = st.Write(ctx, "ns", state.PutAt("t", "count", fmt.Appendf(nil, "%d", n+1), r.Version))
+						if errors.Is(err, state.ErrConflict) {
+							continue
+						}
+						if err != nil {
+							t.Error(err)
+						}
+						break
+					}
+				}
+			})
+		}
+		wg.Wait()
+		r, err := st.Lookup(ctx, "ns", "t", "count")
+		if err != nil || string(r.Value) != fmt.Sprint(racers*each) || r.Version != racers*each+1 {
+			t.Fatalf("count = %q at version %d, %v; want %d at %d", r.Value, r.Version, err, racers*each, racers*each+1)
+		}
+	})
+
+	t.Run("list pages a tenant by prefix", func(t *testing.T) {
+		st := open(t)
+		for i := range 25 {
+			must(t, st.Write(ctx, "ns", state.Put("t", "m:a:"+state.Seq(int64(i)), []byte{byte(i)})))
+		}
+		must(t, st.Write(ctx, "ns", state.Put("t", "m:b:"+state.Seq(1), []byte("b"))))
+		must(t, st.Write(ctx, "ns", state.Put("t", "m:", []byte("bare"))))
+		must(t, st.Write(ctx, "ns", state.Put("t", "m;", []byte("next"))))
+		must(t, st.Write(ctx, "ns", state.Put("u", "m:a:"+state.Seq(3), []byte("other tenant"))))
+		must(t, st.Write(ctx, "other", state.Put("t", "m:a:"+state.Seq(3), []byte("other namespace"))))
+
+		var got []string
+		after := ""
+		for pages := 0; ; pages++ {
+			if pages > 10 {
+				t.Fatal("the pages do not end")
+			}
+			recs, next, err := st.List(ctx, "ns", "t", state.Query{Prefix: "m:a:", After: after, Limit: 10})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range recs {
+				if r.Tenant != "t" || r.Version != 1 || len(r.Value) != 1 {
+					t.Fatalf("record %+v", r)
+				}
+				got = append(got, r.Key)
+			}
+			if next == "" {
+				break
+			}
+			if next != recs[len(recs)-1].Key {
+				t.Fatalf("next = %q, last = %q", next, recs[len(recs)-1].Key)
+			}
+			after = next
+		}
+		if len(got) != 25 || got[0] != "m:a:"+state.Seq(0) || got[24] != "m:a:"+state.Seq(24) {
+			t.Fatalf("pages = %v", got)
+		}
+		// A page that ends exactly at the last record says none follow, or
+		// gives a cursor whose page is empty.
+		recs, next, err := st.List(ctx, "ns", "t", state.Query{Prefix: "m:a:", After: got[19], Limit: 5})
+		if err != nil || len(recs) != 5 {
+			t.Fatalf("last page = %d, %v", len(recs), err)
+		}
+		if next != "" {
+			if more, _, _ := st.List(ctx, "ns", "t", state.Query{Prefix: "m:a:", After: next, Limit: 5}); len(more) != 0 {
+				t.Fatalf("past the last page = %d", len(more))
+			}
+		}
+
+		// Newest first.
+		recs, next, err = st.List(ctx, "ns", "t", state.Query{Prefix: "m:a:", Limit: 3, Desc: true})
+		if err != nil || len(recs) != 3 || recs[0].Key != "m:a:"+state.Seq(24) || recs[2].Key != "m:a:"+state.Seq(22) || next != recs[2].Key {
+			t.Fatalf("desc = %v, %q, %v", keys(recs), next, err)
+		}
+		recs, _, err = st.List(ctx, "ns", "t", state.Query{Prefix: "m:a:", After: next, Limit: 2, Desc: true})
+		if err != nil || len(recs) != 2 || recs[0].Key != "m:a:"+state.Seq(21) {
+			t.Fatalf("desc after = %v, %v", keys(recs), err)
+		}
+
+		// No prefix is the whole tenant, in byte order.
+		recs, next, err = st.List(ctx, "ns", "t", state.Query{Limit: state.MaxList + 5})
+		if err != nil || len(recs) != 28 || next != "" || recs[0].Key != "m:" || recs[27].Key != "m;" {
+			t.Fatalf("whole tenant = %d records %q..., %q, %v", len(recs), keys(recs[:1]), next, err)
+		}
+		if recs, _, err := st.List(ctx, "ns", "t", state.Query{Prefix: "m:b:", Limit: 10}); err != nil || len(recs) != 1 || string(recs[0].Value) != "b" {
+			t.Fatalf("prefix m:b: = %v, %v", keys(recs), err)
+		}
+		if recs, _, err := st.List(ctx, "ns", "t", state.Query{Prefix: "z", Limit: 10}); err != nil || len(recs) != 0 {
+			t.Fatalf("an empty prefix range = %v, %v", keys(recs), err)
+		}
+		if recs, _, err := st.List(ctx, "ns", "nobody", state.Query{Limit: 10}); err != nil || len(recs) != 0 {
+			t.Fatalf("another tenant = %v, %v", keys(recs), err)
+		}
+		for _, q := range []state.Query{{}, {Limit: -1}, {Prefix: "\xff", Limit: 1}} {
+			if q.Prefix != "" {
+				q.Prefix = string([]byte{0xff})
+			}
+			if _, _, err := st.List(ctx, "ns", "t", q); !errors.Is(err, state.ErrInvalid) {
+				t.Fatalf("List(%+v) = %v, want ErrInvalid", q, err)
+			}
+		}
+	})
+
+	t.Run("list prefixes past the ASCII range", func(t *testing.T) {
+		st := open(t)
+		for _, k := range []string{"é", "éa", "é\U0010FFFF", "ê", "\U0010FFFF", "\U0010FFFFa", "\uD7FF", "\uD7FFz", "\uE000"} {
+			must(t, st.Write(ctx, "ns", state.Put("t", k, []byte("v"))))
+		}
+		for _, c := range []struct {
+			prefix string
+			want   int
+		}{{"é", 3}, {"\U0010FFFF", 2}, {"\uD7FF", 2}, {"ê", 1}} {
+			recs, _, err := st.List(ctx, "ns", "t", state.Query{Prefix: c.prefix, Limit: 100})
+			if err != nil || len(recs) != c.want {
+				t.Fatalf("prefix %q = %v, %v, want %d", c.prefix, keys(recs), err, c.want)
+			}
+		}
+	})
+
 	t.Run("concurrent writers", func(t *testing.T) {
 		st := open(t)
 		var wg sync.WaitGroup
@@ -268,6 +475,14 @@ func Run(t *testing.T, open func(t *testing.T) state.Store) {
 			t.Fatalf("Load = %d, %v", len(recs), err)
 		}
 	})
+}
+
+func keys(recs []state.Record) []string {
+	out := make([]string, len(recs))
+	for i, r := range recs {
+		out[i] = r.Key
+	}
+	return out
 }
 
 func must(t *testing.T, err error) {
