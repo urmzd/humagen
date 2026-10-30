@@ -54,10 +54,13 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/notifications"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -602,7 +605,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
 		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
-		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}},
+		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
 		"ThreadShare": {typ: platform.ThreadShare{}, written: true}, "ThreadNotAdded": {typ: platform.NotAdded{}},
@@ -630,7 +633,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
-		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true},
+		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true}, "PersonContext": {typ: personctx.Context{}}, "PersonContextInput": {typ: personctx.Input{}, written: true}, "PersonToolServer": {typ: personctx.ToolServer{}}, "RunSettings": {typ: settings.Layer{}}, "RunCeilings": {typ: settings.Ceilings{}}, "RunPreferences": {typ: settings.Preferences{}},
 		"RunFeedback": {typ: shownFeedback{}}, "Attachment": {typ: attachment.Attachment{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inboxNotice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
@@ -936,7 +939,7 @@ func (c *contract) sweep(tok string) {
 		if op.path == "/api/events" || needsQuery(op) {
 			continue
 		}
-		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" {
+		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" || op.path == "/api/me/context" {
 			c.call(tok, "GET", op.path, op.path, "", http.StatusForbidden)
 			continue
 		}
@@ -1092,6 +1095,20 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
+
+	// A person's own context: theirs to read and narrow, a reference under
+	// their own start, the version they read.
+	if got := c.call(ana, "GET", "/api/me/context", "/api/me/context", "", http.StatusOK); fmt.Sprint(got.field("version")) != "0" {
+		t.Fatalf("an unwritten context = %s", got.raw)
+	}
+	context := `{"version":0,"run":{"ceilings":{"tools":["file_read"],"call_depth":1},"preferences":{"model":"anthropic/claude","compaction_tokens":40000}},"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"op://People/ana/notes"}]}`
+	if set := c.call(ana, "PUT", "/api/me/context", "/api/me/context", context, http.StatusOK); fmt.Sprint(set.field("version")) != "1" || set.str("memory") == "" {
+		t.Fatalf("set context = %s", set.raw)
+	}
+	c.call(ana, "PUT", "/api/me/context", "/api/me/context", context, http.StatusConflict)
+	c.call(ana, "PUT", "/api/me/context", "/api/me/context", `{"version":1,"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"op://People/ben/notes"}]}`, http.StatusBadRequest)
+	c.call(ana, "PUT", "/api/me/context", "/api/me/context", `{"version":1,"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"tok-raw-secret"}]}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/me/context", "/api/me/context", `{"version":0}`, http.StatusForbidden)
 
 	// Explicit copies never activate learning without destination review.
 	promotionNote, err := f.p.Memory.Add("acme", memory.PersonalOwner("ana"), "Review product outcomes", memory.Person, memory.Approved, "ana", time.Now())

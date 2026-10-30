@@ -23,8 +23,10 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -183,6 +185,11 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if _, err := p.Credentials.Put(tenant, "ada", "drive", credentials.Input{Value: "tok-ada-drive"}, time.Now()); err != nil {
 			t.Fatal(err)
 		}
+		// A person's own context, and a run admitted with it.
+		mine, err := p.PersonContexts.Set(tenant, "ada", personctx.Input{Run: settings.Layer{Preferences: settings.Preferences{CompactionTokens: 4096}}}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
 		stop()
 
 		q, _ := running(t, again())
@@ -223,6 +230,12 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		}
 		if m, ok := q.Inbox.ByKey(tenant, "note"); !ok || m.Subject != "Kept" {
 			t.Fatalf("the inbox after restart = %+v, %v", m, ok)
+		}
+		if c := q.PersonContexts.Get(tenant, "ada"); c.Version != 1 || c.Memory != mine.Memory || c.Run.Preferences.CompactionTokens != 4096 {
+			t.Fatalf("a person's context after restart = %+v", c)
+		}
+		if c, ok, err := q.RunContext(tenant, done.ID); !ok || err != nil || c.Person != "" {
+			t.Fatalf("a run's pinned context after restart = %+v, %v, %v", c, ok, err)
 		}
 		if c, ok := q.Credentials.Get(tenant, "ada", "issues"); !ok || c.Ref != "op://People/ada/issues" {
 			t.Fatalf("a person's reference after restart = %+v, %v", c, ok)

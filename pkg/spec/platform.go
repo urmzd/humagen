@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/settings"
 )
 
 // Platform is what one workspace offers. Metadata.Name is its tenant.
@@ -101,6 +102,11 @@ type Workspace struct {
 	// dropped: whole days, such as "90d", or a Go duration, such as
 	// "2160h". At least 7 days. Left out, 90 days.
 	InboxRetention string `json:"inbox_retention,omitempty"`
+	// Run is the workspace's level of the run settings: ceilings every run
+	// is held to, and preferences a project or a person may override
+	// (docs/reference/spec.md#run-settings). Left out, it narrows nothing
+	// and lets no person's own tool server into a run.
+	Run *settings.Layer `json:"run,omitempty"`
 }
 
 // Retention is how long the workspace's inbox keeps what was settled
@@ -235,6 +241,11 @@ type Project struct {
 	// publish, or review by the project's owners. Left out, it is the
 	// console's, and a new project takes its kind's default.
 	AgentPosts string `json:"agent_posts,omitempty"`
+	// Run is the project's level of the run settings, for every run filed
+	// here and below: ceilings that tighten the levels above, and
+	// preferences that override theirs. It is the file's alone: the
+	// console cannot change it.
+	Run *settings.Layer `json:"run,omitempty"`
 	// Schedules are agents scheduled here, filed in the project. They are
 	// the file's: the console cannot change or delete them, only pause,
 	// resume and run them.

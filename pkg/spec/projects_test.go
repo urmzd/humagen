@@ -144,10 +144,12 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		"everyone as an expert":       {tree(`{name: Field, experts: [{who: "*", topics: [billing]}]}`), `workspace.projects[0].experts[0].who: a person's subject or role:<name>`},
 		"a role that is no role":      {"    experts: [{who: \"role:Field Leads\", topics: [security]}]\n", `workspace.experts[0].who: "role:Field Leads" is not a role`},
 		// Knowledge sources: a source's name, each once, at most 8.
-		"a source in capitals":        {tree(`{name: Field, knowledge: [Handbook]}`), `workspace.projects[0].knowledge[0]: "Handbook" is not a knowledge source's name`},
-		"a source twice":              {tree(`{name: Field, knowledge: [handbook, playbook, handbook]}`), `workspace.projects[0].knowledge[2]: handbook is knowledge[0] again`},
-		"nine sources":                {tree(`{name: Field, knowledge: [a, b, c, d, e, f, g, h, i]}`), `workspace.projects[0].knowledge: a project names at most 8 knowledge sources, not 9`},
-		"a workspace source misnamed": {"    knowledge: [\"the handbook\"]\n", `workspace.knowledge[0]: "the handbook" is not a knowledge source's name`},
+		"a source in capitals":           {tree(`{name: Field, knowledge: [Handbook]}`), `workspace.projects[0].knowledge[0]: "Handbook" is not a knowledge source's name`},
+		"a source twice":                 {tree(`{name: Field, knowledge: [handbook, playbook, handbook]}`), `workspace.projects[0].knowledge[2]: handbook is knowledge[0] again`},
+		"nine sources":                   {tree(`{name: Field, knowledge: [a, b, c, d, e, f, g, h, i]}`), `workspace.projects[0].knowledge: a project names at most 8 knowledge sources, not 9`},
+		"a workspace source misnamed":    {"    knowledge: [\"the handbook\"]\n", `workspace.knowledge[0]: "the handbook" is not a knowledge source's name`},
+		"a run model with no provider":   {tree(`{name: Field, run: {ceilings: {models: [claude]}}}`), `workspace.projects[0].run: settings: invalid: models: "claude" is not provider/model or provider/*`},
+		"a workspace call depth below 0": {"    run: {ceilings: {call_depth: -1}}\n", `workspace.run: settings: invalid: call_depth is from 0 to 16`},
 		// Skills: a skill's name, each once, at most 32, with a
 		// description and instructions.
 		"a skill in capitals":          {tree(`{name: Field, skills: [{name: Review, description: d, instructions: i}]}`), `workspace.projects[0].skills[0].name: "Review" is not a skill's name`},

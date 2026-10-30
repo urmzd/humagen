@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -45,6 +46,7 @@ import (
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
@@ -117,6 +119,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me/credentials", s.authed(auth.RunsRead, s.listToolCredentials))
 	mux.HandleFunc("PUT /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.putToolCredential))
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
+	// What the caller brings to their own runs: reading it needs what
+	// reading runs does, and changing it what starting one does.
+	mux.HandleFunc("GET /api/me/context", s.authed(auth.RunsRead, s.getPersonContext))
+	mux.HandleFunc("PUT /api/me/context", s.authed(auth.RunsWrite, s.putPersonContext))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
 	// The deployment's status page: each component, checked at most every 30s.
 	mux.HandleFunc("GET /api/health", s.authed(auth.AlertsRead, func(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
@@ -883,6 +889,17 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		fail(w, http.StatusBadRequest, "inbox is true or false, and inbox=true takes no channel, type, run, topic or from")
 		return
 	}
+	// thread is one conversation's room (rooms.go), which takes a type
+	// filter and nothing else.
+	if r.URL.Query().Has("thread") {
+		q := r.URL.Query()
+		if q.Has("channel") || q.Has("run") || q.Has("topic") || q.Has("from") || q.Has("inbox") || q.Get("thread") == "" {
+			fail(w, http.StatusBadRequest, "thread names one conversation, and takes type alone: no channel, run, topic, from or inbox")
+			return
+		}
+		s.roomEvents(w, r, who, q.Get("thread"), sel.Types)
+		return
+	}
 	var from uint64
 	if raw := r.URL.Query().Get("from"); raw != "" {
 		if _, err := fmt.Sscan(raw, &from); err != nil {
@@ -1000,20 +1017,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// behind is ended here rather than fed a gap.
 				return
 			}
-			if !gate.seen(e.Run) || !s.P.CitationEventVisible(who, e) {
-				continue
-			}
-			v, shown := s.P.ShownAPI(who, e)
-			if !shown {
-				continue
-			}
-			// Who answered a question is called by name (shownEvent).
-			v = shownEvent(s.P.Names(who.Tenant), v)
-			b, err := json.Marshal(v)
-			if err != nil {
-				continue
-			}
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+			if err := s.sendRunEvent(w, who, gate, e); err != nil {
 				return
 			}
 		}
@@ -1021,6 +1025,26 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			return
 		}
 	}
+}
+
+// sendRunEvent writes one run event to a reader's stream, when the reader
+// may read it, as they are shown it. An error is the connection's.
+func (s *Server) sendRunEvent(w io.Writer, who auth.Principal, gate *runGate, e event.Envelope) error {
+	if !gate.seen(e.Run) || !s.P.CitationEventVisible(who, e) {
+		return nil
+	}
+	v, shown := s.P.ShownAPI(who, e)
+	if !shown {
+		return nil
+	}
+	// Who answered a question is called by name (shownEvent).
+	v = shownEvent(s.P.Names(who.Tenant), v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	_, err = fmt.Fprintf(w, "data: %s\n\n", b)
+	return err
 }
 
 // inboxFlag reads inbox, which is absent, true or false.
@@ -1067,7 +1091,7 @@ func eventFilter(r *http.Request) (platform.EventFilter, bool) {
 // problem maps a domain error to a response. Anything unrecognized is logged
 // and reported without detail, so an internal error never leaks through.
 func (s *Server) problem(w http.ResponseWriter, err error) {
-	if errors.Is(err, prefs.ErrVersion) {
+	if errors.Is(err, prefs.ErrVersion) || errors.Is(err, personctx.ErrVersion) {
 		fail(w, http.StatusConflict, err.Error())
 		return
 	}
@@ -1188,7 +1212,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, call.ErrInvalid), errors.Is(err, wire.ErrInvalidPage), errors.Is(err, wire.ErrInvalidAgent),
 		errors.Is(err, event.ErrInvalid), errors.Is(err, cron.ErrSchedule),
 		errors.Is(err, alerts.ErrInvalid), errors.Is(err, knowledge.ErrInvalid), errors.Is(err, evals.ErrInvalid),
-		errors.Is(err, prefs.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid),
+		errors.Is(err, prefs.ErrInvalid), errors.Is(err, memory.ErrInvalid), errors.Is(err, policy.ErrInvalid), errors.Is(err, personctx.ErrInvalid),
 		errors.Is(err, inbox.ErrInvalid), errors.Is(err, platform.ErrAction):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, platform.ErrSandbox), errors.Is(err, artifacts.ErrInvalid):

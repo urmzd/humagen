@@ -69,14 +69,27 @@ func (p *Platform) admit(tag event.Envelope, edge call.Edge, project string, wit
 	// The limits are judged on counts read in the step that counts the run,
 	// so with shared counters no other process admits between the two.
 	var d policy.Decision
+	var roomErr error
 	in, err := p.Usage.Admit(entry, func(read usage.Reader) (bool, error) {
 		applied, err := p.appliedBy(read, tag.Tenant, chainOf(project, within), tag.Agent, client, now)
 		if err != nil {
 			return false, err
 		}
 		d = policy.Decide(applied, policy.Request{Lease: edge.Lease})
-		return d.Verdict != policy.Deny && d.Verdict != policy.NeedsApproval, nil
+		if d.Verdict == policy.Deny || d.Verdict == policy.NeedsApproval {
+			return false, nil
+		}
+		// A room's rate and a person's runs in flight, judged in the same
+		// step (rooms.go).
+		roomErr = p.admitRoom(tag, edge, project)
+		return roomErr == nil, nil
 	})
+	if roomErr != nil {
+		return roomErr
+	}
+	if err != nil || !in {
+		p.unadmitRoom(tag, edge)
+	}
 	if err != nil {
 		// A run whose admission could not be kept is not let in: a restart
 		// would forget it was counted.

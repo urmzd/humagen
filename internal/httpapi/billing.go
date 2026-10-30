@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/usage"
 )
 
@@ -265,6 +267,18 @@ func (s *Server) usageNotices(w http.ResponseWriter, _ *http.Request, who auth.P
 // the policy, its version, the limit and what was left, so a caller can show
 // exactly why.
 func denied(w http.ResponseWriter, err error) bool {
+	// A room's limits are the deployment's, not a policy's: the body names
+	// the limit and, for a room's rate, when a place is next free.
+	var room *rooms.Refused
+	if errors.As(err, &room) {
+		body := map[string]any{"error": room.Error(), "limit": room.Limit, "remaining": 0}
+		if room.Limit == rooms.LimitRoomRate {
+			body["resets_at"] = time.Now().Add(room.RetryAfter).UTC()
+			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(room.RetryAfter.Round(time.Second).Seconds()))))
+		}
+		ok(w, http.StatusTooManyRequests, body)
+		return true
+	}
 	var d *platform.Denied
 	if !errors.As(err, &d) {
 		return false

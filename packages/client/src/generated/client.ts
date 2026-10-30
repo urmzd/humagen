@@ -116,6 +116,8 @@ import type {
   NoteList,
   NoteSelection,
   OutcomeLearningPreview,
+  PersonContext,
+  PersonContextInput,
   PlacementPreview,
   Policy,
   PolicyInput,
@@ -1041,6 +1043,40 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<AccessDecision>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The caller's own run settings, the tool servers they added for themselves and the memory volume that is theirs. A person who has written nothing has version 0. A machine has none (403). */
+  async getPersonContext(options?: RequestOptions): Promise<PersonContext> {
+    const path = "/api/me/context";
+    return this.request<PersonContext>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getPersonContextRaw(options?: RequestOptions): Promise<ApiResponse<PersonContext>> {
+    const path = "/api/me/context";
+    return this.rawRequest<PersonContext>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Replaces the caller's run settings and tool servers. It only narrows: ceilings tighten the workspace's and the project's, preferences choose within them, and a tool server reaches a run only on a host the run's ceilings list. A tool server's credential is a reference under one of the caller's own starts, never a value. `version` is the one read (409 when it changed). Runs already admitted keep the context they were admitted with. */
+  async putPersonContext(body: PersonContextInput, options?: RequestOptions): Promise<PersonContext> {
+    const path = "/api/me/context";
+    return this.request<PersonContext>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putPersonContextRaw(body: PersonContextInput, options?: RequestOptions): Promise<ApiResponse<PersonContext>> {
+    const path = "/api/me/context";
+    return this.rawRequest<PersonContext>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
@@ -2826,15 +2862,26 @@ rather than feed it a gap: reconnect and resume. A run's end is not
 the stream's end, and the ledger (`getRun`) decides whether a run is
 over, not silence on the stream.
 
-There is no filter for one conversation. To follow a conversation,
-subscribe to everything and keep the events whose `run` is one of its
-turns.
+`thread` follows one conversation, read as its room (RFC 0004). It
+takes `type` and nothing else, and answers 404 for a conversation
+the caller may not read. In a room with at most the deployment's
+`rooms.coalesce_above` readers on the server (200 by default), every
+reader is sent each of the conversation's run events and thread
+notices as they happen, as the workspace's stream sends them. In a
+larger room a reader is sent at once only what involves them: the
+messages they posted or are named in, the runs they asked for, and
+the questions put to them. The rest arrives folded into a message
+with `event: page`, carrying one `RoomPage`, at most once every
+`rooms.tail_interval` (3 seconds by default). A page says how much
+happened and nothing about what: fetch the conversation's newest
+turns (`getThread`) to see it. A conversation's stream does not
+replay what the bus holds: fetch the conversation when it connects.
 
 Note for generators: the schema below describes the JSON carried in
 each message's `data` field, which is how the oag generator reads
 `itemSchema`.
  */
-  async *streamEvents(channel?: string, type?: string[], run?: string, from?: number, inbox?: boolean, topic?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<StreamEventsStreamEvent>> {
+  async *streamEvents(channel?: string, type?: string[], run?: string, from?: number, inbox?: boolean, topic?: string, thread?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<StreamEventsStreamEvent>> {
     let path = "/api/events";
     const _q = new URLSearchParams();
     if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
@@ -2843,6 +2890,7 @@ each message's `data` field, which is how the oag generator reads
     if (from !== undefined && from !== null) _q.set("from", String(from));
     if (inbox !== undefined && inbox !== null) _q.set("inbox", String(inbox));
     if (topic !== undefined && topic !== null) _q.set("topic", String(topic));
+    if (thread !== undefined && thread !== null) _q.set("thread", String(thread));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     let url = `${this.baseUrl}${path}`;
