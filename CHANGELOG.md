@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.45.0 (2026-10-30)
+
+### Features
+
+- **usage**: striped admission counters instead of a lock per tenant (#130) ([bf7e7bf](https://github.com/urmzd/humagen/commit/bf7e7bf1c5dd6c68a1d7c0622b85b5fbd589b86b))
+- **feedback**: read and write per request, without the lock (#126) ([22679ff](https://github.com/urmzd/humagen/commit/22679ff3257510c5d05f38512c253f3088ce66c2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.44.0...v0.45.0)
+
+
 ## 0.44.0 (2026-10-30)
 
 ### Features
