@@ -1810,6 +1810,21 @@ export const defaultCopy = {
     peopleCount: (count: number) => `${count} people`,
     moreParticipants: (count: number) => `+${count}`,
     pinProject: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} project ${title}`,
+    dismiss: "Dismiss navigation",
+  },
+  /**
+   * The installed app: the prompt for a new version, which waits for the
+   * person, and the screen shown when there is no network.
+   */
+  app: {
+    updateReady: "A new version is ready.",
+    updateHint: "Reload when you are at a good place to stop. Unsent text may be lost.",
+    reload: "Reload",
+    later: "Later",
+    offlineTitle: "You are offline",
+    offlineBody:
+      "The console needs a connection to show your agents and conversations. Nothing is lost: your work is on the server.",
+    offlineRetry: "Try Again",
   },
   /** Who holds a role in a project, and what it lets them do. */
   roles: {

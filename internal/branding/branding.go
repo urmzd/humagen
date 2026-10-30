@@ -487,6 +487,9 @@ func (s *Set) WebManifest(built []byte) []byte {
 		short = s.Manifest.ShortName
 	}
 	m["name"], m["short_name"] = name, short
+	// The install sheet's screenshots show Humagen's own name and colors, so
+	// a branded deployment offers none rather than another product's.
+	delete(m, "screenshots")
 	if d := s.Manifest.Description; d != "" {
 		m["description"] = d
 	}

@@ -26,7 +26,7 @@ import { AgentMark, Page, Popover, Problem, SkeletonRows, Tabs } from "./ui.tsx"
 
 const words = defaultCopy.conversation;
 const control =
-  "inline-flex min-h-9 min-w-9 items-center justify-center gap-2 rounded-aui px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
+  "inline-flex min-h-9 min-w-9 pointer-coarse:min-h-11 pointer-coarse:min-w-11 items-center justify-center gap-2 rounded-aui px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
 
 /**
  * Who took part, at a glance: the first few agents by mark and name, then how

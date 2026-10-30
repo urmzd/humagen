@@ -38,7 +38,9 @@ export function Scroller({
   }, [measure]);
   const move = (dir: 1 | -1) => {
     const el = row.current;
-    el?.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: "smooth" });
+    // The row glides, unless the person asked for less motion.
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el?.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: still ? "auto" : "smooth" });
   };
   const fade = (side: "l" | "r") =>
     `pointer-events-none absolute inset-y-0 ${side === "l" ? "left-0 bg-gradient-to-r" : "right-0 bg-gradient-to-l"} w-12 from-aui-bg to-transparent`;
@@ -50,7 +52,7 @@ export function Scroller({
           ref={row}
           aria-label={label}
           onScroll={measure}
-          className="flex snap-x gap-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex gap-2 overflow-x-auto motion-safe:scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {/* Margins of auto center the row while it fits and fall to zero once it overflows. */}
           <li aria-hidden className="ml-auto" />

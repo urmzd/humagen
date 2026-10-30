@@ -66,6 +66,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
+| DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
 
 ### DES-001: Working integrations
 
@@ -906,3 +907,84 @@ The remaining 0.006 at 300ms per read is the Agents roster's state chip,
 which arrives after two sequential reads, past the hold. `cd apps/web &&
 pnpm test` and `make screens` pass.
 
+
+### DES-040: A phone, and an installed app
+
+Owner request: the console should work well on a phone and behave like an
+installed app.
+
+Found before the change (Playwright, Chromium phone emulation with touch, the
+`make screens` fixtures at 320x568, 375x667, 390x844, 430x932 and 844x390):
+
+- 1,257 controls were under 44 by 44px at 390px: the drawer button (36px),
+  the composer's +, Dictate and Send, every tab strip (36px), starters,
+  message actions and list links (24px). The screens checked only 24px.
+- Every field drew 13 or 14px text, so Safari zooms the page when one takes
+  focus.
+- The phone drawer (`Sidebar.tsx`) had no Escape, did not take focus or
+  return it, and left the page under it reachable by Tab. Opening it saved
+  "open" (`App.tsx` `toggle`), so the next launch on a phone opened with the
+  drawer over the page (`sidebarState.ts`).
+- The viewport did not resize for the on-screen keyboard: on iOS the
+  composer sat under the keyboard. Nothing kept clear of the home indicator
+  or of a notch on a phone held sideways.
+- The Inspector on a phone was a 24rem panel from the right, 6px short of
+  the screen's width at 390px.
+- At 320px a starter wider than the screen could not be scrolled into view:
+  the row snapped back to its first item (`Scroller.tsx`), and its smooth
+  scroll ignored reduced motion.
+- There was no service worker: no offline screen, nothing to install beyond
+  the manifest, and the page and the manifest were served without a cache
+  rule, so a browser could keep an old page after a deploy.
+
+Rules:
+
+- On a touch screen (`pointer: coarse`) every control is at least 44 by 44px
+  (WCAG 2.5.5). A small control keeps its look and gets an invisible margin
+  (`::after` in `styles.css`, in the base layer so a control's own `::after`
+  wins); where a scrolling or clipping parent would cut the margin (tab
+  strips, starters, truncated links) the control is drawn 44px tall. Fields
+  have 16px text and are at least 44px tall. `scripts/screens/checks.ts`
+  measures the margin too and fails a phone screen on a target under 44px or
+  field text under 16px.
+- The phone drawer is modal: it takes focus, the page under it is `inert`,
+  Escape or a swipe toward the left edge closes it, and focus returns to the
+  drawer button. A phone always starts with it closed; only a wide window
+  remembers the sidebar's state.
+- The console is as tall as what shows of the window. `index.html` sets
+  `interactive-widget=resizes-content` for Chrome; for Safari, `viewport.ts`
+  writes the height the keyboard covers to `--humagen-keyboard` and the root
+  subtracts it, so the composer stays above the keyboard.
+- Chrome that meets an edge keeps clear of the safe areas: the drawer, the
+  drawer button, the page's foot, the Inspector sheet, the update prompt,
+  and the frame on a phone held sideways.
+- On a phone the Inspector is a sheet from the bottom, as tall as its
+  contents up to the top safe area, and scrolls inside itself.
+- The installed app: `sw.ts` (built to `/sw.js` by `vite.config.ts`)
+  precaches the build's scripts and styles and an offline screen made from
+  the copy table. A page is always fetched from the network; offline, the
+  offline screen answers instead. `/api`, `/auth`, `/branding`,
+  `/connectors` and `/healthz` are never touched. The server sends the page,
+  `/sw.js` and the manifest with `Cache-Control: no-cache`.
+- A new version installs and waits. "A new version is ready" (`UpdatePrompt`)
+  offers Reload and Later; only Reload activates it and reloads. It waits on
+  a person, so it does not animate. The console checks for a version hourly
+  and when it is shown again.
+- The manifest has an `id`, a scope, shortcuts and install screenshots taken
+  from the console; a branded deployment's manifest drops the screenshots.
+  The status bar follows the theme the person picked (`standalone.ts`). The
+  page never rubber-bands or pulls to refresh.
+
+Evidence: `cd apps/web && pnpm test` covers the worker's rules
+(`swPolicy.ts`), registration and the update flow (`pwa.ts`), the keyboard
+inset, the status bar, the offline screen, the drawer (Escape, focus, inert,
+swipe) and the prompt; `go test ./internal/httpapi ./internal/branding` covers
+the cache headers and the branded manifest. `make screens` passes at
+390x844 and 1280x800, and with `SCREENS_VIEWPORTS=320x568,375x667,430x932,844x390`.
+Offline: the production build served by `humagen serve`, loaded once, then
+the network cut: a reload shows the offline screen, and Try Again with the
+network back loads the console.
+
+Needs a real device: Safari's keyboard (the visual viewport inset), Add to
+Home Screen on iOS, the standalone status bar, and the install prompt on
+Android.

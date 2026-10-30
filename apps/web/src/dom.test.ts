@@ -44,4 +44,5 @@ await loadTests([
   "/src/agent-setup.dom.test.tsx",
   "/src/conversation-sources.dom.test.tsx",
   "/src/outcome-actions.dom.test.tsx",
+  "/src/mobile.dom.test.tsx",
 ]);

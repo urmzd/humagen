@@ -328,7 +328,7 @@ function Sources({ items, labels, scope }: PrimitiveProps["Sources"]) {
             </>
           );
           const cls =
-            "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-aui-border px-2 text-aui-xs";
+            "inline-flex h-6 pointer-coarse:h-11 max-w-full items-center gap-1.5 rounded-full border border-aui-border px-2 text-aui-xs";
           const tip = [c.title, origin, c.snippet].filter(Boolean).join("\n");
           return (
             <li key={c.id} className="flex min-w-0 max-w-full flex-col gap-1">

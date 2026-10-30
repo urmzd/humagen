@@ -68,7 +68,8 @@ import { Settings } from "./Settings.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { SkillsLibrary } from "./SkillsLibrary.tsx";
 import { Storage } from "./Storage.tsx";
-import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
+import { DRAWER_BELOW, SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
+import { syncThemeColor } from "./standalone.ts";
 import { arrive, FIRST_HOLD_MS, settled } from "./transition.ts";
 import { defaultUsageView, Usage } from "./Usage.tsx";
 import {
@@ -207,6 +208,20 @@ function greeting(name: string): string {
   return name ? `${part}, ${name.split(" ")[0]}` : part;
 }
 
+/** Whether the window is narrow enough that the sidebar is a drawer. */
+function useNarrow(): boolean {
+  const query = `(max-width: ${DRAWER_BELOW - 1}px)`;
+  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const change = () => setNarrow(media.matches);
+    change();
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, [query]);
+  return narrow;
+}
+
 /** Apply a person's theme and accent to the page. System follows the device. */
 function useAppearance(prefs: Preferences | null) {
   useEffect(() => {
@@ -216,6 +231,7 @@ function useAppearance(prefs: Preferences | null) {
       const theme = prefs?.theme ?? "system";
       root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
       root.dataset.accent = accentAttribute(prefs?.accent);
+      syncThemeColor(document, root.dataset.theme === "dark" ? "dark" : "light");
     };
     apply();
     media.addEventListener("change", apply);
@@ -330,15 +346,20 @@ function Console({
     if (window.innerWidth < 768) setOpen(false);
   };
 
+  // A phone's drawer is not a setting: only a wide window remembers the choice.
   const toggle = () =>
     setOpen((was) => {
-      try {
-        window.localStorage.setItem(SIDEBAR_KEY, was ? "0" : "1");
-      } catch {
-        // The choice just does not persist.
+      if (window.innerWidth >= DRAWER_BELOW) {
+        try {
+          window.localStorage.setItem(SIDEBAR_KEY, was ? "0" : "1");
+        } catch {
+          // The choice just does not persist.
+        }
       }
       return !was;
     });
+  const narrow = useNarrow();
+  const drawer = open && narrow;
 
   const loadAgents = useCallback(() => {
     if (!can("agents:read")) return;
@@ -661,6 +682,7 @@ function Console({
       <div className="humagen-shell flex h-full min-h-0 overflow-hidden text-aui-fg">
         <Sidebar
           open={open}
+          drawer={drawer}
           onToggle={toggle}
           route={route}
           go={navigate}
@@ -711,7 +733,9 @@ function Console({
         <main
           ref={content}
           data-arriving={arrived ? undefined : ""}
-          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]"
+          // Under an open drawer the page can be neither reached nor scrolled.
+          inert={drawer || undefined}
+          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(3rem+env(safe-area-inset-top))]"
         >
           {workspaceHub(route) && (
             <WorkspaceTabs

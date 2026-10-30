@@ -432,7 +432,7 @@ export function ShareDialog({
                     />
                   </Label>
                 )}
-                <label className="flex items-start gap-2 text-aui-sm text-aui-fg">
+                <label className="flex pointer-coarse:min-h-11 items-start gap-2 text-aui-sm text-aui-fg">
                   <input
                     type="checkbox"
                     checked={reviewed}

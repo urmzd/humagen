@@ -249,7 +249,7 @@ function Agents({
               <a
                 href={href({ page: "agent", name, tab: "access" })}
                 onClick={follow(() => onOpen(name))}
-                className="block truncate text-aui-sm leading-6 text-aui-fg hover:underline"
+                className="block truncate pointer-coarse:py-2.5 text-aui-sm leading-6 text-aui-fg hover:underline"
               >
                 {words.handle(name)}
               </a>
@@ -329,7 +329,7 @@ function Projects({
                   <a
                     href={href({ page: "project", name: p.name, tab: "inbox" })}
                     onClick={follow(() => onOpen(p.name))}
-                    className="block truncate text-aui-sm leading-6 text-aui-fg hover:underline"
+                    className="block truncate pointer-coarse:py-2.5 text-aui-sm leading-6 text-aui-fg hover:underline"
                   >
                     {titleOf(p)}
                   </a>

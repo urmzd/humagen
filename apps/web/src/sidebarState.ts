@@ -13,11 +13,17 @@ function stored(key: string, fallback: boolean): boolean {
   }
 }
 
+/** Narrower than this, the sidebar is a drawer over the page. */
+export const DRAWER_BELOW = 768;
+
 /**
  * Whether the sidebar starts open: as this browser left it, under the key it
- * had before the rename too (moved once), else open on a wide window.
+ * had before the rename too (moved once), else open on a wide window. On a
+ * phone it is a drawer over the page, so it always starts closed: a drawer
+ * left open must not cover the page the next time the app opens.
  */
 export function sidebarStartsOpen(width: number): boolean {
   moveStored(OLD_SIDEBAR_KEY, SIDEBAR_KEY);
-  return stored(SIDEBAR_KEY, width >= 768);
+  if (width < DRAWER_BELOW) return false;
+  return stored(SIDEBAR_KEY, true);
 }

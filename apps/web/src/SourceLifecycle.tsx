@@ -156,7 +156,7 @@ export function SourceLifecycle({
       )}
       {canWrite && (
         <details>
-          <summary className="min-h-8 cursor-pointer py-2 text-aui-sm">
+          <summary className="min-h-8 pointer-coarse:min-h-11 cursor-pointer py-2 text-aui-sm">
             {words.configuration}
           </summary>
           <p className="mt-2 text-aui-xs text-aui-muted">{words.scopeHint}</p>
@@ -266,7 +266,7 @@ export function SourceLifecycle({
               {(dependencies.conversations ?? []).map((item) => (
                 <li key={`conversation:${item.id}`} className="min-w-0 max-w-full">
                   <a
-                    className="inline-flex min-h-8 max-w-full items-center break-words px-1 text-aui-sm underline"
+                    className="inline-flex min-h-8 pointer-coarse:min-h-11 max-w-full items-center break-words px-1 text-aui-sm underline"
                     href={`/conversations/${encodeURIComponent(item.id)}`}
                   >
                     {words.conversations}: {item.title || words.untitledConversation}
@@ -277,7 +277,7 @@ export function SourceLifecycle({
               {(dependencies.deliverables ?? []).map((item) => (
                 <li key={`deliverable:${item.id}`} className="min-w-0 max-w-full">
                   <a
-                    className="inline-flex min-h-8 max-w-full items-center break-words px-1 text-aui-sm underline"
+                    className="inline-flex min-h-8 pointer-coarse:min-h-11 max-w-full items-center break-words px-1 text-aui-sm underline"
                     href={`/artifacts/${encodeURIComponent(item.id)}`}
                   >
                     {words.deliverables}: {item.title}
@@ -293,7 +293,7 @@ export function SourceLifecycle({
                     item.path && (
                       <li key={`${kind}:${item.id}`} className="min-w-0 max-w-full">
                         <a
-                          className="inline-flex min-h-8 max-w-full items-center break-words px-1 text-aui-sm underline"
+                          className="inline-flex min-h-8 pointer-coarse:min-h-11 max-w-full items-center break-words px-1 text-aui-sm underline"
                           href={item.path}
                         >
                           {words[kind]}: {item.title}
@@ -318,7 +318,9 @@ export function SourceLifecycle({
           ))}
       </div>
       <details>
-        <summary className="min-h-8 cursor-pointer py-2 text-aui-sm">{words.attempts}</summary>
+        <summary className="min-h-8 pointer-coarse:min-h-11 cursor-pointer py-2 text-aui-sm">
+          {words.attempts}
+        </summary>
         {lifecycle?.attempts.length ? (
           <ol className="mt-2 flex flex-col gap-2">
             {[...lifecycle.attempts].reverse().map((attempt) => (

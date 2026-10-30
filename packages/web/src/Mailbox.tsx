@@ -504,7 +504,7 @@ export function Mailbox({
               type="button"
               aria-pressed={show === id}
               onClick={() => setShow(id)}
-              className="h-6 rounded-aui-sm px-2.5 text-aui-muted text-aui-xs transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-subtle aria-pressed:text-aui-fg motion-reduce:transition-none"
+              className="h-6 pointer-coarse:h-11 pointer-coarse:min-w-11 rounded-aui-sm px-2.5 text-aui-muted text-aui-xs transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-subtle aria-pressed:text-aui-fg motion-reduce:transition-none"
             >
               {copy.show[id]}
             </button>
