@@ -29,8 +29,39 @@ export function keyboardInset(layoutHeight: number, vv: VisualViewportLike | nul
   return covered > 40 ? Math.round(covered) : 0;
 }
 
+/**
+ * The app's height when installed on an iPhone or iPad.
+ *
+ * Opened from the home screen, with the status bar drawn over the page
+ * (black-translucent), Safari sizes the viewport as if the status bar still
+ * took its own strip: `100dvh` and innerHeight come out short by its height,
+ * and the page ends that far above the bottom of the screen. Installed, the
+ * app fills the screen, so the screen's size is its height there. iOS reports
+ * the screen in portrait whichever way it is held. Null keeps `100dvh`: in a
+ * tab, off iOS, or where Safari already gets it right.
+ */
+export function standaloneHeight(
+  inner: { width: number; height: number },
+  screen: { width: number; height: number },
+): number | null {
+  const landscape = inner.width > inner.height;
+  const full = landscape
+    ? Math.min(screen.width, screen.height)
+    : Math.max(screen.width, screen.height);
+  return full > inner.height ? full : null;
+}
+
 interface WindowLike {
   innerHeight: number;
+  innerWidth?: number;
+  screen?: { width: number; height: number };
+  navigator?: {
+    userAgent: string;
+    platform?: string;
+    maxTouchPoints?: number;
+    standalone?: boolean;
+  };
+  matchMedia?: (query: string) => { matches: boolean };
   visualViewport?: VisualViewportLike | null;
   document: {
     documentElement: {
@@ -41,16 +72,40 @@ interface WindowLike {
   scrollTo(x: number, y: number): void;
 }
 
-/** Follows the visual viewport and writes the keyboard's height to the root. */
+/** Installed from the home screen of an iPhone or iPad, where the viewport comes out short. */
+export function isIOSStandalone(win: WindowLike): boolean {
+  const nav = win.navigator;
+  if (!nav) return false;
+  const ios =
+    /iPad|iPhone|iPod/.test(nav.userAgent) ||
+    (nav.platform === "MacIntel" && (nav.maxTouchPoints ?? 0) > 1);
+  const standalone =
+    nav.standalone === true || win.matchMedia?.("(display-mode: standalone)").matches === true;
+  return ios && standalone;
+}
+
+/**
+ * Follows the visual viewport and writes the keyboard's height to the root,
+ * and the app's height where iOS sizes it short on the home screen. While the
+ * keyboard is up the height is left to `100dvh`, which the keyboard's height
+ * is measured against.
+ */
 export function installViewport(win: WindowLike): void {
   const vv = win.visualViewport;
   if (!vv) return;
   const root = win.document.documentElement;
-  let last = -1;
+  const ios = isIOSStandalone(win);
+  let last = "";
   const apply = () => {
     const inset = keyboardInset(win.innerHeight, vv);
-    if (inset === last) return;
-    last = inset;
+    const tall =
+      ios && inset === 0 && win.screen && win.innerWidth !== undefined
+        ? standaloneHeight({ width: win.innerWidth, height: win.innerHeight }, win.screen)
+        : null;
+    const height = tall === null ? "100dvh" : `${tall}px`;
+    if (`${inset}:${height}` === last) return;
+    last = `${inset}:${height}`;
+    root.style.setProperty("--humagen-app-height", height);
     root.style.setProperty("--humagen-keyboard", `${inset}px`);
     if (inset > 0) {
       root.dataset.keyboard = "";

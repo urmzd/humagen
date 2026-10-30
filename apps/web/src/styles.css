@@ -25,11 +25,17 @@ body,
  * Android resizes the page itself (interactive-widget in index.html); Safari
  * does not, and viewport.ts writes the height its keyboard covers.
  */
+/*
+ * --humagen-app-height is 100dvh, except installed on an iPhone, where Safari
+ * sizes 100dvh short by the status bar and viewport.ts writes the screen's
+ * height instead.
+ */
 :root {
   --humagen-keyboard: 0px;
+  --humagen-app-height: 100dvh;
 }
 #root {
-  height: calc(100dvh - var(--humagen-keyboard, 0px));
+  height: calc(var(--humagen-app-height) - var(--humagen-keyboard, 0px));
 }
 
 /*
@@ -824,7 +830,7 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
-    height: calc(100dvh - var(--humagen-keyboard, 0px));
+    height: calc(var(--humagen-app-height) - var(--humagen-keyboard, 0px));
     overscroll-behavior: contain;
   }
 
@@ -838,7 +844,7 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
     width: 100%;
     max-width: none;
     height: auto;
-    max-height: calc(100dvh - var(--humagen-keyboard, 0px) - env(safe-area-inset-top) - 1rem);
+    max-height: calc(var(--humagen-app-height) - var(--humagen-keyboard, 0px) - env(safe-area-inset-top) - 1rem);
     border: 0;
     border-top: var(--aui-stroke);
     border-radius: 1rem 1rem 0 0;

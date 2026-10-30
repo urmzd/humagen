@@ -18,7 +18,7 @@ import {
   staleCaches,
   strategyFor,
 } from "./swPolicy.ts";
-import { installViewport, keyboardInset } from "./viewport.ts";
+import { installViewport, keyboardInset, standaloneHeight } from "./viewport.ts";
 
 const ORIGIN = "https://console.example";
 const precached = new Set(["/assets/App-abc.js", OFFLINE_PATH]);
@@ -303,6 +303,51 @@ test("installViewport writes the keyboard's height to the root and undoes Safari
   for (const fn of handlers) fn();
   assert.equal(props["--humagen-keyboard"], "0px");
   assert.equal("keyboard" in dataset, false);
+});
+
+test("standaloneHeight: installed on an iPhone, the app fills the screen, not Safari's short viewport", () => {
+  // iPhone 15 Pro Max: a 932pt screen, 59pt of it the status bar Safari leaves out.
+  const screen = { width: 430, height: 932 };
+  assert.equal(standaloneHeight({ width: 430, height: 873 }, screen), 932);
+  // On its side, the screen's short side is the height.
+  assert.equal(standaloneHeight({ width: 932, height: 380 }, screen), 430);
+  // Where Safari already gets it right, nothing changes.
+  assert.equal(standaloneHeight({ width: 430, height: 932 }, screen), null);
+});
+
+test("installViewport fills the screen on an iPhone home screen, and hands back to 100dvh for the keyboard", () => {
+  const handlers: (() => void)[] = [];
+  const vv = {
+    height: 873,
+    scale: 1,
+    addEventListener: (_: string, fn: () => void) => handlers.push(fn),
+  };
+  const props: Record<string, string> = {};
+  const win = {
+    innerHeight: 873,
+    innerWidth: 430,
+    screen: { width: 430, height: 932 },
+    navigator: {
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)",
+      standalone: true,
+    },
+    visualViewport: vv,
+    document: {
+      documentElement: {
+        style: { setProperty: (n: string, v: string) => (props[n] = v) },
+        dataset: {},
+      },
+    },
+    scrollTo: () => {},
+  };
+  installViewport(win);
+  assert.equal(props["--humagen-app-height"], "932px");
+  vv.height = 537;
+  for (const fn of handlers) fn();
+  assert.equal(props["--humagen-app-height"], "100dvh");
+  // In a Safari tab the height is never touched.
+  installViewport({ ...win, navigator: { ...win.navigator, standalone: false } });
+  assert.equal(props["--humagen-app-height"], "100dvh");
 });
 
 test("the installed app's status bar follows the theme the person picked", () => {
