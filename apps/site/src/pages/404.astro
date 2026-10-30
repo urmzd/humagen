@@ -1,0 +1,17 @@
+---
+import { pages } from "../content/site";
+import Base from "../layouts/Base.astro";
+
+const page = {
+  path: "/404",
+  title: "Page not found | Humagen",
+  description: "This address has no page on withhumagen.com.",
+};
+---
+<Base page={page}>
+  <div class="wrap prose" style="padding-top: var(--space-16)">
+    <h1>This page does not exist</h1>
+    <p>The address may be mistyped, or the page moved.</p>
+    <p><a href={pages.home.path}>Go to the Humagen home page</a> or <a href={pages.deploy.path}>read the deploy guide</a>.</p>
+  </div>
+</Base>
