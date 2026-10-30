@@ -1,6 +1,6 @@
 {
   "name": "@humagen/render-web",
-  "version": "0.47.0",
+  "version": "0.48.0",
   "private": true,
   "type": "module",
   "description": "DOM implementations of the humagen primitives, plus theme tokens.",

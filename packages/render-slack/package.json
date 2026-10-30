@@ -1,6 +1,6 @@
 {
   "name": "@humagen/render-slack",
-  "version": "0.47.0",
+  "version": "0.48.0",
   "private": true,
   "type": "module",
   "description": "Render humagen components to Slack Block Kit JSON via a custom React reconciler.",

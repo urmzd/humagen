@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.48.0 (2026-10-30)
+
+### Features
+
+- **console**: smooth screen changes, delayed skeletons and a glass app frame (#141) ([c11268b](https://github.com/urmzd/humagen/commit/c11268bc548aa45f52ed05b7e30efa8f28adb69f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.47.0...v0.48.0)
+
+
 ## 0.47.0 (2026-10-30)
 
 ### Features
