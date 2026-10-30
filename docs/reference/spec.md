@@ -97,6 +97,16 @@ spec:
     max_fan_out: 16
     builtin: {provider: "", model: ""}       # the platform's own agents
 
+  sandbox:                  # slot: docker | local | unisolated. Where a run's tools execute
+    kind: docker            # the default: an instance per run, destroyed when the run ends
+    docker:
+      runtime: runsc        # gVisor, the default; runc shares the host's kernel and is for trusted tools
+      image: python:3.13-alpine           # the shell and the file tools; needs sh and sleep
+      connectors_image: node:22-alpine    # stdio MCP servers; empty is image
+      work_root: ""         # empty is humagen/sandbox in the user cache directory
+      warm: 1               # instances kept started ahead of runs, per shape
+      max: 64               # every instance at once
+
   secret_env:               # variables a workspace's clients may reference, by tenant
     default: [HUMAGEN_SLACK_TOKEN]
 
@@ -148,6 +158,39 @@ count and an inbox link, with event kinds and email off by default. The explicit
 `insecure_loopback` TLS mode accepts only literal loopback addresses without
 credentials. See [Email notifications](../guides/email-notifications.md) for quiet hours,
 retry behavior and consent records.
+
+### Sandbox
+
+Every run's tools execute in an instance of the run's own (RFC 0004): the
+file tools work in its work directory, the `shell` tool runs there, and stdio
+MCP servers run in its connectors compartment, which holds their credentials
+where code in the workload cannot read them. The agent loop and the model
+keys stay in the server. An instance is leased on a run's first tool, never
+shared with another run (a run another agent calls gets its own), and
+destroyed when the run ends, however it ends. Its work directory starts from
+the conversation's files and is written back to them at the end, so a
+follow-up turn sees what the last one wrote.
+
+| `sandbox.kind` | Where tools run | Use |
+|----------------|-----------------|-----|
+| `docker` (default) | Containers with no network, a read-only root, no capabilities, a non-root user and resource limits, on `runtime: runsc` (gVisor) unless it says `runc` | Production |
+| `local` | Host processes, with the server's privileges, in a directory laid out like an instance. The shell works | Development without Docker |
+| `unisolated` | This host, as before the sandbox: files in the conversation's directory, stdio servers as host processes. The shell is refused | Development and tests |
+
+The server says at start which one it runs. `local` and `unisolated` are
+never chosen for you: name them in the spec or with `-sandbox`. `humagen
+start` and the `make dev` targets use `docker` with `runc`, the runtime
+Docker has on a developer's machine. A `docker` sandbox whose CLI is missing
+does not stop the server: it logs why, and every tool that needs an instance
+refuses with that reason; nothing falls back to the host. A server in a
+container needs the Docker CLI and a daemon it may use (a mounted socket) to
+run tools. Until the egress gate lands, an instance has no network at all,
+so a stdio MCP server that calls an API cannot reach it under `docker`.
+
+Flags override the block: `-sandbox`, `-sandbox-runtime`, `-sandbox-image`,
+`-sandbox-connectors-image` and `-sandbox-work-root`. A binary can register
+another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
+factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
 
 ## Platform
 
@@ -777,6 +820,7 @@ no longer shows it. The log lines each inbox decision writes
 | Sign-in and the identity provider | System | one per process |
 | Stores, bus, files | System | where state lives is the operator's choice |
 | Concurrency, depth and fan-out | System | protects the process |
+| Where a run's tools execute (`sandbox`) | System | the isolation boundary is the host's |
 | Variables a workspace may reference | System | the environment is the process's |
 | Where people may keep their own tool credentials (`person_refs`) | System | a reference is read with the process's own access |
 | Whether people may store a tool credential's value (`workspace.person_credentials`) | Platform | it is the workspace's people's data |
