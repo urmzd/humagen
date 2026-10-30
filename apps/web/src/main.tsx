@@ -3,6 +3,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { Branding } from "./api.ts";
 import { brandCopy } from "./branding.ts";
+import { browserUpdates, noUpdates } from "./pwa.ts";
+import { installViewport } from "./viewport.ts";
 import "@humagen/render-web/fonts.css";
 import "./styles.css";
 
@@ -22,14 +24,19 @@ async function preload(): Promise<Branding | null> {
 }
 
 async function start() {
+  installViewport(window);
   const root = document.getElementById("root");
   if (!root) throw new Error("missing #root");
   const branding = await preload();
   if (branding) brandCopy(defaultCopy, branding);
   const { App } = await import("./App.tsx");
+  const { UpdatePrompt } = await import("./UpdatePrompt.tsx");
+  // The installed app's worker, in a build only: the dev server's modules change by the second.
+  const updates = import.meta.env.PROD ? browserUpdates() : noUpdates;
   createRoot(root).render(
     <StrictMode>
       <App preloaded={branding} />
+      <UpdatePrompt updates={updates} />
     </StrictMode>,
   );
 }

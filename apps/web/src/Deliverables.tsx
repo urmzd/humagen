@@ -183,7 +183,7 @@ export function NativePreview({
           ref={presenting}
           data-layer="presentation"
           aria-label={words.artifactPresentation(file.title)}
-          className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-[#11151b] p-4 text-white backdrop:bg-black lg:p-8"
+          className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-[#11151b] p-4 pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-white backdrop:bg-black lg:p-8"
           onCancel={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -208,14 +208,15 @@ export function NativePreview({
               </span>
               <button
                 type="button"
-                className="rounded-aui border border-white/30 px-3 py-1 text-aui-xs"
+                className="rounded-aui border border-white/30 px-3 py-1 pointer-coarse:min-h-11 text-aui-xs"
                 onClick={() => presenting.current?.close()}
               >
                 Exit Presentation
               </button>
             </header>
             <div className="flex min-h-0 flex-1 items-center justify-center">
-              <div className="w-full max-w-6xl">
+              {/* As wide as fits, and no taller than the screen leaves: a phone on its side is short. */}
+              <div className="w-full max-w-[min(72rem,calc((100dvh-9rem)*16/9))]">
                 <SlideView preview={preview} slide={slide} />
               </div>
             </div>

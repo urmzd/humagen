@@ -164,7 +164,7 @@ export function Audit() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h2 className="text-sm font-medium">{humanize(row.action)}</h2>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-aui-muted">
+                  <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-sm text-aui-muted [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]">
                     <span>{row.actor}</span>
                     {row.project && <span>{row.project}</span>}
                   </div>
@@ -196,7 +196,7 @@ export function Audit() {
                 )}
               </div>
               <details className="mt-2">
-                <summary className="w-fit cursor-pointer rounded-md py-2 text-xs text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">
+                <summary className="w-fit cursor-pointer rounded-md py-2 pointer-coarse:py-3.5 text-xs text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">
                   {copy.details}
                 </summary>
                 <dl className="mt-1 grid gap-2 rounded-lg bg-aui-muted/5 p-3 text-xs sm:grid-cols-2">

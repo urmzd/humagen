@@ -19,8 +19,17 @@ body,
   overflow: hidden;
 }
 
+/*
+ * The console is as tall as what shows of the window: on a phone that ends
+ * at the on-screen keyboard, so the composer stays above it. Chrome on
+ * Android resizes the page itself (interactive-widget in index.html); Safari
+ * does not, and viewport.ts writes the height its keyboard covers.
+ */
+:root {
+  --humagen-keyboard: 0px;
+}
 #root {
-  height: 100dvh;
+  height: calc(100dvh - var(--humagen-keyboard, 0px));
 }
 
 /*
@@ -790,4 +799,147 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
   height: auto;
   min-height: 100%;
   overflow: visible;
+}
+
+/*
+ * Phones and the installed app.
+ *
+ * Safe areas: wherever chrome meets an edge of the screen (a notch, rounded
+ * corners, the home indicator, a phone on its side), it keeps clear of it.
+ * index.html sets viewport-fit=cover, so the page draws under them.
+ */
+.humagen-shell {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+@media (min-width: 48rem) {
+  .humagen-shell { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+}
+@media (max-width: 47.99rem) {
+  /* The page ends above the home indicator, except while the keyboard covers it. */
+  .humagen-content { padding-bottom: env(safe-area-inset-bottom); }
+  :root[data-keyboard] .humagen-content { padding-bottom: 0; }
+  /* The drawer runs the full height and keeps its rows clear of the notch and the indicator. */
+  .humagen-sidebar {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    height: calc(100dvh - var(--humagen-keyboard, 0px));
+    overscroll-behavior: contain;
+  }
+
+  /*
+   * The Inspector is a sheet from the bottom on a phone: the page's top stays
+   * in view above it, it is as tall as its contents need, and it scrolls
+   * inside itself past most of the screen.
+   */
+  .humagen-inspector {
+    inset: auto 0 var(--humagen-keyboard, 0px) 0;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: calc(100dvh - var(--humagen-keyboard, 0px) - env(safe-area-inset-top) - 1rem);
+    border: 0;
+    border-top: var(--aui-stroke);
+    border-radius: 1rem 1rem 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    translate: 0 1.5rem;
+  }
+  .humagen-inspector[open] { translate: none; }
+  @starting-style {
+    .humagen-inspector[open] { translate: 0 1.5rem; }
+  }
+  :root[data-keyboard] .humagen-inspector { padding-bottom: 0; }
+}
+@media (max-width: 47.99rem) and (prefers-reduced-motion: reduce) {
+  .humagen-inspector, .humagen-inspector[open] { translate: none; }
+}
+
+/*
+ * Touch. A field's text is at least 16px, so Safari does not zoom the page
+ * when it takes focus, and a field is at least 44px tall.
+ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]),
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]),
+  select {
+    min-height: 2.75rem;
+  }
+  /*
+   * A search box drawn as a bordered row around its icon and a bare field:
+   * the row grows to hold the field and its border.
+   */
+  .flex.items-center.border:has(> input[type="search"]) { min-height: calc(2.75rem + 2px); }
+}
+
+/*
+ * Every control a finger can press takes at least 44 by 44px of the screen
+ * (WCAG 2.5.5), whatever it is drawn at: an invisible margin around a smaller
+ * one widens what a touch lands on without moving anything. In the base
+ * layer, so a control that draws its own ::after (a tab's underline) or sets
+ * its own position keeps them. A run tick is one of a row of 4px bars and
+ * keeps its own size.
+ *
+ * A row that scrolls sideways (tabs, chips, starters) clips anything past its
+ * edges, the margin too, so what is in it is drawn 44px tall instead.
+ */
+@layer base {
+  @media (pointer: coarse) {
+    :where(button, a[href], summary, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [role="option"]):not(input, .humagen-tick, [data-slot="tabs-trigger"]) {
+      position: relative;
+    }
+    :where(button, a[href], summary, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [role="option"]):not(input, .humagen-tick, [data-slot="tabs-trigger"])::after {
+      content: "";
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
+}
+
+@media (pointer: coarse) {
+  .humagen-strip :is(button, a[href], [role="tab"]),
+  [data-slot="tabs-trigger"] {
+    min-height: 2.75rem;
+  }
+  [data-slot="tabs-list"] { height: auto; }
+  /* The calendar sets its day size inline; a finger needs a taller day. */
+  .rdp-root {
+    --rdp-day-height: 2.75rem !important;
+    --rdp-day_button-height: 2.75rem !important;
+  }
+}
+
+/*
+ * The installed app. No pull-to-refresh or rubber band at the page's edge:
+ * the page does not scroll, its panes do, and a pane reaching its end must
+ * not drag the whole app.
+ */
+html,
+body {
+  overscroll-behavior: none;
+}
+@media (display-mode: standalone) {
+  body { -webkit-tap-highlight-color: transparent; }
+}
+
+/*
+ * The prompt for a new version. It waits on a person, so it is still: no
+ * entrance, no pulse. Bottom right on a wide window; on a phone across the
+ * bottom, above the home indicator and the keyboard.
+ */
+.humagen-update {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(max(1rem, env(safe-area-inset-bottom)) + var(--humagen-keyboard, 0px));
+  background: var(--aui-pop);
+  border: var(--aui-hairline) solid var(--humagen-glass-border);
+  box-shadow: 0 18px 50px oklch(0 0 0 / 0.22), var(--humagen-bevel);
+}
+@media (max-width: 39.99rem) {
+  .humagen-update { left: max(1rem, env(safe-area-inset-left)); }
 }

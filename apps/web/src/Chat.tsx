@@ -953,7 +953,7 @@ export function Chat({
             className="mx-auto w-full max-w-4xl px-4 sm:px-5"
           >
             {starters.map((st) => (
-              <li key={`${st.agent}:${st.label}`} className="shrink-0 snap-start">
+              <li key={`${st.agent}:${st.label}`} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -963,10 +963,10 @@ export function Chat({
                     setSelection(next);
                     setSeed({ text: st.text });
                   }}
-                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-aui border border-aui-border px-3 py-2 text-left text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  className="inline-flex min-h-10 pointer-coarse:min-h-11 max-w-[calc(100vw-2rem)] items-center gap-2 whitespace-nowrap rounded-aui border border-aui-border px-3 py-2 text-left text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <AgentMark name={st.agent} size={14} />
-                  <span>{st.label}</span>
+                  <span className="min-w-0 truncate">{st.label}</span>
                 </button>
               </li>
             ))}

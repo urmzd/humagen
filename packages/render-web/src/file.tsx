@@ -219,7 +219,7 @@ export function FileTile(props: FileProps) {
   ].filter(Boolean);
   const canOpen = ready && (open || url);
   const action =
-    "inline-flex h-7 items-center gap-1 rounded-aui-sm px-2 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+    "inline-flex h-7 pointer-coarse:h-11 items-center gap-1 rounded-aui-sm px-2 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
 
   return (
     <div
@@ -238,7 +238,7 @@ export function FileTile(props: FileProps) {
           <button
             type="button"
             onClick={() => open(props)}
-            className="min-h-6 truncate text-left font-medium text-aui-fg text-aui-sm hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+            className="min-h-6 pointer-coarse:min-h-11 truncate text-left font-medium text-aui-fg text-aui-sm hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
             {title}
           </button>

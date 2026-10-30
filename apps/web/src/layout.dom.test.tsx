@@ -272,6 +272,13 @@ test("a browser that closed the sidebar before the rename starts with it closed"
   assert.equal(sidebarStartsOpen(390), false);
 });
 
+test("a drawer opened on a phone does not cover the page the next time it opens", () => {
+  window.localStorage.clear();
+  window.localStorage.setItem(SIDEBAR_KEY, "1");
+  assert.equal(sidebarStartsOpen(390), false);
+  assert.equal(sidebarStartsOpen(1440), true);
+});
+
 function tabletActions(main: { left: number; width: number } | null, controlLeft = 320) {
   const menuWidth = 224;
   patch(HTMLElement.prototype, "clientWidth", (el) =>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DESKTOP, judge, PHONE, type Snapshot } from "./checks.ts";
+import { DESKTOP, judge, LANDSCAPE, PHONE, type Snapshot } from "./checks.ts";
 
 const box = (left: number, top: number, w: number, h: number) => ({
   left,
@@ -21,8 +21,8 @@ const good: Snapshot = {
   controls: [
     {
       label: "Open Inbox",
-      box: box(260, 76, 110, 32),
-      size: { width: 110, height: 32 },
+      box: box(260, 76, 110, 44),
+      size: { width: 110, height: 44 },
       inline: false,
     },
     { label: "the docs", box: box(40, 120, 50, 16), size: { width: 50, height: 16 }, inline: true },
@@ -59,7 +59,7 @@ test("on a phone, text or a control past the 16px gutter fails; on a desktop it 
     ...good,
     controls: [
       ...good.controls,
-      { label: "Menu", box: box(8, 8, 36, 36), size: { width: 36, height: 36 }, inline: false },
+      { label: "Menu", box: box(8, 8, 44, 44), size: { width: 44, height: 44 }, inline: false },
     ],
   };
   assert.deepEqual(checks(control), ["gutter"]);
@@ -94,6 +94,33 @@ test("a control under 24px on either side fails, and a link inside a sentence is
     ],
   };
   assert.deepEqual(checks(inline), []);
+});
+
+test("on a touch screen a control is at least 44px, and a field's text at least 16px", () => {
+  const tab = {
+    ...good,
+    controls: [
+      { label: "Inbox", box: box(40, 200, 80, 36), size: { width: 80, height: 36 }, inline: false },
+    ],
+  };
+  assert.deepEqual(checks(tab), ["target"], "36px is too small for a finger");
+  assert.deepEqual(checks(tab, LANDSCAPE), ["target"], "a phone on its side too");
+  assert.deepEqual(checks(tab, DESKTOP), [], "a mouse needs 24px");
+  const field = (font: number) => ({
+    ...good,
+    controls: [
+      {
+        label: "Message",
+        box: box(20, 600, 340, 44),
+        size: { width: 340, height: 44 },
+        inline: false,
+        font,
+      },
+    ],
+  });
+  assert.deepEqual(checks(field(14)), ["zoom"], "Safari zooms into a field under 16px");
+  assert.deepEqual(checks(field(16)), []);
+  assert.deepEqual(checks(field(14), DESKTOP), [], "a desktop does not zoom");
 });
 
 test("a control's whole size is what counts, so a tab half scrolled out of its strip is not too small", () => {

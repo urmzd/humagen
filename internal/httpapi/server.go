@@ -1303,7 +1303,14 @@ func spa(dir string, brand *branding.Set) http.Handler {
 		}
 		clean := filepath.Clean("/" + r.URL.Path)
 		p := filepath.Join(dir, filepath.FromSlash(clean))
+		// The page and the installed app's service worker are checked on every
+		// load, so a deploy shows at once and the worker never keeps an old
+		// page; the assets they name carry a hash of their content instead.
+		if clean == "/sw.js" || clean == "/manifest.webmanifest" {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		if info, err := os.Stat(p); err != nil || info.IsDir() || clean == "/index.html" {
+			w.Header().Set("Cache-Control", "no-cache")
 			// A dark favicon is branding's alone: the console has none.
 			if clean != "/index.html" && brandedFile(w, r, dir, filepath.ToSlash(clean), brand) {
 				return

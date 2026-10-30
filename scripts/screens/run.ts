@@ -37,7 +37,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
-import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./checks.ts";
+import { collect, DESKTOP, judge, LANDSCAPE, PHONE, type Problem, type Rules } from "./checks.ts";
 import { conversationDeletions } from "./deletions.ts";
 import { emailScreens, notificationEmailFixture } from "./email.ts";
 import { libraryScreens } from "./library.ts";
@@ -79,12 +79,22 @@ const VIEWPORTS: Viewport[] = process.env.SCREENS_VIEWPORTS
       const width = Number(match?.[1]);
       const height = Number(match?.[2]);
       assert.ok(
-        width >= 240 && width <= 2560 && height >= 480 && height <= 2160,
+        width >= 240 && width <= 2560 && height >= 320 && height <= 2160,
         "Invalid SCREENS_VIEWPORTS size",
       );
-      return { name: value, width, height, rules: width < 768 ? PHONE : DESKTOP };
+      return { name: value, width, height, rules: rulesFor(width, height) };
     })
   : defaultViewports;
+
+/** A phone held either way is touched; only one held upright has the phone layout. */
+function handheld(width: number, height: number): boolean {
+  return Math.min(width, height) < 600;
+}
+
+function rulesFor(width: number, height: number): Rules {
+  if (width < 768) return PHONE;
+  return handheld(width, height) ? LANDSCAPE : DESKTOP;
+}
 
 interface Screen {
   name: string;
@@ -1661,7 +1671,7 @@ async function capture(
   const results: Result[] = [];
   for (const vp of VIEWPORTS) {
     mkdirSync(join(out, vp.name), { recursive: true });
-    const phone = vp.width < 768;
+    const phone = handheld(vp.width, vp.height);
     const context = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: phone ? 2 : 1,

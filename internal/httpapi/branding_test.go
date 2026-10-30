@@ -180,3 +180,34 @@ func TestBrandingNeedsSignIn(t *testing.T) {
 		t.Fatalf("no logo is set: %d", res.StatusCode)
 	}
 }
+
+func TestThePageAndTheServiceWorkerAreCheckedOnEveryLoad(t *testing.T) {
+	web := t.TempDir()
+	for name, body := range map[string]string{
+		"index.html":           `<html><head><title>Humagen</title></head></html>`,
+		"sw.js":                `self.addEventListener("fetch", () => {})`,
+		"manifest.webmanifest": `{"name":"Humagen"}`,
+		"assets/App-abc.js":    `export {}`,
+	} {
+		path := filepath.Join(web, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := spa(web, nil)
+	for path, want := range map[string]string{
+		"/":                     "no-cache",
+		"/inbox":                "no-cache",
+		"/sw.js":                "no-cache",
+		"/manifest.webmanifest": "no-cache",
+		"/assets/App-abc.js":    "",
+	} {
+		res, _ := brandGet(t, h, path)
+		if res.StatusCode != http.StatusOK || res.Header.Get("Cache-Control") != want {
+			t.Errorf("%s: %d, Cache-Control %q, want %q", path, res.StatusCode, res.Header.Get("Cache-Control"), want)
+		}
+	}
+}
