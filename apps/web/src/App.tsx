@@ -707,11 +707,11 @@ function Console({
           )}
         </Presence>
         <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
-        {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
+        {/* On a phone the drawer button sits in the corner, so the page starts below it, and clear of the home indicator and notch. */}
         <main
           ref={content}
           data-arriving={arrived ? undefined : ""}
-          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]"
+          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(2.5rem+env(safe-area-inset-top))] max-md:pb-[env(safe-area-inset-bottom)] max-md:pr-[env(safe-area-inset-right)] max-md:pl-[env(safe-area-inset-left)]"
         >
           {workspaceHub(route) && (
             <WorkspaceTabs

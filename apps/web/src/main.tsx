@@ -5,6 +5,7 @@ import type { Branding } from "./api.ts";
 import { brandCopy } from "./branding.ts";
 import "@humagen/render-web/fonts.css";
 import "./styles.css";
+import { trackAppHeight } from "./viewport.ts";
 
 /**
  * The workspace's branding, read before the console's modules load, so its
@@ -22,6 +23,7 @@ async function preload(): Promise<Branding | null> {
 }
 
 async function start() {
+  trackAppHeight();
   const root = document.getElementById("root");
   if (!root) throw new Error("missing #root");
   const branding = await preload();
