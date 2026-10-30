@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.47.0 (2026-10-30)
+
+### Features
+
+- **site**: withhumagen.com product site and deploy guide (#140) ([1e57ad6](https://github.com/urmzd/humagen/commit/1e57ad68d18b812e690fe6711ba7f9665471f5b3))
+
+### Misc
+
+- remove the legacy Storybook and the design boards Pages site (#139) ([278001c](https://github.com/urmzd/humagen/commit/278001cefc27d92e6117003a1c26852843e91b85))
+- build the container image and run the Postgres suites (#134) ([4af2ac8](https://github.com/urmzd/humagen/commit/4af2ac8288747db59678267b70a33732ec7f8115))
+- **deps**: bump playscape to v0.10.0 (#137) ([ed7afbe](https://github.com/urmzd/humagen/commit/ed7afbe1c297536f7502ccbc275722b758e4621c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.46.2...v0.47.0)
+
+
 ## 0.46.1 (2026-10-30)
 
 [Full Changelog](https://github.com/urmzd/humagen/compare/v0.46.0...v0.46.1)
