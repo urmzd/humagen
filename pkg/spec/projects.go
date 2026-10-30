@@ -126,6 +126,11 @@ func checkProjects(w Workspace) error {
 	if err := checkKnowledge(w.Knowledge); err != nil {
 		return fmt.Errorf("workspace.%w", err)
 	}
+	if w.Run != nil {
+		if err := w.Run.Check(); err != nil {
+			return fmt.Errorf("workspace.run: %w", err)
+		}
+	}
 	if err := checkSkills(w.Skills); err != nil {
 		return fmt.Errorf("workspace.%w", err)
 	}
@@ -366,6 +371,11 @@ func checkProjectFields(p Project, like string) error {
 	}
 	if err := checkKnowledge(p.Knowledge); err != nil {
 		return err
+	}
+	if p.Run != nil {
+		if err := p.Run.Check(); err != nil {
+			return fmt.Errorf("run: %w", err)
+		}
 	}
 	if err := checkSkills(p.Skills); err != nil {
 		return err

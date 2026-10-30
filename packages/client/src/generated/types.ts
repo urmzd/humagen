@@ -233,12 +233,12 @@ export interface ErrorBody {
 /** Why a limit refused a run. */
 export interface Refusal {
   error: string;
-  limit: PolicyLimit;
+  limit: RefusalLimit;
   /** What was left of the limit when the run was refused. */
   remaining: number;
   /** The policy that refused, when one did. */
   policy?: RefusalPolicy;
-  /** When the count starts again. Present for the `runs`, `spend` and `tokens` limits, which count over a period. */
+  /** When the count starts again. Present for the `runs`, `spend` and `tokens` limits, which count over a period, and for `room_rate`, when a place is next free. */
   resets_at?: string;
 }
 
@@ -560,6 +560,102 @@ export interface Note {
   at: string;
 }
 
+/** A memory tree. Project "" is the workspace. */
+export interface DriveTree {
+  kind: "person" | "project" | "agent";
+  person?: string;
+  project?: string;
+  agent?: string;
+}
+
+export interface DriveEntry {
+  path: string;
+  /** The SHA-256 of the content, in hex. */
+  hash: string;
+  size: number;
+}
+
+export interface DriveChange {
+  path: string;
+  hash?: string;
+  size?: number;
+  delete?: boolean;
+}
+
+/** A change to a tree that waits for someone who may decide it. */
+export interface DriveProposal {
+  id: string;
+  tree: DriveTree;
+  /** The version it was proposed on. */
+  base: number;
+  changes: DriveChange[];
+  by?: string;
+  at?: string;
+  message?: string;
+  origin?: string;
+}
+
+export interface DriveVersion {
+  tree: DriveTree;
+  version: number;
+  parent?: number;
+  /** Absent from a history listing. */
+  entries: DriveEntry[] | null;
+  by?: string;
+  at?: string;
+  message?: string;
+  origin?: string;
+  /** The version this one restored. */
+  restored?: number;
+  /** The proposals this version applied. */
+  resolves?: string[];
+}
+
+export interface DriveHit {
+  tree: DriveTree;
+  path: string;
+  version: number;
+  /** How many of the query's words the file holds. */
+  score: number;
+  snippet: string;
+}
+
+export interface MemoryFiles {
+  tree: DriveTree;
+  /** Where a run finds the tree. */
+  mount: string;
+  version: number;
+  by?: string;
+  at?: string;
+  entries: DriveEntry[];
+  proposals: DriveProposal[];
+}
+
+export interface MemoryFile {
+  path: string;
+  hash: string;
+  size: number;
+  /** The version asked for, 0 for the newest. */
+  version: number;
+  /** The file as text, empty when it is not text. */
+  content: string;
+  binary?: boolean;
+}
+
+export interface MemoryRestoreInput {
+  scope: "me" | "project" | "agent";
+  project?: string;
+  agent?: string;
+  version: number;
+}
+
+export interface MemoryDecisionInput {
+  scope: "me" | "project" | "agent";
+  project?: string;
+  agent?: string;
+  decision: "approve" | "discard";
+}
+
 export interface NoteList {
   notes: Note[];
 }
@@ -602,6 +698,58 @@ export interface ToolCredentials {
   values: boolean;
   /** How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given. */
   references: string[];
+}
+
+/** One level of the run settings. Ceilings bound a run and the strictest level wins; preferences choose within them and the nearest level wins. */
+export interface RunSettings {
+  ceilings?: RunCeilings;
+  preferences?: RunPreferences;
+}
+
+/** A list left out narrows nothing at its level; an empty list allows nothing. Tool servers are default deny. */
+export interface RunCeilings {
+  /** Tool names an agent's tools may keep, at most 64. */
+  tools?: string[];
+  /** Models a run may call, each `provider/model` or `provider/*`, at most 64. */
+  models?: string[];
+  /** How deep a run's calls may go, 0 to 16. It never deepens the deployment's limit. */
+  call_depth?: number;
+  /** Hosts a person's own tool servers may be on, at most 64. */
+  tool_servers?: string[];
+}
+
+export interface RunPreferences {
+  /** `provider/model`, or `policy/<name>` for a workspace model policy, used in place of the agent's own when the ceilings allow it. */
+  model?: string;
+  /** Input size, in tokens, past which a run's history is summarized, 1024 to 2000000. */
+  compaction_tokens?: number;
+}
+
+/** An MCP server a person adds for themselves. Its credential is a reference, never a secret. */
+export interface PersonToolServer {
+  name: string;
+  /** The server's https address, with no user or password in it. */
+  url: string;
+  /** A reference (`env:`, `keychain:` or `op://`) under one of the person's own starts. */
+  credential?: string;
+}
+
+/** What one person brings to the runs that act for them. */
+export interface PersonContext {
+  run: RunSettings;
+  tool_servers: PersonToolServer[];
+  /** The person's memory volume, given on their first write. Absent before it. */
+  memory?: string;
+  version: number;
+  updated_at?: string;
+}
+
+export interface PersonContextInput {
+  run?: RunSettings;
+  /** At most 16. */
+  tool_servers?: PersonToolServer[];
+  /** The version the change was made from. */
+  version: number;
 }
 
 /** A tool provider that is reached with each person's own credential, and whether the caller has connected one. A value is never shown. */
@@ -1324,6 +1472,24 @@ export interface ThreadPosted {
   reason?: string;
   /** The message was posted before, by its surface's id. This is what it did then; nothing was started again. */
   repeated?: boolean;
+}
+
+/** A large conversation's tail: how much happened in it since the page
+before, and nothing about what. Every reader of the room is sent the
+same page. Fetch the conversation's newest turns to see it.
+ */
+export interface RoomPage {
+  thread: string;
+  /** Orders a room's pages on the server that sent them, from 1. A reader that missed one is sent the newest. */
+  seq: number;
+  /** How many notices of messages posted or settled, or of the record changing, it folds. */
+  messages: number;
+  /** How many run events it folds. */
+  events: number;
+  /** How many readers the room had on the server when the page was made. */
+  viewers: number;
+  from: string;
+  through: string;
 }
 
 /** Says that something happened in a thread, and nothing about what. Fetch the thread to see it. */
@@ -2941,6 +3107,12 @@ export type PolicyAction = "block" | "approve";
 
 export type PolicyLimit = "runs" | "concurrent" | "spend" | "lease" | "tokens";
 
+/** The limit that refused a run: a policy's (`PolicyLimit`), or the
+deployment's for a conversation's runs in a minute (`room_rate`) and
+a person's runs in flight (`person_runs`), which no policy sets.
+ */
+export type RefusalLimit = "runs" | "concurrent" | "spend" | "lease" | "tokens" | "room_rate" | "person_runs";
+
 export interface PolicyScope {
   kind: PolicyScopeKind;
   /** The project, agent or client. Absent for the tenant scope. */
@@ -4044,6 +4216,14 @@ export interface ListPendingMemoryResponse {
   proposals: MemoryProposal[];
 }
 
+export interface ListMemoryHistoryResponse {
+  versions: DriveVersion[];
+}
+
+export interface SearchMemoryResponse {
+  hits: DriveHit[];
+}
+
 export interface PreviewJoinResponse {
   decisions: JoinDecision[];
 }
@@ -4351,5 +4531,5 @@ export interface GetAgentRosterResponse {
 }
 
 /** SSE event union type for streaming responses. */
-export type StreamEventsStreamEvent = RunEvent | UnknownEvent | InboxNotice | ThreadNotice;
+export type StreamEventsStreamEvent = RunEvent | UnknownEvent | InboxNotice | ThreadNotice | RoomPage;
 

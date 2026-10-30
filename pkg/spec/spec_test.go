@@ -44,6 +44,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("strict check: %v", err)
 	}
+	if r, err := cfg.System.Spec.Rooms.Config(); err != nil || r.CoalesceAbove != 200 || r.TailInterval != 3*time.Second || r.RoomRunsPerMinute != 600 || r.PersonRuns != 25 {
+		t.Fatalf("rooms = %+v %v", r, err)
+	}
 	w := cfg.Platforms[0].Spec.Workspace
 	if w.Instructions == nil || len(w.Projects) != 3 || !w.ReleaseNotes || w.Retention() != 180*24*time.Hour {
 		t.Fatalf("workspace = %+v", w)
@@ -56,6 +59,10 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	}
 	if f := w.Projects[1]; len(w.Knowledge) != 1 || len(f.Knowledge) != 1 || f.Knowledge[0] != "field-playbook" {
 		t.Fatalf("the example's knowledge = %v %v", w.Knowledge, f.Knowledge)
+	}
+	if f := w.Projects[1]; w.Run == nil || f.Run == nil || w.Run.Ceilings.Depth(5) != 2 || len(w.Run.Ceilings.ToolServers) != 1 ||
+		w.Run.Preferences.Model != "anthropic/claude-sonnet-4-5" || f.Run.Ceilings.Depth(5) != 1 || len(f.Run.Ceilings.Tools) != 3 || f.Run.Preferences.CompactionTokens != 120000 {
+		t.Fatalf("the example's run settings = %+v %+v", w.Run, f.Run)
 	}
 	if f := w.Projects[1]; len(w.Skills) != 1 || len(f.Skills) != 1 || f.Skills[0].Name != "review" || f.Skills[0].ArgumentHint != "[account]" ||
 		len(w.MentionKinds) != 1 || w.MentionKinds[0].Resolves != "role" {
@@ -330,5 +337,16 @@ func TestModelKinds(t *testing.T) {
 		if err := checkModel(c.kind, c.b); (err == nil) != c.ok {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+func TestRoomsAreBounded(t *testing.T) {
+	for _, bad := range []Rooms{{TailInterval: "soon"}, {TailInterval: "10ms"}, {CoalesceAbove: -1}, {MaxRunsPerPerson: 5000}} {
+		if _, err := bad.Config(); err == nil {
+			t.Errorf("%+v was accepted", bad)
+		}
+	}
+	if c, err := (Rooms{}).Config(); err != nil || c.CoalesceAbove != 200 {
+		t.Fatalf("left out = %+v %v", c, err)
 	}
 }

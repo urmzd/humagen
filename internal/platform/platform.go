@@ -60,6 +60,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -73,11 +74,13 @@ import (
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -90,6 +93,12 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// Rooms is how conversations with many viewers are read and how fast
+	// runs are admitted into them (pkg/rooms). Zero fields are its defaults.
+	Rooms rooms.Config
+	// RoomCounters keeps the room gate's counts. Nil is
+	// Backends.RoomCounters, or in memory without them.
+	RoomCounters rooms.Counters
 	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
 	ProjectTemplates []projects.Template
 	// Email is a configured relay and explicit tenant/subject recipient mapping. Nil disables email.
@@ -219,7 +228,10 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
-	files filesblob.Store
+	// Rooms holds the conversations followed on this server (pkg/rooms).
+	Rooms    *rooms.Hub
+	roomGate *rooms.Gate
+	files    filesblob.Store
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
@@ -231,17 +243,22 @@ type Platform struct {
 	sourceDependencyReader SourceDependencyReader
 
 	// Agents keeps agent definitions. Read them through Catalog.
-	Agents               wire.AgentStore
-	Runs                 *runs.Index
-	Schedules            *Schedules
-	Journal              *journal.Journal
-	Alerts               *alerts.Engine
-	Knowledge            *knowledge.Store
-	SourceLinks          *sourcelinks.Store
-	Evals                *evals.Store
-	Feedback             *feedback.Store
-	Prefs                *prefs.Store
+	Agents      wire.AgentStore
+	Runs        *runs.Index
+	Schedules   *Schedules
+	Journal     *journal.Journal
+	Alerts      *alerts.Engine
+	Knowledge   *knowledge.Store
+	SourceLinks *sourcelinks.Store
+	Evals       *evals.Store
+	Feedback    *feedback.Store
+	Prefs       *prefs.Store
+	// PersonContexts is what each person brings to the runs that act for
+	// them: their run settings, tool servers and memory volume.
+	PersonContexts       *personctx.Store
+	runSettings          runSettings
 	Memory               *memory.Store
+	Drive                *drive.Store // the versioned file trees memory is kept in
 	SkillLibrary         *library.Store
 	AgentSkillDefaults   *library.DefaultsStore
 	skillDefaultsMu      sync.Mutex
@@ -457,6 +474,9 @@ func New(cfg Config) (*Platform, error) {
 	if p.broker == nil {
 		p.broker = bus.NewMemory()
 	}
+	if err := p.openRooms(); err != nil {
+		return nil, err
+	}
 
 	// Schedules are a trigger like any other: the cron connector raises tags
 	// and never learns what a runtime is. It reads the store on every tick,
@@ -629,6 +649,9 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	tag = p.pin(tag, edge, project, within, p.sourcesFor(tag, edge, project))
 	tag, err = p.pinAgentSkillDefaults(ctx, tag, edge, project)
 	if err != nil {
+		return runs.Run{}, err
+	}
+	if tag, err = p.pinRunContext(tag, edge, project, within); err != nil {
 		return runs.Run{}, err
 	}
 	if err := p.admit(tag, edge, project, within, client); err != nil {
@@ -805,7 +828,11 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 		}
 		req.Lease = left
 	}
-	tag, err := call.New(parent.Tag(), req, parent.State(), p.cfg.Limits, p.now())
+	lim, err := p.callLimits(parent, req.Agent)
+	if err != nil {
+		return runs.Run{}, err
+	}
+	tag, err := call.New(parent.Tag(), req, parent.State(), lim, p.now())
 	if err != nil {
 		return runs.Run{}, err
 	}

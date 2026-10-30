@@ -229,6 +229,60 @@ Before any of this, the [limits at scale](../architecture/overview.md#limits-at-
 must go: the admission and spend counters move into the shared store, and the
 stores stop being single-writer.
 
+## Horizontal data
+
+Today every store reads its namespace into memory at start, keeps its logic
+and indexes there, and treats the database as a log to replay. Two processes
+would hold two different copies, so `pkg/state` takes a lock that refuses the
+second. That caps the platform at one process and one database.
+
+The table is not the problem. `pkg/state` is one table keyed by
+`(namespace, tenant, key)`, and the tenant is already a shard key. The memory
+copy is the problem.
+
+### Rules
+
+- **The database is the truth.** A store reads and writes it per request. A
+  cache in front of it may be dropped at any time without changing an answer.
+- **Every key carries its shard key.** A query names one shard. Nothing scans
+  across shards on a request path.
+- **No transaction crosses shards.** A link between shards is an id, and work
+  that spans them is an anchor run that retries, not a distributed
+  transaction.
+- **Postgres wire protocol.** Citus distributes by the shard key with little
+  change to queries. Distributed SQL (CockroachDB, Spanner) stays possible.
+
+### Shard keys
+
+| Data | Shard key | Why |
+|------|-----------|-----|
+| Tenant records: projects, agents, settings, people, credentials | `tenant` | Small, read often, never joined across tenants |
+| Conversation streams: messages, events, runs | `conversation`, then a time bucket | The hot path. Appended, never updated in place |
+| A very large room | `conversation`, then a hash of the sender | One room must not be one shard |
+| Counters: admission, spend, rate | The scope, then a stripe | Many small rows, summed on read |
+| File manifests | The owner | Content is addressed by hash and shared |
+| The shard directory: which tenant lives where | Copied to every node | Tiny, read on every request, written rarely |
+
+### Striped counters
+
+A counter per scope behind one lock serializes every admission in that scope,
+and one large room is one scope. A striped counter keeps N rows per scope. An
+admission takes one stripe, chosen at random, and checks it against its share
+of the limit. When a stripe runs out, it borrows from the others in one short
+transaction. Reads sum the stripes. The limit holds exactly; only the order of
+admissions near the limit is less fair.
+
+### Order of work
+
+1. `pkg/state` gains per-request reads, bounded queries and compare-and-set
+   writes, and the conformance suite covers them on both backends.
+2. Stores move one at a time, the conversation stream and run index first,
+   since they grow fastest. Each loses its replay at start.
+3. When no store needs the lock, `pkg/state` drops it, and the chart allows
+   more than one replica.
+4. Counters become striped.
+5. The schema is distributed by its shard keys.
+
 ## Alternatives
 
 - **The whole turn in the sandbox.** Rejected. The model key and the
@@ -251,6 +305,7 @@ stores stop being single-writer.
 | 6 | humagen | Memory as files, and the export from `pkg/memory` | 4, 5 |
 | 7 | humagen | `humagen worker`, and admission and spend counters in the shared store | 5 |
 | 8 | humagen | Large rooms: coalesced reads, per-room admission | 7 |
+| 9 | humagen | Horizontal data: stores read and write per request, keys carry their shard key, striped counters, then the single-writer lock goes | 7 |
 
 anchor needs no change: a run in a remote instance is an activity that can
 fail and be retried.

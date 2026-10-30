@@ -13,6 +13,7 @@ import type {
   ErrorBody,
   InboxNotice,
   Refusal,
+  RoomPage,
   Run,
   RunEvent,
 } from "./generated/types.js";
@@ -66,6 +67,8 @@ export interface EventFilter {
   run?: string;
   /** Notices alone, with no run event. It takes no other filter. */
   inbox?: boolean;
+  /** One conversation, read as its room: it takes `type` alone, and a large room sends pages. */
+  thread?: string;
 }
 
 /** How `runEvents` reconnects when the stream drops before the run is over. */
@@ -135,7 +138,8 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  */
 export type StreamItem =
   | { item: "event"; event: RunEvent }
-  | { item: "inbox"; notice: InboxNotice };
+  | { item: "inbox"; notice: InboxNotice }
+  | { item: "page"; page: RoomPage };
 
 /** What a failed request said, whichever generated error class carried it. */
 export interface ApiFailure {
@@ -244,9 +248,11 @@ export class Humagen extends ApiClient {
     const own = new AbortController();
     const signal = options?.signal ? AbortSignal.any([options.signal, own.signal]) : own.signal;
     try {
-      for await (const message of this.streamEvents(params.channel, params.type, params.run, params.from, params.inbox, undefined, { retry: false, ...options, signal })) {
+      for await (const message of this.streamEvents(params.channel, params.type, params.run, params.from, params.inbox, undefined, params.thread, { retry: false, ...options, signal })) {
         if (message.event === "inbox") {
           yield { item: "inbox", notice: message.data as InboxNotice };
+        } else if (message.event === "page") {
+          yield { item: "page", page: message.data as RoomPage };
         } else if (message.event === undefined || message.event === "message") {
           yield { item: "event", event: message.data as RunEvent };
         }
