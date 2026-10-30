@@ -19,13 +19,8 @@ body,
   overflow: hidden;
 }
 
-:root {
-  /* The app's height. viewport.ts overrides it where iOS sizes the viewport short on the home screen. */
-  --humagen-app-height: 100dvh;
-}
-
 #root {
-  height: var(--humagen-app-height);
+  height: 100dvh;
 }
 
 /*
