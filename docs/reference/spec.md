@@ -577,8 +577,8 @@ A run acting for a person may call only agents that person may read.
 A person's own tool servers are kept as an https address and a credential
 reference, never a secret, and the reference must be under the person's own
 start (System `person_refs`). They are pinned to the run but not yet
-connected: they wait for the sandbox's connector compartment (RFC 0004,
-isolated runs and person context).
+connected: they wait for the sandbox's connector compartment
+([RFC 0004](../rfcs/0004-isolated-runs-and-person-context.md)).
 
 ### Channels and experts
 
