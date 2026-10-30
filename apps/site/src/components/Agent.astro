@@ -1,0 +1,12 @@
+---
+// An agent as the console draws it: its initials in its color, in a thin
+// ring (.aui-initials in render-web's theme.css). The hue is one of the
+// console's twelve agent hues.
+import { agentInitials } from "../lib/console";
+
+type Props = { name: string; hue: number; size?: number };
+const { name, hue, size = 28 } = Astro.props;
+---
+<span data-accent="agent" class="inline-flex shrink-0 items-center align-middle" style={`--aui-accent-h: ${hue}`}>
+  <span aria-hidden="true" class="aui-initials" style={`--initials-size: ${size}px`}>{agentInitials(name)}</span>
+</span>

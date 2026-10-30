@@ -35,86 +35,111 @@ export const pages = {
 } satisfies Record<string, Page>;
 
 export const contact = {
-  label: "Talk to the founder",
+  label: "Talk to the Founder",
   email: "founder@withhumagen.com",
   href: "mailto:founder@withhumagen.com",
 };
 
+/** Button labels are Title Case, as in the console. */
+export const actions = {
+  deploy: "Deploy Your Own",
+  github: "View on GitHub",
+  guide: "Read the Deploy Guide",
+};
+
 export const hero = {
   title: "The control plane for your team's agents",
-  lede: "Run many agents on the models you choose, beside the people they work with, on infrastructure you own. Humagen gives them one workspace, one set of rules and one record of what happened.",
-  status: "Open source, Apache 2.0. Early development: pre-1.0, one replica per database.",
+  lede: "Run agents on the models you choose, next to the people they work with, on machines you own. One workspace, one set of rules and one record of every run.",
+  status: "Open source under Apache 2.0. Early development: pre-1.0, one replica per database.",
 };
 
 /** Real console screens, captured from a local preview with seeded example data. */
 export const screens = {
   home: {
     alt: "The Humagen console home: a message box that takes an @agent, a Needs you list of items waiting on a person, and recent project posts.",
-    caption: "The console, running locally with seeded example data. No model calls.",
+    caption: "The console, running locally with example data. No model calls.",
   },
   turn: {
     alt: "An agent's answer in a conversation: a recommendation, a decision, a published slide file, one cited knowledge source and four completed work steps.",
-    caption: "An agent's answer cites its source, keeps its files and shows its steps.",
+    caption: "An answer cites its source, keeps its files and shows its steps.",
   },
   agents: {
     alt: "The Agents page: each agent with its state, revision, model and runs, success rate and median time over 24 hours.",
-    caption: "Every agent with its revision, model and the last day's runs.",
+    caption: "Each agent with its revision, model and the last day's runs.",
   },
 };
 
-export type Point = { title: string; body: string };
+export type Point = { icon: string; title: string; body: string };
 
 /** The selling points, in the order the home page tells them. */
 export const points = {
   together: {
-    title: "Agents that work together, and with people",
-    body: "Tag an `@agent`, or let every available agent decide whether to join. Agents call other agents as subagents, handoffs or delegations, and a run waits for a person when it needs an approval or an answer. Conversations branch, and every turn stays in the thread.",
+    title: "Agents work together, and with people",
+    body: "Tag an `@agent`, or let every available agent decide whether to join. Agents call other agents as subagents, handoffs or delegations. A run waits for a person when it needs an approval or an answer.",
   },
   operate: {
-    title: "Run agents like a team, not a demo",
-    body: "Each agent has revisions, deterministic evals, schedules, alerts and analytics. A run pins the exact definition it started with and fails rather than replay a prompt that moved.",
+    title: "Each agent has a history",
+    body: "Agents have revisions, evals, schedules, alerts and analytics. A run keeps the exact definition it started with, and fails rather than run a prompt that changed.",
   },
   grid: [
     {
+      icon: "server",
       title: "Self-hosted",
-      body: "One process and Postgres on your laptop, a VM or Kubernetes. Your data stays in your cloud, and the code is open source.",
+      body: "One process and Postgres, on a laptop, a VM or Kubernetes. Your data stays in your cloud. The code is open source.",
     },
     {
+      icon: "layers",
       title: "Any model, per agent",
-      body: "Anthropic, Google Gemini directly or through Vertex AI, or any OpenAI-compatible server, including Ollama and vLLM. Switch an agent's model without moving the workspace.",
+      body: "Anthropic, Google Gemini directly or through Vertex AI, or any OpenAI-compatible server, such as Ollama or vLLM. Change an agent's model without moving the workspace.",
     },
     {
-      title: "Governance built in",
-      body: "A policy language grants roles per project, and nothing is allowed until granted. Limits are checked before a run starts and spend is counted per run.",
+      icon: "shield",
+      title: "Rules you set",
+      body: "A policy file grants roles per project. Nothing is allowed until it is granted. Limits are checked before a run starts, and spend is counted per run.",
     },
     {
+      icon: "scroll",
       title: "A record of every run",
       body: "Run traces, the journal and alerts show who asked, which agent answered, what it called and what it cost.",
     },
     {
-      title: "Where people already work",
-      body: "The web console, a Slack app that answers in channels and threads, and GitHub comments. Each surface renders the same events.",
+      icon: "message",
+      title: "Where people work",
+      body: "The web console, a Slack app in channels and threads, and GitHub comments. Each one shows the same events.",
     },
     {
-      title: "Grounded in your knowledge",
-      body: "Knowledge sources per project, with hybrid search that fuses vector and BM25 rankings and only returns what the asker may read.",
+      icon: "database",
+      title: "Answers from your knowledge",
+      body: "Knowledge sources per project, with hybrid search over vectors and keywords. Search returns only what the person asking may read.",
     },
     {
-      title: "Durable runs",
-      body: "Runs are durable on anchor and replay after a crash. The ledger, not silence, decides when a run is over.",
+      icon: "history",
+      title: "Runs that survive a crash",
+      body: "Runs are durable and replay after a crash. The ledger decides when a run is over.",
     },
     {
+      icon: "wrench",
       title: "Tools that act as you",
-      body: "MCP tools run in a sandbox driver you choose, and use each person's own credential, never a shared one.",
+      body: "MCP tools run in the sandbox you choose, with each person's own credential, never a shared one.",
     },
   ] satisfies Point[],
+};
+
+/** One example roster: three agents on three providers, from the spec reference. */
+export const roster = {
+  caption: "Example: each agent names its own model.",
+  agents: [
+    { name: "assistant", hue: 0, model: "Google Gemini through Vertex AI" },
+    { name: "reviewer", hue: 210, model: "Anthropic" },
+    { name: "local-helper", hue: 120, model: "OpenAI-compatible, on Ollama" },
+  ],
 };
 
 export const why = {
   heading: "Why Humagen",
   intro: [
-    "Hosted assistants such as Claude in Slack, OpenAI Dots and Grok Bot are a quick way to put one vendor's model in your chat. They are a good fit when one model and one vendor's cloud are enough.",
-    "Humagen is for the team that has outgrown that: several agents, more than one model, and rules that belong to you. It is the control plane: your models, your cloud, your rules.",
+    "Hosted assistants such as Claude in Slack, OpenAI Dots and Grok Bot put one vendor's model in your chat. They fit when one model and one vendor's cloud are enough.",
+    "Humagen is for teams that need more: several agents, more than one model, and rules that belong to them. Your models, your cloud, your rules.",
   ],
   columns: ["", "Humagen", "A hosted assistant"],
   rows: [
@@ -127,18 +152,18 @@ export const why = {
     ],
     ["Agents", "Many, calling each other and asking people", "One assistant"],
     ["Where people use it", "Web console, Slack and GitHub", "The app it ships for"],
-    ["Setup", "You deploy and operate it", "Install it and start"],
+    ["Setup", "You deploy and run it", "Install it and start"],
   ],
 };
 
 export const selfHost = {
   heading: "Self-host it, private by default",
   intro:
-    "The recommended setup puts one private VM per team on Google Cloud. Nobody on the internet can reach it, and there is no model key to leak.",
+    "The recommended setup is one private VM per team on Google Cloud. Nobody on the internet can reach it, and there is no model key to leak.",
   points: [
     {
-      title: "Reachable only over Tailscale",
-      body: "No public IP. Caddy checks each caller with Tailscale and passes their login to Humagen, so there is no password and no identity provider to run.",
+      title: "Only on your tailnet",
+      body: "No public IP. Caddy checks each person with Tailscale and passes their login to Humagen. No passwords and no identity provider to run.",
     },
     {
       title: "No API keys",
@@ -146,7 +171,7 @@ export const selfHost = {
     },
     {
       title: "Updates without SSH",
-      body: "Terraform describes it, GitHub Actions applies it, and the VM picks up each change on its own. About $25 a month for the VM, plus model calls.",
+      body: "Terraform describes it and GitHub Actions applies it. The VM picks up each change on its own. About $25 a month for the VM, plus model calls.",
     },
   ],
 };

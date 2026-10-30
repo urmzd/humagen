@@ -9,9 +9,13 @@ const page = {
 };
 ---
 <Base page={page}>
-  <div class="wrap prose" style="padding-top: var(--space-16)">
-    <h1>This page does not exist</h1>
-    <p>The address may be mistyped, or the page moved.</p>
-    <p><a href={pages.home.path}>Go to the Humagen home page</a> or <a href={pages.deploy.path}>read the deploy guide</a>.</p>
+  <div class="site-text mx-auto flex w-full max-w-[68rem] flex-col gap-3 px-5 pt-12 md:px-10">
+    <h1 class="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg">
+      This page does not exist
+    </h1>
+    <p class="text-aui-base text-aui-muted">The address may be mistyped, or the page moved.</p>
+    <p class="text-aui-base text-aui-muted">
+      <a href={pages.home.path}>Go to the home page</a> or <a href={pages.deploy.path}>read the deploy guide</a>.
+    </p>
   </div>
 </Base>

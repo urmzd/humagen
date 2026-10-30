@@ -1,24 +1,33 @@
 ---
 import { contact, pages, site } from "../content/site";
-import Logo from "./Logo.astro";
+import { mark } from "../lib/console";
 
 const current = Astro.url.pathname.replace(/\/$/, "") || "/";
+const link =
+  "inline-flex min-h-8 items-center rounded-aui px-2 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg";
 ---
-<header class="site-header">
-  <div class="wrap">
-    <a class="wordmark" href="/" aria-label="Humagen home">
-      <Logo />
-      <span>{site.name}</span>
+<header
+  class="sticky top-0 z-10 border-b border-aui-border bg-[var(--aui-glass-bg)] backdrop-blur-[var(--aui-glass-blur)]"
+>
+  <div class="mx-auto flex h-12 w-full max-w-[68rem] items-center justify-between gap-4 px-4 md:px-10">
+    <a
+      href="/"
+      class="humagen-display flex min-w-0 items-center gap-2 rounded-aui text-aui-base font-semibold text-aui-fg"
+    >
+      <Fragment set:html={mark(23)} />
+      {site.name}
     </a>
-    <nav class="site-nav" aria-label="Main">
-      <ul>
+    <nav aria-label="Main">
+      <ul class="flex items-center gap-1">
         <li>
-          <a href={pages.deploy.path} aria-current={current === pages.deploy.path ? "page" : undefined}
-            >Deploy guide</a
+          <a
+            class={`${link} aria-[current=page]:text-aui-fg aria-[current=page]:font-medium`}
+            href={pages.deploy.path}
+            aria-current={current === pages.deploy.path ? "page" : undefined}>Deploy guide</a
           >
         </li>
-        <li><a href={site.repo}>GitHub</a></li>
-        <li><a href={contact.href}>Contact</a></li>
+        <li><a class={link} href={site.repo}>GitHub</a></li>
+        <li><a class={link} href={contact.href}>Contact</a></li>
       </ul>
     </nav>
   </div>

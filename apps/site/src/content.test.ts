@@ -37,3 +37,12 @@ test("every page has its own title and description", () => {
   assert.equal(new Set(all.map((p) => p.title)).size, all.length);
   assert.equal(new Set(all.map((p) => p.description)).size, all.length);
 });
+
+test("app icons are the console's own files", () => {
+  const root = new URL("..", import.meta.url).pathname;
+  for (const f of ["favicon.svg", "favicon-32.png", "icon.svg", "apple-touch-icon.png"]) {
+    const ours = readFileSync(join(root, "public", f));
+    const theirs = readFileSync(join(root, "../web/public", f));
+    assert.ok(ours.equals(theirs), `public/${f} differs from apps/web/public/${f}`);
+  }
+});

@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Web-only agent chat: message frame, reasoning, conversation, prompt bar, live turn hooks. Slack has native equivalents.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./HumagenMark": "./src/HumagenMark.tsx",
+    "./AgentOrb": "./src/AgentOrb.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
