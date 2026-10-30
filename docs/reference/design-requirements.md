@@ -5,9 +5,9 @@ October 25, 2026. Read it before changing presentation or integrations. Keep
 requirement IDs stable and update implementation evidence in the same change
 that satisfies a requirement.
 
-The published [design boards](https://urmzd.github.io/humagen/) are interaction
-references. Publishing a board does not implement its behavior in the console.
-The detailed [control-plane spec](../rfcs/0001-agentic-workspace-control-plane.md),
+The design boards were interaction references; they and their GitHub Pages
+site were removed on October 30, 2026, and the evidence below that names them
+records checks made at the time. The detailed [control-plane spec](../rfcs/0001-agentic-workspace-control-plane.md),
 [board rules](board-design-rules.md), and
 [gap analysis](control-plane-gap-analysis.md) provide the
 larger design. The gap analysis records its own review revision; recheck code
@@ -17,8 +17,7 @@ govern implementation, including shared presentation and agent identity.
 The [workspace principles](workspace-principles.md) apply the
 [designer and portfolio research](design-reference-research.md): Harvey II
 for project structure, Codex for human control, Linear for restraint, and Dust
-for testing working interactions. Storybook previews use the console's own
-components. These references inform Humagen's identity rather than replacing it.
+for testing working interactions. These references inform Humagen's identity rather than replacing it.
 The [task queue](../plans/2026-10-ui-task-queue.md) tracks the active delivery. The
 [conversation-first design](../rfcs/0003-conversation-first-delivery.md) separates
 planned collections, browser, protocol and improvement work from this UI pass.
@@ -298,9 +297,8 @@ Validation: 30 route/navigation checks and 43 focused DOM checks pass. Both
 production builds and console/Storybook typechecks pass. The Notifications browser
 journey passes 20 light/dark states at 320, 390, 768 and 1440 pixels, including the
 combined filter panel, Alert Rules, errors, empty states, message dismissal and a
-selected reader retained outside the filtered list. Evidence is in
-`.screens/notifications/checks.json`; reproduce with
-`STORYBOOK_URL=http://127.0.0.1:6007 pnpm --filter @humagen/screens exec node --experimental-strip-types notifications.ts`.
+selected reader retained outside the filtered list. That journey ran against
+the Storybook stories, which were removed on October 30, 2026.
 The concurrent full console run reports 636/637 passing; its remaining failure is
 `the tree at depth 4 indents one level at 390px, and deeper rows say where they sit`
 (`ok(indents.length > 0)`) in the other session's project layout work.
@@ -415,7 +413,7 @@ Existing button and field helpers share the same variants and sizing.
 Web-only resource browsers remain controlled presentation components;
 the shared surface-neutral contracts and Slack renderer remain intact.
 
-Acceptance: production and Storybook builds, workspace typechecks, standard
+Acceptance: production builds, workspace typechecks, standard
 format/lint checks, dense shared controls, correct loaded font, keyboard focus,
 reduced motion and phone/desktop reflow. The Controls and ResourceWorkspace
 stories provide a repeatable design review surface.
@@ -535,6 +533,10 @@ conversation selection, failure/retry and obsolete-scope responses.
 
 ### DES-020: Shared workspace design previews
 
+The Storybook app this requirement used was removed on October 30, 2026. The
+evidence below records checks made before then; `make screens` checks the
+console itself.
+
 The newer consolidated Library, Agents, Notifications and Operations hubs remain
 owned by the shared permission-aware navigation definition. This pass does not
 restore the older expanded sidebar. The console and Storybook share the native
@@ -569,16 +571,6 @@ regressions also pass. All 74 focused native browser captures pass with zero
 layout findings across dark phone/desktop and light 320px/desktop. The complete
 CI matrix and merge status are tracked in [PR #99](https://github.com/urmzd/humagen/pull/99).
 Live provider-account trials and a production deployment are not claimed here.
-
-```sh
-pnpm storybook
-pnpm storybook:check
-pnpm storybook:capture
-```
-
-The capture command uses [teasr.storybook.toml](../../teasr.storybook.toml). The checker
-accepts `STORYBOOK_URL` and `CHROMIUM`. Story actions are isolated fixtures,
-not saved workspace changes or live provider execution.
 
 ### DES-021: Conversation participants and independent pins
 

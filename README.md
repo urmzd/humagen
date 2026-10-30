@@ -170,8 +170,6 @@ make tilt
 | Format, lint and test | `make check` |
 | Test with race detection | `make test` |
 | Web typecheck and tests | `cd apps/web && pnpm typecheck && pnpm test` |
-| Storybook | `pnpm storybook` |
-| Storybook checks and captures | `pnpm storybook:check`, `pnpm storybook:capture` |
 | Adapter typecheck and tests | `cd packages/adapter && pnpm typecheck && pnpm test` |
 | Slack app lint, typecheck and tests | `cd apps/slack && pnpm exec biome check && pnpm typecheck && pnpm test` |
 | Regenerate the TypeScript client | `make client` |

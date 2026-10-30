@@ -105,7 +105,7 @@ and evidence when implementing a requirement.
 - `packages/render-web`, `packages/render-slack`: one renderer per surface.
 - `packages/web`: web-only components. `packages/slack-host`: the generic Slack host loop.
 - `internal/presentation/github`: pure GitHub Markdown rendering, without API calls.
-- `apps/storybook`: component stories. `apps/slack-sandbox`: the real Slack fixture bench.
+- `apps/slack-sandbox`: the real Slack fixture bench.
 - Copy lives in `packages/components/src/copy.ts`. Buttons use Title Case; other copy uses sentence case.
 - Anything waiting on a person must not animate.
 - Every Slack-facing change must pass `pnpm validate:slack`.

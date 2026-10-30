@@ -8,7 +8,7 @@ Local validation on October 23, 2026:
 | `pnpm run typecheck` | All 15 package tasks passed |
 | `pnpm exec biome check` | Passed |
 | `pnpm --filter @humagen/console build` | Passed; Office parsing is a separate, lazily loaded chunk |
-| `pnpm --filter @humagen/storybook build` | Passed |
+| `pnpm --filter @humagen/storybook build` | Passed (the Storybook app was removed on October 30, 2026) |
 | `go test -buildvcs=false -race -p 2 ./...` | All packages passed with Go 1.26.10 |
 | `pnpm test:server` | 4 Slack integration tests passed against the real offline server, none skipped |
 | Console browser sweep | 148 screenshots at 390 x 844 and 1280 x 800 passed overflow, gutter, target-size, title and text-overlap checks |

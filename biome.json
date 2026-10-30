@@ -17,7 +17,6 @@
       "!**/src/generated",
       "!**/.oag",
       "!**/dist",
-      "!**/storybook-static",
       "!**/node_modules",
       "!**/*.css",
       "!**/slack-manifest.json",

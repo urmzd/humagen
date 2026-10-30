@@ -40,7 +40,6 @@ packages:
       - packages/web/package.json
       - apps/slack/package.json
       - apps/slack-sandbox/package.json
-      - apps/storybook/package.json
       - apps/web/package.json
       - examples/ui/basic/package.json
       - scripts/screens/package.json

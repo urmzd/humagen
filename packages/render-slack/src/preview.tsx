@@ -1,7 +1,7 @@
 import type { Block } from "./blocks";
 
 /**
- * Approximate, dependency-free DOM preview of Block Kit for Storybook and docs.
+ * Approximate, dependency-free DOM preview of Block Kit for docs and previews.
  * Not pixel-accurate; use blockKitBuilderUrl for the real thing.
  */
 

@@ -28,7 +28,7 @@ import type { ReactElement } from "react";
 
 /**
  * Every fixture in @humagen/core/fixtures, as something postable. Names match
- * the fixture exports (and Storybook docs): `pnpm sandbox post waitingTurn`.
+ * the fixture exports: `pnpm sandbox post waitingTurn`.
  */
 export interface Postable {
   name: string;

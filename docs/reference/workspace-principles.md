@@ -12,7 +12,7 @@ checked October 26, 2026, to the existing React console and shared UI packages.
 | Organize around the work | [Harvey II](https://www.harvey.ai/blog/introducing-harvey-ii) | Projects hold conversations, people, context and decisions. Keep the project title and primary action on its page. |
 | Keep human control understandable | [Codex designer Ed Bayes](https://softwareengineeringdaily.com/wp-content/uploads/2026/01/SED1898-OpenAI.txt) | Show states beside their work. A failed attempt is not an approval request or a completed outcome awaiting review. |
 | Spend complexity deliberately | [Karri Saarinen](https://karrisaarinen.com/posts/every-feature-should-earn-its-place/) | Keep the permission-aware Library, Agents, Notifications and Operations hubs as direct destinations; reveal their related tools through existing tabs. |
-| Prove behavior before polish | [Dust's Édouard Wautier](https://dust.tt/blog/field-study-prototypes-over-mockups) | Storybook renders the console's actual components with loading, empty, read-failure, paging-failure and interaction fixtures. |
+| Prove behavior before polish | [Dust's Édouard Wautier](https://dust.tt/blog/field-study-prototypes-over-mockups) | The console's own components are tested with loading, empty, read-failure, paging-failure and interaction fixtures, and `make screens` checks every console screen in a browser. |
 | Judge the delivered experience | [Jenny Wen](https://jennywen.substack.com/p/dont-trust-the-design-process) | Preserve working flows. Inspect narrow screens, keyboard focus, real content and error recovery. |
 
 These are Humagen's interpretations, not claims that the referenced designers
@@ -25,8 +25,7 @@ the October UI refresh. Individual authorship of that refresh is unverified.
 Use the shared renderer font entry and semantic typography. The newer workspace
 request selects IBM Plex Sans Variable and IBM Plex Mono; this pass must not
 restore the older Figtree/Bricolage imports. Body text follows the shared 14px
-scale, secondary text is 13px, metadata is 12px. Storybook loads the same font
-entry and console CSS.
+scale, secondary text is 13px, metadata is 12px.
 Use the current semantic colors: page `--aui-bg`, supporting plane
 `--humagen-plane`, text `--aui-fg`, secondary text `--aui-muted`, boundaries
 `--humagen-rule`, and focus `--aui-accent`. Do not introduce a competing palette.
@@ -55,7 +54,7 @@ checks, project selection and independent scrolling remain authoritative.
 
 ## Evidence and boundaries
 
-The `Workspace/Project work` Storybook group demonstrates the first pass using
+The `Workspace/Project work` Storybook group, removed on October 30, 2026, demonstrated the first pass using
 `ProjectWork`, `SidebarItem`, `Page` and `Tabs` from the real
 console. Fixture-only actions are logged locally; no model calls or workspace
 writes happen in stories. Project filters cover loaded rows, with an explicit

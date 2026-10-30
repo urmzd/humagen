@@ -36,7 +36,7 @@
 | [Board design rules](reference/board-design-rules.md) | Reference | Format, tokens, identity and navigation rules for the design boards |
 | [Control plane gap analysis](reference/control-plane-gap-analysis.md) | Reference | RFC 0001 checked against the code: built, partial, not built, diverges |
 | [Console UI review](reference/ui-review.md) | Reference | Console UI review findings, patterns and how to check a UI change |
-| [RFC 0001: Agentic workspace and control plane](rfcs/0001-agentic-workspace-control-plane.md) | RFC, Prepared | Product and design spec for delegated agent work; boards in [assets/control-plane](assets/control-plane/README.md) |
+| [RFC 0001: Agentic workspace and control plane](rfcs/0001-agentic-workspace-control-plane.md) | RFC, Prepared | Product and design spec for delegated agent work; design notes in [assets/control-plane](assets/control-plane/README.md) |
 | [RFC 0002: Cross-project handoffs](rfcs/0002-cross-project-handoffs.md) | RFC, Proposed | A staged design for handoffs that cross project boundaries |
 | [RFC 0003: Conversation-first delivery](rfcs/0003-conversation-first-delivery.md) | RFC, Proposed | Conversation-first delivery and collections for follow-on work |
 | [RFC 0004: Isolated runs and person context](rfcs/0004-isolated-runs-and-person-context.md) | RFC, Proposed | One agent for many people in parallel: pinned person context, isolated sandboxes, and the path to a million people in one room |
@@ -50,4 +50,4 @@
 | [Application validation](plans/2026-10-workspace-application-validation.md) | Plan | Local validation of the workspace prototype's application work |
 | [ecosystem.md](ecosystem.md), [github.md](github.md), [slack.md](slack.md), [upgrading-from-warp.md](upgrading-from-warp.md) | Stub | Old paths that other repositories link; each points to its new home |
 
-Design assets: [assets/control-plane](assets/control-plane/README.md) (clickable boards, published to GitHub Pages) and [assets/workspace-prototype](assets/workspace-prototype/README.md) (interactive prototype and sample files). Requirement and audit records for the implementation plan are in `assets/workspace-implementation/`.
+Design assets: [assets/control-plane](assets/control-plane/README.md) (design notes; the clickable boards were removed) and [assets/workspace-prototype](assets/workspace-prototype/README.md) (interactive prototype and sample files). Requirement and audit records for the implementation plan are in `assets/workspace-implementation/`.

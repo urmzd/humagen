@@ -1,6 +1,6 @@
 # Slack sandbox
 
-Test Humagen in the real Slack client, not a lookalike. The same fixtures that Storybook renders on the web get posted, streamed, and clicked in a sandbox workspace.
+Test Humagen in the real Slack client, not a lookalike. The same fixtures the web components render get posted, streamed, and clicked in a sandbox workspace.
 
 ## Setup (once)
 
@@ -64,4 +64,4 @@ The workflow step finishes when the turn does, so a turn that waits on an approv
 
 The test app is Humagen's Slack app, so the manifest names it Humagen (`@humagen`). Opening its Messages tab sets the suggested prompts. Opening its Home tab publishes the `home` fixture (`Home` from `@humagen/components`): a greeting, Ask a Question, Build an Agent and Search Knowledge, notifications (inbox items and open alerts, each with its console address written out), who answers your direct messages, connections, and a line about your access. Ask a Question opens the ask form; picking who answers republishes the tab; the other buttons open a modal that says what a host would do.
 
-Fixture names match the exports in `@humagen/core/fixtures` and the Storybook docs.
+Fixture names match the exports in `@humagen/core/fixtures`.
