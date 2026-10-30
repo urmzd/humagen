@@ -87,6 +87,7 @@ func (p *Platform) over(change func() (runs.Run, bool)) (runs.Run, bool) {
 
 // free gives an ended run's place back. The caller holds p.admission.
 func (p *Platform) free(run runs.Run) {
+	p.releaseRoom(run)
 	if run.Origin != runs.OriginSystem {
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: run.Tenant, RunID: run.ID, At: p.now()})
 	}

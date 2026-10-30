@@ -27,13 +27,14 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	saigememory "github.com/urmzd/saige/agent/memory"
 
+	"github.com/urmzd/humagen/pkg/blob"
+	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -107,56 +108,126 @@ type Note struct {
 	// By is the person who wrote it, or the run it was drawn from.
 	By string    `json:"by,omitempty"`
 	At time.Time `json:"at"`
+	// seq orders an owner's notes. It is kept in the note's file.
+	seq int
 }
 
-// Store holds every agent's notes.
+// Store holds every agent's notes. It is a view of the notes' files in a
+// drive.Store, kept in memory and written through on every change.
 type Store struct {
 	mu      sync.RWMutex
 	by      map[string][]Note
 	origins map[string]map[string]string
-	next    int
-	// kept is where each owner's notes are written. Nil keeps them only in
-	// memory.
+	usage   map[string]map[string]usage
+	// props is, by owner, the drive proposal each pending note is.
+	props map[string]map[string]string
+	next  int
+	drive *drive.Store
+	// kept is what is kept beside the files: the id counter, use counts and
+	// reviewed origins. Nil keeps them only in memory.
 	kept *state.Table[stored]
 }
 
-// stored is one owner's notes as they are written. Next is the store's id
-// counter when they were written, so ids are not issued twice after a
-// restart. An owner whose notes are all gone keeps its record for the same
-// reason.
+// usage is how often a note was sent, kept beside its file.
+type usage struct {
+	Uses       uint64    `json:"uses,omitempty"`
+	LastUsedAt time.Time `json:"last_used_at,omitzero"`
+}
+
+// stored is what an owner keeps beside its files. Next is the store's
+// counter when it was written, so the order of notes survives a restart.
+//
+// Before notes were files, Notes held them. Open moves them to files once and
+// marks the record Exported.
 type stored struct {
-	Notes   []Note            `json:"notes"`
-	Next    int               `json:"next"`
-	Origins map[string]string `json:"reviewed_origins,omitempty"`
+	Notes    []Note            `json:"notes,omitempty"`
+	Next     int               `json:"next"`
+	Origins  map[string]string `json:"reviewed_origins,omitempty"`
+	Usage    map[string]usage  `json:"usage,omitempty"`
+	Exported bool              `json:"exported,omitempty"`
 }
 
 // NewStore returns an empty store in memory.
 func NewStore() *Store {
-	return &Store{by: map[string][]Note{}, origins: map[string]map[string]string{}}
+	s, err := Open(nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
 
-// Open returns a store that keeps every note in st, holding what st already
-// has. A nil st is NewStore.
-func Open(st state.Store) (*Store, error) {
-	s := NewStore()
+// Open returns a store whose notes are files in d, keeping what is not
+// content in st. A nil st keeps that in memory; a nil d is a drive on st,
+// content included.
+//
+// Notes kept in st before notes were files are exported to d once: approved
+// ones are committed, pending ones proposed. The export is safe to repeat: a
+// note already in the tree is not written again, and an owner is marked
+// exported only after its notes are in place.
+func Open(st state.Store, d *drive.Store) (*Store, error) {
+	if d == nil {
+		var err error
+		ds := st
+		if ds == nil {
+			ds = state.NewMemory()
+		}
+		if d, err = drive.Open(ds, blob.NewState(ds), drive.WithScreen(Screen)); err != nil {
+			return nil, err
+		}
+	}
+	s := &Store{by: map[string][]Note{}, origins: map[string]map[string]string{}, usage: map[string]map[string]usage{}, props: map[string]map[string]string{}, drive: d}
 	s.kept = state.NewTable[stored](st, "memory")
+	legacy := map[string]stored{}
 	err := s.kept.Load(func(tenant, owner string, r stored) error {
 		s.next = max(s.next, r.Next)
-		for _, n := range r.Notes {
-			if id, err := strconv.Atoi(strings.TrimPrefix(n.ID, "m")); err == nil {
-				s.next = max(s.next, id)
-			}
-		}
-		if len(r.Notes) > 0 {
-			s.by[key(tenant, owner)] = r.Notes
-			s.origins[key(tenant, owner)] = r.Origins
+		k := key(tenant, owner)
+		s.origins[k] = r.Origins
+		s.usage[k] = r.Usage
+		if !r.Exported {
+			legacy[k] = r
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("memory: load: %w", err)
 	}
+	ctx, cancel := ctxTimeout()
+	defer cancel()
+	for _, tenant := range d.Tenants() {
+		for _, tree := range d.Trees(tenant) {
+			if owner, ok := OwnerOf(tree); ok {
+				if err := s.load(ctx, tenant, owner); err != nil {
+					return nil, fmt.Errorf("memory: load %s: %w", tree.Key(), err)
+				}
+			}
+		}
+	}
+	keys := make([]string, 0, len(legacy))
+	for k := range legacy {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		tenant, owner, _ := strings.Cut(k, "\x00")
+		if err := s.export(tenant, owner, legacy[k]); err != nil {
+			return nil, fmt.Errorf("memory: export %q: %w", owner, err)
+		}
+	}
+	d.Watch(s.watch)
 	return s, nil
+}
+
+// export moves an owner's notes from before notes were files into its tree.
+func (s *Store) export(tenant, owner string, r stored) error {
+	notes := slices.Clone(r.Notes)
+	for i := range notes {
+		// The old list's order is the notes' order.
+		notes[i].seq = i + 1
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.next = max(s.next, len(notes))
+	return s.commit(tenant, owner, notes, max(s.next, r.Next), r.Origins, r)
 }
 
 func key(tenant, agent string) string { return tenant + "\x00" + agent }
@@ -168,23 +239,42 @@ func (s *Store) set(tenant, owner string, notes []Note, next int) error {
 }
 
 func (s *Store) setOrigins(tenant, owner string, notes []Note, next int, origins map[string]string) error {
+	k := key(tenant, owner)
+	return s.commit(tenant, owner, notes, next, origins, stored{Next: s.next, Origins: s.origins[k], Usage: s.usage[k], Exported: true})
+}
+
+// commit writes what is kept beside the files first, then the files. What is
+// beside them names notes by id and means nothing without them, so a failed
+// file write leaves it harmless; it is put back as prev all the same.
+func (s *Store) commit(tenant, owner string, notes []Note, next int, origins map[string]string, prev stored) error {
+	k := key(tenant, owner)
 	retained := map[string]string{}
+	used := map[string]usage{}
 	for _, n := range notes {
 		if origin := origins[n.ID]; origin != "" {
 			retained[n.ID] = origin
 		}
+		if n.Uses > 0 || !n.LastUsedAt.IsZero() {
+			used[n.ID] = usage{Uses: n.Uses, LastUsedAt: n.LastUsedAt}
+		}
 	}
-	if err := s.kept.Put(tenant, owner, stored{Notes: notes, Next: next, Origins: retained}); err != nil {
+	if err := s.kept.Put(tenant, owner, stored{Next: next, Origins: retained, Usage: used, Exported: true}); err != nil {
+		return fmt.Errorf("memory: write: %w", err)
+	}
+	if err := s.write(tenant, owner, notes); err != nil {
+		_ = s.kept.Put(tenant, owner, prev)
 		return fmt.Errorf("memory: write: %w", err)
 	}
 	s.next = next
-	s.origins[key(tenant, owner)] = retained
+	s.origins[k] = retained
+	s.usage[k] = used
 	if len(notes) == 0 {
-		delete(s.by, key(tenant, owner))
-		delete(s.origins, key(tenant, owner))
+		delete(s.by, k)
+		delete(s.origins, k)
+		delete(s.usage, k)
 		return nil
 	}
-	s.by[key(tenant, owner)] = notes
+	s.by[k] = notes
 	return nil
 }
 
@@ -248,7 +338,7 @@ func (s *Store) AddDetailed(tenant, agent, text string, source Source, status St
 		return Note{}, err
 	}
 	next := s.next + 1
-	note := Note{Details: details, ID: "m_" + rand.Text(), Text: text, Source: source, Status: status, By: by, At: at}
+	note := Note{Details: details, ID: "m_" + rand.Text(), Text: text, Source: source, Status: status, By: by, At: at, seq: next}
 	if status == Approved {
 		note.ReviewedBy = by
 		note.ReviewedAt = at
@@ -300,6 +390,7 @@ func (s *Store) Approve(tenant, agent string, ids []string, reviews ...Review) (
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	notes := s.by[key(tenant, agent)]
+	next := s.next
 	approved := 0
 	var refused error
 	for _, id := range ids {
@@ -314,6 +405,9 @@ func (s *Store) Approve(tenant, agent string, ids []string, reviews ...Review) (
 			break
 		}
 		note.Status = Approved
+		// An approved note goes to the end of the list, as it always has.
+		next++
+		note.seq = next
 		if len(reviews) == 1 {
 			note.ReviewedBy = reviews[0].By
 			note.ReviewedAt = reviews[0].At
@@ -322,7 +416,7 @@ func (s *Store) Approve(tenant, agent string, ids []string, reviews ...Review) (
 		approved++
 	}
 	if approved > 0 {
-		if err := s.set(tenant, agent, notes, s.next); err != nil {
+		if err := s.set(tenant, agent, notes, next); err != nil {
 			return 0, err
 		}
 	}
@@ -363,14 +457,32 @@ func (s *Store) List(tenant, agent string) []Note {
 	return slices.Clone(s.by[key(tenant, agent)])
 }
 
-// Drop forgets everything an owner holds, for when the owner is deleted.
+// Drop forgets everything an owner holds, for when the owner is deleted: its
+// tree, history included.
 func (s *Store) Drop(tenant, owner string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.by[key(tenant, owner)]; !ok {
+	k := key(tenant, owner)
+	if _, ok := s.by[k]; !ok {
 		return nil
 	}
-	return s.set(tenant, owner, nil, s.next)
+	tree, err := TreeOf(owner)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := ctxTimeout()
+	defer cancel()
+	if err := s.drive.Drop(ctx, tenant, tree, originMemory); err != nil {
+		return fmt.Errorf("memory: write: %w", err)
+	}
+	delete(s.by, k)
+	delete(s.origins, k)
+	delete(s.usage, k)
+	delete(s.props, k)
+	if err := s.kept.Put(tenant, owner, stored{Next: s.next, Exported: true}); err != nil {
+		return fmt.Errorf("memory: write: %w", err)
+	}
+	return nil
 }
 
 // Remove deletes one note.

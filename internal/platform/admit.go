@@ -74,14 +74,28 @@ func (p *Platform) admit(tag event.Envelope, edge call.Edge, project string, wit
 	chain := chainOf(project, within)
 	var d policy.Decision
 	var applied []policy.Applied
+	var roomErr error
 	in, full, err := p.Usage.AdmitQuotas(entry, func(read usage.Reader) (bool, error) {
 		var err error
 		if applied, err = p.appliedBy(read, tag.Tenant, chain, tag.Agent, client, now); err != nil {
 			return false, err
 		}
 		d = policy.Decide(applied, policy.Request{Lease: edge.Lease})
-		return d.Verdict != policy.Deny && d.Verdict != policy.NeedsApproval, nil
+		if d.Verdict == policy.Deny || d.Verdict == policy.NeedsApproval {
+			return false, nil
+		}
+		// A room's rate and a person's runs in flight, judged in the same
+		// step (rooms.go). A quota that refuses the run afterwards hands
+		// the person's place back below.
+		roomErr = p.admitRoom(tag, edge, project)
+		return roomErr == nil, nil
 	}, quotasOf(p.Policies.For(tag.Tenant, chain, tag.Agent, client), now))
+	if roomErr != nil {
+		return roomErr
+	}
+	if err != nil || !in {
+		p.unadmitRoom(tag, edge)
+	}
 	if err != nil {
 		// A run whose admission could not be kept is not let in: a restart
 		// would forget it was counted.

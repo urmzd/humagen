@@ -51,6 +51,7 @@ import {
 } from "./Plus.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
+import { followRoom } from "./roomFollow.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
@@ -499,7 +500,12 @@ export function ThreadRoom({
   // while that question still waits, and gone once anyone settles it.
   const [refusals, setRefusals] = useState<Record<string, Refusal>>({});
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
+  // What the conversation's own stream heard (roomFollow.ts): in a large
+  // room, a page every few seconds rather than each message.
+  const [heard, setHeard] = useState(0);
+  useEffect(() => followRoom(id, () => setHeard((n) => n + 1)), [id]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and heard are the refresh signals
   useEffect(() => {
     let live = true;
     coworking
@@ -513,7 +519,7 @@ export function ThreadRoom({
     return () => {
       live = false;
     };
-  }, [id, tick]);
+  }, [id, tick, heard]);
 
   const loadEarlier = () => {
     if (!before) return;

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -15,8 +16,9 @@ import (
 func TestReviewedOriginIsAtomicPrivateAndNeverInferredOrCopied(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
+		blobs := blob.NewMemory()
 		fault := statetest.NewFaulty(st)
-		s, err := memory.Open(fault)
+		s, err := memory.OpenOn(fault, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +56,7 @@ func TestReviewedOriginIsAtomicPrivateAndNeverInferredOrCopied(t *testing.T) {
 		if _, err := s.AddDetailed("tenant", memory.ProjectOwner("public"), n.Text, memory.Person, memory.Pending, "ada", at, n.Details); err != nil {
 			t.Fatal(err)
 		}
-		replay, err := memory.Open(st)
+		replay, err := memory.OpenOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}

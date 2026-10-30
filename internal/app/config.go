@@ -29,6 +29,7 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/spec"
 )
 
@@ -232,10 +233,30 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	}
 	set("bus", sp.Bus.Kind)
 
+	switch sp.Sandbox.Kind {
+	case "docker":
+		b, _ := spec.Block[spec.DockerSandbox](sp.Sandbox)
+		set("sandbox", "docker")
+		set("sandbox-runtime", b.Runtime)
+		set("sandbox-image", b.Image)
+		set("sandbox-connectors-image", b.ConnectorsImage)
+		set("sandbox-work-root", b.WorkRoot)
+	case "local":
+		b, _ := spec.Block[spec.LocalSandbox](sp.Sandbox)
+		set("sandbox", "local")
+		set("sandbox-work-root", b.Dir)
+	default:
+		set("sandbox", sp.Sandbox.Kind)
+	}
+
 	set("workspace", sp.Execution.Workspace)
 	set("concurrency", strconv.Itoa(sp.Execution.Concurrency))
 	set("max-depth", strconv.Itoa(sp.Execution.MaxDepth))
 	set("max-fan-out", strconv.Itoa(sp.Execution.MaxFanOut))
+	set("room-coalesce-above", strconv.Itoa(sp.Rooms.CoalesceAbove))
+	set("room-tail-interval", sp.Rooms.TailInterval)
+	set("room-max-runs-per-minute", strconv.Itoa(sp.Rooms.MaxRunsPerMinute))
+	set("room-max-runs-per-person", strconv.Itoa(sp.Rooms.MaxRunsPerPerson))
 	set("builtin-provider", sp.Execution.Builtin.Provider)
 	set("builtin-model", sp.Execution.Builtin.Model)
 	if len(sp.SecretEnv) > 0 {
@@ -385,6 +406,9 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 	}
 	for _, doc := range cfg.Platforms {
 		tenant := doc.Metadata.Name
+		if err := applyRunSettings(p, tenant, doc.Spec.Workspace); err != nil {
+			return err
+		}
 		if err := applyProjects(p, tenant, doc.Spec.Workspace); err != nil {
 			return err
 		}
@@ -469,6 +493,26 @@ func applyWorkspace(ctx context.Context, p *platform.Platform, doc spec.Platform
 	}
 	if err := p.SetSettings(ctx, tenant, s); err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
+	}
+	return nil
+}
+
+// applyRunSettings hands the platform the file's run settings: the
+// workspace's and each project's. They are the file's alone, so a project
+// the file leaves out, or one only the console made, sets none.
+func applyRunSettings(p *platform.Platform, tenant string, w spec.Workspace) error {
+	var workspace settings.Layer
+	if w.Run != nil {
+		workspace = *w.Run
+	}
+	byProject := map[string]settings.Layer{}
+	for _, pr := range w.Projects {
+		if pr.Run != nil {
+			byProject[pr.Name] = *pr.Run
+		}
+	}
+	if err := p.SetRunSettings(tenant, workspace, byProject); err != nil {
+		return fmt.Errorf("platform %q: %w", tenant, err)
 	}
 	return nil
 }

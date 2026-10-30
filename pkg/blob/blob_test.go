@@ -10,6 +10,8 @@ import (
 
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/blob/blobtest"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 func TestMemory(t *testing.T) {
@@ -67,4 +69,10 @@ func TestDiskDoesNotFollowLinksOut(t *testing.T) {
 	if len(list) != 1 || list[0].Key != "real" {
 		t.Errorf("list follows links: %+v", list)
 	}
+}
+
+func TestState(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		blobtest.Run(t, func(t *testing.T) blob.Store { return blob.NewState(open(t)) })
+	})
 }

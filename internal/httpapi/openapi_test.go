@@ -45,6 +45,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
@@ -54,10 +55,13 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/notifications"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -596,13 +600,13 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
-		"Note": {typ: noteView{}}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
+		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
 		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
-		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}},
+		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
 		"ThreadShare": {typ: platform.ThreadShare{}, written: true}, "ThreadNotAdded": {typ: platform.NotAdded{}},
@@ -630,7 +634,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
-		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true},
+		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true}, "PersonContext": {typ: personctx.Context{}}, "PersonContextInput": {typ: personctx.Input{}, written: true}, "PersonToolServer": {typ: personctx.ToolServer{}}, "RunSettings": {typ: settings.Layer{}}, "RunCeilings": {typ: settings.Ceilings{}}, "RunPreferences": {typ: settings.Preferences{}},
 		"RunFeedback": {typ: shownFeedback{}}, "Attachment": {typ: attachment.Attachment{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inboxNotice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
@@ -936,7 +940,7 @@ func (c *contract) sweep(tok string) {
 		if op.path == "/api/events" || needsQuery(op) {
 			continue
 		}
-		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" {
+		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" || op.path == "/api/me/context" {
 			c.call(tok, "GET", op.path, op.path, "", http.StatusForbidden)
 			continue
 		}
@@ -1061,6 +1065,37 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/"+personalNote.str("id"), "", http.StatusNoContent)
 	c.call(auditAdmin, "DELETE", "/api/me/memory/{id}", "/api/me/memory/missing", "", http.StatusNotFound)
+	// The note was a file: written, corrected and removed, three versions.
+	const files, content, history = "/api/memory/files", "/api/memory/files/content", "/api/memory/files/history"
+	c.call(auditAdmin, "GET", files, files+"?scope=me", "", http.StatusOK)
+	c.call(auditAdmin, "GET", files, files+"?scope=me&version=1", "", http.StatusOK)
+	c.call(auditAdmin, "GET", files, files+"?scope=nowhere", "", http.StatusBadRequest)
+	c.call(acme, "GET", files, files+"?scope=me", "", http.StatusNotFound)
+	c.call(auditAdmin, "GET", content, content+"?scope=me&version=1&file=notes/"+personalNote.str("id")+".md", "", http.StatusOK)
+	c.call(auditAdmin, "GET", content, content+"?scope=me&file=../x", "", http.StatusBadRequest)
+	c.call(auditAdmin, "GET", content, content+"?scope=me&file=notes/missing.md", "", http.StatusNotFound)
+	c.call(auditAdmin, "GET", history, history+"?scope=me&limit=2", "", http.StatusOK)
+	c.call(auditAdmin, "GET", history, history+"?scope=me&limit=101", "", http.StatusBadRequest)
+	c.call(acme, "GET", history, history+"?scope=me", "", http.StatusNotFound)
+	restored := c.call(auditAdmin, "POST", "/api/memory/files/restore", "/api/memory/files/restore", `{"scope":"me","version":2}`, http.StatusOK)
+	if len(sliceOf(restored.field("entries"))) != 1 {
+		t.Errorf("the restored tree holds %v", restored.field("entries"))
+	}
+	c.call(auditAdmin, "POST", "/api/memory/files/restore", "/api/memory/files/restore", `{"scope":"me","version":0}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/memory/files/restore", "/api/memory/files/restore", `{"scope":"me","version":1}`, http.StatusNotFound)
+	const decide = "/api/memory/files/proposals/{id}"
+	proposal, err := f.p.Drive.Propose(t.Context(), "acme", drive.System, drive.Person("audit-admin"), drive.ProposeInput{Changes: []drive.Change{{Path: "plan.md", Data: []byte("Draft plan")}}, By: "run-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"maybe"}`, http.StatusBadRequest)
+	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"approve"}`, http.StatusOK)
+	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"discard"}`, http.StatusNotFound)
+	found := c.call(auditAdmin, "GET", "/api/memory/search", "/api/memory/search?q=concise", "", http.StatusOK)
+	if len(sliceOf(found.field("hits"))) != 1 {
+		t.Errorf("search found %v", found.field("hits"))
+	}
+	c.call(auditAdmin, "GET", "/api/memory/search", "/api/memory/search?q=x&limit=500", "", http.StatusBadRequest)
 	c.sweep(globex)
 	c.call("", "GET", "/api/me", "/api/me", "", http.StatusUnauthorized)
 	c.call(f.machine(t, "acme"), "GET", "/api/agents", "/api/agents", "", http.StatusForbidden)
@@ -1092,6 +1127,20 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
+
+	// A person's own context: theirs to read and narrow, a reference under
+	// their own start, the version they read.
+	if got := c.call(ana, "GET", "/api/me/context", "/api/me/context", "", http.StatusOK); fmt.Sprint(got.field("version")) != "0" {
+		t.Fatalf("an unwritten context = %s", got.raw)
+	}
+	context := `{"version":0,"run":{"ceilings":{"tools":["file_read"],"call_depth":1},"preferences":{"model":"anthropic/claude","compaction_tokens":40000}},"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"op://People/ana/notes"}]}`
+	if set := c.call(ana, "PUT", "/api/me/context", "/api/me/context", context, http.StatusOK); fmt.Sprint(set.field("version")) != "1" || set.str("memory") == "" {
+		t.Fatalf("set context = %s", set.raw)
+	}
+	c.call(ana, "PUT", "/api/me/context", "/api/me/context", context, http.StatusConflict)
+	c.call(ana, "PUT", "/api/me/context", "/api/me/context", `{"version":1,"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"op://People/ben/notes"}]}`, http.StatusBadRequest)
+	c.call(ana, "PUT", "/api/me/context", "/api/me/context", `{"version":1,"tool_servers":[{"name":"notes","url":"https://mcp.example.com","credential":"tok-raw-secret"}]}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/me/context", "/api/me/context", `{"version":0}`, http.StatusForbidden)
 
 	// Explicit copies never activate learning without destination review.
 	promotionNote, err := f.p.Memory.Add("acme", memory.PersonalOwner("ana"), "Review product outcomes", memory.Person, memory.Approved, "ana", time.Now())
@@ -2390,6 +2439,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/share":      `{}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
+		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)

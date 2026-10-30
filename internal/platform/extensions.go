@@ -170,7 +170,14 @@ func (p *Platform) toolGroups(ctx context.Context) (runtime.ToolGroupSource, fun
 	if resolver == nil {
 		resolver = mcptools.EnvResolver()
 	}
-	dial := mcptools.Dialer(mcptools.WithResolver(resolver), mcptools.WithLogger(p.log))
+	opts := []mcptools.Option{mcptools.WithResolver(resolver), mcptools.WithLogger(p.log)}
+	if p.cfg.Sandbox.Isolated() {
+		// A stdio server dialled outside a run, to review or seed a
+		// provider, runs in an instance of its own; one dialled for an
+		// isolated run runs in the run's.
+		opts = append(opts, mcptools.WithLeaser(p.cfg.Sandbox.Leaser))
+	}
+	dial := mcptools.Dialer(opts...)
 	// A person-scoped provider is reached with the credential of the person
 	// the run acts for, and the person sessions are bounded by fiber.
 	grants := mcptools.NewGrants(store, dial, mcptools.WithPersonResolver(mcptools.PersonResolverFunc(p.personCredential)))

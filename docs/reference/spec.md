@@ -79,7 +79,9 @@ spec:
   bus:                      # slot: memory | postgres. Leave it out and it
     kind: postgres          # follows the stores: postgres on Postgres stores
 
-  blobs:                    # slot: disk | memory | s3
+  blobs:                    # slot: disk | memory | s3. Published files and
+                            # memory's content. With memory, memory's content
+                            # is kept with the stores instead
     kind: s3
     s3:
       bucket: humagen-files
@@ -96,6 +98,22 @@ spec:
     max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
     max_fan_out: 16
     builtin: {provider: "", model: ""}       # the platform's own agents
+
+  sandbox:                  # slot: docker | local | unisolated. Where a run's tools execute
+    kind: docker            # the default: an instance per run, destroyed when the run ends
+    docker:
+      runtime: runsc        # gVisor, the default; runc shares the host's kernel and is for trusted tools
+      image: python:3.13-alpine           # the shell and the file tools; needs sh and sleep
+      connectors_image: node:22-alpine    # stdio MCP servers; empty is image
+      work_root: ""         # empty is humagen/sandbox in the user cache directory
+      warm: 1               # instances kept started ahead of runs, per shape
+      max: 64               # every instance at once
+
+  rooms:                    # a conversation with many readers (RFC 0004); each default is far above an ordinary one
+    coalesce_above: 200     # readers on one server above which each is sent at once only what involves them, the rest as a page
+    tail_interval: 3s       # how often a large conversation's page is sent: 500ms to 1m
+    max_runs_per_minute: 600   # runs one conversation starts in any minute
+    max_runs_per_person: 25    # runs one person has in flight at once
 
   secret_env:               # variables a workspace's clients may reference, by tenant
     default: [HUMAGEN_SLACK_TOKEN]
@@ -149,6 +167,66 @@ count and an inbox link, with event kinds and email off by default. The explicit
 credentials. See [Email notifications](../guides/email-notifications.md) for quiet hours,
 retry behavior and consent records.
 
+### Sandbox
+
+Every run's tools execute in an instance of the run's own (RFC 0004): the
+file tools work in its work directory, the `shell` tool runs there, and stdio
+MCP servers run in its connectors compartment, which holds their credentials
+where code in the workload cannot read them. The agent loop and the model
+keys stay in the server. An instance is leased on a run's first tool, never
+shared with another run (a run another agent calls gets its own), and
+destroyed when the run ends, however it ends. Its work directory starts from
+the conversation's files and is written back to them at the end, so a
+follow-up turn sees what the last one wrote.
+
+| `sandbox.kind` | Where tools run | Use |
+|----------------|-----------------|-----|
+| `docker` (default) | Containers with no network, a read-only root, no capabilities, a non-root user and resource limits, on `runtime: runsc` (gVisor) unless it says `runc` | Production |
+| `local` | Host processes, with the server's privileges, in a directory laid out like an instance. The shell works | Development without Docker |
+| `unisolated` | This host, as before the sandbox: files in the conversation's directory, stdio servers as host processes. The shell is refused | Development and tests |
+
+The server says at start which one it runs. `local` and `unisolated` are
+never chosen for you: name them in the spec or with `-sandbox`. `humagen
+start` and the `make dev` targets use `docker` with `runc`, the runtime
+Docker has on a developer's machine. A `docker` sandbox whose CLI is missing
+does not stop the server: it logs why, and every tool that needs an instance
+refuses with that reason; nothing falls back to the host. A server in a
+container needs the Docker CLI and a daemon it may use (a mounted socket) to
+run tools. **Giving Humagen the Docker socket is root on that host**:
+whoever can start containers through it can mount the host's filesystem. So
+the `docker` driver is for a host that exists to run sandboxes, not a shared
+server or a Kubernetes node; the chart and the compose stack set
+`unisolated` explicitly for that reason. A remote or Kubernetes driver,
+which starts instances somewhere Humagen holds no root, is the production
+target and is not built yet. Until the egress gate lands, an instance has no network at all,
+so a stdio MCP server that calls an API cannot reach it under `docker`.
+
+Flags override the block: `-sandbox`, `-sandbox-runtime`, `-sandbox-image`,
+`-sandbox-connectors-image` and `-sandbox-work-root`. A binary can register
+another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
+factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
+
+### Rooms
+
+`rooms` protects the server from a conversation with a great many readers
+(RFC 0004, "A million people in one room"). A conversation's stream
+(`GET /api/events?thread=<id>`) is sent every event as it happens while the
+conversation has at most `coalesce_above` readers on the server. Past that,
+each reader is sent at once only the messages they posted or are named in,
+the runs they asked for and the questions put to them, and the rest as one
+page every `tail_interval`, which says how much happened; the console then
+reads the conversation's newest turns. What one server delivers each second
+is then bounded by the events that involve someone plus the readers divided
+by the interval, whatever the conversation's message rate.
+
+`max_runs_per_minute` and `max_runs_per_person` are admission limits beside
+a workspace's policies: a run past either is refused with 429 and a
+`Refusal` whose `limit` is `room_rate` or `person_runs`, and a tag in a
+message past them is refused in the message's `refused`. Only a run a person
+or a surface started counts: a call between agents is its root's work, and a
+schedule's or an eval's run is asked by nobody. With `stores.kind: postgres`
+the counts are shared by every replica.
+
 ## Platform
 
 One document per workspace. `metadata.name` is its tenant.
@@ -174,6 +252,9 @@ spec:
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]   # the workspace's own
     project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
     agent_posts: review     # what agents scheduled in the workspace itself post waits for its owners
+    run:                    # every run's settings: ceilings bound it, preferences choose within them
+      ceilings: {models: ["anthropic/*", "gemini/*"], call_depth: 2, tool_servers: [mcp.acme.example]}
+      preferences: {model: anthropic/claude-sonnet-4-5}
     projects:               # merged into the tree at every start, parents first
       - {name: Launch, description: Everything for the Q4 launch}
       - name: Field
@@ -186,6 +267,9 @@ spec:
           - {name: review, description: Review a renewal., argument_hint: "[account]", instructions: Check the renewal terms against the contract and list what changed.}
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
         agent_posts: publish  # what its scheduled agents post goes out at once
+        run:                  # tightens the workspace's for runs filed here and below
+          ceilings: {tools: [file_read, file_list, "mcp:github"], call_depth: 1}
+          preferences: {compaction_tokens: 120000}
         schedules:            # the file's: filed here, paused and run in the console, changed only here
           - {name: field-recap, cron: "41 8 * * 1", agent: humagen-analyst, text: "What changed in Field this week?", deliver: project}
       - name: Globex
@@ -538,6 +622,42 @@ names another kind or parent for a project that already exists changes it as
 the console's move would, under the same rules: a move into its own subtree,
 past four levels, or that breaks a kind or openness rule fails the start.
 
+### Run settings
+
+`run` on `workspace` or on a project sets what every run filed there and
+below may do, and what it prefers. A person adds their own level through
+`PUT /api/me/context`. Each setting is one of two kinds:
+
+| Setting | Kind | Left out everywhere | Rule |
+|---------|------|---------------------|------|
+| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none |
+| `ceilings.models` | ceiling | narrows nothing | at most 64 `provider/model`, or `provider/*` for all of a provider's. The run's model and fallbacks outside it are dropped, and a run with none left is refused |
+| `ceilings.call_depth` | ceiling | the deployment's depth | 0 to 16: how deep a run's calls to other agents may go. 0 calls none. It never deepens the deployment's own limit |
+| `ceilings.tool_servers` | ceiling | none | at most 64 hosts, in lower case, a person's own tool servers may be on. Default deny: only `workspace.run` opens it, and a project or a person only narrows it |
+| `preferences.model` | preference | the agent's model | `provider/model`, or `policy/<name>` for one of the workspace's model policies, used in place of the agent's own. One the ceilings do not allow is passed over |
+| `preferences.compaction_tokens` | preference | never compacts | 1,024 to 2,000,000: the input size, in tokens, past which a run's history is summarized before its next model call |
+
+A **ceiling** is held by the strictest level: the workspace, each project from
+the root down to the run's, then the person. A level below can only tighten
+it. A **preference** is taken from the nearest level that sets one the
+ceilings allow: the person, the run's project, each project above it, the
+workspace, then the default.
+
+The settings are resolved once, when a run is admitted, together with who it
+acts for (whoever posted the message that started it, in a shared thread
+too), that person's tool servers on the allowed hosts and their memory
+volume. The result is pinned to the run with a digest, as its agent's
+definition is: a retry or a replay sees exactly what the first attempt saw,
+and a change made while the run works reaches only the runs after it. A run
+another agent calls inherits its caller's context and can only narrow it.
+A run acting for a person may call only agents that person may read.
+
+A person's own tool servers are kept as an https address and a credential
+reference, never a secret, and the reference must be under the person's own
+start (System `person_refs`). They are pinned to the run but not yet
+connected: they wait for the sandbox's connector compartment
+([RFC 0004](../rfcs/0004-isolated-runs-and-person-context.md)).
+
 ### Channels and experts
 
 Every project, the workspace included, has a `general` channel, and at most
@@ -645,6 +765,11 @@ Both are checked again on every run, so a value is not used once values are
 turned off, and a reference is not used once it is no longer the person's
 own under a listed start.
 
+Memory is files ([RFC 0004](../rfcs/0004-isolated-runs-and-person-context.md#memory)):
+an agent's notes, a project's and a person's own are each a versioned tree,
+whose files an agent with the `memory_search` tool can search. Nothing in the
+spec configures it beyond `blobs`.
+
 What a person's tools found is not remembered. Memory is shared: an agent's
 notes are sent to every run of that agent, and a project's to every run in
 it and below it, whoever the run acts for. So the memory agent is not asked
@@ -735,6 +860,8 @@ no longer shows it. The log lines each inbox decision writes
 | Sign-in and the identity provider | System | one per process |
 | Stores, bus, files | System | where state lives is the operator's choice |
 | Concurrency, depth and fan-out | System | protects the process |
+| Where a run's tools execute (`sandbox`) | System | the isolation boundary is the host's |
+| A conversation's readers, run rate and runs per person (`rooms`) | System | protects the process |
 | Variables a workspace may reference | System | the environment is the process's |
 | Where people may keep their own tool credentials (`person_refs`) | System | a reference is read with the process's own access |
 | Whether people may store a tool credential's value (`workspace.person_credentials`) | Platform | it is the workspace's people's data |
@@ -750,6 +877,7 @@ no longer shows it. The log lines each inbox decision writes
 | History | Platform | how it behaves |
 | Project tree, kinds, instructions, channels, experts, knowledge sources, skills, mention kinds and which agents are available where | Platform | the workspace's own |
 | Spend and run limits | Platform, in the console | versioned, scoped policies (`pkg/policy`) |
+| Ceilings and preferences of every run (`workspace.run`, a project's `run`) | Platform, then each person | the strictest ceiling and the nearest preference win |
 
 ## Deploying it
 

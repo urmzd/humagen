@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -12,7 +13,8 @@ import (
 func TestRestart(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
-		s, err := Open(st)
+		blobs := blob.NewMemory()
+		s, err := openOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -30,7 +32,7 @@ func TestRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		again, err := Open(st)
+		again, err := openOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,7 +53,7 @@ func TestRestart(t *testing.T) {
 
 func TestFailedWriteChangesNothing(t *testing.T) {
 	f := statetest.NewFaulty(state.NewMemory())
-	s, _ := Open(f)
+	s, _ := openOn(f, blob.NewMemory())
 	a, _ := s.Add("acme", "lead", "Kept.", Person, Approved, "ada", now)
 	f.Fail(statetest.ErrInjected)
 	if _, err := s.Add("acme", "lead", "Lost.", Person, Approved, "ada", now); !errors.Is(err, statetest.ErrInjected) {
@@ -73,7 +75,8 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 func TestPublicMemoryIDsRevealNoPrivateSequence(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
-		s, err := Open(st)
+		blobs := blob.NewMemory()
+		s, err := openOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,7 +94,7 @@ func TestPublicMemoryIDsRevealNoPrivateSequence(t *testing.T) {
 		if !strings.HasPrefix(a.ID, "m_") || !strings.HasPrefix(b.ID, "m_") || a.ID == b.ID {
 			t.Fatalf("public IDs expose a sequence: %q %q", a.ID, b.ID)
 		}
-		replay, err := Open(st)
+		replay, err := openOn(st, blobs)
 		if err != nil {
 			t.Fatal(err)
 		}

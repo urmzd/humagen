@@ -45,7 +45,9 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 	}
 	// Example agents are seeded only when nothing is configured: a spec
 	// declares its own agents.
-	d := serveDefaults{auth: "dev", seed: true, web: webDir(os.Getenv), notes: out}
+	// On the developer's own machine runc is the runtime Docker has; a
+	// server defaults to runsc.
+	d := serveDefaults{auth: "dev", seed: true, web: webDir(os.Getenv), notes: out, sandboxRuntime: "runc"}
 	if len(scanFiles(rest)) > 0 {
 		d.seed = false
 	} else {

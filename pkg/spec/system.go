@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/bus"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/rooms"
 )
 
 // Slot names, for a binary registering a kind.
@@ -20,6 +22,7 @@ const (
 	SlotBlobs      = "blobs"
 	SlotExtensions = "extensions"
 	SlotDeploy     = "deploy"
+	SlotSandbox    = "sandbox"
 	SlotModels     = "models"
 	SlotTools      = "tools"
 )
@@ -33,6 +36,7 @@ var Builtin = map[string][]string{
 	SlotBlobs:      {"disk", "memory", "s3"},
 	SlotExtensions: {},
 	SlotDeploy:     {"local", "compose", "kubernetes"},
+	SlotSandbox:    {"docker", "local", "unisolated"},
 	SlotModels:     {"anthropic", "openai", "google"},
 	SlotTools:      {"mcp"},
 }
@@ -54,7 +58,15 @@ type SystemSpec struct {
 	Bus           Slot                 `json:"bus,omitzero"`
 	Blobs         Slot                 `json:"blobs,omitzero"`
 	Execution     Execution            `json:"execution,omitzero"`
-	SecretEnv     map[string][]string  `json:"secret_env,omitempty"`
+	// Sandbox is where a run's tools execute: the file tools, the shell
+	// and stdio MCP servers, in an instance of the run's own. docker (the
+	// default, with the runsc runtime) isolates them; local and
+	// unisolated run them on this host and are for development only.
+	Sandbox   Slot                `json:"sandbox,omitzero"`
+	SecretEnv map[string][]string `json:"secret_env,omitempty"`
+	// Rooms is how a conversation with many readers is read, and how fast
+	// runs start in it (RFC 0004).
+	Rooms Rooms `json:"rooms,omitzero"`
 	// PersonRefs is where each workspace's people may keep their own tool
 	// credentials, by tenant: how the references they give may start, each
 	// naming the person whose references it holds with {subject}
@@ -183,6 +195,52 @@ type Disk struct {
 	Dir string `json:"dir,omitempty"`
 }
 
+// DockerSandbox is the docker sandbox kind's block. Each run's tools
+// execute in containers of their own: no network, a read-only root, no
+// capabilities, a non-root user, and CPU, memory, process and disk limits.
+type DockerSandbox struct {
+	// Runtime is the OCI runtime: runsc (gVisor, the default) or runc,
+	// which shares the host's kernel and is for trusted tools.
+	Runtime string `json:"runtime,omitempty"`
+	// Image is the workload's image: it must have sh and sleep. Empty is
+	// DefaultSandboxImage.
+	Image string `json:"image,omitempty"`
+	// ConnectorsImage is where stdio MCP servers run, which must have
+	// their commands. Empty is Image.
+	ConnectorsImage string `json:"connectors_image,omitempty"`
+	// WorkRoot is the host directory the runs' work directories are made
+	// in, which the Docker daemon must be able to mount. Empty is
+	// humagen/sandbox in the user cache directory.
+	WorkRoot string `json:"work_root,omitempty"`
+	// Warm is how many instances are kept started ahead of runs, per
+	// shape; Max bounds every instance at once. Zero is playscape's
+	// default (1 and 64).
+	Warm int `json:"warm,omitempty"`
+	Max  int `json:"max,omitempty"`
+}
+
+// LocalSandbox is the local sandbox kind's block. Its instances are NOT
+// isolated: a run's tools execute as host processes with the server's
+// privileges, in a directory laid out like an instance. It gives the shell
+// on a machine without Docker, and is for development only.
+type LocalSandbox struct {
+	// Dir is where instance directories are made. Empty is
+	// humagen/sandbox in the user cache directory.
+	Dir string `json:"dir,omitempty"`
+}
+
+var runtimeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// DefaultSandboxImage is the docker sandbox's image when the spec names
+// none: a shell, the busybox tools and python3.
+const DefaultSandboxImage = "python:3.13-alpine"
+
+// Sandbox runtimes the docker kind knows by name.
+const (
+	RuntimeGVisor = "runsc"
+	RuntimeRunc   = "runc"
+)
+
 // S3 is the s3 blob kind's block.
 type S3 struct {
 	Bucket    string `json:"bucket"`
@@ -201,6 +259,41 @@ type Execution struct {
 	MaxDepth    int          `json:"max_depth,omitempty"`
 	MaxFanOut   int          `json:"max_fan_out,omitempty"`
 	Builtin     BuiltinModel `json:"builtin,omitzero"`
+}
+
+// Rooms is how a conversation with many readers is read, and how fast runs
+// start in it (pkg/rooms). Each default is far above what an ordinary
+// conversation reaches, so leaving it out changes nothing for one.
+type Rooms struct {
+	// CoalesceAbove is how many readers a conversation has on one server
+	// before each is sent at once only what involves them, and the rest as
+	// a page every TailInterval. Left out, 200.
+	CoalesceAbove int `json:"coalesce_above,omitempty"`
+	// TailInterval is how often a large conversation's page is sent, a Go
+	// duration from 500ms to 1m. Left out, 3s.
+	TailInterval string `json:"tail_interval,omitempty"`
+	// MaxRunsPerMinute is how many runs one conversation starts in any
+	// minute. Left out, 600.
+	MaxRunsPerMinute int `json:"max_runs_per_minute,omitempty"`
+	// MaxRunsPerPerson is how many runs one person has in flight at once.
+	// Left out, 25.
+	MaxRunsPerPerson int `json:"max_runs_per_person,omitempty"`
+}
+
+// Config is the rooms block as pkg/rooms reads it, its defaults filled.
+func (r Rooms) Config() (rooms.Config, error) {
+	c := rooms.Config{CoalesceAbove: r.CoalesceAbove, RoomRunsPerMinute: r.MaxRunsPerMinute, PersonRuns: r.MaxRunsPerPerson}
+	if r.TailInterval != "" {
+		d, err := time.ParseDuration(r.TailInterval)
+		if err != nil {
+			return c, fmt.Errorf("rooms: tail_interval %q is not a duration, such as 3s", r.TailInterval)
+		}
+		c.TailInterval = d
+	}
+	if err := c.Check(); err != nil {
+		return c, err
+	}
+	return c.Defaults(), nil
 }
 
 // BuiltinModel is the model the platform's own agents run on.
@@ -263,6 +356,18 @@ func (s *System) Defaults() {
 	if sp.Execution.Concurrency == 0 {
 		sp.Execution.Concurrency = 4
 	}
+	if sp.Rooms.CoalesceAbove == 0 {
+		sp.Rooms.CoalesceAbove = rooms.DefaultCoalesceAbove
+	}
+	if sp.Rooms.TailInterval == "" {
+		sp.Rooms.TailInterval = rooms.DefaultTailInterval.String()
+	}
+	if sp.Rooms.MaxRunsPerMinute == 0 {
+		sp.Rooms.MaxRunsPerMinute = rooms.DefaultRoomRunsPerMinute
+	}
+	if sp.Rooms.MaxRunsPerPerson == 0 {
+		sp.Rooms.MaxRunsPerPerson = rooms.DefaultPersonRuns
+	}
 }
 
 // Tenant is the fixed tenant, or empty when it comes from a claim.
@@ -305,7 +410,7 @@ func (s System) check(kinds Kinds) error {
 	slots := []struct {
 		name string
 		slot Slot
-	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotDeploy, sp.Deploy}}
+	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotDeploy, sp.Deploy}, {SlotSandbox, sp.Sandbox}}
 	for _, e := range sp.Extensions {
 		slots = append(slots, struct {
 			name string
@@ -316,6 +421,9 @@ func (s System) check(kinds Kinds) error {
 	// more, so the deepest child must stay within the bus's hop limit.
 	if d := sp.Execution.MaxDepth; d < 0 || d > bus.DefaultMaxHops-1 {
 		return fmt.Errorf("system: execution.max_depth: %d is outside 1 to %d, the bus's hop limit less one", d, bus.DefaultMaxHops-1)
+	}
+	if _, err := sp.Rooms.Config(); err != nil {
+		return fmt.Errorf("system: %w", err)
 	}
 	if sp.Bus.Kind == "redis" {
 		return errors.New("system: bus: the redis bus was removed; use kind: postgres, which shares the stores' database, or leave bus out")
@@ -335,7 +443,7 @@ func (s System) check(kinds Kinds) error {
 // checked when the file is read.
 func builtinBlock(slot, kind string) (any, bool) {
 	switch slot + "." + kind {
-	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local":
+	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local", "sandbox.unisolated":
 		return &struct{}{}, true
 	case "deploy.compose":
 		return &Compose{}, true
@@ -358,6 +466,10 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &ModelBlock{}, true
 	case "tools.mcp":
 		return &MCP{}, true
+	case "sandbox.docker":
+		return &DockerSandbox{}, true
+	case "sandbox.local":
+		return &LocalSandbox{}, true
 	}
 	return nil, false
 }
@@ -397,6 +509,13 @@ func checkBlock(where string, blk any) error {
 	case *URLBlock:
 		if !b.URL.Set() {
 			return fmt.Errorf("%s: url is required, as {ref: env:NAME}", where)
+		}
+	case *DockerSandbox:
+		if b.Runtime != "" && !runtimeName.MatchString(b.Runtime) {
+			return fmt.Errorf("%s: runtime %q is not a runtime's name", where, b.Runtime)
+		}
+		if b.Warm < 0 || b.Max < 0 || (b.Max > 0 && b.Warm > b.Max) {
+			return fmt.Errorf("%s: warm and max are counts, and warm is at most max", where)
 		}
 	case *S3:
 		if b.Bucket == "" {

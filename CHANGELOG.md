@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.44.0 (2026-10-30)
+
+### Features
+
+- run a run's tools in its isolated instance (RFC 0004, layer 4) (#127) ([3b4f288](https://github.com/urmzd/humagen/commit/3b4f2883246f9d5cb7bde39435f219ed73488cc3))
+- **console**: keep the New Source intro fixed while the catalog scrolls (#129) ([cd683a8](https://github.com/urmzd/humagen/commit/cd683a8e8e9fdd4c9a5064f087a25f3201dfb36f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.43.0...v0.44.0)
+
+
+## 0.42.0 (2026-10-30)
+
+### Features
+
+- memory as files (RFC 0004, change 6) (#128) ([7e5c673](https://github.com/urmzd/humagen/commit/7e5c673e6b0ac70c5dff615438accab1b0756541))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.41.0...v0.42.0)
+
+
+## 0.41.0 (2026-10-30)
+
+### Features
+
+- **rooms**: large rooms, coalesced reads and per-room admission (RFC 0004) (#125) ([f28d631](https://github.com/urmzd/humagen/commit/f28d6318dc645bdaad024cf4e0c1472c5f9c3423))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.40.0...v0.41.0)
+
+
+## 0.40.0 (2026-10-30)
+
+### Features
+
+- run context, person store and setting kinds (RFC 0004, change 5) (#122) ([06a5051](https://github.com/urmzd/humagen/commit/06a5051a478ee115d95be63da7f742b60dd3d3b7))
+
+### Misc
+
+- **deps**: skip npm versions younger than 24h (#123) ([3b66823](https://github.com/urmzd/humagen/commit/3b66823e8ebc2c8f03a846688674e893c4a76940))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.39.0...v0.40.0)
+
+
+## 0.39.0 (2026-10-30)
+
+### Features
+
+- **usage**: keep admission and spend counts in the shared store (#120) ([f62b3a2](https://github.com/urmzd/humagen/commit/f62b3a2a6835d2dc05186b324b74a5c1a927c60e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.38.2...v0.39.0)
+
+
 ## 0.38.2 (2026-10-30)
 
 ### Bug Fixes
