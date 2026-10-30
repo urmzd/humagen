@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.46.2 (2026-10-30)
+
+### Bug Fixes
+
+- **turn/native**: fold a compact request that arrived before the next model call (#136) ([bf27190](https://github.com/urmzd/humagen/commit/bf27190ad52eefc6aeb10a4dcc974a62f8e422b2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.46.1...v0.46.2)
+
+
 ## 0.46.1 (2026-10-30)
 
 [Full Changelog](https://github.com/urmzd/humagen/compare/v0.46.0...v0.46.1)
