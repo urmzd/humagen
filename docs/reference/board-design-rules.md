@@ -1,6 +1,8 @@
 # Humagen design rules for every board
 
-Reference boards: boards/Main.html, boards/OpsAgents.html, boards/AgentDetail.html, boards/OpsContext.html.
+The boards these rules governed, and their GitHub Pages site, were removed on
+October 30, 2026. The rules stay as the design record that RFC 0001 and the gap
+analysis refer to.
 
 ## Format
 - Each board = one `.html` file in `boards/`: `assets/boards.css` and `assets/boards.js` in the head, the markup in `<template data-board>` (with a `<helmet>` for fonts and page basics), and one `<script type="text/x-dc" data-props='{...}'>` holding `class Component extends DCLogic` with `renderVals()`. `boards.js` renders the template and re-renders on `setState`.

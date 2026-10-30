@@ -4,7 +4,7 @@ Humagen defines each agent concept once, in `@humagen/core`, and draws it on the
 
 - **Web**: `@humagen/render-web` (primitives), `@humagen/web` (web-only: composer, orb, status line, rail, preview)
 - **Slack**: `@humagen/render-slack` (Block Kit, streaming, lifecycle), tested in a real workspace with `apps/slack-sandbox`
-- **Check either one**: Storybook for the web; `pnpm sandbox post <fixture>` for Slack, where fixture names match `@humagen/core/fixtures`
+- **Check either one**: `make screens` for the web; `pnpm sandbox post <fixture>` for Slack, where fixture names match `@humagen/core/fixtures`
 
 ## How a concept reaches each surface
 

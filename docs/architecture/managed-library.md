@@ -10,7 +10,7 @@ Humagen's existing semantic colors also supply shadcn's tokens. The shared theme
 owns the neutral dark palette. Reading and headings use `IBM Plex Sans Variable`;
 file editors and technical text use `IBM Plex Mono`. Both are self-hosted through
 the shared font entry, with their licenses retained in the renderer package.
-The console and Storybook load the same files. Compact controls, regular
+The console loads these files. Compact controls, regular
 controls and coarse-pointer targets use explicit sizes. Reduced motion remains
 supported.
 The default interaction accent is red, with real yellow and green presets.

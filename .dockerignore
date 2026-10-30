@@ -5,7 +5,6 @@
 .worktrees
 **/node_modules
 **/dist
-**/storybook-static
 **/.turbo
 bin
 build

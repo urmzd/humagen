@@ -6,7 +6,6 @@
   "description": "Captures every console screen at phone and desktop width and fails on a broken layout.",
   "scripts": {
     "screens": "node --experimental-strip-types run.ts",
-    "storybook": "node --experimental-strip-types storybook.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types *.test.ts"
   },
