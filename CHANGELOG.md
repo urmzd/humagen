@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.39.0 (2026-10-30)
+
+### Features
+
+- **usage**: keep admission and spend counts in the shared store (#120) ([f62b3a2](https://github.com/urmzd/humagen/commit/f62b3a2a6835d2dc05186b324b74a5c1a927c60e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.38.2...v0.39.0)
+
+
 ## 0.38.2 (2026-10-30)
 
 ### Bug Fixes
