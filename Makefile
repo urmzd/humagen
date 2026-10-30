@@ -29,12 +29,11 @@ build:
 test:
 	go test ./... -race
 
-# fiber's backend conformance suites against Postgres (pgvector) and Redis
-# from the compose integration profile. Without these variables they skip.
+# fiber's backend conformance suites against Postgres (pgvector) from the
+# compose integration profile. Without this variable they skip.
 integration:
-	$(COMPOSE) --profile integration up -d --wait fiber-postgres redis
+	$(COMPOSE) --profile integration up -d --wait fiber-postgres
 	FIBER_POSTGRES_TEST_URL=postgres://fiber:fiber@localhost:$${FIBER_POSTGRES_PORT:-5433}/fiber?sslmode=disable \
-	FIBER_REDIS_ADDR=localhost:$${FIBER_REDIS_PORT:-6379} \
 	go test -race -count=1 ./fiber/...
 
 lint:

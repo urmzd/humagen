@@ -51,7 +51,7 @@ process with its stores beside it.
   puts every store in Postgres; `memory` loses them on restart. The event bus
   follows the stores: on Postgres it is `bus.kind: postgres`, events in a table
   on the same database with readers woken by LISTEN/NOTIFY, so there is no
-  Redis to run. `bus.kind: memory` keeps it in the process. See
+  second service to run. `bus.kind: memory` keeps it in the process. See
   [Storage](../architecture/overview.md#storage). **Published files** go to `blobs.kind: disk` (the workspace
   volume) or `s3`, any S3-compatible bucket.
 - **Tools need a sandbox driver.** A run's file tools, its shell and its
