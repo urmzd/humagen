@@ -1,0 +1,75 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import { type Page, site } from "../content/site";
+import "../styles/global.css";
+
+type Props = { page: Page; jsonLd?: Record<string, unknown> };
+const { page, jsonLd } = Astro.props;
+const canonical = new URL(page.path, site.url).href;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{page.title}</title>
+    <meta name="description" content={page.description} />
+    <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:title" content={page.title} />
+    <meta property="og:description" content={page.description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+    <script is:inline>document.documentElement.classList.add("js");</script>
+    {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+  </head>
+  <body class="min-h-dvh">
+    <a
+      href="#main"
+      class="absolute top-[-4rem] left-4 z-20 rounded-aui bg-aui-primary px-3 py-2 text-aui-sm font-medium text-aui-primary-fg focus:top-2"
+      >Skip to content</a
+    >
+    <Header />
+    <main id="main" tabindex="-1" class="outline-none">
+      <slot />
+    </main>
+    <Footer />
+    <script is:inline>
+      // Arrival: each [data-reveal-group] shows its [data-reveal] items once,
+      // when it scrolls into view. The page is complete without this script.
+      (() => {
+        const groups = [...document.querySelectorAll("[data-reveal-group]")];
+        const show = (g) => g.classList.add("in");
+        for (const g of groups)
+          g.querySelectorAll("[data-reveal], .arch-line").forEach((el, i) => el.style.setProperty("--i", i));
+        if (!("IntersectionObserver" in window)) return groups.forEach(show);
+        // After a page change the view transition is the arrival: what is
+        // already on screen appears at once instead of animating twice.
+        addEventListener("pagereveal", (e) => {
+          if (!e.viewTransition) return;
+          for (const g of groups)
+            if (g.getBoundingClientRect().top < innerHeight) g.classList.add("in", "instant");
+        });
+        const io = new IntersectionObserver(
+          (entries) => {
+            for (const e of entries)
+              if (e.isIntersecting) {
+                show(e.target);
+                io.unobserve(e.target);
+              }
+          },
+          { rootMargin: "0px 0px -8% 0px" },
+        );
+        groups.forEach((g) => io.observe(g));
+      })();
+    </script>
+  </body>
+</html>

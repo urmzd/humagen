@@ -34,7 +34,7 @@ Formerly warp. Old settings, config files and specs still work, with a note at s
 - **GitHub**: ask the app in a comment, through signed webhook ingress.
 - **Per-person MCP tools**: agents act with each person's own credential, never a shared one.
 
-**Early development:** pre-1.0, one replica per database, sessions in memory, Slack and GitHub tested against simulated APIs. See the [status table](docs/architecture/overview.md#status).
+What is built, and its current limits, is in the [status table](docs/architecture/overview.md#status).
 
 ## Installation
 

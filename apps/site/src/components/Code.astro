@@ -1,0 +1,13 @@
+---
+type Props = { label: string; text: string };
+const { label, text } = Astro.props;
+---
+<figure class="m-0 overflow-hidden rounded-aui-lg border border-aui-border shadow-aui-sm">
+  <figcaption class="border-b border-aui-border bg-aui-surface px-3 py-2 font-[family-name:var(--font-aui-mono)] text-aui-xs text-aui-muted">
+    {label}
+  </figcaption>
+  <pre
+    tabindex="0"
+    aria-label={label}
+    class="m-0 overflow-x-auto bg-aui-code p-4 font-[family-name:var(--font-aui-mono)] text-aui-xs leading-5 text-aui-fg"><code>{text}</code></pre>
+</figure>

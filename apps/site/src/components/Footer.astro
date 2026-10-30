@@ -1,0 +1,25 @@
+---
+import { contact, doc, pages, site } from "../content/site";
+import { mark } from "../lib/console";
+---
+<footer class="border-t border-aui-border">
+  <div class="site-text site-frame flex flex-col gap-4 px-5 py-8 text-aui-sm text-aui-muted md:px-10">
+    <div class="flex items-center gap-2 text-aui-fg">
+      <Fragment set:html={mark(18)} />
+      <span class="humagen-display font-semibold">{site.name}</span>
+    </div>
+    <ul class="flex flex-wrap gap-x-5 gap-y-2">
+      <li><a href={pages.deploy.path}>Deploy guide</a></li>
+      <li><a href={site.repo}>Source on GitHub</a></li>
+      <li><a href={doc("docs/reference/spec.md")}>Spec reference</a></li>
+      <li><a href={`${site.repo}/issues`}>Report an issue</a></li>
+      <li><a href={contact.href}>Contact the founder</a></li>
+      <li><a href="/llms.txt">llms.txt</a></li>
+    </ul>
+    <p class="text-aui-xs">
+      Open source under the <a href={doc("LICENSE")}>Apache License 2.0</a>. Set in IBM Plex Sans
+      and IBM Plex Mono, under the{" "}
+      <a href="/licenses/ibm-plex-sans-OFL.txt">SIL Open Font License</a>.
+    </p>
+  </div>
+</footer>

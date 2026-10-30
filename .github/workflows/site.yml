@@ -1,0 +1,116 @@
+name: Site
+
+# Builds withhumagen.com (apps/site) on pull requests that touch it, and on a
+# push to main uploads it to S3 behind CloudFront. The deploy mirrors
+# urmzd/infra's deploy-site workflow; it cannot call that workflow because
+# infra is private and this repository is public. It is skipped until the
+# AWS_ROLE_ARN secret exists.
+
+on:
+  pull_request:
+    paths:
+      - apps/site/**
+      - pnpm-lock.yaml
+      - .github/workflows/site.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/site/**
+      - pnpm-lock.yaml
+      - .github/workflows/site.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.gate.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @humagen/site test
+      - run: pnpm --filter @humagen/site typecheck
+      - run: pnpm --filter @humagen/site build
+      - name: Verify build output
+        run: |
+          for f in index.html deploy/index.html 404.html llms.txt sitemap.xml robots.txt; do
+            test -s "apps/site/dist/$f" || { echo "::error::apps/site/dist/$f is missing"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: apps/site/dist
+          retention-days: 7
+      # Secrets cannot be read in a job's `if`, so this step decides.
+      - name: Deploy on this run?
+        id: gate
+        env:
+          HAS_ROLE: ${{ secrets.AWS_ROLE_ARN != '' }}
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ] && [ "${{ github.ref }}" = refs/heads/main ] && [ "$HAS_ROLE" = true ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "Not deploying: event ${{ github.event_name }}, ref ${{ github.ref }}, AWS_ROLE_ARN set: $HAS_ROLE"
+          fi
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: production
+      url: https://withhumagen.com
+    concurrency:
+      group: deploy-site
+      cancel-in-progress: false
+    env:
+      BUCKET: withhumagen.com
+      DOMAIN: withhumagen.com
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: dist
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      # Hashed assets are immutable; HTML and text must revalidate.
+      - name: Upload to S3
+        working-directory: dist
+        run: |
+          aws s3 sync . "s3://$BUCKET" --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*.html" --exclude "*.txt" --exclude "*.xml" --exclude "*.json"
+          aws s3 sync . "s3://$BUCKET" \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --exclude "*" --include "*.html" --include "*.txt" --include "*.xml" --include "*.json"
+      - name: Invalidate CloudFront
+        run: |
+          id=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Aliases.Items && contains(Aliases.Items, '$DOMAIN')].Id | [0]" \
+            --output text)
+          if [ -z "$id" ] || [ "$id" = None ]; then
+            echo "::error::No CloudFront distribution has the alias $DOMAIN"
+            exit 1
+          fi
+          aws cloudfront create-invalidation --distribution-id "$id" --paths "/*"
+          echo "Deployed https://$DOMAIN" >> "$GITHUB_STEP_SUMMARY"

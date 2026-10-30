@@ -1,0 +1,196 @@
+---
+import Code from "../components/Code.astro";
+import {
+  alternatives,
+  architecture,
+  contact,
+  deployIntro,
+  limits,
+  pages,
+  policySnippet,
+  prerequisites,
+  sizing,
+  steps,
+} from "../content/site";
+import Base from "../layouts/Base.astro";
+import { inline } from "../lib/inline";
+
+const toc = [
+  { id: "prerequisites", label: "Prerequisites" },
+  { id: "architecture", label: "Architecture" },
+  ...steps.map((s, i) => ({ id: s.id, label: `${i + 1}. ${s.title}` })),
+  { id: "alternatives", label: alternatives.heading },
+  { id: "limits", label: limits.heading },
+];
+const h2 = "humagen-display text-aui-xl font-semibold text-aui-fg";
+const [tailnet, vm, outbound, actions] = architecture.zones;
+const zone = "glass rounded-aui-lg p-4";
+const text = "site-text max-w-[70ch] space-y-3 text-aui-base text-aui-muted";
+const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-12";
+---
+<Base page={pages.deploy}>
+  <div class="site-frame grid gap-10 px-5 pt-14 pb-16 md:px-10 md:pt-20 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-x-12">
+    <header data-reveal-group class="flex flex-col gap-3 lg:col-span-2">
+      <h1 data-reveal class="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg md:text-[2.25rem]">
+        Deploy your own Humagen
+      </h1>
+      <div data-reveal class="flex max-w-[70ch] flex-col gap-3 text-aui-base text-aui-muted">
+        {deployIntro.map((p) => <p>{p}</p>)}
+      </div>
+    </header>
+
+    <nav aria-labelledby="toc-title" class="glass self-start rounded-aui-lg p-2 lg:sticky lg:top-[4.5rem]">
+      <h2 id="toc-title" class="px-2 pt-1 text-aui-xs font-medium text-aui-muted">On this page</h2>
+      <ol class="mt-1 flex flex-col">
+        {
+          toc.map((t) => (
+            <li>
+              <a
+                href={`#${t.id}`}
+                class="flex min-h-8 items-center rounded-aui px-2 text-aui-sm text-aui-muted transition-colors duration-[var(--aui-dur-press)] hover:bg-aui-hover hover:text-aui-fg"
+              >
+                {t.label}
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+    </nav>
+
+    <div class="flex min-w-0 flex-col gap-10">
+      <section id="prerequisites" aria-labelledby="prerequisites-title" class={section}>
+        <h2 id="prerequisites-title" class={h2}>Prerequisites</h2>
+        <ul class={`${text} list-disc pl-5`}>
+          {prerequisites.map((p) => <li set:html={inline(p)} />)}
+        </ul>
+        <p class={text} set:html={inline(sizing)} />
+      </section>
+
+      <section id="architecture" aria-labelledby="architecture-title" class={section}>
+        <h2 id="architecture-title" class={h2}>Architecture</h2>
+        <figure class="m-0" data-reveal-group>
+          <div class="arch">
+            <section data-reveal aria-label={tailnet.name} class={`${zone} md:col-start-1 md:row-start-1`}>
+              <h3 class="text-aui-sm font-medium text-aui-fg">{tailnet.name}</h3>
+              <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
+                {tailnet.items.map((item) => <li set:html={inline(item)} />)}
+              </ul>
+            </section>
+            <div class="arch-conn md:col-start-2 md:row-start-1" data-dir="right">
+              <span class="arch-line" data-head aria-hidden="true"></span>
+              <span class="arch-label">{architecture.links.tailnet}</span>
+            </div>
+            <section data-reveal aria-label={vm.name} class={`${zone} border-[color-mix(in_oklab,var(--aui-fg)_35%,transparent)] md:col-start-3 md:row-start-1`}>
+              <h3 class="text-aui-sm font-medium text-aui-fg">{vm.name}</h3>
+              <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
+                {vm.items.map((item) => <li set:html={inline(item)} />)}
+              </ul>
+            </section>
+            <div class="arch-conn md:col-start-4 md:row-start-1" data-dir="right">
+              <span class="arch-line" data-head aria-hidden="true"></span>
+              <span class="arch-label">{architecture.links.outbound}</span>
+            </div>
+            <section data-reveal aria-label={outbound.name} class={`${zone} md:col-start-5 md:row-start-1`}>
+              <h3 class="text-aui-sm font-medium text-aui-fg">{outbound.name}</h3>
+              <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
+                {outbound.items.map((item) => <li set:html={inline(item)} />)}
+              </ul>
+            </section>
+            <div class="arch-conn md:col-start-3 md:row-start-2" data-dir="up">
+              <span class="arch-line" data-dashed aria-hidden="true"></span>
+              <span class="arch-label">{architecture.links.deploys}</span>
+            </div>
+            <section data-reveal aria-label={actions.name} class={`${zone} border-dashed md:col-start-3 md:row-start-3`}>
+              <h3 class="text-aui-sm font-medium text-aui-fg">{actions.name}</h3>
+              <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
+                {actions.items.map((item) => <li set:html={inline(item)} />)}
+              </ul>
+            </section>
+          </div>
+          <figcaption class="max-w-[70ch] pt-3 text-aui-xs text-aui-muted">{architecture.caption}</figcaption>
+        </figure>
+      </section>
+
+      {
+        steps.map((s, i) => (
+          <section id={s.id} aria-labelledby={`${s.id}-title`} class={section}>
+            <h2 id={`${s.id}-title`} class={`${h2} flex items-baseline gap-3`}>
+              <span
+                aria-hidden="true"
+                class="inline-flex size-7 shrink-0 translate-y-[-0.1em] items-center justify-center rounded-full border border-aui-border text-aui-sm font-medium text-aui-muted"
+              >
+                {i + 1}
+              </span>
+              <span>
+                <span class="sr-only">Step {i + 1}: </span>
+                {s.title}
+              </span>
+            </h2>
+            <div class={text}>
+              {s.body.map((p) => (
+                <p set:html={inline(p)} />
+              ))}
+            </div>
+            {s.code && <Code label={s.code.label} text={s.code.text} />}
+            {s.after && (
+              <div class={text}>
+                {s.after.map((p) => (
+                  <p set:html={inline(p)} />
+                ))}
+              </div>
+            )}
+            {s.id === "sign-in" && <Code label={policySnippet.label} text={policySnippet.text} />}
+          </section>
+        ))
+      }
+
+      <section id="alternatives" aria-labelledby="alternatives-title" class={section}>
+        <h2 id="alternatives-title" class={h2}>{alternatives.heading}</h2>
+        <p class={text}>{alternatives.intro}</p>
+        <div
+          class="overflow-x-auto rounded-aui-lg border border-aui-border"
+          role="region"
+          aria-labelledby="alternatives-title"
+          tabindex="0"
+        >
+          <table class="w-full border-collapse text-left text-aui-sm">
+            <thead>
+              <tr class="border-b border-aui-border text-aui-xs text-aui-muted">
+                <th scope="col" class="px-3 py-2 font-medium">Setup</th>
+                <th scope="col" class="px-3 py-2 font-medium">When</th>
+                <th scope="col" class="px-3 py-2 font-medium">What you get</th>
+              </tr>
+            </thead>
+            <tbody class="site-text">
+              {
+                alternatives.rows.map((r) => (
+                  <tr class="border-aui-border align-top not-last:border-b">
+                    <th scope="row" class="px-3 py-2.5 font-medium text-aui-fg" set:html={inline(r.name)} />
+                    <td class="px-3 py-2.5 text-aui-muted">{r.when}</td>
+                    <td class="px-3 py-2.5 text-aui-muted">
+                      <span set:html={inline(r.what)} /> <a href={r.link.href}>{r.link.label}</a>
+                    </td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="limits" aria-labelledby="limits-title" class={section}>
+        <h2 id="limits-title" class={h2}>{limits.heading}</h2>
+        <p class={text}>{limits.intro}</p>
+        <ul class={`${text} list-disc pl-5 [&_strong]:font-medium [&_strong]:text-aui-fg`}>
+          {limits.items.map((item) => <li set:html={inline(item)} />)}
+        </ul>
+        <p class={text}><a href={limits.link.href}>{limits.link.label}</a></p>
+        <p class={text}>
+          <span>
+            Stuck, or running it somewhere else? Write to <a href={contact.href}>{contact.email}</a>.
+          </span>
+        </p>
+      </section>
+    </div>
+  </div>
+</Base>
