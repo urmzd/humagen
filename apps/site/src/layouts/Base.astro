@@ -28,6 +28,7 @@ const canonical = new URL(page.path, site.url).href;
     <meta property="og:description" content={page.description} />
     <meta property="og:url" content={canonical} />
     <meta name="twitter:card" content="summary" />
+    <script is:inline>document.documentElement.classList.add("js");</script>
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
   </head>
   <body class="min-h-dvh">
@@ -41,5 +42,34 @@ const canonical = new URL(page.path, site.url).href;
       <slot />
     </main>
     <Footer />
+    <script is:inline>
+      // Arrival: each [data-reveal-group] shows its [data-reveal] items once,
+      // when it scrolls into view. The page is complete without this script.
+      (() => {
+        const groups = [...document.querySelectorAll("[data-reveal-group]")];
+        const show = (g) => g.classList.add("in");
+        for (const g of groups)
+          g.querySelectorAll("[data-reveal], .arch-line").forEach((el, i) => el.style.setProperty("--i", i));
+        if (!("IntersectionObserver" in window)) return groups.forEach(show);
+        // After a page change the view transition is the arrival: what is
+        // already on screen appears at once instead of animating twice.
+        addEventListener("pagereveal", (e) => {
+          if (!e.viewTransition) return;
+          for (const g of groups)
+            if (g.getBoundingClientRect().top < innerHeight) g.classList.add("in", "instant");
+        });
+        const io = new IntersectionObserver(
+          (entries) => {
+            for (const e of entries)
+              if (e.isIntersecting) {
+                show(e.target);
+                io.unobserve(e.target);
+              }
+          },
+          { rootMargin: "0px 0px -8% 0px" },
+        );
+        groups.forEach((g) => io.observe(g));
+      })();
+    </script>
   </body>
 </html>

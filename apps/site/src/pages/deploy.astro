@@ -22,30 +22,32 @@ const toc = [
   { id: "alternatives", label: alternatives.heading },
   { id: "limits", label: limits.heading },
 ];
-const h2 = "humagen-display scroll-mt-16 text-aui-xl font-semibold text-aui-fg";
+const h2 = "humagen-display text-aui-xl font-semibold text-aui-fg";
+const [tailnet, vm, outbound, actions] = architecture.zones;
+const zone = "glass rounded-aui-lg p-4";
 const text = "site-text max-w-[70ch] space-y-3 text-aui-base text-aui-muted";
-const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
+const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-12";
 ---
 <Base page={pages.deploy}>
-  <div class="mx-auto grid w-full max-w-[68rem] gap-8 px-5 pt-8 pb-12 md:px-10 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-x-12">
-    <header class="flex flex-col gap-3 lg:col-span-2">
-      <h1 class="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg">
+  <div class="site-frame grid gap-10 px-5 pt-14 pb-16 md:px-10 md:pt-20 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-x-12">
+    <header data-reveal-group class="flex flex-col gap-3 lg:col-span-2">
+      <h1 data-reveal class="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg md:text-[2.25rem]">
         Deploy your own Humagen
       </h1>
-      <div class="flex max-w-[70ch] flex-col gap-3 text-aui-base text-aui-muted">
+      <div data-reveal class="flex max-w-[70ch] flex-col gap-3 text-aui-base text-aui-muted">
         {deployIntro.map((p) => <p>{p}</p>)}
       </div>
     </header>
 
-    <nav aria-labelledby="toc-title" class="self-start lg:sticky lg:top-16">
-      <h2 id="toc-title" class="text-aui-xs font-medium text-aui-muted">On this page</h2>
-      <ol class="mt-2 flex flex-col">
+    <nav aria-labelledby="toc-title" class="glass self-start rounded-aui-lg p-2 lg:sticky lg:top-[4.5rem]">
+      <h2 id="toc-title" class="px-2 pt-1 text-aui-xs font-medium text-aui-muted">On this page</h2>
+      <ol class="mt-1 flex flex-col">
         {
           toc.map((t) => (
             <li>
               <a
                 href={`#${t.id}`}
-                class="flex min-h-8 items-center rounded-aui px-2 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg"
+                class="flex min-h-8 items-center rounded-aui px-2 text-aui-sm text-aui-muted transition-colors duration-[var(--aui-dur-press)] hover:bg-aui-hover hover:text-aui-fg"
               >
                 {t.label}
               </a>
@@ -56,7 +58,7 @@ const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
     </nav>
 
     <div class="flex min-w-0 flex-col gap-10">
-      <section id="prerequisites" aria-labelledby="prerequisites-title" class={`${section} scroll-mt-16`}>
+      <section id="prerequisites" aria-labelledby="prerequisites-title" class={section}>
         <h2 id="prerequisites-title" class={h2}>Prerequisites</h2>
         <ul class={`${text} list-disc pl-5`}>
           {prerequisites.map((p) => <li set:html={inline(p)} />)}
@@ -64,37 +66,54 @@ const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
         <p class={text} set:html={inline(sizing)} />
       </section>
 
-      <section id="architecture" aria-labelledby="architecture-title" class={`${section} scroll-mt-16`}>
+      <section id="architecture" aria-labelledby="architecture-title" class={section}>
         <h2 id="architecture-title" class={h2}>Architecture</h2>
-        <figure class="m-0">
-          <div class="grid gap-3 md:grid-cols-[1fr_1.3fr_1fr]">
-            {
-              architecture.zones.map((z, i) => (
-                <section
-                  aria-label={z.name}
-                  class:list={[
-                    "rounded-aui-lg border p-4",
-                    i === 1 ? "border-aui-fg bg-aui-surface" : "border-aui-border",
-                    i === 3 && "border-dashed md:col-start-2",
-                  ]}
-                >
-                  <h3 class="text-aui-sm font-medium text-aui-fg">{z.name}</h3>
-                  <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
-                    {z.items.map((item) => (
-                      <li set:html={inline(item)} />
-                    ))}
-                  </ul>
-                </section>
-              ))
-            }
+        <figure class="m-0" data-reveal-group>
+          <div class="arch">
+            <section data-reveal aria-label={tailnet.name} class={`${zone} md:col-start-1 md:row-start-1`}>
+              <h3 class="text-aui-sm font-medium text-aui-fg">{tailnet.name}</h3>
+              <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
+                {tailnet.items.map((item) => <li set:html={inline(item)} />)}
+              </ul>
+            </section>
+            <div class="arch-conn md:col-start-2 md:row-start-1" data-dir="right">
+              <span class="arch-line" data-head aria-hidden="true"></span>
+              <span class="arch-label">{architecture.links.tailnet}</span>
+            </div>
+            <section data-reveal aria-label={vm.name} class={`${zone} border-[color-mix(in_oklab,var(--aui-fg)_35%,transparent)] md:col-start-3 md:row-start-1`}>
+              <h3 class="text-aui-sm font-medium text-aui-fg">{vm.name}</h3>
+              <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
+                {vm.items.map((item) => <li set:html={inline(item)} />)}
+              </ul>
+            </section>
+            <div class="arch-conn md:col-start-4 md:row-start-1" data-dir="right">
+              <span class="arch-line" data-head aria-hidden="true"></span>
+              <span class="arch-label">{architecture.links.outbound}</span>
+            </div>
+            <section data-reveal aria-label={outbound.name} class={`${zone} md:col-start-5 md:row-start-1`}>
+              <h3 class="text-aui-sm font-medium text-aui-fg">{outbound.name}</h3>
+              <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
+                {outbound.items.map((item) => <li set:html={inline(item)} />)}
+              </ul>
+            </section>
+            <div class="arch-conn md:col-start-3 md:row-start-2" data-dir="up">
+              <span class="arch-line" data-dashed aria-hidden="true"></span>
+              <span class="arch-label">{architecture.links.deploys}</span>
+            </div>
+            <section data-reveal aria-label={actions.name} class={`${zone} border-dashed md:col-start-3 md:row-start-3`}>
+              <h3 class="text-aui-sm font-medium text-aui-fg">{actions.name}</h3>
+              <ul class="site-text mt-2 flex list-disc flex-col gap-1 pl-4 text-aui-xs text-aui-muted">
+                {actions.items.map((item) => <li set:html={inline(item)} />)}
+              </ul>
+            </section>
           </div>
-          <figcaption class="max-w-[70ch] pt-2 text-aui-xs text-aui-muted">{architecture.caption}</figcaption>
+          <figcaption class="max-w-[70ch] pt-3 text-aui-xs text-aui-muted">{architecture.caption}</figcaption>
         </figure>
       </section>
 
       {
         steps.map((s, i) => (
-          <section id={s.id} aria-labelledby={`${s.id}-title`} class={`${section} scroll-mt-16`}>
+          <section id={s.id} aria-labelledby={`${s.id}-title`} class={section}>
             <h2 id={`${s.id}-title`} class={`${h2} flex items-baseline gap-3`}>
               <span
                 aria-hidden="true"
@@ -125,7 +144,7 @@ const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
         ))
       }
 
-      <section id="alternatives" aria-labelledby="alternatives-title" class={`${section} scroll-mt-16`}>
+      <section id="alternatives" aria-labelledby="alternatives-title" class={section}>
         <h2 id="alternatives-title" class={h2}>{alternatives.heading}</h2>
         <p class={text}>{alternatives.intro}</p>
         <div
@@ -159,7 +178,7 @@ const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
         </div>
       </section>
 
-      <section id="limits" aria-labelledby="limits-title" class={`${section} scroll-mt-16`}>
+      <section id="limits" aria-labelledby="limits-title" class={section}>
         <h2 id="limits-title" class={h2}>{limits.heading}</h2>
         <p class={text}>{limits.intro}</p>
         <ul class={`${text} list-disc pl-5 [&_strong]:font-medium [&_strong]:text-aui-fg`}>

@@ -197,6 +197,12 @@ export const sizing =
   "An `e2-medium` (2 vCPU, 4 GB) with 4 GB of swap is enough. In the reference setup the VM and disk cost about $25 a month, plus Vertex AI calls.";
 
 export const architecture = {
+  /** The connectors between zones, as the diagram draws them. */
+  links: {
+    tailnet: "HTTPS on the tailnet",
+    outbound: "Outbound only",
+    deploys: "Deploys the VM",
+  },
   caption:
     "People on the tailnet reach Caddy on the VM. Caddy checks who they are and proxies to Humagen on loopback. The VM has no public address: everything it calls goes out through Cloud NAT.",
   zones: [

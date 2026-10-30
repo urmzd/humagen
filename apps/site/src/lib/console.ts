@@ -52,8 +52,8 @@ export { agentInitials };
 /** The console's primary action, in the accent (red by default). */
 export const primaryButton = cn(
   buttonVariants({ size: "lg" }),
-  "bg-aui-accent text-aui-accent-fg hover:bg-aui-accent/90",
+  "site-btn bg-aui-accent text-aui-accent-fg hover:bg-aui-accent/90",
 );
 
 /** The console's everyday button (`button` in apps/web/src/ui.tsx). */
-export const outlineButton = cn(buttonVariants({ variant: "outline", size: "lg" }));
+export const outlineButton = cn(buttonVariants({ variant: "outline", size: "lg" }), "site-btn");

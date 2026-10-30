@@ -9,6 +9,9 @@ export default defineConfig({
   output: "static",
   trailingSlash: "ignore",
   build: { format: "directory" },
+  // Fetch an internal page on hover or focus, so a click lands at once and
+  // the cross-document view transition (global.css) has the page in hand.
+  prefetch: { prefetchAll: true, defaultStrategy: "hover" },
   vite: {
     plugins: [tailwindcss()],
     build: {

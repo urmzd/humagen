@@ -1,6 +1,6 @@
 # @humagen/site
 
-The public website at https://withhumagen.com: the product page and the deploy guide. Astro, static HTML, no client JavaScript.
+The public website at https://withhumagen.com: the product page and the deploy guide. Astro, static HTML. The only client JavaScript is Astro's link prefetch and a short inline script for arrival animations; every page renders complete without it.
 
 | Path | What it is |
 |------|------------|
