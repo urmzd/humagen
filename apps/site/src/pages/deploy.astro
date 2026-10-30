@@ -9,11 +9,36 @@ import {
   pages,
   policySnippet,
   prerequisites,
+  site,
   sizing,
   steps,
 } from "../content/site";
 import Base from "../layouts/Base.astro";
-import { inline } from "../lib/inline";
+import { inline, plain } from "../lib/inline";
+import { ogImage } from "../lib/og";
+
+const url = new URL(pages.deploy.path, site.url).href;
+// What the guide is, from the same content it renders. No author, dates or
+// ratings: the page states none.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  headline: pages.deploy.title,
+  description: pages.deploy.description,
+  url,
+  mainEntityOfPage: url,
+  image: (await ogImage("deploy")).url,
+  inLanguage: "en",
+  dependencies: prerequisites.map(plain).join(" "),
+  articleSection: steps.map((s) => s.title),
+  about: {
+    "@type": "SoftwareApplication",
+    name: site.name,
+    url: site.url,
+    applicationCategory: "DeveloperApplication",
+  },
+  isPartOf: { "@type": "WebSite", name: site.name, url: site.url },
+};
 
 const toc = [
   { id: "prerequisites", label: "Prerequisites" },
@@ -28,7 +53,7 @@ const zone = "glass rounded-aui-lg p-4";
 const text = "site-text max-w-[70ch] space-y-3 text-aui-base text-aui-muted";
 const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-12";
 ---
-<Base page={pages.deploy}>
+<Base page={pages.deploy} type="article" jsonLd={jsonLd}>
   <div class="site-frame grid gap-10 px-5 pt-14 pb-16 md:px-10 md:pt-20 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-x-12">
     <header data-reveal-group class="flex flex-col gap-3 lg:col-span-2">
       <h1 data-reveal class="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg md:text-[2.25rem]">
@@ -150,10 +175,11 @@ const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-12";
         <div
           class="overflow-x-auto rounded-aui-lg border border-aui-border"
           role="region"
-          aria-labelledby="alternatives-title"
+          aria-labelledby="alternatives-table-title"
           tabindex="0"
         >
           <table class="w-full border-collapse text-left text-aui-sm">
+            <caption id="alternatives-table-title" class="sr-only">{alternatives.caption}</caption>
             <thead>
               <tr class="border-b border-aui-border text-aui-xs text-aui-muted">
                 <th scope="col" class="px-3 py-2 font-medium">Setup</th>

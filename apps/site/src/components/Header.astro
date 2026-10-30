@@ -15,8 +15,11 @@ const link =
       <Fragment set:html={mark(23)} />
       {site.name}
     </a>
-    <nav aria-label="Main">
-      <ul class="flex items-center gap-1">
+    <nav aria-label="Main" class="site-nav">
+      <button type="button" class={`site-menu-btn ${link}`} aria-expanded="false" aria-controls="site-menu">
+        Menu
+      </button>
+      <ul id="site-menu" class="site-menu flex items-center gap-1">
         <li>
           <a
             class={`${link} aria-[current=page]:text-aui-fg aria-[current=page]:font-medium`}
@@ -30,3 +33,33 @@ const link =
     </nav>
   </div>
 </header>
+<script is:inline>
+  // Below 22.5rem the three links do not fit beside the name, so they fold
+  // into a menu (global.css). Escape, a click outside or focus leaving it
+  // closes it; Escape returns focus to the button. Without JavaScript the
+  // links simply wrap.
+  (() => {
+    const btn = document.querySelector(".site-menu-btn");
+    const menu = document.getElementById("site-menu");
+    const nav = btn?.parentElement;
+    if (!btn || !menu || !nav) return;
+    const open = () => btn.getAttribute("aria-expanded") === "true";
+    const set = (on) => {
+      btn.setAttribute("aria-expanded", String(on));
+      menu.toggleAttribute("data-open", on);
+    };
+    btn.addEventListener("click", () => set(!open()));
+    addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !open()) return;
+      set(false);
+      btn.focus();
+    });
+    addEventListener("click", (e) => {
+      if (open() && !nav.contains(e.target)) set(false);
+    });
+    nav.addEventListener("focusout", (e) => {
+      if (open() && e.relatedTarget && !nav.contains(e.relatedTarget)) set(false);
+    });
+    matchMedia("(min-width: 22.5rem)").addEventListener("change", () => set(false));
+  })();
+</script>

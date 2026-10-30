@@ -44,6 +44,8 @@ jobs:
       - run: pnpm --filter @humagen/site test
       - run: pnpm --filter @humagen/site typecheck
       - run: pnpm --filter @humagen/site build
+      # Every page's social preview tags, image size and structured data.
+      - run: pnpm --filter @humagen/site test:dist
       - name: Verify build output
         run: |
           for f in index.html deploy/index.html 404.html llms.txt sitemap.xml robots.txt; do
