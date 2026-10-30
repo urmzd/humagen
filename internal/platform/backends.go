@@ -38,6 +38,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/state"
@@ -80,6 +81,9 @@ type Backends struct {
 	// database State is on, shared by every process that opens it. Nil
 	// keeps them in this process, which is right for one process only.
 	Counters *usage.Counters
+	// RoomCounters are a room's rate and each person's runs in flight
+	// (pkg/rooms) on the same database. Nil keeps them in this process.
+	RoomCounters *rooms.PostgresCounters
 }
 
 // OpenPostgres puts every backend on one Postgres database: humagen's state
@@ -129,7 +133,11 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters}, st.Close, nil
+	roomCounters, err := rooms.OpenPostgres(ctx, pool)
+	if err != nil {
+		return Backends{}, nil, err
+	}
+	return Backends{State: st, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters, RoomCounters: roomCounters}, st.Close, nil
 }
 
 func (b Backends) check() error {

@@ -236,6 +236,10 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	set("concurrency", strconv.Itoa(sp.Execution.Concurrency))
 	set("max-depth", strconv.Itoa(sp.Execution.MaxDepth))
 	set("max-fan-out", strconv.Itoa(sp.Execution.MaxFanOut))
+	set("room-coalesce-above", strconv.Itoa(sp.Rooms.CoalesceAbove))
+	set("room-tail-interval", sp.Rooms.TailInterval)
+	set("room-max-runs-per-minute", strconv.Itoa(sp.Rooms.MaxRunsPerMinute))
+	set("room-max-runs-per-person", strconv.Itoa(sp.Rooms.MaxRunsPerPerson))
 	set("builtin-provider", sp.Execution.Builtin.Provider)
 	set("builtin-model", sp.Execution.Builtin.Model)
 	if len(sp.SecretEnv) > 0 {

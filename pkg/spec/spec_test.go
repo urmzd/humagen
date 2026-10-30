@@ -44,6 +44,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("strict check: %v", err)
 	}
+	if r, err := cfg.System.Spec.Rooms.Config(); err != nil || r.CoalesceAbove != 200 || r.TailInterval != 3*time.Second || r.RoomRunsPerMinute != 600 || r.PersonRuns != 25 {
+		t.Fatalf("rooms = %+v %v", r, err)
+	}
 	w := cfg.Platforms[0].Spec.Workspace
 	if w.Instructions == nil || len(w.Projects) != 3 || !w.ReleaseNotes || w.Retention() != 180*24*time.Hour {
 		t.Fatalf("workspace = %+v", w)
@@ -330,5 +333,16 @@ func TestModelKinds(t *testing.T) {
 		if err := checkModel(c.kind, c.b); (err == nil) != c.ok {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+func TestRoomsAreBounded(t *testing.T) {
+	for _, bad := range []Rooms{{TailInterval: "soon"}, {TailInterval: "10ms"}, {CoalesceAbove: -1}, {MaxRunsPerPerson: 5000}} {
+		if _, err := bad.Config(); err == nil {
+			t.Errorf("%+v was accepted", bad)
+		}
+	}
+	if c, err := (Rooms{}).Config(); err != nil || c.CoalesceAbove != 200 {
+		t.Fatalf("left out = %+v %v", c, err)
 	}
 }

@@ -78,6 +78,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -90,6 +91,12 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// Rooms is how conversations with many viewers are read and how fast
+	// runs are admitted into them (pkg/rooms). Zero fields are its defaults.
+	Rooms rooms.Config
+	// RoomCounters keeps the room gate's counts. Nil is
+	// Backends.RoomCounters, or in memory without them.
+	RoomCounters rooms.Counters
 	// ProjectTemplates replaces the embedded file-defined catalog when non-nil.
 	ProjectTemplates []projects.Template
 	// Email is a configured relay and explicit tenant/subject recipient mapping. Nil disables email.
@@ -219,7 +226,10 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
-	files filesblob.Store
+	// Rooms holds the conversations followed on this server (pkg/rooms).
+	Rooms    *rooms.Hub
+	roomGate *rooms.Gate
+	files    filesblob.Store
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
@@ -456,6 +466,9 @@ func New(cfg Config) (*Platform, error) {
 
 	if p.broker == nil {
 		p.broker = bus.NewMemory()
+	}
+	if err := p.openRooms(); err != nil {
+		return nil, err
 	}
 
 	// Schedules are a trigger like any other: the cron connector raises tags

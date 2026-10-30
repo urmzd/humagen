@@ -57,6 +57,7 @@ import (
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -602,7 +603,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
 		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
-		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}},
+		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
 		"ThreadShare": {typ: platform.ThreadShare{}, written: true}, "ThreadNotAdded": {typ: platform.NotAdded{}},
