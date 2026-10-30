@@ -136,20 +136,34 @@ func (p *Postgres) Write(ctx context.Context, namespace string, ops ...Op) error
 		return nil
 	}
 	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
-		b := &pgx.Batch{}
-		for _, op := range ops {
-			if op.Value == nil {
-				b.Queue(`DELETE FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, op.Tenant, op.Key)
-				continue
-			}
-			b.Queue(`INSERT INTO `+table+` (namespace, tenant, key, value) VALUES ($1, $2, $3, $4)
-				ON CONFLICT (namespace, tenant, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-				namespace, op.Tenant, op.Key, op.Value)
-		}
-		return tx.SendBatch(ctx, b).Close()
+		return WriteTx(ctx, tx, namespace, ops...)
 	})
 	if err != nil {
 		return fmt.Errorf("state: write: %w", err)
 	}
 	return nil
+}
+
+// WriteTx applies ops in a transaction the caller holds, as Write does in one
+// of its own. It lets another table's change commit with the records it
+// depends on: the usage ledger's shared counters commit with the entry that
+// moved them.
+func WriteTx(ctx context.Context, tx pgx.Tx, namespace string, ops ...Op) error {
+	if err := checkNames(namespace, ops); err != nil {
+		return err
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	b := &pgx.Batch{}
+	for _, op := range ops {
+		if op.Value == nil {
+			b.Queue(`DELETE FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, op.Tenant, op.Key)
+			continue
+		}
+		b.Queue(`INSERT INTO `+table+` (namespace, tenant, key, value) VALUES ($1, $2, $3, $4)
+			ON CONFLICT (namespace, tenant, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+			namespace, op.Tenant, op.Key, op.Value)
+	}
+	return tx.SendBatch(ctx, b).Close()
 }

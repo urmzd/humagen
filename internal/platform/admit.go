@@ -65,30 +65,37 @@ func (p *Platform) admit(tag event.Envelope, edge call.Edge, project string, wit
 		return err
 	}
 	now := p.now()
-	d := policy.Decide(p.applied(tag.Tenant, chainOf(project, within), tag.Agent, client, now), policy.Request{Lease: edge.Lease})
 	entry := usage.Entry{Tenant: tag.Tenant, Project: project, Within: within, Agent: tag.Agent, Client: client, RunID: runtime.RunID(tag.Tenant, tag.ID), At: now}
+	// The limits are judged on counts read in the step that counts the run,
+	// so with shared counters no other process admits between the two.
+	var d policy.Decision
+	in, err := p.Usage.Admit(entry, func(read usage.Reader) (bool, error) {
+		applied, err := p.appliedBy(read, tag.Tenant, chainOf(project, within), tag.Agent, client, now)
+		if err != nil {
+			return false, err
+		}
+		d = policy.Decide(applied, policy.Request{Lease: edge.Lease})
+		return d.Verdict != policy.Deny && d.Verdict != policy.NeedsApproval, nil
+	})
+	if err != nil {
+		// A run whose admission could not be kept is not let in: a restart
+		// would forget it was counted.
+		return fmt.Errorf("platform: the run could not be counted: %w", err)
+	}
 	if d.Policy != nil {
 		entry.Scope, entry.Version, entry.Limit, entry.Reason = &d.Policy.Scope, d.Policy.Version, d.Limit, d.Reason
 	}
-
-	switch d.Verdict {
-	case policy.Deny, policy.NeedsApproval:
+	if !in {
 		entry.Kind = usage.Refused
 		p.appendUsage(entry)
 		p.budgetAlert(tag.Tenant, d, alerts.Critical, "Runs are being refused: ", string(d.Verdict))
 		p.log.Warn("platform: run refused by policy", "tenant", tag.Tenant, "agent", tag.Agent, "project", project, "reason", d.Reason)
 		return &Denied{Decision: d}
-	case policy.Warn:
-		warned := entry
-		warned.Kind = usage.Warned
-		p.appendUsage(warned)
-		p.budgetAlert(tag.Tenant, d, alerts.Warning, "", string(d.Verdict))
 	}
-	entry.Kind, entry.Scope, entry.Version, entry.Limit, entry.Reason = usage.Admitted, nil, 0, "", ""
-	// A run whose admission could not be kept is not let in: a restart
-	// would forget it was counted.
-	if _, err := p.Usage.Append(entry); err != nil {
-		return fmt.Errorf("platform: the run could not be counted: %w", err)
+	if d.Verdict == policy.Warn {
+		entry.Kind = usage.Warned
+		p.appendUsage(entry)
+		p.budgetAlert(tag.Tenant, d, alerts.Warning, "", string(d.Verdict))
 	}
 	return nil
 }
@@ -105,12 +112,23 @@ func (p *Platform) appendUsage(e usage.Entry) {
 // first, with what its scope has used in the policy's current period. chain is
 // the run's project and the ancestors it is within, nearest first.
 func (p *Platform) applied(tenant string, chain []string, agent, client string, now time.Time) []policy.Applied {
+	out, _ := p.appliedBy(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
+		return p.Usage.Usage(tenant, scope, since), nil
+	}, tenant, chain, agent, client, now)
+	return out
+}
+
+// appliedBy is applied, with what each scope has used read by read.
+func (p *Platform) appliedBy(read usage.Reader, tenant string, chain []string, agent, client string, now time.Time) ([]policy.Applied, error) {
 	var out []policy.Applied
 	for _, pol := range p.Policies.For(tenant, chain, agent, client) {
-		since := policy.PeriodStart(pol.Period, now)
-		out = append(out, policy.Applied{Policy: pol, Usage: p.Usage.Usage(tenant, pol.Scope, since)})
+		u, err := read(pol.Scope, policy.PeriodStart(pol.Period, now))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, policy.Applied{Policy: pol, Usage: u})
 	}
-	return out
+	return out, nil
 }
 
 // placeOf is the project a run is filed under, the ancestors of that project

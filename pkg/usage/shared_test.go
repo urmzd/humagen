@@ -1,0 +1,236 @@
+package usage
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
+)
+
+// process is one humagen process's ledger on the shared counters: its own
+// pool, its own counters and its own memory. pkg/state still keeps a second
+// process off the database, so the state store is the first one's, used
+// only to load; every write of a ledger with counters goes through its own
+// pool.
+func processes(t *testing.T, n int) ([]*Ledger, state.Store) {
+	t.Helper()
+	st, pool := statetest.OpenPostgres(t)
+	var schema string
+	if err := pool.QueryRow(t.Context(), `SELECT current_schema()`).Scan(&schema); err != nil {
+		t.Fatal(err)
+	}
+	out := make([]*Ledger, n)
+	for i := range out {
+		p := pool
+		if i > 0 {
+			cfg, err := pgxpool.ParseConfig(legacy.Getenv(statetest.URLEnv))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.MaxConns = 8
+			cfg.ConnConfig.RuntimeParams["search_path"] = schema
+			if p, err = pgxpool.NewWithConfig(t.Context(), cfg); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(p.Close)
+		}
+		c, err := OpenCounters(t.Context(), p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out[i], err = Open(st, WithCounters(c)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return out, st
+}
+
+// Many racers in two processes admit against one run limit. Exactly the
+// limit is let in, and both processes read the same count.
+func TestSharedAdmissionHoldsTheLimitAcrossProcesses(t *testing.T) {
+	ls, _ := processes(t, 2)
+	const limit, racers = 7, 40
+	var in atomic.Int64
+	var wg sync.WaitGroup
+	for i := range racers {
+		wg.Go(func() {
+			l := ls[i%len(ls)]
+			ok, err := l.Admit(Entry{Tenant: "acme", Project: "Launch", Agent: "lead", RunID: fmt.Sprintf("r%d", i), At: t0.Add(time.Duration(i) * time.Second)},
+				func(read Reader) (bool, error) {
+					u, err := read(launch, t0)
+					return u.Runs < limit, err
+				})
+			if err != nil {
+				t.Error(err)
+			}
+			if ok {
+				in.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+	if in.Load() != limit {
+		t.Fatalf("admitted %d runs under a limit of %d", in.Load(), limit)
+	}
+	for i, l := range ls {
+		if u := l.Usage("acme", launch, t0); u.Runs != limit || u.Concurrent != limit {
+			t.Fatalf("process %d reads %+v, want %d runs, %d in flight", i, u, limit, limit)
+		}
+	}
+}
+
+// A run's place is released by whichever process sees it end, and the
+// other process's next admission sees the room.
+func TestSharedConcurrencyIsReleasedAcrossProcesses(t *testing.T) {
+	ls, _ := processes(t, 2)
+	underOne := func(read Reader) (bool, error) {
+		u, err := read(all, t0)
+		return u.Concurrent < 1, err
+	}
+	if ok, err := ls[0].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r1", At: t0}, underOne); err != nil || !ok {
+		t.Fatalf("first admission: %v, %v", ok, err)
+	}
+	if ok, err := ls[1].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r2", At: t0}, underOne); err != nil || ok {
+		t.Fatalf("second process admitted beside a run in flight: %v, %v", ok, err)
+	}
+	if _, err := ls[0].Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := ls[1].Admit(Entry{Tenant: "acme", Agent: "lead", RunID: "r2", At: t0.Add(time.Minute)}, underOne); err != nil || !ok {
+		t.Fatalf("second process refused after the first run ended: %v, %v", ok, err)
+	}
+}
+
+// Spend reported to two processes, some calls to both, is counted once
+// per call, every process reads the whole of it, and a ledger rebuilt from
+// the entries both wrote answers the same.
+func TestSharedSpendIsCountedOnceAcrossProcesses(t *testing.T) {
+	ls, kept := processes(t, 2)
+	for i, l := range ls {
+		admit(l, "acme", "Launch", "lead", fmt.Sprintf("r%d", i), t0)
+	}
+	var wg sync.WaitGroup
+	var counted atomic.Int64
+	for i := range 60 {
+		for _, l := range ls {
+			wg.Go(func() {
+				// Every call is delivered to both processes.
+				if call(l, "acme", fmt.Sprintf("r%d", i%2), fmt.Sprintf("call-%d", i), t0.Add(time.Duration(i)*time.Second),
+					Spend{Micros: 100, ModelCalls: 1, Tokens: 10, Other: []policy.Cost{{Micros: 5, Currency: "EUR"}}}) {
+					counted.Add(1)
+				}
+			})
+		}
+	}
+	wg.Wait()
+	if counted.Load() != 60 {
+		t.Fatalf("%d calls counted, want 60: one per call", counted.Load())
+	}
+	// r0 settles a total that covers calls neither process saw.
+	if _, _, err := ls[1].Record(Entry{Kind: Settled, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r0", Key: "run:r0",
+		Spend: &Spend{Micros: 3100, ModelCalls: 31, Tokens: 310}, At: t0.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	want := policy.Usage{Runs: 2, Concurrent: 2, Spend: 6100, Tokens: 610, ModelCalls: 61, OtherCosts: []policy.Cost{{Micros: 300, Currency: "EUR"}}}
+	for i, l := range ls {
+		if u := l.Usage("acme", launch, t0); !reflect.DeepEqual(u, want) {
+			t.Fatalf("process %d reads %+v\nwant %+v", i, u, want)
+		}
+	}
+	st, err := Open(kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u := st.Usage("acme", launch, t0); !reflect.DeepEqual(u, want) {
+		t.Fatalf("rebuilt from the entries: %+v\nwant %+v", u, want)
+	}
+}
+
+// A ledger that kept its counts in memory, opened on counters for the first
+// time, fills them from its entries, once.
+func TestSharedCountersAreFilledFromTheLedger(t *testing.T) {
+	st, pool := statetest.OpenPostgres(t)
+	before, err := Open(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admit(before, "acme", "Launch", "lead", "r1", t0)
+	admit(before, "acme", "Launch", "lead", "r2", t0)
+	call(before, "acme", "r1", "c1", t0, Spend{Micros: 250, ModelCalls: 1, Tokens: 40})
+	if _, err := before.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r2", At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	want := before.Usage("acme", launch, t0)
+
+	c, err := OpenCounters(context.Background(), pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		l, err := Open(st, WithCounters(c))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u, err := c.Usage(t.Context(), "acme", launch, t0); err != nil || !reflect.DeepEqual(u, want) {
+			t.Fatalf("counters read %+v, %v\nwant %+v", u, err, want)
+		}
+		// The call already counted is not counted again, and new entries
+		// take keys past the old ones.
+		if call(l, "acme", "r1", "c1", t0, Spend{Micros: 250, ModelCalls: 1, Tokens: 40}) {
+			t.Fatal("a call counted before the counters existed was counted again")
+		}
+	}
+	l, err := Open(st, WithCounters(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	admit(l, "acme", "Launch", "lead", "r3", t0)
+	again, err := Open(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(again.Entries()); n != 5 {
+		t.Fatalf("%d entries kept, want 5: a new key overwrote an old one", n)
+	}
+}
+
+// Without counters, many racers in one process admit exactly the limit.
+func TestAdmitHoldsTheLimitInMemory(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		l, err := Open(open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		const limit = 5
+		var in atomic.Int64
+		var wg sync.WaitGroup
+		for i := range 50 {
+			wg.Go(func() {
+				ok, err := l.Admit(Entry{Tenant: "acme", Agent: "lead", RunID: fmt.Sprintf("r%d", i), At: t0}, func(read Reader) (bool, error) {
+					u, err := read(all, t0)
+					return u.Runs < limit, err
+				})
+				if err != nil {
+					t.Error(err)
+				}
+				if ok {
+					in.Add(1)
+				}
+			})
+		}
+		wg.Wait()
+		if in.Load() != limit {
+			t.Fatalf("admitted %d under a limit of %d", in.Load(), limit)
+		}
+	})
+}

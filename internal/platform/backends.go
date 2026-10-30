@@ -76,11 +76,16 @@ type Backends struct {
 	// readers woken by LISTEN/NOTIFY. Nil means none was opened; the bus is
 	// then whatever Config.Bus says.
 	Bus bus.Bus
+	// Counters are the usage ledger's admission and spend counts in the
+	// database State is on, shared by every process that opens it. Nil
+	// keeps them in this process, which is right for one process only.
+	Counters *usage.Counters
 }
 
 // OpenPostgres puts every backend on one Postgres database: humagen's state
 // (pkg/state), agent definitions (pkg/agents, on the same state), anchor's run ledger and queue
-// (fiber's pkg/durable), and fiber's Postgres event bus. Each migrates its own tables, idempotently. The
+// (fiber's pkg/durable), fiber's Postgres event bus, and the usage ledger's
+// shared counts (usage.Counters). Each migrates its own tables, idempotently. The
 // caller owns the pool and closes it after calling release.
 //
 // It is one process's database: pkg/state takes it for this process, and a
@@ -120,12 +125,19 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err := events.Migrate(ctx); err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Agents: defs, Ledger: l, Queue: q, Bus: events}, st.Close, nil
+	counters, err := usage.OpenCounters(ctx, pool)
+	if err != nil {
+		return Backends{}, nil, err
+	}
+	return Backends{State: st, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters}, st.Close, nil
 }
 
 func (b Backends) check() error {
 	if (b.Ledger == nil) != (b.Queue == nil) {
 		return errors.New("platform: backends: set the run ledger and queue together, or neither")
+	}
+	if b.Counters != nil && b.State == nil {
+		return errors.New("platform: backends: shared usage counters need the state store on their database")
 	}
 	return nil
 }
@@ -199,7 +211,11 @@ func (p *Platform) openStores(cfg Config) error {
 	}
 	p.CallPolicies, err = callpolicy.Open(st)
 	keep("call policies", err)
-	p.Usage, err = usage.Open(st)
+	var shared []usage.Option
+	if cfg.Backends.Counters != nil {
+		shared = append(shared, usage.WithCounters(cfg.Backends.Counters))
+	}
+	p.Usage, err = usage.Open(st, shared...)
 	keep("usage", err)
 	p.AuditReferences, err = auditrefs.Open(st)
 	keep("audit references", err)
