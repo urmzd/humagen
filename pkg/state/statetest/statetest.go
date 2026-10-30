@@ -86,6 +86,51 @@ func Pool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+// Processes runs fn once per backend with two stores that stand for two
+// processes on one database: on Memory, one store twice; on Postgres, two
+// OpenPostgresShared stores, each on its own pool, on one new schema. Only a
+// store that reads and writes per request may be built on them.
+func Processes(t *testing.T, fn func(t *testing.T, a, b state.Store)) {
+	t.Helper()
+	t.Run("memory", func(t *testing.T) {
+		st := state.NewMemory()
+		fn(t, st, st)
+	})
+	t.Run("postgres", func(t *testing.T) {
+		pools := Pools(t, 2)
+		var sts [2]state.Store
+		for i, pool := range pools {
+			st, err := state.OpenPostgresShared(context.Background(), pool)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sts[i] = st
+		}
+		fn(t, sts[0], sts[1])
+	})
+}
+
+// Pools returns n pools on one new schema of the test database, as Pool does
+// for one.
+func Pools(t *testing.T, n int) []*pgxpool.Pool {
+	t.Helper()
+	first := Pool(t)
+	schema := first.Config().ConnConfig.RuntimeParams["search_path"]
+	out := []*pgxpool.Pool{first}
+	for range n - 1 {
+		cfg := first.Config()
+		cfg.ConnConfig.RuntimeParams["search_path"] = schema
+		pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Closed before the first pool's cleanup drops the schema.
+		t.Cleanup(pool.Close)
+		out = append(out, pool)
+	}
+	return out
+}
+
 // OpenPostgres returns a Postgres store on a new schema, and its pool.
 func OpenPostgres(t *testing.T) (*state.Postgres, *pgxpool.Pool) {
 	t.Helper()

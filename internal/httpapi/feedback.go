@@ -90,7 +90,11 @@ func (s *Server) listFeedback(w http.ResponseWriter, r *http.Request, who auth.P
 		}
 		after = n
 	}
-	records := s.P.Feedback.List(who.Tenant, r.PathValue("id"), after)
+	records, err := s.P.Feedback.List(who.Tenant, r.PathValue("id"), after)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	next := ""
 	if len(records) == feedback.MaxPage {
 		next = strconv.FormatInt(records[len(records)-1].Seq, 10)

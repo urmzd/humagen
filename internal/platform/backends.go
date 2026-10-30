@@ -64,6 +64,10 @@ type Backends struct {
 	// artifacts, the run index, the usage ledger, knowledge and workspace
 	// settings. Nil keeps them in memory.
 	State state.Store
+	// Shared is where the stores that read and write per request keep their
+	// records (see pkg/state): feedback. They need no lock, so Shared may be
+	// open in any number of processes at once. Nil uses State.
+	Shared state.Store
 	// Agents is where agent definitions are kept, as saige definitions.
 	// Nil keeps them in memory.
 	Agents wire.AgentStore
@@ -90,7 +94,9 @@ type Backends struct {
 //
 // It is one process's database: pkg/state takes it for this process, and a
 // second process gets state.ErrLocked until release is called or the first
-// process's connection ends.
+// process's connection ends. The stores that read and write per request are
+// on Backends.Shared, which takes no lock; the lock stays while any store is
+// loaded at start.
 //
 // providers are model provider names beyond fiber's built-ins that agent
 // specs may name, such as the extension providers a program registers.
@@ -129,7 +135,11 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters}, st.Close, nil
+	shared, err := state.OpenPostgresShared(ctx, pool)
+	if err != nil {
+		return Backends{}, nil, err
+	}
+	return Backends{State: st, Shared: shared, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters}, st.Close, nil
 }
 
 func (b Backends) check() error {
@@ -173,7 +183,11 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(st)
 	keep("evals", err)
-	p.Feedback, err = feedback.Open(st)
+	perRequest := cfg.Backends.Shared
+	if perRequest == nil {
+		perRequest = st
+	}
+	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
 	p.Prefs, err = prefs.Open(st)
 	keep("prefs", err)
