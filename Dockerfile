@@ -45,6 +45,8 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY pkg ./pkg
+# fiber, folded into this module.
+COPY fiber ./fiber
 COPY *.go ./
 # The changelog the root package embeds, for workspace.release_notes.
 COPY CHANGELOG.md ./
