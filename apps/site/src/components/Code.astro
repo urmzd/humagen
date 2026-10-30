@@ -1,0 +1,8 @@
+---
+type Props = { label: string; text: string };
+const { label, text } = Astro.props;
+---
+<figure class="codeblock">
+  <figcaption>{label}</figcaption>
+  <pre tabindex="0" aria-label={label}><code>{text}</code></pre>
+</figure>

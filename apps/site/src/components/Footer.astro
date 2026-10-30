@@ -1,0 +1,20 @@
+---
+import { contact, doc, pages, site } from "../content/site";
+---
+<footer class="site-footer">
+  <div class="wrap">
+    <ul>
+      <li><a href={pages.deploy.path}>Deploy guide</a></li>
+      <li><a href={site.repo}>Source on GitHub</a></li>
+      <li><a href={doc("docs/reference/spec.md")}>Spec reference</a></li>
+      <li><a href={`${site.repo}/issues`}>Report an issue</a></li>
+      <li><a href={contact.href}>{contact.label}</a></li>
+      <li><a href="/llms.txt">llms.txt</a></li>
+    </ul>
+    <p>
+      Humagen is open source under the <a href={doc("LICENSE")}>Apache License 2.0</a>. Type set in
+      Bricolage Grotesque and IBM Plex Mono, both under the{" "}
+      <a href="/licenses/bricolage-grotesque-OFL.txt">SIL Open Font License</a>.
+    </p>
+  </div>
+</footer>
