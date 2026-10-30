@@ -3024,15 +3024,26 @@ rather than feed it a gap: reconnect and resume. A run's end is not
 the stream's end, and the ledger (`getRun`) decides whether a run is
 over, not silence on the stream.
 
-There is no filter for one conversation. To follow a conversation,
-subscribe to everything and keep the events whose `run` is one of its
-turns.
+`thread` follows one conversation, read as its room (RFC 0004). It
+takes `type` and nothing else, and answers 404 for a conversation
+the caller may not read. In a room with at most the deployment's
+`rooms.coalesce_above` readers on the server (200 by default), every
+reader is sent each of the conversation's run events and thread
+notices as they happen, as the workspace's stream sends them. In a
+larger room a reader is sent at once only what involves them: the
+messages they posted or are named in, the runs they asked for, and
+the questions put to them. The rest arrives folded into a message
+with `event: page`, carrying one `RoomPage`, at most once every
+`rooms.tail_interval` (3 seconds by default). A page says how much
+happened and nothing about what: fetch the conversation's newest
+turns (`getThread`) to see it. A conversation's stream does not
+replay what the bus holds: fetch the conversation when it connects.
 
 Note for generators: the schema below describes the JSON carried in
 each message's `data` field, which is how the oag generator reads
 `itemSchema`.
  */
-  async *streamEvents(channel?: string, type?: string[], run?: string, from?: number, inbox?: boolean, topic?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<StreamEventsStreamEvent>> {
+  async *streamEvents(channel?: string, type?: string[], run?: string, from?: number, inbox?: boolean, topic?: string, thread?: string, options?: SSEOptions): AsyncGenerator<SSEEvent<StreamEventsStreamEvent>> {
     let path = "/api/events";
     const _q = new URLSearchParams();
     if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
@@ -3041,6 +3052,7 @@ each message's `data` field, which is how the oag generator reads
     if (from !== undefined && from !== null) _q.set("from", String(from));
     if (inbox !== undefined && inbox !== null) _q.set("inbox", String(inbox));
     if (topic !== undefined && topic !== null) _q.set("topic", String(topic));
+    if (thread !== undefined && thread !== null) _q.set("thread", String(thread));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     let url = `${this.baseUrl}${path}`;

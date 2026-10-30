@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.40.0 (2026-10-30)
+
+### Features
+
+- run context, person store and setting kinds (RFC 0004, change 5) (#122) ([06a5051](https://github.com/urmzd/humagen/commit/06a5051a478ee115d95be63da7f742b60dd3d3b7))
+
+### Misc
+
+- **deps**: skip npm versions younger than 24h (#123) ([3b66823](https://github.com/urmzd/humagen/commit/3b66823e8ebc2c8f03a846688674e893c4a76940))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.39.0...v0.40.0)
+
+
 ## 0.39.0 (2026-10-30)
 
 ### Features

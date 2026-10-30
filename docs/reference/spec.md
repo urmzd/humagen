@@ -99,6 +99,12 @@ spec:
     max_fan_out: 16
     builtin: {provider: "", model: ""}       # the platform's own agents
 
+  rooms:                    # a conversation with many readers (RFC 0004); each default is far above an ordinary one
+    coalesce_above: 200     # readers on one server above which each is sent at once only what involves them, the rest as a page
+    tail_interval: 3s       # how often a large conversation's page is sent: 500ms to 1m
+    max_runs_per_minute: 600   # runs one conversation starts in any minute
+    max_runs_per_person: 25    # runs one person has in flight at once
+
   secret_env:               # variables a workspace's clients may reference, by tenant
     default: [HUMAGEN_SLACK_TOKEN]
 
@@ -150,6 +156,27 @@ count and an inbox link, with event kinds and email off by default. The explicit
 `insecure_loopback` TLS mode accepts only literal loopback addresses without
 credentials. See [Email notifications](../guides/email-notifications.md) for quiet hours,
 retry behavior and consent records.
+
+### Rooms
+
+`rooms` protects the server from a conversation with a great many readers
+(RFC 0004, "A million people in one room"). A conversation's stream
+(`GET /api/events?thread=<id>`) is sent every event as it happens while the
+conversation has at most `coalesce_above` readers on the server. Past that,
+each reader is sent at once only the messages they posted or are named in,
+the runs they asked for and the questions put to them, and the rest as one
+page every `tail_interval`, which says how much happened; the console then
+reads the conversation's newest turns. What one server delivers each second
+is then bounded by the events that involve someone plus the readers divided
+by the interval, whatever the conversation's message rate.
+
+`max_runs_per_minute` and `max_runs_per_person` are admission limits beside
+a workspace's policies: a run past either is refused with 429 and a
+`Refusal` whose `limit` is `room_rate` or `person_runs`, and a tag in a
+message past them is refused in the message's `refused`. Only a run a person
+or a surface started counts: a call between agents is its root's work, and a
+schedule's or an eval's run is asked by nobody. With `stores.kind: postgres`
+the counts are shared by every replica.
 
 ## Platform
 
@@ -784,6 +811,7 @@ no longer shows it. The log lines each inbox decision writes
 | Sign-in and the identity provider | System | one per process |
 | Stores, bus, files | System | where state lives is the operator's choice |
 | Concurrency, depth and fan-out | System | protects the process |
+| A conversation's readers, run rate and runs per person (`rooms`) | System | protects the process |
 | Variables a workspace may reference | System | the environment is the process's |
 | Where people may keep their own tool credentials (`person_refs`) | System | a reference is read with the process's own access |
 | Whether people may store a tool credential's value (`workspace.person_credentials`) | Platform | it is the workspace's people's data |

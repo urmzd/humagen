@@ -263,7 +263,7 @@ test("the event stream yields run events with inline data, and inbox notices", a
   assert.equal(req.headers.accept, "text/event-stream");
   assert.equal(req.headers.authorization, "Bearer machine-token");
   assert.deepEqual(
-    items.map((i) => (i.item === "event" ? i.event.type : `inbox:${i.notice.id}`)),
+    items.map((i) => (i.item === "event" ? i.event.type : i.item === "inbox" ? `inbox:${i.notice.id}` : "page")),
     ["run.accepted.v1", "run.delta.text.v1", "inbox:m1", "run.delta.tool.call.v1", "run.action.taken.v1", "run.started.v1", "run.completed.v1"],
   );
   const events = items.flatMap((i) => (i.item === "event" ? [i.event] : []));
@@ -273,6 +273,21 @@ test("the event stream yields run events with inline data, and inbox notices", a
   assert.deepEqual(acted?.type === "run.action.taken.v1" && acted.data.data, { id: "a1" });
   assert.deepEqual(events.find((e) => e.type === "run.started.v1")?.data, {});
   assert.equal(isRunCompletedEvent(wire(6, "run.completed.v1")), true);
+});
+
+test("a conversation's stream names its thread and yields its pages", async () => {
+  const page = { thread: "th-1", seq: 2, messages: 3, events: 40, viewers: 900, from: "2026-10-29T12:00:00Z", through: "2026-10-29T12:00:03Z" };
+  serve((_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify(wire(1, "run.accepted.v1", { attempt: 1 }))}\n\n`);
+    res.end(`event: page\ndata: ${JSON.stringify(page)}\n\n`);
+  });
+  const client = createClient({ baseUrl: base });
+  const items: StreamItem[] = [];
+  for await (const item of client.events({ thread: "th-1", type: ["run.accepted"] })) items.push(item);
+  assert.equal(last().url, "/api/events?type=run.accepted&thread=th-1");
+  assert.deepEqual(items.map((i) => i.item), ["event", "page"]);
+  assert.deepEqual(items[1]?.item === "page" && items[1].page, page);
 });
 
 test("a run's events end at the event that completes it", async () => {
