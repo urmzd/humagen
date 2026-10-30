@@ -3,6 +3,8 @@ package state_test
 import (
 	"context"
 	"errors"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/urmzd/humagen/pkg/state"
@@ -161,4 +163,70 @@ func TestPostgresIsOneWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = third.Close()
+}
+
+// A shared store opens beside the one that holds the database, and any number
+// of them may.
+func TestPostgresSharedTakesNoLock(t *testing.T) {
+	st, pool := statetest.OpenPostgres(t)
+	ctx := context.Background()
+	for range 2 {
+		shared, err := state.OpenPostgresShared(ctx, pool)
+		if err != nil {
+			t.Fatalf("a shared open beside the locked one = %v", err)
+		}
+		if err := shared.Write(ctx, "ns", state.Create("t", "k", []byte("v"))); err != nil && !errors.Is(err, state.ErrConflict) {
+			t.Fatal(err)
+		}
+		if err := shared.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if v, err := st.Get(ctx, "ns", "t", "k"); err != nil || string(v) != "v" {
+		t.Fatalf("Get = %q, %v", v, err)
+	}
+	if _, err := state.OpenPostgres(ctx, pool); !errors.Is(err, state.ErrLocked) {
+		t.Fatalf("the lock was let go: %v", err)
+	}
+}
+
+// Two processes changing one record by compare-and-set lose no change.
+func TestProcessesAgreeByVersion(t *testing.T) {
+	statetest.Processes(t, func(t *testing.T, a, b state.Store) {
+		ctx := context.Background()
+		if err := a.Write(ctx, "ns", state.Create("t", "n", []byte("0"))); err != nil {
+			t.Fatal(err)
+		}
+		const each = 20
+		var wg sync.WaitGroup
+		for i := range 8 {
+			st := []state.Store{a, b}[i%2]
+			wg.Go(func() {
+				for range each {
+					for {
+						r, err := st.Lookup(ctx, "ns", "t", "n")
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						n, _ := strconv.Atoi(string(r.Value))
+						err = st.Write(ctx, "ns", state.PutAt("t", "n", []byte(strconv.Itoa(n+1)), r.Version))
+						if errors.Is(err, state.ErrConflict) {
+							continue
+						}
+						if err != nil {
+							t.Error(err)
+						}
+						break
+					}
+				}
+			})
+		}
+		wg.Wait()
+		for _, st := range []state.Store{a, b} {
+			if v, err := st.Get(ctx, "ns", "t", "n"); err != nil || string(v) != strconv.Itoa(8*each) {
+				t.Fatalf("n = %q, %v; want %d", v, err, 8*each)
+			}
+		}
+	})
 }

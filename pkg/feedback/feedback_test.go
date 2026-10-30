@@ -34,7 +34,7 @@ func TestFeedbackSurvivesRestartAndScopesPeopleAndTenants(t *testing.T) {
 	if got.Run != original.Run || got.Comment != updated.Comment {
 		t.Fatalf("lost feedback context: %+v", got)
 	}
-	records, err := st.Load(t.Context(), "feedback")
+	records, _, err := st.List(t.Context(), "feedback", "one", state.Query{Prefix: "r:", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,10 +59,10 @@ func TestFeedbackSurvivesRestartAndScopesPeopleAndTenants(t *testing.T) {
 	if _, err := s.Save("one", other); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.List("two", "run", 0); len(got) != 0 {
+	if got := list(t, s, "two", "run", 0); len(got) != 0 {
 		t.Fatal("another tenant's feedback escaped")
 	}
-	if got := s.List("one", "run", 1); len(got) != 1 || got[0].Subject != "olu" || got[0].Seq != 2 {
+	if got := list(t, s, "one", "run", 1); len(got) != 1 || got[0].Subject != "olu" || got[0].Seq != 2 {
 		t.Fatalf("cursor: %+v", got)
 	}
 	if _, err := s.Save("one", feedback.Record{Run: "run", Subject: "ana", Rating: "invalid"}); err == nil {
@@ -87,7 +87,7 @@ func TestFeedbackPagesByANumberThatSurvivesARestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := s.List("one", "run", 0)
+	first := list(t, s, "one", "run", 0)
 	if len(first) != 2 || first[0].Seq == 0 || first[1].Seq <= first[0].Seq || first[0].Subject != "zed@example.com" {
 		t.Fatalf("old records are not numbered: %+v", first)
 	}
@@ -100,11 +100,11 @@ func TestFeedbackPagesByANumberThatSurvivesARestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	again := s.List("one", "run", 0)
+	again := list(t, s, "one", "run", 0)
 	if len(again) != feedback.MaxPage || again[0] != first[0] || again[1] != first[1] {
 		t.Fatalf("a restart renumbered the records: %+v then %+v", first, again[:2])
 	}
-	rest := s.List("one", "run", again[len(again)-1].Seq)
+	rest := list(t, s, "one", "run", again[len(again)-1].Seq)
 	if len(rest) != 3 || rest[2].Subject != fmt.Sprintf("p%03d@example.com", feedback.MaxPage) {
 		t.Fatalf("the next page: %+v", rest)
 	}
@@ -112,7 +112,16 @@ func TestFeedbackPagesByANumberThatSurvivesARestart(t *testing.T) {
 	if _, err := s.Save("one", feedback.Record{Run: "run", Subject: first[0].Subject, Rating: "down"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.List("one", "run", 0)[0]; got.Subject != first[0].Subject || got.Seq != first[0].Seq {
+	if got := list(t, s, "one", "run", 0)[0]; got.Subject != first[0].Subject || got.Seq != first[0].Seq {
 		t.Fatalf("a new rating moved the record: %+v", got)
 	}
+}
+
+func list(t *testing.T, s *feedback.Store, tenant, run string, after int64) []feedback.Record {
+	t.Helper()
+	out, err := s.List(tenant, run, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

@@ -64,15 +64,8 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool) (*Postgres, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("%w: no pool", ErrInvalid)
 	}
-	err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, 0)`, int32(lockClass)); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, schema)
-		return err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("state: migrate: %w", err)
+	if err := migrate(ctx, pool); err != nil {
+		return nil, err
 	}
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
@@ -88,6 +81,35 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool) (*Postgres, error) {
 		return nil, ErrLocked
 	}
 	return &Postgres{pool: pool, lock: conn}, nil
+}
+
+// OpenPostgresShared creates the table if it is not there, as OpenPostgres
+// does, and takes no lock: any number of processes may open it. Only a store
+// that reads and writes per request (see the package doc) may be built on it.
+// A store loaded at start still needs OpenPostgres, which a process opens
+// beside this one on the same pool until no store needs it. Close is a no-op.
+func OpenPostgresShared(ctx context.Context, pool *pgxpool.Pool) (*Postgres, error) {
+	if pool == nil {
+		return nil, fmt.Errorf("%w: no pool", ErrInvalid)
+	}
+	if err := migrate(ctx, pool); err != nil {
+		return nil, err
+	}
+	return &Postgres{pool: pool}, nil
+}
+
+func migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, 0)`, int32(lockClass)); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, schema)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("state: migrate: %w", err)
+	}
+	return nil
 }
 
 // Close lets another process have the database. The store must not be used
