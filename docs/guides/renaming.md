@@ -23,7 +23,7 @@ both and what an operator does, and `internal/legacy` is the one place the
 code names them.
 
 Identifiers that changed with the last of the rename, and what to do. The
-GitHub rows are warp's own and in effect now. The Postgres, durable, Redis and
+GitHub rows are warp's own and in effect now. The Postgres, durable and
 revision rows are fiber's and take effect with the first fiber release after
 v0.20.1, and the wire codes with saige v0.41.0; until warp's `go.mod` names
 those, the old identifiers are still the ones written.
@@ -32,7 +32,6 @@ those, the old identifiers are still the ones written.
 |------------|-----|----|---------|
 | Postgres tables and indexes | `mandatum_*` | `fiber_*` | renamed in place at startup |
 | Durable activity and record names | `mandatum.*` | `fiber.*` | drain runs in flight before upgrading; they are not replayed across it |
-| Redis bus keys (`-bus=redis`) | `mandatum:` | `fiber:` | nothing: the bus starts empty under the new prefix; delete the old keys when convenient |
 | Agent revision hashes | under `mandatum/agentspec/v1` | under `fiber/agentspec/v1` | fiber re-addresses stored revisions at startup; a hash kept outside warp (a link, a log) names the old one |
 | Saige wire error codes | `durable.duraturo.*` | `durable.anchor.*` | upgrade every process together |
 | GitHub review format | `mandatum.github.review.v1` | `warp.github.review.v1` | agents' prompts name the new one (see `examples/github-review`) |
@@ -66,7 +65,6 @@ they moved to are now kept names themselves.
 | What | Before | Now |
 |------|--------|-----|
 | Postgres tables, indexes and constraints | `mandatum_*` | `fiber_*` |
-| Redis bus key namespace (`bus.DefaultKeyPrefix`) | `mandatum:` | `fiber:` |
 | anchor activities and records | `mandatum.turn`, `mandatum.turn.agent`, `mandatum.turn.resume`, `mandatum.park`, `mandatum.stop`, `mandatum.question.*`, `mandatum.answer.*`, `mandatum.usage.*`, `mandatum.child.*` | the same under `fiber.` |
 | Agent hash domain | the old spec domain under `mandatum/` | the same under `fiber/`, retired with the event union (see [events.md](../../fiber/docs/architecture/events.md#10-upgrade)) |
 | Knowledge document hash domain | `mandatum.knowledge.v1` | `fiber.knowledge.v1` |
@@ -120,12 +118,9 @@ they moved to are now kept names themselves.
    matter. The old agent registry tables are no longer read: agents are
    saige definitions in `fiber_definitions` (see
    [events.md](../../fiber/docs/architecture/events.md#7-definitions)). `internal/legacy` (`FiberTablesSQL`) is the only code that knows the old names.
-4. **Redis starts empty.** The bus's keys are a reconnect window, not a
-   record, so the old `mandatum:` keys are simply abandoned; delete them when
-   convenient.
-5. **Knowledge re-embeds once.** A document's hash includes its domain, so
+4. **Knowledge re-embeds once.** A document's hash includes its domain, so
    the first re-index after the upgrade treats every document as changed.
-6. **Anything that stored a revision hash** outside fiber (a link, an audit
+5. **Anything that stored a revision hash** outside fiber (a link, an audit
    log) holds the old address. The new one is the definition content hash,
    `App.Definitions().Get(ctx, tenant, name, version)` then `.Digest` (see
    [events.md](../../fiber/docs/architecture/events.md#7-definitions)).

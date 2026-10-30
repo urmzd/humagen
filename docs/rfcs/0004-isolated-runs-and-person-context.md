@@ -220,7 +220,7 @@ So a large room changes how it is read:
 
 - A viewer receives the runs and messages that involve them, and the room's
   tail as a coalesced page every few seconds, not each event as it happens.
-- Streams are sharded by conversation on the bus (Redis streams today), and
+- Streams are sharded by conversation on the bus, and
   an SSE gateway holds the connections.
 - Admission adds a per-room rate and a per-person concurrency limit to the
   existing per-scope limits.

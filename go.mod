@@ -5,7 +5,6 @@ go 1.26.10
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-jose/go-jose/v4 v4.1.6
-	github.com/redis/go-redis/v9 v9.21.0
 	github.com/urmzd/anchor v0.5.1
 	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213
 	github.com/urmzd/playscape v0.9.0
@@ -57,7 +56,6 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect

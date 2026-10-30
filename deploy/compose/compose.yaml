@@ -111,9 +111,9 @@ services:
       MINIO_ROOT_USER: ${HUMAGEN_S3_ACCESS_KEY_ID:-${WARP_S3_ACCESS_KEY_ID:-warp}}
       MINIO_ROOT_PASSWORD: ${HUMAGEN_S3_SECRET_ACCESS_KEY:-${WARP_S3_SECRET_ACCESS_KEY:-change-me-please}}
 
-  # The backends fiber's conformance suites run against: Postgres with
-  # pgvector, which the knowledge store needs, and Redis for the bus. Only
-  # started with the integration profile; `make integration` uses them.
+  # The backend fiber's conformance suites run against: Postgres with
+  # pgvector, which the knowledge store needs. Only started with the
+  # integration profile; `make integration` uses it.
   fiber-postgres:
     profiles: ["integration"]
     image: pgvector/pgvector:pg17
@@ -131,23 +131,8 @@ services:
       timeout: 3s
       retries: 30
 
-  redis:
-    profiles: ["integration"]
-    image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "127.0.0.1:${FIBER_REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-
 volumes:
   warp-data:
   postgres-data:
   minio-data:
   fiber-postgres-data:
-  redis-data:
