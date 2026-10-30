@@ -35,6 +35,7 @@ import (
 	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
 	"github.com/urmzd/humagen/fiber/pkg/egress"
 	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/fiber/pkg/toolprovider"
 	"github.com/urmzd/humagen/fiber/pkg/turn"
@@ -161,6 +162,11 @@ type Config struct {
 	// Workspace is the directory agents write artifacts under. Empty takes a
 	// directory under the user's cache.
 	Workspace string
+	// Sandbox is where a run's tools execute: each turn's file tools,
+	// shell and stdio MCP servers in an instance its Leaser starts for
+	// that run (RFC 0004). The zero value is unisolated: tools run on this
+	// host as they always did, the shell is refused, and New says so.
+	Sandbox isolation.Sandbox
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
@@ -512,6 +518,11 @@ func New(cfg Config) (*Platform, error) {
 	}
 	p.closers = append(p.closers, closeGroups)
 
+	if p.cfg.Sandbox.Isolated() {
+		p.log.Info("platform: sandbox: each run's tools execute in an instance of their own", "sandbox", p.cfg.Sandbox.String())
+	} else {
+		p.log.Warn("platform: sandbox: unisolated: tools run on this host with the server's privileges, and the shell is refused. Use it for development and tests only")
+	}
 	exec, err := p.executor(groups)
 	if err != nil {
 		_ = p.Close()
@@ -580,6 +591,8 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 		// run's tenant.
 		runtime.WithKnowledge(p.knowledgeFor),
 		runtime.WithCallTool(ToolCallAgent),
+		// Each turn claims the instance its tools execute in.
+		runtime.WithRunInstances(p.runInstances),
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),

@@ -8,6 +8,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
+	"github.com/urmzd/humagen/fiber/pkg/isolation"
 	"github.com/urmzd/humagen/fiber/pkg/runtime"
 	"github.com/urmzd/humagen/fiber/pkg/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
@@ -37,6 +38,13 @@ func (p *Platform) UseTool(ctx context.Context, req runtime.Request, name string
 	}
 	out, err := tool.Execute(ctx, args)
 	return out, reported, err
+}
+
+// Claim is the claim a turn of req makes on an instance, on ctx, as the
+// runtime would put it there; release it when the turn is over.
+func (p *Platform) Claim(ctx context.Context, req runtime.Request) (context.Context, *isolation.Run) {
+	run := p.runInstances(ctx, req)
+	return isolation.WithRun(ctx, run), run
 }
 
 // SandboxDir is where a conversation's files are.

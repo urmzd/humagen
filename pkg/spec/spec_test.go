@@ -44,6 +44,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("strict check: %v", err)
 	}
+	if sb, err := Block[DockerSandbox](cfg.System.Spec.Sandbox); err != nil || cfg.System.Spec.Sandbox.Kind != "docker" || sb.Runtime != RuntimeGVisor || sb.Image != DefaultSandboxImage || sb.Max != 64 {
+		t.Fatalf("the example's sandbox = %+v %+v %v", cfg.System.Spec.Sandbox, sb, err)
+	}
 	w := cfg.Platforms[0].Spec.Workspace
 	if w.Instructions == nil || len(w.Projects) != 3 || !w.ReleaseNotes || w.Retention() != 180*24*time.Hour {
 		t.Fatalf("workspace = %+v", w)

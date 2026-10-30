@@ -233,6 +233,22 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	}
 	set("bus", sp.Bus.Kind)
 
+	switch sp.Sandbox.Kind {
+	case "docker":
+		b, _ := spec.Block[spec.DockerSandbox](sp.Sandbox)
+		set("sandbox", "docker")
+		set("sandbox-runtime", b.Runtime)
+		set("sandbox-image", b.Image)
+		set("sandbox-connectors-image", b.ConnectorsImage)
+		set("sandbox-work-root", b.WorkRoot)
+	case "local":
+		b, _ := spec.Block[spec.LocalSandbox](sp.Sandbox)
+		set("sandbox", "local")
+		set("sandbox-work-root", b.Dir)
+	default:
+		set("sandbox", sp.Sandbox.Kind)
+	}
+
 	set("workspace", sp.Execution.Workspace)
 	set("concurrency", strconv.Itoa(sp.Execution.Concurrency))
 	set("max-depth", strconv.Itoa(sp.Execution.MaxDepth))

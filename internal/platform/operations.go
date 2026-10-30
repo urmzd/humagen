@@ -142,7 +142,7 @@ func categoryOf(name string) operations.Category {
 		return operations.CallAgents
 	case "github_read_context", ToolFileRead, ToolFileList, ToolRunsSummary, ToolListAlerts, ToolListAgents, ToolReadAgent, "source_search":
 		return operations.ReadContext
-	case ToolFileWrite, ToolSaveAgent:
+	case ToolFileWrite, ToolSaveAgent, ToolShell:
 		return operations.WriteFiles
 	case ToolPublish:
 		return operations.PublishArtifacts
