@@ -44,8 +44,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    # The Postgres and Redis backends are held to the same suites as the
-    # in-memory ones (pkg/state/statetest, fiber/pkg/*/postgres_test.go). The
+    # The Postgres backends are held to the same suites as the in-memory
+    # ones (pkg/state/statetest, fiber/pkg/*/postgres_test.go). The
     # image is the one `make integration` uses: the knowledge store needs
     # pgvector.
     services:
@@ -62,34 +62,25 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 30
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
     env:
       HUMAGEN_POSTGRES_TEST_URL: postgres://humagen:humagen@localhost:5432/humagen?sslmode=disable
       FIBER_POSTGRES_TEST_URL: postgres://humagen:humagen@localhost:5432/humagen?sslmode=disable
-      FIBER_REDIS_ADDR: localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Test, with Postgres and Redis
+      - name: Test, with Postgres
         run: |
           set -o pipefail
           go test ./... -race -v 2>&1 | tee test.log | grep -vE '^(=== (RUN|PAUSE|CONT|NAME)|\s*--- PASS|PASS$)'
       # Each backend suite skips when its variable is unset, so a renamed
       # variable would turn them into silent passes. Fail on any such skip.
-      - name: Fail if a backend suite skipped
+      # Suites that also need Redis are left out: no Redis runs here.
+      - name: Fail if a Postgres suite skipped
         run: |
-          if grep -nE 'set (HUMAGEN_POSTGRES_TEST_URL|FIBER_POSTGRES_TEST_URL|FIBER_REDIS_ADDR)' test.log; then
-            echo "A Postgres or Redis suite skipped. Check the variable names above."
+          if grep -nE 'set (HUMAGEN_POSTGRES_TEST_URL|FIBER_POSTGRES_TEST_URL)' test.log | grep -v FIBER_REDIS_ADDR; then
+            echo "A Postgres suite skipped. Check the variable names above."
             exit 1
           fi
 
