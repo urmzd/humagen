@@ -8,7 +8,7 @@ require (
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/urmzd/anchor v0.5.1
 	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213
-	github.com/urmzd/playscape v0.7.3-0.20261030020413-d8415f6ec77c
+	github.com/urmzd/playscape v0.9.0
 	github.com/urmzd/saige v0.41.0
 	golang.org/x/oauth2 v0.37.0
 )
