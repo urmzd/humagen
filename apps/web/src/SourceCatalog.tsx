@@ -16,7 +16,6 @@ export function SourceCatalog({ onSelect }: { onSelect: (provider: SourceChoice)
   const copy = defaultCopy.sourceCatalog;
   return (
     <div className="space-y-6">
-      <p className="text-sm leading-6 text-aui-muted">{copy.description}</p>
       <section className="space-y-2" aria-label={copy.available}>
         {(
           [
@@ -97,5 +96,12 @@ export function SourceCatalog({ onSelect }: { onSelect: (provider: SourceChoice)
         <p className="text-sm leading-6 text-aui-muted">{copy.formatsHint}</p>
       </section>
     </div>
+  );
+}
+
+/** The catalog's intro, held under the inspector header while the list scrolls. */
+export function SourceCatalogLead() {
+  return (
+    <p className="text-sm leading-6 text-aui-muted">{defaultCopy.sourceCatalog.description}</p>
   );
 }
