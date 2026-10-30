@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.48.1 (2026-10-30)
+
+### Bug Fixes
+
+- **site**: social previews, structured data and accessibility fixes (#142) ([bfc3303](https://github.com/urmzd/humagen/commit/bfc3303621434bd87f1c13e7cad089f29e239d22))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.48.0...v0.48.1)
+
+
 ## 0.48.0 (2026-10-30)
 
 ### Features
