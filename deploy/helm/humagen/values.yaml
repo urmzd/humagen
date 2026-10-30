@@ -86,6 +86,19 @@ system:
     execution:
       max_depth: 4
       max_fan_out: 16
+    # Where a run's tools execute: the file tools, the shell and stdio MCP
+    # servers (docs/reference/spec.md#sandbox). Set it on purpose:
+    #   unisolated  tools run in this pod with humagen's privileges, as before
+    #               the sandbox; the shell is refused. What this chart ships.
+    #   docker      an instance per run, on runsc (gVisor) or runc. This image
+    #               has no Docker CLI and the pod no Docker socket, so here
+    #               every file tool and stdio server would refuse. Mounting the
+    #               node's Docker socket gives humagen root on the node: do not.
+    #   local       host processes in this pod, not isolated; development only.
+    # A Kubernetes driver that runs each run's instance as its own pod is the
+    # production target and is not built yet.
+    sandbox:
+      kind: unisolated
 
 # -- Platform documents, one per workspace (docs/reference/spec.md#platform). Each item
 # is {metadata, spec} and is rendered with api_version and kind added;

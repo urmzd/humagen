@@ -184,7 +184,13 @@ Docker has on a developer's machine. A `docker` sandbox whose CLI is missing
 does not stop the server: it logs why, and every tool that needs an instance
 refuses with that reason; nothing falls back to the host. A server in a
 container needs the Docker CLI and a daemon it may use (a mounted socket) to
-run tools. Until the egress gate lands, an instance has no network at all,
+run tools. **Giving Humagen the Docker socket is root on that host**:
+whoever can start containers through it can mount the host's filesystem. So
+the `docker` driver is for a host that exists to run sandboxes, not a shared
+server or a Kubernetes node; the chart and the compose stack set
+`unisolated` explicitly for that reason. A remote or Kubernetes driver,
+which starts instances somewhere Humagen holds no root, is the production
+target and is not built yet. Until the egress gate lands, an instance has no network at all,
 so a stdio MCP server that calls an API cannot reach it under `docker`.
 
 Flags override the block: `-sandbox`, `-sandbox-runtime`, `-sandbox-image`,

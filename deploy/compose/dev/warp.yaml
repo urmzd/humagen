@@ -24,6 +24,13 @@ spec:
   execution:
     # The seeded agents need no model key.
     builtin: {provider: offline, model: offline}
+  sandbox:
+    # Where a run's tools execute (docs/reference/spec.md#sandbox). Humagen
+    # runs on the developer's machine here, beside its Docker, so each run
+    # gets a container, on runc: the runtime Docker has without gVisor.
+    # unisolated runs tools on this machine instead and refuses the shell.
+    kind: docker
+    docker: {runtime: runc}
 ---
 api_version: warp/v1
 kind: Platform
