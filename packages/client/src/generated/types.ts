@@ -604,6 +604,58 @@ export interface ToolCredentials {
   references: string[];
 }
 
+/** One level of the run settings. Ceilings bound a run and the strictest level wins; preferences choose within them and the nearest level wins. */
+export interface RunSettings {
+  ceilings?: RunCeilings;
+  preferences?: RunPreferences;
+}
+
+/** A list left out narrows nothing at its level; an empty list allows nothing. Tool servers are default deny. */
+export interface RunCeilings {
+  /** Tool names an agent's tools may keep, at most 64. */
+  tools?: string[];
+  /** Models a run may call, each `provider/model` or `provider/*`, at most 64. */
+  models?: string[];
+  /** How deep a run's calls may go, 0 to 16. It never deepens the deployment's limit. */
+  call_depth?: number;
+  /** Hosts a person's own tool servers may be on, at most 64. */
+  tool_servers?: string[];
+}
+
+export interface RunPreferences {
+  /** `provider/model`, or `policy/<name>` for a workspace model policy, used in place of the agent's own when the ceilings allow it. */
+  model?: string;
+  /** Input size, in tokens, past which a run's history is summarized, 1024 to 2000000. */
+  compaction_tokens?: number;
+}
+
+/** An MCP server a person adds for themselves. Its credential is a reference, never a secret. */
+export interface PersonToolServer {
+  name: string;
+  /** The server's https address, with no user or password in it. */
+  url: string;
+  /** A reference (`env:`, `keychain:` or `op://`) under one of the person's own starts. */
+  credential?: string;
+}
+
+/** What one person brings to the runs that act for them. */
+export interface PersonContext {
+  run: RunSettings;
+  tool_servers: PersonToolServer[];
+  /** The person's memory volume, given on their first write. Absent before it. */
+  memory?: string;
+  version: number;
+  updated_at?: string;
+}
+
+export interface PersonContextInput {
+  run?: RunSettings;
+  /** At most 16. */
+  tool_servers?: PersonToolServer[];
+  /** The version the change was made from. */
+  version: number;
+}
+
 /** A tool provider that is reached with each person's own credential, and whether the caller has connected one. A value is never shown. */
 export interface ToolCredential {
   provider: string;
