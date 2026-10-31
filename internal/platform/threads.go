@@ -386,6 +386,24 @@ func (l tagLookup) Skill(name string) bool {
 // MentionKind is what a mention kind the workspace declares resolves to.
 func (l tagLookup) MentionKind(kind string) (string, bool) { return l.p.mentionKind(l.tenant, kind) }
 
+// Agents is the tenant's agents the poster may tag, read in one page of at
+// most wire.MaxPageSize, so a message tags any number of them for one
+// bounded read. complete is false when more agents are left past the page;
+// a name it does not hold is then looked up by Agent.
+func (l tagLookup) Agents() (map[string]bool, bool) {
+	revs, next, err := l.p.Catalog().List(l.ctx, l.tenant, wire.Page{Size: wire.MaxPageSize})
+	if err != nil {
+		return nil, false
+	}
+	names := make(map[string]bool, len(revs))
+	for _, r := range revs {
+		if l.sees == nil || l.sees(r.Spec.Name) {
+			names[r.Spec.Name] = true
+		}
+	}
+	return names, next == ""
+}
+
 func (l tagLookup) Agent(name string) bool {
 	_, err := l.p.Catalog().Get(l.ctx, l.tenant, name, 0)
 	return err == nil && (l.sees == nil || l.sees(name))

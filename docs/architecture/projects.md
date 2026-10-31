@@ -340,7 +340,10 @@ and `$my_var` stay text. A skill nobody on the project's chain declares
 refuses a message typed in the console with 400 "there is no skill called
 ...", before anything is posted; a message Slack or GitHub posted is there
 already, so it is kept and the skill is refused, saying why. At most 4 skills
-a message, and they count toward its 10 tags.
+a message, and they count toward its 10 places for tags that are not agents'.
+Agents are read in one roster read of the tenant's agents (at most 500, a
+name past them looked up on its own), so a message tags any number of
+them; the text's 8,000 characters bound them.
 
 What a message starts, first rule that applies:
 
@@ -351,7 +354,7 @@ What a message starts, first rule that applies:
    and tags no agent asks the agents available there whether to join, as
    [the dynamic router](#the-dynamic-router) does, and each that joins is
    told to use the skill (`startsForSkills` in `internal/platform`), unless
-   it was posted only; with no room left in its 10 tags it is refused. A
+   it was posted only; with no room left in its 10 places it is refused. A
    message a client posts,
    from Slack or GitHub or through the API for a person (`act_as`), keeps the
    client's defaults: the default answers it with the skill, as the client's

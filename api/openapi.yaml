@@ -9588,8 +9588,9 @@ components:
           type: string
         text: {type: string, maxLength: 8000}
         mentions:
+          description: Its tags, each once. Agents are not counted against a cap and are bounded by the text's length; at most 10 are people, experts, roles and skills, which each take a lookup of their own.
           type: array
-          maxItems: 10
+          maxItems: 4000
           items: {$ref: "#/components/schemas/ThreadMention"}
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         via:

@@ -1228,6 +1228,7 @@ export interface ThreadMessage {
   /** What they are called, their name in the directory or else their handle. Never an address. */
   name: string;
   text: string;
+  /** Its tags, each once. Agents are not counted against a cap and are bounded by the text's length; at most 10 are people, experts, roles and skills, which each take a lookup of their own. */
   mentions: ThreadMention[];
   answers?: ThreadAnswerRef;
   /** `console`, or the id of the client it came through. */

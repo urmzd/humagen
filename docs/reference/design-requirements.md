@@ -1005,9 +1005,11 @@ Android.
   agent off, and picking a mentioned agent again takes its mention out.
 - A message is sent as its text. Its mentions route it by the platform's tag
   rule: every agent it tags answers, with no per-message cap. Budgets,
-  admission and room limits still bound what the runs spend, and a message
-  holds at most 10 tags of every kind (`threads.MaxMentions`), each looked up
-  once. There is no Each Decides or All of Them toggle in the composer.
+  admission and room limits still bound what the runs spend. Agent tags are
+  resolved in one bounded read of the tenant's agents, so they hold no
+  place and only the text's length bounds them; people, experts, roles and
+  skills, which each need a lookup, hold at most 10 places
+  (`threads.MaxMentions`). There is no Each Decides or All of Them toggle in the composer.
 - An untagged follow-up runs nothing. A thread's saved `agents` and `mode`
   from before keep routing its untagged messages; the console no longer
   changes them.

@@ -399,6 +399,27 @@ func TestEveryAgentAConsoleMessageTagsAnswers(t *testing.T) {
 	}
 }
 
+// Agents are read in one roster read, so a message tags more agents than
+// MaxMentions, and every one answers.
+func TestFifteenTaggedAgentsAllAnswer(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Globex", operator)
+	var names []string
+	for i := range 15 {
+		n := fmt.Sprintf("crew-%02d", i)
+		names = append(names, n)
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: n, Model: "offline", Provider: "offline", SystemPrompt: "Help."}, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setAgents(t, p, "Globex", platform.AgentsInput{Enable: []string{}, Allow: names})
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: "@" + strings.Join(names, " @") + " each of you, please"})
+	if got.Rule != threads.RuleTagged || len(got.Runs) != len(names) || len(got.Refused) != 0 || len(got.Message.Mentions) != len(names) {
+		t.Fatalf("fifteen tags started %d runs, kept %d tags, refused %+v", len(got.Runs), len(got.Message.Mentions), got.Refused)
+	}
+}
+
 // Without the cap, a budget still bounds what one message starts: the runs
 // past the limit are refused, each tag saying why.
 func TestABudgetStillRefusesTagsPastItsLimit(t *testing.T) {

@@ -82,7 +82,10 @@ const (
 	MaxHeld = 2 * MaxParticipants
 	// MaxText bounds a message, in characters.
 	MaxText = 8000
-	// MaxMentions is how many tags one message holds.
+	// MaxMentions is how many tags one message holds that each take a
+	// lookup of their own: people, experts, roles and skills. Agents are
+	// read in one roster read (Roster) and are not counted; their bound is
+	// MaxText.
 	MaxMentions = 10
 	// MaxSkills is how many skills one message names. They are tags, so
 	// they count toward MaxMentions too.
@@ -490,8 +493,11 @@ func (m Message) validate() error {
 		return fmt.Errorf("%w: a name is one line of at most %d characters", ErrInvalid, MaxName)
 	case CheckText(m.Text) != nil:
 		return CheckText(m.Text)
-	case len(m.Mentions) > MaxMentions:
-		return fmt.Errorf("%w: a message tags at most %d people and agents", ErrInvalid, MaxMentions)
+	case PerNameTags(m.Mentions) > MaxMentions:
+		return fmt.Errorf("%w: a message tags at most %d people, experts, roles and skills", ErrInvalid, MaxMentions)
+	case len(m.Mentions) > MaxText/2:
+		// Each tag is written in the text, at least two characters apart.
+		return fmt.Errorf("%w: a message holds more tags than its text can", ErrInvalid)
 	case m.Via != ViaConsole && !validVia.MatchString(m.Via):
 		return fmt.Errorf("%w: a message is posted in the console or through a client", ErrInvalid)
 	case chars(m.SurfaceID) > MaxSurfaceID || !oneLine(m.SurfaceID):

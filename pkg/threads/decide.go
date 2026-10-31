@@ -9,7 +9,7 @@ import (
 
 // MaxAll is how many of a thread's selected agents answer one untagged
 // message side by side (ModeAll). A message's tags have no such cap: each
-// agent it tags answers, bounded by MaxMentions, and budgets and admission
+// agent it tags answers, however many it tags, and budgets and admission
 // bound what they spend.
 const MaxAll = 3
 
