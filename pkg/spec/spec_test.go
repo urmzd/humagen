@@ -34,6 +34,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if cfg.System.Spec.Server.Role != "all" {
+		t.Fatalf("server.role = %q", cfg.System.Spec.Server.Role)
+	}
 	if cfg.System.Spec.Stores.Kind != "postgres" || len(cfg.Platforms) != 1 || len(cfg.Platforms[0].Spec.Models) != 3 {
 		t.Fatalf("config = %+v", cfg)
 	}
@@ -355,6 +358,31 @@ func TestABusTheStoresCannotCarryIsRefused(t *testing.T) {
 	}
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("postgres bus on postgres stores: %v", err)
+	}
+}
+
+// A split role hands turns over through the run queue, so it needs the
+// stores on Postgres; all runs anywhere.
+func TestAServerRoleIsCheckedAgainstTheStores(t *testing.T) {
+	sys := "api_version: humagen/v1\nkind: System\nspec:\n"
+	pgStores := "  stores: {kind: postgres, postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}}\n"
+	for body, want := range map[string]string{
+		sys + "  server: {role: scheduler}\n":         "not all, api or worker",
+		sys + "  server: {role: worker}\n":            "set stores.kind: postgres",
+		sys + "  server: {role: api}\n":               "set stores.kind: postgres",
+		sys + "  server: {role: all}\n":               "",
+		sys + pgStores + "  server: {role: worker}\n": "",
+		sys + pgStores + "  server: {role: api}\n":    "",
+	} {
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		writeFile(t, path, body)
+		cfg, err := Load(path)
+		if err == nil {
+			err = cfg.Check(Kinds{})
+		}
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%q: err = %v, want %q", body, err, want)
+		}
 	}
 }
 

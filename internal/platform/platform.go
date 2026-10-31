@@ -71,6 +71,7 @@ import (
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/leader"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/notifications"
@@ -192,6 +193,15 @@ type Config struct {
 	// Concurrency is how many runs execute at once. Zero means
 	// defaultConcurrency.
 	Concurrency int
+	// Role is which parts of the platform this process runs: all of them
+	// (the default), the API only, or the turns only. A role other than all
+	// shares the run queue with other processes, so it needs Backends'
+	// ledger and queue.
+	Role ProcessRole
+	// Leader elects the one process that runs the work done once per
+	// deployment (Process). Nil leads always, which is right for one
+	// process.
+	Leader leader.Elector
 	// StopGrace is how long a run asked to stop is given to wrap up before
 	// its turn is cancelled. Zero means the runtime's default, ten seconds.
 	StopGrace time.Duration
@@ -250,6 +260,8 @@ type Platform struct {
 
 	cfg                    Config
 	log                    *slog.Logger
+	role                   ProcessRole
+	lead                   leadership
 	now                    func() time.Time
 	grounding              sourceGrounding
 	sourceDependencyMu     sync.RWMutex
@@ -442,11 +454,18 @@ func New(cfg Config) (*Platform, error) {
 	if err := cfg.Backends.check(); err != nil {
 		return nil, err
 	}
+	role, err := ParseProcessRole(string(cfg.Role))
+	if err != nil {
+		return nil, err
+	}
+	if err := checkRole(role, cfg.Backends); err != nil {
+		return nil, err
+	}
 	if err := credentials.CheckStarts(cfg.CredentialRefs); err != nil {
 		return nil, fmt.Errorf("platform: CredentialRefs: %w", err)
 	}
 	p := &Platform{
-		cfg: cfg, log: log, now: now,
+		cfg: cfg, log: log, now: now, role: role,
 		Agents: cfg.Backends.Agents,
 		Blobs:  cfg.Blobs,
 		broker: cfg.Bus,
@@ -1205,22 +1224,10 @@ func (p *Platform) Run(ctx context.Context) error {
 			}
 		}
 	})
-	loop("email notifications", func() error { return p.runEmailNotifications(ctx) })
+	// A process's own share: what it holds in memory or on its own disk.
+	// Pending connector renders are this process's egress (fed by the
+	// per-tenant loops above), and sandboxes are directories on this host.
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
-	loop("source refresh", func() error { return p.refreshSources(ctx) })
-	loop("catalog crawl", func() error { return p.crawlCatalog(ctx) })
-	loop("inbox retention", func() error {
-		tick := time.NewTicker(retainEvery)
-		defer tick.Stop()
-		for {
-			p.retainInbox(ctx)
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-			}
-		}
-	})
 	loop("sandbox sweep", func() error {
 		tick := time.NewTicker(time.Hour)
 		defer tick.Stop()
@@ -1233,29 +1240,19 @@ func (p *Platform) Run(ctx context.Context) error {
 			}
 		}
 	})
-	loop("worker", func() error {
-		opts := []worker.Option{
-			worker.WithRegistry(p.rt.Registry()),
-			worker.WithConcurrency(p.slots()),
-			worker.WithLogger(p.log),
-		}
-		if p.cfg.Backoff != nil {
-			opts = append(opts, worker.WithBackoff(p.cfg.Backoff))
-		}
-		return worker.New(p.ledger, p.queue, opts...).Run(ctx)
-	})
-	loop("reconciler", func() error {
-		tick := time.NewTicker(reconcileEvery)
-		defer tick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-				p.reconcile(ctx)
+	if p.role.Executes() {
+		loop("worker", func() error {
+			opts := []worker.Option{
+				worker.WithRegistry(p.rt.Registry()),
+				worker.WithConcurrency(p.slots()),
+				worker.WithLogger(p.log),
 			}
-		}
-	})
+			if p.cfg.Backoff != nil {
+				opts = append(opts, worker.WithBackoff(p.cfg.Backoff))
+			}
+			return worker.New(p.ledger, p.queue, opts...).Run(ctx)
+		})
+	}
 
 	// Ingress adapters publish into one queue, read in order by one loop.
 	tags := make(chan event.Envelope)
@@ -1267,7 +1264,45 @@ func (p *Platform) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+	// The work done once per deployment runs on the elected leader only,
+	// and moves to another process when this one stops leading.
+	singletons := map[string]func(context.Context) error{
+		"email notifications": p.runEmailNotifications,
+		"source refresh":      p.refreshSources,
+		"catalog crawl":       p.crawlCatalog,
+		"inbox retention": func(ctx context.Context) error {
+			tick := time.NewTicker(retainEvery)
+			defer tick.Stop()
+			for {
+				p.retainInbox(ctx)
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-tick.C:
+				}
+			}
+		},
+		"reconciler": func(ctx context.Context) error {
+			tick := time.NewTicker(reconcileEvery)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-tick.C:
+					p.reconcile(ctx)
+				}
+			}
+		},
+	}
 	for _, t := range p.sinks.Triggers() {
+		// The clock fires schedules: once per deployment. Every other
+		// trigger is a webhook surface, which must accept on every process
+		// a load balancer may send a delivery to.
+		if t.Name() == cron.Name {
+			singletons["trigger "+t.Name()] = func(ctx context.Context) error { return t.Ingest(ctx, publish) }
+			continue
+		}
 		loop("trigger "+t.Name(), func() error { return t.Ingest(ctx, publish) })
 	}
 	loop("tags", func() error {
@@ -1279,6 +1314,15 @@ func (p *Platform) Run(ctx context.Context) error {
 				p.ingest(ctx, tag)
 			}
 		}
+	})
+	loop("leadership", func() error {
+		return p.campaign(ctx, singletons, func(name string, err error) {
+			select {
+			case errc <- fmt.Errorf("platform: %s: %w", name, err):
+			default:
+			}
+			cancel()
+		})
 	})
 
 	<-ctx.Done()
