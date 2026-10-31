@@ -79,9 +79,12 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 	if from.Before(cut) {
 		from = cut
 	}
-	reads := p.ReadAudit.ListVisible(who.Tenant, from, q.To, limit, func(r readaudit.Record) bool {
+	reads, err := p.ReadAudit.ListVisible(who.Tenant, from, q.To, limit, func(r readaudit.Record) bool {
 		return (q.Actor == "" || q.Actor == r.Subject) && (q.Resource == "" || q.Resource == "project") && seer.Place(Place{Project: r.Project, Thread: r.Thread})
 	})
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range reads {
 		id, err := p.AuditReferences.ID(who.Tenant, "read", fmt.Sprintf("%s:%s:%s:%d", r.Subject, r.Project, r.Thread, r.At.UnixNano()))
 		if err != nil {
