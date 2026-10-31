@@ -1,0 +1,48 @@
+{{- /* The server's HorizontalPodAutoscaler. The single-writer guard in
+deployment.yaml holds maxReplicas at 1 today; this is where more replicas
+will come from once the stores allow them. */}}
+{{- $a := .Values.autoscaling | default dict -}}
+{{- if $a.enabled }}
+{{- if gt (int $a.minReplicas) (int $a.maxReplicas) }}
+{{- fail "autoscaling.minReplicas must not exceed autoscaling.maxReplicas" }}
+{{- end }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "humagen.fullname" . }}
+  labels:
+    {{- include "humagen.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "humagen.fullname" . }}
+  minReplicas: {{ int $a.minReplicas }}
+  maxReplicas: {{ int $a.maxReplicas }}
+  {{- if or $a.targetCPUUtilizationPercentage $a.targetMemoryUtilizationPercentage $a.metrics }}
+  metrics:
+    {{- with $a.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ int . }}
+    {{- end }}
+    {{- with $a.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ int . }}
+    {{- end }}
+    {{- with $a.metrics }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  {{- with $a.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

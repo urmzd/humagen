@@ -231,15 +231,15 @@ type Extension = app.Extension
 
 // WithKind registers a kind in a slot, so a spec file can select it by name:
 //
-//	humagen.WithKind(humagen.Blobs, "gcs", func(ctx context.Context, block json.RawMessage) (any, error) {
-//		var c struct{ Bucket string `json:"bucket"` }
+//	humagen.WithKind(humagen.Blobs, "azure", func(ctx context.Context, block json.RawMessage) (any, error) {
+//		var c struct{ Container string `json:"container"` }
 //		if err := strictDecode(block, &c); err != nil {
 //			return nil, err
 //		}
-//		return newGCS(ctx, c.Bucket)
+//		return newAzure(ctx, c.Container)
 //	})
 //
-// and then `blobs: {kind: gcs, gcs: {bucket: files}}` in a System document.
+// and then `blobs: {kind: azure, azure: {container: files}}` in a System document.
 func WithKind(slot, name string, f Factory) Option {
 	return func(o *app.Options) {
 		if name == "" || f == nil {

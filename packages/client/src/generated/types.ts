@@ -7,6 +7,16 @@ export interface Health {
   components: HealthComponent[];
 }
 
+export interface Readiness {
+  status: "ready" | "starting" | "draining" | "unavailable";
+  checks: ReadinessCheck[];
+}
+
+export interface ReadinessCheck {
+  name: string;
+  ok: boolean;
+}
+
 export interface HealthComponent {
   id: string;
   name: string;

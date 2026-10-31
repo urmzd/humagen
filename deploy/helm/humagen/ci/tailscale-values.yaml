@@ -1,0 +1,42 @@
+# Values for `deploy/helm/check.sh`: tailscale sign-in behind the Tailscale
+# proxy container in the pod, with humagen on the pod's loopback.
+system:
+  spec:
+    server:
+      public_url: https://humagen.example-tailnet.ts.net
+    auth:
+      kind: tailscale
+      oidc: null
+      tenant: {fixed: default}
+existingSecret: humagen-env
+webhooks:
+  enabled: true
+tailscale:
+  proxy:
+    enabled: true
+    image:
+      repository: ghcr.io/example/caddy-tailscale
+      tag: "2.10"
+    args: [run, --config, /etc/tailscale-proxy/Caddyfile]
+    envFrom:
+      - secretRef: {name: humagen-tailscale}
+    env:
+      - name: XDG_DATA_HOME
+        value: /tmp/caddy
+      - name: XDG_CONFIG_HOME
+        value: /tmp/caddy
+    files:
+      Caddyfile: |
+        {
+          tailscale {
+            state_dir /var/lib/tailscale-proxy
+          }
+        }
+        https://humagen.example-tailnet.ts.net {
+          bind tailscale/humagen
+          tailscale_auth
+          reverse_proxy 127.0.0.1:8080 {
+            header_up Tailscale-User-Login {http.auth.user.tailscale_login}
+            header_up Tailscale-User-Name {http.auth.user.tailscale_name}
+          }
+        }

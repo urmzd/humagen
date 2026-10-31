@@ -1,0 +1,41 @@
+{{- /* maxUnavailable, not minAvailable: with one replica a minAvailable: 1
+budget would block every node drain, while maxUnavailable: 1 lets a drain
+evict the pod and still limits how many go at once when there are more. */}}
+{{- $pdb := .Values.podDisruptionBudget | default dict -}}
+{{- if $pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "humagen.fullname" . }}
+  labels:
+    {{- include "humagen.labels" . | nindent 4 }}
+spec:
+  {{- if $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ $pdb.maxUnavailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "humagen.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- $w := .Values.worker | default dict -}}
+{{- $wpdb := $w.podDisruptionBudget | default dict -}}
+{{- if and $w.enabled $wpdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "humagen.workerFullname" . }}
+  labels:
+    {{- include "humagen.workerLabels" . | nindent 4 }}
+spec:
+  {{- if $wpdb.minAvailable }}
+  minAvailable: {{ $wpdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ $wpdb.maxUnavailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "humagen.workerSelectorLabels" . | nindent 6 }}
+{{- end }}

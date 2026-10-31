@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/ready"
 	"github.com/urmzd/humagen/internal/release"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -34,6 +36,7 @@ import (
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/rooms"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // Version is the build metadata `humagen version` reports.
@@ -70,6 +73,8 @@ type Options struct {
 	ctx       context.Context
 	ready     func(addr string)
 	slackDone func(tenant string, err error)
+	// signals, for tests, stands for the process's SIGTERM and Ctrl-C.
+	signals <-chan os.Signal
 	// running, for tests, is called with the platform once it runs, in
 	// every role.
 	running func(*platform.Platform)
@@ -232,6 +237,8 @@ func serve(o Options, args []string, d serveDefaults) error {
 	roomTail := fs.Duration("room-tail-interval", rooms.DefaultTailInterval, "how often a large conversation's page is sent")
 	roomRate := fs.Int("room-max-runs-per-minute", rooms.DefaultRoomRunsPerMinute, "most runs one conversation starts in any minute")
 	personRuns := fs.Int("room-max-runs-per-person", rooms.DefaultPersonRuns, "most runs one person has in flight at once")
+	drainGrace := fs.Duration("drain-grace", spec.DefaultDrainGrace, "after SIGTERM, how long runs in flight may finish before what is left is handed back for another process to resume")
+	shutdownTimeout := fs.Duration("shutdown-timeout", spec.DefaultShutdownTimeout, "once the drain is over, how long open requests and event streams may take to end")
 	busKind := fs.String("bus", "", `the event bus: "memory", for one process, or "postgres", on the stores' database. Empty means postgres with -state=postgres, and memory otherwise`)
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	parent := o.ctx
@@ -257,8 +264,37 @@ func serve(o Options, args []string, d serveDefaults) error {
 			}
 		}
 	}
-	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	// The first signal stops a server that is still starting, and drains
+	// one that is serving; a second stops it at once.
+	ctx, stop := context.WithCancel(parent)
 	defer stop()
+	sigs := o.signals
+	if sigs == nil {
+		c := make(chan os.Signal, 2)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(c)
+		sigs = c
+	}
+	var serving atomic.Bool
+	drainc := make(chan struct{})
+	go func() {
+		select {
+		case <-sigs:
+		case <-ctx.Done():
+			return
+		}
+		if !serving.Load() {
+			stop()
+			return
+		}
+		close(drainc)
+		select {
+		case <-sigs:
+			log.Warn("stopping now: runs still in flight are handed back")
+			stop()
+		case <-ctx.Done():
+		}
+	}()
 	keys := credref.Default
 	file, err := loadFiles(ctx, o, paths, keys)
 	if err != nil {
@@ -378,7 +414,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	// Every store, the agent registry and the run ledger: memory, or the one
 	// Postgres the spec or $HUMAGEN_POSTGRES_URL names.
-	backends, releaseState, err := openState(ctx, stateKind, getenv, log, ext.ProviderNames()...)
+	backends, releaseState, checks, err := openState(ctx, stateKind, getenv, log, ext.ProviderNames()...)
 	if err != nil {
 		return err
 	}
@@ -387,6 +423,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err != nil {
 		return err
 	}
+	// A bus that can say whether it is connected is asked too.
+	if b, ok := broker.(interface{ Ping(context.Context) error }); ok {
+		checks = append(checks, ready.Check{Name: "bus", Probe: b.Ping})
+	}
+	gate := ready.New(log, checks...)
 	elector, err := openLeader(stateKind, getenv, log)
 	if err != nil {
 		return err
@@ -498,7 +539,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if serves {
 		srv = &http.Server{
 			Addr:              *addr,
-			Handler:           (&httpapi.Server{P: p, Authn: authn, Log: log, WebDir: *webDir, Branding: brand}).Handler(),
+			Handler:           (&httpapi.Server{P: p, Authn: authn, Log: log, WebDir: *webDir, Branding: brand, Ready: gate}).Handler(),
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       15 * time.Second,
 			WriteTimeout:      30 * time.Second,
@@ -559,11 +600,16 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	runExtensions(ctx, extensions, errc)
 
+	serving.Store(true)
+	gate.Started()
+
 	select {
 	case err = <-errc:
 	case <-ctx.Done():
+	case <-drainc:
+		drainPlatform(ctx, p, gate, *drainGrace, log)
 	}
-	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdown, cancel := context.WithTimeout(context.Background(), *shutdownTimeout)
 	defer cancel()
 	if srv != nil {
 		_ = srv.Shutdown(shutdown)
@@ -576,6 +622,23 @@ func serve(o Options, args []string, d serveDefaults) error {
 	stop()
 	<-ran
 	return err
+}
+
+// drainPlatform takes the process out of rotation and stops it taking new
+// work, then waits up to grace, or until ctx ends, for the runs it holds to
+// finish. What is still held when it returns is released as the platform
+// stops, uncharged, for another process to resume.
+func drainPlatform(ctx context.Context, p *platform.Platform, gate *ready.Gate, grace time.Duration, log *slog.Logger) {
+	gate.Drain()
+	p.Drain()
+	log.Info("draining: no new turns; waiting for runs in flight (signal again to stop now)", "in_flight", p.InFlight(), "grace", grace)
+	wait, cancel := context.WithTimeout(ctx, grace)
+	defer cancel()
+	if err := p.WaitIdle(wait); err != nil {
+		log.Warn("drain grace is over: handing back runs still in flight", "in_flight", p.InFlight())
+		return
+	}
+	log.Info("drained: no runs in flight")
 }
 
 // runExtensions runs each extension beside the platform until ctx ends. One

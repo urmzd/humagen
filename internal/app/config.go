@@ -155,6 +155,8 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	set("addr", sp.Server.Addr)
 	set("public-url", sp.Server.PublicURL)
 	set("webhook-addr", sp.Server.WebhookAddr)
+	set("drain-grace", sp.Server.DrainGrace)
+	set("shutdown-timeout", sp.Server.ShutdownTimeout)
 	set("role", sp.Server.Role)
 	if !sp.Server.Console.On() {
 		l.args = append(l.args, "-web=")
@@ -222,6 +224,12 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		if err := secret(s3SecretEnv, b.SecretKey); err != nil {
 			return l, err
 		}
+	case "gcs":
+		b, _ := spec.Block[spec.GCS](sp.Blobs)
+		set("storage", "gcs")
+		set("gcs-bucket", b.Bucket)
+		set("gcs-prefix", b.Prefix)
+		set("gcs-endpoint", b.Endpoint)
 	}
 	if e := sp.Knowledge.Embedder; e.Kind == "openai" {
 		b, _ := spec.Block[spec.OpenAIEmbedder](e)

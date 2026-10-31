@@ -519,6 +519,26 @@ paths:
             text/plain:
               schema: {type: string}
 
+  /readyz:
+    get:
+      operationId: getReadiness
+      tags: [health]
+      summary: Readiness probe
+      description: Whether this process should be sent traffic. It is ready once it has finished starting, while its database and event bus answer, and until it starts draining to stop. A failed check is named, never explained; the reason is in the server's log.
+      x-permission: public
+      security: []
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Readiness"}
+        "503":
+          description: Starting, draining, or a check failed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Readiness"}
+
   /branding/logo:
     get:
       operationId: getDeploymentLogo
@@ -7559,6 +7579,22 @@ components:
         components:
           type: array
           items: {$ref: "#/components/schemas/HealthComponent"}
+    Readiness:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ready, starting, draining, unavailable]
+        checks:
+          type: array
+          items: {$ref: "#/components/schemas/ReadinessCheck"}
+    ReadinessCheck:
+      type: object
+      required: [name, ok]
+      properties:
+        name: {type: string}
+        ok: {type: boolean}
     HealthComponent:
       type: object
       required: [id, name, group, status, latency_ms, history]

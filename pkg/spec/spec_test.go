@@ -97,6 +97,7 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a block for another kind": {sys + "  blobs: {kind: disk, s3: {bucket: b}}\n", `unknown field "s3"`},
 		"a field in a block":       {sys + "  blobs: {kind: s3, s3: {bucket: b, bukket: c}}\n", `unknown field "bukket"`},
 		"no url":                   {sys + "  stores: {kind: postgres}\n", "url is required"},
+		"a gcs bucket missing":     {sys + "  blobs: {kind: gcs, gcs: {prefix: p}}\n", "bucket is required"},
 		"half the s3 keys":         {sys + "  blobs: {kind: s3, s3: {bucket: b, access_key: {ref: env:A}}}\n", "go together"},
 		"an old version":           {"api_version: humagen/v0\nkind: System\n", "api_version"},
 		"an unknown document":      {"api_version: humagen/v1\nkind: Cluster\n", "kind is System or Platform"},
@@ -145,19 +146,19 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 
 func TestAKindIsOneTheBinaryHas(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "humagen.yaml")
-	writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n")
+	writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  blobs: {kind: azure, azure: {container: b}}\n")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load cannot know the binary's kinds, so it lets one through: %v", err)
 	}
-	if err := cfg.Check(Kinds{}); err == nil || !strings.Contains(err.Error(), "disk, memory, s3") {
+	if err := cfg.Check(Kinds{}); err == nil || !strings.Contains(err.Error(), "disk, gcs, memory, s3") {
 		t.Fatalf("an unregistered kind: %v", err)
 	}
-	if err := cfg.Check(Kinds{SlotBlobs: {"gcs"}}); err != nil {
+	if err := cfg.Check(Kinds{SlotBlobs: {"azure"}}); err != nil {
 		t.Fatalf("a registered kind: %v", err)
 	}
-	var blk struct{ Bucket string }
-	if err := cfg.System.Spec.Blobs.Decode(&blk); err != nil || blk.Bucket != "b" {
+	var blk struct{ Container string }
+	if err := cfg.System.Spec.Blobs.Decode(&blk); err != nil || blk.Container != "b" {
 		t.Fatalf("its block: %+v %v", blk, err)
 	}
 }
@@ -403,6 +404,44 @@ func TestAnAgentPolicyNeedsAnAgentMdFile(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s= %v, want %q", body, err, want)
 		}
+	}
+}
+
+// The reference's other blobs, written in comments as alternatives to its s3
+// on AWS (native gcs, and GCS through s3 with an HMAC key), load once
+// uncommented, so they cannot drift either.
+func TestTheReferenceAlternativeBlobsLoad(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := regexp.MustCompile(`(?m)^    # kind: (?:gcs|s3)\n(?:^    #  .*\n|^    # \w+:.*\n)+`).FindAllString(string(doc), -1)
+	if len(found) != 2 {
+		t.Fatalf("docs/reference/spec.md has %d alternative blobs, want gcs and s3 on GCS", len(found))
+	}
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	load := func(m string) Config {
+		t.Helper()
+		block := regexp.MustCompile(`(?m)^    # `).ReplaceAllString(m, "    ")
+		writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  blobs:\n"+block)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("%v in\n%s", err, block)
+		}
+		if err := cfg.Check(Kinds{}); err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+	cfg := load(found[0])
+	g, err := Block[GCS](cfg.System.Spec.Blobs)
+	if err != nil || cfg.System.Spec.Blobs.Kind != "gcs" || g.Bucket != "humagen-files" {
+		t.Fatalf("gcs = %+v, %v", g, err)
+	}
+	cfg = load(found[1])
+	s, err := Block[S3](cfg.System.Spec.Blobs)
+	if err != nil || s.Endpoint != "https://storage.googleapis.com" || s.Region != "auto" || !s.PathStyle || !s.AccessKey.Set() || !s.SecretKey.Set() {
+		t.Fatalf("s3 on GCS = %+v, %v", s, err)
 	}
 }
 

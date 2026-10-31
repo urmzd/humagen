@@ -360,6 +360,8 @@ type Platform struct {
 	asked  func(ctx context.Context, tenant, runID string) (runtime.StopRecord, bool, error)
 	ledger Ledger
 	queue  dqueue.Queue
+	// drain stops claims and new turns while work in flight finishes.
+	drain *drain
 
 	settings settings
 
@@ -479,6 +481,8 @@ func New(cfg Config) (*Platform, error) {
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
 	}
+	p.drain = newDrain()
+	p.queue = p.drain.wrap(p.queue)
 	dir := cfg.Workspace
 	if dir == "" {
 		dir = defaultWorkspace()
@@ -675,6 +679,9 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if err != nil {
 		return runs.Run{}, err
 	}
+	if err := p.refuseWhileDraining(edge); err != nil {
+		return runs.Run{}, err
+	}
 	if _, err := call.InputOf(tag); err != nil {
 		return runs.Run{}, err
 	}
@@ -720,6 +727,9 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	p.watch(tag.Tenant)
 	// The run id is RunID(tenant, event id): Humagen raises one event per
 	// agent, so the event id already names the subscriber.
+	// A run a held run calls may still be claimed while this process
+	// drains, so the caller can finish.
+	p.drain.called(edge.Parent, runID)
 	acc, err := p.rt.AcceptOwn(ctx, tag, agent)
 	if err != nil {
 		// It never started, so it holds no place.
