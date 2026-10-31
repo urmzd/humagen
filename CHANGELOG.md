@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.55.0 (2026-10-31)
+
+### Features
+
+- **catalog**: BigQuery connector with crawl and cost-capped queries (RFC 0005, change 2, 2/3) (#155) ([be699ea](https://github.com/urmzd/humagen/commit/be699ead7a28ecfd6fcecb775cd421598a3be2dc))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.54.0...v0.55.0)
+
+
 ## 0.54.0 (2026-10-31)
 
 ### Features
