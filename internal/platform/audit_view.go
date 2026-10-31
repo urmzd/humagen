@@ -89,7 +89,11 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 		}
 		rows = append(rows, audit.Record{ID: id, Actor: r.Subject, At: r.At, FinishedAt: r.At, Outcome: audit.Succeeded, Change: audit.Change{Action: "project.break_glass_read", Resource: "project", ID: r.Project, Scope: "project", Project: r.Project, Thread: r.Thread, Route: r.Route, Rule: "projects:govern"}})
 	}
-	for _, r := range p.Projects.RecentHistory(who.Tenant) {
+	history, err := p.Projects.RecentHistory(who.Tenant)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range history {
 		if q.Actor != "" && r.By != q.Actor || q.Resource != "" && q.Resource != "project" || r.At.Before(from) || !r.At.Before(q.To) || !seer.Project(r.Project) {
 			continue
 		}
