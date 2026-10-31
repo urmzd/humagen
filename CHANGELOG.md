@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.52.0 (2026-10-31)
+
+### Features
+
+- **sandbox**: egress gate so a run's tools reach allowed hosts (#151) ([f19ec7f](https://github.com/urmzd/humagen/commit/f19ec7fe2b6bd1111b95dfad706e530efe49d04d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.51.1...v0.52.0)
+
+
 ## 0.51.1 (2026-10-31)
 
 ### Bug Fixes
