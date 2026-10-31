@@ -151,7 +151,7 @@ func TestAScheduleWhoseAgentStoppedBeingAvailableIsRefusedAndRaisedOnce(t *testi
 		}
 	}
 	var open []alerts.Alert
-	for _, a := range p.Alerts.Alerts(tenant) {
+	for _, a := range kept(p.Alerts.Alerts(tenant)) {
 		if a.Open() {
 			open = append(open, a)
 		}

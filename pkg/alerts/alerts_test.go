@@ -52,7 +52,7 @@ func TestRulesBelongToOneTenant(t *testing.T) {
 	if got := must(e.Evaluate(ended("lead", runs.Failed, time.Second), nil)); len(got) != 0 {
 		t.Fatalf("another tenant's rule fired: %v", got)
 	}
-	if len(e.Alerts("globex")) != 0 || len(e.Rules("acme")) != 0 {
+	if len(must(e.Alerts("globex"))) != 0 || len(must(e.Rules("acme"))) != 0 {
 		t.Fatal("tenants share state")
 	}
 }
@@ -87,7 +87,7 @@ func TestFailureRate(t *testing.T) {
 	if got := must(e.Evaluate(ended("lead", runs.Failed, time.Second), counts(10, 7))); len(got) != 0 {
 		t.Fatalf("fired again while open: %v", got)
 	}
-	open := e.Alerts("acme")[0]
+	open := must(e.Alerts("acme"))[0]
 	if _, err := e.Ack("acme", open.ID, "ada", t0); err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestCooldown(t *testing.T) {
 		t.Fatalf("first failure: %v", got)
 	}
 	// Acknowledged or not, the rule is quiet until the cooldown passes.
-	_, _ = e.Ack("acme", e.Alerts("acme")[0].ID, "ada", t0)
+	_, _ = e.Ack("acme", must(e.Alerts("acme"))[0].ID, "ada", t0)
 	if got := must(e.Evaluate(at(30*time.Second), nil)); len(got) != 0 {
 		t.Fatalf("fired inside the cooldown: %v", got)
 	}

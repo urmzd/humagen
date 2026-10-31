@@ -212,7 +212,7 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if c, err := q.Clients.Get(tenant, "docs"); err != nil || !c.Enabled || !c.Credentials.Token.Set {
 			t.Fatalf("the client after restart = %+v, %v", c, err)
 		}
-		if rules := q.Alerts.Rules(tenant); len(rules) != 1 || rules[0].Name != "fails" {
+		if rules := kept(q.Alerts.Rules(tenant)); len(rules) != 1 || rules[0].Name != "fails" {
 			t.Fatalf("alert rules after restart = %+v", rules)
 		}
 		if sc, paused, err := q.Schedules.Get(tenant, "nightly"); err != nil || !paused || sc.Expression != "0 3 * * *" || q.Schedules.About("nightly").Description != "Every night" {
@@ -225,7 +225,7 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if err != nil || got.Status != runs.Completed || got.Answer != done.Answer {
 			t.Fatalf("the run after restart = %+v, %v", got, err)
 		}
-		if trace := q.Journal.Events(tenant, []string{r.ID}); len(trace) == 0 {
+		if trace := kept(q.Journal.Events(tenant, []string{r.ID})); len(trace) == 0 {
 			t.Fatal("the run's events were not kept")
 		}
 		if m, ok := q.Inbox.ByKey(tenant, "note"); !ok || m.Subject != "Kept" {

@@ -175,15 +175,19 @@ func (p *Platform) openStores(cfg Config) error {
 		}
 	}
 	var err error
+	perRequest := cfg.Backends.Shared
+	if perRequest == nil {
+		perRequest = st
+	}
 	p.AgentColors, err = agentcolors.Open(st)
 	keep("agent colors", err)
 	p.Runs, err = runs.Open(st)
 	keep("runs", err)
 	p.Schedules, err = OpenSchedules(st)
 	keep("schedules", err)
-	p.Journal, err = journal.Open(st, 0)
+	p.Journal, err = journal.Open(perRequest, 0)
 	keep("journal", err)
-	p.Alerts, err = alerts.Open(st)
+	p.Alerts, err = alerts.Open(perRequest)
 	keep("alerts", err)
 	p.SourceLinks, err = sourcelinks.Open(st)
 	keep("source link rules", err)
@@ -195,12 +199,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("catalog", err)
 	p.SourceEvidence, err = knowledge.OpenEvidenceStore(st)
 	keep("source citation evidence", err)
-	p.Evals, err = evals.Open(st)
+	p.Evals, err = evals.Open(perRequest)
 	keep("evals", err)
-	perRequest := cfg.Backends.Shared
-	if perRequest == nil {
-		perRequest = st
-	}
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
 	p.Prefs, err = prefs.Open(st)
@@ -301,11 +301,8 @@ func (p *Platform) openStores(cfg Config) error {
 }
 
 // flush writes what the stores that write behind have not written yet: the
-// journal, the run index and the usage ledger.
+// run index and the usage ledger.
 func (p *Platform) flush() {
-	if err := p.Journal.Flush(); err != nil {
-		p.log.Error("platform: journal could not be written", "error", err)
-	}
 	if err := p.Runs.Flush(); err != nil {
 		p.log.Error("platform: runs could not be written", "error", err)
 	}

@@ -283,11 +283,11 @@ func TestATaggedAgentIsARunOfItsOwn(t *testing.T) {
 		t.Fatalf("helper = %+v", helper)
 	}
 	// It has a record of its own, and the caller's stream says which run it was.
-	if own := p.Journal.Events(tenant, []string{helper.ID}); len(own) < 2 {
+	if own := kept(p.Journal.Events(tenant, []string{helper.ID})); len(own) < 2 {
 		t.Fatalf("the helper's run has %d events", len(own))
 	}
 	named := false
-	for _, e := range p.Journal.Events(tenant, []string{lead.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{lead.ID})) {
 		named = named || (e.Type == event.TypeAction && strings.Contains(wire.JSONOf(e), helper.ID))
 	}
 	if !named {

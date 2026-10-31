@@ -319,7 +319,7 @@ func (w *world) leaks(t *testing.T, secrets ...string) {
 	places = append(places, strings.Join(sent, "\n"), w.log.String())
 	for _, r := range w.p.Runs.List(tenant, 200) {
 		places = append(places, r.Answer, r.Error)
-		for _, e := range w.p.Journal.Events(tenant, []string{r.ID}) {
+		for _, e := range kept(w.p.Journal.Events(tenant, []string{r.ID})) {
 			places = append(places, wire.JSONOf(e))
 		}
 	}

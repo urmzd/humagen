@@ -168,7 +168,7 @@ func TestStore(t *testing.T) {
 	}
 
 	// Another tenant has none of it.
-	if len(s.List("globex")) != 0 {
+	if suites, err := s.List("globex"); err != nil || len(suites) != 0 {
 		t.Fatal("another tenant listed the suite")
 	}
 	for name, err := range map[string]error{

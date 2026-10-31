@@ -631,7 +631,12 @@ func (p *Platform) homeUsers(tenant, agent string, before, after *projects.Tree)
 			out = append(out, "the schedule "+sc.Name)
 		}
 	}
-	for _, r := range p.Alerts.Rules(tenant) {
+	rules, err := p.Alerts.Rules(tenant)
+	if err != nil {
+		// What cannot be read may point at the agent, so the move waits.
+		out = append(out, "the alert rules, which could not be read")
+	}
+	for _, r := range rules {
 		if r.Agent == agent && r.Project != "" && lost(r.Project) {
 			out = append(out, "the alert rule "+r.Name)
 		}
