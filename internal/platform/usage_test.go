@@ -272,15 +272,20 @@ func TestChildrenRollUpExactlyOnceThroughTheDelegator(t *testing.T) {
 	lead := await(t, p, r.ID, runs.Completed)
 	helper := called(t, p, lead.ID, "helper", runs.Completed)
 	worker := called(t, p, lead.ID, "worker", runs.Completed)
-	within(t, "every run is settled", func() bool {
-		return settled(p, lead.ID) == 1 && settled(p, helper.ID) == 1 && settled(p, worker.ID) == 1
-	})
-	lead, _ = p.Runs.Get(tenant, lead.ID)
-	helper, _ = p.Runs.Get(tenant, helper.ID)
-
 	own := cost(1000, 100) + cost(1000, 100) + cost(2000, 100)
 	child := cost(500, 50)
 	delegated := cost(300, 30)
+	within(t, "every run is settled", func() bool {
+		return settled(p, lead.ID) == 1 && settled(p, helper.ID) == 1 && settled(p, worker.ID) == 1
+	})
+	// A child's spend settles into its caller just after its own entry is
+	// written, so the caller's figure is read once both calls are in it.
+	within(t, "both calls settle into the lead", func() bool {
+		l, err := p.Runs.Get(tenant, lead.ID)
+		return err == nil && l.Spent >= own+child+delegated
+	})
+	lead, _ = p.Runs.Get(tenant, lead.ID)
+	helper, _ = p.Runs.Get(tenant, helper.ID)
 	u := lead.Usage
 	if u == nil || u.Own.Cost == nil || u.Own.Cost.Micros != own || u.Own.ModelCalls != 3 {
 		t.Fatalf("lead's own usage = %+v", u)
