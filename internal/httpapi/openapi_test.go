@@ -43,6 +43,7 @@ import (
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
@@ -651,6 +652,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"EvalCheck": {typ: evals.Check{}}, "EvalCase": {typ: evals.Case{}}, "EvalSuite": {typ: evals.Suite{}, written: true},
 		"EvalVerdict": {typ: evals.Verdict{}}, "EvalHit": {typ: evals.Hit{}}, "EvalResult": {typ: evals.Result{}},
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
+		"CatalogColumn": {typ: catalog.Column{}}, "CatalogStats": {typ: catalog.Stats{}}, "CatalogEntry": {typ: catalog.Entry{}}, "CatalogMark": {typ: catalog.Mark{}},
+		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
@@ -985,10 +988,40 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}},
 		CredentialRefs:   map[string][]string{"acme": {"op://People/{subject}/"}},
 		CredentialValues: map[string]bool{"acme": true},
+		Connectors: []platform.CatalogConnector{
+			{Tenant: "acme", Connector: catalog.Connector{Name: "warehouse", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{}},
+			{Tenant: "acme", Connector: catalog.Connector{Name: "broken", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{fail: true}},
+			{Tenant: "acme", Connector: catalog.Connector{Name: "live-only", System: "bigquery", Owner: "catalog-owner"}, Querier: contractWarehouse{}},
+		},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
+	// The catalog: its owner crawls, publishes and withdraws a connector.
+	cataloger := f.person(t, "acme", "catalog-owner", "Catalog owner", "humagen-admins")
+	// The crawl at start may still hold a connector: that answers 409.
+	crawl := func(name string, want int) {
+		for i := 0; ; i++ {
+			if _, ok := c.attempt(cataloger, "POST", "/api/catalog/connectors/{name}/crawl", "/api/catalog/connectors/"+name+"/crawl", "", want, i == 20); ok || i == 20 {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	crawl("warehouse", http.StatusOK)
+	crawl("broken", http.StatusBadGateway)
+	c.call(cataloger, "POST", "/api/catalog/connectors/{name}/crawl", "/api/catalog/connectors/live-only/crawl", "", http.StatusBadRequest)
+	c.call(cataloger, "POST", "/api/catalog/connectors/{name}/publish", "/api/catalog/connectors/warehouse/publish", "", http.StatusOK)
+	c.call(auditAdmin, "POST", "/api/catalog/connectors/{name}/publish", "/api/catalog/connectors/warehouse/publish", "", http.StatusForbidden)
+	if page := c.call(auditAdmin, "GET", "/api/catalog", "/api/catalog?q=churn", "", http.StatusOK); !strings.Contains(string(page.raw), "churn_monthly") {
+		t.Errorf("a published entry is not found by a member: %s", page.raw)
+	}
+	c.call(cataloger, "DELETE", "/api/catalog/connectors/{name}/publish", "/api/catalog/connectors/warehouse/publish", "", http.StatusOK)
+	if page := c.call(auditAdmin, "GET", "/api/catalog", "/api/catalog", "", http.StatusOK); strings.Contains(string(page.raw), "churn_monthly") {
+		t.Errorf("a withdrawn entry is still shown: %s", page.raw)
+	}
+	c.call(cataloger, "GET", "/api/catalog", "/api/catalog?limit=99", "", http.StatusBadRequest)
+	c.call(globex, "POST", "/api/catalog/connectors/{name}/publish", "/api/catalog/connectors/warehouse/publish", "", http.StatusNotFound)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
 	// Archive, bring back, then ask to delete and approve; a second is rejected.
 	archiving := func() string {
@@ -2543,6 +2576,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
 	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
 	"POST /api/projects/{name}/fork 429":             "bounded private operation-plan capacity, covered by projectforks store tests",
@@ -2738,4 +2772,20 @@ func TestClosedSchemasRejectUnknownProperties(t *testing.T) {
 	if unknown.Validate(base) == nil {
 		t.Error("a known type is accepted as an UnknownEvent")
 	}
+}
+
+// contractWarehouse is a connector kind that lists one table, or fails.
+type contractWarehouse struct{ fail bool }
+
+func (w contractWarehouse) Crawl(context.Context) ([]catalog.Entry, error) {
+	if w.fail {
+		return nil, errors.New("warehouse unreachable")
+	}
+	rows := int64(12)
+	return []catalog.Entry{{System: "bigquery", Kind: "table", Path: "acme.billing.churn_monthly", Description: "Customers lost each month",
+		Schema: []catalog.Column{{Name: "region", Type: "STRING", Mode: "NULLABLE"}}, Stats: catalog.Stats{Rows: &rows}}}, nil
+}
+
+func (contractWarehouse) Query(context.Context, string) (catalog.Result, error) {
+	return catalog.Result{}, nil
 }

@@ -122,6 +122,14 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"an egress network that is no name":               {sys + "  egress: {kind: gate, gate: {network: 'a b'}}\n", "is not a Docker network's name"},
 		"an egress host with a port":                      {plat + "  workspace: {run: {ceilings: {egress: ['api.github.com:443']}}}\n", "egress"},
 		"an embedder key as a value":                      {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m, dimensions: 8, key: {ref: sk-123}}}}\n", "use env:NAME"},
+		"a connector with no owner":                       {plat + "  connectors: [{name: wh, kind: bigquery, bigquery: {project: p}}]\n", "kind and owner are required"},
+		"a connector with a bad name":                     {plat + "  connectors: [{name: Big WH, kind: bigquery, owner: ana, bigquery: {project: p}}]\n", "lower case letters"},
+		"two connectors of one name": {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, bigquery: {project: p}}, {name: wh, kind: bigquery, owner: ana, bigquery: {project: p}}]\n",
+			"a unique name"},
+		"a connector crawled too often": {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, refresh: 5m, bigquery: {project: p}}]\n", "at least 1h0m0s"},
+		"bigquery with no project":      {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, bigquery: {datasets: [a]}}]\n", "project is required"},
+		"bigquery with a bad timeout":   {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, bigquery: {project: p, timeout: soon}}]\n", "timeout is a duration"},
+		"a bigquery key as a value":     {plat + "  connectors: [{name: wh, kind: bigquery, owner: ana, bigquery: {project: p, credential: {ref: '{\"type\": 1}'}}}]\n", "use env:NAME"},
 	} {
 		path := filepath.Join(t.TempDir(), "humagen.yaml")
 		writeFile(t, path, tc.body)
@@ -175,6 +183,35 @@ func TestAnEmbedderIsOneTheBinaryHas(t *testing.T) {
 	}
 	if err := cfg.Check(Kinds{SlotEmbedder: {"pinecone"}}); err != nil {
 		t.Fatalf("a registered embedder: %v", err)
+	}
+}
+
+func TestTheReferenceConnectorLoads(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := regexp.MustCompile("(?s)```yaml\n(.*?)```").FindAllStringSubmatch(string(doc), -1)
+	var all []string
+	for _, b := range blocks {
+		all = append(all, b[1])
+	}
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	writeFile(t, path, strings.Join(all, "---\n"))
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := cfg.Platforms[0].Spec.Connectors
+	if len(cs) != 1 || cs[0].Kind != "bigquery" || cs[0].Owner == "" || cs[0].Refresh != "24h" {
+		t.Fatalf("connectors = %+v", cs)
+	}
+	b, err := Block[BigQueryConnector](cs[0].Slot)
+	if err != nil || b.Project != "acme-analytics" || len(b.Datasets) != 2 || b.MaxRows != 200 || b.Credential.Set() {
+		t.Fatalf("bigquery = %+v, %v", b, err)
+	}
+	if err := cfg.Check(Kinds{}); err != nil {
+		t.Fatal(err)
 	}
 }
 

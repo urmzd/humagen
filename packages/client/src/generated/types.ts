@@ -3087,6 +3087,59 @@ export interface KnowledgeDocument {
   added_at: string;
 }
 
+export interface CatalogColumn {
+  name: string;
+  type?: string;
+  mode?: string;
+  description?: string;
+  fields?: CatalogColumn[];
+}
+
+export interface CatalogStats {
+  rows?: number;
+  bytes?: number;
+  modified?: string;
+}
+
+/** One object in a connected system. Metadata only, never data. */
+export interface CatalogEntry {
+  system: string;
+  kind: string;
+  path: string;
+  title?: string;
+  description?: string;
+  schema?: CatalogColumn[];
+  stats?: CatalogStats;
+  connector: string;
+  seen_at: string;
+}
+
+export interface CatalogMark {
+  by: string;
+  at: string;
+}
+
+export interface CatalogConnector {
+  name: string;
+  system: string;
+  /** The person whose credential it uses. */
+  owner?: string;
+  /** Whose members see its entries while it is published. Empty is the workspace. */
+  project?: string;
+  published?: CatalogMark;
+  withdrawn?: CatalogMark;
+  crawled_at?: string;
+  entries: number;
+  generation: number;
+}
+
+export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string };
+
+export interface CatalogPage {
+  connectors: CatalogConnectorView[];
+  entries: CatalogEntry[];
+}
+
 export interface KnowledgeHit {
   copy_at?: string;
   refresh_failed?: boolean;

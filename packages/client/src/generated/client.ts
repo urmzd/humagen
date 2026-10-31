@@ -28,6 +28,8 @@ import type {
   BringBackThreadResultBody,
   CallPolicy,
   CallPolicyInput,
+  CatalogConnector,
+  CatalogPage,
   ChannelInput,
   ChannelUpdate,
   ChannelView,
@@ -1960,6 +1962,87 @@ owner is no agent's, and answers 404.
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<SearchMemoryResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The connectors you see (your own, and the published ones of projects
+you see) and their entries: tables, columns and descriptions, never
+data (RFC 0005). With q, entries are ranked against it, hybrid when
+the deployment has an embedder; without it, listed by connector and
+path. Seeing an entry never grants reading the object.
+ */
+  async getCatalog(q?: string, limit?: number, options?: RequestOptions): Promise<CatalogPage> {
+    let path = "/api/catalog";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<CatalogPage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getCatalogRaw(q?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<CatalogPage>> {
+    let path = "/api/catalog";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<CatalogPage>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Only the connector's owner publishes. Who published and when are recorded. */
+  async publishConnector(name: string, options?: RequestOptions): Promise<CatalogConnector> {
+    let path = "/api/catalog/connectors/{name}/publish";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CatalogConnector>("POST", path, {
+      ...options,
+    });
+  }
+
+  async publishConnectorRaw(name: string, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    let path = "/api/catalog/connectors/{name}/publish";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CatalogConnector>("POST", path, {
+      ...options,
+    });
+  }
+
+  /** Hides them from everyone but the owner at once. The owner withdraws, and so may whoever governs the workspace. Who withdrew and when are recorded. */
+  async withdrawConnector(name: string, options?: RequestOptions): Promise<CatalogConnector> {
+    let path = "/api/catalog/connectors/{name}/publish";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CatalogConnector>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async withdrawConnectorRaw(name: string, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    let path = "/api/catalog/connectors/{name}/publish";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CatalogConnector>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Lists the connected system again and replaces the connector's entries whole. Only its owner asks. A crawl that fails keeps the entries before it. */
+  async crawlConnector(name: string, options?: RequestOptions): Promise<CatalogConnector> {
+    let path = "/api/catalog/connectors/{name}/crawl";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CatalogConnector>("POST", path, {
+      ...options,
+    });
+  }
+
+  async crawlConnectorRaw(name: string, options?: RequestOptions): Promise<ApiResponse<CatalogConnector>> {
+    let path = "/api/catalog/connectors/{name}/crawl";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CatalogConnector>("POST", path, {
       ...options,
     });
   }
