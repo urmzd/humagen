@@ -9,7 +9,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { insertTag, matching, sigilOf, type TagOption, type Typing, tagAt } from "./tags.ts";
+import {
+  insertTag,
+  matching,
+  sigilOf,
+  type TagOption,
+  type Typing,
+  tagAt,
+  withMention,
+  withoutMention,
+} from "./tags.ts";
 import { AgentMark, Presence } from "./ui.tsx";
 
 const MAX_HEIGHT = 200;
@@ -117,7 +126,14 @@ const action =
 const tool =
   "inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-full text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40";
 
-export type ComposerSeed = { text: string; mode?: "prepend" };
+/**
+ * What to put in the box: text that replaces the draft or goes ahead of it,
+ * or an agent's mention, written at the caret (the start of an empty draft)
+ * as the `@` completion writes it, or taken out.
+ */
+export type ComposerSeed =
+  | { text: string; mode?: "prepend" }
+  | { mention: string; remove?: boolean };
 
 /**
  * The message box. Type, attach text files, or dictate. Enter sends and
@@ -158,8 +174,8 @@ export function Composer({
   tags?: { label: string; options: TagOption[]; onQuery?: (typing: Typing) => void };
   /**
    * The + menu, in place of + attaching files at once: what it shows, given
-   * a way to close it and to attach files, and the chips of what it
-   * selected, shown as text controls below the composer. Ctrl+/ (Cmd+/) opens it.
+   * a way to close it and to attach files, and where the conversation is
+   * filed, shown as a text control in the bar. Ctrl+/ (Cmd+/) opens it.
    */
   plus?: {
     menu: (close: () => void, attach: () => void, leave: () => void) => ReactNode;
@@ -249,18 +265,42 @@ export function Composer({
     onDraft?.(next);
   };
 
-  // A picked starter fills the box and puts the cursor at its end, ready to send or edit.
+  const caretAfter = useRef<number | null>(null);
+  // A picked starter fills the box and puts the cursor at its end, ready to
+  // send or edit. A picked agent is mentioned where the cursor was.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per seed
   useEffect(() => {
     if (!seed) return;
-    const next = seed.mode === "prepend" ? seed.text + value : seed.text;
-    change(next);
     const el = input.current;
-    if (el) {
-      el.focus();
-      el.setSelectionRange(next.length, next.length);
+    let next: string;
+    let caret: number;
+    if ("mention" in seed) {
+      if (seed.remove) {
+        next = withoutMention(value, seed.mention);
+        caret = next.length;
+      } else {
+        const at = value.trim() ? (el?.selectionStart ?? value.length) : 0;
+        ({ text: next, caret } = withMention(value.trim() ? value : "", at, seed.mention));
+      }
+    } else {
+      next = seed.mode === "prepend" ? seed.text + value : seed.text;
+      caret = next.length;
     }
+    // A mention picked in the + menu leaves focus there, for the next pick;
+    // the box takes it back as the menu closes, with the caret after the
+    // mention.
+    if (!("mention" in seed)) el?.focus();
+    // The caret is placed once the box shows the new text.
+    if (next === value) el?.setSelectionRange(caret, caret);
+    else caretAfter.current = caret;
+    change(next);
   }, [seed]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: placed after each change of the text
+  useLayoutEffect(() => {
+    if (caretAfter.current === null) return;
+    input.current?.setSelectionRange(caretAfter.current, caretAfter.current);
+    caretAfter.current = null;
+  }, [value]);
 
   // Grow with the text up to a cap, then scroll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure whenever the text changes

@@ -1228,6 +1228,7 @@ export interface ThreadMessage {
   /** What they are called, their name in the directory or else their handle. Never an address. */
   name: string;
   text: string;
+  /** Its tags, each once. Agents are not counted against a cap and are bounded by the text's length; at most 10 are people, experts, roles and skills, which each take a lookup of their own. */
   mentions: ThreadMention[];
   answers?: ThreadAnswerRef;
   /** `console`, or the id of the client it came through. */
@@ -1463,7 +1464,7 @@ export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" 
 export interface ThreadPosted {
   thread: Thread;
   message: ThreadMessage;
-  /** The runs it started, at most 3. */
+  /** The runs it started, one for each agent it tags that answers, or at most 3 of the thread's selected agents. */
   runs: Run[];
   /** Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`. */
   notified: string[];

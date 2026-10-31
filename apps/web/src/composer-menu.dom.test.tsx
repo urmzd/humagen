@@ -36,7 +36,7 @@ test("the composer root groups Agents Projects and Skills without a loose defaul
       onSkill={() => {}}
       projects={[]}
       personalProject="personal"
-      selection={{ agents: [], mode: "join", project: "personal", channel: "general" }}
+      selection={{ project: "personal", channel: "general" }}
       onChange={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
@@ -162,8 +162,6 @@ function ProjectMenu({
 }) {
   const [open, setOpen] = useState(true);
   const [selection, setSelection] = useState<Selection>({
-    agents: [],
-    mode: "join",
     project,
     channel: "deals",
   });
@@ -271,7 +269,7 @@ test("Skills search Enter cannot submit work and Escape restores category focus 
         skills={[{ name: "review", description: "Review a change" }]}
         onSkill={(name) => chosen.push(name)}
         projects={[]}
-        selection={{ agents: [], mode: "join", project: null, channel: "general" }}
+        selection={{ project: null, channel: "general" }}
         onChange={() => {}}
         onAttach={() => {}}
         onClose={() => {
@@ -310,7 +308,7 @@ test("Skills loading and failure states never offer a stale skill choice", async
   const common = {
     agents: [],
     projects: [],
-    selection: { agents: [], mode: "join", project: null, channel: "general" } as Selection,
+    selection: { project: null, channel: "general" } as Selection,
     onChange: () => {},
     onAttach: () => {},
     onClose: () => {},
@@ -377,7 +375,7 @@ for (const category of ["Agents", "Skills"] as const) {
         skills={[{ name: "review", description: "Review a change" }]}
         onSkill={() => {}}
         projects={[]}
-        selection={{ agents: [], mode: "join", project: null, channel: "general" }}
+        selection={{ project: null, channel: "general" }}
         onChange={() => {}}
         onAttach={() => {}}
         onClose={() => {
@@ -411,7 +409,7 @@ test("browsing the selected project's channels preserves a nondefault channel un
     title: "Launch",
   };
   const changes: Selection[] = [];
-  let current: Selection = { agents: [], mode: "join", project: "Launch", channel: "deals" };
+  let current: Selection = { project: "Launch", channel: "deals" };
   function ExistingProjectMenu() {
     const [selection, setSelection] = useState(current);
     current = selection;
