@@ -46,29 +46,9 @@ func (p *Platform) sourceTools(req runtime.Request) map[string]saigetypes.Tool {
 			if len(query) > 1000 || !slices.Contains(allowed, name) {
 				return "", knowledge.ErrNotFound
 			}
-			run, err := p.Runs.Get(req.Tenant, req.RunID)
+			run, person, err := p.ownPrivateConversation(req)
 			if err != nil {
-				return "", knowledge.ErrNotFound
-			}
-			person := personOf(run.Actor)
-			if person == "" {
-				return "", knowledge.ProviderError{Cause: knowledge.AuthExpired}
-			}
-			thread, err := p.Threads.Get(req.Tenant, run.Thread)
-			if err != nil || thread.Visibility != threads.Private || thread.Surface != nil {
-				return "", fmt.Errorf("%w: live results require your own private conversation", knowledge.ErrInvalid)
-			}
-			own := false
-			for _, participant := range thread.Participants {
-				if participant.Kind == threads.Person {
-					if participant.Name != person {
-						return "", fmt.Errorf("%w: live results require your own private conversation", knowledge.ErrInvalid)
-					}
-					own = true
-				}
-			}
-			if !own {
-				return "", knowledge.ErrNotFound
+				return "", err
 			}
 			src, err := p.Knowledge.Get(req.Tenant, name)
 			if err != nil {
@@ -138,3 +118,34 @@ func (p *Platform) sourceTools(req runtime.Request) map[string]saigetypes.Tool {
 type sourceSearchTool struct{ saigetypes.Tool }
 
 func (*sourceSearchTool) ActsForPerson() bool { return true }
+
+// ownPrivateConversation is the run a tool serves and the person it acts
+// for, when the run is in that person's own private conversation: the one
+// place a tool may use a person's own credential and show its results.
+func (p *Platform) ownPrivateConversation(req runtime.Request) (runs.Run, string, error) {
+	run, err := p.Runs.Get(req.Tenant, req.RunID)
+	if err != nil {
+		return runs.Run{}, "", knowledge.ErrNotFound
+	}
+	person := personOf(run.Actor)
+	if person == "" {
+		return runs.Run{}, "", knowledge.ProviderError{Cause: knowledge.AuthExpired}
+	}
+	thread, err := p.Threads.Get(req.Tenant, run.Thread)
+	if err != nil || thread.Visibility != threads.Private || thread.Surface != nil {
+		return runs.Run{}, "", fmt.Errorf("%w: live results require your own private conversation", knowledge.ErrInvalid)
+	}
+	own := false
+	for _, participant := range thread.Participants {
+		if participant.Kind == threads.Person {
+			if participant.Name != person {
+				return runs.Run{}, "", fmt.Errorf("%w: live results require your own private conversation", knowledge.ErrInvalid)
+			}
+			own = true
+		}
+	}
+	if !own {
+		return runs.Run{}, "", knowledge.ErrNotFound
+	}
+	return run, person, nil
+}

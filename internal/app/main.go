@@ -326,6 +326,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err != nil {
 		return err
 	}
+	connectors, err := openConnectors(ctx, o, file.cfg)
+	if err != nil {
+		return err
+	}
 	// Model and tool providers: the spec's Platform documents for the common
 	// cases, options for the rest. Keys are references, read when used.
 	fromFile, err := fileExtensions(ctx, o, file.cfg, keys)
@@ -368,6 +372,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		BuiltinModel:     *builtinModel,
 		Blobs:            blobs,
 		Embedder:         embedder,
+		Connectors:       connectors,
 		Bus:              broker,
 		Workspace:        *workspaceDir,
 		Sandbox:          sbx,

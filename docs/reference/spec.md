@@ -244,6 +244,41 @@ lexically. If the embedder fails, writes still succeed and search is lexical.
 Search sees exactly the documents it would without vectors: the same sources,
 exclusions, variants and access checks.
 
+### Catalog connectors
+
+`connectors` in a Platform document are the systems the catalog lists
+([RFC 0005](../rfcs/0005-federated-retrieval-and-catalog.md)): tables,
+columns and their descriptions, never data. Each is crawled on its `refresh`
+cadence (24h when left out), and a crawl replaces its entries whole, so a
+dropped table disappears and a failed crawl keeps the entries before it.
+Entries are searched like knowledge, with `knowledge.embedder` when one is set.
+
+| Field | Meaning |
+|-------|---------|
+| `owner` | The person whose credential the connector uses. Required. They see its entries, may publish them, and may query it |
+| `project` | Whose members see its entries while the owner publishes them (`POST /api/catalog/connectors/{name}/publish`). Left out, the workspace |
+| `refresh` | How often it is crawled, at least `1h` |
+
+| Kind | Block | Credentials |
+|------|-------|-------------|
+| `bigquery` | `project` (required), `datasets`, `location`, `max_bytes_billed` (1 GiB), `max_rows` (200, at most 10000), `timeout` (60s, at most 10m) | `credential`, a reference to a service account key in JSON; left out, Application Default Credentials: the VM's service account on GCE |
+
+Two tools use the catalog, granted to an agent by name like any tool:
+
+- `catalog_search` finds entries: a published connector's when everyone the
+  answer reaches reads its project, and the owner's own only in the owner's
+  private conversation.
+- `catalog_query` runs one SQL `SELECT` with the connector's credential, so
+  only for its owner, in their own private conversation. BigQuery dry-runs it
+  first and refuses it before it runs when it is not a single `SELECT`, reads a
+  dataset outside `datasets`, or would read more than `max_bytes_billed`. The
+  query that runs carries the same cap as BigQuery's maximum bytes billed.
+
+The credential needs `roles/bigquery.metadataViewer` (or `dataViewer`) on the
+datasets to crawl them, `roles/bigquery.dataViewer` to read them, and
+`roles/bigquery.jobUser` on `project` to run queries. Give it no write role:
+the dry run's statement check is the first guard, the credential the last.
+
 ### Rooms
 
 `rooms` protects the server from a conversation with a great many readers
@@ -361,6 +396,19 @@ spec:
             input_schema: {type: object, properties: {q: {type: string}}}
             schema_hash: 21877437383c4aa0e8fc28bbe3abc1d801bac704010bcdd62a93e30dafd20ab6
             class: read
+
+  connectors:               # each a slot: bigquery. What the catalog lists, and agents query in place
+    - name: warehouse
+      kind: bigquery
+      owner: ana@acme.example   # whose credential it is: they see its entries and may query it
+      project: Field        # whose members see its entries once the owner publishes them
+      refresh: 24h          # how often it is crawled, at least 1h
+      bigquery:
+        project: acme-analytics
+        datasets: [billing, web]   # the catalog and every query keep to these
+        max_bytes_billed: 1073741824   # one query reads at most this; refused before it runs otherwise
+        max_rows: 200
+        # credential: {ref: env:BQ_KEY}   # a service account key; left out, the VM's service account
 
   agents:
     - spec:
