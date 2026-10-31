@@ -20,14 +20,17 @@ func TestSearchMessagesRebuildsAfterRestartAndConfinesTenantAndWindow(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	hits := again.Search("acme", "ZEPHYR evidence", t0, 20, nil)
+	hits, err := again.Search("acme", "ZEPHYR evidence", t0, 20, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(hits) != 1 || hits[0].ID != "m-2" || hits[0].Thread != th.ID {
 		t.Fatal(hits)
 	}
-	if got := again.Search("acme", "zephyr", t0.Add(time.Hour), 20, nil); len(got) != 0 {
+	if got, err := again.Search("acme", "zephyr", t0.Add(time.Hour), 20, nil); err != nil || len(got) != 0 {
 		t.Fatal(got)
 	}
-	if got := again.Search("unknown", "zephyr", t0, 20, nil); len(got) != 0 {
+	if got, err := again.Search("unknown", "zephyr", t0, 20, nil); err != nil || len(got) != 0 {
 		t.Fatal(got)
 	}
 }

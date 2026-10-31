@@ -3,6 +3,8 @@ package threads
 import (
 	"fmt"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // DeletionDelay is how long an archived conversation waits before it joins
@@ -55,22 +57,15 @@ func sameArchive(a, b *Archive) bool {
 // deleted conversation cannot change. Neither its version nor when it was
 // last active changes, so it keeps its place when it comes back.
 func (s *Store) SetArchive(tenantName, id string, a *Archive) (Thread, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		next.Archive = a.clone()
+		return nil
+	})
 	if err != nil {
 		return Thread{}, err
 	}
-	rec := th.rec.clone()
-	rec.Archive = a.clone()
-	b := s.batch()
-	b.put(tenantName, threadKey(id), rec)
-	if err := b.commit(); err != nil {
-		return Thread{}, err
-	}
-	th.rec = rec
-	s.tenants[tenantName].tell(Notice{ID: id, At: a.atOr(rec.UpdatedAt)})
-	return rec.clone(), nil
+	s.tell(tenantName, Notice{ID: id, At: a.atOr(h.UpdatedAt)})
+	return h.Thread, nil
 }
 
 func (a *Archive) atOr(t time.Time) time.Time {
@@ -81,35 +76,62 @@ func (a *Archive) atOr(t time.Time) time.Time {
 }
 
 // Purge deletes a conversation's messages and keeps its record as a
-// tombstone, its title cleared, marked deleted by who at at.
+// tombstone, its title cleared, marked deleted by who at at. The messages go
+// in the write that marks the record; the word index entries of what they
+// said follow, a page at a time, and one left behind finds nothing, as a
+// search reads the record and the messages it names.
 func (s *Store) Purge(tenantName, id, by string, at time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	th, err := s.writable(tenantName, id)
+	var said []string
+	_, err := s.edit(tenantName, id, func(next *head, w *write) error {
+		if next.Archive == nil {
+			return fmt.Errorf("%w: only an archived conversation is deleted", ErrInvalid)
+		}
+		seen := map[string]bool{}
+		said = said[:0]
+		for after := 0; after < next.Head; {
+			page, more, err := s.page(tenantName, id, after, state.MaxList)
+			if err != nil {
+				return err
+			}
+			for _, m := range page {
+				if m.SurfaceID != "" {
+					w.del(tenantName, postedKey(id, m.SurfaceID))
+				}
+				for _, word := range words(m.Text) {
+					if !seen[word] {
+						seen[word] = true
+						said = append(said, word)
+					}
+				}
+			}
+			if !more || len(page) == 0 {
+				break
+			}
+			after = seqOf(page[len(page)-1].ID, next.Head)
+		}
+		for n := 1; n <= next.Head; n++ {
+			w.del(tenantName, messageKey(id, n))
+		}
+		when := at
+		next.Archive = next.Archive.clone()
+		next.Archive.Deleted, next.Archive.DeletedBy = &when, by
+		next.Title, next.Head, next.First = "", 0, ""
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	rec := th.rec.clone()
-	if rec.Archive == nil {
-		return fmt.Errorf("%w: only an archived conversation is deleted", ErrInvalid)
+	s.tell(tenantName, Notice{ID: id, At: at})
+	for len(said) > 0 {
+		n := min(len(said), state.MaxList)
+		w := s.write()
+		for _, word := range said[:n] {
+			w.del(tenantName, wordKey(word, id))
+		}
+		if err := w.commit(s); err != nil {
+			return err
+		}
+		said = said[n:]
 	}
-	when := at
-	rec.Archive.Deleted, rec.Archive.DeletedBy = &when, by
-	rec.Title = ""
-	b := s.batch()
-	for n := range th.msgs {
-		b.b.Delete(tenantName, messageKey(id, n+1))
-	}
-	b.put(tenantName, threadKey(id), rec)
-	if err := b.commit(); err != nil {
-		return err
-	}
-	tn := s.tenants[tenantName]
-	for _, m := range th.msgs {
-		tn.search.Delete(m.Thread + "\x00" + m.ID)
-	}
-	th.msgs, th.surfaces = nil, map[string]int{}
-	th.rec = rec
-	tn.tell(Notice{ID: id, At: at})
 	return nil
 }
