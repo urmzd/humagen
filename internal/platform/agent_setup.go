@@ -424,7 +424,10 @@ func (p *Platform) applySetupAmendment(ctx context.Context, who auth.Principal, 
 	if err := p.Projects.SetHome(who.Tenant, record.Name, record.Plan.Project, WriterOf(who), p.now(), nil); err != nil {
 		return err
 	}
-	control := p.AgentControl(who.Tenant, record.Name)
+	control, err := p.AgentControl(who.Tenant, record.Name)
+	if err != nil {
+		return err
+	}
 	if !control.Paused {
 		control.Paused = true
 		if _, err := p.Operations.SetControl(who.Tenant, record.Name, control, control.Version, who.Subject, p.now()); err != nil {
@@ -507,7 +510,10 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 			if err := p.Projects.SetHome(who.Tenant, name, record.Plan.Project, WriterOf(who), p.now(), nil); err != nil {
 				return err
 			}
-			current := p.Operations.Control(who.Tenant, name)
+			current, err := p.Operations.Control(who.Tenant, name)
+			if err != nil {
+				return err
+			}
 			if !current.Paused {
 				if _, err := p.Operations.SetControl(who.Tenant, name, operations.Control{Paused: true}, current.Version, who.Subject, p.now()); err != nil {
 					return err
@@ -552,16 +558,22 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 	}
 	if err == nil && record.Phase == "skills" {
 		err = step("controls", func() error {
-			current := p.AgentControl(who.Tenant, name)
-			_, err := p.SetAgentControl(who, name, operations.Control{Paused: true, Manager: record.Plan.Manager, StopRules: record.Plan.StopRules}, current.Version)
+			current, err := p.AgentControl(who.Tenant, name)
+			if err != nil {
+				return err
+			}
+			_, err = p.SetAgentControl(who, name, operations.Control{Paused: true, Manager: record.Plan.Manager, StopRules: record.Plan.StopRules}, current.Version)
 			return err
 		})
 	}
 	if err == nil && record.Phase == "controls" {
 		err = step("policy", func() error {
 			scope := operations.Scope{Kind: "agent", Name: name}
-			current := p.Operations.Policy(who.Tenant, scope)
-			_, err := p.SetActionPolicy(who, scope, record.Plan.Rules, current.Version)
+			current, err := p.Operations.Policy(who.Tenant, scope)
+			if err != nil {
+				return err
+			}
+			_, err = p.SetActionPolicy(who, scope, record.Plan.Rules, current.Version)
 			return err
 		})
 	}
@@ -585,13 +597,17 @@ func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, rec
 			}
 			digest := sha256.Sum256([]byte(who.Tenant + "\x00" + name + "\x00" + record.Owner))
 			record.AssignmentID = "as-" + hex.EncodeToString(digest[:12])
-			if existing, ok := p.Operations.Assignment(who.Tenant, record.AssignmentID); ok {
+			existing, ok, err := p.Operations.Assignment(who.Tenant, record.AssignmentID)
+			if err != nil {
+				return err
+			}
+			if ok {
 				if existing.Agent != name || existing.Owner != who.Subject {
 					return operations.ErrConflict
 				}
 				return nil
 			}
-			_, err := p.SetAssignment(ctx, who, operations.Assignment{ID: record.AssignmentID, Agent: name, Project: record.Plan.Project, Owner: who.Subject, Goal: plan.Goal, DoneWhen: plan.DoneWhen, Cron: plan.Cron, Trigger: plan.Trigger, Source: plan.Source, State: operations.Requested}, 0)
+			_, err = p.SetAssignment(ctx, who, operations.Assignment{ID: record.AssignmentID, Agent: name, Project: record.Plan.Project, Owner: who.Subject, Goal: plan.Goal, DoneWhen: plan.DoneWhen, Cron: plan.Cron, Trigger: plan.Trigger, Source: plan.Source, State: operations.Requested}, 0)
 			return err
 		})
 	}
@@ -751,7 +767,10 @@ func (p *Platform) ActivateAgentSetup(ctx context.Context, who auth.Principal, n
 	if err := p.saveSetup(who.Tenant, &record, "activating"); err != nil {
 		return AgentSetup{}, err
 	}
-	current := p.AgentControl(who.Tenant, name)
+	current, err := p.AgentControl(who.Tenant, name)
+	if err != nil {
+		return p.failSetup(who.Tenant, record, err)
+	}
 	current.Paused = false
 	if _, err := p.SetAgentControl(who, name, current, current.Version); err != nil {
 		return p.failSetup(who.Tenant, record, err)

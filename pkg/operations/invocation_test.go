@@ -28,9 +28,9 @@ func TestClockInvocationReplayRejectsChangedAssignmentIdentity(t *testing.T) {
 		if _, err := s.ReserveInvocation("t", "a", tag, a.Version, time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		copied, _ := s.Invocation("t", "a")
+		copied, _, _ := s.Invocation("t", "a")
 		wire.SetMeta(&copied, operations.MetaAssignment, "changed")
-		original, _ := s.Invocation("t", "a")
+		original, _, _ := s.Invocation("t", "a")
 		if wire.Meta(original)[operations.MetaAssignment] != "a" {
 			t.Fatal("caller changed durable invocation")
 		}
@@ -46,7 +46,11 @@ func TestClockInvocationReplayRejectsChangedAssignmentIdentity(t *testing.T) {
 		if err := state.NewTable[map[string]any](st, "operations").Put("t", "assignment:a", record); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := operations.Open(st); !errors.Is(err, operations.ErrInvalid) {
+		reopened, err := operations.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := reopened.Invocation("t", "a"); !errors.Is(err, operations.ErrInvalid) {
 			t.Fatalf("altered invocation was accepted: %v", err)
 		}
 	})

@@ -275,13 +275,13 @@ func (s *Seer) Message(m inbox.Message) bool {
 			op := part.Operation
 			switch op.Kind {
 			case "assignment":
-				a, ok := s.p.Operations.Assignment(s.who.Tenant, op.ID)
-				if !ok || !s.Project(a.Project) || !s.Place(Place{Project: a.Project, Thread: a.Thread}) || !s.Agent(a.Agent) {
+				a, ok, err := s.p.Operations.Assignment(s.who.Tenant, op.ID)
+				if err != nil || !ok || !s.Project(a.Project) || !s.Place(Place{Project: a.Project, Thread: a.Thread}) || !s.Agent(a.Agent) {
 					return false
 				}
 			case "handoff":
-				h, ok := s.p.Operations.Handoff(s.who.Tenant, op.ID)
-				if !ok || !s.p.seesHandoff(s, h) {
+				h, ok, err := s.p.Operations.Handoff(s.who.Tenant, op.ID)
+				if err != nil || !ok || !s.p.seesHandoff(s, h) {
 					return false
 				}
 			default:

@@ -37,7 +37,7 @@ func policyRank(level operations.Level) int {
 
 // ActionPolicy describes the known constraints at this scope. An agent or
 // personal restriction can narrow a project further at actual run admission.
-func (p *Platform) ActionPolicy(who auth.Principal, scope operations.Scope) ActionPolicyView {
+func (p *Platform) ActionPolicy(who auth.Principal, scope operations.Scope) (ActionPolicyView, error) {
 	tree := p.Projects.Tree(who.Tenant)
 	if scope.Kind == "agent" {
 		scope.Name = legacy.BuiltinAgent(scope.Name)
@@ -62,12 +62,23 @@ func (p *Platform) ActionPolicy(who auth.Principal, scope operations.Scope) Acti
 	if scope.Kind == "agent" || scope.Kind == "personal" {
 		scopes = append(scopes, scope)
 	}
-	view := ActionPolicyView{Policy: p.Operations.Policy(who.Tenant, scope), Effective: map[operations.Category]EffectiveActionRule{}}
+	read := map[operations.Scope]operations.Policy{}
+	for _, at := range append([]operations.Scope{scope}, scopes...) {
+		if _, ok := read[at]; ok {
+			continue
+		}
+		pol, err := p.Operations.Policy(who.Tenant, at)
+		if err != nil {
+			return ActionPolicyView{}, err
+		}
+		read[at] = pol
+	}
+	view := ActionPolicyView{Policy: read[scope], Effective: map[operations.Category]EffectiveActionRule{}}
 	seer := p.Seer(who)
 	for _, category := range operations.Categories {
 		rule := EffectiveActionRule{Sources: []ActionPolicySource{}}
 		for i, at := range scopes {
-			level := p.Operations.Policy(who.Tenant, at).Rules[category]
+			level := read[at].Rules[category]
 			if policyRank(level) > policyRank(rule.Level) {
 				rule.Level = level
 			}
@@ -78,7 +89,7 @@ func (p *Platform) ActionPolicy(who auth.Principal, scope operations.Scope) Acti
 		rule.Locked = policyRank(rule.Inherited) >= policyRank(operations.Ask)
 		hidden := false
 		for _, at := range scopes {
-			level := p.Operations.Policy(who.Tenant, at).Rules[category]
+			level := read[at].Rules[category]
 			if level == operations.Unspecified || level != rule.Level {
 				continue
 			}
@@ -106,5 +117,5 @@ func (p *Platform) ActionPolicy(who auth.Principal, scope operations.Scope) Acti
 		}
 		view.Effective[category] = rule
 	}
-	return view
+	return view, nil
 }

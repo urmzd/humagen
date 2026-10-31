@@ -66,10 +66,10 @@ func TestSourceChangeAssignmentsUseExistingRuntimeAndKeepCursorAfterRestart(t *t
 		}
 		versions.set(2, true)
 		sourceAwait(t, func() bool {
-			got, _ := p.Operations.Assignment(tenant, a.ID)
+			got, _, _ := p.Operations.Assignment(tenant, a.ID)
 			return got.SourceVersion == 2 && got.State == operations.Watching && got.RunID != ""
 		})
-		first, _ := p.Operations.Assignment(tenant, a.ID)
+		first, _, _ := p.Operations.Assignment(tenant, a.ID)
 		run, err := p.Runs.Get(tenant, first.RunID)
 		if err != nil || run.Origin != "assignment" || !run.Status.Terminal() {
 			t.Fatalf("not an actual retained-source run: %+v, %v", run, err)
@@ -79,15 +79,18 @@ func TestSourceChangeAssignmentsUseExistingRuntimeAndKeepCursorAfterRestart(t *t
 		p2, stop2 := runningWith(t, platform.Config{Backends: again(), AssignmentSources: versions})
 		defer stop2()
 		sourceAwait(t, func() bool {
-			got, _ := p2.Operations.Assignment(tenant, a.ID)
+			got, _, _ := p2.Operations.Assignment(tenant, a.ID)
 			return got.SourceVersion == 3 && got.State == operations.Watching && got.RunID != first.RunID
 		})
 		versions.set(3, false)
-		sourceAwait(t, func() bool { got, _ := p2.Operations.Assignment(tenant, a.ID); return got.State == operations.Blocked })
+		sourceAwait(t, func() bool {
+			got, _, _ := p2.Operations.Assignment(tenant, a.ID)
+			return got.State == operations.Blocked
+		})
 		versions.set(4, true)
 		// A fresh source never resumes paused work without its owner's choice.
 		time.Sleep(2200 * time.Millisecond)
-		got, _ := p2.Operations.Assignment(tenant, a.ID)
+		got, _, _ := p2.Operations.Assignment(tenant, a.ID)
 		if got.State != operations.Blocked || got.SourceVersion != 3 {
 			t.Fatalf("work resumed without permission: %+v", got)
 		}
@@ -140,7 +143,7 @@ func TestSourceChangeReservationRecoversExactTriggerAfterRestart(t *testing.T) {
 			t.Fatalf("reservation changed trigger identity: %+v", run)
 		}
 		sourceAwait(t, func() bool {
-			got, _ := p2.Operations.Assignment(tenant, a.ID)
+			got, _, _ := p2.Operations.Assignment(tenant, a.ID)
 			return got.State == operations.Watching && got.SourceVersion == 2 && got.RunID == runID
 		})
 	})

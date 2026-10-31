@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,7 +40,9 @@ type setupFault struct {
 
 func (s *setupFault) Write(ctx context.Context, namespace string, ops ...state.Op) error {
 	s.mu.Lock()
-	if namespace == "operations" {
+	// Writes to the tenant "" are the store's own bookkeeping (its tenant
+	// directory and conversion marker), not a step of the setup.
+	if namespace == "operations" && slices.ContainsFunc(ops, func(op state.Op) bool { return op.Tenant != "" }) {
 		s.operations++
 		if s.fail && s.operations == 2 {
 			s.fail = false
@@ -94,7 +97,7 @@ func TestAgentSetupResumesAfterRegistryCreationAndNeverHijacksExistingNames(t *t
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !p.AgentControl(tenant, "draft").Paused {
+		if !paused(t, p, tenant, "draft") {
 			t.Fatal("partially configured draft is active")
 		}
 		if _, err := p.Invoke(t.Context(), tag("ordinary-draft", "draft")); !errors.Is(err, operations.ErrPaused) {
@@ -125,7 +128,7 @@ func TestAgentSetupResumesAfterRegistryCreationAndNeverHijacksExistingNames(t *t
 			t.Fatalf("existing name=%v", err)
 		}
 		kept, _ := p.Agents.Get(t.Context(), tenant, "existing", 0)
-		if kept.Hash != original.Hash || p.AgentControl(tenant, "existing").Paused {
+		if kept.Hash != original.Hash || paused(t, p, tenant, "existing") {
 			t.Fatal("losing setup changed the existing agent")
 		}
 		if err := p.Close(); err != nil {
@@ -168,7 +171,7 @@ func TestAgentSetupNormalCreateRaceKeepsTheWinningAgentUnchanged(t *testing.T) {
 			t.Fatal(err)
 		}
 		if normalErr == nil {
-			if setupErr == nil || rev.CreatedBy != other.Subject || p.AgentControl(tenant, name).Paused {
+			if setupErr == nil || rev.CreatedBy != other.Subject || paused(t, p, tenant, name) {
 				t.Fatalf("normal winner was changed: %v,%v,%+v", normalErr, setupErr, rev)
 			}
 		} else if setupErr != nil {
@@ -288,7 +291,7 @@ func TestAgentSetupDryRunUsesRealAdapterAndApprovalBeforeActivation(t *testing.T
 		t.Fatal("amended test did not execute the real model/tool round trip")
 	}
 	active, err := p.ActivateAgentSetup(t.Context(), admin, saved.Name)
-	if err != nil || active.Phase != "ready" || p.AgentControl(tenant, saved.Name).Paused {
+	if err != nil || active.Phase != "ready" || paused(t, p, tenant, saved.Name) {
 		t.Fatalf("activate=%+v,%v", active, err)
 	}
 	again, err := p.ActivateAgentSetup(t.Context(), admin, saved.Name)
@@ -440,8 +443,18 @@ func TestAgentSetupAmendmentRestartsAcrossRealRegistryAndStateBackends(t *testin
 			t.Fatalf("replay duplicated registry revision: %+v,%v", repeated, err)
 		}
 		current, err := restarted.Agents.Get(t.Context(), tenant, saved.Name, 0)
-		if err != nil || current.Spec.Model != "gpt-4o" || !restarted.AgentControl(tenant, saved.Name).Paused {
+		if err != nil || current.Spec.Model != "gpt-4o" || !paused(t, restarted, tenant, saved.Name) {
 			t.Fatalf("wrong or active corrected revision: %+v,%v", current, err)
 		}
 	})
+}
+
+// paused reads whether an agent is paused, failing the test when it cannot.
+func paused(t *testing.T, p *platform.Platform, tenant, agent string) bool {
+	t.Helper()
+	c, err := p.AgentControl(tenant, agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c.Paused
 }

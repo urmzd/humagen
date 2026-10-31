@@ -60,7 +60,11 @@ func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag event.En
 	p.admission.Lock()
 	defer p.admission.Unlock()
 	id := runtime.RunID(parent.Tenant, tag.ID)
-	if old, ok := p.Operations.Handoff(parent.Tenant, id); ok {
+	old, ok, err := p.Operations.Handoff(parent.Tenant, id)
+	if err != nil {
+		return operations.Handoff{}, err
+	}
+	if ok {
 		if old.RunID == "" {
 			return old, operations.ErrEscalation
 		}
@@ -84,7 +88,11 @@ func (p *Platform) recordHandoff(parent runs.Run, req call.Request, tag event.En
 	}
 	goal = clip(goal, 8000)
 	done := clip(prepared.Input.ResponseFormat.Instruction(), 4000)
-	h := operations.Handoff{Requester: p.operationPerson(parent), ID: id, From: parent.Agent, To: req.Agent, Project: parent.Project, Thread: parent.Thread, Owner: p.AgentControl(parent.Tenant, parent.Agent).Manager, Goal: goal, DoneWhen: done, Inputs: []operations.Input{}, Chain: chain, State: operations.InProgress, RunID: id, DueAt: p.now().Add(24 * time.Hour)}
+	control, err := p.AgentControl(parent.Tenant, parent.Agent)
+	if err != nil {
+		return operations.Handoff{}, err
+	}
+	h := operations.Handoff{Requester: p.operationPerson(parent), ID: id, From: parent.Agent, To: req.Agent, Project: parent.Project, Thread: parent.Thread, Owner: control.Manager, Goal: goal, DoneWhen: done, Inputs: []operations.Input{}, Chain: chain, State: operations.InProgress, RunID: id, DueAt: p.now().Add(24 * time.Hour)}
 	if req.Contract != nil {
 		if err := req.Contract.Validate(); err != nil {
 			return operations.Handoff{}, err
@@ -135,13 +143,19 @@ func (p *Platform) operationEscalation(tenant, kind, id, project, thread, run, a
 	version := 0
 	switch kind {
 	case "assignment":
-		a, ok := p.Operations.Assignment(tenant, id)
+		a, ok, err := p.Operations.Assignment(tenant, id)
+		if err != nil {
+			p.log.Error("platform: assignment could not be read", "error", err)
+		}
 		if !ok || (a.State != operations.Blocked && a.State != operations.NeedsPerson) {
 			return
 		}
 		version = a.Version
 	case "handoff":
-		h, ok := p.Operations.Handoff(tenant, id)
+		h, ok, err := p.Operations.Handoff(tenant, id)
+		if err != nil {
+			p.log.Error("platform: handoff could not be read", "error", err)
+		}
 		if !ok || (h.State != operations.Blocked && h.State != operations.NeedsPerson) {
 			return
 		}
@@ -160,7 +174,7 @@ func (p *Platform) operationEscalation(tenant, kind, id, project, thread, run, a
 		m.Audience = append(m.Audience, owner)
 	}
 	if kind == "handoff" {
-		if contract, ok := p.Operations.Handoff(tenant, id); ok {
+		if contract, ok, _ := p.Operations.Handoff(tenant, id); ok {
 			requester := contract.Requester
 			if requester == "" && contract.RunID != "" {
 				if run, err := p.Runs.Get(tenant, contract.RunID); err == nil {
@@ -181,8 +195,8 @@ func (p *Platform) sameHandoffTerms(run runs.Run, terms *call.Contract) bool {
 	if terms == nil {
 		return true
 	}
-	h, ok := p.Operations.Handoff(run.Tenant, run.ID)
-	return ok && h.Goal == terms.Goal && h.DoneWhen == terms.DoneWhen && h.DueAt.Equal(terms.DueAt)
+	h, ok, err := p.Operations.Handoff(run.Tenant, run.ID)
+	return err == nil && ok && h.Goal == terms.Goal && h.DoneWhen == terms.DoneWhen && h.DueAt.Equal(terms.DueAt)
 }
 
 func (p *Platform) operationTagPerson(tag event.Envelope, edge call.Edge) string {
@@ -192,7 +206,11 @@ func (p *Platform) operationTagPerson(tag event.Envelope, edge call.Edge) string
 		}
 	}
 	if id := wire.Meta(tag)[metaAssignment]; id != "" {
-		if a, ok := p.Operations.Assignment(tag.Tenant, id); ok {
+		a, ok, err := p.Operations.Assignment(tag.Tenant, id)
+		if err != nil {
+			p.log.Error("platform: assignment owner could not be read", "error", err)
+		}
+		if ok {
 			return a.Owner
 		}
 	}

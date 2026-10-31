@@ -27,10 +27,18 @@ func (p *Platform) RegisterAgentTestGate(gate AgentTestGate) error {
 	return nil
 }
 func (p *Platform) operationAdmissionTag(tag event.Envelope) error {
-	if p.Operations.Control(tag.Tenant, "").Paused {
+	workspace, err := p.Operations.Control(tag.Tenant, "")
+	if err != nil {
+		return err
+	}
+	if workspace.Paused {
 		return operations.ErrPaused
 	}
-	if !p.AgentControl(tag.Tenant, tag.Agent).Paused && p.agentReady(tag.Tenant, tag.Agent) {
+	agent, err := p.AgentControl(tag.Tenant, tag.Agent)
+	if err != nil {
+		return err
+	}
+	if !agent.Paused && p.agentReady(tag.Tenant, tag.Agent) {
 		return nil
 	}
 	if wire.Meta(tag)[operations.MetaForceAsk] == "true" {
@@ -44,10 +52,18 @@ func (p *Platform) operationAdmissionRequest(req runtime.Request) error {
 	if err := p.CheckAssignmentSourceHealth(req); err != nil {
 		return err
 	}
-	if p.Operations.Control(req.Tenant, "").Paused {
+	workspace, err := p.Operations.Control(req.Tenant, "")
+	if err != nil {
+		return err
+	}
+	if workspace.Paused {
 		return operations.ErrPaused
 	}
-	if !p.Operations.Control(req.Tenant, legacy.BuiltinAgent(req.Agent())).Paused && p.agentReady(req.Tenant, req.Agent()) {
+	agent, err := p.Operations.Control(req.Tenant, legacy.BuiltinAgent(req.Agent()))
+	if err != nil {
+		return err
+	}
+	if !agent.Paused && p.agentReady(req.Tenant, req.Agent()) {
 		return nil
 	}
 	force := p.operationForced(req)

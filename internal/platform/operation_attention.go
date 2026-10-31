@@ -38,11 +38,11 @@ func (p *Platform) reconcileOperationAttention(tenant string) {
 			handled := false
 			switch op.Kind {
 			case "assignment":
-				a, ok := p.Operations.Assignment(tenant, op.ID)
-				handled = ok && attentionHandled(a.State)
+				a, ok, err := p.Operations.Assignment(tenant, op.ID)
+				handled = err == nil && ok && attentionHandled(a.State)
 			case "handoff":
-				h, ok := p.Operations.Handoff(tenant, op.ID)
-				handled = ok && attentionHandled(h.State)
+				h, ok, err := p.Operations.Handoff(tenant, op.ID)
+				handled = err == nil && ok && attentionHandled(h.State)
 			}
 			if handled {
 				if err := p.clearOperationAttention(tenant, op.Kind, op.ID, ""); err != nil {
