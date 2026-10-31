@@ -1,6 +1,6 @@
 {
   "name": "@humagen/primitives",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "private": true,
   "type": "module",
   "description": "The primitive contract every humagen renderer implements, plus surface context.",

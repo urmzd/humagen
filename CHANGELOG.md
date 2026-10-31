@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.53.0 (2026-10-31)
+
+### Features
+
+- install a run's memory on lease and keep it on release (RFC 0004) (#152) ([c6696a7](https://github.com/urmzd/humagen/commit/c6696a7a331751a70389f49355f74ff431902db6))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.52.0...v0.53.0)
+
+
 ## 0.52.0 (2026-10-31)
 
 ### Features
