@@ -98,8 +98,12 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 	now := p.now()
 	applied, err := p.applied(run.Tenant, chainOf(run.Project, run.Within), run.Agent, run.Client, now)
 	if err != nil {
-		// The next call it makes judges it again.
+		// A limit that cannot be read is not a limit that allows: the run
+		// stops, as it would at a limit it reached.
 		p.log.Error("platform: the limits on a run could not be read", "run", run.ID, "error", err)
+		if !run.Stopping {
+			p.halt(ctx, run, "Stopped: its limits could not be read")
+		}
 		return
 	}
 	if call.Unpriced > 0 || len(call.Other) > 0 {
