@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.59.0 (2026-10-31)
+
+### Features
+
+- agents are @mentions, and every agent a message tags answers (#160) ([b50d50a](https://github.com/urmzd/humagen/commit/b50d50a962d0eae4a2676a1955cd33c9a2f11456))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.58.0...v0.59.0)
+
+
 ## 0.58.0 (2026-10-31)
 
 ### Features
