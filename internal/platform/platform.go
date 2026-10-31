@@ -1179,7 +1179,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	}
 	p.watching.begin(func(tenant string) {
 		sub := p.RunSubscription(tenant, "", 0)
-		observed, err := p.broker.Subscribe(ctx, sub)
+		observed, err := p.broker.Consume(ctx, ObserverGroup, sub)
 		if err != nil {
 			if ctx.Err() == nil {
 				select {
@@ -1322,20 +1322,64 @@ func (p *Platform) ingest(ctx context.Context, tag event.Envelope) {
 	}
 }
 
+// ObserverGroup is the bus consumer group the platform folds each tenant's
+// run events through, so with more than one replica each event is folded by
+// one of them.
+const ObserverGroup = "observer"
+
+// observeCommitEvery is how often the observer commits its cursor while
+// events keep arriving. What it folded since the last commit is folded again
+// by a replica that takes over after a crash.
+const observeCommitEvery = 250 * time.Millisecond
+
 // observeTenant folds one tenant's run events into the platform until ctx is
-// done. A subscriber the bus cut off for falling behind rejoins: the journal
-// has a gap, which is logged, and the platform keeps running.
-func (p *Platform) observeTenant(ctx context.Context, sub bus.Subscription, observed bus.Stream) error {
-	defer func() { _ = observed.Close() }()
+// done. It reads through the consumer group ObserverGroup: while another
+// replica holds the tenant it waits, and after falling behind or losing the
+// lease it rejoins and resumes from the committed cursor.
+func (p *Platform) observeTenant(ctx context.Context, sub bus.Subscription, observed bus.GroupStream) error {
+	var handled, committed uint64
+	last := time.Now()
+	commit := func(ctx context.Context) {
+		if handled <= committed {
+			return
+		}
+		if err := observed.Commit(ctx, handled); err == nil {
+			committed = handled
+		} else if ctx.Err() == nil && !errors.Is(err, bus.ErrLeaseLost) {
+			p.log.Warn("platform: observer cursor not committed", "tenant", sub.Tenant, "error", err)
+		}
+		last = time.Now()
+	}
+	rejoin := func() error {
+		final, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		commit(final)
+		cancel()
+		_ = observed.Close()
+		handled, committed = 0, 0
+		var err error
+		observed, err = p.broker.Consume(ctx, ObserverGroup, sub)
+		return err
+	}
+	defer func() {
+		final, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		commit(final)
+		cancel()
+		_ = observed.Close()
+	}()
 	for {
-		e, err := observed.Recv(ctx)
+		d, err := observed.Recv(ctx)
 		switch {
 		case ctx.Err() != nil:
 			return nil
 		case errors.Is(err, bus.ErrSlowConsumer):
-			p.log.Warn("platform: observer fell behind and missed events", "tenant", sub.Tenant)
-			_ = observed.Close()
-			if observed, err = p.broker.Subscribe(ctx, sub); err != nil {
+			p.log.Warn("platform: observer fell behind, resuming from its cursor", "tenant", sub.Tenant)
+			if err := rejoin(); err != nil {
+				return err
+			}
+			continue
+		case errors.Is(err, bus.ErrLeaseLost):
+			p.log.Info("platform: another replica took over observing", "tenant", sub.Tenant)
+			if err := rejoin(); err != nil {
 				return err
 			}
 			continue
@@ -1344,7 +1388,11 @@ func (p *Platform) observeTenant(ctx context.Context, sub bus.Subscription, obse
 		case err != nil:
 			return err
 		}
-		p.observe(ctx, e)
+		p.observe(ctx, d.Event)
+		handled = d.Pos
+		if time.Since(last) >= observeCommitEvery {
+			commit(ctx)
+		}
 	}
 }
 

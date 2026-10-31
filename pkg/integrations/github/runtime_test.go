@@ -57,6 +57,13 @@ func (b *githubIntegrationBus) Subscribe(ctx context.Context, sub bus.Subscripti
 	}
 	return stream, err
 }
+func (b *githubIntegrationBus) Consume(ctx context.Context, group string, sub bus.Subscription) (bus.GroupStream, error) {
+	stream, err := b.Bus.Consume(ctx, group, sub)
+	if err == nil {
+		b.once.Do(func() { close(b.subscribed) })
+	}
+	return stream, err
+}
 func (b *githubIntegrationBus) Publish(ctx context.Context, e event.Envelope) error {
 	if err := b.Bus.Publish(ctx, e); err != nil {
 		return err

@@ -75,9 +75,12 @@ func TestFiberStoredNamesAreKept(t *testing.T) {
 // keptFiberTables are the tables fiber's stores create. Each is in
 // docs/guides/upgrading-from-warp.md.
 var keptFiberTables = []string{
+	"fiber_consumers",
 	"fiber_definition_retirements",
 	"fiber_definitions",
+	"fiber_dispatch_runs",
 	"fiber_event_runs",
+	"fiber_event_tenants",
 	"fiber_events",
 	"fiber_knowledge_chunks",
 	"fiber_knowledge_documents",
