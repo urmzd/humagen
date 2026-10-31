@@ -100,18 +100,18 @@ func TestStoreKeepsTenantsApartAndIsBounded(t *testing.T) {
 	if got, _ := s.Put("acme", p, known(), "olu", at); got.Version != 2 {
 		t.Fatalf("version %d", got.Version)
 	}
-	if got, ok := s.Get("globex", "h"); ok || got.Callers != callpolicy.Anyone {
+	if got, ok, _ := s.Get("globex", "h"); ok || got.Callers != callpolicy.Anyone {
 		t.Fatalf("another tenant sees %+v", got)
 	}
-	stored, _ := s.Get("acme", "h")
+	stored, _, _ := s.Get("acme", "h")
 	stored.Allow = append(stored.Allow, "x")
-	if again, _ := s.Get("acme", "h"); len(again.Allow) != 0 {
+	if again, _, _ := s.Get("acme", "h"); len(again.Allow) != 0 {
 		t.Fatal("a read shares the stored lists")
 	}
 	if err := s.Delete("acme", "h"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := s.Get("acme", "h"); ok {
+	if _, ok, _ := s.Get("acme", "h"); ok {
 		t.Fatal("a deleted policy is still stored")
 	}
 	for i := range callpolicy.MaxPolicies {
@@ -161,7 +161,7 @@ func TestPutKeepingKeepsWhatIsStoredWhenItWrites(t *testing.T) {
 	}
 	// A writer shown every name saves them as read: past MaxNames, a list
 	// may hold only names already stored.
-	stored, _ := s.Get("acme", "helper")
+	stored, _, _ := s.Get("acme", "helper")
 	keepNone := func(callpolicy.Policy) ([]string, []string) { return nil, nil }
 	if _, err := s.PutKeeping("acme", callpolicy.Policy{Agent: "helper", Callers: callpolicy.Listed, Allow: stored.Allow, Approval: callpolicy.Never}, known(all...), keepNone, "olu", at); err != nil {
 		t.Fatalf("saving the stored list as read = %v", err)

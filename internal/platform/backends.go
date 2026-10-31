@@ -244,7 +244,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("people", err)
 	p.Threads, err = threads.Open(st)
 	keep("threads", err)
-	p.Policies, err = policy.Open(st)
+	p.Policies, err = policy.Open(perRequest)
 	keep("policies", err)
 	p.setups, err = openAgentSetups(st)
 	keep("agent setups", err)
@@ -254,7 +254,7 @@ func (p *Platform) openStores(cfg Config) error {
 	if err == nil {
 		keep("operation publication guard", p.RegisterPublicationGuard(p))
 	}
-	p.CallPolicies, err = callpolicy.Open(st)
+	p.CallPolicies, err = callpolicy.Open(perRequest)
 	keep("call policies", err)
 	var shared []usage.Option
 	if cfg.Backends.Counters != nil {

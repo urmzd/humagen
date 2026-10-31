@@ -37,8 +37,8 @@ func (p *Platform) CallPolicy(ctx context.Context, tenant, agent string) (callpo
 	if _, err := p.Catalog().Get(ctx, tenant, agent, 0); err != nil {
 		return callpolicy.Policy{}, err
 	}
-	pol, _ := p.CallPolicies.Get(tenant, agent)
-	return pol, nil
+	pol, _, err := p.CallPolicies.Get(tenant, agent)
+	return pol, err
 }
 
 // SetCallPolicy stores an agent's call policy. Every agent it names must be
@@ -58,7 +58,10 @@ func (p *Platform) SetCallPolicy(ctx context.Context, tenant, agent, by string, 
 // admitCall is the callee's side of a call: whether its policy lets caller
 // call it, and whether the call may go ahead without a person.
 func (p *Platform) admitCall(ctx context.Context, tenant, caller, callee string) error {
-	pol, _ := p.CallPolicies.Get(tenant, callee)
+	pol, _, err := p.CallPolicies.Get(tenant, callee)
+	if err != nil {
+		return err
+	}
 	if !pol.Admits(caller) {
 		if pol.Callers == callpolicy.Nobody {
 			return fmt.Errorf("%w: %q accepts calls from no agent", ErrCallRefused, callee)
@@ -81,7 +84,11 @@ var fallbackApprovers = []string{"role:manager", "role:admin"}
 // it, and how long it waits before it is denied. It does not say whether the
 // call is admitted: admitCall does. The call tool's Approval asks it.
 func (p *Platform) callApproval(tenant, caller, callee string) (needed bool, approvers []string, selfApproval bool, expires time.Duration) {
-	pol, _ := p.CallPolicies.Get(tenant, callee)
+	pol, _, err := p.CallPolicies.Get(tenant, callee)
+	if err != nil {
+		// A policy that cannot be read is not a reason to skip a person.
+		return true, slices.Clone(fallbackApprovers), false, callpolicy.DefaultExpiry
+	}
 	if !pol.NeedsApproval(caller) {
 		return false, nil, false, 0
 	}
@@ -196,8 +203,8 @@ func (p *Platform) callTargets(tenant, runID, caller string, spawn []string) []s
 		if !tree.IsAvailable(at.Project, callee) {
 			continue
 		}
-		pol, _ := p.CallPolicies.Get(tenant, callee)
-		if pol.Admits(caller) {
+		pol, _, err := p.CallPolicies.Get(tenant, callee)
+		if err == nil && pol.Admits(caller) {
 			out = append(out, callee)
 		}
 	}
@@ -237,7 +244,10 @@ func (p *Platform) Reachable(ctx context.Context, tenant, caller string) (out []
 		if callee == caller {
 			continue
 		}
-		pol, _ := p.CallPolicies.Get(tenant, callee)
+		pol, _, err := p.CallPolicies.Get(tenant, callee)
+		if err != nil {
+			return nil, false, err
+		}
 		r := Reach{Agent: callee, Admits: pol.Admits(caller), InSpawn: slices.Contains(wire.PolicyOf(rev.Spec).Access.Spawn, callee), Approval: "never"}
 		if needed, _, _, _ := p.callApproval(tenant, caller, callee); needed {
 			r.Approval = "required"
