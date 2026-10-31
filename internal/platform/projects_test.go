@@ -797,7 +797,7 @@ func TestDeleteKeepsThePolicy(t *testing.T) {
 	if err := p.DeleteProject(ctx, tenant, "Initech", ada); err != nil {
 		t.Fatal(err)
 	}
-	if p.HasProject(tenant, "Initech") || len(p.Memory.List(tenant, owner)) != 0 {
+	if p.HasProject(tenant, "Initech") || len(notesOf(t, p.Memory, tenant, owner)) != 0 {
 		t.Fatal("the project or its notes outlived the delete")
 	}
 	// A parent with children, and the root, are refused.

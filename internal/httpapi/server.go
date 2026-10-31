@@ -498,7 +498,12 @@ func (s *Server) listMemory(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
+	notes, err := s.P.Memory.List(who.Tenant, owner)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, notes)})
 }
 
 // noteView is a note and what the person who wrote it is called. The note
@@ -574,7 +579,12 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 	}
 	out := []proposal{}
 	seer := s.P.Seer(who)
-	for _, p := range s.P.Memory.Pending(who.Tenant) {
+	pending, err := s.P.Memory.Pending(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, p := range pending {
 		if !seer.MemoryOwner(p.Agent) {
 			continue
 		}

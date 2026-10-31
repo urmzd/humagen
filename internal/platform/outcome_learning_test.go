@@ -56,7 +56,7 @@ func TestOutcomeLearningRequiresHumanReviewAndSurvivesRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		who, id := learningRun(t, p)
-		if len(p.Memory.List(tenant, memory.ProjectOwner("Learning"))) != 0 {
+		if len(notesOf(t, p.Memory, tenant, memory.ProjectOwner("Learning"))) != 0 {
 			t.Fatal("agent outcome approved itself")
 		}
 		preview, err := p.OutcomeLearning(who, id, library.Scope{})
@@ -95,7 +95,7 @@ func TestOutcomeLearningRequiresHumanReviewAndSurvivesRestart(t *testing.T) {
 		if err != nil || restored.OriginRun != id {
 			t.Fatal("lost source provenance", err)
 		}
-		if notes := again.Memory.List(tenant, memory.PersonalOwner("ada")); len(notes) != 1 || notes[0].ID != note.ID || notes[0].ReviewedBy != "ada" {
+		if notes := notesOf(t, again.Memory, tenant, memory.PersonalOwner("ada")); len(notes) != 1 || notes[0].ID != note.ID || notes[0].ReviewedBy != "ada" {
 			t.Fatalf("lost reviewed decision: %+v", notes)
 		}
 		shared, err := again.OutcomeLearning(who, id, library.Scope{Kind: "project"})

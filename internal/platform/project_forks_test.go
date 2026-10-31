@@ -69,7 +69,7 @@ func TestProjectForkCopiesBoundedConfigurationAndOnlyConfirmedSelectedMemory(t *
 	if err != nil || channel.Default != "copy-planner" || channel.Slack != nil {
 		t.Fatalf("channel: %+v %v", channel, err)
 	}
-	notes := p.Memory.List(tenant, memory.ProjectOwner("Copy"))
+	notes := notesOf(t, p.Memory, tenant, memory.ProjectOwner("Copy"))
 	if len(notes) != 1 || notes[0].Text != "A confirmed launch decision" {
 		t.Fatalf("memory copied without selection: %+v", notes)
 	}
@@ -111,7 +111,7 @@ func TestFailedProjectForkRemainsHiddenAcrossRestartAndResumes(t *testing.T) {
 		if err != nil || done.State != "ready" || done.ID != op.ID {
 			t.Fatalf("resume: %+v %v", done, err)
 		}
-		if len(again.Memory.List(tenant, memory.ProjectOwner("Copy"))) != 1 {
+		if len(notesOf(t, again.Memory, tenant, memory.ProjectOwner("Copy"))) != 1 {
 			t.Fatal("retry duplicated or omitted selected memory")
 		}
 	})
@@ -420,7 +420,7 @@ func TestCopiedMemoryStripsNonportableProvenanceWhenAudienceExpands(t *testing.T
 	if !p.Seer(peer).Project("Copy") || p.Seer(peer).Project("Field") {
 		t.Fatal("audience fixture does not isolate original source")
 	}
-	notes := p.Memory.List(tenant, memory.ProjectOwner("Copy"))
+	notes := notesOf(t, p.Memory, tenant, memory.ProjectOwner("Copy"))
 	if len(notes) != 1 || notes[0].Kind != memory.Decision || !notes[0].ExpiresAt.Equal(expires) || notes[0].By != author.Subject || notes[0].ReviewedBy != author.Subject || notes[0].Source != memory.Person {
 		t.Fatalf("copied note retained nonportable metadata: %+v", notes)
 	}

@@ -62,7 +62,7 @@ func (p *Platform) MemoryFolders(ctx context.Context, who auth.Principal, q stri
 		}
 		seen[folder.ID] = true
 		folder.CanPromote = who.Can(auth.ProjectsWrite)
-		for _, note := range p.Memory.List(who.Tenant, owner) {
+		for _, note := range p.notesOf(who.Tenant, owner) {
 			if note.Status == memory.Pending {
 				folder.Pending++
 			} else if note.ExpiresAt.IsZero() || note.ExpiresAt.After(p.now()) {

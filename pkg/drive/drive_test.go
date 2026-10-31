@@ -365,7 +365,8 @@ func TestConcurrentCommitsKeepEveryChange(t *testing.T) {
 	}
 }
 
-// Every record's key starts with its tree's key, the owner it is sharded by.
+// Every record's key starts with its tree's key, the owner it is sharded by,
+// and versions are kept beside their head.
 func TestEveryKeyCarriesItsOwner(t *testing.T) {
 	ctx := context.Background()
 	st := state.NewMemory()
@@ -373,12 +374,16 @@ func TestEveryKeyCarriesItsOwner(t *testing.T) {
 	tree := drive.Agent("Field/sub", "lead")
 	_, _ = d.Commit(ctx, "acme", drive.System, tree, drive.CommitInput{Base: drive.Head, Changes: []drive.Change{put("a.md", "x")}})
 	_, _ = d.Propose(ctx, "acme", drive.System, tree, drive.ProposeInput{Changes: []drive.Change{put("b.md", "y")}})
-	for _, ns := range []string{"drive.trees", "drive.versions"} {
+	for _, ns := range []string{"drive.trees", "drive.dir"} {
 		recs, err := st.Load(ctx, ns)
 		if err != nil || len(recs) == 0 {
 			t.Fatalf("%s: %v, %d records", ns, err, len(recs))
 		}
 		for _, r := range recs {
+			if r.Tenant == "" || ns == "drive.dir" && r.Key == tree.Key() {
+				// The directory's mark, and the tree's listing, its key alone.
+				continue
+			}
 			if !strings.HasPrefix(r.Key, tree.Key()+"#") {
 				t.Errorf("%s key %q does not start with %q", ns, r.Key, tree.Key())
 			}
