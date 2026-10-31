@@ -42,26 +42,26 @@ func (f *policyFaults) List(ctx context.Context, namespace, tenant string, q sta
 // failAfterFirst makes the policy store fail once the run's first model
 // call has been made, after the run was admitted.
 type failAfterFirst struct {
-	*agenttest.ScriptedProvider
+	saigetypes.Provider
 	faults *policyFaults
 }
 
 func (f failAfterFirst) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	f.faults.failing.Store(true)
-	return f.ScriptedProvider.Stream(ctx, req)
+	return f.Provider.Stream(ctx, req)
 }
 
 // A run whose limits cannot be read after it spends is stopped, as at a
-// limit it reached: an unreadable limit never lets spend go on.
+// limit it reached: an unreadable limit never lets spend go on. The stop is
+// asynchronous, made by the observer once it counts the call, so the run
+// holds its next call open until then rather than racing it to the end.
 func TestSpendStopsWhenItsLimitsCannotBeRead(t *testing.T) {
 	faults := &policyFaults{Store: state.NewMemory()}
 	p := metered(t, platform.Config{Backends: platform.Backends{Shared: faults}}, map[string]agentModel{
 		"lead": {tools: probes, model: func(int) saigetypes.Provider {
-			return priced{Provider: failAfterFirst{ScriptedProvider: &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
+			return priced{Provider: failAfterFirst{Provider: &heldAfter{ScriptedProvider: &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
 				spends(probe("p1"), 1000, 100),
-				spends(probe("p2"), 1000, 100),
-				spends(say("Done."), 1000, 100),
-			}}, faults: faults}, pricing: card}
+			}}, n: 1}, faults: faults}, pricing: card}
 		}},
 	})
 	if _, err := p.Policies.Put(tenant, policy.Policy{
