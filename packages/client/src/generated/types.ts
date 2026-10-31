@@ -3518,12 +3518,15 @@ export interface QuestionTool {
 }
 
 /** What a run is waiting on a person for: to approve a tool call, to
-choose one of `options`, or to reply. `asked_of` is a routing hint and
-admits nobody. `default` is what applies when it expires.
+choose one of `options`, to reply, or, for a `hold`, whether the run
+may go on at all, a question the platform asked rather than the agent
+(`hold` says which). `asked_of` is a routing hint and admits nobody.
+`default` is what applies when it expires.
  */
 export interface Question {
   id: string;
-  kind: "approval" | "choice" | "reply" | "delegation";
+  kind: "approval" | "choice" | "reply" | "delegation" | "hold";
+  hold?: QuestionHold;
   /** When set on an approval, only these people and `role:<name>` holders may answer it, in place of the agent's own approvers. */
   approvers?: string[];
   /** With `approvers`, lets the person whose request raised the call approve it. */
@@ -3537,6 +3540,16 @@ export interface Question {
   default?: Answer;
   at?: string;
   child_run_id?: string;
+}
+
+/** The platform's hold a `hold` question asks about. `topic` is what the
+run is held on (`budget`); `data` is its detail, for `budget` the
+limit reached and what approving grants.
+ */
+export interface QuestionHold {
+  id: string;
+  topic?: string;
+  data?: Record<string, unknown>;
 }
 
 /** An answer to a question, or its default when nobody answered in time (`expired`). */
