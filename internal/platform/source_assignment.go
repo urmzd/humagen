@@ -69,7 +69,9 @@ func (p *Platform) CheckAssignmentSources(tenant string, names []string) error {
 func (p *Platform) SourceChangeVersion(tenant, name string) (uint64, bool) {
 	source, err := p.Knowledge.Get(tenant, name)
 	if err != nil {
-		return p.Knowledge.ContentCursor(tenant, name), false
+		// A cursor that cannot be read is not fresh: the reconciler waits.
+		cursor, _ := p.Knowledge.ContentCursor(tenant, name)
+		return cursor, false
 	}
 	if source.Documents == 0 && (source.Lifecycle == nil || source.Lifecycle.LastGoodAt == nil) {
 		return source.ContentVersion, false

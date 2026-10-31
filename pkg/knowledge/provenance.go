@@ -1,18 +1,20 @@
 package knowledge
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/urmzd/humagen/pkg/state"
 	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 const MaxEvidencePerRun = 64
@@ -47,16 +49,30 @@ type evidenceRecord struct {
 	Run       string             `json:"run"`
 	Citations []CitationEvidence `json:"citations"`
 }
+
+// EvidenceStore keeps each tenant's citation evidence in a state.Store, one
+// record per run, and reads it per request.
 type EvidenceStore struct {
-	mu    sync.RWMutex
-	by    map[string]map[string]evidenceRecord
-	bytes map[string]int
-	kept  *state.Table[evidenceRecord]
+	st state.Store
 }
 
-func NewEvidenceStore() *EvidenceStore {
-	return &EvidenceStore{by: map[string]map[string]evidenceRecord{}, bytes: map[string]int{}}
+// evidenceNamespace holds one record per run, keyed by the run's ID, and in
+// each tenant its usage: how many runs it keeps and how many bytes they
+// take. Every write that changes a run moves the usage, so the bounds hold
+// across processes.
+const (
+	evidenceNamespace = "source_citation_evidence"
+	evidenceUsageKey  = "#usage"
+)
+
+type evidenceUsage struct {
+	Runs  int `json:"runs"`
+	Bytes int `json:"bytes"`
 }
+
+// NewEvidenceStore returns a store in this process's memory.
+func NewEvidenceStore() *EvidenceStore { s, _ := OpenEvidenceStore(nil); return s }
+
 func citationDigest(doc, title, uri, text string, index int) string {
 	raw, _ := json.Marshal([]any{doc, title, uri, text, index})
 	sum := sha256.Sum256(raw)
@@ -94,35 +110,59 @@ func checkEvidence(e CitationEvidence) error {
 	}
 	return nil
 }
+
+// OpenEvidenceStore returns a store on st, which may be shared with other
+// processes. A nil st keeps evidence in this process's memory. A tenant's
+// usage is counted from its records the first time a process writes to it.
 func OpenEvidenceStore(st state.Store) (*EvidenceStore, error) {
-	s := NewEvidenceStore()
-	s.kept = state.NewTable[evidenceRecord](st, "source_citation_evidence")
-	err := s.kept.Load(func(tenant, key string, row evidenceRecord) error {
-		if row.Run != key || !evidenceRunID.MatchString(key) || len(row.Citations) > MaxEvidencePerRun || len(s.by[tenant]) >= MaxEvidenceRuns {
-			return ErrInvalid
+	if st == nil {
+		st = state.NewMemory()
+	}
+	return &EvidenceStore{st: st}, nil
+}
+
+// usage reads a tenant's usage and its version, counting it from the
+// tenant's records when it has none. Every write moves the usage, so a count
+// made while another process wrote conflicts when it is created.
+func (s *EvidenceStore) usage(tenant string) (evidenceUsage, int64, error) {
+	var u evidenceUsage
+	at, err := lookupInto(s.st, evidenceNamespace, tenant, evidenceUsageKey, &u)
+	if err == nil {
+		return u, at, nil
+	}
+	if !errors.Is(err, state.ErrNotFound) {
+		return u, 0, err
+	}
+	recs, err := state.NewTable[json.RawMessage](s.st, evidenceNamespace).All(tenant, "", MaxEvidenceRuns+1)
+	if err != nil {
+		return u, 0, err
+	}
+	for _, r := range recs {
+		if r.Key == evidenceUsageKey {
+			continue
 		}
-		labels := map[string]bool{}
-		for _, e := range row.Citations {
-			if err := checkEvidence(e); err != nil {
-				return err
-			}
-			if labels[e.Label] {
-				return ErrInvalid
-			}
-			labels[e.Label] = true
+		var row evidenceRecord
+		if err := json.Unmarshal(r.Value, &row); err != nil {
+			return u, 0, fmt.Errorf("knowledge: evidence %q: %w", r.Key, err)
 		}
 		raw, _ := json.Marshal(row)
-		s.bytes[tenant] += len(raw)
-		if s.bytes[tenant] > MaxEvidenceBytes {
-			return ErrInvalid
-		}
-		if s.by[tenant] == nil {
-			s.by[tenant] = map[string]evidenceRecord{}
-		}
-		s.by[tenant][key] = cloneEvidenceRecord(row)
-		return nil
-	})
-	return s, err
+		u.Runs++
+		u.Bytes += len(raw)
+	}
+	return u, 0, nil
+}
+
+// run reads one run's evidence and its version, 0 when it has none.
+func (s *EvidenceStore) run(tenant, run string) (evidenceRecord, int64, error) {
+	var row evidenceRecord
+	if !evidenceRunID.MatchString(run) {
+		return row, 0, nil
+	}
+	at, err := lookupInto(s.st, evidenceNamespace, tenant, run, &row)
+	if errors.Is(err, state.ErrNotFound) {
+		return evidenceRecord{}, 0, nil
+	}
+	return row, at, err
 }
 
 // Record never replaces a citation binding within one execution attempt.
@@ -147,11 +187,31 @@ func (s *EvidenceStore) recordQuery(tenant, run, query string, entries []Citatio
 	if len(entries) == 0 {
 		return []CitationEvidence{}, nil
 	}
-	entries = slices.Clone(entries)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	old, exists := s.by[tenant][run]
-	if !exists && len(s.by[tenant]) >= MaxEvidenceRuns {
+	var out []CitationEvidence
+	err := state.Retry(func() error {
+		var err error
+		out, err = s.tryRecord(tenant, run, query, slices.Clone(entries))
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// tryRecord reads the run and the usage and writes at the versions read. It
+// returns state.ErrConflict when another writer moved either.
+func (s *EvidenceStore) tryRecord(tenant, run, query string, entries []CitationEvidence) ([]CitationEvidence, error) {
+	u, usageAt, err := s.usage(tenant)
+	if err != nil {
+		return nil, err
+	}
+	old, oldAt, err := s.run(tenant, run)
+	if err != nil {
+		return nil, err
+	}
+	exists := oldAt > 0
+	if !exists && u.Runs >= MaxEvidenceRuns {
 		return nil, fmt.Errorf("%w: citation evidence capacity", ErrExists)
 	}
 	if query != "" {
@@ -185,6 +245,7 @@ func (s *EvidenceStore) recordQuery(tenant, run, query string, entries []Citatio
 	}
 	next := cloneEvidenceRecord(old)
 	next.Run = run
+	added := false
 	for _, entry := range entries {
 		found := slices.IndexFunc(next.Citations, func(e CitationEvidence) bool { return e.Label == entry.Label })
 		if found >= 0 {
@@ -194,37 +255,56 @@ func (s *EvidenceStore) recordQuery(tenant, run, query string, entries []Citatio
 			continue
 		}
 		next.Citations = append(next.Citations, entry)
+		added = true
 	}
 	if len(next.Citations) > MaxEvidencePerRun {
 		return nil, fmt.Errorf("%w: citation evidence capacity", ErrExists)
+	}
+	if !added {
+		return entries, nil
 	}
 	before, _ := json.Marshal(old)
 	if !exists {
 		before = nil
 	}
 	after, _ := json.Marshal(next)
-	size := s.bytes[tenant] - len(before) + len(after)
+	size := u.Bytes - len(before) + len(after)
 	if size > MaxEvidenceBytes {
 		return nil, fmt.Errorf("%w: citation evidence capacity", ErrExists)
 	}
-	if err := s.kept.Put(tenant, run, next); err != nil {
+	if !exists {
+		u.Runs++
+	}
+	u.Bytes = size
+	nextRaw, _ := json.Marshal(next)
+	usageRaw, _ := json.Marshal(u)
+	runOp, usageOp := state.Put(tenant, run, nextRaw), state.Put(tenant, evidenceUsageKey, usageRaw)
+	runOp.If, usageOp.If = oldAt, usageAt
+	if !exists {
+		runOp.If = state.Missing
+	}
+	if usageAt == 0 {
+		usageOp.If = state.Missing
+	}
+	c, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	if err := s.st.Write(c, evidenceNamespace, runOp, usageOp); err != nil {
 		return nil, err
 	}
-	if s.by[tenant] == nil {
-		s.by[tenant] = map[string]evidenceRecord{}
-	}
-	s.by[tenant][run] = cloneEvidenceRecord(next)
-	s.bytes[tenant] = size
 	return entries, nil
 }
 
+// Get reads one citation's evidence. Evidence that cannot be read is not
+// found: a citation without proof is never trusted.
 func (s *EvidenceStore) Get(tenant, run, label, documentID string) (CitationEvidence, bool) {
 	if s == nil {
 		return CitationEvidence{}, false
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, e := range s.by[tenant][run].Citations {
+	row, _, err := s.run(tenant, run)
+	if err != nil {
+		return CitationEvidence{}, false
+	}
+	for _, e := range row.Citations {
 		if e.Label == label && (documentID == "" || e.DocumentID == documentID) {
 			return cloneEvidence(e), true
 		}
@@ -234,13 +314,15 @@ func (s *EvidenceStore) Get(tenant, run, label, documentID string) (CitationEvid
 
 // ForRun returns at most MaxEvidencePerRun retained proofs for one exact run.
 // This is an internal composition input, not reader-authorized display data.
-func (s *EvidenceStore) ForRun(tenant, run string) []CitationEvidence {
+func (s *EvidenceStore) ForRun(tenant, run string) ([]CitationEvidence, error) {
 	if s == nil {
-		return []CitationEvidence{}
+		return []CitationEvidence{}, nil
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return cloneEvidenceRecord(s.by[tenant][run]).Citations
+	row, _, err := s.run(tenant, run)
+	if err != nil {
+		return nil, err
+	}
+	return cloneEvidenceRecord(row).Citations, nil
 }
 
 func equalEvidence(a, b CitationEvidence) bool {
@@ -258,29 +340,53 @@ func equalEvidence(a, b CitationEvidence) bool {
 // RunReferences returns only accepted query-time relationships. Visibility is
 // checked before the limit, so hidden retrievals consume no public slots.
 // Both the retained run set and per-run evidence are bounded by this store.
-func (s *EvidenceStore) RunReferences(tenant, source string, limit int, keep func(string, CitationEvidence) bool) []string {
+func (s *EvidenceStore) RunReferences(tenant, source string, limit int, keep func(string, CitationEvidence) bool) ([]string, error) {
 	out := []string{}
 	if s == nil || limit <= 0 {
-		return out
+		return out, nil
 	}
 	limit = min(limit, 200)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	ids := make([]string, 0, len(s.by[tenant]))
-	for id := range s.by[tenant] {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	for _, id := range ids {
-		for _, proof := range s.by[tenant][id].Citations {
-			if proof.Source == source && keep != nil && keep(id, cloneEvidence(proof)) {
-				out = append(out, id)
-				break
+	// The tenant's runs, at most MaxEvidenceRuns, are read a page at a
+	// time in ID order until limit of them are kept.
+	kept := state.NewTable[evidenceRecord](s.st, evidenceNamespace)
+	after := ""
+	for range MaxEvidenceRuns/state.MaxList + 2 {
+		page, next, err := kept.List(tenant, state.Query{Prefix: "", After: after, Limit: state.MaxList})
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range page {
+			if it.Key == evidenceUsageKey {
+				continue
+			}
+			for _, proof := range it.Value.Citations {
+				if proof.Source == source && keep != nil && keep(it.Key, cloneEvidence(proof)) {
+					out = append(out, it.Key)
+					break
+				}
+			}
+			if len(out) == limit {
+				return out, nil
 			}
 		}
-		if len(out) == limit {
+		if next == "" {
 			break
 		}
+		after = next
 	}
-	return out
+	return out, nil
+}
+
+// lookupInto reads one record into v, and its version.
+func lookupInto(st state.Store, namespace, tenant, key string, v any) (int64, error) {
+	c, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	r, err := st.Lookup(c, namespace, tenant, key)
+	if err != nil {
+		return 0, err
+	}
+	if err := json.Unmarshal(r.Value, v); err != nil {
+		return 0, fmt.Errorf("knowledge: %s %q: %w", namespace, key, err)
+	}
+	return r.Version, nil
 }

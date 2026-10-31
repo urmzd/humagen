@@ -16,7 +16,12 @@ func (s *Server) sourceRuleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/source-link-rules/preview", s.authed(auth.ClientsRead, s.previewSourceRules))
 }
 func (s *Server) listSourceRules(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, s.P.SourceRulesAs(who))
+	rules, err := s.P.SourceRulesAs(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, rules)
 }
 func (s *Server) saveSourceRule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var rule sourcelinks.Rule

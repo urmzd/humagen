@@ -53,7 +53,11 @@ func (p *Platform) ForkThread(ctx context.Context, who auth.Principal, id string
 			return threads.Thread{}, fmt.Errorf("%w: selected sources are not available", threads.ErrInvalid)
 		}
 		known := map[string]bool{}
-		for _, source := range p.Knowledge.List(who.Tenant) {
+		sources, err := p.Knowledge.List(who.Tenant)
+		if err != nil {
+			return threads.Thread{}, err
+		}
+		for _, source := range sources {
 			known[source.Name] = true
 		}
 		for _, name := range *in.Sources {
