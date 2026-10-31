@@ -40,6 +40,7 @@
 | [RFC 0002: Cross-project handoffs](rfcs/0002-cross-project-handoffs.md) | RFC, Proposed | A staged design for handoffs that cross project boundaries |
 | [RFC 0003: Conversation-first delivery](rfcs/0003-conversation-first-delivery.md) | RFC, Proposed | Conversation-first delivery and collections for follow-on work |
 | [RFC 0004: Isolated runs and person context](rfcs/0004-isolated-runs-and-person-context.md) | RFC, Proposed | One agent for many people in parallel: pinned person context, isolated sandboxes, and the path to a million people in one room |
+| [RFC 0008: Feedback, run signals and training export](rfcs/0008-feedback-run-signals-and-training-export.md) | RFC, Proposed | Asking for ratings at the right moment, per-run signals and reward analytics, and consented, redacted KTO and DPO export |
 | [Roadmap](plans/roadmap.md) | Plan | Product direction by area and the next delivery boundary |
 | [Task queue](plans/2026-10-ui-task-queue.md) | Plan | Current UI delivery and follow-on platform work, in order |
 | [Workspace implementation plan](plans/2026-10-workspace-implementation.md) | Plan | Tasks and requirement traceability for the workspace and control plane |
