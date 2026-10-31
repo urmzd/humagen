@@ -90,6 +90,12 @@ const (
 	Settled Kind = "settled"
 	// Halted is a run in flight stopped because its scope reached a limit.
 	Halted Kind = "halted"
+	// Held is a run in flight held for a person because its scope reached a
+	// limit whose policy asks for approval.
+	Held Kind = "held"
+	// Granted is what a person let one held run use beyond a scope's limit:
+	// Grant, by By, under the policy's Version.
+	Granted Kind = "granted"
 )
 
 // Spend is what some model calls used. Micros is US dollars only: money in
@@ -233,6 +239,10 @@ type Entry struct {
 	Version int           `json:"version,omitempty"`
 	Limit   policy.Limit  `json:"limit,omitempty"`
 	Reason  string        `json:"reason,omitempty"`
+	// Grant is what a Granted entry let its run use beyond Scope's limit,
+	// and By who granted it.
+	Grant *policy.Grant `json:"grant,omitempty"`
+	By    string        `json:"by,omitempty"`
 }
 
 // Retention of admissions and spend, and how many warnings and refusals are
@@ -316,6 +326,15 @@ type tenant struct {
 	// keys is every Spent and Settled key still held, so each counts once.
 	keys map[string]bool
 	runs map[string]*runSpend
+	// grants is what people granted each run beyond a scope's limit.
+	grants map[string][]grant
+}
+
+// grant is one Granted entry, as a run's limit in a scope is judged on it.
+type grant struct {
+	scope string
+	grant policy.Grant
+	at    time.Time
 }
 
 // Ledger holds every tenant's usage.
@@ -462,7 +481,7 @@ func (l *Ledger) place(n int64) {
 func (l *Ledger) of(name string) *tenant {
 	t, ok := l.tenants[name]
 	if !ok {
-		t = &tenant{days: map[int64]*day{}, active: map[string]admission{}, keys: map[string]bool{}, runs: map[string]*runSpend{}}
+		t = &tenant{days: map[int64]*day{}, active: map[string]admission{}, keys: map[string]bool{}, runs: map[string]*runSpend{}, grants: map[string][]grant{}}
 		l.tenants[name] = t
 	}
 	return t
@@ -671,7 +690,10 @@ func (l *Ledger) apply(e Entry) Spend {
 		t.active[e.RunID] = a
 	case Ended:
 		delete(t.active, e.RunID)
-	case Warned, Refused, Halted:
+	case Warned, Refused, Halted, Held, Granted:
+		if e.Kind == Granted && e.Scope != nil && e.Grant != nil && e.RunID != "" {
+			t.grants[e.RunID] = append(t.grants[e.RunID], grant{scope: scopeKey(*e.Scope), grant: *e.Grant, at: e.At})
+		}
 		t.notices = append(t.notices, e)
 		if len(t.notices) > keepNotices {
 			t.notices = t.notices[len(t.notices)-keepNotices:]
@@ -743,6 +765,13 @@ func (l *Ledger) prune(now time.Time) {
 		for id, r := range t.runs {
 			if r.last.Before(cutoff) {
 				delete(t.runs, id)
+			}
+		}
+		for id, gs := range t.grants {
+			if gs = slices.DeleteFunc(gs, func(g grant) bool { return g.at.Before(cutoff) }); len(gs) == 0 {
+				delete(t.grants, id)
+			} else {
+				t.grants[id] = gs
 			}
 		}
 	}
@@ -849,7 +878,46 @@ func (l *Ledger) RunSpend(tenantName, runID string) Spend {
 	return out
 }
 
-// Notices returns a tenant's warnings, refusals and halts, newest first.
+// Granted is what people granted one run beyond a scope's limits since a
+// time: the sum of its Granted entries in that scope.
+func (l *Ledger) Granted(tenantName, runID string, scope policy.Scope, since time.Time) policy.Grant {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	t, ok := l.tenants[tenantName]
+	if !ok {
+		return policy.Grant{}
+	}
+	var out policy.Grant
+	key := scopeKey(scope)
+	for _, g := range t.grants[runID] {
+		if g.scope == key && !g.at.Before(since) {
+			out.Spend += g.grant.Spend
+			out.Tokens += g.grant.Tokens
+		}
+	}
+	return out
+}
+
+// Grants counts the Granted entries of one run in a scope, whenever they
+// were made: how many times people let it go on there.
+func (l *Ledger) Grants(tenantName, runID string, scope policy.Scope) int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	t, ok := l.tenants[tenantName]
+	if !ok {
+		return 0
+	}
+	n, key := 0, scopeKey(scope)
+	for _, g := range t.grants[runID] {
+		if g.scope == key {
+			n++
+		}
+	}
+	return n
+}
+
+// Notices returns a tenant's warnings, refusals, halts, holds and grants,
+// newest first.
 func (l *Ledger) Notices(tenantName string, limit int) []Entry {
 	l.mu.RLock()
 	defer l.mu.RUnlock()

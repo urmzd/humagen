@@ -11494,6 +11494,20 @@ components:
         acts_for_person:
           description: The call runs with the credential of the person the run acts for, a tool that acts as them. Anyone who may approve it may approve or deny it as asked, but only that person may approve it with edited `arguments`; anyone else's edit is 403, so a surface offers nobody else an edit.
           type: boolean
+    InboxQuestionBudget:
+      description: The limit a run is held at, where the scope stood, and what approving grants. Money is micro-USD.
+      type: object
+      required: [scope_kind, limit, period, version, used, max, grant]
+      properties:
+        scope_kind: {type: string}
+        scope_name: {type: string}
+        limit: {type: string, enum: [spend, tokens]}
+        period: {type: string}
+        version: {type: integer}
+        used: {type: integer, format: int64}
+        max: {type: integer, format: int64}
+        granted: {type: integer, format: int64}
+        grant: {type: integer, format: int64}
     InboxQuestionPart:
       description: A question a run is parked on.
       type: object
@@ -11502,8 +11516,10 @@ components:
         run: {type: string}
         id: {type: string}
         kind:
+          description: approval, choice or reply, or `budget` for a run held at a limit, answered `approve` (grant it `budget.grant` more) or `deny` (stop it), by `billing:write` only.
           type: string
-          enum: [approval, choice, reply]
+          enum: [approval, choice, reply, budget]
+        budget: {$ref: "#/components/schemas/InboxQuestionBudget"}
         agent: {type: string}
         prompt: {type: string}
         options:
@@ -12385,7 +12401,12 @@ components:
       type: string
       enum: [day, month]
     PolicyAction:
-      description: What happens at a limit. Only `block` is acted on today.
+      description: |
+        What happens at a limit. `block` refuses a run at admission and stops
+        one in flight. `approve` refuses at admission too, and holds a run in
+        flight that reaches the spend or token limit for a person with
+        `billing:write`, who grants it `max_grant` (or `max_grant_tokens`)
+        more or stops it.
       type: string
       enum: [block, approve]
     PolicyLimit:
@@ -12442,6 +12463,14 @@ components:
         action:
           description: Defaults to `block`.
           $ref: "#/components/schemas/PolicyAction"
+        max_grant:
+          description: With `approve` and `spend_limit`, what one approval grants a held run, in micro-USD.
+          type: integer
+          format: int64
+        max_grant_tokens:
+          description: With `approve` and `max_tokens`, what one approval grants a held run, in tokens.
+          type: integer
+          format: int64
     Policy:
       description: The limits for one scope, at one version.
       type: object
@@ -12459,6 +12488,14 @@ components:
         max_clients_per_surface: {type: integer}
         warn_at: {type: integer}
         action: {$ref: "#/components/schemas/PolicyAction"}
+        max_grant:
+          description: With `approve`, what one approval grants a run held at `spend_limit`, in micro-USD. Set exactly when the action is `approve` and there is a spend limit.
+          type: integer
+          format: int64
+        max_grant_tokens:
+          description: With `approve`, what one approval grants a run held at `max_tokens`. Set exactly when the action is `approve` and there is a token limit.
+          type: integer
+          format: int64
         authority:
           description: Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it.
           type: string
@@ -12548,11 +12585,13 @@ components:
       properties:
         kind:
           description: |
-            `halted` is a run in flight stopped at a limit. `spent` (one model
+            `halted` is a run in flight stopped at a limit, `held` one held
+            there for a person, and `granted` what a person let a held run
+            use beyond the limit (`grant`, by `by`). `spent` (one model
             call) and `settled` (a run's own total at its end) are the ledger's
             record of spend and are not listed as notices.
           type: string
-          enum: [admitted, ended, warned, refused, spent, settled, halted]
+          enum: [admitted, ended, warned, refused, spent, settled, halted, held, granted]
         tenant: {type: string}
         project: {type: string}
         within:
@@ -12579,6 +12618,15 @@ components:
           description: What makes a `spent` or `settled` entry count once.
           type: string
         spend: {$ref: "#/components/schemas/UsageSpend"}
+        grant:
+          description: For a `granted` entry, what the run may use beyond the limit of `scope`.
+          type: object
+          properties:
+            spend: {type: integer, format: int64}
+            tokens: {type: integer, format: int64}
+        by:
+          description: For a `granted` entry, who granted it.
+          type: string
     UsageSpend:
       description: What some model calls used. `micros` is US dollars only.
       type: object

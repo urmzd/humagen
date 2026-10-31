@@ -1565,6 +1565,17 @@ export const defaultCopy = {
   repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" · ${time}`,
   declinedBy: (by: string, time: string) => `Declined by ${by} · ${time}`,
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
+  /** A run the platform held at a limit, for a person to grant it more or stop it. */
+  budgetHold: {
+    grant: (amount: string) => `Grant ${amount}`,
+    stop: "Stop Run",
+    limit: "Limit",
+    used: "Used",
+    granted: "Granted already",
+    grants: "Grants",
+    stopped: "Stopped at its limit.",
+    stoppedBy: (by: string, time: string) => `Stopped by ${by} · ${time}`,
+  },
   inputNeeded: (question: string) => `Input needed: ${question}`,
   planWorking: "Working",
   planDone: (seconds: number) => `Worked for ${seconds}s`,

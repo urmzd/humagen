@@ -102,9 +102,10 @@ type Action string
 const (
 	// Block refuses the run.
 	Block Action = "block"
-	// Approve holds the run for a person. Decide supports it. The platform
-	// cannot park a run on a person yet, so it is not accepted in a stored
-	// policy.
+	// Approve holds a run in flight that reaches the spend or token limit
+	// for a person, who may grant it up to MaxGrant (or MaxGrantTokens) more
+	// or stop it. A run asking to start at the limit is refused as with
+	// Block: there is no run yet to hold.
 	Approve Action = "approve"
 )
 
@@ -152,6 +153,11 @@ type Policy struct {
 	// means DefaultWarnAt.
 	WarnAt int    `json:"warn_at,omitempty"`
 	Action Action `json:"action"`
+	// MaxGrant is what one approval grants a run held at SpendLimit, in
+	// micro-USD, and MaxGrantTokens what one grants a run held at MaxTokens.
+	// Each is set, and only set, with Action approve and its limit.
+	MaxGrant       int64 `json:"max_grant,omitempty"`
+	MaxGrantTokens int64 `json:"max_grant_tokens,omitempty"`
 	// Authority is who set it: "" and AuthorityAdmin are an admin, and
 	// AuthorityOwner a project's owner, on a project scope only.
 	Authority Authority `json:"authority,omitempty"`
@@ -198,10 +204,18 @@ func (p Policy) Validate() error {
 		return fmt.Errorf("%w: a policy sets at least one limit", ErrInvalid)
 	case p.WarnAt < 0 || p.WarnAt > 100:
 		return fmt.Errorf("%w: the warning threshold is a percentage from 1 to 100", ErrInvalid)
-	case p.Action == Approve:
-		return fmt.Errorf("%w: holding a run for approval is not built yet, so the action must be block", ErrInvalid)
-	case p.Action != Block:
-		return fmt.Errorf("%w: the action at the limit is block", ErrInvalid)
+	case p.Action != Block && p.Action != Approve:
+		return fmt.Errorf("%w: the action at the limit is block or approve", ErrInvalid)
+	case p.MaxGrant < 0 || p.MaxGrantTokens < 0:
+		return fmt.Errorf("%w: a grant cannot be negative", ErrInvalid)
+	case p.Action == Approve && p.SpendLimit == 0 && p.MaxTokens == 0:
+		return fmt.Errorf("%w: approval holds a run at a spend or token limit, and this policy sets neither", ErrInvalid)
+	case p.Action == Approve && (p.SpendLimit > 0) != (p.MaxGrant > 0):
+		return fmt.Errorf("%w: with approval, a spend limit and the most one approval grants (max_grant) go together", ErrInvalid)
+	case p.Action == Approve && (p.MaxTokens > 0) != (p.MaxGrantTokens > 0):
+		return fmt.Errorf("%w: with approval, a token limit and the most one approval grants (max_grant_tokens) go together", ErrInvalid)
+	case p.Action != Approve && (p.MaxGrant > 0 || p.MaxGrantTokens > 0):
+		return fmt.Errorf("%w: a grant is set only with the approve action", ErrInvalid)
 	case p.Authority != "" && p.Authority != AuthorityAdmin && p.Authority != AuthorityOwner:
 		return fmt.Errorf("%w: a policy is set by an admin or by a project's owner", ErrInvalid)
 	case p.Authority == AuthorityOwner && p.Scope.Kind != Project:
@@ -235,6 +249,10 @@ func (p Policy) Within(parent Policy) error {
 		return fmt.Errorf("%w: %s allows a larger budget per run than %s", ErrInvalid, p.Scope, parent.Scope)
 	case over(p.MaxTokens, parent.MaxTokens):
 		return fmt.Errorf("%w: %s allows more tokens than %s", ErrInvalid, p.Scope, parent.Scope)
+	case over(p.MaxGrant, parent.MaxGrant):
+		return fmt.Errorf("%w: %s grants more spend per approval than %s", ErrInvalid, p.Scope, parent.Scope)
+	case over(p.MaxGrantTokens, parent.MaxGrantTokens):
+		return fmt.Errorf("%w: %s grants more tokens per approval than %s", ErrInvalid, p.Scope, parent.Scope)
 	}
 	return nil
 }
@@ -295,6 +313,13 @@ func (u Usage) Unmetered() bool { return u.UnpricedCalls > 0 || len(u.OtherCosts
 type Applied struct {
 	Policy Policy
 	Usage  Usage
+}
+
+// Grant is what approvals let one run use beyond a policy's limits: spend in
+// micro-USD and tokens.
+type Grant struct {
+	Spend  int64 `json:"spend,omitempty"`
+	Tokens int64 `json:"tokens,omitempty"`
 }
 
 // Request is one run asking to start.
@@ -414,26 +439,41 @@ func decideOne(a Applied, req Request) Decision {
 // running in it, or is past its warning threshold. Counts of runs are not
 // judged here: they decide whether a run may start, not whether one may go
 // on. Like Decide it is pure, and the strictest answer wins.
-func Exceeded(applied []Applied) Decision {
+//
+// It judges one run: what people granted it beyond a scope's limits in the
+// policy's period (granted, by scope) raises each of that scope's limits for
+// it alone, and a policy whose action is Approve answers
+// NeedsApproval at the limit rather than Deny, so the run is held for a
+// person instead of stopped. Deny outranks it: a run that reaches a limit
+// that blocks is stopped whatever another policy would ask.
+func Exceeded(applied []Applied, granted map[Scope]Grant) Decision {
 	best := Decision{Verdict: Allow}
 	for _, a := range applied {
 		p := a.Policy
+		g := granted[p.Scope]
 		for _, m := range []struct {
-			limit     Limit
-			used, max int64
-			what      string
+			limit              Limit
+			used, max, granted int64
+			what               string
 		}{
-			{LimitSpend, a.Usage.Spend, p.SpendLimit, "spend a " + string(p.Period)},
-			{LimitTokens, a.Usage.Tokens, p.MaxTokens, "tokens a " + string(p.Period)},
+			{LimitSpend, a.Usage.Spend, p.SpendLimit, g.Spend, "spend a " + string(p.Period)},
+			{LimitTokens, a.Usage.Tokens, p.MaxTokens, g.Tokens, "tokens a " + string(p.Period)},
 		} {
 			if m.max <= 0 {
 				continue
 			}
-			d := Decision{Policy: &p, Limit: m.limit, Remaining: max0(m.max - m.used)}
+			limit := sum(m.max, max0(m.granted))
+			d := Decision{Policy: &p, Limit: m.limit, Remaining: max0(limit - m.used)}
 			switch {
-			case m.used >= m.max:
+			case m.used >= limit:
 				d.Verdict = Deny
+				if p.Action == Approve {
+					d.Verdict = NeedsApproval
+				}
 				d.Reason = fmt.Sprintf("%s has reached its limit of %s", p.Scope, m.what)
+				if m.granted > 0 {
+					d.Reason += " and what was granted beyond it"
+				}
 			case Reaches(m.used, m.max, p.warnAt()):
 				d.Verdict = Warn
 				d.Reason = fmt.Sprintf("%s is at %d%% of its limit of %s", p.Scope, Percent(m.used, m.max), m.what)

@@ -95,6 +95,8 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request, who auth.Prin
 		MaxPerSurface int           `json:"max_clients_per_surface"`
 		WarnAt        int           `json:"warn_at"`
 		Action        policy.Action `json:"action"`
+		MaxGrant      int64         `json:"max_grant"`
+		MaxGrantToks  int64         `json:"max_grant_tokens"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -120,6 +122,7 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request, who auth.Prin
 			Scope: body.Scope, Period: body.Period, MaxRuns: body.MaxRuns, MaxConcurrent: body.MaxConcurrent,
 			SpendLimit: body.SpendLimit, MaxLease: body.MaxLease, MaxStorage: body.MaxStorage, MaxTokens: body.MaxTokens,
 			MaxClients: body.MaxClients, MaxClientsPerSurface: body.MaxPerSurface, WarnAt: body.WarnAt, Action: body.Action,
+			MaxGrant: body.MaxGrant, MaxGrantTokens: body.MaxGrantToks,
 		}, who.Subject, time.Now())
 		return err
 	})

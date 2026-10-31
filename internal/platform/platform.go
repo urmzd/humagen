@@ -378,6 +378,11 @@ type Platform struct {
 	// halting holds runs being stopped at a limit, by run id, so a run is
 	// asked once however many of its calls cross it.
 	halting sync.Map
+	// holding holds the runs held at a limit for approval, by run id and
+	// hold id, so a run is held once per hold however many calls cross it.
+	holding sync.Map
+	// grants are budget grants being answered, until the ledger has them.
+	grants pendingGrants
 
 	// wakers are the timers that wake parked runs at their questions'
 	// deadlines, stopped with the platform.

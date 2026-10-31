@@ -2506,11 +2506,26 @@ export interface InboxQuestionTool {
   acts_for_person?: boolean;
 }
 
+/** The limit a run is held at, where the scope stood, and what approving grants. Money is micro-USD. */
+export interface InboxQuestionBudget {
+  scope_kind: string;
+  scope_name?: string;
+  limit: "spend" | "tokens";
+  period: string;
+  version: number;
+  used: number;
+  max: number;
+  granted?: number;
+  grant: number;
+}
+
 /** A question a run is parked on. */
 export interface InboxQuestionPart {
   run: string;
   id: string;
-  kind: "approval" | "choice" | "reply";
+  /** approval, choice or reply, or `budget` for a run held at a limit, answered `approve` (grant it `budget.grant` more) or `deny` (stop it), by `billing:write` only. */
+  kind: "approval" | "choice" | "reply" | "budget";
+  budget?: InboxQuestionBudget;
   agent?: string;
   prompt: string;
   options?: string[];
@@ -3157,7 +3172,12 @@ export type PolicyScopeKind = "tenant" | "project" | "agent" | "client";
 
 export type PolicyPeriod = "day" | "month";
 
-/** What happens at a limit. Only `block` is acted on today. */
+/** What happens at a limit. `block` refuses a run at admission and stops
+one in flight. `approve` refuses at admission too, and holds a run in
+flight that reaches the spend or token limit for a person with
+`billing:write`, who grants it `max_grant` (or `max_grant_tokens`)
+more or stops it.
+ */
 export type PolicyAction = "block" | "approve";
 
 export type PolicyLimit = "runs" | "concurrent" | "spend" | "lease" | "tokens";
@@ -3198,6 +3218,10 @@ what a spend limit cannot see.
   /** The percentage of a limit at which a warning is raised. Defaults to 80. */
   warn_at?: number;
   action?: PolicyAction;
+  /** With `approve` and `spend_limit`, what one approval grants a held run, in micro-USD. */
+  max_grant?: number;
+  /** With `approve` and `max_tokens`, what one approval grants a held run, in tokens. */
+  max_grant_tokens?: number;
 }
 
 /** The limits for one scope, at one version. */
@@ -3214,6 +3238,10 @@ export interface Policy {
   max_clients_per_surface?: number;
   warn_at?: number;
   action: PolicyAction;
+  /** With `approve`, what one approval grants a run held at `spend_limit`, in micro-USD. Set exactly when the action is `approve` and there is a spend limit. */
+  max_grant?: number;
+  /** With `approve`, what one approval grants a run held at `max_tokens`. Set exactly when the action is `approve` and there is a token limit. */
+  max_grant_tokens?: number;
   /** Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it. */
   authority?: "admin" | "owner";
   version: number;
@@ -3283,11 +3311,13 @@ export interface ScopeUsage {
 
 /** One line of the usage ledger. */
 export interface UsageEntry {
-  /** `halted` is a run in flight stopped at a limit. `spent` (one model
+  /** `halted` is a run in flight stopped at a limit, `held` one held
+there for a person, and `granted` what a person let a held run
+use beyond the limit (`grant`, by `by`). `spent` (one model
 call) and `settled` (a run's own total at its end) are the ledger's
 record of spend and are not listed as notices.
  */
-  kind: "admitted" | "ended" | "warned" | "refused" | "spent" | "settled" | "halted";
+  kind: "admitted" | "ended" | "warned" | "refused" | "spent" | "settled" | "halted" | "held" | "granted";
   tenant: string;
   project?: string;
   /** The run's project's ancestors, nearest first and the workspace left out. The entry counts toward each of them too. Entries from before the tree have none. */
@@ -3306,6 +3336,10 @@ record of spend and are not listed as notices.
   /** What makes a `spent` or `settled` entry count once. */
   key?: string;
   spend?: UsageSpend;
+  /** For a `granted` entry, what the run may use beyond the limit of `scope`. */
+  grant?: UsageEntryGrant;
+  /** For a `granted` entry, who granted it. */
+  by?: string;
 }
 
 /** What some model calls used. `micros` is US dollars only. */
@@ -4151,6 +4185,11 @@ export interface KnowledgeLifecycleAttemptsItem {
   finished_at?: string;
   status: "importing" | "indexing" | "syncing" | "succeeded" | "failed";
   cause?: string;
+}
+
+export interface UsageEntryGrant {
+  spend?: number;
+  tokens?: number;
 }
 
 export interface ClientInputCredentials {

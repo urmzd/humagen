@@ -140,7 +140,28 @@ export interface Approval {
   rememberable?: boolean;
   /** Set when a sub-agent raised the gate: "Raised by Deploy agent". */
   origin?: string;
+  /**
+   * Set when the platform, not the agent, holds the run: it reached a limit,
+   * and approving grants it `grant` more where denying stops it. Every value
+   * is ready to show.
+   */
+  budget?: BudgetGrant;
   decision: Decision;
+}
+
+/** The limit a held run reached, and what approving grants it. */
+export interface BudgetGrant {
+  /** What the limit is set on: "the workspace", "project Launch". */
+  scope: string;
+  /** Which limit: spend or tokens. */
+  limit: "spend" | "tokens";
+  /** Where the scope stood when the run was held, and the limit: "$5.02", "1,000 tokens". */
+  used: string;
+  max: string;
+  /** What approving grants the run beyond the limit. */
+  grant: string;
+  /** What the run had been granted already this period, when anything. */
+  granted?: string;
 }
 
 /** True when `user` may approve or deny. Without an initiator, anyone may. */
