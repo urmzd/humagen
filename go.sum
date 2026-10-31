@@ -138,6 +138,8 @@ github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213 h
 github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213/go.mod h1:bdzIJ9pJENypV5GFcEjCaLb14PxRdefezz9tMbSTfLs=
 github.com/urmzd/playscape v0.10.0 h1:2+l4E1FKgS20Ht7D9o6cWP3PnhzT+zNLYv/rgwsXW3c=
 github.com/urmzd/playscape v0.10.0/go.mod h1:0bGEI/XZ/l8xk6ceWKWnhvm/dXfrHVmILPWMP2lOMKk=
+github.com/urmzd/playscape v0.10.1-0.20261031003906-0cdfcc388724 h1:d/6CJCHHhgjaabjkz/exIWno6z54RnjiGidLp8mGoB0=
+github.com/urmzd/playscape v0.10.1-0.20261031003906-0cdfcc388724/go.mod h1:0bGEI/XZ/l8xk6ceWKWnhvm/dXfrHVmILPWMP2lOMKk=
 github.com/urmzd/saige v0.44.0 h1:tNrk9C7+u9HRvH6F03OKHYV0KPlGEStSCoWKtlGWlGk=
 github.com/urmzd/saige v0.44.0/go.mod h1:qRqdoUGPB1UswjfivAGDYFGyMmbI9+28syfXkc6Zje4=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
