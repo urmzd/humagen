@@ -55,7 +55,6 @@ refuse() {
 		exit 1
 	fi
 }
-refuse --set replicaCount=2
 refuse --set system.spec.auth.kind=dev
 refuse --set system.spec.auth.kind=tailscale
 # development.loopback lets dev sign-in through only on the pod's loopback,

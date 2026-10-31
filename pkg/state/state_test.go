@@ -134,59 +134,32 @@ func TestFaultyFailsWrites(t *testing.T) {
 	}
 }
 
-func TestPostgresIsOneWriter(t *testing.T) {
-	st, pool := statetest.OpenPostgres(t)
-	ctx := context.Background()
-	if _, err := state.OpenPostgres(ctx, pool); !errors.Is(err, state.ErrLocked) {
-		t.Fatalf("a second open = %v, want ErrLocked", err)
-	}
-	if err := st.Write(ctx, "ns", state.Put("t", "k", []byte("v"))); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Close(); err != nil {
-		t.Fatal(err)
-	}
-	again, err := state.OpenPostgres(ctx, pool)
-	if err != nil {
-		t.Fatalf("open after close = %v", err)
-	}
-	defer func() { _ = again.Close() }()
-	if v, err := again.Get(ctx, "ns", "t", "k"); err != nil || string(v) != "v" {
-		t.Fatalf("after reopen = %q, %v", v, err)
-	}
-	// Migrating again is harmless.
-	if err := again.Close(); err != nil {
-		t.Fatal(err)
-	}
-	third, err := state.OpenPostgres(ctx, pool)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = third.Close()
-}
-
-// A shared store opens beside the one that holds the database, and any number
-// of them may.
-func TestPostgresSharedTakesNoLock(t *testing.T) {
+// Two processes open one database at once, and each reads what the other
+// wrote: OpenPostgres takes no lock.
+func TestPostgresTakesNoLock(t *testing.T) {
 	st, pool := statetest.OpenPostgres(t)
 	ctx := context.Background()
 	for range 2 {
-		shared, err := state.OpenPostgresShared(ctx, pool)
+		other, err := state.OpenPostgres(ctx, pool)
 		if err != nil {
-			t.Fatalf("a shared open beside the locked one = %v", err)
+			t.Fatalf("a second open = %v", err)
 		}
-		if err := shared.Write(ctx, "ns", state.Create("t", "k", []byte("v"))); err != nil && !errors.Is(err, state.ErrConflict) {
+		if err := other.Write(ctx, "ns", state.Create("t", "k", []byte("v"))); err != nil && !errors.Is(err, state.ErrConflict) {
 			t.Fatal(err)
 		}
-		if err := shared.Close(); err != nil {
+		if err := other.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if v, err := st.Get(ctx, "ns", "t", "k"); err != nil || string(v) != "v" {
 		t.Fatalf("Get = %q, %v", v, err)
 	}
-	if _, err := state.OpenPostgres(ctx, pool); !errors.Is(err, state.ErrLocked) {
-		t.Fatalf("the lock was let go: %v", err)
+	shared, err := state.OpenPostgresShared(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := shared.Get(ctx, "ns", "t", "k"); err != nil || string(v) != "v" {
+		t.Fatalf("shared Get = %q, %v", v, err)
 	}
 }
 

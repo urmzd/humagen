@@ -1,32 +1,17 @@
 // Package state is where humagen's own stores keep what must outlive the
 // process: small documents, each named by a namespace, a tenant and a key.
 //
-// It holds no domain logic. A store is built on it in one of two ways.
+// It holds no domain logic. Every store built on it reads and writes per
+// request: it treats the database as the truth, reads one record (Lookup) or
+// one bounded page of a tenant's keys (List), and changes a record only at
+// the version it read (Op.If), retrying on ErrConflict. A cache in front of it
+// may be dropped at any time without changing an answer. So any number of
+// processes on one database agree, and OpenPostgres takes no lock. The
+// backend is a choice of configuration: Memory, which is lost with the
+// process, or Postgres.
 //
-// # Loaded at start
-//
-// Most stores (the inbox, the alert engine, the run index and the rest) keep
-// their rules and their indexes in memory, as their read model, and write the
-// records that state is built from through a Store on every change. At
-// construction they load them back (Load). So a store's behavior is the same
-// whichever backend is under it, and the backend is a choice of
-// configuration: Memory, which is lost with the process, or Postgres.
-//
-// A store loaded at start reads the database once and from then on trusts
-// its memory. Two processes writing one database would each be blind to the
-// other's writes, so such a store needs one humagen process per database.
-// Postgres enforces it: OpenPostgres holds an advisory lock for as long as it
-// is open, and a second process opening the same schema is refused with
-// ErrLocked rather than allowed to diverge quietly.
-//
-// # Per request
-//
-// A store that reads and writes per request treats the database as the
-// truth. It reads one record (Lookup) or one bounded page of a tenant's keys
-// (List), and changes a record only at the version it read (Op.If), retrying
-// on ErrConflict. A cache in front of it may be dropped at any time without
-// changing an answer. Such a store does not need the lock: it may be built on
-// OpenPostgresShared, and two processes on one database agree.
+// Load reads a whole namespace across tenants. It is for a store moving
+// records an older release kept into its layout, once, never for a request.
 //
 // Table carries the pieces such a store is made of: Update changes one record
 // by compare-and-set, Retry runs a change over several records again when it
@@ -39,7 +24,7 @@
 // that the reads a request makes name one tenant:
 //
 //   - A request reads one tenant. Lookup and List take one; only Load, which
-//     a store loaded at start uses once, reads across tenants.
+//     a conversion uses once, reads across tenants.
 //   - A key starts with what a request pages by, so the page is a prefix: a
 //     conversation's messages under "m:<conversation>:", ordered by Seq.
 //   - A Write changes one tenant. A link to another tenant's record is its
@@ -49,8 +34,8 @@
 // # Write-through
 //
 // A mutation that cannot be written is a mutation that did not happen: a
-// store writes before it reports success, and undoes its change in memory when
-// the write fails. Nothing is accepted in memory that a restart would lose.
+// store writes before it reports success. Nothing is accepted that a restart
+// would lose.
 package state
 
 import (
@@ -65,8 +50,6 @@ import (
 var (
 	// ErrNotFound reports a key with no record.
 	ErrNotFound = errors.New("state: not found")
-	// ErrLocked reports a database another process already writes to.
-	ErrLocked = errors.New("state: another process holds this database")
 	// ErrInvalid reports a namespace, tenant or key the store cannot keep,
 	// or a query it will not run.
 	ErrInvalid = errors.New("state: invalid")
@@ -166,8 +149,8 @@ type Store interface {
 	// when none do.
 	List(ctx context.Context, namespace, tenant string, q Query) ([]Record, string, error)
 	// Load returns every record in a namespace, across tenants, ordered by
-	// tenant and then key, compared as bytes. Only a store loaded at start
-	// calls it, once.
+	// tenant and then key, compared as bytes. Only a conversion of records an
+	// older release kept calls it, once.
 	Load(ctx context.Context, namespace string) ([]Record, error)
 	// Write applies ops in order, all or none. A conditional op whose record
 	// is not at its version fails the write with ErrConflict.
