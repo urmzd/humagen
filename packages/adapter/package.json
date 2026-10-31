@@ -1,6 +1,6 @@
 {
   "name": "@humagen/adapter",
-  "version": "0.59.0",
+  "version": "0.63.0",
   "private": true,
   "type": "module",
   "description": "The one adapter between humagen's API and the humagen UI model, shared by the console and the Slack app.",

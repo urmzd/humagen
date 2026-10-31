@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.63.0 (2026-10-31)
+
+### Features
+
+- production-ready deploy: /readyz, graceful drain, gcs blobs, chart scaling (#161) ([b23f659](https://github.com/urmzd/humagen/commit/b23f65988f5983fc2c74ceb20aaae8bcb6733506))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.62.0...v0.63.0)
+
+
 ## 0.59.0 (2026-10-31)
 
 ### Features
