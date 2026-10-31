@@ -60,6 +60,7 @@ spec:
     public_url: http://localhost:8080
     webhook_addr: ""        # a second listener that serves only signed webhooks
     console: {enabled: true, dir: auto}      # auto finds a built apps/web
+    role: all               # all | api | worker: which parts this process runs (Process roles)
 
   auth:                     # slot: dev | tailscale | oidc | mock
     kind: oidc
@@ -351,6 +352,44 @@ message past them is refused in the message's `refused`. Only a run a person
 or a surface started counts: a call between agents is its root's work, and a
 schedule's or an eval's run is asked by nobody. With `stores.kind: postgres`
 the counts are shared by every replica.
+
+### Process roles
+
+`server.role` (or `-role`) says which parts of the platform a process runs,
+so the API and the execution of turns scale on their own (RFC 0004, "A
+million people in one room").
+
+| Role | Runs | Listens |
+|------|------|---------|
+| `all` (the default) | the API and the turns, in one process | `server.addr`, and `webhook_addr` when set |
+| `api` | the API, sign-in, the event stream and webhooks; it admits runs onto the queue and executes none | as `all` |
+| `worker` | the turns on the run queue (anchor's worker) and what they need: models, tools, the sandbox | nothing |
+
+`humagen worker` is `humagen serve` with the `worker` role, whatever the
+file's `server.role` says; a different `-role` on its command line is
+refused. `api` and `worker` hand runs to each other through the run ledger
+and queue, so both need `stores.kind: postgres`, and a split role on memory
+stores is refused at start.
+
+```bash
+humagen serve -f humagen.yaml -role api     # behind the load balancer
+humagen worker -f humagen.yaml              # as many as the queue needs
+```
+
+Whatever its role, every process on one database campaigns for leadership,
+and only the leader runs the work done once per deployment: the reconciler,
+schedules, inbox retention, email notices, knowledge source refresh and
+catalog crawls. The leader holds a session advisory lock on a connection of
+its own; when that connection ends, the lock goes with it and another process
+takes over within about ten seconds: it waits out the old leader's last check, so two terms never overlap while the old leader can still reach the database. On memory stores the one process
+always leads. Each process logs its role at start (`msg=process role=...`)
+and logs `platform: leading` when it becomes the leader.
+
+Today every store but feedback is still loaded into memory at start and the
+stores' lock admits one process per database
+([limits at scale](../architecture/overview.md#limits-at-scale)), so a
+deployment runs one process, with `role: all`, until the stores read the
+database per request. The roles and the election are in place for that step.
 
 ## Platform
 
