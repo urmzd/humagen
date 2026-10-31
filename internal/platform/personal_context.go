@@ -21,7 +21,7 @@ func (p *Platform) personalLayers(tenant, project, subject string) []ContextLaye
 	if subject == "" {
 		return out
 	}
-	prefs := p.Prefs.Get(tenant, subject).Personal
+	prefs := p.PreferencesOf(tenant, subject).Personal
 	if prefs.Briefing != "" {
 		out = append(out, ContextLayer{Kind: "personal_briefing", From: subject, Text: "How the person asking prefers to be briefed:\n" + prefs.Briefing, Budget: 500, Used: utf8.RuneCountInString(prefs.Briefing), Sent: true, Unit: "characters"})
 	}

@@ -334,7 +334,7 @@ func (p *Platform) inboxReader(tree *projects.Tree, who auth.Principal) inbox.Re
 	r := readerOf(who)
 	r.ProjectOf = p.inboxProject(who.Tenant)
 	reader := ReaderOf(who)
-	muted := p.Prefs.Get(who.Tenant, who.Subject).Muted
+	muted := p.PreferencesOf(who.Tenant, who.Subject).Muted
 	for _, name := range tree.Memberships(reader) {
 		if name == projects.Root || !slices.Contains(muted, name) {
 			r.Projects = append(r.Projects, name)

@@ -77,7 +77,7 @@ func (p *Platform) SetRunSettings(tenant string, workspace runsettings.Layer, pr
 
 // resolveSettings is what a run filed in project, within its ancestors
 // (nearest first), acting for person resolves to.
-func (p *Platform) resolveSettings(tenant, project string, within []string, person string) runsettings.Resolved {
+func (p *Platform) resolveSettings(tenant, project string, within []string, person string) (runsettings.Resolved, error) {
 	p.runSettings.mu.RLock()
 	layers := p.runSettings.by[tenant]
 	p.runSettings.mu.RUnlock()
@@ -88,9 +88,15 @@ func (p *Platform) resolveSettings(tenant, project string, within []string, pers
 		}
 	}
 	if person != "" {
-		below = append(below, p.PersonContexts.Get(tenant, person).Run)
+		// A person's own layer only tightens, so one that cannot be read
+		// fails the resolution rather than be left out.
+		own, err := p.PersonContexts.Get(tenant, person)
+		if err != nil {
+			return runsettings.Resolved{}, err
+		}
+		below = append(below, own.Run)
 	}
-	return runsettings.Resolve(layers.workspace, below...)
+	return runsettings.Resolve(layers.workspace, below...), nil
 }
 
 // pinRunContext writes the run's context into its tag. Whatever the tag
@@ -102,11 +108,17 @@ func (p *Platform) pinRunContext(tag event.Envelope, edge call.Edge, project str
 		if err != nil {
 			return tag, err
 		}
-		own := p.resolveSettings(tag.Tenant, project, within, parent.Person)
+		own, err := p.resolveSettings(tag.Tenant, project, within, parent.Person)
+		if err != nil {
+			return tag, err
+		}
 		c = parent.Narrow(own.Ceilings)
 	} else {
 		person := p.operationTagPerson(tag, edge)
-		c = runctx.New(person, p.resolveSettings(tag.Tenant, project, within, person), p.personContext(tag.Tenant, person))
+		var err error
+		if c, err = p.newRunContext(tag.Tenant, project, within, person); err != nil {
+			return tag, err
+		}
 	}
 	var err error
 	wire.EditMeta(&tag, func(m map[string]string) {
@@ -116,11 +128,25 @@ func (p *Platform) pinRunContext(tag event.Envelope, edge call.Edge, project str
 	return tag, err
 }
 
-func (p *Platform) personContext(tenant, person string) personctx.Context {
+func (p *Platform) personContext(tenant, person string) (personctx.Context, error) {
 	if person == "" {
-		return personctx.Context{}
+		return personctx.Context{}, nil
 	}
 	return p.PersonContexts.Get(tenant, person)
+}
+
+// newRunContext is the context a run filed in project, acting for person,
+// resolves to now.
+func (p *Platform) newRunContext(tenant, project string, within []string, person string) (runctx.Context, error) {
+	resolved, err := p.resolveSettings(tenant, project, within, person)
+	if err != nil {
+		return runctx.Context{}, err
+	}
+	own, err := p.personContext(tenant, person)
+	if err != nil {
+		return runctx.Context{}, err
+	}
+	return runctx.New(person, resolved, own), nil
 }
 
 // callerContext is the context pinned to a calling run, named by its tag.
@@ -144,7 +170,7 @@ func (p *Platform) contextOfRun(run runs.Run) (runctx.Context, error) {
 	}
 	if !ok {
 		person := personOf(run.Actor)
-		return runctx.New(person, p.resolveSettings(run.Tenant, run.Project, run.Within, person), p.personContext(run.Tenant, person)), nil
+		return p.newRunContext(run.Tenant, run.Project, run.Within, person)
 	}
 	return c, nil
 }
@@ -242,7 +268,7 @@ func (p *Platform) PersonContext(who auth.Principal) (personctx.Context, error) 
 	if who.Kind == auth.Machine {
 		return personctx.Context{}, fmt.Errorf("%w: a machine has no context of its own", ErrForbidden)
 	}
-	return p.PersonContexts.Get(who.Tenant, who.Subject), nil
+	return p.PersonContexts.Get(who.Tenant, who.Subject)
 }
 
 // SetPersonContext replaces the caller's own context. Every tool server's

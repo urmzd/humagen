@@ -175,7 +175,11 @@ func (p *Platform) openStores(cfg Config) error {
 		}
 	}
 	var err error
-	p.AgentColors, err = agentcolors.Open(st)
+	perRequest := cfg.Backends.Shared
+	if perRequest == nil {
+		perRequest = st
+	}
+	p.AgentColors, err = agentcolors.Open(perRequest)
 	keep("agent colors", err)
 	p.Runs, err = runs.Open(st)
 	keep("runs", err)
@@ -197,23 +201,19 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(st)
 	keep("evals", err)
-	perRequest := cfg.Backends.Shared
-	if perRequest == nil {
-		perRequest = st
-	}
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
-	p.Prefs, err = prefs.Open(st)
+	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
-	p.PersonContexts, err = personctx.Open(st)
+	p.PersonContexts, err = personctx.Open(perRequest)
 	keep("person contexts", err)
-	p.ContextFlags, err = contextflags.Open(st)
+	p.ContextFlags, err = contextflags.Open(perRequest)
 	keep("private context flags", err)
-	p.Notifications, err = notifications.Open(st)
+	p.Notifications, err = notifications.Open(perRequest)
 	keep("native notifications", err)
 	p.AgentSkillDefaults, err = library.OpenDefaults(st)
 	keep("agent skill defaults", err)
-	p.EmailNotifications, err = notifications.OpenEmail(st)
+	p.EmailNotifications, err = notifications.OpenEmail(perRequest)
 	keep("email notifications", err)
 	p.SkillLibrary, err = library.Open(st)
 	keep("skill library", err)
@@ -240,7 +240,7 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Projects, err = projects.Open(st, projects.WithFiled(p.filedUnder))
 	keep("projects", err)
 	// An agent's name is a handle no person is given.
-	p.People, err = people.Open(st, people.WithTaken(p.agentTaken))
+	p.People, err = people.Open(perRequest, people.WithTaken(p.agentTaken))
 	keep("people", err)
 	p.Threads, err = threads.Open(st)
 	keep("threads", err)
@@ -295,7 +295,7 @@ func (p *Platform) openStores(cfg Config) error {
 	}
 	// People's values are kept where client secrets are, and guarded the
 	// same way.
-	p.Credentials, err = credentials.Open(st, p.secrets)
+	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
 	return errors.Join(errs...)
 }

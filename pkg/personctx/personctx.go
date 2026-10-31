@@ -13,8 +13,9 @@
 // stored here. Whether a reference is the person's own to give is the
 // platform's decision, made before Set.
 //
-// The store is in memory. Built with Open, it writes every change through a
-// state.Store and reads them back when it is built again.
+// It reads and writes the database per request (pkg/state, per request): it
+// holds nothing in memory, so any number of processes on one database agree,
+// and it does not need pkg/state's single-writer lock.
 package personctx
 
 import (
@@ -25,7 +26,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/credref"
@@ -128,33 +128,28 @@ func (in Input) Check() error {
 	return nil
 }
 
-// Store holds every person's context.
+// Store holds every person's context, in the namespace "personctx", one
+// record per person keyed by subject in their tenant.
 type Store struct {
-	mu   sync.RWMutex
-	by   map[string]Context
 	kept *state.Table[Context]
 	// volume names a new memory volume. Tests replace it.
 	volume func() string
 }
 
-// NewStore returns an empty store in memory.
-func NewStore() *Store { return &Store{by: map[string]Context{}, volume: newVolume} }
-
-// Open returns a store that keeps everything in st, holding what st already
-// has. A nil st is NewStore.
-func Open(st state.Store) (*Store, error) {
-	s := NewStore()
-	s.kept = state.NewTable[Context](st, "personctx")
-	if err := s.kept.Load(func(tenant, subject string, c Context) error {
-		s.by[key(tenant, subject)] = c.clone()
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("personctx: load: %w", err)
-	}
-	return s, nil
+// NewStore returns an empty store in this process's memory.
+func NewStore() *Store {
+	s, _ := Open(nil)
+	return s
 }
 
-func key(tenant, subject string) string { return tenant + "\x00" + subject }
+// Open returns a store on st, which may be shared with other processes. A
+// nil st keeps contexts in this process's memory.
+func Open(st state.Store) (*Store, error) {
+	if st == nil {
+		st = state.NewMemory()
+	}
+	return &Store{kept: state.NewTable[Context](st, "personctx"), volume: newVolume}, nil
+}
 
 func newVolume() string {
 	b := make([]byte, 12)
@@ -163,13 +158,15 @@ func newVolume() string {
 }
 
 // Get returns a person's context, empty when they have written none.
-func (s *Store) Get(tenant, subject string) Context {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if c, ok := s.by[key(tenant, subject)]; ok {
-		return c.clone()
+func (s *Store) Get(tenant, subject string) (Context, error) {
+	it, err := s.kept.Lookup(tenant, subject)
+	if errors.Is(err, state.ErrNotFound) {
+		return empty(), nil
 	}
-	return empty()
+	if err != nil {
+		return Context{}, fmt.Errorf("personctx: read: %w", err)
+	}
+	return it.Value.clone(), nil
 }
 
 // Set replaces what a person chose. in.Version must be the current one
@@ -181,26 +178,27 @@ func (s *Store) Set(tenant, subject string, in Input, at time.Time) (Context, er
 	if err := in.Check(); err != nil {
 		return Context{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	k := key(tenant, subject)
-	cur, existed := s.by[k]
-	if !existed {
-		cur = empty()
-	}
-	if in.Version != cur.Version {
-		return Context{}, ErrVersion
-	}
-	next := Context{Run: in.Run, ToolServers: slices.Clone(in.ToolServers), Memory: cur.Memory, Version: cur.Version + 1, UpdatedAt: at.UTC()}
-	if next.ToolServers == nil {
-		next.ToolServers = []ToolServer{}
-	}
-	if next.Memory == "" {
-		next.Memory = s.volume()
-	}
-	if err := s.kept.Put(tenant, subject, next); err != nil {
+	next, err := s.kept.Update(tenant, subject, func(cur Context, ok bool) (Context, error) {
+		if !ok {
+			cur = empty()
+		}
+		if in.Version != cur.Version {
+			return Context{}, ErrVersion
+		}
+		next := Context{Run: in.Run, ToolServers: slices.Clone(in.ToolServers), Memory: cur.Memory, Version: cur.Version + 1, UpdatedAt: at.UTC()}
+		if next.ToolServers == nil {
+			next.ToolServers = []ToolServer{}
+		}
+		if next.Memory == "" {
+			next.Memory = s.volume()
+		}
+		return next, nil
+	})
+	if err != nil {
+		if errors.Is(err, ErrVersion) {
+			return Context{}, err
+		}
 		return Context{}, fmt.Errorf("personctx: write: %w", err)
 	}
-	s.by[k] = next
 	return next.clone(), nil
 }

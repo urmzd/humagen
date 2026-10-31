@@ -231,16 +231,16 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if m, ok := q.Inbox.ByKey(tenant, "note"); !ok || m.Subject != "Kept" {
 			t.Fatalf("the inbox after restart = %+v, %v", m, ok)
 		}
-		if c := q.PersonContexts.Get(tenant, "ada"); c.Version != 1 || c.Memory != mine.Memory || c.Run.Preferences.CompactionTokens != 4096 {
+		if c, err := q.PersonContexts.Get(tenant, "ada"); err != nil || c.Version != 1 || c.Memory != mine.Memory || c.Run.Preferences.CompactionTokens != 4096 {
 			t.Fatalf("a person's context after restart = %+v", c)
 		}
 		if c, ok, err := q.RunContext(tenant, done.ID); !ok || err != nil || c.Person != "" {
 			t.Fatalf("a run's pinned context after restart = %+v, %v, %v", c, ok, err)
 		}
-		if c, ok := q.Credentials.Get(tenant, "ada", "issues"); !ok || c.Ref != "op://People/ada/issues" {
+		if c, ok, _ := q.Credentials.Get(tenant, "ada", "issues"); !ok || c.Ref != "op://People/ada/issues" {
 			t.Fatalf("a person's reference after restart = %+v, %v", c, ok)
 		}
-		if v, ok := q.Credentials.Value(tenant, "ada", "drive"); !ok || v != "tok-ada-drive" {
+		if v, ok, _ := q.Credentials.Value(tenant, "ada", "drive"); !ok || v != "tok-ada-drive" {
 			t.Fatalf("a person's stored value after restart = %q, %v", v, ok)
 		}
 		// A run accepted after the restart is not mistaken for one before.

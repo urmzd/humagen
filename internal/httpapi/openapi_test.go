@@ -2106,7 +2106,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"theme":"neon"}`, http.StatusBadRequest)
 	// A restored consent record can outlive an operator's relay configuration.
 	// A stale form cannot undo that person's newer email choice.
-	emailPref := f.p.Prefs.Get("acme", "audit-admin").Personal
+	emailPref := f.p.PreferencesOf("acme", "audit-admin").Personal
 	emailPref.Email = true
 	emailPref.EmailVersion = 1
 	if _, err := f.p.Prefs.SetPersonal("acme", "audit-admin", emailPref); err != nil {
