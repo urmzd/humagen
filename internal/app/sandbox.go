@@ -45,17 +45,40 @@ func addSandboxFlags(fs *flag.FlagSet, runtime string, insecure bool) sandboxFla
 // shutdown. A docker sandbox that cannot reach its CLI does not stop the
 // server: every run's tools fail closed with the reason instead, and the
 // reason is logged now.
-func openSandbox(ctx context.Context, o Options, l loaded, f sandboxFlags, log *slog.Logger) (isolation.Sandbox, func(), error) {
+//
+// With the egress slot set to gate, the sandbox's instances go out through
+// an egress gate this function starts, and its decisions go to decisions
+// (nil drops them).
+func openSandbox(ctx context.Context, o Options, l loaded, f sandboxFlags, log *slog.Logger, decisions *egressLog) (isolation.Sandbox, func(), error) {
 	none := func() {}
+	gateCfg, gated := egressGateOf(l)
 	switch kind := strings.TrimSpace(*f.kind); kind {
 	case "unisolated":
+		if gated {
+			log.Warn("egress: the gate is not started: an unisolated sandbox runs tools on this host, with its network")
+		}
 		return isolation.Sandbox{Name: "unisolated"}, none, nil
 	case "local":
-		leaser, err := poolleaser.New(local.Driver{Dir: sandboxWorkRoot(*f.workRoot), Log: io.Discard}, poolleaser.Config{Image: "local"})
+		cfg := poolleaser.Config{Image: "local"}
+		stop := none
+		if gated {
+			g, err := startEgress(gateCfg, decisions, log)
+			if err != nil {
+				return isolation.Sandbox{}, none, fmt.Errorf("sandbox: local: %w", err)
+			}
+			cfg.Egress, stop = g.egress, g.stop
+		}
+		leaser, err := poolleaser.New(local.Driver{Dir: sandboxWorkRoot(*f.workRoot), Log: io.Discard}, cfg)
 		if err != nil {
+			stop()
 			return isolation.Sandbox{}, none, fmt.Errorf("sandbox: local: %w", err)
 		}
 		log.Warn("sandbox: local: a run's tools execute as host processes with this server's privileges. Use it for development only")
+		if gated {
+			decisions.from(leaser)
+			log.Warn("egress: local: only the proxy variables send a tool to the gate; nothing stops a host process going around it")
+			return isolation.Sandbox{Leaser: leaser, Name: "local (not isolated)", Egress: true}, both(closer(leaser), stop), nil
+		}
 		return isolation.Sandbox{Leaser: leaser, Name: "local (not isolated)"}, closer(leaser), nil
 	case "", "docker":
 		runtime := strings.TrimSpace(*f.runtime)
@@ -78,24 +101,42 @@ func openSandbox(ctx context.Context, o Options, l loaded, f sandboxFlags, log *
 			delete(cfg.Labels, "humagen.deployment")
 		}
 		cfg.Pool.OnError = func(err error) { log.Warn("sandbox: background work failed", "sandbox", name, "error", err) }
-		d, err := docker.New(docker.Config{
+		dcfg := docker.Config{
 			Runtime:                    runtime,
 			InsecureDevelopmentRuntime: *f.insecure,
 			Log:                        warnWriter{log: log, sandbox: name},
 			WorkRoot:                   sandboxWorkRoot(*f.workRoot),
-		})
+		}
+		stop := none
+		if gated {
+			if err := dockerEgress(gateCfg); err != nil {
+				return isolation.Sandbox{}, none, fmt.Errorf("sandbox: docker: %w", err)
+			}
+			g, err := startEgress(gateCfg, decisions, log)
+			if err != nil {
+				return isolation.Sandbox{}, none, fmt.Errorf("sandbox: docker: %w", err)
+			}
+			dcfg.EgressNetwork, cfg.Egress, stop = gateCfg.Network, g.egress, g.stop
+		}
+		d, err := docker.New(dcfg)
 		if err != nil {
 			// Fail closed, not at start: the server answers, and every
 			// tool that needs an instance says why it has none.
 			log.Error("sandbox: docker is unavailable: tools that need a sandbox will refuse until it is", "error", err)
+			stop()
 			return isolation.Sandbox{Leaser: unavailable{err: fmt.Errorf("sandbox %s is unavailable: %w", name, err)}, Name: name}, none, nil
 		}
 		leaser, err := poolleaser.New(d, cfg)
 		if err != nil {
+			stop()
 			return isolation.Sandbox{}, none, fmt.Errorf("sandbox: docker: %w", err)
 		}
-		return isolation.Sandbox{Leaser: leaser, Name: name}, closer(leaser), nil
+		decisions.from(leaser)
+		return isolation.Sandbox{Leaser: leaser, Name: name, Egress: gated}, both(closer(leaser), stop), nil
 	default:
+		if gated {
+			log.Warn("egress: the gate is not started: sandbox kind " + kind + " does not take one")
+		}
 		if l.cfg.System.Spec.Sandbox.Kind == kind {
 			leaser, err := build[isolation.Leaser](ctx, o, spec.SlotSandbox, l.cfg.System.Spec.Sandbox)
 			if err != nil {
@@ -123,6 +164,11 @@ func sandboxWorkRoot(dir string) string {
 		return ""
 	}
 	return dir
+}
+
+// both runs a, then b.
+func both(a, b func()) func() {
+	return func() { a(); b() }
 }
 
 func closer(l *poolleaser.Leaser) func() {
