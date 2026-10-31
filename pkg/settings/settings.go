@@ -51,6 +51,7 @@ var Declared = []Setting{
 	{"models", Ceiling},
 	{"call_depth", Ceiling},
 	{"tool_servers", Ceiling},
+	{"egress", Ceiling},
 	{"model", Preference},
 	{"compaction_tokens", Preference},
 }
@@ -86,6 +87,11 @@ type Ceilings struct {
 	// Unlike the others it is default deny: the workspace's list opens it,
 	// and left out there, it allows none. A level below narrows it.
 	ToolServers []string `json:"tool_servers,omitzero"`
+	// Egress are the hosts a run's sandbox may reach through the egress
+	// gate: an exact name ("api.github.com") or "*.domain" for its
+	// subdomains. Like tool servers it is default deny: the workspace's
+	// list opens it, and a level below narrows it.
+	Egress []string `json:"egress,omitzero"`
 }
 
 // Preferences choose within the ceilings. A zero field says nothing at its
@@ -110,7 +116,7 @@ type Layer struct {
 // IsZero reports whether the layer says nothing.
 func (l Layer) IsZero() bool {
 	c := l.Ceilings
-	return c.Tools == nil && c.Models == nil && c.CallDepth == nil && c.ToolServers == nil && l.Preferences == (Preferences{})
+	return c.Tools == nil && c.Models == nil && c.CallDepth == nil && c.ToolServers == nil && c.Egress == nil && l.Preferences == (Preferences{})
 }
 
 // Resolved is what a chain of layers gives a run. Its ceilings are the
@@ -124,10 +130,14 @@ type Resolved struct {
 // from the root down, then the person) into what a run gets.
 func Resolve(workspace Layer, below ...Layer) Resolved {
 	chain := append([]Layer{workspace}, below...)
-	// Tool servers are default deny: only the workspace opens them.
-	out := Resolved{Ceilings: Ceilings{ToolServers: []string{}}}
+	// Tool servers and egress are default deny: only the workspace opens
+	// them.
+	out := Resolved{Ceilings: Ceilings{ToolServers: []string{}, Egress: []string{}}}
 	if workspace.Ceilings.ToolServers != nil {
 		out.Ceilings.ToolServers = nil
+	}
+	if workspace.Ceilings.Egress != nil {
+		out.Ceilings.Egress = nil
 	}
 	for _, l := range chain {
 		out.Ceilings = Tighten(out.Ceilings, l.Ceilings)
@@ -154,6 +164,7 @@ func Tighten(a, b Ceilings) Ceilings {
 		Models:      intersectModels(a.Models, b.Models),
 		CallDepth:   lower(a.CallDepth, b.CallDepth),
 		ToolServers: intersect(a.ToolServers, b.ToolServers),
+		Egress:      intersectHosts(a.Egress, b.Egress),
 	}
 }
 
@@ -194,6 +205,22 @@ func (c Ceilings) AllowsModel(ref string) bool {
 // listed by the ceilings, which are default deny.
 func (c Ceilings) AllowsToolServer(host string) bool {
 	return host != "" && slices.Contains(c.ToolServers, strings.ToLower(host))
+}
+
+// AllowsEgress reports whether a run's sandbox may reach host: an entry
+// names it or a "*.domain" entry covers it. Egress is default deny.
+func (c Ceilings) AllowsEgress(host string) bool {
+	host = strings.ToLower(host)
+	return host != "" && slices.ContainsFunc(c.Egress, func(p string) bool { return coversHost(p, host) })
+}
+
+// EgressHosts are the hosts a run's sandbox may reach. Nil, a ceiling no
+// level set, allows none.
+func (c Ceilings) EgressHosts() []string {
+	if c.Egress == nil {
+		return []string{}
+	}
+	return slices.Clone(c.Egress)
 }
 
 // Depth is the call depth the ceilings allow under a deployment's own limit.
@@ -267,6 +294,44 @@ func (c Ceilings) allowsPattern(m string) bool {
 	return c.AllowsModel(m)
 }
 
+// coversHost reports whether pattern allows every host h allows: the same
+// entry, or a "*.domain" pattern over h's domain.
+func coversHost(pattern, h string) bool {
+	if pattern == h {
+		return true
+	}
+	suffix, wild := strings.CutPrefix(pattern, "*")
+	return wild && strings.HasSuffix(h, suffix) && len(h) > len(suffix)
+}
+
+// intersectHosts keeps the hosts both lists allow: an entry of either the
+// other covers, so "*.example.com" and "api.example.com" give the latter.
+func intersectHosts(a, b []string) []string {
+	switch {
+	case a == nil:
+		return slices.Clone(b)
+	case b == nil:
+		return slices.Clone(a)
+	}
+	out := []string{}
+	add := func(h string) {
+		if !slices.Contains(out, h) {
+			out = append(out, h)
+		}
+	}
+	for _, h := range a {
+		if slices.ContainsFunc(b, func(p string) bool { return coversHost(p, h) }) {
+			add(h)
+		}
+	}
+	for _, h := range b {
+		if slices.ContainsFunc(a, func(p string) bool { return coversHost(p, h) }) {
+			add(h)
+		}
+	}
+	return out
+}
+
 func lower(a, b *int) *int {
 	switch {
 	case a == nil && b == nil:
@@ -305,6 +370,9 @@ func (l Layer) Check() error {
 	}); err != nil {
 		return err
 	}
+	if err := checkList("egress", c.Egress, checkEgressHost); err != nil {
+		return err
+	}
 	if c.CallDepth != nil && (*c.CallDepth < 0 || *c.CallDepth > MaxCallDepth) {
 		return fmt.Errorf("%w: call_depth is from 0 to %d", ErrInvalid, MaxCallDepth)
 	}
@@ -315,6 +383,15 @@ func (l Layer) Check() error {
 	}
 	if p.CompactionTokens != 0 && (p.CompactionTokens < MinCompactionTokens || p.CompactionTokens > MaxCompactionTokens) {
 		return fmt.Errorf("%w: compaction_tokens is from %d to %d", ErrInvalid, MinCompactionTokens, MaxCompactionTokens)
+	}
+	return nil
+}
+
+// checkEgressHost accepts a host name in lower case, or "*." and one.
+func checkEgressHost(h string) error {
+	name := strings.TrimPrefix(h, "*.")
+	if name == "" || name != strings.ToLower(name) || strings.ContainsAny(name, "*/:@ []") || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
+		return fmt.Errorf("%q is not a host name in lower case, or *. and one", h)
 	}
 	return nil
 }

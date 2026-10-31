@@ -271,6 +271,9 @@ sit under Technical Details; standalone alert bodies remain visible. Titles,
 metadata and About links wrap with separate spacing for each section. Render
 regressions cover the failing layout and native `inbox-alert-recovery` states
 capture collapsed and expanded diagnostics on phone and desktop.
+The native `conversation-feedback-reasons` state captures the turn footer's
+Not helpful prompt with its quick reasons (`FEEDBACK_REASONS`), a picked reason
+and a comment on phone and desktop, and fails if the prompt leaves the viewport.
 
 
 ### DES-010: Top-level notifications

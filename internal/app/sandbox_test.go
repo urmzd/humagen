@@ -24,7 +24,7 @@ func openSandboxWith(t *testing.T, l loaded, runtimeDefault string, args ...stri
 	if err := fs.Parse(args); err != nil {
 		t.Fatal(err)
 	}
-	s, closeIt, err := openSandbox(t.Context(), Options{}, l, f, slog.New(slog.DiscardHandler))
+	s, closeIt, err := openSandbox(t.Context(), Options{}, l, f, slog.New(slog.DiscardHandler), nil)
 	if err == nil {
 		t.Cleanup(closeIt)
 	}
@@ -78,7 +78,7 @@ func TestRuncNeedsTheInsecureDevelopmentRuntime(t *testing.T) {
 		if err := fs.Parse(args); err != nil {
 			t.Fatal(err)
 		}
-		s, closeIt, err := openSandbox(t.Context(), Options{}, loaded{}, f, slog.New(slog.DiscardHandler))
+		s, closeIt, err := openSandbox(t.Context(), Options{}, loaded{}, f, slog.New(slog.DiscardHandler), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
