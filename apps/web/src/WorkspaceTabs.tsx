@@ -15,7 +15,7 @@ export function WorkspaceTabs({
   return (
     <nav
       aria-label={label}
-      className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-aui-border border-b px-5 pt-2 md:px-8"
+      className="humagen-beside-drawer flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-aui-border border-b px-5 pt-2 md:px-8"
     >
       {items.map((item) => (
         <a

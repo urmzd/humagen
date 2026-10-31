@@ -821,6 +821,31 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
 @media (min-width: 48rem) {
   .humagen-shell { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
 }
+/*
+ * The drawer button on a phone floats over the page's top left corner, round
+ * and on glass. What starts a page makes room for it beside it where it can (a
+ * conversation's header, a hub's tabs) and below it otherwise, so no page
+ * spends a row of its own on the button.
+ */
+.humagen-drawer-button {
+  background: color-mix(in oklch, var(--aui-bg) 82%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px oklch(0 0 0 / 10%);
+}
+@media (max-width: 47.99rem) {
+  .humagen-content { padding-top: calc(3.5rem + env(safe-area-inset-top)); }
+  .humagen-content:has(> .humagen-beside-drawer:first-child),
+  .humagen-content:has(.humagen-conversation-header),
+  .humagen-content:has(> .humagen-page:first-child),
+  .humagen-content:has(> .humagen-home:first-child) {
+    padding-top: env(safe-area-inset-top);
+  }
+  .humagen-beside-drawer { padding-left: 4.25rem; }
+  .humagen-content > .humagen-page:first-child > .humagen-page-column { padding-top: 4.25rem; }
+  .humagen-content > .humagen-home:first-child { padding-top: 4rem; }
+}
+
 @media (max-width: 47.99rem) {
   /* The page ends above the home indicator, except while the keyboard covers it. */
   .humagen-content { padding-bottom: env(safe-area-inset-bottom); }

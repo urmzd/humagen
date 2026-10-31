@@ -67,6 +67,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
+| DES-041 | On a phone the console fills the installed app's screen, the drawer button floats instead of taking a row, and Home keeps the chat bar in reach of a thumb | Implemented: `viewport.ts`, `styles.css`, `HomePage.tsx`; web tests pass; Console screens pass at 320x568, 390x844 and 844x390; the iOS height needs a real device |
 
 ### DES-001: Working integrations
 
@@ -988,3 +989,37 @@ network back loads the console.
 Needs a real device: Safari's keyboard (the visual viewport inset), Add to
 Home Screen on iOS, the standalone status bar, and the install prompt on
 Android.
+
+### DES-041: A phone, closer to a native app
+
+Owner request: improve the console on a phone, after a screenshot of the
+installed app on an iPhone showed an empty strip under the composer.
+
+Found before the change (the `make screens` fixtures at 390x844):
+
+- Installed on an iPhone with the status bar drawn over the page, Safari
+  sizes `100dvh` short by the status bar's height, so the console ended that
+  far above the bottom of the screen.
+- The drawer button took a row of its own at the top of every page: 48px
+  holding one 44px button, above a conversation's own header.
+- Home put the chat bar in the upper middle of the screen, out of a thumb's
+  reach, with the bottom half empty before the first message.
+
+Rules:
+
+- Installed on iOS, `viewport.ts` writes the screen's height to
+  `--humagen-app-height`, which the console, the drawer and the Inspector
+  sheet are sized from. While the keyboard is up it hands back to `100dvh`,
+  which the keyboard's height is measured against.
+- On a phone the drawer button is round, on glass, and floats over the top
+  left corner. A conversation's header and a hub's tabs start beside it; a
+  page's title starts just under it. Anything else keeps the reserved row.
+- On a phone Home keeps the chat bar at the bottom with its suggestions above
+  it, and centers the greeting in the space left. The boxes scroll under the
+  bar. A wide window is unchanged.
+
+Evidence: `cd apps/web && pnpm test` covers the installed-app height and the
+handover to the keyboard (`pwa.test.ts`). `make screens` passes with
+`SCREENS_VIEWPORTS=390x844,320x568,844x390`.
+
+Needs a real device: the installed app's height on an iPhone.

@@ -36,27 +36,35 @@ export function HomePage({
   children: ReactNode;
 }) {
   return (
+    // On a phone the chat bar stays at the bottom, in reach of a thumb, with the
+    // greeting centered above it and the boxes scrolling under it. Wider, the
+    // prompt is the page, centered.
     <section
       aria-label="New conversation"
-      className="aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto py-8"
+      className="humagen-home aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto pt-8 pb-2 md:pb-8"
     >
-      <div className="my-auto w-full min-w-0">
+      <div className="flex w-full min-w-0 flex-1 flex-col md:my-auto md:block md:flex-none">
         {banner && <AnnouncementBanner announcement={banner} />}
-        <h1 className="humagen-display px-6 pb-6 text-center text-[2rem] font-semibold leading-tight text-aui-fg">
+        <h1 className="humagen-display px-6 pb-6 text-center text-[2rem] font-semibold leading-tight text-aui-fg max-md:my-auto">
           {greeting}
         </h1>
         {!canRun ? (
-          <p className="px-6 text-center text-aui-sm text-aui-muted">
+          <p className="px-6 text-center text-aui-sm text-aui-muted max-md:order-last max-md:pb-6">
             You do not have permission to start conversations in this workspace.
           </p>
         ) : !hasAgents ? (
-          <p className="px-6 text-center text-aui-sm text-aui-muted">
+          <p className="px-6 text-center text-aui-sm text-aui-muted max-md:order-last max-md:pb-6">
             An agent needs to be configured before you can start a conversation.
           </p>
         ) : (
-          children
+          <div
+            data-layer="sticky"
+            className="flex flex-col bg-aui-bg max-md:sticky max-md:flex-col-reverse max-md:gap-2 max-md:bottom-0 max-md:z-10 max-md:order-last max-md:pt-2"
+          >
+            {children}
+          </div>
         )}
-        {below}
+        {below && <div className="max-md:pb-6">{below}</div>}
       </div>
     </section>
   );

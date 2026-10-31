@@ -735,7 +735,7 @@ function Console({
           data-arriving={arrived ? undefined : ""}
           // Under an open drawer the page can be neither reached nor scrolled.
           inert={drawer || undefined}
-          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden max-md:pt-[calc(3rem+env(safe-area-inset-top))]"
+          className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
           {workspaceHub(route) && (
             <WorkspaceTabs
