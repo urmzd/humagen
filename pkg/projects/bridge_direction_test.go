@@ -20,7 +20,11 @@ func TestBridgeDirectionIsRetainedInBindings(t *testing.T) {
 	if _, err := s.CreateChannel("acme", projects.Channel{Project: "Field", Name: "chat", Slack: &binding}, ada, t0); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := json.Marshal(s.Bindings("acme", "slack"))
+	bindings, err := s.Bindings("acme", "slack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(bindings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +57,7 @@ func TestBridgeDirectionModesValidateAndResetOutboundBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bindings := replay.Bindings("acme", "slack")
+		bindings, _ := replay.Bindings("acme", "slack")
 		if len(bindings) != 1 || bindings[0].Direction != projects.BridgeInbound || bindings[0].Direction.AllowsOutcomes() {
 			t.Fatal("direction lost on restart")
 		}

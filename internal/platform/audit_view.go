@@ -79,9 +79,12 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 	if from.Before(cut) {
 		from = cut
 	}
-	reads := p.ReadAudit.ListVisible(who.Tenant, from, q.To, limit, func(r readaudit.Record) bool {
+	reads, err := p.ReadAudit.ListVisible(who.Tenant, from, q.To, limit, func(r readaudit.Record) bool {
 		return (q.Actor == "" || q.Actor == r.Subject) && (q.Resource == "" || q.Resource == "project") && seer.Place(Place{Project: r.Project, Thread: r.Thread})
 	})
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range reads {
 		id, err := p.AuditReferences.ID(who.Tenant, "read", fmt.Sprintf("%s:%s:%s:%d", r.Subject, r.Project, r.Thread, r.At.UnixNano()))
 		if err != nil {
@@ -89,7 +92,11 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 		}
 		rows = append(rows, audit.Record{ID: id, Actor: r.Subject, At: r.At, FinishedAt: r.At, Outcome: audit.Succeeded, Change: audit.Change{Action: "project.break_glass_read", Resource: "project", ID: r.Project, Scope: "project", Project: r.Project, Thread: r.Thread, Route: r.Route, Rule: "projects:govern"}})
 	}
-	for _, r := range p.Projects.RecentHistory(who.Tenant) {
+	history, err := p.Projects.RecentHistory(who.Tenant)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range history {
 		if q.Actor != "" && r.By != q.Actor || q.Resource != "" && q.Resource != "project" || r.At.Before(from) || !r.At.Before(q.To) || !seer.Project(r.Project) {
 			continue
 		}
@@ -101,9 +108,13 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 		}
 		rows = append(rows, audit.Record{ID: id, Actor: r.By, At: r.At, FinishedAt: r.At, Outcome: audit.Succeeded, Change: audit.Change{Action: "project." + r.What, Resource: "project", ID: r.Project, Project: r.Project, Scope: "project", Before: before, After: after}})
 	}
-	for _, r := range p.CallPolicies.Snapshots(who.Tenant, from, q.To, limit, func(pol callpolicy.Policy) bool {
+	snapshots, err := p.CallPolicies.Snapshots(who.Tenant, from, q.To, limit, func(pol callpolicy.Policy) bool {
 		return (q.Actor == "" || q.Actor == pol.UpdatedBy) && (q.Resource == "" || q.Resource == "call_policy") && seer.Agent(pol.Agent)
-	}) {
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range snapshots {
 		id, err := p.AuditReferences.ID(who.Tenant, "call-policy", fmt.Sprintf("%s:%d", r.Agent, r.Version))
 		if err != nil {
 			return nil, err

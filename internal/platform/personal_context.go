@@ -21,7 +21,7 @@ func (p *Platform) personalLayers(tenant, project, subject string) []ContextLaye
 	if subject == "" {
 		return out
 	}
-	prefs := p.Prefs.Get(tenant, subject).Personal
+	prefs := p.PreferencesOf(tenant, subject).Personal
 	if prefs.Briefing != "" {
 		out = append(out, ContextLayer{Kind: "personal_briefing", From: subject, Text: "How the person asking prefers to be briefed:\n" + prefs.Briefing, Budget: 500, Used: utf8.RuneCountInString(prefs.Briefing), Sent: true, Unit: "characters"})
 	}
@@ -31,7 +31,7 @@ func (p *Platform) personalLayers(tenant, project, subject string) []ContextLaye
 		return out
 	}
 	owner := memory.PersonalOwner(subject)
-	if text := p.Memory.PromptAt(tenant, owner, "What the person asking has chosen to remember:", p.now()); text != "" {
+	if text := p.promptOf(tenant, owner, "What the person asking has chosen to remember:"); text != "" {
 		out = append(out, ContextLayer{Kind: "personal_notes", From: subject, Text: text, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, owner), Sent: true, Unit: "characters"})
 	}
 	return out

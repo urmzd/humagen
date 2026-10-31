@@ -48,7 +48,12 @@ func (s *Server) listPolicies(w http.ResponseWriter, _ *http.Request, who auth.P
 	seer := s.P.Seer(who)
 	names := s.P.Names(who.Tenant)
 	out := []policyView{}
-	for _, pol := range s.P.Policies.List(who.Tenant) {
+	pols, err := s.P.Policies.List(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, pol := range pols {
 		if seer.Scope(pol.Scope) {
 			out = append(out, viewPolicy(names, pol))
 		}
@@ -151,7 +156,12 @@ func (s *Server) policyHistory(w http.ResponseWriter, _ *http.Request, who auth.
 	seer := s.P.Seer(who)
 	names := s.P.Names(who.Tenant)
 	out := []policyChangeView{}
-	for _, c := range s.P.Policies.History(who.Tenant) {
+	changes, err := s.P.Policies.History(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, c := range changes {
 		if seer.Scope(c.Scope) {
 			out = append(out, policyChangeView{Change: c, ByName: names.Of(c.By)})
 		}
@@ -219,12 +229,21 @@ func (s *Server) usage(w http.ResponseWriter, _ *http.Request, who auth.Principa
 	now := time.Now()
 	out := []scopeUsage{}
 	seer := s.P.Seer(who)
-	for _, pol := range s.P.Policies.List(who.Tenant) {
+	pols, err := s.P.Policies.List(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, pol := range pols {
 		if !seer.Scope(pol.Scope) {
 			continue
 		}
 		start, end := policy.PeriodStart(pol.Period, now), policy.PeriodEnd(pol.Period, now)
-		u := s.P.Usage.Usage(who.Tenant, pol.Scope, start)
+		u, err := s.P.Usage.Usage(who.Tenant, pol.Scope, start)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
 		warn := pol.WarnAt
 		if warn == 0 {
 			warn = policy.DefaultWarnAt
@@ -257,7 +276,12 @@ func (s *Server) usage(w http.ResponseWriter, _ *http.Request, who auth.Principa
 func (s *Server) usageNotices(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
 	out := []usage.Entry{}
-	for _, e := range s.P.Usage.Notices(who.Tenant, 200) {
+	notices, err := s.P.Usage.Notices(who.Tenant, 200)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, e := range notices {
 		if seer.Notice(e) {
 			out = append(out, e)
 		}

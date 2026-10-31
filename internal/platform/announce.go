@@ -184,7 +184,12 @@ func (p *Platform) SurfaceNoticesFor(who auth.Principal, n inbox.Notice) []ActAs
 	}
 	var tree *projects.Tree
 	var out []ActAs
-	for _, c := range p.Clients.List(who.Tenant) {
+	all, err := p.Clients.List(who.Tenant)
+	if err != nil {
+		p.log.Error("platform: clients could not be read", "tenant", who.Tenant, "error", err)
+		return nil
+	}
+	for _, c := range all {
 		if !machineOf(c, who) || c.Slack == nil {
 			continue
 		}
@@ -257,11 +262,22 @@ func (p *Platform) noticeReader(tree *projects.Tree, who auth.Principal) inbox.R
 		return r
 	}
 	var seer *Seer
-	for _, c := range p.Clients.List(who.Tenant) {
+	all, err := p.Clients.List(who.Tenant)
+	if err != nil {
+		p.log.Error("platform: clients could not be read", "tenant", who.Tenant, "error", err)
+		return r
+	}
+	for _, c := range all {
 		if !machineOf(c, who) {
 			continue
 		}
-		for _, b := range p.Projects.Bindings(who.Tenant, c.ID) {
+		bindings, err := p.Projects.Bindings(who.Tenant, c.ID)
+		if err != nil {
+			// What a client's bindings would add stays out until they can be read.
+			p.log.Warn("platform: a client's channel bindings could not be read", "tenant", who.Tenant, "client", c.ID, "error", err)
+			continue
+		}
+		for _, b := range bindings {
 			if b.Channel != projects.General || slices.Contains(r.Projects, b.Project) {
 				continue
 			}

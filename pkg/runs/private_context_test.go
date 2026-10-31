@@ -47,9 +47,6 @@ func TestPrivateContextMarkerWritesThroughWithoutChangingAcceptedTag(t *testing.
 		if strings.Contains(string(public), "private_context") {
 			t.Fatal("internal privacy classification leaked in run JSON")
 		}
-		if err := index.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		again, err := Open(st)
 		if err != nil {
 			t.Fatal(err)

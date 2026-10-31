@@ -19,10 +19,7 @@ func TestSearchAnswersReplayWithoutPreparedContext(t *testing.T) {
 	if err := x.Record("r-search", tag, 1); err != nil {
 		t.Fatal(err)
 	}
-	x.End("r-search", Completed, "Zephyr recorded answer", "", t0.Add(time.Minute))
-	if err := x.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	x.End("acme", "r-search", Completed, "Zephyr recorded answer", "", t0.Add(time.Minute))
 	again, err := Open(st)
 	if err != nil {
 		t.Fatal(err)

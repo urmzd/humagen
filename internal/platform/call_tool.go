@@ -149,10 +149,11 @@ func (t *callTool) Approval(c saigetypes.ToolCallPart) (native.ApprovalRequest, 
 	if callee == "" {
 		return native.ApprovalRequest{}, false
 	}
-	pol, _ := t.p.CallPolicies.Get(t.tenant, callee)
-	if !pol.Admits(t.caller) {
-		// Refused when it runs, with the callee's reason. Nobody is asked
-		// about a call that cannot happen.
+	pol, _, err := t.p.CallPolicies.Get(t.tenant, callee)
+	if err != nil || !pol.Admits(t.caller) {
+		// Refused when it runs, with the callee's reason, or with why its
+		// policy could not be read. Nobody is asked about a call that
+		// cannot happen.
 		return native.ApprovalRequest{}, false
 	}
 	needed, approvers, self, expires := t.p.callApproval(t.tenant, t.caller, callee)

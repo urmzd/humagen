@@ -31,7 +31,7 @@ func TestKeptAcrossRestartAndApartByTenantAndPerson(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := s.Get("acme", "ada"); got.Version != 0 || got.ToolServers == nil || got.Memory != "" {
+		if got := get(t, s, "acme", "ada"); got.Version != 0 || got.ToolServers == nil || got.Memory != "" {
 			t.Fatalf("before any write = %+v", got)
 		}
 		first, err := s.Set("acme", "ada", input(0), at)
@@ -59,13 +59,13 @@ func TestKeptAcrossRestartAndApartByTenantAndPerson(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := again.Get("acme", "ada"); got.Version != 2 || got.Memory != first.Memory || got.Run.Preferences.Model != "" {
+		if got := get(t, again, "acme", "ada"); got.Version != 2 || got.Memory != first.Memory || got.Run.Preferences.Model != "" {
 			t.Fatalf("after restart = %+v", got)
 		}
-		if got := again.Get("acme", "bob"); got.Version != 1 || got.Memory == first.Memory || len(got.ToolServers) != 1 {
+		if got := get(t, again, "acme", "bob"); got.Version != 1 || got.Memory == first.Memory || len(got.ToolServers) != 1 {
 			t.Fatalf("bob after restart = %+v", got)
 		}
-		if got := again.Get("globex", "ada"); got.Version != 0 || len(got.ToolServers) != 0 {
+		if got := get(t, again, "globex", "ada"); got.Version != 0 || len(got.ToolServers) != 0 {
 			t.Fatalf("another tenant sees %+v", got)
 		}
 	})
@@ -87,10 +87,10 @@ func TestAFailedWriteChangesNothing(t *testing.T) {
 	if _, err := s.Set("acme", "new", input(0), at); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Set = %v", err)
 	}
-	if got := s.Get("acme", "ada"); got.Version != 1 || len(got.ToolServers) != 1 {
+	if got := get(t, s, "acme", "ada"); got.Version != 1 || len(got.ToolServers) != 1 {
 		t.Fatalf("after a failed write = %+v", got)
 	}
-	if got := s.Get("acme", "new"); got.Version != 0 || got.Memory != "" {
+	if got := get(t, s, "acme", "new"); got.Version != 0 || got.Memory != "" {
 		t.Fatalf("a failed write kept %+v", got)
 	}
 }
@@ -121,7 +121,16 @@ func TestOnlyDefinitionsAndReferencesAreKept(t *testing.T) {
 	if _, err := s.Set("acme", "", input(0), at); !errors.Is(err, ErrInvalid) {
 		t.Errorf("no subject: %v", err)
 	}
-	if got := s.Get("acme", "ada"); got.Version != 0 {
+	if got := get(t, s, "acme", "ada"); got.Version != 0 {
 		t.Fatalf("a refused write kept %+v", got)
 	}
+}
+
+func get(t *testing.T, s *Store, tenant, subject string) Context {
+	t.Helper()
+	c, err := s.Get(tenant, subject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }

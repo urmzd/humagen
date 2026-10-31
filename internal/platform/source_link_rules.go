@@ -10,14 +10,18 @@ type SourceLinkRule = sourcelinks.Rule
 
 // SourceLinkRulesForFork snapshots only the selected project's explicit rules.
 // Fork authorization is checked before this internal composition helper is used.
-func (p *Platform) SourceLinkRulesForFork(tenant, from string) []SourceLinkRule {
+func (p *Platform) SourceLinkRulesForFork(tenant, from string) ([]SourceLinkRule, error) {
+	rules, err := p.SourceLinks.List(tenant)
+	if err != nil {
+		return nil, err
+	}
 	out := []SourceLinkRule{}
-	for _, rule := range p.SourceLinks.List(tenant) {
+	for _, rule := range rules {
 		if projects.NameOf(rule.Project) == projects.NameOf(from) {
 			out = append(out, rule)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // RestoreSourceLinkRulesDisabled replays the recorded snapshot into the staged
@@ -34,5 +38,9 @@ func (p *Platform) RestoreSourceLinkRulesDisabled(tenant, to, operation string, 
 }
 
 func (p *Platform) CopySourceLinkRulesDisabled(tenant, from, to, operation string) error {
-	return p.RestoreSourceLinkRulesDisabled(tenant, to, operation, p.SourceLinkRulesForFork(tenant, from))
+	rules, err := p.SourceLinkRulesForFork(tenant, from)
+	if err != nil {
+		return err
+	}
+	return p.RestoreSourceLinkRulesDisabled(tenant, to, operation, rules)
 }

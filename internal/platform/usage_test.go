@@ -140,12 +140,14 @@ func script(responses ...[]saigetypes.Delta) saigetypes.Provider {
 }
 
 func spendOf(p *platform.Platform, tenantName string) policy.Usage {
-	return p.Usage.Usage(tenantName, policy.Scope{Kind: policy.Tenant}, time.Time{})
+	return usageOf(p, tenantName, policy.Scope{Kind: policy.Tenant}, time.Time{})
 }
 
-func settled(p *platform.Platform, runID string) int {
+func settled(p *platform.Platform, runID string) int { return settledIn(p, tenant, runID) }
+
+func settledIn(p *platform.Platform, tenantName, runID string) int {
 	n := 0
-	for _, e := range p.Usage.Entries() {
+	for _, e := range entriesOf(p, tenantName) {
 		if e.Kind == usage.Settled && e.RunID == runID {
 			n++
 		}
@@ -190,7 +192,7 @@ func TestARunsUsageIsRecordedOnceDespiteRedeliveredTerminalEventsAndReconcilerPa
 
 	// Everything again: every event the run published, its ending, a pass of
 	// the reconciler.
-	for _, e := range p.Journal.Events(tenant, []string{r.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{r.ID})) {
 		p.Redeliver(ctx, e)
 	}
 	p.Ended(ctx, done)
@@ -270,15 +272,20 @@ func TestChildrenRollUpExactlyOnceThroughTheDelegator(t *testing.T) {
 	lead := await(t, p, r.ID, runs.Completed)
 	helper := called(t, p, lead.ID, "helper", runs.Completed)
 	worker := called(t, p, lead.ID, "worker", runs.Completed)
-	within(t, "every run is settled", func() bool {
-		return settled(p, lead.ID) == 1 && settled(p, helper.ID) == 1 && settled(p, worker.ID) == 1
-	})
-	lead, _ = p.Runs.Get(tenant, lead.ID)
-	helper, _ = p.Runs.Get(tenant, helper.ID)
-
 	own := cost(1000, 100) + cost(1000, 100) + cost(2000, 100)
 	child := cost(500, 50)
 	delegated := cost(300, 30)
+	within(t, "every run is settled", func() bool {
+		return settled(p, lead.ID) == 1 && settled(p, helper.ID) == 1 && settled(p, worker.ID) == 1
+	})
+	// A child's spend settles into its caller just after its own entry is
+	// written, so the caller's figure is read once both calls are in it.
+	within(t, "both calls settle into the lead", func() bool {
+		l, err := p.Runs.Get(tenant, lead.ID)
+		return err == nil && l.Spent >= own+child+delegated
+	})
+	lead, _ = p.Runs.Get(tenant, lead.ID)
+	helper, _ = p.Runs.Get(tenant, helper.ID)
 	u := lead.Usage
 	if u == nil || u.Own.Cost == nil || u.Own.Cost.Micros != own || u.Own.ModelCalls != 3 {
 		t.Fatalf("lead's own usage = %+v", u)
@@ -293,7 +300,7 @@ func TestChildrenRollUpExactlyOnceThroughTheDelegator(t *testing.T) {
 		t.Fatalf("helper's total = %+v", helper.Usage.Total)
 	}
 	reports := 0
-	for _, e := range p.Journal.Events(tenant, []string{lead.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{lead.ID})) {
 		if e.Type == event.TypeUsageChild {
 			reports++
 		}
@@ -368,7 +375,7 @@ func TestARunCrossingTheHardLimitMidRunIsStoppedThroughTheRuntime(t *testing.T) 
 		t.Fatalf("the run was stopped for %q", stopped.Cause)
 	}
 	stoppedEvent := false
-	for _, e := range p.Journal.Events(tenant, []string{r.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{r.ID})) {
 		stoppedEvent = stoppedEvent || (e.Type == event.TypeStopped && strings.Contains(wire.JSONOf(e), platform.StoppedByLimit))
 	}
 	if !stoppedEvent {
@@ -397,7 +404,7 @@ func TestARunCrossingTheHardLimitMidRunIsStoppedThroughTheRuntime(t *testing.T) 
 		t.Fatalf("%d warning and %d stop messages, want one of each", warned, halted)
 	}
 	notices := 0
-	for _, n := range p.Usage.Notices(tenant, 0) {
+	for _, n := range noticesOf(p, tenant, 0) {
 		if n.Kind == usage.Halted && n.RunID == r.ID && n.Limit == policy.LimitSpend {
 			notices++
 		}
@@ -511,7 +518,7 @@ func TestAnotherTenantsUsageNeverAffectsALimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	within(t, "globex's run is settled", func() bool { return settled(p, theirs.ID) == 1 })
+	within(t, "globex's run is settled", func() bool { return settledIn(p, "globex", theirs.ID) == 1 })
 	if got := spendOf(p, tenant); got.Spend != 0 || got.ModelCalls != 0 {
 		t.Fatalf("acme counts globex's spending: %+v", got)
 	}
@@ -599,7 +606,7 @@ func TestACallReportedAfterItsRunSettledDoesNotInflateSpent(t *testing.T) {
 	// The helper's call again, under a key never seen: the shape of a call
 	// whose event was missed and arrives after settlement.
 	var late event.Envelope
-	for _, e := range p.Journal.Events(tenant, []string{helper.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{helper.ID})) {
 		if e.Type == event.TypeUsageCall {
 			late = e
 		}
@@ -750,12 +757,12 @@ func TestHousekeepingIsExemptFromTheSpendStop(t *testing.T) {
 		t.Fatalf("the housekeeping run ended %s: %s", hook.Status, hook.Cause)
 	}
 	within(t, "its spend is counted", func() bool { return settled(p, hook.ID) == 1 })
-	for _, n := range p.Usage.Notices(tenant, 0) {
+	for _, n := range noticesOf(p, tenant, 0) {
 		if n.Kind == usage.Halted && n.RunID == hook.ID {
 			t.Fatal("the housekeeping run was halted")
 		}
 	}
-	if got := p.Usage.RunSpend(tenant, hook.ID); got.Micros != 3*cost(1000, 100) {
+	if got := runSpendOf(p, tenant, hook.ID); got.Micros != 3*cost(1000, 100) {
 		t.Fatalf("the housekeeping run's spend = %+v", got)
 	}
 }

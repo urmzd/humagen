@@ -84,9 +84,7 @@ func (s *Store) SetPersonal(tenant, subject string, next Personal) (Preferences,
 	if err != nil {
 		return Preferences{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.change(tenant, subject, false, func(e *entry) { e.Personal = next })
+	return s.change(tenant, subject, func(e *Preferences) error { e.Personal = next; return nil })
 }
 
 // NotificationDelivery is a dispatch policy, not a transport. A dispatcher must

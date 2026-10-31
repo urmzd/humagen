@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Agents in projects: which agents may run where, who answers a message that
@@ -381,18 +382,28 @@ func (p *Platform) joinFor(ctx context.Context, c clients.Client, at Place, text
 // it, so only the settings are written. It runs after migrateProjects, which
 // writes the root of a workspace that kept projects in its settings.
 func (p *Platform) migrateBaseline() error {
-	p.settings.mu.Lock()
-	defer p.settings.mu.Unlock()
-	tenants := slices.Collect(maps.Keys(p.settings.baselines))
-	for _, t := range p.Projects.Tenants() {
-		if p.Projects.Tree(t).Root().Agents.Enable == nil && !slices.Contains(tenants, t) {
+	_, baselines, done, err := p.settings.leftovers()
+	if err != nil || done {
+		return err
+	}
+	tenants := slices.Collect(maps.Keys(baselines))
+	err = p.Projects.EachTenant(func(t string) error {
+		tree, err := p.Projects.Read(t)
+		if err != nil {
+			return err
+		}
+		if tree.Root().Agents.Enable == nil && !slices.Contains(tenants, t) {
 			tenants = append(tenants, t)
 		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("platform: read the workspaces' roots: %w", err)
 	}
 	slices.Sort(tenants)
 	w := projects.Writer{By: migration, Govern: true}
 	for _, tenant := range tenants {
-		baseline, had := p.settings.baselines[tenant]
+		baseline, had := baselines[tenant]
 		// The root is written even when the upgrade leaves it as it reads,
 		// so its history says the upgrade set the workspace default. An
 		// empty baseline was the picker, which auto still is.
@@ -421,19 +432,29 @@ func (p *Platform) migrateBaseline() error {
 			_, err = p.Projects.SetAgents(tenant, projects.Root, root.Version, next, w, p.now())
 		}
 		if err != nil {
-			return fmt.Errorf("platform: make the baseline of %q the workspace default: %w", tenant, err)
+			// A process starting at the same time may have written the root
+			// first: then it is done here.
+			if now := p.Projects.Tree(tenant).Root(); now.Version == root.Version || now.Agents.Enable == nil {
+				return fmt.Errorf("platform: make the baseline of %q the workspace default: %w", tenant, err)
+			}
+		} else {
+			p.log.Info("platform: the baseline is now the workspace default", "tenant", tenant, "default", next.Default)
 		}
-		p.log.Info("platform: the baseline is now the workspace default", "tenant", tenant, "default", next.Default)
 		if !had {
 			continue
 		}
-		delete(p.settings.baselines, tenant)
-		if err := p.settings.put(tenant, p.settings.by[tenant]); err != nil {
-			p.settings.baselines[tenant] = baseline
+		err = p.settings.update(tenant, func(v *storedSettings) error {
+			if v.LegacyBaseline == nil {
+				return state.ErrUnchanged
+			}
+			v.LegacyBaseline = nil
+			return nil
+		})
+		if err != nil {
 			return fmt.Errorf("platform: clear the baseline of %q from its settings: %w", tenant, err)
 		}
 	}
-	return nil
+	return p.settings.migrated()
 }
 
 // AgentsInput is what a person sets on a project's agents, as a whole: an
@@ -626,21 +647,34 @@ func (p *Platform) homeUsers(tenant, agent string, before, after *projects.Tree)
 	if home, ok := after.Home(agent); ok && !p.defaultSkillsFitHome(tenant, agent, home, after) {
 		out = append(out, "the agent default skills")
 	}
-	for _, sc := range p.Schedules.List(tenant) {
+	// What cannot be read is named, so a move is refused rather than
+	// allowed blind.
+	scheds, err := p.Schedules.List(tenant)
+	if err != nil {
+		out = append(out, "the schedules, which could not be read")
+	}
+	for _, sc := range scheds {
 		if sc.Agent == agent && lost(sc.Context[runs.MetaProject]) {
 			out = append(out, "the schedule "+sc.Name)
 		}
 	}
-	for _, r := range p.Alerts.Rules(tenant) {
+	rules, err := p.Alerts.Rules(tenant)
+	if err != nil {
+		// What cannot be read may point at the agent, so the move waits.
+		out = append(out, "the alert rules, which could not be read")
+	}
+	for _, r := range rules {
 		if r.Agent == agent && r.Project != "" && lost(r.Project) {
 			out = append(out, "the alert rule "+r.Name)
 		}
 	}
-	for _, surface := range clients.Surfaces() {
-		for _, c := range p.Clients.On(surface) {
-			if c.Tenant == tenant && (c.DefaultAgent == agent || slices.Contains(c.Agents, agent)) && lost(projects.Root) {
-				out = append(out, "the client "+c.ID)
-			}
+	cs, err := p.Clients.List(tenant)
+	if err != nil {
+		out = append(out, "the clients, which could not be read")
+	}
+	for _, c := range cs {
+		if c.Enabled && (c.DefaultAgent == agent || slices.Contains(c.Agents, agent)) && lost(projects.Root) {
+			out = append(out, "the client "+c.ID)
 		}
 	}
 	return out

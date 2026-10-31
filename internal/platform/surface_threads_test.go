@@ -219,7 +219,7 @@ func TestAMachineReadsAMappedPersonsInbox(t *testing.T) {
 	if err != nil || ana.Subject != "ana" {
 		t.Fatalf("acting for U0ANA = %+v, %v", ana, err)
 	}
-	if c := p.InboxCount(ana); c.Open != 1 {
+	if c := inboxCount(t, p, ana); c.Open != 1 {
 		t.Fatalf("ana's count through the app = %+v", c)
 	}
 	if _, err := p.ActingFor(machine, platform.ActAs{Client: "app", User: "U0NOBODY"}); !errors.Is(err, platform.ErrForbidden) {

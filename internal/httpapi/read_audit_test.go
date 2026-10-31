@@ -8,6 +8,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/platform"
 	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
+	"github.com/urmzd/humagen/pkg/readaudit"
 )
 
 func TestBreakGlassReadsAreRecordedAndAdminOnly(t *testing.T) {
@@ -18,7 +19,7 @@ func TestBreakGlassReadsAreRecordedAndAdminOnly(t *testing.T) {
 	want(t, f, op, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"owner","role":"owner"}]}`, 200)
 	before := time.Now().Add(-time.Second)
 	want(t, f, gov, "GET", "/api/projects/Secret", "", 200)
-	rows := f.p.ReadAudit.List("acme", before, time.Now().Add(time.Second), 500)
+	rows := readAudit(t, f, before)
 	found := false
 	for _, r := range rows {
 		if r.Subject == "governor" && r.Project == "Secret" && r.Route == "GET /api/projects/{name}" {
@@ -30,7 +31,7 @@ func TestBreakGlassReadsAreRecordedAndAdminOnly(t *testing.T) {
 	}
 	n := len(rows)
 	want(t, f, op, "GET", "/api/projects/Secret", "", 200)
-	if got := len(f.p.ReadAudit.List("acme", before, time.Now().Add(time.Second), 500)); got != n {
+	if got := len(readAudit(t, f, before)); got != n {
 		t.Fatalf("ordinary read audited: %d -> %d", n, got)
 	}
 	want(t, f, gov, "GET", "/api/read-audit", "", 403)
@@ -57,7 +58,7 @@ func TestDelegatedReadsKeepTheEffectiveReaderAndServerRoute(t *testing.T) {
 	want(t, f, app, "POST", "/api/clients", client, 201)
 	start := time.Now().Add(-time.Second)
 	want(t, f, app, "GET", "/api/projects?act_as_client=app&act_as_user=U0REVIEWER&q=Secret", "", 200)
-	rows := f.p.ReadAudit.List("acme", start, time.Now().Add(time.Second), 500)
+	rows := readAudit(t, f, start)
 	found := false
 	for _, row := range rows {
 		if row.Project == "Secret" && row.Subject == "reviewer" && row.Route == "GET /api/projects" {
@@ -67,4 +68,14 @@ func TestDelegatedReadsKeepTheEffectiveReaderAndServerRoute(t *testing.T) {
 	if !found {
 		t.Fatalf("delegated read lost effective subject or route: %#v", rows)
 	}
+}
+
+// readAudit returns the tenant acme's recorded reads since a moment.
+func readAudit(t *testing.T, f *fixture, since time.Time) []readaudit.Record {
+	t.Helper()
+	rows, err := f.p.ReadAudit.List("acme", since, time.Now().Add(time.Second), 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
 }

@@ -540,7 +540,7 @@ func TestWhatATurnTeachesAProjectAlwaysNeedsHumanReview(t *testing.T) {
 	statuses := func(project string) []string {
 		t.Helper()
 		var out []string
-		for _, n := range f.p.Memory.List("acme", memory.ProjectOwner(project)) {
+		for _, n := range notesOf(t, f.p.Memory, "acme", memory.ProjectOwner(project)) {
 			out = append(out, string(n.Status))
 		}
 		return out

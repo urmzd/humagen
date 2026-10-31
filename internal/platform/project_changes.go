@@ -20,6 +20,7 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -428,7 +429,7 @@ func (p *Platform) noteChanges(scope changesScope) []changeRow {
 		if project == "" {
 			continue
 		}
-		for _, n := range p.Memory.List(scope.tenant, memory.ProjectOwner(project)) {
+		for _, n := range p.notesOf(scope.tenant, memory.ProjectOwner(project)) {
 			if n.Status != memory.Approved || n.At.Before(scope.since) || !n.At.Before(scope.until) {
 				continue
 			}
@@ -447,12 +448,16 @@ func (p *Platform) scheduleChanges(scope changesScope) []changeRow {
 	}
 	inWindow := func(t time.Time) bool { return !t.Before(scope.since) && t.Before(scope.until) }
 	var out []changeRow
-	for _, sc := range p.Schedules.List(scope.tenant) {
+	scheds, err := p.Schedules.List(scope.tenant)
+	if err != nil {
+		p.log.Error("platform: schedules could not be read for the changes", "tenant", scope.tenant, "error", err)
+	}
+	for _, sc := range scheds {
 		project := sc.Context[runs.MetaProject]
 		if project == "" || !in[project] {
 			continue
 		}
-		about := p.Schedules.About(sc.Name)
+		about := sc.About
 		agent := sc.Agent
 		if !scope.shown(agent) {
 			agent = "an agent"
@@ -529,7 +534,10 @@ func (p *Platform) announcementChanges(scope changesScope) []changeRow {
 	for _, name := range scope.projects {
 		in[name] = true
 	}
-	msgs, _ := p.Inbox.Snapshot(scope.tenant)
+	msgs, err := p.Inbox.Raised(scope.tenant, inbox.KindAnnouncement, scope.since, scope.until, state.MaxList)
+	if err != nil {
+		p.log.Warn("platform: announcements for a recap could not be read", "tenant", scope.tenant, "error", err)
+	}
 	var out []changeRow
 	for _, m := range msgs {
 		if m.Kind != inbox.KindAnnouncement || !m.Broadcast || m.State == inbox.Dismissed || !in[m.Source.Project] ||
@@ -556,7 +564,11 @@ func (p *Platform) announcementChanges(scope changesScope) []changeRow {
 func (p *Platform) recordChanges(scope changesScope) []changeRow {
 	var out []changeRow
 	for _, project := range scope.projects {
-		changes, _ := p.Projects.History(scope.tenant, project, MaxChangeRows, 0)
+		changes, _, err := p.Projects.History(scope.tenant, project, MaxChangeRows, 0)
+		if err != nil {
+			p.log.Warn("platform: a project's history could not be read for a recap", "tenant", scope.tenant, "project", project, "error", err)
+			continue
+		}
 		for _, c := range changes {
 			if c.At.Before(scope.since) || !c.At.Before(scope.until) {
 				continue

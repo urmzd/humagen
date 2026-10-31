@@ -151,7 +151,10 @@ func (s *Server) projectFacts(who auth.Principal) projectFacts {
 	for _, name := range f.tree.Named(platform.ReaderOf(who)) {
 		f.named[name] = true
 	}
-	for _, sc := range s.P.Schedules.List(tenant) {
+	// A count that cannot be read is left out: the facts are what is shown,
+	// and nothing is decided on them.
+	scheds, _ := s.P.Schedules.List(tenant)
+	for _, sc := range scheds {
 		f.schedules[sc.Context[runs.MetaProject]]++
 	}
 	return f
@@ -236,7 +239,13 @@ func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	}
 	c := f.counts[p.Name]
 	v.Conversations, v.Active, v.ActiveAt = c.Threads, c.Active, c.ActiveAt
-	for _, n := range s.P.Memory.List(f.tenant, memory.ProjectOwner(p.Name)) {
+	notes, err := s.P.Memory.List(f.tenant, memory.ProjectOwner(p.Name))
+	if err != nil {
+		// The counts are a summary beside the project: it is shown without
+		// them rather than not at all.
+		s.Log.Error("httpapi: project notes could not be read", "project", p.Name, "error", err)
+	}
+	for _, n := range notes {
 		if n.Status == memory.Approved {
 			v.Notes++
 		} else {
@@ -543,7 +552,12 @@ func (s *Server) projectMemory(w http.ResponseWriter, r *http.Request, who auth.
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
+	notes, err := s.P.Memory.List(who.Tenant, owner)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, notes)})
 }
 
 // addProjectMemory adds a note. An owner's is in use at once; a member's is

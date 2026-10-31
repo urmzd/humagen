@@ -72,6 +72,10 @@ func (p *Platform) admit(tag event.Envelope, edge call.Edge, project string, wit
 	// the rest (spend, tokens, a lease's size) and warns, on the counts as
 	// they are.
 	chain := chainOf(project, within)
+	pols, err := p.Policies.For(tag.Tenant, chain, tag.Agent, client)
+	if err != nil {
+		return err
+	}
 	var d policy.Decision
 	var applied []policy.Applied
 	var roomErr error
@@ -89,7 +93,7 @@ func (p *Platform) admit(tag event.Envelope, edge call.Edge, project string, wit
 		// the person's place back below.
 		roomErr = p.admitRoom(tag, edge, project)
 		return roomErr == nil, nil
-	}, quotasOf(p.Policies.For(tag.Tenant, chain, tag.Agent, client), now))
+	}, quotasOf(pols, now))
 	if roomErr != nil {
 		return roomErr
 	}
@@ -168,27 +172,30 @@ func fullDecision(applied []policy.Applied, q usage.Quota, lease int64) policy.D
 }
 
 // appendUsage appends an entry the platform has nobody to report a failed
-// write to. The ledger has counted it all the same and writes it later.
+// write to. One that could not be written is logged, and not kept.
 func (p *Platform) appendUsage(e usage.Entry) {
 	if _, err := p.Usage.Append(e); err != nil {
-		p.log.Error("platform: usage entry could not be written yet", "kind", e.Kind, "run", e.RunID, "error", err)
+		p.log.Error("platform: usage entry could not be written", "kind", e.Kind, "run", e.RunID, "error", err)
 	}
 }
 
 // applied is every policy a run in this place falls under, most specific
 // first, with what its scope has used in the policy's current period. chain is
 // the run's project and the ancestors it is within, nearest first.
-func (p *Platform) applied(tenant string, chain []string, agent, client string, now time.Time) []policy.Applied {
-	out, _ := p.appliedBy(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
-		return p.Usage.Usage(tenant, scope, since), nil
+func (p *Platform) applied(tenant string, chain []string, agent, client string, now time.Time) ([]policy.Applied, error) {
+	return p.appliedBy(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
+		return p.Usage.Usage(tenant, scope, since)
 	}, tenant, chain, agent, client, now)
-	return out
 }
 
 // appliedBy is applied, with what each scope has used read by read.
 func (p *Platform) appliedBy(read usage.Reader, tenant string, chain []string, agent, client string, now time.Time) ([]policy.Applied, error) {
+	pols, err := p.Policies.For(tenant, chain, agent, client)
+	if err != nil {
+		return nil, err
+	}
 	var out []policy.Applied
-	for _, pol := range p.Policies.For(tenant, chain, agent, client) {
+	for _, pol := range pols {
 		u, err := read(pol.Scope, policy.PeriodStart(pol.Period, now))
 		if err != nil {
 			return nil, err

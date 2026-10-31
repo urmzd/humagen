@@ -43,7 +43,11 @@ func TestContextPreviewUsesTurnLayersAndConfinesReads(t *testing.T) {
 	before := time.Now().Add(-time.Second)
 	want(t, f, governor, "GET", "/api/projects/Field/context?agent=helper", "", http.StatusOK)
 	count := 0
-	for _, row := range f.p.ReadAudit.List("acme", before, time.Now().Add(time.Second), 500) {
+	reads, err := f.p.ReadAudit.List("acme", before, time.Now().Add(time.Second), 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range reads {
 		if row.Subject == "context-governor" && row.Project == "Field" {
 			count++
 			if row.Route != "GET /api/projects/{name}/context" {

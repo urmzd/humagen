@@ -9,7 +9,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
@@ -99,21 +98,16 @@ func (s Settings) withDefaults() Settings {
 	return s
 }
 
-// settings are every tenant's Settings. With a state store each tenant's is
-// written before it is kept, and read back when the platform is built.
+// settings are every tenant's Settings. They are read and written per
+// request (pkg/state, per request): nothing is held in memory, so every
+// process on one database reads the same settings, and they do not need
+// pkg/state's single-writer lock.
+//
+// Each tenant's settings are one record, <tenant>/settings, in the namespace
+// "settings". The tenant "" holds settingsMigrated once the projects and the
+// baseline older settings held have been moved out of them.
 type settings struct {
-	mu   sync.RWMutex
-	by   map[string]Settings
-	kept *state.Table[storedSettings]
-	// legacy is the projects a tenant's settings still held when they were
-	// read, by tenant, until the migration moves them to the project store.
-	// A tenant whose record an earlier version wrote is here even when the
-	// array was null.
-	legacy map[string][]legacyProject
-	// baselines is the baseline agent a tenant's settings still named when
-	// they were read, by tenant, until the migration makes it the root's
-	// default. A tenant whose settings never named one is not in it.
-	baselines map[string]string
+	rec recordSet
 }
 
 // storedSettings is a tenant's settings as they are written. Settings once
@@ -139,56 +133,130 @@ type legacyProject struct {
 // settingsKey is the one key a tenant's settings are kept under.
 const settingsKey = "settings"
 
-// open reads every tenant's settings from st and keeps them there from now
-// on. A nil st keeps them in memory.
+// settingsMigrated marks, in the tenant "", that no tenant's settings hold
+// projects or a baseline any more (migrateProjects, migrateBaseline).
+const settingsMigrated = "migrated:v1"
+
+// open keeps settings in st, which may be shared with other processes. A nil
+// st keeps them in this process's memory.
 func (s *settings) open(st state.Store) error {
-	s.by, s.legacy, s.baselines, s.kept = map[string]Settings{}, map[string][]legacyProject{}, map[string]string{}, state.NewTable[storedSettings](st, "settings")
-	err := s.kept.Load(func(tenant, _ string, v storedSettings) error {
-		s.by[tenant] = v.Settings
-		if v.LegacyProjects != nil {
-			var held []legacyProject
-			if err := json.Unmarshal(v.LegacyProjects, &held); err != nil {
-				return fmt.Errorf("the projects of %q: %w", tenant, err)
-			}
-			s.legacy[tenant] = held
+	if st == nil {
+		st = state.NewMemory()
+	}
+	s.rec = recordSet{st: st, namespace: "settings"}
+	return nil
+}
+
+// read returns a tenant's record and its version, 0 when it has none.
+func (s *settings) read(tenant string) (storedSettings, int64, error) {
+	var v storedSettings
+	ver, err := s.rec.lookup(tenant, settingsKey, &v)
+	switch {
+	case errors.Is(err, state.ErrNotFound):
+		return storedSettings{}, 0, nil
+	case err != nil:
+		return storedSettings{}, 0, fmt.Errorf("platform: read settings: %w", err)
+	}
+	return v, ver, nil
+}
+
+// get returns a tenant's settings as stored, without defaults.
+func (s *settings) get(tenant string) (Settings, error) {
+	v, _, err := s.read(tenant)
+	return v.Settings, err
+}
+
+// update changes a tenant's record by compare-and-set: fn sees it as it is
+// and changes it, and is called again when another writer moved it first.
+// What fn leaves alone, such as a baseline the migration has not yet moved,
+// is written back as it was read. fn returning state.ErrUnchanged writes
+// nothing.
+func (s *settings) update(tenant string, fn func(v *storedSettings) error) error {
+	return state.Retry(func() error {
+		cur, ver, err := s.read(tenant)
+		if err != nil {
+			return err
 		}
-		if v.LegacyBaseline != nil {
-			s.baselines[tenant] = *v.LegacyBaseline
+		if err := fn(&cur); errors.Is(err, state.ErrUnchanged) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		op, err := recordOp(tenant, settingsKey, cur, versionOf(ver))
+		if err != nil {
+			return err
+		}
+		if err := s.rec.write(op); err != nil {
+			if errors.Is(err, state.ErrConflict) {
+				return err
+			}
+			return fmt.Errorf("platform: write settings: %w", err)
 		}
 		return nil
 	})
+}
+
+// leftovers returns the projects and the baselines tenants' settings still
+// hold, read once across tenants, until settingsMigrated is written. A
+// tenant whose record an earlier version wrote is in legacy even when its
+// array was null.
+func (s *settings) leftovers() (legacy map[string][]legacyProject, baselines map[string]string, done bool, err error) {
+	var marked bool
+	if _, err := s.rec.lookup("", settingsMigrated, &marked); err == nil {
+		return nil, nil, true, nil
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return nil, nil, false, err
+	}
+	c, cancel := storeCtx()
+	recs, err := s.rec.st.Load(c, s.rec.namespace)
+	cancel()
 	if err != nil {
-		return fmt.Errorf("platform: load settings: %w", err)
+		return nil, nil, false, fmt.Errorf("platform: load settings: %w", err)
+	}
+	legacy, baselines = map[string][]legacyProject{}, map[string]string{}
+	for _, r := range recs {
+		if r.Tenant == "" || r.Key != settingsKey {
+			continue
+		}
+		var v storedSettings
+		if err := json.Unmarshal(r.Value, &v); err != nil {
+			return nil, nil, false, fmt.Errorf("platform: the settings of %q: %w", r.Tenant, err)
+		}
+		if v.LegacyProjects != nil {
+			var held []legacyProject
+			if err := json.Unmarshal(v.LegacyProjects, &held); err != nil {
+				return nil, nil, false, fmt.Errorf("platform: the projects of %q: %w", r.Tenant, err)
+			}
+			legacy[r.Tenant] = held
+		}
+		if v.LegacyBaseline != nil {
+			baselines[r.Tenant] = *v.LegacyBaseline
+		}
+	}
+	return legacy, baselines, false, nil
+}
+
+// migrated writes settingsMigrated.
+func (s *settings) migrated() error {
+	op, err := recordOp("", settingsMigrated, true, state.Missing)
+	if err != nil {
+		return err
+	}
+	if err := s.rec.write(op); err != nil && !errors.Is(err, state.ErrConflict) {
+		return fmt.Errorf("platform: mark settings migrated: %w", err)
 	}
 	return nil
 }
 
-// put keeps a tenant's settings. A baseline the migration has not yet made
-// the workspace default is kept with them, so no write loses it. The caller
-// holds the lock.
-func (s *settings) put(tenant string, v Settings) error {
-	rec := storedSettings{Settings: v}
-	if b, ok := s.baselines[tenant]; ok {
-		rec.LegacyBaseline = &b
+// Settings returns a tenant's settings. Settings that cannot be read are
+// logged and read as the defaults, which grant nothing beyond them.
+func (p *Platform) Settings(tenant string) Settings {
+	v, err := p.settings.get(tenant)
+	if err != nil {
+		p.log.Error("platform: settings could not be read", "tenant", tenant, "error", err)
 	}
-	if err := s.kept.Put(tenant, settingsKey, rec); err != nil {
-		return fmt.Errorf("platform: write settings: %w", err)
-	}
-	if s.by == nil {
-		s.by = map[string]Settings{}
-	}
-	s.by[tenant] = v
-	return nil
+	return v.withDefaults()
 }
-
-func (s *settings) get(tenant string) Settings {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.by[tenant].withDefaults()
-}
-
-// Settings returns a tenant's settings.
-func (p *Platform) Settings(tenant string) Settings { return p.settings.get(tenant) }
 
 // SetSettings replaces a tenant's settings.
 func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings) error {
@@ -200,7 +268,11 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings, shown func(string) bool) error {
 	next = next.withDefaults()
 	// Who set the workspace up, and when, is the server's to say.
-	stored := p.Settings(tenant)
+	raw, err := p.settings.get(tenant)
+	if err != nil {
+		return err
+	}
+	stored := raw.withDefaults()
 	next.SetupAt, next.SetupBy = stored.SetupAt, stored.SetupBy
 	next.WorkspaceName = strings.TrimSpace(next.WorkspaceName)
 	if len(next.WorkspaceName) > 80 || strings.ContainsAny(next.WorkspaceName, "\r\n\t<>") {
@@ -240,9 +312,11 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 			return policyInUse(old.Name, users, shown)
 		}
 	}
-	p.settings.mu.Lock()
-	defer p.settings.mu.Unlock()
-	return p.settings.put(tenant, next)
+	return p.settings.update(tenant, func(v *storedSettings) error {
+		next.SetupAt, next.SetupBy = v.SetupAt, v.SetupBy
+		v.Settings = next
+		return nil
+	})
 }
 
 // policyInUse refuses removing a policy that users still run on, naming the
@@ -265,14 +339,18 @@ func policyInUse(policy string, users []string, shown func(string) bool) error {
 // MarkSetup records who first set the workspace up. It does nothing once that
 // is on record, so it is safe to call after every admin write.
 func (p *Platform) MarkSetup(tenant, by string) (Settings, error) {
-	p.settings.mu.Lock()
-	defer p.settings.mu.Unlock()
-	cfg := p.settings.by[tenant]
-	if cfg.SetupAt.IsZero() {
-		cfg.SetupAt, cfg.SetupBy = p.now(), by
-		if err := p.settings.put(tenant, cfg); err != nil {
-			return Settings{}, err
+	var cfg Settings
+	err := p.settings.update(tenant, func(v *storedSettings) error {
+		cfg = v.Settings
+		if !v.SetupAt.IsZero() {
+			return state.ErrUnchanged
 		}
+		v.SetupAt, v.SetupBy = p.now(), by
+		cfg = v.Settings
+		return nil
+	})
+	if err != nil {
+		return Settings{}, err
 	}
 	return cfg.withDefaults(), nil
 }

@@ -82,7 +82,7 @@ func projectsOf(who auth.Principal, seer *platform.Seer, tree *projects.Tree, p 
 
 func (s *Server) personOf(tenant string, p people.Person) personView {
 	v := personView{Subject: p.ShownSubject(), Name: p.Name, Handle: p.Handle, Roles: orEmpty(p.Roles), SeenAt: p.SeenAt}
-	own := s.P.Prefs.Get(tenant, p.Subject)
+	own := s.P.PreferencesOf(tenant, p.Subject)
 	if own.DisplayName != "" {
 		v.Name = own.DisplayName
 	}

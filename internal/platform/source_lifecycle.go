@@ -26,9 +26,13 @@ import (
 // SourceVisible applies the same project confinement as other project objects.
 
 // SourcesAs returns a bounded, confined source inventory.
-func (p *Platform) SourcesAs(who auth.Principal) []knowledge.Source {
+func (p *Platform) SourcesAs(who auth.Principal) ([]knowledge.Source, error) {
+	sources, err := p.Knowledge.List(who.Tenant)
+	if err != nil {
+		return nil, err
+	}
 	out := []knowledge.Source{}
-	for _, src := range p.Knowledge.List(who.Tenant) {
+	for _, src := range sources {
 		if p.sourceRecordVisible(who, src) {
 			out = append(out, ShownSource(src.HealthAt(p.now())))
 			if len(out) == 200 {
@@ -36,7 +40,7 @@ func (p *Platform) SourcesAs(who auth.Principal) []knowledge.Source {
 			}
 		}
 	}
-	return out
+	return out, nil
 }
 
 // ConfigureSource never treats entering an origin as a successful connection.
@@ -107,7 +111,10 @@ func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src kno
 	if who.Kind == auth.Machine || who.Subject == "" {
 		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
-	c, ok := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	c, ok, err := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	if err != nil {
+		return mcptools.Secret{}, err
+	}
 	if !ok || c.Kind != credentials.Reference || !p.refAllowed(who.Tenant, who.Subject, c.Ref) {
 		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
@@ -236,7 +243,11 @@ func (p *Platform) SearchSourcesDetailed(ctx context.Context, who auth.Principal
 	}
 	implicit := len(names) == 0
 	if implicit {
-		for _, s := range p.SourcesAs(who) {
+		sources, err := p.SourcesAs(who)
+		if err != nil {
+			return out, err
+		}
+		for _, s := range sources {
 			names = append(names, s.Name)
 			if len(names) == 50 {
 				break
@@ -409,11 +420,17 @@ func (p *Platform) SourceDependenciesAs(ctx context.Context, who auth.Principal,
 	}
 	visibleRuns := []string{}
 	if who.Can(auth.RunsRead) {
-		runIDs := p.SourceEvidence.RunReferences(who.Tenant, name, 200, func(id string, proof knowledge.CitationEvidence) bool {
+		runIDs, err := p.SourceEvidence.RunReferences(who.Tenant, name, 200, func(id string, proof knowledge.CitationEvidence) bool {
 			run, err := p.Runs.Get(who.Tenant, id)
 			return err == nil && seer.Run(run) && p.citationEvidenceVisible(who, proof)
 		})
-		visibleRuns = p.ordinarySourceDependencyRuns(who, name)
+		if err != nil {
+			return SourceDependencies{}, err
+		}
+		visibleRuns, err = p.ordinarySourceDependencyRuns(who, name)
+		if err != nil {
+			return SourceDependencies{}, err
+		}
 		proven := map[string]bool{}
 		conversations := map[string]bool{}
 		for _, id := range runIDs {
@@ -469,7 +486,10 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 	if provider == nil {
 		return nil, knowledge.ProviderError{Cause: knowledge.Unavailable}
 	}
-	connection, _ := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	connection, _, err := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	if err != nil {
+		return nil, err
+	}
 	secret, err := p.sourceSecret(ctx, who, src)
 	if err != nil {
 		return nil, err
@@ -481,7 +501,10 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 	if ctx.Err() != nil {
 		return nil, knowledge.ProviderError{Cause: knowledge.Interrupted}
 	}
-	currentConnection, connected := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	currentConnection, connected, err := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	if err != nil {
+		return nil, err
+	}
 	if !connected || currentConnection.Kind != credentials.Reference || currentConnection.Ref != connection.Ref || !currentConnection.UpdatedAt.Equal(connection.UpdatedAt) || !p.refAllowed(who.Tenant, who.Subject, currentConnection.Ref) {
 		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}

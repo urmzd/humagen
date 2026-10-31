@@ -102,14 +102,14 @@ func busy(t *testing.T, x *Index, tenant string) {
 	observe(root, event.TypeCompleted, wire.Lifecycle{Text: "done"}, 8)
 	observe(launch, event.TypeStarted, wire.Lifecycle{}, 9)
 	observe(launch, event.TypeFailed, wire.Lifecycle{Error: "x", Terminal: true}, 10)
-	x.AskStop(followUp, at(11))
-	x.Stop(followUp, "partial", "", at(12))
+	x.AskStop("acme", followUp, at(11))
+	x.Stop("acme", followUp, "partial", "", at(12))
 	observe(parked, event.TypeParked, wire.Lifecycle{Reason: "a question"}, 13)
 	// The caller answers while its call still works, so it is held open,
 	// then settles once the call is done.
 	observe(field, event.TypeCompleted, wire.Lifecycle{Text: "done"}, 14)
-	x.End(child, Completed, "helped", "", at(15))
-	x.Settle(field, at(16))
+	x.End("acme", child, Completed, "helped", "", at(15))
+	x.Settle("acme", field, at(16))
 }
 
 func TestProjectCountsAgreeWithAScanOfEveryRun(t *testing.T) {
@@ -161,9 +161,6 @@ func TestProjectCountsAreReadBackAfterARestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		busy(t, x, "acme")
-		if err := x.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		again, err := Open(st)
 		if err != nil {
 			t.Fatal(err)
@@ -211,9 +208,6 @@ func TestSystemThreadsAreTheConversationsSystemRunsOpened(t *testing.T) {
 			t.Fatalf("a tenant with no runs has system threads %v", got)
 		}
 		sameCounts(t, x, "acme")
-		if err := x.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		again, err := Open(st)
 		if err != nil {
 			t.Fatal(err)
@@ -288,9 +282,6 @@ func TestProjectCountsAreReadAsOfAMark(t *testing.T) {
 		}
 		equalCounts(t, "as of a later mark", x.ProjectCountsWhere("acme", later, nil), scanned(x, "acme", nil))
 
-		if err := x.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		again, err := Open(st)
 		if err != nil {
 			t.Fatal(err)
@@ -316,7 +307,7 @@ func TestProjectCountsHoldUnderRacingRunsAndReaders(t *testing.T) {
 				return
 			}
 			if i%2 == 0 {
-				x.End(runID, Completed, "done", "", t0.Add(time.Second+time.Duration(i)*time.Millisecond))
+				x.End("acme", runID, Completed, "done", "", t0.Add(time.Second+time.Duration(i)*time.Millisecond))
 			}
 		})
 		wg.Go(func() { _ = x.ProjectCounts("acme") })

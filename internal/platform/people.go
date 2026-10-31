@@ -23,7 +23,7 @@ import (
 var ErrNameTaken = errors.New("platform: name taken")
 
 // agentTaken reports whether a handle is an agent's name in a workspace, so
-// no person is given it. It runs under the directory's lock.
+// no person is given it.
 func (p *Platform) agentTaken(tenant, handle string) bool {
 	if IsBuiltin(handle) {
 		return true

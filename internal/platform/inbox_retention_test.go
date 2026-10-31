@@ -76,11 +76,11 @@ func TestEachInboxKeepsWhatWasSettledForItsRetention(t *testing.T) {
 			t.Fatalf("a dropped release was posted again: %v, %v", ok, err)
 		}
 		ada := auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
-		if c := q.InboxCount(ada); c.Updates != 0 {
+		if c := inboxCount(t, q, ada); c.Updates != 0 {
 			t.Fatalf("ada, who posted the one open announcement, counts %+v", c)
 		}
 		bo := auth.Principal{Subject: "bo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
-		if c := q.InboxCount(bo); c.Updates != 1 {
+		if c := inboxCount(t, q, bo); c.Updates != 1 {
 			t.Fatalf("bo counts %+v", c)
 		}
 	})

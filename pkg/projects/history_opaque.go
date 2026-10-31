@@ -5,10 +5,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 const keyHistorySecret = "k:history-cursor"
@@ -28,32 +29,32 @@ func newHistorySecret() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(key[:]), nil
 }
 
-// Existing history receives one durable private key before the store opens.
-// New tenants write their key in the same batch as their first change.
-func (s *Store) ensureHistorySecrets() error {
-	keys := map[string]string{}
-	batch := s.kept.Batch()
-	for tenant, t := range s.tenants {
-		if len(t.history) > 0 && t.cursorSecret == "" {
-			key, err := newHistorySecret()
-			if err != nil {
-				return err
-			}
-			raw, _ := json.Marshal(key)
-			batch.Put(tenant, keyHistorySecret, raw)
-			keys[tenant] = key
+// ensureHistorySecret gives a tenant whose history was written before
+// cursors were opaque its durable private key, once: two processes doing it
+// at once keep the key whose write lands first.
+func (s *Store) ensureHistorySecret(tenantName string) (*snapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := state.Retry(func() error {
+		tx, err := s.begin(tenantName)
+		if err != nil {
+			return err
 		}
+		if tx.t.cursorSecret != "" || len(tx.t.history) == 0 {
+			return nil
+		}
+		key, err := newHistorySecret()
+		if err != nil {
+			return err
+		}
+		tx.t.cursorSecret = key
+		tx.put(keyHistorySecret, key)
+		return tx.commit()
+	})
+	if err != nil {
+		return nil, err
 	}
-	if len(keys) == 0 {
-		return nil
-	}
-	if err := batch.Commit(); err != nil {
-		return err
-	}
-	for tenant, key := range keys {
-		s.tenants[tenant].cursorSecret = key
-	}
-	return nil
+	return s.read(tenantName)
 }
 
 func historyID(secret, tenant, project string, seq int64) string {
@@ -68,11 +69,18 @@ func (s *Store) OpaqueHistory(tenantName, name string, limit int, before string)
 	if before != "" && (len(before) != 34 || !strings.HasPrefix(before, "h_")) {
 		return nil, "", fmt.Errorf("%w: invalid history cursor", ErrInvalid)
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	snap, err := s.read(tenantName)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(snap.t.history) > 0 && snap.t.cursorSecret == "" {
+		if snap, err = s.ensureHistorySecret(tenantName); err != nil {
+			return nil, "", err
+		}
+	}
 	out := []HistoryEntry{}
-	t := s.tenants[tenantName]
-	if t == nil {
+	t := snap.t
+	if len(t.history) == 0 {
 		if before != "" {
 			return nil, "", fmt.Errorf("%w: history cursor is not retained", ErrInvalid)
 		}

@@ -29,7 +29,7 @@ func TestPersonalSettingsKeepQuietHoursAcrossMidnightAndRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		p := s.Get("acme", "ada").Personal
+		p := get(t, s, "acme", "ada").Personal
 		for _, row := range []struct {
 			at   string
 			want Delivery
@@ -39,10 +39,10 @@ func TestPersonalSettingsKeepQuietHoursAcrossMidnightAndRestart(t *testing.T) {
 				t.Fatalf("%s: %s != %s", row.at, got, row.want)
 			}
 		}
-		if s.Get("other", "ada").Personal.NotificationDelivery("mention", time.Now()) != Off {
+		if get(t, s, "other", "ada").Personal.NotificationDelivery("mention", time.Now()) != Off {
 			t.Fatal("cross-tenant preferences")
 		}
-		if s.Get("acme", "someone").Personal.UsePersonalMemoryInProjects {
+		if get(t, s, "acme", "someone").Personal.UsePersonalMemoryInProjects {
 			t.Fatal("personal memory enabled by default")
 		}
 	})

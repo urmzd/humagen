@@ -88,7 +88,7 @@ func TestARefusedRunIsNeitherCountedNorRecorded(t *testing.T) {
 	if _, err := p.Runs.Get(tenant, "x"); err == nil {
 		t.Fatal("a refused run was recorded")
 	}
-	for _, e := range p.Usage.Entries() {
+	for _, e := range entriesOf(p, tenant) {
 		if e.Tenant == tenant {
 			t.Fatalf("a refused run left a usage entry: %+v", e)
 		}
@@ -151,7 +151,7 @@ func TestAScheduleWhoseAgentStoppedBeingAvailableIsRefusedAndRaisedOnce(t *testi
 		}
 	}
 	var open []alerts.Alert
-	for _, a := range p.Alerts.Alerts(tenant) {
+	for _, a := range kept(p.Alerts.Alerts(tenant)) {
 		if a.Open() {
 			open = append(open, a)
 		}
@@ -511,12 +511,12 @@ func TestTheBaselineBecomesTheWorkspaceDefault(t *testing.T) {
 				t.Fatalf("the settings of %s still name a baseline", tenantName)
 			}
 		}
-		if h, _ := p.Projects.History("named", projects.Root, 0, 0); len(h) == 0 || h[0].By != "migration" {
+		if h, _, _ := p.Projects.History("named", projects.Root, 0, 0); len(h) == 0 || h[0].By != "migration" {
 			t.Fatalf("the root of named does not say the upgrade set it: %+v", h)
 		}
 		// An empty baseline was the picker, which open is now: the
 		// workspace reads as it did, and is given no tree.
-		if p.Projects.Stored("unnamed") {
+		if ok, _ := p.Projects.Stored("unnamed"); ok {
 			t.Fatal("settings that named no baseline, with no tree, were given one")
 		}
 		// A second start finds nothing to do.
@@ -527,7 +527,7 @@ func TestTheBaselineBecomesTheWorkspaceDefault(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if h, _ := again.Projects.History("named", projects.Root, 0, 0); len(h) != 2 {
+		if h, _, _ := again.Projects.History("named", projects.Root, 0, 0); len(h) != 2 {
 			t.Fatalf("a second start wrote the root again: %+v", h)
 		}
 	})

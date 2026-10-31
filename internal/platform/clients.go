@@ -31,9 +31,13 @@ type ClientInput struct {
 
 // ClientCaps is how many clients a tenant may have: the defaults, or what its
 // own policy says.
-func (p *Platform) ClientCaps(tenant string) clients.Caps {
+func (p *Platform) ClientCaps(tenant string) (clients.Caps, error) {
 	caps := clients.DefaultCaps()
-	for _, pol := range p.Policies.For(tenant, nil, "", "") {
+	pols, err := p.Policies.For(tenant, nil, "", "")
+	if err != nil {
+		return clients.Caps{}, err
+	}
+	for _, pol := range pols {
 		if pol.MaxClients > 0 {
 			caps.Max = pol.MaxClients
 		}
@@ -41,7 +45,7 @@ func (p *Platform) ClientCaps(tenant string) clients.Caps {
 			caps.MaxPerSurface = pol.MaxClientsPerSurface
 		}
 	}
-	return caps
+	return caps, nil
 }
 
 // CreateClient adds a client to a tenant and starts answering through it.
@@ -82,7 +86,11 @@ func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, er
 	if err != nil {
 		return clients.Client{}, err
 	}
-	saved, err := p.Clients.Create(tenant, c, p.ClientCaps(tenant), p.now())
+	caps, err := p.ClientCaps(tenant)
+	if err != nil {
+		return clients.Client{}, err
+	}
+	saved, err := p.Clients.Create(tenant, c, caps, p.now())
 	if err != nil {
 		return clients.Client{}, err
 	}
@@ -468,7 +476,12 @@ func (a clientAgents) Lookup(token string) (string, bool) {
 // built is left unseated and said so: it answers nothing until it is fixed.
 func (p *Platform) restore() {
 	for _, surface := range clients.Surfaces() {
-		for _, c := range p.Clients.On(surface) {
+		on, err := p.Clients.On(surface)
+		if err != nil {
+			p.log.Error("platform: clients could not be read, so none on this surface were started", "surface", surface, "error", err)
+			continue
+		}
+		for _, c := range on {
 			_, secrets, err := p.credentials(c.Tenant, c.ID, c.Credentials, ClientInput{})
 			var st *seat
 			if err == nil {

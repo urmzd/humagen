@@ -212,10 +212,10 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if c, err := q.Clients.Get(tenant, "docs"); err != nil || !c.Enabled || !c.Credentials.Token.Set {
 			t.Fatalf("the client after restart = %+v, %v", c, err)
 		}
-		if rules := q.Alerts.Rules(tenant); len(rules) != 1 || rules[0].Name != "fails" {
+		if rules := kept(q.Alerts.Rules(tenant)); len(rules) != 1 || rules[0].Name != "fails" {
 			t.Fatalf("alert rules after restart = %+v", rules)
 		}
-		if sc, paused, err := q.Schedules.Get(tenant, "nightly"); err != nil || !paused || sc.Expression != "0 3 * * *" || q.Schedules.About("nightly").Description != "Every night" {
+		if sc, paused, err := q.Schedules.Get(tenant, "nightly"); err != nil || !paused || sc.Expression != "0 3 * * *" || func() string { a, _ := q.Schedules.About(tenant, "nightly"); return a.Description }() != "Every night" {
 			t.Fatalf("the schedule after restart = %+v, %v, %v", sc, paused, err)
 		}
 		if _, author, err := q.Schedules.Authored(tenant, "nightly"); err != nil || author != "ben" {
@@ -225,22 +225,22 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if err != nil || got.Status != runs.Completed || got.Answer != done.Answer {
 			t.Fatalf("the run after restart = %+v, %v", got, err)
 		}
-		if trace := q.Journal.Events(tenant, []string{r.ID}); len(trace) == 0 {
+		if trace := kept(q.Journal.Events(tenant, []string{r.ID})); len(trace) == 0 {
 			t.Fatal("the run's events were not kept")
 		}
 		if m, ok := q.Inbox.ByKey(tenant, "note"); !ok || m.Subject != "Kept" {
 			t.Fatalf("the inbox after restart = %+v, %v", m, ok)
 		}
-		if c := q.PersonContexts.Get(tenant, "ada"); c.Version != 1 || c.Memory != mine.Memory || c.Run.Preferences.CompactionTokens != 4096 {
+		if c, err := q.PersonContexts.Get(tenant, "ada"); err != nil || c.Version != 1 || c.Memory != mine.Memory || c.Run.Preferences.CompactionTokens != 4096 {
 			t.Fatalf("a person's context after restart = %+v", c)
 		}
 		if c, ok, err := q.RunContext(tenant, done.ID); !ok || err != nil || c.Person != "" {
 			t.Fatalf("a run's pinned context after restart = %+v, %v, %v", c, ok, err)
 		}
-		if c, ok := q.Credentials.Get(tenant, "ada", "issues"); !ok || c.Ref != "op://People/ada/issues" {
+		if c, ok, _ := q.Credentials.Get(tenant, "ada", "issues"); !ok || c.Ref != "op://People/ada/issues" {
 			t.Fatalf("a person's reference after restart = %+v, %v", c, ok)
 		}
-		if v, ok := q.Credentials.Value(tenant, "ada", "drive"); !ok || v != "tok-ada-drive" {
+		if v, ok, _ := q.Credentials.Value(tenant, "ada", "drive"); !ok || v != "tok-ada-drive" {
 			t.Fatalf("a person's stored value after restart = %q, %v", v, ok)
 		}
 		// A run accepted after the restart is not mistaken for one before.

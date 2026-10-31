@@ -275,13 +275,13 @@ func (s *Seer) Message(m inbox.Message) bool {
 			op := part.Operation
 			switch op.Kind {
 			case "assignment":
-				a, ok := s.p.Operations.Assignment(s.who.Tenant, op.ID)
-				if !ok || !s.Project(a.Project) || !s.Place(Place{Project: a.Project, Thread: a.Thread}) || !s.Agent(a.Agent) {
+				a, ok, err := s.p.Operations.Assignment(s.who.Tenant, op.ID)
+				if err != nil || !ok || !s.Project(a.Project) || !s.Place(Place{Project: a.Project, Thread: a.Thread}) || !s.Agent(a.Agent) {
 					return false
 				}
 			case "handoff":
-				h, ok := s.p.Operations.Handoff(s.who.Tenant, op.ID)
-				if !ok || !s.p.seesHandoff(s, h) {
+				h, ok, err := s.p.Operations.Handoff(s.who.Tenant, op.ID)
+				if err != nil || !ok || !s.p.seesHandoff(s, h) {
 					return false
 				}
 			default:
@@ -413,7 +413,14 @@ func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCoun
 	seer := p.Seer(who)
 	mark := p.Runs.Opened(who.Tenant)
 	hidden := map[string]bool{}
-	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return true }) {
+	recs, err := p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return true })
+	if err != nil {
+		// Without the records, nothing says which conversations are hidden,
+		// so nothing is counted.
+		p.log.Warn("platform: project counts: threads", "err", err)
+		return map[string]runs.ProjectCount{}
+	}
+	for _, th := range recs {
 		if !seer.Place(Place{Project: th.Project, Thread: th.ID}) {
 			hidden[th.ID] = true
 		}

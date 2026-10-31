@@ -25,39 +25,69 @@ func (p *Platform) inboxRetention(tenant string) time.Duration {
 // again at the next pass. A pass stops between workspaces once ctx is done.
 func (p *Platform) retainInbox(ctx context.Context) {
 	now := p.now()
-	for _, tenant := range p.Notifications.Tenants() {
-		if ctx.Err() != nil {
-			return
+	if err := p.Notifications.EachTenant(func(tenant string) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if err := p.Notifications.Retain(tenant, now.Add(-p.inboxRetention(tenant))); err != nil {
 			p.log.Error("platform: notification retention failed", "error", err)
 		}
+		return nil
+	}); err != nil && ctx.Err() == nil {
+		p.log.Error("platform: notification retention could not list workspaces", "error", err)
 	}
-	for _, tenant := range p.EmailNotifications.Tenants() {
-		if ctx.Err() != nil {
-			return
+	if ctx.Err() != nil {
+		return
+	}
+	if err := p.EmailNotifications.EachTenant(func(tenant string) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if err := p.EmailNotifications.Retain(tenant, now.Add(-p.inboxRetention(tenant))); err != nil {
 			p.log.Error("platform: email notification retention failed", "error", err)
 		}
+		return nil
+	}); err != nil && ctx.Err() == nil {
+		p.log.Error("platform: email notification retention could not list workspaces", "error", err)
 	}
-	for _, tenant := range p.Audit.Tenants() {
-		if ctx.Err() != nil {
-			return
+	if ctx.Err() != nil {
+		return
+	}
+	err := p.Audit.EachTenant(func(tenant string) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if err := p.Audit.Retain(tenant, now.Add(-p.inboxRetention(tenant))); err != nil {
 			p.log.Error("platform: audit retention failed", "error", err)
 		}
+		return nil
+	})
+	if ctx.Err() != nil {
+		return
 	}
-	for _, tenant := range p.ReadAudit.Tenants() {
-		if ctx.Err() != nil {
-			return
+	if err != nil {
+		p.log.Error("platform: audit tenants could not be read", "error", err)
+	}
+	err = p.ReadAudit.EachTenant(func(tenant string) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if err := p.ReadAudit.Retain(tenant, now.Add(-p.inboxRetention(tenant))); err != nil {
 			p.log.Error("platform: read audit retention failed", "error", err)
 		}
+		return nil
+	})
+	if ctx.Err() != nil {
+		return
 	}
-	for _, tenant := range p.Inbox.Tenants() {
+	if err != nil {
+		p.log.Error("platform: read audit tenants could not be read", "error", err)
+	}
+	tenants, err := p.Inbox.Tenants()
+	if err != nil {
+		p.log.Warn("platform: inbox retention could not list workspaces; the next pass tries again", "error", err)
+	}
+	for _, tenant := range tenants {
 		if ctx.Err() != nil {
 			return
 		}

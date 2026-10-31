@@ -113,7 +113,9 @@ func oldSettings(t *testing.T, st state.Store, tenantName string, setupAt time.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Write(t.Context(), "settings", state.Put(tenantName, "settings", raw)); err != nil {
+	// A database an earlier version wrote has no mark that its settings
+	// were moved out.
+	if err := st.Write(t.Context(), "settings", state.Put(tenantName, "settings", raw), state.Delete("", "migrated:v1")); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -175,7 +177,7 @@ func TestTheMigrationMovesProjectsOutOfSettings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if h, _ := again.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 {
+		if h, _, _ := again.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 {
 			t.Fatalf("a second start wrote history: %+v", h)
 		}
 	})
@@ -202,7 +204,7 @@ func TestTheMigrationIsRepairedAfterAStopBetweenItsWrites(t *testing.T) {
 			t.Fatalf("after the repair = %+v", l)
 		}
 		for _, name := range []string{"", "Launch", "Ops"} {
-			if h, _ := p.Projects.History(tenant, name, 0, 0); len(h) != 1 || h[0].What != projects.Created {
+			if h, _, _ := p.Projects.History(tenant, name, 0, 0); len(h) != 1 || h[0].What != projects.Created {
 				t.Fatalf("the repair imported %q again: %+v", name, h)
 			}
 		}
@@ -285,12 +287,12 @@ func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testin
 			t.Fatalf("after the upgrade the tree holds %q, want %q", got, want)
 		}
 		for _, name := range []string{"Dropped", "Gone", "Spent"} {
-			h, _ := p.Projects.History(tenant, name, 0, 0)
+			h, _, _ := p.Projects.History(tenant, name, 0, 0)
 			if len(h) != 1 || h[0].What != projects.Created || h[0].By != "migration" || h[0].Note != projects.KeptNote || h[0].After.Kind != projects.Team {
 				t.Fatalf("%s's history = %+v", name, h)
 			}
 		}
-		if h, _ := p.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 || h[0].Note != "" {
+		if h, _, _ := p.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 || h[0].Note != "" {
 			t.Fatalf("Launch's history = %+v", h)
 		}
 
@@ -355,7 +357,10 @@ func TestKeepingWhatIsStillNamedFailsTheStartPastTheCap(t *testing.T) {
 		if !errors.Is(err, projects.ErrLimit) || !strings.Contains(err.Error(), `"P000"`) || !strings.Contains(err.Error(), fmt.Sprintf(`"P%03d"`, named-1)) {
 			t.Fatalf("a start that would keep %d names beside 2 projects = %v", named, err)
 		}
-		if recs, err := st.Load(t.Context(), "projects"); err != nil || len(recs) != 0 {
+		recs, err := st.Load(t.Context(), "projects")
+		// The tenant directory, in tenant "", is written when the store opens.
+		recs = slices.DeleteFunc(recs, func(r state.Record) bool { return r.Tenant == "" })
+		if err != nil || len(recs) != 0 {
 			t.Fatalf("a refused import left %d records (%v)", len(recs), err)
 		}
 		if _, held := storedSettings(t, st, tenant)["projects"]; !held {
@@ -433,7 +438,7 @@ func TestFortyRacersInTwoChildrenAgainstAParentsLimitAdmitSeven(t *testing.T) {
 		t.Fatalf("%d admitted and %d refused, want %d and %d", admitted.Load(), refused.Load(), limit, racers-limit)
 	}
 	today := policy.PeriodStart(policy.Day, time.Now())
-	if got := p.Usage.Usage(tenant, fieldScope, today); got.Runs != limit {
+	if got := usageOf(p, tenant, fieldScope, today); got.Runs != limit {
 		t.Fatalf("Field counted %d runs, want %d", got.Runs, limit)
 	}
 	// Each run is pinned to what it was admitted within.
@@ -453,8 +458,8 @@ func TestFortyRacersInTwoChildrenAgainstAParentsLimitAdmitSeven(t *testing.T) {
 	scope := policy.Scope{Kind: policy.Tenant}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		live, replayed := p.Usage.Usage(tenant, fieldScope, time.Time{}), usage.Rebuild(p.Usage.Entries()).Usage(tenant, fieldScope, time.Time{})
-		all, allReplayed := p.Usage.Usage(tenant, scope, time.Time{}), usage.Rebuild(p.Usage.Entries()).Usage(tenant, scope, time.Time{})
+		live, replayed := usageOf(p, tenant, fieldScope, time.Time{}), ledgerUsage(usage.Rebuild(entriesOf(p, tenant)), tenant, fieldScope, time.Time{})
+		all, allReplayed := usageOf(p, tenant, scope, time.Time{}), ledgerUsage(usage.Rebuild(entriesOf(p, tenant)), tenant, scope, time.Time{})
 		if reflect.DeepEqual(live, replayed) && reflect.DeepEqual(all, allReplayed) {
 			break
 		}
@@ -489,7 +494,7 @@ func TestSpendStopsAtTheParentsLimitToTheMicroDollar(t *testing.T) {
 	}
 	await(t, p, r.ID, runs.Completed)
 	month := policy.PeriodStart(policy.Month, time.Now())
-	within(t, "Field is charged for Globex's run", func() bool { return p.Usage.Usage(tenant, fieldScope, month).Spend == cost(1000, 100) })
+	within(t, "Field is charged for Globex's run", func() bool { return usageOf(p, tenant, fieldScope, month).Spend == cost(1000, 100) })
 
 	_, err = p.Invoke(ctx, inProject("evt-2", "lead", "Initech"))
 	var denied *platform.Denied
@@ -513,7 +518,7 @@ func TestSpendStopsAtTheParentsLimitToTheMicroDollar(t *testing.T) {
 	}
 	day := policy.PeriodStart(policy.Day, time.Now())
 	globexScope := policy.Scope{Kind: policy.Project, Name: "Globex"}
-	spentBefore := p.Usage.Usage(tenant, globexScope, day).Spend
+	spentBefore := usageOf(p, tenant, globexScope, day).Spend
 	held, err := p.Invoke(ctx, inProject("evt-4", "probe", "Renewals"))
 	if err != nil {
 		t.Fatalf("a run under Globex's limit was refused: %v", err)
@@ -524,7 +529,7 @@ func TestSpendStopsAtTheParentsLimitToTheMicroDollar(t *testing.T) {
 	}
 	within(t, "the stopped run is settled", func() bool { return settled(p, held.ID) == 1 })
 	stopped, _ = p.Runs.Get(tenant, held.ID)
-	if got := p.Usage.Usage(tenant, globexScope, day).Spend - spentBefore; stopped.Usage == nil || got != stopped.Usage.Total.Cost.Micros {
+	if got := usageOf(p, tenant, globexScope, day).Spend - spentBefore; stopped.Usage == nil || got != stopped.Usage.Total.Cost.Micros {
 		t.Fatalf("Globex was charged %d for the run, which recorded %+v", got, stopped.Usage)
 	}
 }
@@ -788,7 +793,7 @@ func TestDeleteKeepsThePolicy(t *testing.T) {
 	if err := p.DeleteProject(ctx, tenant, "Initech", ada); !errors.Is(err, projects.ErrInUse) {
 		t.Fatalf("delete with only its limits left = %v", err)
 	}
-	if got := p.Policies.For(tenant, []string{"Initech"}, "", ""); len(got) != 1 || got[0].Scope != scope {
+	if got, err := p.Policies.For(tenant, []string{"Initech"}, "", ""); err != nil || len(got) != 1 || got[0].Scope != scope {
 		t.Fatalf("the policy after a refused delete = %+v", got)
 	}
 	if err := p.Policies.Delete(tenant, scope, "ada", time.Now()); err != nil {
@@ -797,7 +802,7 @@ func TestDeleteKeepsThePolicy(t *testing.T) {
 	if err := p.DeleteProject(ctx, tenant, "Initech", ada); err != nil {
 		t.Fatal(err)
 	}
-	if p.HasProject(tenant, "Initech") || len(p.Memory.List(tenant, owner)) != 0 {
+	if p.HasProject(tenant, "Initech") || len(notesOf(t, p.Memory, tenant, owner)) != 0 {
 		t.Fatal("the project or its notes outlived the delete")
 	}
 	// A parent with children, and the root, are refused.
@@ -930,7 +935,7 @@ func TestADeletedChildsConversationsStayUnderItsParentsLimit(t *testing.T) {
 	if _, err := p.Invoke(ctx, inProject("late", "lead", "Initech")); !errors.Is(err, platform.ErrProjectDeleted) {
 		t.Fatalf("a run filed in the deleted child = %v", err)
 	}
-	if got := p.Usage.Usage(tenant, fieldScope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != 1 {
+	if got := usageOf(p, tenant, fieldScope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != 1 {
 		t.Fatalf("Field counted %d runs, want 1", got.Runs)
 	}
 	if n := len(p.Runs.List(tenant, 0)); n != 1 {

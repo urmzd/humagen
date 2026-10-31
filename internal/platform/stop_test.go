@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,7 +41,7 @@ func within(t *testing.T, what string, ok func() bool) {
 // said reports whether a run's stream carried text containing s.
 func streamed(p *platform.Platform, runID, s string) bool {
 	text := ""
-	for _, e := range p.Journal.Events(tenant, []string{runID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{runID})) {
 		if e.Type == event.TypeText {
 			text += wire.JSONOf(e)
 		}
@@ -65,12 +66,12 @@ func endings(p *platform.Platform, runID string) (events, freed int) {
 }
 
 func countEndings(p *platform.Platform, runID string) (events, freed int) {
-	for _, e := range p.Journal.Events(tenant, []string{runID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{runID})) {
 		if e.Type == event.TypeCompleted || e.Type == event.TypeStopped || (e.Type == event.TypeFailed && strings.Contains(wire.JSONOf(e), `"terminal":true`)) {
 			events++
 		}
 	}
-	for _, en := range p.Usage.Entries() {
+	for _, en := range entriesOf(p, tenant) {
 		if en.Kind == usage.Ended && en.RunID == runID {
 			freed++
 		}
@@ -112,7 +113,7 @@ func TestStopInterruptsTheModelCallAndKeepsThePartialAnswer(t *testing.T) {
 		t.Fatalf("stopped run = answer %q, cause %q, stopping %v", got.Answer, got.Cause, got.Stopping)
 	}
 	stoppedEvent := false
-	for _, e := range p.Journal.Events(tenant, []string{first.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{first.ID})) {
 		stoppedEvent = stoppedEvent || (e.Type == event.TypeStopped && strings.Contains(wire.JSONOf(e), "Half an ans"))
 	}
 	if !stoppedEvent {
@@ -121,7 +122,7 @@ func TestStopInterruptsTheModelCallAndKeepsThePartialAnswer(t *testing.T) {
 	if events, freed := endings(p, first.ID); events != 1 || freed != 1 {
 		t.Fatalf("%d terminal events and %d places freed, want one of each", events, freed)
 	}
-	if u := p.Usage.Usage(tenant, policy.Scope{}, time.Time{}); u.Concurrent != 0 {
+	if u := usageOf(p, tenant, policy.Scope{}, time.Time{}); u.Concurrent != 0 {
 		t.Fatalf("%d runs still hold a place", u.Concurrent)
 	}
 
@@ -293,7 +294,7 @@ func TestStopIsIdempotentAndSafeAgainstACompletion(t *testing.T) {
 	if outcomes[runs.Stopped] == 0 || outcomes[runs.Completed] == 0 {
 		t.Fatalf("the race was not exercised both ways: %v", outcomes)
 	}
-	if u := p.Usage.Usage(tenant, policy.Scope{}, time.Time{}); u.Concurrent != 0 {
+	if u := usageOf(p, tenant, policy.Scope{}, time.Time{}); u.Concurrent != 0 {
 		t.Fatalf("%d runs still hold a place", u.Concurrent)
 	}
 }
@@ -498,5 +499,23 @@ func TestStoppingARunThatHasAnsweredCompletesIt(t *testing.T) {
 	}
 	if events, freed := endings(p, first.ID); events != 1 || freed != 1 {
 		t.Fatalf("%d terminal events, %d places freed", events, freed)
+	}
+}
+
+// kept is what a store read, for a test whose store cannot fail to read.
+func kept[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+// logEvents logs every event a run published, for a test about to fail on
+// what the run did: a tool's error or a refused call is on its stream.
+func logEvents(t *testing.T, p *platform.Platform, runID string) {
+	t.Helper()
+	for _, e := range kept(p.Journal.Events(tenant, []string{runID})) {
+		b, _ := json.Marshal(e.Data)
+		t.Logf("event %d %s %s", e.Seq, e.Type, b)
 	}
 }

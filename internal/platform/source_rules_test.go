@@ -44,7 +44,7 @@ func TestSourceRulesConfinePreviewAndRetainDisabledForkRules(t *testing.T) {
 		if err != nil || len(before) != 1 || before[0].Mode != sourcelinks.Suggest {
 			t.Fatalf("preview %+v %v", before, err)
 		}
-		if len(p.SourceRulesAs(who)) != 1 {
+		if rules, err := p.SourceRulesAs(who); err != nil || len(rules) != 1 {
 			t.Fatal("hidden rule listed")
 		}
 		if err := p.DeleteSourceRule(who, hidden.ID); !errors.Is(err, sourcelinks.ErrNotFound) {
@@ -62,7 +62,8 @@ func TestSourceRulesConfinePreviewAndRetainDisabledForkRules(t *testing.T) {
 		if err := p.RestoreSourceLinkRulesDisabled(tenant, "Visible", "fork1", []sourcelinks.Rule{rule}); err != nil {
 			t.Fatal(err)
 		}
-		for _, copy := range p.SourceLinks.List(tenant) {
+		rules, _ := p.SourceLinks.List(tenant)
+		for _, copy := range rules {
 			if copy.CopiedFrom != "" {
 				copy.Mode = sourcelinks.Auto
 				if _, err := p.SaveSourceRule(who, copy.ID, copy); !errors.Is(err, sourcelinks.ErrInvalid) {
@@ -86,7 +87,7 @@ func TestConfiguredSourceCreationNeverPublishesAnUnscopedName(t *testing.T) {
 		if _, err := p.CreateSource(owner, "private-name", "", cfg); err != nil {
 			t.Fatal(err)
 		}
-		if p.SourceVisible(outsider, "private-name") || len(p.SourcesAs(outsider)) != 0 {
+		if p.SourceVisible(outsider, "private-name") || len(must(p.SourcesAs(outsider))) != 0 {
 			t.Fatal("private creation exposed an intermediate name")
 		}
 		if _, err := p.CreateSource(outsider, "private-name", "", nil); !errors.Is(err, knowledge.ErrNotFound) {

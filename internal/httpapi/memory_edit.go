@@ -34,7 +34,12 @@ func (s *Server) editProjectMemory(w http.ResponseWriter, r *http.Request, who a
 }
 func (s *Server) editMemory(w http.ResponseWriter, r *http.Request, who auth.Principal, owner, route, rule string) {
 	var before *memory.Note
-	for _, note := range s.P.Memory.List(who.Tenant, owner) {
+	notes, err := s.P.Memory.List(who.Tenant, owner)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, note := range notes {
 		if note.ID == r.PathValue("id") {
 			copy := note
 			before = &copy

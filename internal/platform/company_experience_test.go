@@ -46,7 +46,7 @@ func TestCompanyWelcomeRetainsOneAnnouncementAcrossReadersAndRestart(t *testing.
 		ada := auth.Principal{Tenant: tenant, Subject: "ada", Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
 		ben := ada
 		ben.Subject = "ben"
-		if again.InboxCount(ada).Updates != 0 || again.InboxCount(ben).Updates != 1 {
+		if inboxCount(t, again, ada).Updates != 0 || inboxCount(t, again, ben).Updates != 1 {
 			t.Fatal("welcome did not keep independent reader state")
 		}
 	})

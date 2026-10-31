@@ -33,9 +33,17 @@ func (p *Platform) ActionDecision(tenant, project, agent, person string, c opera
 	if person != "" {
 		scopes = append(scopes, operations.Scope{Kind: "personal", Name: person})
 	}
-	return p.Operations.Decision(tenant, scopes, c)
+	level, err := p.Operations.Decision(tenant, scopes, c)
+	if err != nil {
+		// A policy that cannot be read denies: it may hold a restriction.
+		p.log.Error("platform: action policy could not be read; the action is denied", "error", err)
+		return operations.Never
+	}
+	return level
 }
-func (p *Platform) AgentControl(tenant, agent string) operations.Control {
+
+// AgentControl reads an agent's control ("" is the workspace's).
+func (p *Platform) AgentControl(tenant, agent string) (operations.Control, error) {
 	return p.Operations.Control(tenant, legacy.BuiltinAgent(agent))
 }
 func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operations.Control, version int) (result operations.Control, resultErr error) {
@@ -63,7 +71,10 @@ func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operation
 		scope = "agent"
 		id = agent
 	}
-	before := p.AgentControl(who.Tenant, agent)
+	before, err := p.AgentControl(who.Tenant, agent)
+	if err != nil {
+		return operations.Control{}, err
+	}
 	if c.ReminderAfterSeconds == nil {
 		c.ReminderAfterSeconds = before.ReminderAfterSeconds
 	}
@@ -80,7 +91,9 @@ func (p *Platform) SetAgentControl(who auth.Principal, agent string, c operation
 	return p.Operations.SetControl(who.Tenant, legacy.BuiltinAgent(agent), c, version, who.Subject, p.now())
 }
 func (p *Platform) operationAdmission(tenant, agent string) error {
-	if p.Operations.Paused(tenant, legacy.BuiltinAgent(agent)) || !p.agentReady(tenant, agent) {
+	if paused, err := p.Operations.Paused(tenant, legacy.BuiltinAgent(agent)); err != nil {
+		return err
+	} else if paused || !p.agentReady(tenant, agent) {
 		return operations.ErrPaused
 	}
 	return nil
@@ -128,7 +141,10 @@ func (p *Platform) resolveOperations(req runtime.Request) (runtime.Request, erro
 			}
 		}
 	}
-	control := p.AgentControl(req.Tenant, req.Agent())
+	control, err := p.AgentControl(req.Tenant, req.Agent())
+	if err != nil {
+		return req, err
+	}
 	if control.StopRules != "" {
 		req.Instructions += "\nAgent stop rules and reminders: " + control.StopRules
 	}
@@ -246,7 +262,8 @@ func (t *operationTool) Approval(c saigetypes.ToolCallPart) (native.ApprovalRequ
 	if t.decision() != operations.Ask {
 		return native.ApprovalRequest{}, false
 	}
-	control := t.p.AgentControl(t.req.Tenant, t.req.Agent())
+	// Without the control, the fallback approvers still answer.
+	control, _ := t.p.AgentControl(t.req.Tenant, t.req.Agent())
 	approvers := slices.Clone(t.req.Definition.Spec.Approvers)
 	if len(approvers) == 0 {
 		approvers = slices.Clone(fallbackApprovers)
@@ -329,7 +346,11 @@ func (p *Platform) SetActionPolicy(who auth.Principal, scope operations.Scope, r
 	default:
 		return operations.Policy{}, operations.ErrInvalid
 	}
-	change := audit.Change{Action: "policy.action", Resource: "action_policy", ID: scope.Kind + ":" + scope.Name, Scope: scope.Kind, Before: operationPolicyFields(p.Operations.Policy(who.Tenant, scope).Rules), After: operationPolicyFields(rules)}
+	current, err := p.Operations.Policy(who.Tenant, scope)
+	if err != nil {
+		return operations.Policy{}, err
+	}
+	change := audit.Change{Action: "policy.action", Resource: "action_policy", ID: scope.Kind + ":" + scope.Name, Scope: scope.Kind, Before: operationPolicyFields(current.Rules), After: operationPolicyFields(rules)}
 	switch scope.Kind {
 	case "agent":
 		change.Agent = scope.Name
@@ -382,16 +403,22 @@ func (p *Platform) shownHandoff(who auth.Principal, h operations.Handoff) operat
 	h.Inputs = inputs
 	return h
 }
-func (p *Platform) Handoffs(who auth.Principal, limit int) []operations.Handoff {
+func (p *Platform) Handoffs(who auth.Principal, limit int) ([]operations.Handoff, error) {
 	seer := p.Seer(who)
-	out := p.Operations.Handoffs(who.Tenant, limit, func(h operations.Handoff) bool { return p.seesHandoff(seer, h) })
+	out, err := p.Operations.Handoffs(who.Tenant, limit, func(h operations.Handoff) bool { return p.seesHandoff(seer, h) })
+	if err != nil {
+		return nil, err
+	}
 	for i, h := range out {
 		out[i] = p.shownHandoff(who, h)
 	}
-	return out
+	return out, nil
 }
 func (p *Platform) Handoff(who auth.Principal, id string) (operations.Handoff, error) {
-	h, ok := p.Operations.Handoff(who.Tenant, id)
+	h, ok, err := p.Operations.Handoff(who.Tenant, id)
+	if err != nil {
+		return operations.Handoff{}, err
+	}
 	if !ok || !p.seesHandoff(p.Seer(who), h) {
 		return operations.Handoff{}, operations.ErrNotFound
 	}
@@ -426,7 +453,10 @@ func (p *Platform) UpdateHandoff(who auth.Principal, id string, in HandoffUpdate
 	if !slices.Contains([]operations.WorkState{operations.Accepted, operations.Blocked, operations.NeedsPerson, operations.Result}, in.State) || in.DueAt.IsZero() {
 		return operations.Handoff{}, operations.ErrInvalid
 	}
-	h, _ := p.Operations.Handoff(who.Tenant, id)
+	h, _, err := p.Operations.Handoff(who.Tenant, id)
+	if err != nil {
+		return operations.Handoff{}, err
+	}
 	if in.State == operations.Result {
 		run, err := p.Runs.Get(who.Tenant, h.RunID)
 		if err != nil || run.Status != runs.Completed {
@@ -460,8 +490,11 @@ type AgentNetwork struct {
 	Truncated bool          `json:"truncated"`
 }
 
-func (p *Platform) AgentNetwork(who auth.Principal) AgentNetwork {
-	hs := p.Handoffs(who, operations.MaxResults)
+func (p *Platform) AgentNetwork(who auth.Principal) (AgentNetwork, error) {
+	hs, err := p.Handoffs(who, operations.MaxResults)
+	if err != nil {
+		return AgentNetwork{}, err
+	}
 	out := AgentNetwork{Edges: []NetworkEdge{}, Truncated: len(hs) == operations.MaxResults}
 	idx := map[[2]string]int{}
 	for _, h := range hs {
@@ -492,7 +525,7 @@ func (p *Platform) AgentNetwork(who auth.Principal) AgentNetwork {
 			e.WaitingSeconds += int64(wait / time.Second)
 		}
 	}
-	return out
+	return out, nil
 }
 
 func (p *Platform) operationTools(req runtime.Request) ([]string, bool, error) {
@@ -577,7 +610,11 @@ func (p *Platform) operationPerson(run runs.Run) string {
 		}
 	}
 	if id := wire.Meta(root.Tag())[metaAssignment]; id != "" {
-		if a, ok := p.Operations.Assignment(run.Tenant, id); ok {
+		a, ok, err := p.Operations.Assignment(run.Tenant, id)
+		if err != nil {
+			p.log.Error("platform: assignment owner could not be read", "error", err)
+		}
+		if ok {
 			return a.Owner
 		}
 	}
@@ -587,7 +624,12 @@ func (p *Platform) operationPerson(run runs.Run) string {
 // ConversationOperationsSettled is deliberately conservative: raw retained
 // contract provenance requires a reviewed summary rather than history publication.
 func (p *Platform) ConversationOperationsSettled(tenant, thread string) bool {
-	return !p.Operations.HasConversation(tenant, thread)
+	found, err := p.Operations.HasConversation(tenant, thread)
+	if err != nil {
+		p.log.Error("platform: conversation operations could not be read", "error", err)
+		return false
+	}
+	return !found
 }
 
 type AgentControlView struct {
@@ -605,13 +647,23 @@ type AgentControlView struct {
 }
 
 // AgentState describes only work this reader can see, never hidden activity.
-func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView {
-	c := p.AgentControl(who.Tenant, agent)
-	view := AgentControlView{Control: c, State: "ready", EffectivePaused: p.Operations.Paused(who.Tenant, legacy.BuiltinAgent(agent)) || !p.agentReady(who.Tenant, agent), ManagerName: p.NameOf(who.Tenant, c.Manager)}
+func (p *Platform) AgentState(who auth.Principal, agent string) (AgentControlView, error) {
+	c, err := p.AgentControl(who.Tenant, agent)
+	if err != nil {
+		return AgentControlView{}, err
+	}
+	workspace, err := p.AgentControl(who.Tenant, "")
+	if err != nil {
+		return AgentControlView{}, err
+	}
+	view := AgentControlView{Control: c, State: "ready", EffectivePaused: workspace.Paused || c.Paused || !p.agentReady(who.Tenant, agent), ManagerName: p.NameOf(who.Tenant, c.Manager)}
 
 	if agent != "" && who.Can(auth.AgentsRead) && p.Seer(who).Agent(agent) {
-		binding := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(legacy.BuiltinAgent(agent)))
-		if len(binding.Skills) > 0 {
+		binding, berr := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(legacy.BuiltinAgent(agent)))
+		if berr != nil {
+			// Defaults that cannot be read are not known to fit.
+			view.NeedsSkillReview, view.State = true, "needs_review"
+		} else if len(binding.Skills) > 0 {
 			revision, err := p.Catalog().Get(context.Background(), who.Tenant, agent, 0)
 			home, homed := p.Projects.Tree(who.Tenant).Home(agent)
 			view.NeedsSkillReview = err != nil || binding.AgentRevision != revision.Rev || !homed || !p.defaultSkillsFitHome(who.Tenant, agent, home, p.Projects.Tree(who.Tenant))
@@ -625,7 +677,7 @@ func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView
 	if view.EffectivePaused {
 		view.State = "paused"
 		switch {
-		case p.Operations.Control(who.Tenant, "").Paused:
+		case workspace.Paused:
 			view.PauseReason = "workspace"
 		case !p.agentReady(who.Tenant, agent):
 			view.PauseReason = "setup"
@@ -634,7 +686,7 @@ func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView
 		}
 	}
 	if agent == "" || !who.Can(auth.RunsRead) {
-		return view
+		return view, nil
 	}
 	now := p.now()
 	latest := p.Runs.AgentWindow(who.Tenant, agent, now.Add(-31*24*time.Hour), now, 1, p.Seer(who).Run)
@@ -653,14 +705,18 @@ func (p *Platform) AgentState(who auth.Principal, agent string) AgentControlView
 		}
 	}
 	if view.State == "ready" {
-		for _, a := range p.Assignments(who, operations.MaxResults) {
+		assignments, err := p.Assignments(who, operations.MaxResults)
+		if err != nil {
+			return AgentControlView{}, err
+		}
+		for _, a := range assignments {
 			if a.Agent == agent && a.State == operations.Watching {
 				view.State = "watching"
 				break
 			}
 		}
 	}
-	return view
+	return view, nil
 }
 
 func operationMetaOf(meta map[string]string) map[string]string {

@@ -90,9 +90,13 @@ func (p *Platform) pollSourceAssignments(ctx context.Context, tenant string) {
 	if v, ok := p.assignmentSourceCursor.Load(tenant); ok {
 		after = v.(string)
 	}
-	watchers, next := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool {
+	watchers, next, err := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool {
 		return a.Trigger == operations.SourceTrigger && (a.State == operations.Watching || a.State == operations.Accepted)
 	})
+	if err != nil {
+		p.log.Error("platform: source assignments could not be read", "error", err)
+		return
+	}
 	p.assignmentSourceCursor.Store(tenant, next)
 	for _, a := range watchers {
 		version, fresh := p.assignmentSourceVersion(tenant, a.Source)

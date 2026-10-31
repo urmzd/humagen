@@ -745,7 +745,7 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	p.recordContextUse(tag, project)
 	// Who asked, by every name they go by now: a mapping removed later does
 	// not let them approve their own calls.
-	p.Runs.PinRequesters(acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
+	p.Runs.PinRequesters(tag.Tenant, acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
 	return p.Runs.Get(tag.Tenant, acc.RunID)
 }
 
@@ -931,7 +931,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, err
 	}
-	p.Runs.Called(runID, req.Lease)
+	p.Runs.Called(tenant, runID, req.Lease)
 	return child, nil
 }
 
@@ -960,10 +960,6 @@ func reserved(origin string) bool {
 // reconcileEvery is how often open runs are checked against the ledger.
 const reconcileEvery = 2 * time.Second
 
-// flushEvery is how often what the journal, the run index and the usage
-// ledger write behind is written: what a crash can lose.
-const flushEvery = 250 * time.Millisecond
-
 // reconcile closes runs the ledger says are over but whose events never said so.
 //
 // The ledger is the authority on whether a run has ended. The usual way to
@@ -974,8 +970,8 @@ func (p *Platform) reconcile(ctx context.Context) {
 	p.reconcileOperationReminders(ctx)
 	p.settleOperations(ctx)
 	p.syncAssignmentSchedules()
-	for _, id := range p.Runs.Active() {
-		p.settleFromLedger(ctx, id)
+	for _, run := range p.Runs.Unfinished() {
+		p.settleFromLedger(ctx, run.Tenant, run.ID)
 	}
 }
 
@@ -983,7 +979,7 @@ func (p *Platform) reconcile(ctx context.Context) {
 // runtime recorded, and reports whether the ledger says it is over. A run
 // whose final event has not been observed yet ends here, and the event, when
 // it arrives, changes nothing: it says the same thing.
-func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
+func (p *Platform) settleFromLedger(ctx context.Context, tenant, id string) bool {
 	rec, err := p.ledger.GetRun(ctx, id)
 	if err != nil {
 		return false
@@ -1008,7 +1004,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			// A stopped run succeeds in the ledger: it ended and did not
 			// fail. Its output says it was stopped, and what it had said.
 			if out.Stopped != nil {
-				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(id, out.Text, out.Stopped.Reason, at) }); ended {
+				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(tenant, id, out.Text, out.Stopped.Reason, at) }); ended {
 					p.log.Info("platform: run ended stopped in the ledger before its final event was seen", "run", id)
 					p.ended(ctx, run)
 				}
@@ -1016,7 +1012,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			}
 		}
 	}
-	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(id, status, answer, rec.Error, at) }); ended {
+	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(tenant, id, status, answer, rec.Error, at) }); ended {
 		p.log.Info("platform: run ended in the ledger before its final event was seen", "run", id, "status", status)
 		p.ended(ctx, run)
 	}
@@ -1033,7 +1029,9 @@ func (p *Platform) observe(ctx context.Context, e event.Envelope) {
 		// published. The run's own events say what came of it.
 		return
 	}
-	p.Journal.Append(e, p.originOf(e.Tenant, e.Run))
+	if err := p.Journal.Append(e, p.originOf(e.Tenant, e.Run)); err != nil {
+		p.log.Error("platform: event could not be kept in the journal", "tenant", e.Tenant, "run", e.Run, "seq", e.Seq, "error", err)
+	}
 	if event.HasPrefix(e.Type, "run.usage") {
 		p.observeUsage(ctx, e)
 		return
@@ -1222,18 +1220,6 @@ func (p *Platform) Run(ctx context.Context) error {
 		loop("observer "+tenant, func() error { return p.observeTenant(ctx, sub, observed) })
 		loop("egress "+tenant, func() error { return p.deliver.Run(ctx, tenant) })
 	})
-	loop("state flush", func() error {
-		tick := time.NewTicker(flushEvery)
-		defer tick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-				p.flush()
-			}
-		}
-	})
 	// A process's own share: what it holds in memory or on its own disk.
 	// Pending connector renders are this process's egress (fed by the
 	// per-tenant loops above), and sandboxes are directories on this host.
@@ -1339,9 +1325,6 @@ func (p *Platform) Run(ctx context.Context) error {
 	// No tenant starts being watched once the loops are winding down.
 	p.watching.end()
 	wg.Wait()
-	// What changed last is written once every loop has stopped, so nothing
-	// the observer folded in while the platform stopped is left unwritten.
-	p.flush()
 	close(errc)
 	return <-errc
 }

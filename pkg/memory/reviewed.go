@@ -4,9 +4,10 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 var ErrReviewConflict = errors.New("memory: this text already has a different review state")
@@ -28,30 +29,50 @@ func (s *Store) RememberDecision(tenant, owner, text, reviewer string, at time.T
 	if text != reviewed {
 		return Note{}, fmt.Errorf("%w: review the memory as one line without list markers", ErrInvalid)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	k := key(tenant, owner)
-	for _, note := range s.by[k] {
-		if strings.EqualFold(note.Text, text) {
-			if note.Text != text || note.Status != Approved || note.Kind != Decision || !note.ExpiresAt.IsZero() && !note.ExpiresAt.After(at) {
-				return Note{}, ErrReviewConflict
-			}
-			return note, nil
-		}
-	}
-	notes, err := makeRoom(append([]Note(nil), s.by[k]...), Approved)
-	if err != nil {
-		return Note{}, err
-	}
-	note := Note{ID: "m_" + rand.Text(), Text: text, Details: Details{Kind: Decision}, Source: Person, Status: Approved, By: reviewer, At: at, ReviewedBy: reviewer, ReviewedAt: at, seq: s.next + 1}
-	origins := maps.Clone(s.origins[k])
+	id := "m_" + rand.Text()
+	run := ""
 	if len(trustedRun) == 1 {
-		if origins == nil {
-			origins = map[string]string{}
+		run = trustedRun[0]
+		// The origin is kept before the note, so the note is never held
+		// without it; one kept for a note that is not written names nothing.
+		if _, err := s.kept.Update(tenant, owner, func(cur stored, _ bool) (stored, error) {
+			cur.Origins = setIn(cur.Origins, id, run)
+			cur.Exported = true
+			return cur, nil
+		}); err != nil {
+			return Note{}, fmt.Errorf("memory: write: %w", err)
 		}
-		origins[note.ID] = trustedRun[0]
 	}
-	if err := s.setOrigins(tenant, owner, append(notes, note), s.next+1, origins); err != nil {
+	var note Note
+	_, err = s.change(tenant, owner, func(notes []Note) ([]Note, error) {
+		for _, n := range notes {
+			if strings.EqualFold(n.Text, text) {
+				if n.Text != text || n.Status != Approved || n.Kind != Decision || !n.ExpiresAt.IsZero() && !n.ExpiresAt.After(at) {
+					return nil, ErrReviewConflict
+				}
+				note = n
+				return notes, nil
+			}
+		}
+		next := nextSeq(notes)
+		notes, err := makeRoom(notes, Approved)
+		if err != nil {
+			return nil, err
+		}
+		note = Note{ID: id, Text: text, Details: Details{Kind: Decision}, Source: Person, Status: Approved, By: reviewer, At: at, ReviewedBy: reviewer, ReviewedAt: at, seq: next}
+		return append(notes, note), nil
+	})
+	if run != "" && (err != nil || note.ID != id) {
+		// Best effort: the origin of a note that was not written.
+		_, _ = s.kept.Update(tenant, owner, func(cur stored, _ bool) (stored, error) {
+			if _, ok := cur.Origins[id]; !ok {
+				return cur, state.ErrUnchanged
+			}
+			delete(cur.Origins, id)
+			return cur, nil
+		})
+	}
+	if err != nil {
 		return Note{}, err
 	}
 	return note, nil

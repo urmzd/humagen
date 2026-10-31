@@ -15,7 +15,12 @@ func (s *Server) listPersonalMemory(w http.ResponseWriter, r *http.Request, who 
 		fail(w, 403, "personal memory requires a person")
 		return
 	}
-	ok(w, 200, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
+	notes, err := s.P.Memory.List(who.Tenant, owner)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, 200, map[string]any{"notes": s.viewNotesAs(who, notes)})
 }
 func (s *Server) addPersonalMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	owner := memory.PersonalOwner(who.Subject)
@@ -53,7 +58,12 @@ func (s *Server) forgetPersonalMemory(w http.ResponseWriter, r *http.Request, wh
 	}
 	id := r.PathValue("id")
 	exists := false
-	for _, note := range s.P.Memory.List(who.Tenant, owner) {
+	notes, err := s.P.Memory.List(who.Tenant, owner)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, note := range notes {
 		exists = exists || note.ID == id
 	}
 	if !exists {
@@ -81,7 +91,12 @@ func (s *Server) forgetPersonalMemory(w http.ResponseWriter, r *http.Request, wh
 func (s *Server) forgetOwnedMemory(w http.ResponseWriter, r *http.Request, who auth.Principal, owner, route, rule string) {
 	id := r.PathValue("id")
 	exists := false
-	for _, note := range s.P.Memory.List(who.Tenant, owner) {
+	notes, err := s.P.Memory.List(who.Tenant, owner)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, note := range notes {
 		exists = exists || note.ID == id
 	}
 	if !exists {

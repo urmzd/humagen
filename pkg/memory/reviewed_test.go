@@ -32,14 +32,14 @@ func TestRememberDecisionIsAtomicAndNeverApprovesPendingDuplicates(t *testing.T)
 		if _, err := store.RememberDecision("acme", owner, "keep tuesday", "ada", at); !errors.Is(err, memory.ErrReviewConflict) {
 			t.Fatal("pending duplicate bypassed review", err)
 		}
-		if notes := store.List("acme", owner); len(notes) != 1 || notes[0].Status != memory.Pending || notes[0].ID != pending.ID {
+		if notes := memory.ListOf(t, store, "acme", owner); len(notes) != 1 || notes[0].Status != memory.Pending || notes[0].ID != pending.ID {
 			t.Fatal("review refusal changed memory")
 		}
 		fault.Fail(statetest.ErrInjected)
 		if _, err := store.RememberDecision("acme", owner, "Use a clear owner", "ada", at); !errors.Is(err, statetest.ErrInjected) {
 			t.Fatal("failed reviewed write succeeded", err)
 		}
-		if len(store.List("acme", owner)) != 1 {
+		if len(memory.ListOf(t, store, "acme", owner)) != 1 {
 			t.Fatal("failed write became visible")
 		}
 		fault.Fail(nil)
@@ -54,7 +54,7 @@ func TestRememberDecisionIsAtomicAndNeverApprovesPendingDuplicates(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if notes := again.List("acme", owner); len(notes) != 2 || notes[1].ReviewedBy != "ada" || notes[1].Kind != memory.Decision || notes[1].Status != memory.Approved {
+		if notes := memory.ListOf(t, again, "acme", owner); len(notes) != 2 || notes[1].ReviewedBy != "ada" || notes[1].Kind != memory.Decision || notes[1].Status != memory.Approved {
 			t.Fatalf("review lost on restart: %+v", notes)
 		}
 	})

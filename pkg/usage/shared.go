@@ -8,7 +8,6 @@ import (
 	"math/rand/v2"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -44,28 +43,15 @@ import (
 // Spend is still counted under the tenant's advisory lock: a call's spend
 // reads and rewrites its run's row.
 //
-// Entries are kept under keys from a sequence in the database, not a
-// process's own count, so two processes appending never overwrite each
-// other's entries.
+// Entries are kept in the state table, under their tenant (see keys.go),
+// at places from a sequence in the database, not a process's own count, so
+// two processes appending never overwrite each other's entries.
 type Counters struct {
 	pool *pgxpool.Pool
-
-	// retained is the day each tenant's old counts were last dropped by
-	// this process.
-	mu       sync.Mutex
-	retained map[string]int64
 }
 
 // Stripes is how many rows an admission's counts are spread over, per scope.
 const Stripes = 8
-
-// Judge decides, from the counts read, whether an admission goes ahead. With
-// shared counters it reads them as they are, without holding them: a limit
-// that must hold exactly is a Quota.
-type Judge func(read Reader) (bool, error)
-
-// Reader reads what a scope has used since a time.
-type Reader func(scope policy.Scope, since time.Time) (policy.Usage, error)
 
 // countersLock is the first half of the advisory lock a tenant's counts are
 // changed under; the second is a hash of the schema and the tenant.
@@ -144,8 +130,9 @@ CREATE INDEX IF NOT EXISTS humagen_usage_slots_run ON humagen_usage_slots (tenan
 // Neither grows, so a stripe's count is still bounded as the package says.
 
 // OpenCounters creates the counters' tables if they are not there. The
-// caller owns the pool. The counts are filled from the ledger the first
-// time a ledger is opened on them (Open with WithCounters).
+// caller owns the pool. The counts are filled from an earlier release's
+// entries the first time a ledger is opened on them (Open with
+// WithCounters).
 func OpenCounters(ctx context.Context, pool *pgxpool.Pool) (*Counters, error) {
 	if pool == nil {
 		return nil, errors.New("usage: counters: no pool")
@@ -162,7 +149,7 @@ func OpenCounters(ctx context.Context, pool *pgxpool.Pool) (*Counters, error) {
 	if err != nil {
 		return nil, fmt.Errorf("usage: counters: migrate: %w", err)
 	}
-	return &Counters{pool: pool, retained: map[string]int64{}}, nil
+	return &Counters{pool: pool}, nil
 }
 
 // slotActive gives every run in flight that has no slots its slots, on
@@ -285,31 +272,53 @@ func (c *Counters) Usage(ctx context.Context, tenant string, scope policy.Scope,
 	return usageFrom(ctx, c.pool, tenant, scope, since)
 }
 
+// runSpend reads what one run has spent.
+func (c *Counters) runSpend(ctx context.Context, tenant, run string) (Spend, error) {
+	var r runRec
+	var live, settled []byte
+	err := c.pool.QueryRow(ctx, `SELECT live, settled FROM humagen_usage_runs WHERE tenant = $1 AND run_id = $2`, tenant, run).Scan(&live, &settled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Spend{}, nil
+	}
+	if err != nil {
+		return Spend{}, err
+	}
+	if err := json.Unmarshal(live, &r.Live); err != nil {
+		return Spend{}, err
+	}
+	if err := json.Unmarshal(settled, &r.Settled); err != nil {
+		return Spend{}, err
+	}
+	return r.counted(), nil
+}
+
 // record applies an entry other than an admission with quotas to the shared
 // counts and writes it under a new key, as one transaction. It reports the
 // entry's key, what it added to the counts, and false when its Spent or
 // Settled key was already counted.
 func (c *Counters) record(ctx context.Context, e Entry) (n int64, added Spend, ok bool, err error) {
 	if e.Kind == Admitted {
-		n, ok, _, err = c.admit(ctx, e, nil, nil)
+		n, ok, _, err = c.admit(ctx, e, nil)
 		return n, Spend{}, ok, err
-	}
-	raw, err := json.Marshal(e)
-	if err != nil {
-		return 0, Spend{}, false, err
 	}
 	err = pgx.BeginFunc(ctx, c.pool, func(tx pgx.Tx) error {
 		ok, added = false, Spend{}
-		a := admission{project: e.Project, agent: e.Agent, client: e.Client, runID: e.RunID, within: e.Within, at: e.At}
+		a := admissionOf(e)
+		var counted *Spend
 		switch e.Kind {
 		case Ended:
 			// Removing a run's rows needs no lock: nothing reads and
-			// rewrites them.
-			b := &pgx.Batch{}
-			b.Queue(`DELETE FROM humagen_usage_active WHERE tenant = $1 AND run_id = $2`, e.Tenant, e.RunID)
-			b.Queue(`DELETE FROM humagen_usage_slots WHERE tenant = $1 AND run_id = $2`, e.Tenant, e.RunID)
-			if err := tx.SendBatch(ctx, b).Close(); err != nil {
+			// rewrites them. A run no longer in flight has ended already,
+			// and its end is kept once.
+			tag, err := tx.Exec(ctx, `DELETE FROM humagen_usage_active WHERE tenant = $1 AND run_id = $2`, e.Tenant, e.RunID)
+			if err != nil {
 				return err
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM humagen_usage_slots WHERE tenant = $1 AND run_id = $2`, e.Tenant, e.RunID); err != nil {
+				return err
+			}
+			if tag.RowsAffected() == 0 {
+				return nil
 			}
 		case Spent, Settled:
 			if e.Key == "" || e.Spend == nil {
@@ -328,11 +337,12 @@ func (c *Counters) record(ctx context.Context, e Entry) (n int64, added Spend, o
 			if added, err = spendRun(ctx, tx, e); err != nil {
 				return err
 			}
+			counted = &added
 			if err := addDay(ctx, tx, e.Tenant, a.scopes(), policy.PeriodStart(policy.Day, e.At).Unix(), added); err != nil {
 				return err
 			}
 		}
-		if n, err = writeEntry(ctx, tx, raw); err != nil {
+		if n, err = writeEntry(ctx, tx, e, counted); err != nil {
 			return err
 		}
 		ok = true
@@ -344,13 +354,22 @@ func (c *Counters) record(ctx context.Context, e Entry) (n int64, added Spend, o
 	return n, added, ok, nil
 }
 
-// writeEntry writes an entry under the next key of the sequence.
-func writeEntry(ctx context.Context, tx pgx.Tx, raw []byte) (int64, error) {
+// writeEntry writes an entry at the next place of the sequence.
+func writeEntry(ctx context.Context, tx pgx.Tx, e Entry, added *Spend) (int64, error) {
 	var n int64
 	if err := tx.QueryRow(ctx, `SELECT nextval('humagen_usage_seq')`).Scan(&n); err != nil {
 		return 0, err
 	}
-	return n, state.WriteTx(ctx, tx, "usage", state.Put("", state.Seq(n), raw))
+	return n, keepEntry(ctx, tx, e, added, n)
+}
+
+// keepEntry writes an entry's records at a place.
+func keepEntry(ctx context.Context, tx pgx.Tx, e Entry, added *Spend, n int64) error {
+	ops, err := entryOps(e, added, n)
+	if err != nil {
+		return err
+	}
+	return state.WriteTx(ctx, tx, namespace, ops...)
 }
 
 // share is a stripe's part of a limit: the limit split as evenly as it goes.
@@ -411,27 +430,15 @@ func counted(ctx context.Context, tx pgx.Tx, tenant string, q Quota) ([Stripes]i
 // errNoRoom ends a try that found no room on its stripe.
 var errNoRoom = errors.New("usage: no room on this stripe")
 
-// admit judges an admission, takes its quotas and records it. It reports the
-// entry's key, whether it was admitted, and the quota that had no room.
-func (c *Counters) admit(ctx context.Context, e Entry, judge Judge, quotas []Quota) (n int64, ok bool, full *Quota, err error) {
-	if judge != nil {
-		in, err := judge(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
-			return usageFrom(ctx, c.pool, e.Tenant, scope, since)
-		})
-		if err != nil || !in {
-			return 0, false, nil, err
-		}
-	}
+// admit takes an admission's quotas and records it. It reports the entry's
+// place, whether it was admitted, and the quota that had no room.
+func (c *Counters) admit(ctx context.Context, e Entry, quotas []Quota) (n int64, ok bool, full *Quota, err error) {
 	for _, q := range quotas {
 		if q.Max <= 0 {
 			return 0, false, &q, nil
 		}
 	}
-	raw, err := json.Marshal(e)
-	if err != nil {
-		return 0, false, nil, err
-	}
-	a := admission{project: e.Project, agent: e.Agent, client: e.Client, runID: e.RunID, within: e.Within, at: e.At}
+	a := admissionOf(e)
 	stripe := rand.IntN(Stripes)
 	scopes := quotaScopes(quotas)
 
@@ -461,14 +468,13 @@ func (c *Counters) admit(ctx context.Context, e Entry, judge Judge, quotas []Quo
 			}
 			on[[2]string{dbScope(scopeKey(q.Scope)), string(q.Kind)}] = stripe
 		}
-		if n, err = c.count(ctx, tx, e, a, raw, stripe, on); err != nil {
+		if n, err = c.count(ctx, tx, e, a, stripe, on); err != nil {
 			return err
 		}
 		ok = true
 		return nil
 	})
 	if err == nil {
-		c.retain(ctx, e.Tenant, e.At)
 		return n, ok, nil, nil
 	}
 	if !errors.Is(err, errNoRoom) {
@@ -502,7 +508,7 @@ func (c *Counters) admit(ctx context.Context, e Entry, judge Judge, quotas []Quo
 			}
 			on[[2]string{dbScope(scopeKey(q.Scope)), string(q.Kind)}] = best
 		}
-		if n, err = c.count(ctx, tx, e, a, raw, stripe, on); err != nil {
+		if n, err = c.count(ctx, tx, e, a, stripe, on); err != nil {
 			return err
 		}
 		ok = true
@@ -510,9 +516,6 @@ func (c *Counters) admit(ctx context.Context, e Entry, judge Judge, quotas []Quo
 	})
 	if err != nil {
 		return 0, false, nil, fmt.Errorf("usage: counters: %w", err)
-	}
-	if ok {
-		c.retain(ctx, e.Tenant, e.At)
 	}
 	return n, ok, full, nil
 }
@@ -532,7 +535,7 @@ func lockStripes(ctx context.Context, tx pgx.Tx, tenant, scope string, from, to 
 // count counts an admission: in flight, and started today, in every scope it
 // falls in, on the stripe on names for the scope and kind, or stripe; and
 // writes its entry.
-func (c *Counters) count(ctx context.Context, tx pgx.Tx, e Entry, a admission, raw []byte, stripe int, on map[[2]string]int) (int64, error) {
+func (c *Counters) count(ctx context.Context, tx pgx.Tx, e Entry, a admission, stripe int, on map[[2]string]int) (int64, error) {
 	within := e.Within
 	if within == nil {
 		within = []string{}
@@ -571,46 +574,46 @@ func (c *Counters) count(ctx context.Context, tx pgx.Tx, e Entry, a admission, r
 	if err := br.Close(); err != nil {
 		return 0, err
 	}
-	return n, state.WriteTx(ctx, tx, "usage", state.Put("", state.Seq(n), raw))
+	return n, keepEntry(ctx, tx, e, nil, n)
 }
 
 // spendRun folds a Spent or Settled entry into its run's row and returns what
 // it adds to the counts, as apply does in memory.
 func spendRun(ctx context.Context, tx pgx.Tx, e Entry) (Spend, error) {
-	var r runSpend
+	var r runRec
 	var live, settled []byte
-	err := tx.QueryRow(ctx, `SELECT live, settled, last FROM humagen_usage_runs WHERE tenant = $1 AND run_id = $2`, e.Tenant, e.RunID).Scan(&live, &settled, &r.last)
+	err := tx.QueryRow(ctx, `SELECT live, settled, last FROM humagen_usage_runs WHERE tenant = $1 AND run_id = $2`, e.Tenant, e.RunID).Scan(&live, &settled, &r.Last)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
 		return Spend{}, err
 	default:
-		if err := json.Unmarshal(live, &r.live); err != nil {
+		if err := json.Unmarshal(live, &r.Live); err != nil {
 			return Spend{}, err
 		}
-		if err := json.Unmarshal(settled, &r.settled); err != nil {
+		if err := json.Unmarshal(settled, &r.Settled); err != nil {
 			return Spend{}, err
 		}
 	}
 	before := r.counted()
 	if e.Kind == Spent {
-		r.live = r.live.add(*e.Spend)
+		r.Live = r.Live.add(*e.Spend)
 	} else {
-		r.settled = *e.Spend
+		r.Settled = *e.Spend
 	}
-	if e.At.After(r.last) {
-		r.last = e.At
+	if e.At.After(r.Last) {
+		r.Last = e.At
 	}
 	added := r.counted().beyond(before)
-	if live, err = json.Marshal(r.live); err != nil {
+	if live, err = json.Marshal(r.Live); err != nil {
 		return Spend{}, err
 	}
-	if settled, err = json.Marshal(r.settled); err != nil {
+	if settled, err = json.Marshal(r.Settled); err != nil {
 		return Spend{}, err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO humagen_usage_runs (tenant, run_id, live, settled, last) VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (tenant, run_id) DO UPDATE SET live = EXCLUDED.live, settled = EXCLUDED.settled, last = EXCLUDED.last`,
-		e.Tenant, e.RunID, live, settled, r.last)
+		e.Tenant, e.RunID, live, settled, r.Last)
 	return added, err
 }
 
@@ -653,20 +656,11 @@ func addDay(ctx context.Context, tx pgx.Tx, tenant string, scopes []string, day 
 	return nil
 }
 
-// retain drops a tenant's counts no period can still need, as prune does in
-// memory, once a day per tenant in this process. It is housekeeping: an
-// error leaves the rows for the next day's try.
-func (c *Counters) retain(ctx context.Context, tenant string, now time.Time) {
-	day := policy.PeriodStart(policy.Day, now).Unix()
-	c.mu.Lock()
-	if c.retained[tenant] >= day {
-		c.mu.Unlock()
-		return
-	}
-	c.retained[tenant] = day
-	c.mu.Unlock()
-	cutoff := policy.PeriodStart(policy.Day, now.Add(-keepAdmissions))
-	_ = pgx.BeginFunc(ctx, c.pool, func(tx pgx.Tx) error {
+// prune drops a tenant's counts no period can still need: those of days
+// before cutoff. It is housekeeping, which the ledger runs once a day per
+// tenant (Ledger.retain).
+func (c *Counters) prune(ctx context.Context, tenant string, cutoff time.Time) error {
+	return pgx.BeginFunc(ctx, c.pool, func(tx pgx.Tx) error {
 		// The tenant's lock keeps this from deleting a run's spend row
 		// while a call reads and rewrites it.
 		if err := lockTenant(ctx, tx, tenant); err != nil {
@@ -681,15 +675,16 @@ func (c *Counters) retain(ctx context.Context, tenant string, now time.Time) {
 	})
 }
 
-// seed moves the sequence past every key the ledger loaded and, the first
-// time the counters are opened on a database, fills them from the ledger's
-// counts. The caller holds l.mu.
-func (c *Counters) seed(ctx context.Context, l *Ledger) error {
+// seed moves the sequence past every place an earlier release gave an
+// entry and, the first time the counters are opened on a database, fills
+// them from counts a ledger without counters kept in from (see keys.go): the
+// entries of that release, recorded into a ledger in memory.
+func (c *Counters) seed(ctx context.Context, from state.Store, last int64) error {
 	return pgx.BeginFunc(ctx, c.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, 1)`, int32(countersLock)); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `SELECT setval('humagen_usage_seq', GREATEST((SELECT last_value FROM humagen_usage_seq), $1, 1))`, l.seq); err != nil {
+		if _, err := tx.Exec(ctx, `SELECT setval('humagen_usage_seq', GREATEST((SELECT last_value FROM humagen_usage_seq), $1, 1))`, last); err != nil {
 			return err
 		}
 		var built bool
@@ -700,54 +695,86 @@ func (c *Counters) seed(ctx context.Context, l *Ledger) error {
 		if built {
 			return nil
 		}
-		for name, t := range l.tenants {
-			for _, d := range t.days {
-				for k, n := range d.runs {
-					if _, err := tx.Exec(ctx, `INSERT INTO humagen_usage_days (tenant, scope, day, runs) VALUES ($1, $2, $3, $4)
-						ON CONFLICT (tenant, scope, day) DO UPDATE SET runs = humagen_usage_days.runs + EXCLUDED.runs`, name, dbScope(k), d.start.Unix(), n); err != nil {
-						return err
-					}
-				}
-				for k, s := range d.spend {
-					if err := addDay(ctx, tx, name, []string{k}, d.start.Unix(), s); err != nil {
-						return err
-					}
-				}
-				for _, s := range d.spends {
-					if _, err := tx.Exec(ctx, `INSERT INTO humagen_usage_keys (tenant, key, at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, name, s.key, s.at); err != nil {
-						return err
-					}
-				}
+		if from != nil {
+			recs, err := from.Load(ctx, namespace)
+			if err != nil {
+				return err
 			}
-			for id, a := range t.active {
-				within := a.within
-				if within == nil {
-					within = []string{}
-				}
-				if _, err := tx.Exec(ctx, `INSERT INTO humagen_usage_active (tenant, run_id, project, within, agent, client) VALUES ($1, $2, $3, $4, $5, $6)
-					ON CONFLICT (tenant, run_id) DO NOTHING`, name, id, a.project, within, a.agent, a.client); err != nil {
-					return err
-				}
-				if err := addSlots(ctx, tx, name, id, a.scopes(), nil); err != nil {
-					return err
-				}
-			}
-			for id, r := range t.runs {
-				live, err := json.Marshal(r.live)
-				if err != nil {
-					return err
-				}
-				settled, err := json.Marshal(r.settled)
-				if err != nil {
-					return err
-				}
-				if _, err := tx.Exec(ctx, `INSERT INTO humagen_usage_runs (tenant, run_id, live, settled, last) VALUES ($1, $2, $3, $4, $5)
-					ON CONFLICT (tenant, run_id) DO NOTHING`, name, id, live, settled, r.last); err != nil {
-					return err
+			for _, r := range recs {
+				if err := seedRecord(ctx, tx, r); err != nil {
+					return fmt.Errorf("%s/%s: %w", r.Tenant, r.Key, err)
 				}
 			}
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO humagen_usage_meta (id, built) VALUES (1, true) ON CONFLICT (id) DO UPDATE SET built = true`)
 		return err
 	})
+}
+
+// seedRecord fills the counters from one count a ledger without them kept.
+func seedRecord(ctx context.Context, tx pgx.Tx, r state.Record) error {
+	name := r.Tenant
+	switch {
+	case strings.HasPrefix(r.Key, "d:"):
+		var d dayCount
+		if err := json.Unmarshal(r.Value, &d); err != nil {
+			return err
+		}
+		rest := strings.TrimPrefix(r.Key, "d:")
+		i := strings.LastIndexByte(rest, ':')
+		if i < 0 {
+			return nil
+		}
+		scope, day := rest[:i], rest[i+1:]
+		at, err := time.Parse("20060102", day)
+		if err != nil {
+			return nil
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO humagen_usage_days (tenant, scope, day, runs) VALUES ($1, $2, $3, $4)
+			ON CONFLICT (tenant, scope, day) DO UPDATE SET runs = humagen_usage_days.runs + EXCLUDED.runs`, name, scope, at.Unix(), d.Runs); err != nil {
+			return err
+		}
+		// addDay takes a scope key as the ledger writes it.
+		return addDay(ctx, tx, name, []string{strings.Replace(scope, ":", "\x00", 1)}, at.Unix(), d.Spend)
+	case strings.HasPrefix(r.Key, "a:"):
+		var a activeRun
+		if err := json.Unmarshal(r.Value, &a); err != nil {
+			return err
+		}
+		id := strings.TrimPrefix(r.Key, "a:")
+		within := a.Within
+		if within == nil {
+			within = []string{}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO humagen_usage_active (tenant, run_id, project, within, agent, client) VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (tenant, run_id) DO NOTHING`, name, id, a.Project, within, a.Agent, a.Client); err != nil {
+			return err
+		}
+		ad := admission{project: a.Project, within: a.Within, agent: a.Agent, client: a.Client}
+		return addSlots(ctx, tx, name, id, ad.scopes(), nil)
+	case strings.HasPrefix(r.Key, "r:"):
+		var run runRec
+		if err := json.Unmarshal(r.Value, &run); err != nil {
+			return err
+		}
+		live, err := json.Marshal(run.Live)
+		if err != nil {
+			return err
+		}
+		settled, err := json.Marshal(run.Settled)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO humagen_usage_runs (tenant, run_id, live, settled, last) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (tenant, run_id) DO NOTHING`, name, strings.TrimPrefix(r.Key, "r:"), live, settled, run.Last)
+		return err
+	case strings.HasPrefix(r.Key, "k:"):
+		var k keyRec
+		if err := json.Unmarshal(r.Value, &k); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO humagen_usage_keys (tenant, key, at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, name, strings.TrimPrefix(r.Key, "k:"), k.At)
+		return err
+	}
+	return nil
 }
