@@ -106,7 +106,10 @@ func (p *Platform) RollupProject(who auth.Principal, name string) (ProjectRollup
 			pr.Parent = ""
 		}
 		c := counts[child]
-		unread := p.Inbox.CountProject(who.Tenant, child, p.inboxQuery(tree, who, inbox.Query{}))
+		unread, err := p.Inbox.CountProject(who.Tenant, child, p.inboxQuery(tree, who, inbox.Query{}))
+		if err != nil {
+			p.log.Warn("platform: a project's unread count could not be read", "tenant", who.Tenant, "project", child, "error", err)
+		}
 		if child != name {
 			if len(out.Projects) < MaxRollupProjects {
 				out.Projects = append(out.Projects, ProjectRollupRow{Name: child, Title: cmp.Or(pr.Title, child), Parent: pr.Parent, Conversations: c.Threads, Active: c.Active, Unread: unread.Unread + unread.Updates, Needs: unread.Open, Runs30Days: monthly[child]})

@@ -57,7 +57,11 @@ func (p *Platform) retainInbox(ctx context.Context) {
 			p.log.Error("platform: read audit retention failed", "error", err)
 		}
 	}
-	for _, tenant := range p.Inbox.Tenants() {
+	tenants, err := p.Inbox.Tenants()
+	if err != nil {
+		p.log.Warn("platform: inbox retention could not list workspaces; the next pass tries again", "error", err)
+	}
+	for _, tenant := range tenants {
 		if ctx.Err() != nil {
 			return
 		}

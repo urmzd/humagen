@@ -77,10 +77,10 @@ func TestManagedSourceConfinementAttentionAndPersonalAccess(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if count := p.InboxCount(ana); count.Open != 1 {
+		if count := inboxCount(t, p, ana); count.Open != 1 {
 			t.Fatalf("dedup count: %+v", count)
 		}
-		if count := p.InboxCount(outsider); count.Open != 0 || count.Unread != 0 {
+		if count := inboxCount(t, p, outsider); count.Open != 0 || count.Unread != 0 {
 			t.Fatalf("hidden counts: %+v", count)
 		}
 		messages, _, err := p.InboxPage(ana, inbox.Query{Kind: inbox.KindSource})
@@ -98,7 +98,7 @@ func TestManagedSourceConfinementAttentionAndPersonalAccess(t *testing.T) {
 		if _, err := p.SyncSource(t.Context(), ana, "source"); err != nil {
 			t.Fatal(err)
 		}
-		if count := p.InboxCount(ana); count.Open != 0 {
+		if count := inboxCount(t, p, ana); count.Open != 0 {
 			t.Fatalf("attention not settled: %+v", count)
 		}
 		rows, err := p.Audit.List(tenant, audit.Query{From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 50}, nil)

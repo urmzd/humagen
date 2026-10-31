@@ -51,13 +51,13 @@ func TestElapsedFreshnessProjectsHonestHealthAndOneConfinedAttentionItem(t *test
 				t.Fatal("stale dependency admitted", err)
 			}
 		}
-		if p.InboxCount(owner).Open != 1 || p.InboxCount(outsider).Open != 0 {
+		if inboxCount(t, p, owner).Open != 1 || inboxCount(t, p, outsider).Open != 0 {
 			t.Fatal("stale cause not deduplicated or confined")
 		}
 		if _, err := p.SnapshotSource(owner, "copy"); err != nil {
 			t.Fatal(err)
 		}
-		if p.InboxCount(owner).Open != 0 {
+		if inboxCount(t, p, owner).Open != 0 {
 			t.Fatal("operator snapshot decision did not settle source attention")
 		}
 	})

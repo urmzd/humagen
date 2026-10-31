@@ -46,7 +46,7 @@ func TestReminderIsOneDurableUpdateOfTheExistingConfinedMessage(t *testing.T) {
 		if len(messages) != 1 {
 			t.Fatal("reminder duplicated the cause")
 		}
-		if count := s.Count("t", Query{Reader: "reader", Sees: func(Message) bool { return false }}); count.Unread != 0 {
+		if c := count(s, "t", Query{Reader: "reader", Sees: func(Message) bool { return false }}); c.Unread != 0 {
 			t.Fatal("reminder leaked a hidden unread count")
 		}
 		s, err = OpenStore(st)

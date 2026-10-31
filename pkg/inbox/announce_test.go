@@ -212,7 +212,7 @@ func TestReplayRebuildsPerReaderState(t *testing.T) {
 			}
 		}
 		q := readerIn(who, "Field")
-		if live, got := s.Count(acme, q), rebuilt.Count(acme, q); live != got {
+		if live, got := count(s, acme, q), count(rebuilt, acme, q); live != got {
 			t.Errorf("%s counts %+v live and %+v rebuilt", who, live, got)
 		}
 	}
@@ -228,22 +228,22 @@ func TestBroadcastsCountOnlyInUpdates(t *testing.T) {
 	a := post(t, s, "Field", "One", t0)
 	b := post(t, s, "", "Two", t0)
 	q := readerIn("ada", "", "Field")
-	if c := s.Count(acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 2}) {
+	if c := count(s, acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 2}) {
 		t.Fatalf("counts = %+v", c)
 	}
 	_, _ = s.Read(acme, a.ID, "ada", true, t0)
 	_, _, _ = s.Dismiss(acme, b.ID, "ada", t0)
-	if c := s.Count(acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 0}) {
+	if c := count(s, acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 0}) {
 		t.Fatalf("counts after reading one and hiding one = %+v", c)
 	}
 	// Someone else still has both to read.
-	if c := s.Count(acme, readerIn("bo", "", "Field")); c.Updates != 2 || c.Open != 1 {
+	if c := count(s, acme, readerIn("bo", "", "Field")); c.Updates != 2 || c.Open != 1 {
 		t.Fatalf("bo's counts = %+v", c)
 	}
 	// The count is the whole inbox, whatever a page narrows to.
 	narrowed := q
 	narrowed.Kinds, narrowed.Projects = []Kind{KindAlert}, []string{"Nowhere"}
-	if c := s.Count(acme, narrowed); c != s.Count(acme, q) {
+	if c := count(s, acme, narrowed); c != count(s, acme, q) {
 		t.Fatalf("a narrowed count = %+v", c)
 	}
 }
@@ -272,7 +272,7 @@ func TestNeedsLeavesOutBroadcastsBeforeThePageIsCut(t *testing.T) {
 	if got := ids(t, s, q); !slices.Equal(got, []string{draft.ID, alert.ID}) {
 		t.Fatalf("what needs ada = %q, want the draft and the alert", got)
 	}
-	if c := s.Count(acme, q); c != (Counts{Open: 2, Unread: 2, Updates: 3}) {
+	if c := count(s, acme, q); c != (Counts{Open: 2, Unread: 2, Updates: 3}) {
 		t.Fatalf("counts = %+v", c)
 	}
 	// News is the other side: the posted announcements alone, the draft left
@@ -605,7 +605,7 @@ func TestThePosterHasReadWhatTheyPosted(t *testing.T) {
 			t.Errorf("%s reads it unread=%v, %v, want %v", who, got.Unread, err, unread)
 		}
 	}
-	if c := s.Count(acme, readerIn("dana", "Field")); c.Updates != 0 {
+	if c := count(s, acme, readerIn("dana", "Field")); c.Updates != 0 {
 		t.Fatalf("the author has %d updates to read", c.Updates)
 	}
 	published := announcement("Field", "Weekly recap")

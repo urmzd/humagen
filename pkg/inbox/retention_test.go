@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,24 +16,54 @@ import (
 )
 
 // records is what the store keeps for acme: how many changes, and whether
-// it keeps a cut.
+// any dropped message is still being cleaned up.
 func records(t *testing.T, st state.Store) (int, bool) {
 	t.Helper()
 	recs, err := st.Load(context.Background(), "inbox")
 	if err != nil {
 		t.Fatal(err)
 	}
-	changes, cut := 0, false
+	changes, cleaning := 0, false
 	for _, r := range recs {
 		switch {
 		case r.Tenant != acme:
-		case r.Key == cutKey:
-			cut = true
-		default:
+		case strings.HasPrefix(r.Key, "g:"):
+			cleaning = true
+		case strings.HasPrefix(r.Key, "c:"):
 			changes++
 		}
 	}
-	return changes, cut
+	return changes, cleaning
+}
+
+// writeLegacy writes changes as a release before the layout by message kept
+// them: one record each, numbered in the order they were made, with the
+// tenant's cut beside them when there is one. edit may change each record
+// as it is written.
+func writeLegacy(t *testing.T, st state.Store, tenantName string, changes []Change, c *cut, edit func(storedChange) []byte) {
+	t.Helper()
+	var ops []state.Op
+	for i, ch := range changes {
+		sc := storedOf(ch)
+		raw, err := json.Marshal(sc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if edit != nil {
+			raw = edit(sc)
+		}
+		ops = append(ops, state.Put(tenantName, state.Seq(int64(i)), raw))
+	}
+	if c != nil {
+		raw, err := json.Marshal(storedChange{Cut: c})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ops = append(ops, state.Put(tenantName, cutKey, raw))
+	}
+	if err := st.Write(context.Background(), "inbox", ops...); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func must[T any](t *testing.T) func(T, bool, error) T {
@@ -100,7 +131,7 @@ func TestRetentionDropsOnlyWhatWasSettledBeforeTheCut(t *testing.T) {
 		readers := []Query{readerIn("ada", "Field", ""), readerIn("bo", "Field"), readerIn("cy")}
 		before := map[string]Counts{}
 		for _, q := range readers {
-			before[q.Reader] = s.Count(acme, q)
+			before[q.Reader] = count(s, acme, q)
 		}
 
 		n, err := s.Retain(acme, hour(2))
@@ -129,7 +160,7 @@ func TestRetentionDropsOnlyWhatWasSettledBeforeTheCut(t *testing.T) {
 				}
 			}
 			for _, q := range readers {
-				if c := store.Count(acme, q); c != before[q.Reader] {
+				if c := count(store, acme, q); c != before[q.Reader] {
 					t.Errorf("%s: %s counts %+v, before %+v", name, q.Reader, c, before[q.Reader])
 				}
 			}
@@ -150,9 +181,9 @@ func TestRetentionDropsOnlyWhatWasSettledBeforeTheCut(t *testing.T) {
 				t.Errorf("%s: posting a dropped release again = %+v, %v, %v", name, m, posted, err)
 			}
 		}
-		// What the store keeps is the record of what is kept, and the cut.
-		if changes, cut := records(t, st); changes != len(s.Changes(acme)) || !cut {
-			t.Fatalf("the store keeps %d changes and cut %v, for a record of %d", changes, cut, len(s.Changes(acme)))
+		// What the store keeps is the record of what is kept.
+		if changes, cleaning := records(t, st); changes != len(s.Changes(acme)) || cleaning {
+			t.Fatalf("the store keeps %d changes, cleaning %v, for a record of %d", changes, cleaning, len(s.Changes(acme)))
 		}
 		// No id is issued twice, the last dropped one's included.
 		if next := raise(restarted, "alert:next", hour(4)); next.ID != "m-13" || tail.ID != "m-12" {
@@ -189,35 +220,21 @@ func (f *failAfter) Write(ctx context.Context, namespace string, ops ...state.Op
 func TestRetentionKeepsLegacyPostOnceKeys(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
-		s, err := OpenStore(st)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m := must[Message](t)(s.PostOnce(acme, "release:old", announcement("", "News"), t0, PostCaps{}))
-		must[Message](t)(s.Withdraw(acme, m.ID, "ada", "", t0))
+		older := NewStore()
+		m := must[Message](t)(older.PostOnce(acme, "release:old", announcement("", "News"), t0, PostCaps{}))
+		must[Message](t)(older.Withdraw(acme, m.ID, "ada", "", t0))
 		// Write the exact shape the old writer kept: no once field.
-		recs, err := st.Load(t.Context(), "inbox")
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, r := range recs {
-			var sc storedChange
-			if err := json.Unmarshal(r.Value, &sc); err != nil {
-				t.Fatal(err)
+		writeLegacy(t, st, acme, older.Changes(acme), nil, func(sc storedChange) []byte {
+			if sc.Raised != nil {
+				sc.Raised.Once = nil
 			}
-			if sc.Raised == nil {
-				continue
-			}
-			sc.Raised.Once = nil
 			raw, err := json.Marshal(sc)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := st.Write(t.Context(), "inbox", state.Put(r.Tenant, r.Key, raw)); err != nil {
-				t.Fatal(err)
-			}
-		}
-		s, err = OpenStore(st)
+			return raw
+		})
+		s, err := OpenStore(st)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -255,7 +272,8 @@ func TestRetentionBoundsALongHistoryAcrossRestarts(t *testing.T) {
 		}
 		must[Message](t)(s.Withdraw(acme, m.ID, "ada", "", t0))
 		keep := raise(s, "keep", t0)
-		st.maxOps, st.n = 0, 1
+		// The step that drops it is written, and the first cleanup is not.
+		st.n = 1
 		if n, err := s.Retain(acme, t0.Add(time.Hour)); n != 1 || !errors.Is(err, statetest.ErrInjected) {
 			t.Fatalf("interrupted retain = %d, %v", n, err)
 		}
@@ -278,6 +296,7 @@ func TestRetentionBoundsALongHistoryAcrossRestarts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		st.maxOps = 0
 		if n, err := s.Retain(acme, t0.Add(time.Hour)); n != 0 || err != nil {
 			t.Fatalf("remaining cleanup = %d, %v", n, err)
 		}
@@ -324,8 +343,8 @@ func TestRetentionFinishesAnEmptyInbox(t *testing.T) {
 			t.Fatal(err)
 		}
 		for range 2 {
-			if !slices.Contains(s.Tenants(), acme) {
-				t.Fatal("workspace with unfinished cleanup was forgotten")
+			if tenants, err := s.Tenants(); err != nil || !slices.Contains(tenants, acme) {
+				t.Fatalf("workspace with unfinished cleanup was forgotten: %v, %v", tenants, err)
 			}
 			s, err = OpenStore(st)
 			if err != nil {
@@ -339,8 +358,8 @@ func TestRetentionFinishesAnEmptyInbox(t *testing.T) {
 		if changes, _ := records(t, st); changes != 0 {
 			t.Fatalf("empty inbox kept %d changes", changes)
 		}
-		if len(s.of(acme).cut.Gone) != 0 {
-			t.Fatal("ordinary posts do not need permanent tombstones")
+		if keys, err := listAll(s.st, acme, "k:", 10); err != nil || len(keys) != 0 {
+			t.Fatalf("ordinary posts do not need permanent tombstones: %v, %v", keys, err)
 		}
 	})
 }
@@ -383,9 +402,9 @@ func TestRetentionRebuildsKeptReceiptLookups(t *testing.T) {
 // the steps before it stand, and a replay rebuilds what the inbox holds
 // after each.
 func TestRetentionWritesInStepsAndAFailedStepChangesNothing(t *testing.T) {
-	was := maxCut
-	maxCut = 5
-	t.Cleanup(func() { maxCut = was })
+	was := maxDrop
+	maxDrop = 1
+	t.Cleanup(func() { maxDrop = was })
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := &failAfter{Store: open(t), n: -1}
 		s, err := OpenStore(st)
@@ -403,9 +422,9 @@ func TestRetentionWritesInStepsAndAFailedStepChangesNothing(t *testing.T) {
 		}
 		keep := raise(s, "alert:open", t0, Part{Type: PartAlert})
 
-		// Three records a message, five a step: one message a step. Two
-		// steps are written, and the third fails.
-		st.n = 2
+		// One message a step, each dropped and then cleaned up: two are
+		// written, and the third drop fails.
+		st.n = 4
 		n, err := s.Retain(acme, t0.Add(time.Hour))
 		if !errors.Is(err, statetest.ErrInjected) || n != 2 {
 			t.Fatalf("Retain = %d, %v", n, err)
@@ -447,12 +466,8 @@ func TestRetentionWritesInStepsAndAFailedStepChangesNothing(t *testing.T) {
 // announcement raised under a key its poster named is one posted once.
 func TestARecordedReleaseIsPostedOnceAfterRetention(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
-		ctx := context.Background()
 		st := open(t)
-		s, err := OpenStore(st)
-		if err != nil {
-			t.Fatal(err)
-		}
+		s := NewStore()
 		release, _, err := s.PostOnce(acme, "release:0.14.0", announcement("", "What's new"), t0, PostCaps{})
 		if err != nil {
 			t.Fatal(err)
@@ -460,21 +475,17 @@ func TestARecordedReleaseIsPostedOnceAfterRetention(t *testing.T) {
 		if _, _, err := s.Withdraw(acme, release.ID, "dana", "", t0.Add(time.Hour)); err != nil {
 			t.Fatal(err)
 		}
-		// Rewrite the records as an older build kept them, with no mark.
-		recs, err := st.Load(ctx, "inbox")
-		if err != nil {
-			t.Fatal(err)
-		}
+		// Keep the records as an older build kept them, with no mark.
 		marked := false
-		for _, r := range recs {
-			old := bytes.Replace(r.Value, []byte(`,"once":true`), nil, 1)
-			if !bytes.Equal(old, r.Value) {
-				marked = true
-				if err := st.Write(ctx, "inbox", state.Put(r.Tenant, r.Key, old)); err != nil {
-					t.Fatal(err)
-				}
+		writeLegacy(t, st, "older", s.Changes(acme), nil, func(sc storedChange) []byte {
+			raw, err := json.Marshal(sc)
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
+			old := bytes.Replace(raw, []byte(`,"once":true`), nil, 1)
+			marked = marked || !bytes.Equal(old, raw)
+			return old
+		})
 		if !marked {
 			t.Fatal("no record marks the release as posted once")
 		}
@@ -482,7 +493,7 @@ func TestARecordedReleaseIsPostedOnceAfterRetention(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if n, err := older.Retain(acme, t0.Add(2*time.Hour)); n != 1 || err != nil {
+		if n, err := older.Retain("older", t0.Add(2*time.Hour)); n != 1 || err != nil {
 			t.Fatalf("Retain = %d, %v", n, err)
 		}
 		restarted, err := OpenStore(st)
@@ -490,7 +501,7 @@ func TestARecordedReleaseIsPostedOnceAfterRetention(t *testing.T) {
 			t.Fatal(err)
 		}
 		for name, store := range map[string]*Store{"live": older, "after a restart": restarted} {
-			if m, posted, err := store.PostOnce(acme, "release:0.14.0", announcement("", "What's new"), t0.Add(48*time.Hour), PostCaps{}); err != nil || posted {
+			if m, posted, err := store.PostOnce("older", "release:0.14.0", announcement("", "What's new"), t0.Add(48*time.Hour), PostCaps{}); err != nil || posted {
 				t.Errorf("%s: an older release was posted again: %+v, %v", name, m, err)
 			}
 		}
@@ -524,7 +535,6 @@ func TestRetentionFinishesInTheSmallestSteps(t *testing.T) {
 	maxCut = 1
 	defer func() { maxCut = was }()
 	s := NewStore()
-	s.kept = state.NewTable[storedChange](state.NewMemory(), "inbox")
 	m := post(t, s, "Field", "Offsite", t0)
 	if _, err := s.Read(acme, m.ID, "bo", true, t0); err != nil {
 		t.Fatal(err)

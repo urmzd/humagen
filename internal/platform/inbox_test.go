@@ -346,7 +346,7 @@ func TestMemoryDecidedElsewhereClosesItsMessage(t *testing.T) {
 	if err != nil || got.State != inbox.Dismissed {
 		t.Fatalf("after every proposal was dealt with the message is %s (%v)", got.State, err)
 	}
-	if open := p.InboxCount(admin).Open; open != 0 {
+	if open := inboxCount(t, p, admin).Open; open != 0 {
 		t.Fatalf("%d still open", open)
 	}
 }
@@ -465,7 +465,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 			t.Fatalf("the alert was acknowledged by %q", a.AckedBy)
 		}
 	}
-	if open := p.InboxCount(admin).Open; open != 0 {
+	if open := inboxCount(t, p, admin).Open; open != 0 {
 		t.Fatalf("%d still open", open)
 	}
 	// A rule that names whom to notify addresses its message to them alone,
@@ -614,4 +614,14 @@ func TestRetryingAFailedTurnInAProjectTakesAMember(t *testing.T) {
 	if len(again) != 1 || again[0].Project != "Globex" || again[0].Actor.ID != "mel" {
 		t.Fatalf("the retry is %+v, want one run filed in Globex for mel", again)
 	}
+}
+
+// inboxCount is InboxCount, failing the test when it cannot be read.
+func inboxCount(t testing.TB, p *platform.Platform, who auth.Principal) inbox.Counts {
+	t.Helper()
+	c, err := p.InboxCount(who)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }
