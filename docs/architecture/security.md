@@ -578,6 +578,15 @@ beside it.
   inbox for a note or with `POST /api/memory/files/proposals/{id}` for any
   file, checked against the version it was proposed on. Mounts
   above the run's own project are read-only, and changes in them are dropped.
+- **An isolated run's memory stays in its instance.** It is installed when
+  the run leases its instance, into that instance's own `/project` and `/me`,
+  which start empty and are destroyed with it, never into `/work`, which goes
+  back to the conversation. `/project` is read only inside, so such a run
+  changes only `/me`. Its changes are committed when the instance is
+  released, before it is destroyed, on the version that was installed: a
+  file changed meanwhile is a conflict, and the run's commit is refused
+  rather than written over it. A run whose memory cannot be installed gets
+  no instance (`TestAnIsolatedRunsMemoryIsInstalledOnLeaseAndKeptOnRelease`).
 - **Project memory is screened.** Every file written or proposed to a tree
   that is not a person's own passes saige's memory policy, a note's text and
   any other file's whole content, and is refused when it carries personal

@@ -28,8 +28,9 @@ import (
 // runs in its workload compartment, and stdio MCP servers run in its
 // connectors compartment (fiber/pkg/mcptools). The work directory starts
 // from the conversation's scratch directory and is written back to it at
-// the end (runFiles), so a follow-up turn sees what the last one wrote; the
-// memory and files manifest replaces that source later.
+// the end (runFiles), so a follow-up turn sees what the last one wrote. The
+// run's memory is installed into /project and /me and kept the same way
+// (runMemory, memory_lease.go).
 //
 // With no sandbox configured the deployment is unisolated: the file tools
 // work in the conversation's directory on this host, stdio servers are host
@@ -64,7 +65,10 @@ func (p *Platform) runInstances(_ context.Context, req runtime.Request) *isolati
 	}
 	var files isolation.Files
 	if req.RunID != "" {
-		files = &runFiles{p: p, tenant: req.Tenant, run: req.RunID}
+		files = isolation.AllFiles(
+			&runFiles{p: p, tenant: req.Tenant, run: req.RunID},
+			&runMemory{p: p, tenant: req.Tenant, run: req.RunID},
+		)
 	}
 	return isolation.NewRun(p.cfg.Sandbox.Leaser, ir, files)
 }
@@ -102,7 +106,8 @@ func (f *runFiles) conversation() (string, error) {
 }
 
 // Load implements isolation.Files.
-func (f *runFiles) Load(ctx context.Context, dst workspace.Workspace) error {
+func (f *runFiles) Load(ctx context.Context, inst isolation.Instance) error {
+	dst := inst.Files()
 	thread, err := f.conversation()
 	if err != nil {
 		return err
@@ -135,7 +140,8 @@ func (f *runFiles) Load(ctx context.Context, dst workspace.Workspace) error {
 }
 
 // Save implements isolation.Files.
-func (f *runFiles) Save(ctx context.Context, src workspace.Workspace) error {
+func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
+	src := inst.Files()
 	f.mu.Lock()
 	thread, loaded := f.thread, f.loaded
 	f.mu.Unlock()
