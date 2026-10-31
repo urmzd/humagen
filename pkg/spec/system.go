@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -256,6 +257,15 @@ type DockerSandbox struct {
 	// in, which the Docker daemon must be able to mount. Empty is
 	// humagen/sandbox in the user cache directory.
 	WorkRoot string `json:"work_root,omitempty"`
+	// Host is a Docker daemon on another machine, a sandbox host, as
+	// tcp://, ssh:// or unix://. Humagen then holds no Docker socket on
+	// its own machine, and work_root is unused: a run's work directory is
+	// a volume on the sandbox host. Empty is the local daemon.
+	Host string `json:"host,omitempty"`
+	// TLSDir holds ca.pem, cert.pem and key.pem for host: the daemon's
+	// certificate authority and Humagen's client certificate. A tcp://
+	// host requires it.
+	TLSDir string `json:"tls_dir,omitempty"`
 	// Warm is how many instances are kept started ahead of runs, per
 	// shape; Max bounds every instance at once. Zero is playscape's
 	// default (1 and 64).
@@ -627,6 +637,9 @@ func checkBlock(where string, blk any) error {
 		if b.Warm < 0 || b.Max < 0 || (b.Max > 0 && b.Warm > b.Max) {
 			return fmt.Errorf("%s: warm and max are counts, and warm is at most max", where)
 		}
+		if err := checkSandboxHost(b.Host, b.TLSDir); err != nil {
+			return fmt.Errorf("%s: %w", where, err)
+		}
 	case *EgressGate:
 		for name, addr := range map[string]string{"listen": b.Listen, "address": b.Address} {
 			if addr == "" {
@@ -655,6 +668,30 @@ func checkBlock(where string, blk any) error {
 		if b.AccessKey.Set() != b.SecretKey.Set() {
 			return fmt.Errorf("%s: access_key and secret_key go together", where)
 		}
+	}
+	return nil
+}
+
+// checkSandboxHost checks a docker sandbox's host and tls_dir. A daemon on
+// plain TCP is root on its machine for anyone who reaches it, so tcp://
+// needs tls_dir.
+func checkSandboxHost(host, tlsDir string) error {
+	if host == "" {
+		if tlsDir != "" {
+			return errors.New("tls_dir needs a host")
+		}
+		return nil
+	}
+	scheme, rest, _ := strings.Cut(host, "://")
+	switch {
+	case rest == "" || strings.ContainsAny(host, " \t\n"):
+		return fmt.Errorf("host %q is not a daemon address", host)
+	case scheme == "tcp" && tlsDir == "":
+		return fmt.Errorf("host %q is tcp://, which needs tls_dir", host)
+	case scheme != "tcp" && scheme != "ssh" && scheme != "unix":
+		return fmt.Errorf("host %q: want tcp://, ssh:// or unix://", host)
+	case tlsDir != "" && !filepath.IsAbs(tlsDir):
+		return fmt.Errorf("tls_dir %q is not an absolute path", tlsDir)
 	}
 	return nil
 }

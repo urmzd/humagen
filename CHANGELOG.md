@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.56.0 (2026-10-31)
+
+### Features
+
+- **fiber**: let a host park a run on a question of its own (#153) ([76764d6](https://github.com/urmzd/humagen/commit/76764d625438b201cc1d0a5e0eab40894df8f13d))
+- **sandbox**: drive a Docker daemon on a sandbox host (#150) ([4ea7208](https://github.com/urmzd/humagen/commit/4ea72080538bee08bfc2091852fff0a98b8051b2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.55.0...v0.56.0)
+
+
+## 0.54.0 (2026-10-31)
+
+### Features
+
+- **catalog**: tenant-scoped catalog store with hybrid search (#154) ([12df401](https://github.com/urmzd/humagen/commit/12df4014cb047edde78ea0f5929b5280e4f535ad))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.53.0...v0.54.0)
+
+
+## 0.52.0 (2026-10-31)
+
+### Features
+
+- **sandbox**: egress gate so a run's tools reach allowed hosts (#151) ([f19ec7f](https://github.com/urmzd/humagen/commit/f19ec7fe2b6bd1111b95dfad706e530efe49d04d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.51.1...v0.52.0)
+
+
 ## 0.51.1 (2026-10-31)
 
 ### Bug Fixes

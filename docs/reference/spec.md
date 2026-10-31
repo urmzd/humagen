@@ -116,6 +116,8 @@ spec:
       image: python:3.13-alpine           # the shell and the file tools; needs sh and sleep
       connectors_image: node:22-alpine    # stdio MCP servers; empty is image
       work_root: ""         # empty is humagen/sandbox in the user cache directory
+      host: ""              # a sandbox host's daemon: tcp://, ssh:// or unix://. Empty is the local daemon
+      tls_dir: ""           # with a tcp:// host: ca.pem, cert.pem and key.pem
       warm: 1               # instances kept started ahead of runs, per shape
       max: 64               # every instance at once
 
@@ -219,14 +221,24 @@ run tools. **Giving Humagen the Docker socket is root on that host**:
 whoever can start containers through it can mount the host's filesystem. So
 the `docker` driver is for a host that exists to run sandboxes, not a shared
 server or a Kubernetes node; the chart and the compose stack set
-`unisolated` explicitly for that reason. A remote or Kubernetes driver,
-which starts instances somewhere Humagen holds no root, is the production
-target and is not built yet. An instance has no network at all unless the
+`unisolated` explicitly for that reason.
+
+`host` points the `docker` sandbox at a daemon on a sandbox host instead,
+so Humagen holds no Docker socket on its own machine: whoever takes over
+Humagen gets the sandbox host, not the one with the database. A `tcp://`
+host needs `tls_dir`, the directory with the daemon's certificate authority
+(`ca.pem`) and Humagen's client certificate (`cert.pem`, `key.pem`); a
+daemon on plain TCP is refused, because it is root for anyone who reaches
+the port. With a host, a run's work directory is a volume on the sandbox
+host, `work_root` is unused, and host directories cannot be mounted. The
+sandbox host needs Docker with `runsc` registered and nothing else worth
+taking. An instance has no network at all unless the
 `egress` slot is `gate` ([Egress](#egress)).
 
 Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-insecure-development-runtime`, `-sandbox-image`,
-`-sandbox-connectors-image` and `-sandbox-work-root`. A binary can register
+`-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
+`-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
 factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
 
