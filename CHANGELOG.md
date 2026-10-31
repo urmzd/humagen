@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.57.0 (2026-10-31)
+
+### Features
+
+- **catalog**: connectors in the spec, catalog tools and routes (RFC 0005, change 2, 3/3) (#156) ([89b09a3](https://github.com/urmzd/humagen/commit/89b09a34746b4789ad73c12784578f970674b136))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.56.0...v0.57.0)
+
+
 ## 0.56.0 (2026-10-31)
 
 ### Features
