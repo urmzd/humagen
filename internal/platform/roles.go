@@ -117,11 +117,19 @@ func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name strin
 		}
 		if !who.Can(auth.BillingWrite) {
 			for _, a := range left {
-				if p.hasProjectLimit(who.Tenant, a) {
+				limited, err := p.hasProjectLimit(who.Tenant, a)
+				if err != nil {
+					return err
+				}
+				if limited {
 					return fmt.Errorf("%w: %s has a limit, and leaving it needs billing:write, so a move never escapes a limit", projects.ErrForbidden, a)
 				}
 			}
-			for _, limited := range p.ownerLimited(who.Tenant, before.Subtree(name)) {
+			owned, err := p.ownerLimited(who.Tenant, before.Subtree(name))
+			if err != nil {
+				return err
+			}
+			for _, limited := range owned {
 				lp, _ := before.Get(limited)
 				if before.Resolve(lp.Parent, reader).Role != projects.Owner {
 					above, _ := before.Get(lp.Parent)
@@ -206,21 +214,29 @@ func (p *Platform) keepsAllowLists(before *projects.Tree, reader projects.Reader
 }
 
 // hasProjectLimit reports whether a project has a limit of its own.
-func (p *Platform) hasProjectLimit(tenant, name string) bool {
-	return slices.ContainsFunc(p.Policies.For(tenant, []string{name}, "", ""), func(pol policy.Policy) bool {
+func (p *Platform) hasProjectLimit(tenant, name string) (bool, error) {
+	pols, err := p.Policies.For(tenant, []string{name}, "", "")
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(pols, func(pol policy.Policy) bool {
 		return pol.Scope == policy.Scope{Kind: policy.Project, Name: name}
-	})
+	}), nil
 }
 
 // ownerLimited is the projects among names that hold a limit an owner set.
-func (p *Platform) ownerLimited(tenant string, names []string) []string {
+func (p *Platform) ownerLimited(tenant string, names []string) ([]string, error) {
+	pols, err := p.Policies.For(tenant, names, "", "")
+	if err != nil {
+		return nil, err
+	}
 	var out []string
-	for _, pol := range p.Policies.For(tenant, names, "", "") {
+	for _, pol := range pols {
 		if pol.Scope.Kind == policy.Project && pol.ByOwner() {
 			out = append(out, pol.Scope.Name)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // SetProjectLimit sets a tighten-only limit on a project, as an owner of a

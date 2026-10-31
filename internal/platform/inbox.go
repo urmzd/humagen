@@ -957,7 +957,10 @@ func (p *Platform) decideMemory(tenant string, part inbox.MemoryPart, r Resoluti
 // raiseLimit saves new numbers for the policy a budget part is about.
 func (p *Platform) raiseLimit(who auth.Principal, part inbox.BudgetPart, to inbox.Limits) (policy.Policy, error) {
 	scope := policy.Scope{Kind: policy.Kind(part.ScopeKind), Name: part.ScopeName}
-	all := p.Policies.List(who.Tenant)
+	all, err := p.Policies.List(who.Tenant)
+	if err != nil {
+		return policy.Policy{}, err
+	}
 	i := slices.IndexFunc(all, func(x policy.Policy) bool { return x.Scope == scope })
 	if i < 0 {
 		return policy.Policy{}, fmt.Errorf("%w: %s has no limits any more", ErrAction, scope)
