@@ -31,12 +31,20 @@ func (p *Platform) discoverContent(who auth.Principal, q DiscoveryQuery, seer *S
 			return (q.Project == nil || project == *q.Project) && seer.Conversation(id, project)
 		}
 		readable := map[string]bool{}
-		for _, th := range p.Threads.Records(who.Tenant, func(threads.Thread) bool { return true }) {
+		recs, err := p.Threads.Records(who.Tenant, func(threads.Thread) bool { return true })
+		if err != nil {
+			return nil, err
+		}
+		for _, th := range recs {
 			if allowed(th.ID, th.Project) {
 				readable[th.ID] = true
 			}
 		}
-		for _, m := range p.Threads.Search(who.Tenant, q.Q, since, 1000, func(th threads.Thread) bool { return readable[th.ID] }) {
+		hits, err := p.Threads.Search(who.Tenant, q.Q, since, 1000, func(th threads.Thread) bool { return readable[th.ID] })
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range hits {
 			th, err := p.ThreadRecord(who.Tenant, m.Thread)
 			if err != nil || !allowed(th.ID, th.Project) {
 				continue
