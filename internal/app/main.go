@@ -316,8 +316,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return err
 		}
 	}
-	// Where each run's tools execute.
-	sbx, closeSandbox, err := openSandbox(ctx, o, file, sandboxing, log)
+	// Where each run's tools execute, and the egress gate's decisions,
+	// audited once the platform is up.
+	egressDecisions := newEgressLog(log)
+	sbx, closeSandbox, err := openSandbox(ctx, o, file, sandboxing, log, egressDecisions)
 	if err != nil {
 		return err
 	}
@@ -397,6 +399,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 	defer func() { _ = p.Close() }()
+	go egressDecisions.run(ctx, p.AuditEgress)
 	for _, path := range list(*agentSpecs) {
 		raw, err := os.ReadFile(path)
 		if err != nil {
