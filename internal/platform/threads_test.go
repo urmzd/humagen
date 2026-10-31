@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -365,6 +366,57 @@ func TestTheConsoleRunsOnlyWhatAMessageTags(t *testing.T) {
 	}
 	if _, err := p.UpdateThread(t.Context(), operator, got.Thread.ID, platform.ThreadUpdate{Version: got.Thread.Version, Default: "helper"}); !errors.Is(err, projects.ErrInvalid) {
 		t.Fatalf("a thread's default that cannot answer was written: %v", err)
+	}
+}
+
+// tagSix creates six agents Globex allows and returns a message tagging each.
+func tagSix(t *testing.T, p *platform.Platform) (string, []string) {
+	t.Helper()
+	names := []string{"ana", "bo", "cy", "di", "ed", "fy"}
+	for _, n := range names {
+		if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: n, Model: "offline", Provider: "offline", SystemPrompt: "Help."}, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setAgents(t, p, "Globex", platform.AgentsInput{Enable: []string{}, Allow: names})
+	return "@" + strings.Join(names, " @") + " what do you each think?", names
+}
+
+// A message has no cap on the agents it tags: each one answers.
+func TestEveryAgentAConsoleMessageTagsAnswers(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Globex", operator)
+	text, names := tagSix(t, p)
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: text})
+	if got.Rule != threads.RuleTagged || len(got.Runs) != len(names) || len(got.Refused) != 0 {
+		t.Fatalf("six tags started %d runs, refused %+v", len(got.Runs), got.Refused)
+	}
+	for i, r := range got.Runs {
+		if r.Agent != names[i] {
+			t.Fatalf("run %d is %s, want %s", i, r.Agent, names[i])
+		}
+	}
+}
+
+// Without the cap, a budget still bounds what one message starts: the runs
+// past the limit are refused, each tag saying why.
+func TestABudgetStillRefusesTagsPastItsLimit(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Globex", operator)
+	text, _ := tagSix(t, p)
+	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Globex"}, Period: policy.Day, MaxRuns: 4, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: text})
+	if len(got.Runs) != 4 || len(got.Refused) != 2 {
+		t.Fatalf("a budget of 4 let %d runs start and refused %+v", len(got.Runs), got.Refused)
+	}
+	for _, m := range got.Refused {
+		if m.Refused == "" {
+			t.Fatalf("a refused tag says nothing: %+v", m)
+		}
 	}
 }
 

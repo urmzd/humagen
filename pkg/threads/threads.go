@@ -109,14 +109,14 @@ const (
 	ModeJoin = "join"
 	// modeBestFit is what ModeJoin was written as when one agent was picked.
 	modeBestFit = "best_fit"
-	// ModeAll: each of them, side by side, at most MaxRuns.
+	// ModeAll: each of them, side by side, at most MaxAll.
 	ModeAll = "all"
 )
 
 // Routing is a thread's selected agents and how they answer, normalized:
 // each agent once, in the order given, and a mode only with two or more,
 // ModeJoin when none is named. It refuses more than MaxRouted agents, a
-// mode that is neither, ModeAll over more than MaxRuns agents, and a name no
+// mode that is neither, ModeAll over more than MaxAll agents, and a name no
 // agent can have (ErrInvalid).
 func Routing(agents []string, mode string) ([]string, string, error) {
 	var out []string
@@ -145,8 +145,8 @@ func Routing(agents []string, mode string) ([]string, string, error) {
 	if mode == "" {
 		mode = ModeJoin
 	}
-	if mode == ModeAll && len(out) > MaxRuns {
-		return nil, "", fmt.Errorf("%w: at most %d agents answer one message side by side; select fewer, or join", ErrInvalid, MaxRuns)
+	if mode == ModeAll && len(out) > MaxAll {
+		return nil, "", fmt.Errorf("%w: at most %d agents answer one message side by side; select fewer, or join", ErrInvalid, MaxAll)
 	}
 	return out, mode, nil
 }

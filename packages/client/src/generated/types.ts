@@ -1463,7 +1463,7 @@ export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" 
 export interface ThreadPosted {
   thread: Thread;
   message: ThreadMessage;
-  /** The runs it started, at most 3. */
+  /** The runs it started, one for each agent it tags that answers, or at most 3 of the thread's selected agents. */
   runs: Run[];
   /** Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`. */
   notified: string[];

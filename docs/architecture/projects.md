@@ -345,7 +345,8 @@ a message, and they count toward its 10 tags.
 What a message starts, first rule that applies:
 
 1. It tags agents: each tagged agent answers, side by side, each
-   seeing the thread up to this message. At most 3 runs per message. A
+   seeing the thread up to this message. A message has no cap on the agents
+   it tags; budgets, admission and room limits bound what they spend. A
    message a person posts in the console, as themselves, that names a skill
    and tags no agent asks the agents available there whether to join, as
    [the dynamic router](#the-dynamic-router) does, and each that joins is

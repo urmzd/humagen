@@ -134,7 +134,8 @@ type ParticipantsUpdate struct {
 type Posted struct {
 	Thread  threads.Thread  `json:"thread"`
 	Message threads.Message `json:"message"`
-	// Runs are the runs it started, at most threads.MaxRuns.
+	// Runs are the runs it started: one for each agent it tags, or at most
+	// threads.MaxAll of the thread's selected agents.
 	Runs []runs.Run `json:"runs"`
 	// Notified is who it was sent to: people and experts by subject, the
 	// experts a role names as the role. ShowPosted names them by handle.

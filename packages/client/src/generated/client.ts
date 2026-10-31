@@ -2536,7 +2536,8 @@ that issued it.
   /** The message is posted as the caller, or as the person `act_as` names
 through a client that maps them; no field names an author, and a
 credential acting for nobody is refused (403). What the message
-starts follows the tag rules: the agents it tags answer, at most 3,
+starts follows the tag rules: every agent it tags answers, each
+bounded by budgets and admission like any run,
 and a `$skill` with no agent tagged asks the agents; tagging only
 people or experts notifies them; posted only, nothing answers. A
 message a person posts as themselves, as the console does, that tags
