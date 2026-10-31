@@ -233,7 +233,11 @@ func mayGrant(who auth.Principal, reader inbox.Reader) error {
 // amount as it stands, no more than the question offered. Zero, with why,
 // when the policy no longer asks for approval or no longer applies.
 func (p *Platform) grantNow(run runs.Run, b budgetHold) (policy.Policy, policy.Grant, error) {
-	for _, pol := range p.Policies.For(run.Tenant, chainOf(run.Project, run.Within), run.Agent, run.Client) {
+	pols, err := p.Policies.For(run.Tenant, chainOf(run.Project, run.Within), run.Agent, run.Client)
+	if err != nil {
+		return policy.Policy{}, policy.Grant{}, err
+	}
+	for _, pol := range pols {
 		if pol.Scope != b.Scope {
 			continue
 		}

@@ -422,7 +422,11 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 // toward the project's limit and every ancestor's (within, pinned with the
 // file), and a project's use is what its whole subtree holds.
 func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project string, within []string, agent string, size int64) error {
-	for _, pol := range p.Policies.For(tenant, chainOf(project, within), agent, "") {
+	pols, err := p.Policies.For(tenant, chainOf(project, within), agent, "")
+	if err != nil {
+		return err
+	}
+	for _, pol := range pols {
 		if pol.MaxStorage <= 0 {
 			continue
 		}

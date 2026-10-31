@@ -96,7 +96,12 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 		return
 	}
 	now := p.now()
-	applied := p.applied(run.Tenant, chainOf(run.Project, run.Within), run.Agent, run.Client, now)
+	applied, err := p.applied(run.Tenant, chainOf(run.Project, run.Within), run.Agent, run.Client, now)
+	if err != nil {
+		// The next call it makes judges it again.
+		p.log.Error("platform: the limits on a run could not be read", "run", run.ID, "error", err)
+		return
+	}
 	if call.Unpriced > 0 || len(call.Other) > 0 {
 		for _, a := range applied {
 			if a.Policy.SpendLimit > 0 {
