@@ -116,8 +116,18 @@ spec:
       image: python:3.13-alpine           # the shell and the file tools; needs sh and sleep
       connectors_image: node:22-alpine    # stdio MCP servers; empty is image
       work_root: ""         # empty is humagen/sandbox in the user cache directory
+      host: ""              # a sandbox host's daemon: tcp://, ssh:// or unix://. Empty is the local daemon
+      tls_dir: ""           # with a tcp:// host: ca.pem, cert.pem and key.pem
       warm: 1               # instances kept started ahead of runs, per shape
       max: 64               # every instance at once
+
+  egress:                   # slot: none | gate. How an instance reaches the network
+    kind: gate              # none, the default: no network at all
+    gate:
+      listen: 10.0.9.2:3128 # where the gate listens; empty is 127.0.0.1:3128
+      address: 10.0.9.2:3128   # the gate as an instance reaches it; empty is listen
+      network: humagen-egress  # docker: the --internal network instances join
+      allow_non_public: false  # true lets an allowed host resolve to a private address
 
   rooms:                    # a conversation with many readers (RFC 0004); each default is far above an ordinary one
     coalesce_above: 200     # readers on one server above which each is sent at once only what involves them, the rest as a page
@@ -211,16 +221,58 @@ run tools. **Giving Humagen the Docker socket is root on that host**:
 whoever can start containers through it can mount the host's filesystem. So
 the `docker` driver is for a host that exists to run sandboxes, not a shared
 server or a Kubernetes node; the chart and the compose stack set
-`unisolated` explicitly for that reason. A remote or Kubernetes driver,
-which starts instances somewhere Humagen holds no root, is the production
-target and is not built yet. Until the egress gate lands, an instance has no network at all,
-so a stdio MCP server that calls an API cannot reach it under `docker`.
+`unisolated` explicitly for that reason.
+
+`host` points the `docker` sandbox at a daemon on a sandbox host instead,
+so Humagen holds no Docker socket on its own machine: whoever takes over
+Humagen gets the sandbox host, not the one with the database. A `tcp://`
+host needs `tls_dir`, the directory with the daemon's certificate authority
+(`ca.pem`) and Humagen's client certificate (`cert.pem`, `key.pem`); a
+daemon on plain TCP is refused, because it is root for anyone who reaches
+the port. With a host, a run's work directory is a volume on the sandbox
+host, `work_root` is unused, and host directories cannot be mounted. The
+sandbox host needs Docker with `runsc` registered and nothing else worth
+taking. An instance has no network at all unless the
+`egress` slot is `gate` ([Egress](#egress)).
 
 Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-insecure-development-runtime`, `-sandbox-image`,
-`-sandbox-connectors-image` and `-sandbox-work-root`. A binary can register
+`-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
+`-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
 factory returns an `isolation.Leaser` (`fiber/pkg/isolation`).
+
+### Egress
+
+`egress` decides how a sandbox instance reaches the network. Left out, it is
+`none`: an instance has a loopback interface and nothing else, so a tool that
+calls an API cannot reach it.
+
+`gate` runs playscape's egress gate in the server: an HTTP forward proxy that
+is every instance's only way out. Each run's instance is granted the hosts its
+`ceilings.egress` allows ([Run settings](#run-settings)), default deny, and
+every command in it, the shell and stdio MCP servers alike, gets `HTTP_PROXY`
+and `HTTPS_PROXY` with that grant's token. A request for any other host gets
+`403` before anything is dialed. HTTPS goes through as a `CONNECT` tunnel, so
+the gate sees the host and port, never the content. The grant ends when the
+run's instance is destroyed. Addresses that are loopback, private or
+link-local are refused whatever name led to them, unless
+`allow_non_public` is set.
+
+Every decision, allowed or denied, is written to the workspace's audit log as
+`sandbox.egress` on resource `egress_host`, with the run, its agent and
+conversation, the method, host and port, and why a request was refused. A
+denied request is a failed record.
+
+| Sandbox | What forces the gate |
+|---------|----------------------|
+| `docker` | The instance joins `network`, which must be created with `--internal` (`docker network create --internal humagen-egress`), so it has no route out. The gate must be reachable on that network at `address`: run the server in a container attached to it, and give the server's IP address on it, since gVisor cannot always resolve names there. A network that is not internal is refused |
+| `local` | Nothing: the processes are the server's own, and only the proxy variables send them to the gate. `listen` and `address` on loopback are enough |
+| `unisolated` | Nothing runs in an instance, so the gate is not started and the server says so |
+
+Credential injection, where the sandbox holds a placeholder and the gate
+swaps in the real value for an allowed host, is playscape's and not wired
+here yet.
 
 ### Knowledge search
 
@@ -326,7 +378,7 @@ spec:
     project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
     agent_posts: review     # what agents scheduled in the workspace itself post waits for its owners
     run:                    # every run's settings: ceilings bound it, preferences choose within them
-      ceilings: {models: ["anthropic/*", "gemini/*"], call_depth: 2, tool_servers: [mcp.acme.example]}
+      ceilings: {models: ["anthropic/*", "gemini/*"], call_depth: 2, tool_servers: [mcp.acme.example], egress: [api.github.com, "*.pypi.org"]}
       preferences: {model: anthropic/claude-sonnet-4-5}
     projects:               # merged into the tree at every start, parents first
       - {name: Launch, description: Everything for the Q4 launch}
@@ -720,6 +772,7 @@ below may do, and what it prefers. A person adds their own level through
 | `ceilings.models` | ceiling | narrows nothing | at most 64 `provider/model`, or `provider/*` for all of a provider's. The run's model and fallbacks outside it are dropped, and a run with none left is refused |
 | `ceilings.call_depth` | ceiling | the deployment's depth | 0 to 16: how deep a run's calls to other agents may go. 0 calls none. It never deepens the deployment's own limit |
 | `ceilings.tool_servers` | ceiling | none | at most 64 hosts, in lower case, a person's own tool servers may be on. Default deny: only `workspace.run` opens it, and a project or a person only narrows it |
+| `ceilings.egress` | ceiling | none | at most 64 hosts, in lower case, a run's sandbox may reach through the egress gate, on ports 80 and 443: an exact name, or `*.domain` for its subdomains (not the domain itself). Default deny: only `workspace.run` opens it, and a project or a person only narrows it. It takes effect only with the `egress` slot set to `gate` ([Egress](#egress)) |
 | `preferences.model` | preference | the agent's model | `provider/model`, or `policy/<name>` for one of the workspace's model policies, used in place of the agent's own. One the ceilings do not allow is passed over |
 | `preferences.compaction_tokens` | preference | never compacts | 1,024 to 2,000,000: the input size, in tokens, past which a run's history is summarized before its next model call |
 

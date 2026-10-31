@@ -38,6 +38,7 @@ await loadTests([
   "/src/layout.dom.test.tsx",
   "/src/settings.dom.test.tsx",
   "/src/connections.dom.test.tsx",
+  "/src/tool-servers.dom.test.tsx",
   "/src/preferences.dom.test.tsx",
   "/src/home.dom.test.tsx",
   "/src/library.dom.test.tsx",

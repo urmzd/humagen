@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +27,7 @@ const (
 	SlotExtensions = "extensions"
 	SlotDeploy     = "deploy"
 	SlotSandbox    = "sandbox"
+	SlotEgress     = "egress"
 	SlotModels     = "models"
 	SlotTools      = "tools"
 	SlotConnectors = "connectors"
@@ -40,6 +44,7 @@ var Builtin = map[string][]string{
 	SlotExtensions: {},
 	SlotDeploy:     {"local", "compose", "kubernetes"},
 	SlotSandbox:    {"docker", "local", "unisolated"},
+	SlotEgress:     {"none", "gate"},
 	SlotModels:     {"anthropic", "openai", "google"},
 	SlotTools:      {"mcp"},
 	SlotConnectors: {"bigquery"},
@@ -68,7 +73,12 @@ type SystemSpec struct {
 	// and stdio MCP servers, in an instance of the run's own. docker (the
 	// default, with the runsc runtime) isolates them; local and
 	// unisolated run them on this host and are for development only.
-	Sandbox   Slot                `json:"sandbox,omitzero"`
+	Sandbox Slot `json:"sandbox,omitzero"`
+	// Egress is how a sandbox instance reaches the network: none (the
+	// default, no network at all) or gate, playscape's egress proxy,
+	// through which a run reaches only the hosts its egress ceiling
+	// allows.
+	Egress    Slot                `json:"egress,omitzero"`
 	SecretEnv map[string][]string `json:"secret_env,omitempty"`
 	// Rooms is how a conversation with many readers is read, and how fast
 	// runs start in it (RFC 0004).
@@ -196,6 +206,32 @@ type URLBlock struct {
 	URL *Ref `json:"url"`
 }
 
+// EgressGate is the gate egress kind's block: an HTTP forward proxy this
+// server runs, and every sandbox instance's only way out. A run reaches
+// the hosts its egress ceiling allows (workspace.run.ceilings.egress, then
+// its projects and person), and no other; every decision is audited.
+type EgressGate struct {
+	// Listen is where the gate listens, host:port. Empty is
+	// DefaultEgressListen, which only a sandbox on this host (local) can
+	// reach.
+	Listen string `json:"listen,omitempty"`
+	// Address is the gate as an instance reaches it, host:port. Under
+	// docker it is an address on Network; give an IP address, since
+	// gVisor cannot always resolve names there. Empty is Listen.
+	Address string `json:"address,omitempty"`
+	// Network is the Docker network docker instances join: created with
+	// --internal, so it has no route out but to the gate. The docker
+	// sandbox refuses egress without it.
+	Network string `json:"network,omitempty"`
+	// AllowNonPublic lets the gate dial loopback, private and link-local
+	// addresses an allowed host resolves to. Off, they are refused, so a
+	// host name cannot lead a run into the private network.
+	AllowNonPublic bool `json:"allow_non_public,omitempty"`
+}
+
+// DefaultEgressListen is where the gate listens when the spec says nothing.
+const DefaultEgressListen = "127.0.0.1:3128"
+
 // Disk is the disk blob kind's block.
 type Disk struct {
 	Dir string `json:"dir,omitempty"`
@@ -223,6 +259,15 @@ type DockerSandbox struct {
 	// in, which the Docker daemon must be able to mount. Empty is
 	// humagen/sandbox in the user cache directory.
 	WorkRoot string `json:"work_root,omitempty"`
+	// Host is a Docker daemon on another machine, a sandbox host, as
+	// tcp://, ssh:// or unix://. Humagen then holds no Docker socket on
+	// its own machine, and work_root is unused: a run's work directory is
+	// a volume on the sandbox host. Empty is the local daemon.
+	Host string `json:"host,omitempty"`
+	// TLSDir holds ca.pem, cert.pem and key.pem for host: the daemon's
+	// certificate authority and Humagen's client certificate. A tcp://
+	// host requires it.
+	TLSDir string `json:"tls_dir,omitempty"`
 	// Warm is how many instances are kept started ahead of runs, per
 	// shape; Max bounds every instance at once. Zero is playscape's
 	// default (1 and 64).
@@ -392,6 +437,9 @@ func (s *System) Defaults() {
 	if sp.Knowledge.Embedder.Kind == "" {
 		sp.Knowledge.Embedder.Kind = "none"
 	}
+	if sp.Egress.Kind == "" {
+		sp.Egress.Kind = "none"
+	}
 	if sp.Execution.MaxDepth == 0 {
 		sp.Execution.MaxDepth = 4
 	}
@@ -457,7 +505,7 @@ func (s System) check(kinds Kinds) error {
 	slots := []struct {
 		name string
 		slot Slot
-	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotEmbedder, sp.Knowledge.Embedder}, {SlotDeploy, sp.Deploy}, {SlotSandbox, sp.Sandbox}}
+	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotEmbedder, sp.Knowledge.Embedder}, {SlotDeploy, sp.Deploy}, {SlotSandbox, sp.Sandbox}, {SlotEgress, sp.Egress}}
 	for _, e := range sp.Extensions {
 		slots = append(slots, struct {
 			name string
@@ -509,7 +557,7 @@ func checkEmbedder(e Slot) error {
 // checked when the file is read.
 func builtinBlock(slot, kind string) (any, bool) {
 	switch slot + "." + kind {
-	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local", "sandbox.unisolated", "embedder.none":
+	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local", "sandbox.unisolated", "embedder.none", "egress.none":
 		return &struct{}{}, true
 	case "deploy.compose":
 		return &Compose{}, true
@@ -544,6 +592,8 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &DockerSandbox{}, true
 	case "sandbox.local":
 		return &LocalSandbox{}, true
+	case "egress.gate":
+		return &EgressGate{}, true
 	}
 	return nil, false
 }
@@ -591,6 +641,30 @@ func checkBlock(where string, blk any) error {
 		if b.Warm < 0 || b.Max < 0 || (b.Max > 0 && b.Warm > b.Max) {
 			return fmt.Errorf("%s: warm and max are counts, and warm is at most max", where)
 		}
+		if err := checkSandboxHost(b.Host, b.TLSDir); err != nil {
+			return fmt.Errorf("%s: %w", where, err)
+		}
+	case *EgressGate:
+		for name, addr := range map[string]string{"listen": b.Listen, "address": b.Address} {
+			if addr == "" {
+				continue
+			}
+			host, port, err := net.SplitHostPort(addr)
+			if err == nil {
+				_, err = strconv.ParseUint(port, 10, 16)
+			}
+			if err != nil || strings.ContainsAny(host, " /@") || name == "address" && (host == "" || port == "0") {
+				return fmt.Errorf("%s: %s %q is not host:port", where, name, addr)
+			}
+		}
+		if b.Address == "" {
+			if host, _, _ := net.SplitHostPort(b.Listen); b.Listen != "" && (host == "" || net.ParseIP(host).IsUnspecified()) {
+				return fmt.Errorf("%s: listen %q is every address, so address must say which one instances reach", where, b.Listen)
+			}
+		}
+		if b.Network != "" && !runtimeName.MatchString(b.Network) {
+			return fmt.Errorf("%s: network %q is not a Docker network's name", where, b.Network)
+		}
 	case *BigQueryConnector:
 		if b.Project == "" {
 			return fmt.Errorf("%s: project is required", where)
@@ -610,6 +684,30 @@ func checkBlock(where string, blk any) error {
 		if b.AccessKey.Set() != b.SecretKey.Set() {
 			return fmt.Errorf("%s: access_key and secret_key go together", where)
 		}
+	}
+	return nil
+}
+
+// checkSandboxHost checks a docker sandbox's host and tls_dir. A daemon on
+// plain TCP is root on its machine for anyone who reaches it, so tcp://
+// needs tls_dir.
+func checkSandboxHost(host, tlsDir string) error {
+	if host == "" {
+		if tlsDir != "" {
+			return errors.New("tls_dir needs a host")
+		}
+		return nil
+	}
+	scheme, rest, _ := strings.Cut(host, "://")
+	switch {
+	case rest == "" || strings.ContainsAny(host, " \t\n"):
+		return fmt.Errorf("host %q is not a daemon address", host)
+	case scheme == "tcp" && tlsDir == "":
+		return fmt.Errorf("host %q is tcp://, which needs tls_dir", host)
+	case scheme != "tcp" && scheme != "ssh" && scheme != "unix":
+		return fmt.Errorf("host %q: want tcp://, ssh:// or unix://", host)
+	case tlsDir != "" && !filepath.IsAbs(tlsDir):
+		return fmt.Errorf("tls_dir %q is not an absolute path", tlsDir)
 	}
 	return nil
 }

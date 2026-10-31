@@ -26,7 +26,7 @@ spec:
     builtin: {provider: offline, model: offline}
   sandbox:
     # Where a run's tools execute (docs/reference/spec.md#sandbox). The
-    # image has no Docker CLI and this container no Docker socket, so docker
+    # container has no Docker socket and no sandbox host, so docker
     # would make every file tool refuse: unisolated runs tools in this
     # container, as before the sandbox, and refuses the shell. For an
     # instance per run, run the binary on the host instead (make dev).

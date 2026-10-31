@@ -196,6 +196,9 @@ func (e callExecutor) Turn(ctx context.Context, def turn.Pinned, in turn.Input, 
 		req.Instructions += "\nYou own the answer to your caller. Use call_agent for bounded helper work with explicit input messages and a return format. Incorporate useful results into one answer; do not narrate and repeat each helper's full answer."
 	}
 	in.Instructions = req.Instructions
+	// The run's history budget (compaction_tokens) was resolved onto req;
+	// a configured runtime reads only in.
+	in.Compaction = native.CompactionTo(req.Compaction)
 	// Buffer contracted outputs until validation succeeds. An invalid helper
 	// answer must not appear as accepted text or a successful tool result.
 	var buffered []event.Body
