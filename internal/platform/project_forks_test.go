@@ -91,7 +91,7 @@ func TestFailedProjectForkRemainsHiddenAcrossRestartAndResumes(t *testing.T) {
 		fault := &faultyIn{Store: raw}
 		p := startWith(t, platform.Config{Backends: platform.Backends{State: fault}})
 		note := projectForkSource(t, p)
-		fault.fail("memory")
+		fault.fail("drive.trees")
 		op, err := p.ForkProject(t.Context(), admin, "Field", platform.ProjectForkInput{Name: "Copy", Memory: []string{note}})
 		if err != nil || op.State != "failed" {
 			t.Fatalf("failed fork: %+v %v", op, err)
@@ -144,7 +144,7 @@ type blockedForkStore struct {
 
 func (s *blockedForkStore) Write(ctx context.Context, namespace string, ops ...state.Op) error {
 	s.mu.Lock()
-	hold := s.hold && namespace == "memory"
+	hold := s.hold && namespace == "drive.trees"
 	if hold {
 		s.hold = false
 	}
@@ -242,7 +242,7 @@ func TestProjectForkResumeRechecksSourceAccessAfterRevocation(t *testing.T) {
 	st := &faultyIn{Store: state.NewMemory()}
 	p := startWith(t, platform.Config{Backends: platform.Backends{State: st}})
 	note := projectForkSource(t, p)
-	st.fail("memory")
+	st.fail("drive.trees")
 	author := operator
 	author.Scopes = []auth.Permission{auth.ProjectsWrite, auth.AgentsWrite, auth.AgentsRead}
 	op, err := p.ForkProject(t.Context(), author, "Field", platform.ProjectForkInput{Name: "Copy", Memory: []string{note}})

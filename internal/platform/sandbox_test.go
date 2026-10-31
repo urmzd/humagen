@@ -106,7 +106,7 @@ func TestSandboxCannotBeEscaped(t *testing.T) {
 	if err != nil || strings.Contains(list, "link") || strings.Contains(list, "secret") || !strings.Contains(list, "notes/a.md") {
 		t.Fatalf("list = %q, %v", list, err)
 	}
-	if got := p.Artifacts.Usage(tenant); got.Count != 0 {
+	if got := artifactUsage(t, p, tenant); got.Count != 0 {
 		t.Fatalf("a refused publish stored %d artifacts", got.Count)
 	}
 
@@ -238,7 +238,7 @@ func TestPublishVersionsAndReports(t *testing.T) {
 	if page, _, _ := p.Artifacts.Page(tenant, artifacts.Query{Project: "Launch", Kind: artifacts.Spreadsheet}); len(page) != 1 {
 		t.Fatalf("filtered page = %d", len(page))
 	}
-	u := p.Artifacts.Usage(tenant)
+	u := artifactUsage(t, p, tenant)
 	if u.Count != 4 || len(u.ByProject) != 1 || u.ByProject[0].Count != 3 || u.ByAgent[0].Name != "lead" {
 		t.Fatalf("usage = %+v", u)
 	}
@@ -304,7 +304,7 @@ func TestStorageLimit(t *testing.T) {
 	if len(reported) != 1 || reported[0].Error == "" {
 		t.Fatalf("the refusal was not reported on the run: %+v", reported)
 	}
-	if u := p.Artifacts.Usage(tenant); u.Count != 1 || u.Bytes != 20 {
+	if u := artifactUsage(t, p, tenant); u.Count != 1 || u.Bytes != 20 {
 		t.Fatalf("a refused publish was counted: %+v", u)
 	}
 	page, _, _ := p.InboxPage(admin, inbox.Query{Kind: inbox.KindBudget})

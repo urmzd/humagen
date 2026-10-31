@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/memory"
 )
 
@@ -44,4 +46,13 @@ func pendingOf(t testing.TB, s *memory.Store, tenant string) []memory.Proposal {
 		t.Fatal(err)
 	}
 	return out
+}
+
+func artifactUsage(t testing.TB, p *platform.Platform, tenant string) artifacts.Usage {
+	t.Helper()
+	u, err := p.Artifacts.Usage(tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
 }

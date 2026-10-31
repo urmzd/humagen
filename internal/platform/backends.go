@@ -270,7 +270,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("read audit", err)
 	p.Inbox, err = inbox.OpenStore(st)
 	keep("inbox", err)
-	p.Artifacts, err = artifacts.Open(st)
+	p.Artifacts, err = artifacts.Open(perRequest)
 	keep("artifacts", err)
 	keep("settings", p.settings.open(st))
 	if len(errs) == 0 {

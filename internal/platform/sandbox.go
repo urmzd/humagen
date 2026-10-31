@@ -427,17 +427,24 @@ func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project str
 			continue
 		}
 		var used int64
+		var err error
 		switch pol.Scope.Kind {
 		case policy.Tenant:
-			used = p.Artifacts.Used(tenant, "")
+			used, err = p.Artifacts.Used(tenant, "")
 		case policy.Project:
-			used = p.storageUsed(tenant, tree, pol.Scope.Name)
+			used, err = p.storageUsed(tenant, tree, pol.Scope.Name)
 		case policy.Agent:
-			for _, s := range p.Artifacts.Usage(tenant).ByAgent {
+			var u artifacts.Usage
+			u, err = p.Artifacts.Usage(tenant)
+			for _, s := range u.ByAgent {
 				if s.Name == pol.Scope.Name {
 					used = s.Bytes
 				}
 			}
+		}
+		if err != nil {
+			// A limit that cannot be checked refuses the publish.
+			return err
 		}
 		if used+size > pol.MaxStorage {
 			reason := fmt.Sprintf("%s has reached its storage limit of %d bytes", pol.Scope, pol.MaxStorage)
@@ -460,7 +467,7 @@ func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project str
 // what its subtree holds now, and what was published below it in a project
 // deleted since, which is kept and still counts. A project the tree no longer
 // holds counts what is still filed under its name.
-func (p *Platform) storageUsed(tenant string, tree *projects.Tree, project string) int64 {
+func (p *Platform) storageUsed(tenant string, tree *projects.Tree, project string) (int64, error) {
 	names := tree.Subtree(project)
 	if names == nil {
 		names = []string{project}

@@ -272,8 +272,6 @@ func setIn[V any](m map[string]V, k string, v V) map[string]V {
 	return m
 }
 
-func key(tenant, agent string) string { return tenant + "\x00" + agent }
-
 // read returns an owner's notes as its tree holds them, with how often each
 // was used.
 func (s *Store) read(tenant, owner string) ([]Note, error) {

@@ -402,7 +402,14 @@ func (p *Platform) filedUnder(tenant string) func(string) bool {
 		}
 	}
 	if p.Artifacts != nil {
-		for _, sh := range p.Artifacts.Usage(tenant).ByProject {
+		u, err := p.Artifacts.Usage(tenant)
+		if err != nil {
+			// Without what is filed, every name is held as filed: a name is
+			// never forgotten while files may be filed under it.
+			p.log.Error("platform: artifact usage could not be read", "tenant", tenant, "error", err)
+			return func(string) bool { return true }
+		}
+		for _, sh := range u.ByProject {
 			filed[strings.ToLower(sh.Name)] = true
 		}
 	}
