@@ -378,15 +378,14 @@ Every store has one choice, memory or Postgres, made in one place:
 `platform.Config.Backends`, which `humagen serve -state=postgres` fills from
 `HUMAGEN_POSTGRES_URL` through `platform.OpenPostgres`. Agent definitions are
 kept by `pkg/agents` on `pkg/state`, and fiber's `pkg/durable` keeps anchor's
-run ledger and queue. Humagen's own stores do not each get a SQL
-copy of their rules. They keep their logic and indexes in memory, as the read
-model, and write the records that state is built from through `pkg/state`: a
-namespaced, tenant-scoped document store with a Memory and a Postgres backend,
-one table, held to one conformance suite. A store loads its namespace when it
-is built, and writes before it reports a change, undoing the change when the
-write fails. Three stores fold in events that already happened (the journal,
-the run index after a run is recorded, and the usage ledger after an
-admission) and write those behind, every 250ms and when the platform stops.
+run ledger and queue. Humagen's own stores do not each get a SQL copy of
+their rules. They keep their records in `pkg/state`: a namespaced,
+tenant-scoped document store with a Memory and a Postgres backend, one table,
+held to one conformance suite. Every store reads and writes it per request
+(RFC 0004, horizontal data): it holds no copy of its records in memory,
+replays nothing at start, writes before it reports a change, and writes
+nothing behind. A cache in front of a store is kept only where dropping it
+changes no answer: a record that never changes, or one checked by version.
 
 Memory is files. `pkg/drive` keeps versioned file trees, one per person, per
 project and per agent, with each version's manifest (path, content hash,
@@ -399,37 +398,55 @@ notes' view of those trees: a note is the file `notes/<id>.md`, approved at
 the head and pending as a proposal. The notes kept in its old namespace move
 into files once, at start ([RFC 0004](../rfcs/0004-isolated-runs-and-person-context.md#memory)).
 
-Because a store trusts its memory after it loads, this is one writer per
-database. `pkg/state` holds a Postgres advisory lock for as long as it is
-open, per schema, so a second process is refused at start rather than allowed
-to diverge.
-
-`pkg/state` also reads and writes per request, which is how a store stops
-needing that lock (RFC 0004, horizontal data). `Lookup` reads one record with
-its version, `List` reads one page of one tenant's keys by prefix, at most
-`state.MaxList` (1,000) records, with a cursor, and an op may name the version
-it read (`state.PutAt`, `state.DeleteAt`) or require no record
-(`state.Create`): a write whose record moved fails whole with
-`state.ErrConflict`, and the store reads again and retries. Every record's
-version is 1 when it is written and one more on every write after; rows from
-before versions read as 1. The rules for a store built this way:
+`Lookup` reads one record with its version, `List` reads one page of one
+tenant's keys by prefix, at most `state.MaxList` (1,000) records, with a
+cursor, and an op may name the version it read (`state.PutAt`,
+`state.DeleteAt`) or require no record (`state.Create`): a write whose record
+moved fails whole with `state.ErrConflict`, and the store reads again and
+retries (`state.Retry`, `Table.Update`). Every record's version is 1 when it
+is written and one more on every write after; rows from before versions read
+as 1. The rules for a store:
 
 - **The tenant is the shard key.** A request reads one tenant, never a scan
-  across tenants. Only `Load`, at start, reads a whole namespace.
+  across tenants. A background loop that walks tenants pages a namespace's
+  tenant directory (`state.Tenants`).
 - **A key starts with what a request pages by**, so a page is a prefix: a
-  conversation's messages under `m:<conversation>:`, ordered by `state.Seq`.
-- **A write changes one tenant.** A link to another tenant's record is its id,
-  and work across tenants is a run that retries, not one transaction.
-- **The database is the truth.** A cache in front of it may be dropped at any
-  time without changing an answer.
+  run's call tree under `t:<root>:`, a conversation's messages under
+  `m:<conversation>:`, ordered by `state.Seq`. A list ordered by activity
+  keeps an index key moved in the same write as the record.
+- **A write changes one tenant**, all its records and index keys at once. A
+  link to another tenant's record is its id, and work across tenants is a run
+  that retries, not one transaction.
+- **Every read is bounded**: a page, a row cap (`state.Table.All` fails past
+  its cap), and caps on what a tenant may hold, enforced on write by a count
+  kept in the same write.
+- **An event folded twice changes nothing.** Until delivery is split between
+  replicas, every replica folds every event, and a takeover may fold a few
+  again: the run index folds a lifecycle event only past the run's last
+  sequence and a usage report once by its accounting id (or `run#seq`), the
+  journal keeps an event once by run and sequence, and the usage ledger
+  counts an entry once by its key.
+- **The database is the truth.**
 
-A store built this way opens on `state.OpenPostgresShared`, which migrates the
-table and takes no lock, so any number of processes may open it;
-`platform.OpenPostgres` hands it to them as `Backends.Shared`, beside the
-locked store the rest still need. Converted so far: **feedback**
-(`pkg/feedback`), keyed by run (`r:<run>:<seq>`, `x:<run>:<person>`,
-`h:<run>`), whose records an older release kept one per key are moved once,
-by whichever process opens it first.
+`state.OpenPostgres` migrates the table and takes no lock, so any number of
+processes may open one database. Records an older release kept in another
+layout are moved once, by whichever process opens a store first, behind a
+marker in the tenant `""`; each move is a conditional write, so processes
+opening together move each record once. `Load`, which reads a namespace
+across tenants, is used only for those moves. Stop every process of an older
+release before a newer one starts: an older release keeps its stores in
+memory.
+
+The run index (`pkg/runs`, `runs.v2`) is the busiest: a run under `o:<seq>`
+with its number under `i:<run>`, runs in flight under `a:`, call trees, a
+conversation's turns, a conversation at a glance (`s:`) and its place in the
+activity order (`u:`), and project counts, all moved in the run's write. A
+caller's count of attached runs still working moves in the same write as the
+attached run's ending, so a stop asked through any replica, and a caller
+settling on one while its call ends on another, agree. Threads, the inbox,
+the journal (100,000 events per tenant), memory and drive, artifacts,
+knowledge and the catalog, projects, people and the rest follow the same
+rules; each package's doc gives its layout.
 
 The usage ledger's counts are the exception: on Postgres they are kept in the
 database, not in memory (`usage.Counters`, tables `humagen_usage_*`). Every
@@ -437,6 +454,9 @@ change to the counts is one transaction that moves them and writes the ledger
 entry that moved them (`state.WriteTx`), with the entry's key from a database
 sequence. A call's spend is counted once by its key whichever process saw it,
 under the tenant's advisory lock, since it reads and rewrites its run's row.
+Entries, notices, grants and a run's spend are read from the database, paged
+and capped, so a grant approved through one replica is judged by every
+other.
 
 The counts an admission moves, runs started and runs in flight, are striped:
 `usage.Stripes` (8) rows per scope (`humagen_usage_admits`,
@@ -473,22 +493,15 @@ until its lease ran out, 30 seconds later.
 
 ## Limits at scale
 
-Admission and spend are counted in the shared store on Postgres (see [Storage](#storage)): two processes on one database cannot both admit the last run a limit allows, and each sees the other's spend at its next read. Admission is striped, so it no longer waits on one lock per tenant: 32 racers admitting into one tenant from two processes went from about 350 to about 3,500 admissions a second with no limit, and from about 310 to about 2,000 under a run limit (Postgres 17 in Docker on a laptop; `BenchmarkSharedAdmission`). Spend is still counted under one lock per tenant. The rest of the platform is still one process per database, so one replica is still the rule.
+Admission and spend are counted in the shared store on Postgres (see [Storage](#storage)): two processes on one database cannot both admit the last run a limit allows, and each sees the other's spend at its next read. Admission is striped, so it no longer waits on one lock per tenant: 32 racers admitting into one tenant from two processes went from about 350 to about 3,500 admissions a second with no limit, and from about 310 to about 2,000 under a run limit (Postgres 17 in Docker on a laptop; `BenchmarkSharedAdmission`). Spend is still counted under one lock per tenant. The stores read and write per request and `pkg/state` takes no lock, so the chart allows more than one replica; delivery, the observer and the loops that must run once are shared between replicas by consumer groups and process roles, which land separately.
 
 | Limit today | What it needs |
 |-------------|---------------|
 | Client secret values are kept in the database as written | A secret manager behind `clients.Secrets`, or encryption at rest |
-| Every store but feedback reads its whole namespace into memory at start and trusts its memory from then on, so one process holds a database (`pkg/state` takes an advisory lock). Still loaded at start, fastest growing first: the run index (`runs`, `runs.title`: a record per run, kept for ever), threads (`threads`: a message per post and per answer, kept for ever), the usage ledger's entries (`usage`: an admission, an end and one per model call for each run, 62 days), the inbox (90 days), the journal (a ring of 100,000), then the stores of tenant records that grow with people and settings rather than runs: memory, artifacts, operations, evals, knowledge and its evidence, alerts, schedules, settings, prefs, people, credentials, clients and their secrets, projects, project forks, policy, call policy, source links and suggestions, the skill library and agent defaults, agent setups, agent colors, context flags, audit refs, notifications and agent definitions (`pkg/agents`). The run index and threads need more than `pkg/state` gives today: their lists are ordered by activity across a tenant, threads search every message's words, and the run index answers what is active across tenants. This is what keeps `humagen worker` from existing: a turn reads and writes most stores (definitions, settings and model policy, knowledge, operations, memory, artifacts, and through `call_agent` admission, the run index, threads, projects and policies), so a worker needs them as much as the API does | Stores that read and write the database per request, with index keys kept by compare-and-set for what they list by, and a search outside the record store; then `humagen worker` (turns from anchor's queue, no HTTP) and a `serve` that runs no turns |
-| The run index, and so a run's lease and its spend shown on the run, folds events in one process's memory. With shared counters a call is counted by the first process to see it, so another process's run index would miss it | The run index on the database, read per request |
-| Budget alerts are raised once per scope by the alert store in memory, so two processes could each raise one | Alerts on the database, raised in the counters' transaction |
-| Usage entries, notices and a run's spend (`RunSpend`) are still read from this process's ledger in memory, though the counts are shared | Reads that page from the database |
-| Policy history grows without bound | Paging, as for conversations |
-| The inbox is read whole at start and held in memory: what is open for as long as it is, what was settled for the workspace's retention (90 days by default). Counts are counters in memory, rebuilt at start. Each retention step reads the tenant's whole record under the inbox's one lock, so the first pass over a large backlog (after an upgrade, or a shorter retention) takes as many such reads as it has steps: about 40 s in all for 300,000 messages, at most about a second at a time. Later passes take a step or so an hour | The counters in the shared store, reads that page from the database, and retention that indexes each message's records rather than reading the record each step |
-| The run index and the usage ledger are read whole at start and kept for as long as their rules say (the run index for ever, usage for 62 days) | Retention for runs, and reads that page from the database |
-| `pkg/memory` reads every note into memory at start, as it did before notes were files, and `pkg/drive` reads every tree's head and open proposals; search builds a tree's index in memory from its head | Notes read from the drive per turn through its cache, and an index kept beside the manifests |
+| Lists that span a tenant (a page of conversations, a summary, a search) read at most 20,000 records from the newest, and a search matches words over that window or a stored token index rather than a search engine. `Watch` notices from the inbox and threads reach only watchers in the process that made the change | A search outside the record store, and notices fanned out on the bus |
 | A download reads the whole file into memory, which the 2 MB cap makes safe | Streaming, before the cap is raised |
 | A conversation's room (`pkg/rooms`) counts its readers per server, so `rooms.coalesce_above` is per replica, and each room reads the tenant's whole run stream once and keeps its conversation's events. The workspace-wide stream the console's lists follow is not coalesced: every reader with it open is still sent every run state change and thread notice they may read | The bus sharded by conversation (RFC 0004), and the lists' stream moved onto rooms |
-| The journal is a ring of 100,000 events | An event store, or OTel export |
+| The journal keeps 100,000 events per tenant, each twice (by time and by run), and a query looks at most at 10,000 | An event store, or OTel export |
 
 ## Status
 
@@ -549,7 +562,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | `packages/adapter`: the shared platform-to-UI adapter, run events and inbox messages to Humagen's model and Humagen actions back to platform calls, shared by the console and the Slack app | Built. A parity test renders one adapted state with both renderers |
 | Slack app routing: a message that names no agent, with no client or app default, is sent with no agent, so the platform's default chain decides. The app picks nothing itself, and when the platform answers 409 it says "Tag an agent, for example @helper". Where the default is `*`, the platform asks the agents available there whether to join, only those the client may route to, and each that joins answers in the same Slack thread; `@auto` in a message tags nobody | Built, tested with fakes. `pnpm validate:slack` was not run for this change: its checks call slack.com, which this environment could not reach |
 | `pkg/call`: edge, modes, depth, fan-out and lease checks | Built, tested |
-| `pkg/runs`: run index, call tree, statistics, and what each project holds (its conversations, the runs in flight in them and when one last changed), counted as runs are recorded and change rather than scanned | Built. Kept with `-state=postgres`: recording a run is written through, and what its events change is written behind, every 250ms and when the platform stops. A run's usage tally is not kept, so a run working across a restart tallies afresh until the runtime's own figure arrives |
+| `pkg/runs`: run index, call tree, statistics, and what each project holds (its conversations, the runs in flight in them and when one last changed), counted as runs are recorded and change rather than scanned | Built. Read and written per request (`runs.v2`): every change is written before it is reported, at the version it read, nothing is written behind, and a run's usage tally is kept with the run, so a report folded twice counts once |
 | `internal/platform`: fiber composed, `Invoke`, `Call` with the spawn allowlist | Built, tested |
 | Ledger reconciler: ends runs whose retries ran out with no final event | Built, tested |
 | `pkg/auth`: OIDC sign-in, machine tokens, roles and scopes | Built, tested against an in-process issuer |
@@ -561,7 +574,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | `packages/client`: `@humagen/client`, generated by oag from the contract, with a hand-written layer for auth, decoded events and downloads | Built, tested against an in-process server and run once against `make dev`. No surface uses it yet: the console still has its own `apps/web/src/api.ts` |
 | Schedules through fiber's cron trigger: pause, run now, next fires, history | Built. Kept with `-state=postgres`, paused or not |
 | Editing a schedule (`PUT /api/schedules/{name}`): expression, agent, text, project and a description, keeping its pause state, creator and history. The edit is checked in full before it replaces anything, and an edited schedule starts afresh rather than catching up on its new expression | Built, tested |
-| `pkg/journal`: event log, query, run traces | Built, a bounded ring. Kept with `-state=postgres`, one record per place in the ring, written behind every 250ms and when the platform stops, so a crash loses what arrived since |
+| `pkg/journal`: event log, query, run traces | Built, 100,000 events per tenant. Read and written per request: an event is kept by time and by run, once by run and sequence, and nothing is written behind |
 | `pkg/alerts`: rules on run failure, failure rate and duration | Built. Kept with `-state=postgres`: rules, alerts, numbering and cooldowns |
 | Configurable alert rules: replace (`PUT /api/alert-rules/{name}`), description, pause, project scope beside agent scope, a cooldown, a `spend` kind over a window in micro-USD, and `notify`, which addresses the inbox message to subjects and `role:<name>` entries among the people who may read alerts | Built, tested. Notify names people by subject, not by email |
 | `pkg/knowledge`: sources, documents, BM25 search, per-document exclusion, saved variants | Built. Lexical by default; with `knowledge.embedder` (hashing, OpenAI-compatible or Vertex AI) passages also get vectors in the background, kept beside them, and search fuses vector and BM25 rankings over the same permitted passages ([RFC 0005](../rfcs/0005-federated-retrieval-and-catalog.md), change 1). Kept with `-state=postgres`, passages included. Native scoped source creation saves its refresh cadence atomically; bounded selection, last-good copies, frozen versions, freshness stops and current-policy scheduled refresh share the durable lifecycle. External retained text and per-file metadata are withheld pending current-reader file authorization. Explicit unfrozen provider queries use the reader's current reference and selected resources, never cached fallback; external saved variants and frozen-snapshot queries fail closed. Native evidence records source authority before model input; external, unknown and missing-source citation projections are withheld without network calls. Authored manual collections keep native search and curation. Rule previews and observed relationships remain bounded and permission-confined. Source-access and full Go race regressions pass; final browser/CI verification is pending. See [sources.md](sources.md). |
@@ -693,13 +706,13 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Email notification delivery | Built. Optional operator-configured SMTP with verified TLS, exact tenant/subject recipient mappings, current standing policy and read confinement. Personal opt-in and per-kind settings default off; digest and quiet hours are rechecked before retry. Independent durable email acknowledgments survive replay and use inbox retention. Consent uses a read version and private audited mutation; no mailbox is exposed by the API. See [email notifications](../guides/email-notifications.md). Tested through a real loopback SMTP relay and memory/Postgres delivery, replay, revocation and HTTP cases. |
 | Email connector and Jira wiring | Not built |
 | Remote execution nodes, peer connector | Not built |
-| `pkg/state`: one record store for Humagen's own stores, by namespace, tenant and key, in memory or in Postgres (one table, migrated by `OpenPostgres`), held to the `statetest` suite. Each store keeps its rules and indexes in memory and writes through it, undoing a change that cannot be written | Built, tested against both backends on Postgres 16, with a restart test per store and a failed-write test per store. One writer: a second process on the same schema gets `state.ErrLocked` |
+| `pkg/state`: one record store for Humagen's own stores, by namespace, tenant and key, in memory or in Postgres (one table, migrated by `OpenPostgres`), held to the `statetest` suite, with `Retry`, `Table.Update`, `Table.All` and a tenant directory (`state.Tenants`) | Built, tested against both backends on Postgres 16. Any number of processes may open one database: `OpenPostgres` takes no lock (`TestPostgresTakesNoLock`) |
 | Egress gate in sandboxes (RFC 0004, change 3, wired): the `egress` System slot (`none`, the default, or `gate`) runs playscape's `isolate/egress` proxy in the server; each run's instance is granted the hosts its pinned `ceilings.egress` allows (default deny, opened only by `workspace.run`, narrowed by projects and the person), both compartments go through it (`fiber/pkg/isolation/isolate`, `Config.Egress`), the grant is revoked when the instance is destroyed, and every decision is audited as `sandbox.egress` | Built. Tested under the race detector with the `local` driver and a real gate: a lease's commands get the gate's proxy variables over their own, a host it was not granted gets 403, an allowed host is reached, a released lease's token gets 407, a failed grant releases the lease, and decisions reach the audit log with their run (allowed as succeeded, refused as failed). `docker` joins the instances to the `--internal` network `egress.gate.network` and refuses a gate with no network or a loopback address; the path through a real daemon is covered by playscape's own end-to-end test, not here. Not yet: credential injection (the gate supports it; nothing in Humagen grants injections), a host's ports beyond 80 and 443, per-agent narrowing, and the `unisolated` sandbox, whose host processes keep the host's network |
-| Stores that read and write per request (RFC 0004, horizontal data, step 2): `state.OpenPostgresShared` (no lock), `platform.Backends.Shared`, and `pkg/feedback` converted, with no replay at start | Built for feedback only. Two processes, each on its own pool on one schema, see each other's ratings at once; 24 people rating one run through both at the same time are kept once each, numbered 1 to 25 without a gap; four stores opening at once on 30 records an older release kept move each once. Every other store is still loaded at start and needs the lock (see [Limits at scale](#limits-at-scale)) |
+| Stores that read and write per request (RFC 0004, horizontal data, steps 2 and 3): every store, with no replay at start and no write-behind; then `pkg/state` drops its lock and the chart allows more than one replica (`RollingUpdate`, one pod at a time) | Built. Each store has two-process tests: two stores on two pools on one schema see each other's writes at once, and writers in both lose nothing (the run index: 8 writers adding spend and 80 turns to one conversation; one ending reported per run when both fold the same events; a caller and its attached call settling across processes over 10 rounds). Each conversion is tested with four processes opening at once. Delivery, the observer and singleton loops are still per process until consumer groups and process roles land |
 | Per-request reads and versioned writes in `pkg/state` (RFC 0004, horizontal data, step 1): `Lookup`, `List` (one tenant, a key prefix, a cursor, at most 1,000 records, either order) and conditional ops (`Create`, `PutAt`, `DeleteAt`, `ErrConflict`), also on `state.Table` | Built. `statetest` holds both backends to it on Postgres 17: versions, conditional writes all or none, 8 racers incrementing one record by compare-and-set to exactly 80, paging by prefix both ways, and prefix bounds past ASCII. No store uses it yet |
 | Choosing the backends: `platform.Config.Backends` (Humagen's `state.Store`, the agent store, anchor's ledger and queue, the bus), zero for memory; `platform.OpenPostgres` puts all of them on one database, with `pkg/agents` on `pkg/state` for agents and fiber's `pkg/durable` for the run ledger and queue. `humagen serve -state=postgres`, the default when `HUMAGEN_POSTGRES_URL` is set | Built. `TestThePlatformSurvivesARestart` runs a platform on each backend, stops it and starts another on the same one. `TestARunClaimedAsThePlatformStopsIsResumedAfterTheRestart` holds a worker's claim on its way to Postgres until the stopping worker has handed its run back, and the next platform resumes the run at once. Run by hand against Postgres 16 with `-auth dev -seed`: settings, an agent, a client, an alert rule, runs, the inbox and artifacts survived a restart. Sessions are still in memory |
 | The spec and the commands (`pkg/spec`, `internal/app`): System and Platform documents whose backends are kinds in slots ([spec](../reference/spec.md)). `humagen start` runs a laptop's defaults (dev sign-in on loopback, example agents when nothing is configured, the first-run questions on a terminal, `humagen.yaml` in the config directory); `humagen serve` keeps a server's (OIDC, nothing seeded, only the files `-f` names). Also `humagen setup`, `humagen config check` (which warns of a Slack app whose `humagen_client` reads runs but not projects, `TestConfigCheckWarnsOfAMachineThatReadsRunsButNotProjects`) and `print`, `humagen deploy` (local, compose or kubernetes) and `humagen slack manifest`. A downstream program passes `humagen.Main` options and kinds instead of forking | Built, tested: `humagen start` runs with nothing configured, a spec file runs the platform, the spec's examples load, mistakes are refused with their place, what `humagen setup` writes loads back as the same spec, an unregistered kind stops startup, and a spec on Postgres keeps its agents across a restart. The file's GitHub client follows the file at the next start, with no new version when nothing changed, on memory and Postgres (`TestTheFilesGitHubClientFollowsTheFileAtEveryStart`). `enabled: false` turns it off, so a signed webhook is answered 404, and it stays off across a restart (`TestEnabledFalseTurnsTheFilesGitHubClientOff`). `humagen deploy` is tested with docker, helm and kubectl replaced by a recorder; it has not been run against a Docker daemon or a cluster. It refuses `person_refs` starts in this machine's keychain or 1Password for a compose or kubernetes target, and says people's `env:` variables are the target's to set |
-| In-repo deploy, on [the spec](../reference/spec.md): a container image (`Dockerfile`: the console and a static `humagen`, non-root, `/var/lib/warp` volume, `serve -f /etc/warp`), a compose stack (`deploy/compose`: a mounted `humagen.yaml` with System and Platform documents, secrets in `.env` named by references, Postgres and a MinIO profile, a dev override on host networking, `make up`/`make down`), a Helm chart (`deploy/helm/humagen`: `system` and `platforms` values rendered into one `humagen.yaml`, one replica with `Recreate`, `existingSecret`, a workspace PVC; refuses loopback-only sign-in) and an example Flux setup (`deploy/flux`). See [deploy](../guides/deploy.md) | Written. `make chart-check` lints and renders the chart, runs `kubeconform -strict` on the renders and `humagen config check` on each rendered `humagen.yaml` and on both compose specs. The compose files pass `docker compose config`; the dev spec, with memory stores, was started and served the console. The Flux manifests pass `kubeconform` after `kustomize build`. `config check` lists env references the shell has not set; it does not read keychains or named files, so those fail only at start. The root image builds and runs as both command names; a default Postgres release upgrades in place from the last pre-rename chart through Helm and Flux on kind, with the Deployment, PVC contents, Secret data and container name retained ([rename verification](../guides/rename-verification.md)). The memory-slot edge in [issue #62](https://github.com/urmzd/humagen/issues/62) remains open. No image is published by releases |
+| In-repo deploy, on [the spec](../reference/spec.md): a container image (`Dockerfile`: the console and a static `humagen`, non-root, `/var/lib/warp` volume, `serve -f /etc/warp`), a compose stack (`deploy/compose`: a mounted `humagen.yaml` with System and Platform documents, secrets in `.env` named by references, Postgres and a MinIO profile, a dev override on host networking, `make up`/`make down`), a Helm chart (`deploy/helm/humagen`: `system` and `platforms` values rendered into one `humagen.yaml`, `replicaCount` replicas replaced one at a time (`RollingUpdate`, no surge), `existingSecret`, a workspace PVC; refuses loopback-only sign-in) and an example Flux setup (`deploy/flux`). See [deploy](../guides/deploy.md) | Written. `make chart-check` lints and renders the chart, runs `kubeconform -strict` on the renders and `humagen config check` on each rendered `humagen.yaml` and on both compose specs. The compose files pass `docker compose config`; the dev spec, with memory stores, was started and served the console. The Flux manifests pass `kubeconform` after `kustomize build`. `config check` lists env references the shell has not set; it does not read keychains or named files, so those fail only at start. The root image builds and runs as both command names; a default Postgres release upgrades in place from the last pre-rename chart through Helm and Flux on kind, with the Deployment, PVC contents, Secret data and container name retained ([rename verification](../guides/rename-verification.md)). The memory-slot edge in [issue #62](https://github.com/urmzd/humagen/issues/62) remains open. No image is published by releases |
 | Call policies: each agent says which agents may call it (`anyone`, `listed`, `none`) and which calls wait for a person. `GET`/`PUT /api/agents/{name}/call-policy` (`agents:read`/`agents:write`), enforced in the call path beside the caller's spawn allowlist, and the `call_agent` tool offers only callees that admit the caller | Built, tested. Kept with `-state=postgres`. Per tenant, at most 1,000 policies and 100 names per list. The console edits one on the agent's page |
 | Discoverability: `GET /api/agents/{name}/reachable` says, for that agent as a caller, whether each other agent admits it, is in its spawn allowlist, and needs approval, with a reason | Built, tested. One page of up to 500 agents, with `truncated` |
 | Per-call approval held by the callee's policy: `call_agent` implements `native.Approving` (`fiber/pkg/turn/native`), the question carries the policy's approvers and self-approval, the inbox addresses it to them, and only a call a person approved goes through | Built. fiber's host call tool wrapper forwards `Approving`, so the caller parks on the approval; `TestACallTheCalleeHoldsWaitsForItsApprovers` covers approve and deny end to end. The question waits the policy's `expires_seconds` |

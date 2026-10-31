@@ -17,10 +17,10 @@
 development:
   loopback: false
 
-# -- One replica. Keep it at one: humagen's stores are single-writer (the run
-# index, the usage ledger, the admission lock and the schedules all assume one
-# process owns them), and the workspace volume is ReadWriteOnce. A second
-# replica would race the first, not share its load.
+# -- Replicas. The stores read and write the database per request, so the
+# chart allows more than one. Raise it only once delivery, the observer and
+# the singleton loops are shared between replicas (consumer groups and
+# process roles), and the workspace is not a ReadWriteOnce volume.
 replicaCount: 1
 
 image:

@@ -100,11 +100,8 @@ type Backends struct {
 // shared counts (usage.Counters). Each migrates its own tables, idempotently. The
 // caller owns the pool and closes it after calling release.
 //
-// It is one process's database: pkg/state takes it for this process, and a
-// second process gets state.ErrLocked until release is called or the first
-// process's connection ends. The stores that read and write per request are
-// on Backends.Shared, which takes no lock; the lock stays while any store is
-// loaded at start.
+// Any number of processes may open one database: every store reads and
+// writes it per request, and pkg/state takes no lock.
 //
 // providers are model provider names beyond fiber's built-ins that agent
 // specs may name, such as the extension providers a program registers.

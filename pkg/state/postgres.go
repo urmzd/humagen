@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,9 +23,8 @@ const table = "warp_state"
 // one namespace, one tenant, a range of keys.
 //
 // version was added after the table: a row an older release wrote is at
-// version 1. An older release does not move it, which is safe only because
-// that release takes the lock and so never runs beside a store that reads
-// versions without it.
+// version 1. An older release does not move it, so an older release must not
+// run beside this one: stop it before starting this one.
 const schema = `
 CREATE TABLE IF NOT EXISTS ` + table + ` (
 	namespace  text        COLLATE "C" NOT NULL,
@@ -39,27 +37,23 @@ CREATE TABLE IF NOT EXISTS ` + table + ` (
 ALTER TABLE ` + table + ` ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 1;
 `
 
-// lockClass is the first half of the advisory locks this package takes. The
-// second half is the schema's hash, so two schemas in one database are two
-// deployments and do not block each other.
-// It is the value every release has used, so an older process and this one
-// on one schema still exclude each other during an upgrade.
+// lockClass is the first half of the advisory lock a migration takes, so two
+// processes starting at once create the table once. It is the value every
+// release has used, for the lock older releases also held for as long as
+// they ran.
 const lockClass = 0x77617270
 
 // Postgres is a Store in a Postgres database. It does not own the pool: the
-// caller opened it and closes it, after Close.
+// caller opened it and closes it.
 type Postgres struct {
 	pool *pgxpool.Pool
-
-	mu   sync.Mutex
-	lock *pgxpool.Conn
 }
 
 var _ Store = (*Postgres)(nil)
 
-// OpenPostgres creates the table if it is not there and takes the database
-// for this process. A second process on the same schema gets ErrLocked until
-// the first one closes or its connection ends.
+// OpenPostgres creates the table if it is not there. It takes no lock: any
+// number of processes may open one database, since every store reads and
+// writes it per request (see the package doc).
 func OpenPostgres(ctx context.Context, pool *pgxpool.Pool) (*Postgres, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("%w: no pool", ErrInvalid)
@@ -67,35 +61,13 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool) (*Postgres, error) {
 	if err := migrate(ctx, pool); err != nil {
 		return nil, err
 	}
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("state: lock: %w", err)
-	}
-	var held bool
-	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1, hashtext(current_schema()))`, int32(lockClass)).Scan(&held); err != nil {
-		conn.Release()
-		return nil, fmt.Errorf("state: lock: %w", err)
-	}
-	if !held {
-		conn.Release()
-		return nil, ErrLocked
-	}
-	return &Postgres{pool: pool, lock: conn}, nil
+	return &Postgres{pool: pool}, nil
 }
 
-// OpenPostgresShared creates the table if it is not there, as OpenPostgres
-// does, and takes no lock: any number of processes may open it. Only a store
-// that reads and writes per request (see the package doc) may be built on it.
-// A store loaded at start still needs OpenPostgres, which a process opens
-// beside this one on the same pool until no store needs it. Close is a no-op.
+// OpenPostgresShared is OpenPostgres. It was the open that took no lock while
+// OpenPostgres took one.
 func OpenPostgresShared(ctx context.Context, pool *pgxpool.Pool) (*Postgres, error) {
-	if pool == nil {
-		return nil, fmt.Errorf("%w: no pool", ErrInvalid)
-	}
-	if err := migrate(ctx, pool); err != nil {
-		return nil, err
-	}
-	return &Postgres{pool: pool}, nil
+	return OpenPostgres(ctx, pool)
 }
 
 func migrate(ctx context.Context, pool *pgxpool.Pool) error {
@@ -112,19 +84,9 @@ func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// Close lets another process have the database. The store must not be used
-// after it.
-func (p *Postgres) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.lock == nil {
-		return nil
-	}
-	_, err := p.lock.Exec(context.Background(), `SELECT pg_advisory_unlock($1, hashtext(current_schema()))`, int32(lockClass))
-	p.lock.Release()
-	p.lock = nil
-	return err
-}
+// Close does nothing; the caller closes the pool. It is kept for callers
+// written when the store held a lock.
+func (p *Postgres) Close() error { return nil }
 
 // Get implements Store.
 func (p *Postgres) Get(ctx context.Context, namespace, tenant, key string) ([]byte, error) {
