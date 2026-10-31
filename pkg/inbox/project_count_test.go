@@ -33,17 +33,17 @@ func TestProjectCountUsesReaderCountersAndConfinement(t *testing.T) {
 		}
 		for _, s := range []*Store{s, rebuilt} {
 			q := Query{Reader: "ada", Sees: func(m Message) bool { return m.Source.Project != "Other" }}
-			if got := s.CountProject(acme, "Field", q); got.Unread != 1 {
+			if got := countProject(s, acme, "Field", q); got.Unread != 1 {
 				t.Fatalf("ada Field = %+v", got)
 			}
 			q.Reader = "bo"
-			if got := s.CountProject(acme, "Field", q); got.Unread != 2 {
+			if got := countProject(s, acme, "Field", q); got.Unread != 2 {
 				t.Fatalf("bo Field = %+v", got)
 			}
-			if got := s.CountProject(acme, "Other", q); got != (Counts{}) {
+			if got := countProject(s, acme, "Other", q); got != (Counts{}) {
 				t.Fatalf("hidden Other = %+v", got)
 			}
-			if got := s.CountProject(acme, "", q); got != (Counts{}) {
+			if got := countProject(s, acme, "", q); got != (Counts{}) {
 				t.Fatalf("workspace includes its descendants: %+v", got)
 			}
 		}

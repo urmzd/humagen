@@ -373,7 +373,7 @@ func (p *Platform) InboxPage(who auth.Principal, q inbox.Query) ([]inbox.Message
 // InboxCount returns how many messages are open for a person, how many of
 // those they have not read, and how many announcements they have not read.
 // Announcements count only in Updates, so they never grow the badge.
-func (p *Platform) InboxCount(who auth.Principal) inbox.Counts {
+func (p *Platform) InboxCount(who auth.Principal) (inbox.Counts, error) {
 	return p.Inbox.Count(who.Tenant, p.inboxQuery(p.Projects.Tree(who.Tenant), who, inbox.Query{}))
 }
 

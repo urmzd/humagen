@@ -2,7 +2,6 @@ package inbox
 
 import (
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
@@ -18,194 +17,212 @@ const (
 	MinRetention = 7 * 24 * time.Hour
 )
 
-// maxCut is the most operations one step of Retain writes, cut included. A
-// test lowers it to take many steps.
-var maxCut = 5000
+// maxCut is the most records one step of Retain deletes, and maxDrop the
+// most messages one step drops. A test lowers them to take many steps.
+var (
+	maxCut  = 5000
+	maxDrop = 100
+)
 
-// stepSize is maxCut, and at least two: one delete and the cut.
-func stepSize() int { return max(maxCut, 2) }
-
-// cutKey is the key a tenant's cut is kept under, beside its changes, whose
-// keys are all digits and sort before it.
+// cutKey is the key an older release kept a tenant's cut under, beside its
+// changes.
 const cutKey = "cut"
 
-// cut is what retention keeps of the messages it dropped: the number of the
-// last id issued, so that none is issued again, and the keys of what was
-// posted once (PostOnce), so that none is posted again.
+// cut is what an older release's retention kept of the messages it
+// dropped: the number of the last id issued, the keys of what was posted
+// once, and messages whose records were still being deleted.
 type cut struct {
-	Next int      `json:"next"`
-	Gone []string `json:"gone,omitempty"`
-	// Pending messages are already absent. Replay skips their records until
-	// bounded cleanup deletes the last of them and clears Pending.
+	Next    int      `json:"next"`
+	Gone    []string `json:"gone,omitempty"`
 	Pending []string `json:"pending,omitempty"`
-}
-
-// restore takes up what a tenant's cut keeps.
-func (t *tenant) restore(c cut) {
-	t.cut = cut{Next: c.Next, Gone: slices.Clone(c.Gone), Pending: slices.Clone(c.Pending)}
-	t.next = max(t.next, c.Next)
 }
 
 // settledBefore reports whether retention drops a message: resolved,
 // dismissed or withdrawn for everyone before a time, with no question in it
 // that a run still waits on.
 func settledBefore(m *Message, before time.Time) bool {
-	if m.State != Resolved && m.State != Dismissed || !m.UpdatedAt.Before(before) {
-		return false
-	}
-	return !slices.ContainsFunc(m.Parts, func(p Part) bool { return p.Question != nil && p.State == PartOpen })
+	return retainable(m) && m.UpdatedAt.Before(before)
 }
 
 // Retain drops what was settled for everyone before a time from a tenant's
-// inbox, and from its record in the state.Store, and returns how many
-// messages it dropped. A message goes when it was resolved, dismissed or
-// withdrawn before it and no question in it is one a run still waits on,
-// with every change recorded about it: its raise, its outcomes, each
-// reader's marks and each client's receipts. Nothing open or snoozed goes,
-// and a broadcast that readers hid for themselves stays while it is open for
-// anyone. What must not happen twice outlives it: no message id is issued
-// again, and the key of an announcement posted once (PostOnce) is never
-// posted again. The receipts and keys of what is kept still find it.
+// inbox, and returns how many messages it dropped. A message goes when it
+// was resolved, dismissed or withdrawn before it and no question in it is
+// one a run still waits on, with every record kept about it: its raise, its
+// outcomes, each reader's marks and each client's receipts. Nothing open or
+// snoozed goes, and a broadcast that readers hid for themselves stays while
+// it is open for anyone. What must not happen twice outlives it: no message
+// id is issued again, and the key of an announcement posted once (PostOnce)
+// is never posted again. The receipts and keys of what is kept still find
+// it.
 //
-// It works in steps of at most maxCut operations, including the cut. Each
-// step deletes records and writes the cut in one write, all or none, and
-// changes the inbox only once that is written, so replay rebuilds what the
-// inbox holds. A step that cannot be written leaves the inbox as that step
-// found it and returns the error. A cut names a message whose remaining
-// records await cleanup, so replay never brings it back between steps.
+// It pages the index of settled messages, oldest first, and works in
+// steps: one write drops up to maxDrop messages, each at the version it
+// read, and marks each for cleanup ("g:"); later writes delete what remains
+// of them, at most maxCut records each. Two processes retaining one tenant
+// at once drop each message once. A step that cannot be written returns
+// the error, and the next pass carries on.
 func (s *Store) Retain(tenantName string, before time.Time) (int, error) {
 	dropped := 0
 	for {
-		n, more, err := s.retainStep(tenantName, before)
+		more, err := s.clean(tenantName)
+		if err != nil {
+			return dropped, err
+		}
+		if more {
+			continue
+		}
+		n, more, err := s.dropStep(tenantName, before)
 		dropped += n
 		if err != nil || !more {
+			if err == nil {
+				err = s.prunePosts(tenantName, before)
+			}
 			return dropped, err
 		}
 	}
 }
 
-// retainStep drops what one step of Retain may, and reports whether more is
-// left to drop.
-func (s *Store) retainStep(name string, before time.Time) (int, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.tenants[name]
-	if t == nil {
+// dropStep drops up to maxDrop messages settled before a time, and reports
+// whether more may be left.
+func (s *Store) dropStep(tenantName string, before time.Time) (int, bool, error) {
+	floor := "e:" + state.Seq(stamp(before))
+	var ids []string
+	capped, err := scan(s.st, tenantName, "e:", "", false, max(maxDrop, 1), func(r state.Record) (bool, error) {
+		if r.Key >= floor {
+			return false, nil
+		}
+		ids = append(ids, idOfKey(r.Key))
+		return true, nil
+	})
+	if err != nil {
+		return 0, false, fmt.Errorf("inbox: retain: %w", err)
+	}
+	if len(ids) == 0 {
 		return 0, false, nil
 	}
-	if len(t.garbage) > 0 {
-		return s.cleanStep(name, t)
-	}
-	records := map[string]int{}
-	var order []*Message
-	for _, m := range t.messages {
-		if settledBefore(m, before) {
-			records[m.ID] = 0
-			order = append(order, m)
-		}
-	}
-	if len(order) == 0 {
-		return 0, false, nil
-	}
-	for _, c := range t.log {
-		if _, ok := records[c.Message]; ok {
-			records[c.Message]++
-		}
-	}
-	drop := map[string]bool{}
-	next := cut{Next: t.next, Gone: slices.Clone(t.cut.Gone)}
-	size, more := 0, false
-	for _, m := range order {
-		if size > 0 && size+records[m.ID] >= stepSize() {
-			more = true
-			break
-		}
-		size += records[m.ID]
-		drop[m.ID] = true
-		if m.Once && !slices.Contains(next.Gone, m.Key) {
-			next.Gone = append(next.Gone, m.Key)
-		}
-	}
-	slices.Sort(next.Gone)
-	b := s.kept.Batch()
-	var garbage []int64
-	deletes := 0
-	for i, c := range t.log {
-		if drop[c.Message] {
-			if deletes < stepSize()-1 {
-				b.Delete(name, state.Seq(t.seqs[i]))
-				deletes++
-			} else {
-				garbage = append(garbage, t.seqs[i])
-				if !slices.Contains(next.Pending, c.Message) {
-					next.Pending = append(next.Pending, c.Message)
-				}
+	n := 0
+	err = state.Retry(func() error {
+		n = 0
+		x := newTx(s.st, tenantName)
+		for _, id := range ids {
+			ok, err := x.drop(id, before)
+			if err != nil {
+				return err
+			}
+			if ok {
+				n++
 			}
 		}
-	}
-	b.Put(name, cutKey, storedChange{Cut: &next})
-	if err := b.Commit(); err != nil {
+		return x.commit()
+	})
+	if err != nil {
 		return 0, false, fmt.Errorf("inbox: retain: %w", err)
 	}
-	t.drop(drop)
-	t.cut = next
-	t.garbage = garbage
-	return len(drop), more || len(garbage) > 0, nil
+	return n, capped || n > 0, nil
 }
 
-// cleanStep deletes another bounded slice of a cut message's history. The
-// durable pending ids make every intermediate state replayable.
-func (s *Store) cleanStep(name string, t *tenant) (int, bool, error) {
-	n := min(len(t.garbage), stepSize()-1)
-	next := t.cut
-	if n == len(t.garbage) {
-		next.Pending = nil
+// drop takes one message out of the inbox, when it is still settled before
+// a time, and marks what remains of it for cleanup.
+func (x *tx) drop(id string, before time.Time) (bool, error) {
+	m, err := x.message(id)
+	if err != nil {
+		return false, err
 	}
-	b := s.kept.Batch()
-	for _, seq := range t.garbage[:n] {
-		b.Delete(name, state.Seq(seq))
+	if m == nil {
+		// Dropped by another process; its index entry went with it.
+		return false, nil
 	}
-	b.Put(name, cutKey, storedChange{Cut: &next})
-	if err := b.Commit(); err != nil {
-		return 0, false, fmt.Errorf("inbox: retain: %w", err)
+	if !settledBefore(m, before) {
+		return false, nil
 	}
-	t.cut = next
-	t.garbage = t.garbage[n:]
-	return 0, true, nil
+	at := stamp(m.At)
+	x.del(allKey(at, id))
+	x.del(liveKey(at, id))
+	x.del(retainKey(m))
+	x.del(ptrKey(id))
+	var ref keyRef
+	if ok, err := x.get(keyKey(m.Key), &ref); err != nil {
+		return false, err
+	} else if ok && ref.ID == id {
+		if m.Once {
+			x.put(keyKey(m.Key), keyRef{Key: m.Key, Gone: true})
+		} else {
+			x.del(keyKey(m.Key))
+		}
+	}
+	for client, d := range m.Deliveries {
+		if err := x.unpost(client, d, id); err != nil {
+			return false, err
+		}
+	}
+	x.put(garbageKey(id), struct{}{})
+	// The message is gone: flush writes nothing more of it.
+	delete(x.msgs, id)
+	return true, nil
 }
 
-// drop takes messages out of a tenant, with every change about them. Each
-// is settled, so it is in no count.
-func (t *tenant) drop(ids map[string]bool) {
-	rekey := map[string]bool{}
-	kept := make([]*Message, 0, len(t.messages)-len(ids))
-	for _, m := range t.messages {
-		if !ids[m.ID] {
-			kept = append(kept, m)
-			continue
-		}
-		t.leave(m)
-		delete(t.byID, m.ID)
-		if t.byKey[m.Key] == m {
-			delete(t.byKey, m.Key)
-			rekey[m.Key] = true
-		}
-		delete(t.read, m.ID)
-		delete(t.hidden, m.ID)
+// clean deletes up to maxCut records of messages already dropped, and
+// reports whether it deleted any.
+func (s *Store) clean(tenantName string) (bool, error) {
+	var gone []string
+	if _, err := scan(s.st, tenantName, "g:", "", false, 10, func(r state.Record) (bool, error) {
+		gone = append(gone, idOfKey(r.Key))
+		return true, nil
+	}); err != nil {
+		return false, fmt.Errorf("inbox: retain: %w", err)
 	}
-	t.messages = kept
-	// A key is the latest kept message's raised under it, if any is.
-	for _, m := range t.messages {
-		if rekey[m.Key] {
-			t.byKey[m.Key] = m
-		}
+	if len(gone) == 0 {
+		return false, nil
 	}
-	log, seqs := make([]Change, 0, len(t.log)), make([]int64, 0, len(t.seqs))
-	for i, c := range t.log {
-		if !ids[c.Message] {
-			log, seqs = append(log, c), append(seqs, t.seqs[i])
+	budget := max(maxCut, 2)
+	var ops []state.Op
+	for _, id := range gone {
+		for _, prefix := range []string{changePrefix(id), markPrefix(id)} {
+			if budget-len(ops) <= 1 {
+				break
+			}
+			if _, err := scan(s.st, tenantName, prefix, "", false, budget-len(ops)-1, func(r state.Record) (bool, error) {
+				ops = append(ops, state.Delete(tenantName, r.Key))
+				return true, nil
+			}); err != nil {
+				return false, fmt.Errorf("inbox: retain: %w", err)
+			}
 		}
+		if budget-len(ops) <= 1 {
+			break
+		}
+		// Everything of it is in this write: its mark goes too.
+		ops = append(ops, state.Delete(tenantName, garbageKey(id)))
 	}
-	t.log, t.seqs = log, seqs
-	t.rebuildPosts()
+	c, cancel := ctx()
+	defer cancel()
+	if err := s.st.Write(c, namespace, ops...); err != nil {
+		return false, fmt.Errorf("inbox: retain: %w", err)
+	}
+	return true, nil
+}
+
+// prunePosts deletes the day counts of announcements from before a time,
+// which no cap reads again.
+func (s *Store) prunePosts(tenantName string, before time.Time) error {
+	floor := dayKey(dayOf(before).AddDate(0, 0, -1))
+	var ops []state.Op
+	if _, err := scan(s.st, tenantName, "p:", "", false, state.MaxList, func(r state.Record) (bool, error) {
+		if r.Key >= floor {
+			return false, nil
+		}
+		ops = append(ops, state.Delete(tenantName, r.Key))
+		return true, nil
+	}); err != nil {
+		return fmt.Errorf("inbox: retain: %w", err)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	c, cancel := ctx()
+	defer cancel()
+	if err := s.st.Write(c, namespace, ops...); err != nil {
+		return fmt.Errorf("inbox: retain: %w", err)
+	}
+	return nil
 }

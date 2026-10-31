@@ -106,7 +106,7 @@ func TestReadIsPerPerson(t *testing.T) {
 	if ada.Unread || !grace.Unread {
 		t.Fatalf("unread: ada=%v grace=%v", ada.Unread, grace.Unread)
 	}
-	if c := s.Count(acme, Query{Reader: "ada", Now: t0}); c.Open != 1 || c.Unread != 0 {
+	if c := count(s, acme, Query{Reader: "ada", Now: t0}); c.Open != 1 || c.Unread != 0 {
 		t.Fatalf("ada counts %d open, %d unread", c.Open, c.Unread)
 	}
 	if page, _, _ := s.Page(acme, Query{Reader: "grace", Unread: true, Now: t0}); len(page) != 1 {
@@ -129,7 +129,7 @@ func TestAMessageForOnePersonIsOnlyTheirs(t *testing.T) {
 	if page, _, _ := s.Page(acme, Query{Reader: "grace", Now: t0}); len(page) != 0 {
 		t.Fatal("ada's message is on grace's page")
 	}
-	if c := s.Count(acme, Query{Reader: "ada", Now: t0}); c.Open != 1 {
+	if c := count(s, acme, Query{Reader: "ada", Now: t0}); c.Open != 1 {
 		t.Fatal("ada's message is not in ada's count")
 	}
 }
@@ -291,7 +291,7 @@ func TestTheAgentFilterMatchesTheAgentOrTheTarget(t *testing.T) {
 		}
 	}
 	// The count is the reader's whole inbox, whatever the filter.
-	if c := s.Count(acme, Query{Agent: "nobody", Now: at.Add(time.Minute)}); c.Open != 2 {
+	if c := count(s, acme, Query{Agent: "nobody", Now: at.Add(time.Minute)}); c.Open != 2 {
 		t.Errorf("count %d", c.Open)
 	}
 }
