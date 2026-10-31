@@ -2172,3 +2172,70 @@ test("an agent's initials: two words give two letters, one word adds A for agent
   assert.equal(agentInitials("research_writer"), "RW");
   assert.equal(agentInitials("--"), "A");
 });
+
+test("a run held at a limit reads in the mailbox as a grant or a stop, with the limit, for whoever may decide", () => {
+  const held = (actions: string[]) =>
+    fromServer({
+      id: "m-budget",
+      kind: "approval",
+      subject: "lead is held at the spend limit of the workspace",
+      from: { kind: "system", name: "Limits" },
+      at: "2026-10-30T00:00:00Z",
+      updated_at: "2026-10-30T00:00:00Z",
+      severity: "warning",
+      state: "open",
+      unread: true,
+      source: { run: "r1" },
+      parts: [
+        {
+          id: "p1",
+          type: "approval",
+          state: "open",
+          actions,
+          question: {
+            run: "r1",
+            id: "q-b",
+            kind: "budget",
+            prompt:
+              "lead is held: the workspace has reached its limit of spend a day. Grant this run $10.00 more, or stop it.",
+            default: "deny",
+            budget: {
+              scope_kind: "tenant",
+              limit: "spend",
+              period: "day",
+              version: 1,
+              used: 9_000_000,
+              max: 5_000_000,
+              grant: 10_000_000,
+            },
+          },
+        },
+      ],
+    } as unknown as Parameters<typeof fromServer>[0]);
+  const view = (m: PlatformMessage) =>
+    html(
+      <MailboxView
+        messages={[m]}
+        selectedId={m.id}
+        onSelect={() => {}}
+        onAction={() => {}}
+        onOpen={() => {}}
+        viewer="Ada"
+      />,
+    );
+
+  const billing = view(held(["approve", "deny"]));
+  assert.match(billing, />Grant \$10\.00</);
+  assert.match(billing, />Stop Run</);
+  assert.match(billing, /\$5\.00 \(the workspace\)/);
+  assert.match(billing, /\$9\.00/);
+  assert.doesNotMatch(
+    billing,
+    />Ask</,
+    "a hold is granted or stopped, not discussed with an agent",
+  );
+
+  const other = view(held([]));
+  assert.doesNotMatch(other, />Grant /, "a reader without billing:write is offered no grant");
+  assert.doesNotMatch(other, />Stop Run</);
+});

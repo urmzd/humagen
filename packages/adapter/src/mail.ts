@@ -28,7 +28,7 @@ import {
   type UiAction,
 } from "@humagen/core";
 import { defaultCopy } from "../../components/src/copy.ts";
-import { interruptOf, settledFromOutcome, type WireQuestion } from "./question.ts";
+import { interruptOf, settledFromOutcome, type WireBudget, type WireQuestion } from "./question.ts";
 
 /** Something a message is about, which the console can open. */
 export type Source = {
@@ -391,6 +391,7 @@ function partFrom(raw: unknown, at: string, updated: string): MessagePart | null
             }
           : {}),
         ...(str(q.expires_at) ? { expires_at: str(q.expires_at) } : {}),
+        ...(q.budget ? { budget: q.budget as WireBudget } : {}),
       };
       const settled = settledFromOutcome(out);
       if (p.type === "reply") {

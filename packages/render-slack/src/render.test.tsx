@@ -1,4 +1,4 @@
-import { defaultCopy, TurnView } from "@humagen/components";
+import { ApprovalCard, defaultCopy, TurnView } from "@humagen/components";
 import { ActionId, decodeAction, type Turn } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
 import { Callout, Markdown, Only, Sources, Text, useSurface } from "@humagen/primitives";
@@ -93,6 +93,68 @@ describe("renderToSlack", () => {
     expect(cancel).not.toHaveProperty("style");
     expect(decodeAction(approve?.value ?? "")).toEqual({ turnId: "turn-1", target: "a1" });
     expect(approve?.confirm).toBeDefined(); // destructive
+  });
+
+  it("offers a run held at a limit a grant and a stop, with the limit, and nothing else", () => {
+    const { blocks, warnings } = renderToSlack(
+      <ApprovalCard
+        turnId="r1"
+        approval={{
+          type: "approval",
+          id: "q-b",
+          summary: "lead is held: the workspace has reached its limit of spend a day.",
+          tool: "",
+          budget: {
+            scope: "the workspace",
+            limit: "spend",
+            used: "$9.00",
+            max: "$5.00",
+            grant: "$10.00",
+          },
+          decision: { kind: "pending" },
+        }}
+      />,
+    );
+    expect(warnings).toEqual([]);
+    const actions = blocks.find((b) => b.type === "actions") as unknown as {
+      elements: { action_id: string; value: string; text: { text: string } }[];
+    };
+    expect(actions.elements.map((e) => [actionIdBase(e.action_id), e.text.text])).toEqual([
+      [ActionId.approve, "Grant $10.00"],
+      [ActionId.deny, "Stop Run"],
+    ]);
+    expect(decodeAction(actions.elements[0]?.value ?? "")).toEqual({ turnId: "r1", target: "q-b" });
+    const shown = JSON.stringify(blocks);
+    expect(shown).toContain("$5.00 (the workspace)");
+    expect(shown).toContain("$9.00");
+
+    const stopped = renderToSlack(
+      <ApprovalCard
+        turnId="r1"
+        approval={{
+          type: "approval",
+          id: "q-b",
+          summary: "lead is held.",
+          tool: "",
+          budget: {
+            scope: "the workspace",
+            limit: "spend",
+            used: "$9.00",
+            max: "$5.00",
+            grant: "$10.00",
+          },
+          decision: {
+            kind: "denied",
+            by: "Ana",
+            at: "2026-10-30T00:00:00Z",
+            reason: "Not this month",
+          },
+        }}
+      />,
+    );
+    expect(JSON.stringify(stopped.blocks)).toContain("Stopped at its limit.");
+    expect(JSON.stringify(stopped.blocks)).toContain("Stopped by Ana");
+    expect(stopped.blocks.some((b) => b.type === "actions")).toBe(false);
   });
 
   it("uses an alert block only in modals", () => {

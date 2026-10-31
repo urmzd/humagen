@@ -83,10 +83,20 @@ type QuestionAnswer struct {
 
 func questionKey(run, id string) string { return "question:" + run + ":" + id }
 
-// questionParts maps a question's kind to its part and message kinds.
+// partKind is a question's kind as its inbox part names it: the runtime's,
+// or budget for a run held at a limit (budget.go).
+func partKind(q event.Question) string {
+	if isBudget(q) {
+		return budgetTopic
+	}
+	return q.Kind
+}
+
+// questionParts maps a question's kind, as partKind names it, to its part
+// and message kinds. A budget question is answered as an approval is.
 func questionParts(kind string) (inbox.PartType, inbox.Kind, bool) {
 	switch kind {
-	case event.QuestionApproval:
+	case event.QuestionApproval, budgetTopic:
 		return inbox.PartApproval, inbox.KindApproval, true
 	case event.QuestionChoice:
 		return inbox.PartChoice, inbox.KindClarification, true
@@ -419,7 +429,7 @@ func audienceOf(allowed []string, q event.Question) (audience []string) {
 // not the run that asked. A question no person answers is inbox.ErrNotFound,
 // and a message the inbox could not keep is the inbox's error.
 func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q event.Question, via string) (inbox.Message, error) {
-	if _, _, ok := questionParts(q.Kind); !ok || q.ID == "" {
+	if _, _, ok := questionParts(partKind(q)); !ok || q.ID == "" {
 		return inbox.Message{}, fmt.Errorf("%w: question %q is not one a person answers", inbox.ErrNotFound, q.ID)
 	}
 	key := questionKey(run.ID, q.ID)
@@ -479,6 +489,9 @@ func (p *Platform) askedMessage(ctx context.Context, run runs.Run, questionID st
 // questionMessage is the inbox message a question is raised as, addressed
 // to the people it is for, and whom that is.
 func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q event.Question, via string) (inbox.Message, addressee) {
+	if isBudget(q) {
+		return p.budgetMessage(run, q), addressee{kind: ForAnyone}
+	}
 	partType, kind, _ := questionParts(q.Kind)
 	part := &inbox.QuestionPart{
 		Run: run.ID, ID: q.ID, Kind: q.Kind, Agent: run.Agent, Prompt: q.Prompt, Options: slices.Clone(q.Options),
@@ -736,6 +749,9 @@ func (p *Platform) settleQuestionsOf(run runs.Run) {
 // against it.
 func questionOf(q inbox.QuestionPart) event.Question {
 	out := event.Question{ID: q.ID, Kind: q.Kind, Prompt: q.Prompt, Options: q.Options}
+	if q.Kind == budgetTopic {
+		out.Kind = event.QuestionHold
+	}
 	if q.Tool != nil {
 		out.Tool = &event.QuestionTool{Name: q.Tool.Name, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema, ActsForPerson: q.Tool.ActsForPerson}
 	}
@@ -752,6 +768,8 @@ func answerOf(q inbox.QuestionPart, a QuestionAnswer) (event.Answer, error) {
 	switch {
 	case q.Kind == event.QuestionApproval && (a.Action == ActApprove || a.Action == ActDeny):
 		out = event.Answer{Decision: a.Action, Arguments: a.Arguments, Note: a.Note}
+	case q.Kind == budgetTopic && (a.Action == ActApprove || a.Action == ActDeny) && a.Arguments == nil:
+		out = event.Answer{Decision: a.Action, Note: a.Note}
 	case q.Kind == event.QuestionChoice && a.Action == ActChoose:
 		out = event.Answer{Choice: a.Choice, Note: a.Note}
 	case q.Kind == event.QuestionReply && a.Action == ActReply:
@@ -902,6 +920,18 @@ func (p *Platform) checkAnswer(ctx context.Context, who auth.Principal, reader i
 	if !p.readerSeer(who, reader).Message(m) {
 		return fmt.Errorf("%w: message %q", inbox.ErrNotFound, m.ID)
 	}
+	if q.Kind == budgetTopic {
+		// Granting a run more than its limit is billing's, and what is said
+		// to it reaches no model: a note is the reason a stop gives.
+		if err := mayGrant(who, reader); err != nil {
+			refused("no billing:write")
+			return err
+		}
+		if !m.For(reader) {
+			return fmt.Errorf("%w: %s may not answer this question", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
+		}
+		return nil
+	}
 	if q.Kind == event.QuestionApproval {
 		// Checked here, from the run as it stands, not only from whom the
 		// message was addressed to when it was raised: the runtime does not
@@ -982,6 +1012,17 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 	// for the note. It is dropped again unless this approval is the one
 	// recorded.
 	approved := ans.Decision == event.DecisionApprove && p.noteApprovedCall(who.Tenant, q, ans)
+	// A grant is counted before the runtime is told, because the runtime
+	// wakes the run and its next call is judged with it. It is written to
+	// the ledger only if this approval is the one recorded.
+	var grant *heldGrant
+	if q.Kind == budgetTopic && ans.Decision == event.DecisionApprove {
+		g, err := p.beginGrant(who.Tenant, q)
+		if err != nil {
+			return inbox.Message{}, false, err
+		}
+		grant = &g
+	}
 	got, first, err := p.rt.Answer(actx, req)
 	// A question answered the moment it is announced may not be recorded yet.
 	// It is asked again for a short while, never past the request. The note
@@ -997,6 +1038,9 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 	}
 	if approved && (err != nil || got.Decision != event.DecisionApprove) {
 		p.dropApprovedCall(who.Tenant, q)
+	}
+	if grant != nil {
+		p.endGrant(*grant, err == nil && first && got.Decision == event.DecisionApprove && !got.Expired, reader.Subject)
 	}
 	switch {
 	case errors.Is(err, runtime.ErrNotAllowed):
@@ -1018,6 +1062,9 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 		return inbox.Message{}, false, err
 	}
 	o := outcomeOf(got, p.now())
+	if grant != nil && first && o.Action == ActApprove {
+		o.Note = strings.TrimSpace(grantNote(grant.budget, grant.grant) + ". " + o.Note)
+	}
 	if first {
 		p.settleQuestion(who.Tenant, q.Run, q.ID, o, via)
 	} else {

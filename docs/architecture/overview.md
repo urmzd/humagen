@@ -207,7 +207,7 @@ the tree, attached and delegated alike.
 | When | What is judged | What happens |
 |------|----------------|--------------|
 | A run asks to start | Spend and tokens in the period, with runs and concurrency, under one lock | A scope that has reached its spend limit, to the micro-dollar, or its token limit refuses: 402 for spend, 429 for tokens, with the limit, the policy and its version, and `resets_at` |
-| A call is counted | Spend and tokens of every scope the run is in (`policy.Exceeded`) | At the warning threshold, one budget alert and one inbox message per scope and limit while it is open. At the limit, the run is stopped through `runtime.Stop`, with a reason naming the limit, the scope and the policy version, a `halted` notice, and one alert. Every other run in the scope is stopped at its own next call |
+| A call is counted | Spend and tokens of every scope the run is in (`policy.Exceeded`), each limit raised for this run by what people granted it there this period | At the warning threshold, one budget alert and one inbox message per scope and limit while it is open. At the limit, the run is stopped through `runtime.Stop`, with a reason naming the limit, the scope and the policy version, a `halted` notice, and one alert. Every other run in the scope is stopped at its own next call. Where the policy's action is `approve`, the run is held for a person instead (see [Approving a run at a limit](#approving-a-run-at-a-limit)); a limit that blocks outranks one that approves |
 | A run with a lease spends | Its `spent` plus what it has handed to calls still working (`granted`), against its `lease` | Stopped through the runtime once the two reach the lease |
 | A called run ends | Its lease and its spend | The caller's `granted` releases the lease and its `spent` gains what the child spent. If the caller has already settled, the spend climbs on to the nearest ancestor still open, or the root |
 
@@ -219,6 +219,33 @@ is trued up when the call settles. A caller with nothing left is refused. A
 stop at a limit that could not be requested is asked again at the run's next
 counted call. Housekeeping runs are never refused or stopped,
 and what they spend is still counted.
+
+### Approving a run at a limit
+
+A policy whose `action` is `approve` names what one approval grants:
+`max_grant` (micro-USD) with a spend limit, `max_grant_tokens` with a token
+limit. A run in flight that reaches that limit is not stopped. The platform
+asks the runtime to hold it (`runtime.Hold`, topic `budget`), and the run
+parks at its next batch of tool calls, before any of it runs: one model call
+after the one that reached the limit, since that call's usage is reported as
+it ends. A `held` notice is written to the usage ledger.
+
+The question is a `budget` question: an approval in the inbox (kind
+`approval`, part kind `budget` with the scope, limit, usage and grant), on the
+run and in Slack, from Limits. Anyone who reads the run sees it; only
+`billing:write` is offered its actions or may answer it.
+
+| Answer | What happens |
+|---|---|
+| Grant (`approve`) | The run may use the policy's grant more in that scope, in the policy's period. The amount is read from the policy when the grant is made, never more than the question offered; a policy no longer `approve` grants nothing and the answer is refused. The grant is a `granted` entry in the usage ledger with the run, scope, limit, policy version and who granted it, and the run carries on. Reaching the limit plus what was granted holds it again |
+| Stop (`deny`) | The run is stopped, with the note as its cause, and the batch it held never runs |
+| Nobody answers in time | The same as stop: a hold defaults to a denial |
+
+A run is held once per scope, limit and grant. A hold the runtime cannot
+record stops the run as before, so a limit is never left unenforced. A run
+asking to start at an `approve` limit is refused as at a `block` one: there is
+no run yet to hold. Grants are read from this process's usage ledger (written
+to the store and replayed at start), not from the shared counters.
 
 ### Unpriced calls and other currencies
 
@@ -251,6 +278,7 @@ owns who is asked and where.
 
 | Question | Raised by | Answered with |
 |---|---|---|
+| Budget | The platform, when a run reaches a limit whose policy asks for approval (`runtime.Hold`, see [Approving a run at a limit](#approving-a-run-at-a-limit)) | `approve`, which grants the policy's amount and resumes the run, or `deny`, which stops it. Answered by `billing:write` only |
 | Approval | A call to a tool the agent's spec lists in `approvals` | `approve` (optionally with edited `arguments`, checked against the tool's schema, and for a call that acts as a person, `tool.acts_for_person` on the run and in the inbox, only by that person, so every approval card says so and none offers an edit of it) or `deny` (with a note the model is shown). In a run whose answers may reach a person's own credentials, only that person edits any of its calls or adds a note, and the question names them (`steered_for`), so an agent's approval queue offers nobody else a note |
 | Choice | The agent calls `ask_person` with `options` | `choose` one option |
 | Reply | The agent calls `ask_person` without options | `reply` in words |
@@ -320,9 +348,6 @@ for work that waits on nobody, parents waiting on parked children can refuse
 new attached calls (`ErrBusy`), never hang.
 
 ### Not built
-
-A budget request is not an approval yet: a run at a limit is stopped or
-refused, not parked. See the status table.
 
 A call the callee's policy holds for a person is decided by `callApproval` in
 `internal/platform/call_policy.go`. The `call_agent` tool is an
@@ -573,7 +598,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Console for limits: Settings, each project page, and usage against limits in Analytics, with token limits and a lower-bound note on spend | Built. Not checked in a browser |
 | Spend and token limits: enforced at admission and mid-run, with the warning threshold and a stop through the runtime. See [Usage and spend](#usage-and-spend) | Built on fiber v0.10.0's usage reports, tested with scripted priced models under the race detector. Not run against a real provider here: no model key was available. Cost is a list price from saige's catalog, not a provider's invoice. A call in flight when the limit is crossed finishes and is counted, so a scope can end a little over its limit |
 | Unpriced calls and other currencies: counted apart, never as dollars, one lower-bound alert per scope, bounded by `max_tokens` | Built, tested |
-| Asking a person to approve a run at a limit | Not built. A run parks only at a tool call (`approvals`, `ask_person`): fiber has no way for a host to park a run on a question of its own, so a mid-run limit can only stop it, and admission refuses before there is a run to park. It needs a runtime call that raises a question on a run from outside its turn (or parks it at its next model call), with a `budget` question kind |
+| Asking a person to approve a run at a limit: a policy's `approve` action with `max_grant` / `max_grant_tokens`, fiber's `runtime.Hold`, a `budget` question in the inbox, on the run and in Slack, and grants in the usage ledger. See [Approving a run at a limit](#approving-a-run-at-a-limit) | Built mid-run, tested with scripted priced models under the race detector (`internal/platform/budget_test.go`: grant, stop, a policy that no longer grants, a blocking limit outranking), in fiber (`TestAHeldRun*`, `TestADeniedOrExpiredHold*`, `TestAHoldMadeMidTurn*`), and in the adapter, the console mailbox and the Slack renderer. Admission still refuses at an `approve` limit. The console's Limits form does not offer `approve` yet; the API does. Not run against a real provider here |
 | Limits set by a project's owner | Built. An owner of a project above sets a tighten-only limit on it (`PUT /api/projects/{name}/limits`, `authority: owner`), refused where an admin set one and when looser than any limit over it, naming the scope that binds, both decided under the policy store's lock. An admin's limits stay `billing:write`'s, and the console's Limits tab shows the chain ("Field's limit also applies here"). A move that leaves a project holding a limit needs `billing:write`, and so does one that would hand the caller an owner's limit they could not change before (the moved project, or one below it, holds a limit set from a parent they do not own), both decided under the project store's lock, so no move escapes one. Tested in `pkg/policy` and through the routes (`TestAnOwnerLimitsOnlyWhatIsBelowWhatTheyOwn`, `TestAMoveNeverEscapesALimit`, `TestAMoveNeverHandsSomeoneALimitTheyCouldNotChange`) |
 | Direct entry after sign-in, with optional personal preferences | Built. Everyone opens the console directly, including first admins. Profile and Appearance settings hold optional preferences |
 | Recents: conversations paged by an opaque keyset cursor, 200 a page | Built |

@@ -625,11 +625,15 @@ func TestBillingPolicies(t *testing.T) {
 		"a project that does not exist": `{"scope":{"kind":"project","name":"Ghost"},"period":"day","max_runs":5}`,
 		"an agent that does not exist":  `{"scope":{"kind":"agent","name":"ghost"},"period":"day","max_runs":5}`,
 		"no limits":                     `{"scope":{"kind":"tenant"},"period":"day"}`,
-		"approval, which is not built":  `{"scope":{"kind":"tenant"},"period":"day","max_runs":5,"action":"approve"}`,
+		"approval at no spend limit":    `{"scope":{"kind":"tenant"},"period":"day","max_runs":5,"action":"approve"}`,
 	} {
 		if res, _ := f.do(t, nil, "PUT", "/api/policies", acme, body); res.StatusCode != http.StatusBadRequest && res.StatusCode != http.StatusNotFound {
 			t.Errorf("%s = %d", name, res.StatusCode)
 		}
+	}
+	// A spend limit that holds a run for approval, with what one approval grants.
+	if res, held := f.do(t, nil, "PUT", "/api/policies", acme, `{"scope":{"kind":"agent","name":"helper"},"period":"day","spend_limit":5000000,"action":"approve","max_grant":1000000}`); res.StatusCode != http.StatusOK || held["action"] != "approve" || held["max_grant"].(float64) != 1000000 {
+		t.Fatalf("an approving policy = %d %v", res.StatusCode, held)
 	}
 	if res, _ := f.do(t, nil, "PUT", "/api/policies", acme, `{"scope":{"kind":"project","name":"Launch"},"period":"day","max_runs":2}`); res.StatusCode != http.StatusOK {
 		t.Fatalf("project policy = %d", res.StatusCode)

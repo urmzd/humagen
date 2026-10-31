@@ -1,4 +1,11 @@
-import { ActionId, type Approval, type Clarification, type Interrupt, type UiAction } from "@humagen/core";
+import {
+  ActionId,
+  type Approval,
+  type BudgetGrant,
+  type Clarification,
+  type Interrupt,
+  type UiAction,
+} from "@humagen/core";
 
 /**
  * A question a run is parked on, as one shape for every surface: on the run
@@ -26,7 +33,70 @@ export interface WireQuestion {
   tool?: { name: string; call_id?: string; arguments?: unknown; schema?: unknown; acts_for_person?: boolean };
   asked_of?: string;
   expires_at?: string;
+  /**
+   * A `hold` question's hold: the platform, not the agent, asked. A hold whose
+   * topic is `budget` holds a run at a limit, with the limit in `data`.
+   */
+  hold?: { id: string; topic?: string; data?: unknown };
+  /** A `budget` inbox part's limit, as the platform keeps it on the part. */
+  budget?: WireBudget;
 }
+
+/** A run held at a limit: the scope and limit, where it stood, and the grant. Money is in micro-USD. */
+export interface WireBudget {
+  scope_kind: string;
+  scope_name?: string;
+  limit: string;
+  used: number;
+  max: number;
+  granted?: number;
+  grant: number;
+}
+
+/** Micro-USD as dollars and cents, as the platform writes it. */
+function money(micros: number): string {
+  const cents = Math.floor(micros / 10_000);
+  return `$${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
+}
+
+/** A budget hold's limit, from the inbox part or the hold's data on the run. */
+function wireBudget(q: WireQuestion): WireBudget | undefined {
+  if (q.budget) return q.budget;
+  const d = q.hold?.topic === "budget" ? q.hold.data : undefined;
+  if (!d || typeof d !== "object") return undefined;
+  const o = d as Record<string, unknown>;
+  const scope = (o.scope ?? {}) as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === "number" ? v : 0);
+  return {
+    scope_kind: typeof scope.kind === "string" ? scope.kind : "",
+    ...(typeof scope.name === "string" ? { scope_name: scope.name } : {}),
+    limit: typeof o.limit === "string" ? o.limit : "",
+    used: n(o.used),
+    max: n(o.max),
+    ...(n(o.granted) > 0 ? { granted: n(o.granted) } : {}),
+    grant: n(o.grant),
+  };
+}
+
+/** A budget hold's limit, ready to show. */
+export function budgetGrantOf(b: WireBudget): BudgetGrant {
+  const tokens = b.limit === "tokens";
+  const amount = (v: number) => (tokens ? `${v.toLocaleString("en-US")} tokens` : money(v));
+  const scope =
+    b.scope_kind === "tenant" || !b.scope_kind ? "the workspace" : `${b.scope_kind} ${b.scope_name ?? ""}`.trim();
+  return {
+    scope,
+    limit: tokens ? "tokens" : "spend",
+    used: amount(b.used),
+    max: amount(b.max),
+    grant: amount(b.grant),
+    ...(b.granted ? { granted: amount(b.granted) } : {}),
+  };
+}
+
+/** True for a question the platform asked of a run held at a limit. */
+export const isBudgetQuestion = (q: WireQuestion) =>
+  q.kind === "budget" || (q.kind === "hold" && q.hold?.topic === "budget");
 
 /** How a question was settled: a person's answer, or what happened instead. */
 export interface Settled {
@@ -122,11 +192,26 @@ function argsOf(q: WireQuestion): Record<string, unknown> | undefined {
 /**
  * The question as humagen's interrupt. An approval is an approval card with the
  * call's arguments; a choice is a clarification with its options; a reply is
- * a clarification that takes words. A question a person does not answer (a
- * delegation) is null.
+ * a clarification that takes words; a run held at a limit is an approval
+ * that grants or stops. A question a person does not answer (a delegation,
+ * a hold of another topic) is null.
  */
 export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | null {
   const options = q.options ?? [];
+  if (isBudgetQuestion(q)) {
+    // A run held at a limit is an approval card the platform raised: approve
+    // grants it more, deny stops it.
+    const b = wireBudget(q);
+    return {
+      type: "approval",
+      id: q.id,
+      summary: q.prompt,
+      tool: "",
+      ...(b ? { budget: budgetGrantOf(b) } : {}),
+      ...(q.expires_at ? { expiresAt: q.expires_at } : {}),
+      decision: decisionOf(settled),
+    };
+  }
   switch (q.kind) {
     case "approval": {
       const args = argsOf(q);

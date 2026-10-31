@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	drun "github.com/urmzd/anchor/pkg/run"
 	"github.com/urmzd/humagen/fiber/pkg/event"
@@ -31,6 +32,8 @@ import (
 //   - A scope at its spend or token limit stops the run that just spent,
 //     through the runtime, with a reason naming the limit and the policy
 //     version. Every other run in the scope is stopped at its own next call.
+//     Where the policy asks for approval, the run is held for a person
+//     instead, who may grant it more or stop it (budget.go).
 //   - A run with a lease is stopped once it has spent the lease.
 //
 // When a run ends, its own total as the runtime recorded it is settled in the
@@ -111,7 +114,8 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 			money(run.Lease), money(run.Spent), money(run.Granted)))
 		return
 	}
-	d := policy.Exceeded(applied)
+	granted := p.granted(run, applied)
+	d := policy.Exceeded(applied, granted)
 	entry := usage.Entry{Tenant: run.Tenant, Project: run.Project, Within: run.Within, Agent: run.Agent, Client: run.Client, RunID: run.ID, At: now}
 	if d.Policy != nil {
 		entry.Scope, entry.Version, entry.Limit, entry.Reason = &d.Policy.Scope, d.Policy.Version, d.Limit, d.Reason
@@ -122,6 +126,8 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 		p.appendUsage(entry)
 		p.budgetAlert(run.Tenant, d, alerts.Critical, "Runs are being stopped: ", "stopped")
 		p.halt(ctx, run, fmt.Sprintf("Stopped at a limit: %s (%s policy, version %d)", d.Reason, d.Policy.Scope, d.Policy.Version))
+	case policy.NeedsApproval:
+		p.holdAtLimit(ctx, run, d, applied, granted, entry)
 	case policy.Warn:
 		// One warning per scope and limit while it is open, however many
 		// calls cross the threshold.
@@ -200,6 +206,12 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 	// this total, and not the run's Spent, which settles into its caller now.
 	p.Runs.SetUsage(run.ID, recorded, micros)
 	p.halting.Delete(run.ID)
+	p.holding.Range(func(k, _ any) bool {
+		if key, _ := k.(string); strings.HasPrefix(key, run.ID+"\x00") {
+			p.holding.Delete(k)
+		}
+		return true
+	})
 	if run.Parent != "" {
 		if now, err := p.Runs.Get(run.Tenant, run.ID); err == nil {
 			p.Runs.SettleCall(now)

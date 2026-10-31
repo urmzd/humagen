@@ -306,7 +306,8 @@ type QuestionPart struct {
 	// Run is the run that asked, and ID the question within it.
 	Run string `json:"run"`
 	ID  string `json:"id"`
-	// Kind is approval, choice or reply.
+	// Kind is approval, choice or reply, or budget for a run held at a
+	// limit for a person to grant it more or stop it (Budget says which).
 	Kind   string `json:"kind"`
 	Agent  string `json:"agent,omitempty"`
 	Prompt string `json:"prompt"`
@@ -341,6 +342,25 @@ type QuestionPart struct {
 	// SteeredForName is what that person is called (see From.Display). The
 	// store leaves it empty: it is filled in when the message is read.
 	SteeredForName string `json:"steered_for_name,omitempty"`
+	// Budget is a budget question's limit and what approving it grants.
+	Budget *QuestionBudget `json:"budget,omitempty"`
+}
+
+// QuestionBudget is the limit a run is held at, and what approving grants.
+type QuestionBudget struct {
+	ScopeKind string `json:"scope_kind"`
+	ScopeName string `json:"scope_name,omitempty"`
+	// Limit is "spend" or "tokens".
+	Limit   string `json:"limit"`
+	Period  string `json:"period"`
+	Version int    `json:"version"`
+	// Used and Max are where the scope stood when the run was held, in
+	// micro-USD or tokens; Granted is what the run had been granted beyond
+	// Max already this period, and Grant what approving grants it now.
+	Used    int64 `json:"used"`
+	Max     int64 `json:"max"`
+	Granted int64 `json:"granted,omitempty"`
+	Grant   int64 `json:"grant"`
 }
 
 // Outcome is what was decided about a part, and by whom.

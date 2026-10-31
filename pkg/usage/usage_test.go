@@ -390,3 +390,42 @@ func TestRebuildAgreesAlongTheTree(t *testing.T) {
 		}
 	}
 }
+
+// A grant counts for its own run, in its own scope, within the period asked
+// about, and is kept: a ledger rebuilt from the entries reads the same grants,
+// and the grant is among the notices with who made it.
+func TestGrantsCountForTheirRunAndScopeAndSurviveARebuild(t *testing.T) {
+	l := NewLedger()
+	admit(l, "acme", "Launch", "lead", "r1", t0)
+	grantOf := func(run string, scope policy.Scope, g policy.Grant, at time.Time) {
+		t.Helper()
+		if _, err := l.Append(Entry{Kind: Granted, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: run,
+			At: at, Scope: &scope, Version: 2, Limit: policy.LimitSpend, Grant: &g, By: "ana"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	grantOf("r1", launch, policy.Grant{Spend: 5}, t0.Add(-time.Hour)) // yesterday
+	grantOf("r1", launch, policy.Grant{Spend: 7}, t0.Add(time.Hour))
+	grantOf("r1", launch, policy.Grant{Tokens: 100}, t0.Add(2*time.Hour))
+	grantOf("r1", all, policy.Grant{Spend: 11}, t0.Add(time.Hour))
+	grantOf("r2", launch, policy.Grant{Spend: 13}, t0.Add(time.Hour))
+
+	if got := l.Granted("acme", "r1", launch, t0); got != (policy.Grant{Spend: 7, Tokens: 100}) {
+		t.Errorf("r1 in Launch today = %+v, want 7 and 100 tokens", got)
+	}
+	if got := l.Granted("acme", "r1", launch, t0.Add(-24*time.Hour)); got.Spend != 12 {
+		t.Errorf("r1 in Launch since yesterday = %+v, want 12", got)
+	}
+	if got := l.Granted("globex", "r1", launch, t0); got != (policy.Grant{}) {
+		t.Errorf("another tenant reads %+v", got)
+	}
+	if n := l.Grants("acme", "r1", launch); n != 3 {
+		t.Errorf("r1 was granted %d times in Launch, want 3", n)
+	}
+	if got := Rebuild(l.Entries()).Granted("acme", "r1", launch, t0); got != l.Granted("acme", "r1", launch, t0) {
+		t.Errorf("rebuilt = %+v, live = %+v", got, l.Granted("acme", "r1", launch, t0))
+	}
+	if n := l.Notices("acme", 1); len(n) != 1 || n[0].Kind != Granted || n[0].By != "ana" || n[0].Grant == nil {
+		t.Errorf("newest notice = %+v, want the grant with who made it", n)
+	}
+}
