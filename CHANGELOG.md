@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.60.0 (2026-10-31)
+
+### Features
+
+- **bus**: per-tenant consumer groups for egress, the observer and dispatch (RFC 0006) (#162) ([38b06ad](https://github.com/urmzd/humagen/commit/38b06adf97c12ee2a40f5d845ccb4d5490494f1c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.59.0...v0.60.0)
+
+
 ## 0.59.0 (2026-10-31)
 
 ### Features
