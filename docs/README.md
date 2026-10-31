@@ -42,6 +42,7 @@
 | [RFC 0004: Isolated runs and person context](rfcs/0004-isolated-runs-and-person-context.md) | RFC, Proposed | One agent for many people in parallel: pinned person context, isolated sandboxes, and the path to a million people in one room |
 | [RFC 0005: Federated retrieval and the catalog](rfcs/0005-federated-retrieval-and-catalog.md) | RFC, Proposed | Live search in external systems, a metadata catalog, and hybrid search for what Humagen owns |
 | [RFC 0006: Multiple replicas, fiber folded in, and a durable event bus](rfcs/0006-replicas-fiber-and-durable-bus.md) | RFC, Proposed | fiber's fold completed, the standalone repository deprecated, and the Postgres bus with an outbox and consumer groups for many replicas |
+| [RFC 0008: Feedback, run signals and training export](rfcs/0008-feedback-run-signals-and-training-export.md) | RFC, Proposed | Asking for ratings at the right moment, per-run signals and reward analytics, and consented, redacted KTO and DPO export |
 | [Roadmap](plans/roadmap.md) | Plan | Product direction by area and the next delivery boundary |
 | [Task queue](plans/2026-10-ui-task-queue.md) | Plan | Current UI delivery and follow-on platform work, in order |
 | [Workspace implementation plan](plans/2026-10-workspace-implementation.md) | Plan | Tasks and requirement traceability for the workspace and control plane |
