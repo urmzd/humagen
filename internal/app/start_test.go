@@ -410,11 +410,11 @@ spec:
 
 func TestAnUnregisteredKindStopsStartup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "humagen.yaml")
-	if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: System\nspec:\n  blobs: {kind: azure, azure: {container: b}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err := serve(Options{}, []string{"-f", path, "-addr", "127.0.0.1:0"}, serveDefaults{})
-	if err == nil || !strings.Contains(err.Error(), "disk, memory, s3") {
+	if err == nil || !strings.Contains(err.Error(), "disk, gcs, memory, s3") {
 		t.Fatalf("err = %v", err)
 	}
 }

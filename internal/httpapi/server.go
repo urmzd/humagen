@@ -28,6 +28,7 @@ import (
 	"github.com/urmzd/humagen/internal/branding"
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/ready"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
@@ -70,12 +71,15 @@ type Server struct {
 	WebDir string
 	// Branding is the deployment's and each workspace's. Nil is Humagen's.
 	Branding *branding.Set
+	// Ready answers /readyz. Nil is ready whenever the server answers.
+	Ready *ready.Gate
 }
 
 // Handler returns the server's routes.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
+	mux.HandleFunc("GET /readyz", s.readyz)
 	// A client's own secret authorizes these routes, not a browser role. The
 	// request goes to the client whose secret verifies it, and takes its
 	// tenant from that client.
@@ -1239,6 +1243,11 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, memory.ErrSensitive):
 		fail(w, http.StatusBadRequest, "that note carries personal data, such as an email address or a card number, so it was not stored")
+	case errors.Is(err, platform.ErrDraining):
+		// Another replica takes the turn: the load balancer stops sending
+		// here once the readiness probe fails.
+		w.Header().Set("Retry-After", "1")
+		fail(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, platform.ErrStopUnavailable):
 		// The run was marked as asked, so it starts nothing more, but the
 		// work in flight was not interrupted.
@@ -1285,6 +1294,25 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
+}
+
+// readyz is the readiness probe: 200 when this process should be sent
+// traffic, 503 while it starts, drains or cannot reach what it needs.
+func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
+	if s.Ready == nil {
+		ok(w, http.StatusOK, ready.Report{Status: ready.Ready, Checks: []ready.Result{}})
+		return
+	}
+	report, isReady := s.Ready.Check(r.Context())
+	if report.Checks == nil {
+		report.Checks = []ready.Result{}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	if !isReady {
+		ok(w, http.StatusServiceUnavailable, report)
+		return
+	}
+	ok(w, http.StatusOK, report)
 }
 
 func ok(w http.ResponseWriter, status int, v any) {

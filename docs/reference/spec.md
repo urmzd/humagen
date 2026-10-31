@@ -60,6 +60,9 @@ spec:
     public_url: http://localhost:8080
     webhook_addr: ""        # a second listener that serves only signed webhooks
     console: {enabled: true, dir: auto}      # auto finds a built apps/web
+    drain_grace: 25s        # after SIGTERM, how long runs in flight may finish before they are handed back
+    shutdown_timeout: 10s   # then how long open requests and event streams may take to end
+    role: all               # all | api | worker: which parts this process runs (Process roles)
 
   auth:                     # slot: dev | tailscale | oidc | mock
     kind: oidc
@@ -79,18 +82,34 @@ spec:
   bus:                      # slot: memory | postgres. Leave it out and it
     kind: postgres          # follows the stores: postgres on Postgres stores
 
-  blobs:                    # slot: disk | memory | s3. Published files and
+  blobs:                    # slot: disk | memory | s3 | gcs. Published files and
                             # memory's content. With memory, memory's content
                             # is kept with the stores instead
     kind: s3
     s3:
       bucket: humagen-files
       region: us-east-1
-      endpoint: ""          # set for MinIO or R2
+      endpoint: ""          # MinIO: http://127.0.0.1:9000 with path_style; R2: https://ACCOUNT.r2.cloudflarestorage.com, region auto
       prefix: ""
       path_style: false
       access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID}       # both left out: the AWS chain
       secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY}
+    # Google Cloud Storage, keyless: Application Default Credentials, which are
+    # Workload Identity on GKE, GOOGLE_APPLICATION_CREDENTIALS, or gcloud's.
+    # kind: gcs
+    # gcs:
+    #   bucket: humagen-files
+    #   prefix: ""
+    #   endpoint: ""        # an emulator's URL, such as http://127.0.0.1:4443, reached without credentials
+    # Google Cloud Storage through its S3-compatible API, with an HMAC key:
+    # kind: s3
+    # s3:
+    #   bucket: humagen-files
+    #   endpoint: https://storage.googleapis.com
+    #   region: auto
+    #   path_style: true
+    #   access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID}     # the HMAC key's access ID
+    #   secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY} # and its secret
 
   knowledge:
     embedder:               # slot: none | hashing | openai | vertex. Left out: none, lexical search only
@@ -351,6 +370,70 @@ message past them is refused in the message's `refused`. Only a run a person
 or a surface started counts: a call between agents is its root's work, and a
 schedule's or an eval's run is asked by nobody. With `stores.kind: postgres`
 the counts are shared by every replica.
+
+### Stopping and readiness
+
+`GET /healthz` says the process is alive. `GET /readyz` says it should be
+sent traffic: 200 once it has finished starting, while its database (with
+`stores.kind: postgres`) answers, and until it starts to stop; 503 with the
+reason (`starting`, `draining` or `unavailable`, and which check failed)
+otherwise. Point a load balancer's or Kubernetes' readiness probe at
+`/readyz` and its liveness probe at `/healthz`.
+
+On SIGTERM (or the first Ctrl-C) the server drains:
+
+1. `/readyz` answers 503 `draining`, so traffic moves to another replica.
+2. A new turn is refused with 503 and `Retry-After`. The worker claims no
+   new run, except one that a run it holds called, so a turn waiting on its
+   subagent can still finish.
+3. Runs in flight go on for up to `server.drain_grace`.
+4. Open requests and event streams get `server.shutdown_timeout` to end.
+5. Whatever is still running is handed back to the queue without being
+   charged a failure. With Postgres stores, another replica resumes it where
+   it stopped; with memory stores it is lost with the process.
+
+A second signal skips the wait. Give a container longer than
+`drain_grace` plus `shutdown_timeout` to stop (Kubernetes'
+`terminationGracePeriodSeconds`), or it is killed mid-drain. Flags
+`-drain-grace` and `-shutdown-timeout` win over the file.
+
+### Process roles
+
+`server.role` (or `-role`) says which parts of the platform a process runs,
+so the API and the execution of turns scale on their own (RFC 0004, "A
+million people in one room").
+
+| Role | Runs | Listens |
+|------|------|---------|
+| `all` (the default) | the API and the turns, in one process | `server.addr`, and `webhook_addr` when set |
+| `api` | the API, sign-in, the event stream and webhooks; it admits runs onto the queue and executes none | as `all` |
+| `worker` | the turns on the run queue (anchor's worker) and what they need: models, tools, the sandbox | nothing |
+
+`humagen worker` is `humagen serve` with the `worker` role, whatever the
+file's `server.role` says; a different `-role` on its command line is
+refused. `api` and `worker` hand runs to each other through the run ledger
+and queue, so both need `stores.kind: postgres`, and a split role on memory
+stores is refused at start.
+
+```bash
+humagen serve -f humagen.yaml -role api     # behind the load balancer
+humagen worker -f humagen.yaml              # as many as the queue needs
+```
+
+Whatever its role, every process on one database campaigns for leadership,
+and only the leader runs the work done once per deployment: the reconciler,
+schedules, inbox retention, email notices, knowledge source refresh and
+catalog crawls. The leader holds a session advisory lock on a connection of
+its own; when that connection ends, the lock goes with it and another process
+takes over within about ten seconds: it waits out the old leader's last check, so two terms never overlap while the old leader can still reach the database. On memory stores the one process
+always leads. Each process logs its role at start (`msg=process role=...`)
+and logs `platform: leading` when it becomes the leader.
+
+Today every store but feedback is still loaded into memory at start and the
+stores' lock admits one process per database
+([limits at scale](../architecture/overview.md#limits-at-scale)), so a
+deployment runs one process, with `role: all`, until the stores read the
+database per request. The roles and the election are in place for that step.
 
 ## Platform
 
@@ -1062,7 +1145,7 @@ when a run uses it, so there is nothing to read or pass when deploying:
 
 | Slot | Built in | A registered kind returns |
 |------|----------|---------------------------|
-| `system.blobs` | disk, memory, s3 | a `blob.Store` |
+| `system.blobs` | disk, memory, s3, gcs | a `blob.Store` |
 | `system.bus` | memory, postgres | a `bus.Bus` |
 | `system.extensions[]` | none | something with `Run(ctx) error`, run beside the server |
 | `platform.models[]` | anthropic, openai, google | a `native.ProviderFunc` |
