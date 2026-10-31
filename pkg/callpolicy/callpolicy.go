@@ -6,18 +6,20 @@
 // widen it. An agent with no stored policy admits every caller and needs no
 // approval, which is how calls behaved before policies existed.
 //
-// The store is in memory, per tenant, and bounded: a tenant holds at most
-// MaxPolicies policies, each list at most MaxNames entries and
-// MaxApprovers approvers. Built with Open, it writes every change through a
-// state.Store and reads them back when it is built again.
+// The store is per tenant and bounded: a tenant holds at most MaxPolicies
+// policies, each list at most MaxNames entries and MaxApprovers approvers.
+// It reads and writes the database per request (pkg/state, per request): it
+// holds nothing in memory, so any number of processes on one database agree,
+// and it does not need pkg/state's single-writer lock.
 package callpolicy
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
@@ -196,6 +198,8 @@ func (p Policy) ValidateShape(known func(string) bool) error {
 	switch {
 	case p.Agent == "":
 		return fmt.Errorf("%w: a policy names the agent it belongs to", ErrInvalid)
+	case strings.HasPrefix(p.Agent, "!"):
+		return fmt.Errorf("%w: an agent's name cannot start with \"!\"", ErrInvalid)
 	case p.Callers != Anyone && p.Callers != Listed && p.Callers != Nobody:
 		return fmt.Errorf("%w: callers is anyone, listed or none", ErrInvalid)
 	case p.Approval != Never && p.Approval != Always && p.Approval != Unlisted:
@@ -235,33 +239,40 @@ func (p Policy) ValidateShape(known func(string) bool) error {
 	return nil
 }
 
-// Store keeps each tenant's policies, by agent.
+// namespace is where policies are kept. The tenant is the shard key; within
+// it:
+//
+//	<agent>   the agent's policy
+//	!count    how many policies the tenant holds, which no agent's name is
+//
+// A write that adds or removes a policy changes the count at the version it
+// read in the same write. A tenant written before the count existed has it
+// counted from its policies on its first such write.
+const namespace = "callpolicy"
+
+// countKey is the key of a tenant's count of policies.
+const countKey = "!count"
+
+// Store keeps each tenant's policies, by agent, in a state.Store read and
+// written per request.
 type Store struct {
-	mu      sync.Mutex
-	tenants map[string]map[string]Policy
-	// kept is where policies are written. Nil keeps them only in memory.
-	kept *state.Table[Policy]
+	st state.Store
 }
 
-// NewStore returns an empty store in memory.
-func NewStore() *Store { return &Store{tenants: map[string]map[string]Policy{}} }
+// NewStore returns an empty store in this process's memory.
+func NewStore() *Store { return &Store{st: state.NewMemory()} }
 
-// Open returns a store that keeps every policy in st, holding what st
-// already has. A nil st is NewStore.
+// Open returns a store on st, which may be shared with other processes. A nil
+// st keeps policies in this process's memory.
 func Open(st state.Store) (*Store, error) {
-	s := NewStore()
-	s.kept = state.NewTable[Policy](st, "callpolicy")
-	err := s.kept.Load(func(tenant, agent string, p Policy) error {
-		if s.tenants[tenant] == nil {
-			s.tenants[tenant] = map[string]Policy{}
-		}
-		s.tenants[tenant][agent] = p
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("callpolicy: load: %w", err)
+	if st == nil {
+		st = state.NewMemory()
 	}
-	return s, nil
+	return &Store{st: st}, nil
+}
+
+func ctx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), state.Timeout)
 }
 
 func clone(p Policy) Policy {
@@ -269,14 +280,163 @@ func clone(p Policy) Policy {
 	return p
 }
 
-// Get returns an agent's stored policy, or its default and false.
-func (s *Store) Get(tenant, agent string) (Policy, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if p, ok := s.tenants[tenant][agent]; ok {
-		return clone(p), true
+// lookup reads one record into v and returns its version, 0 when it has none.
+func (s *Store) lookup(tenant, key string, v any) (int64, error) {
+	c, cancel := ctx()
+	defer cancel()
+	r, err := s.st.Lookup(c, namespace, tenant, key)
+	if errors.Is(err, state.ErrNotFound) {
+		return 0, nil
 	}
-	return Default(agent), false
+	if err != nil {
+		return 0, fmt.Errorf("callpolicy: read: %w", err)
+	}
+	if err := json.Unmarshal(r.Value, v); err != nil {
+		return 0, fmt.Errorf("callpolicy: %q/%q: %w", tenant, key, err)
+	}
+	return r.Version, nil
+}
+
+// all reads every policy a tenant holds, page by page, never more than
+// MaxPolicies of them.
+func (s *Store) all(tenant string) ([]Policy, error) {
+	var out []Policy
+	after := ""
+	for {
+		c, cancel := ctx()
+		recs, next, err := s.st.List(c, namespace, tenant, state.Query{After: after, Limit: state.MaxList})
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("callpolicy: read: %w", err)
+		}
+		for _, r := range recs {
+			if r.Key == countKey {
+				continue
+			}
+			var p Policy
+			if err := json.Unmarshal(r.Value, &p); err != nil {
+				return nil, fmt.Errorf("callpolicy: %q/%q: %w", tenant, r.Key, err)
+			}
+			out = append(out, p)
+		}
+		if len(out) > MaxPolicies {
+			return nil, fmt.Errorf("%w: %q holds more than %d call policies", state.ErrTooMany, tenant, MaxPolicies)
+		}
+		if next == "" {
+			return out, nil
+		}
+		after = next
+	}
+}
+
+// count reads a tenant's count of policies and its version, counting the
+// policies when the tenant has none stored (version 0).
+func (s *Store) count(tenant string) (int, int64, error) {
+	var n int
+	at, err := s.lookup(tenant, countKey, &n)
+	if err != nil || at > 0 {
+		return n, at, err
+	}
+	all, err := s.all(tenant)
+	return len(all), 0, err
+}
+
+// write is one write's ops, built as JSON.
+type write struct {
+	tenant string
+	ops    []state.Op
+	err    error
+}
+
+// put adds a put at version: 0 for a record that has none.
+func (w *write) put(key string, v any, version int64) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		w.err = errors.Join(w.err, err)
+		return
+	}
+	if version == 0 {
+		version = state.Missing
+	}
+	w.ops = append(w.ops, state.PutAt(w.tenant, key, raw, version))
+}
+
+func (w *write) commit(st state.Store) error {
+	if w.err != nil {
+		return w.err
+	}
+	c, cancel := ctx()
+	defer cancel()
+	err := st.Write(c, namespace, w.ops...)
+	if err != nil && !errors.Is(err, state.ErrConflict) {
+		return fmt.Errorf("callpolicy: write: %w", err)
+	}
+	return err
+}
+
+// Get returns an agent's stored policy, or its default and false.
+func (s *Store) Get(tenant, agent string) (Policy, bool, error) {
+	if agent == "" || strings.HasPrefix(agent, "!") {
+		return Default(agent), false, nil
+	}
+	var p Policy
+	at, err := s.lookup(tenant, agent, &p)
+	if err != nil {
+		return Policy{}, false, err
+	}
+	if at == 0 {
+		return Default(agent), false, nil
+	}
+	return p, true, nil
+}
+
+// save writes p over what the agent has stored, read afresh on every try:
+// fill is given the stored policy (the default when there is none) and
+// whether there is one, and finishes p.
+func (s *Store) save(tenant string, p Policy, by string, at time.Time, fill func(p *Policy, stored Policy, exists bool) error) (Policy, error) {
+	in := p
+	var out Policy
+	err := state.Retry(func() error {
+		p := clone(in)
+		var prev Policy
+		v, err := s.lookup(tenant, p.Agent, &prev)
+		if err != nil {
+			return err
+		}
+		exists := v > 0
+		stored := Default(p.Agent)
+		if exists {
+			stored = prev
+		}
+		w := &write{tenant: tenant}
+		if !exists {
+			n, cv, err := s.count(tenant)
+			if err != nil {
+				return err
+			}
+			if n >= MaxPolicies {
+				return fmt.Errorf("%w: a workspace holds at most %d call policies", ErrLimit, MaxPolicies)
+			}
+			w.put(countKey, n+1, cv)
+		}
+		if fill != nil {
+			if err := fill(&p, stored, exists); err != nil {
+				return err
+			}
+		}
+		p.Version = prev.Version + 1
+		p.UpdatedBy, p.UpdatedAt = by, at.UTC()
+		w.put(p.Agent, p, v)
+		if err := w.commit(s.st); err != nil {
+			return err
+		}
+		out = p
+		return nil
+	})
+	if err != nil {
+		return Policy{}, err
+	}
+	return clone(out), nil
 }
 
 // Put stores a policy, replacing the agent's last one. It normalizes and
@@ -286,120 +446,96 @@ func (s *Store) Put(tenant string, p Policy, known func(string) bool, by string,
 	if err := p.Validate(known); err != nil {
 		return Policy{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.tenants[tenant]
-	if t == nil {
-		t = map[string]Policy{}
-		s.tenants[tenant] = t
-	}
-	prev, exists := t[p.Agent]
-	if !exists && len(t) >= MaxPolicies {
-		return Policy{}, fmt.Errorf("%w: a workspace holds at most %d call policies", ErrLimit, MaxPolicies)
-	}
-	p.Version = prev.Version + 1
-	p.UpdatedBy, p.UpdatedAt = by, at.UTC()
-	if err := s.kept.Put(tenant, p.Agent, p); err != nil {
-		return Policy{}, fmt.Errorf("callpolicy: write: %w", err)
-	}
-	t[p.Agent] = clone(p)
-	return clone(p), nil
+	return s.save(tenant, p, by, at, nil)
 }
 
 // PutKeeping is Put for a writer who is not shown every agent the stored
-// policy names. p is normalized and validated on its own, and under the
-// store's lock its lists are held to MaxNames as the writer wrote them, or
-// past it only with names the stored lists hold (withinLimits). Then,
-// keep is given the stored policy (the default when there is none) and
-// returns the names to keep in allow and in trusted, which are added after
-// p's own when p's mode still has that list and p does not name them
-// already. A kept name counts toward no limit, since its writer was not
-// shown it; a list names each agent once, so it never holds more than the
-// workspace's agents. Doing this under the lock means a name another writer
-// keeps between the read and the write is never lost.
+// policy names. p is normalized and validated on its own, and against the
+// policy stored when it writes its lists are held to MaxNames as the writer
+// wrote them, or past it only with names the stored lists hold
+// (withinLimits). Then, keep is given the stored policy (the default when
+// there is none) and returns the names to keep in allow and in trusted,
+// which are added after p's own when p's mode still has that list and p does
+// not name them already. A kept name counts toward no limit, since its
+// writer was not shown it; a list names each agent once, so it never holds
+// more than the workspace's agents. The write is at the version of the
+// policy keep was given, and done again from a fresh read when another
+// writer moved it, so a name another writer keeps between the read and the
+// write is never lost.
 func (s *Store) PutKeeping(tenant string, p Policy, known func(string) bool, keep func(stored Policy) (allow, trusted []string), by string, at time.Time) (Policy, error) {
 	p = p.Normalize()
 	if err := p.ValidateShape(known); err != nil {
 		return Policy{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.tenants[tenant]
-	if t == nil {
-		t = map[string]Policy{}
-		s.tenants[tenant] = t
-	}
-	prev, exists := t[p.Agent]
-	if !exists && len(t) >= MaxPolicies {
-		return Policy{}, fmt.Errorf("%w: a workspace holds at most %d call policies", ErrLimit, MaxPolicies)
-	}
-	stored := Default(p.Agent)
-	if exists {
-		stored = clone(prev)
-	}
-	if err := p.withinLimits(stored); err != nil {
-		return Policy{}, err
-	}
-	allow, trusted := keep(stored)
-	add := func(into, from []string) []string {
-		for _, n := range from {
-			if !slices.Contains(into, n) {
-				into = append(into, n)
-			}
+	return s.save(tenant, p, by, at, func(p *Policy, stored Policy, _ bool) error {
+		if err := p.withinLimits(stored); err != nil {
+			return err
 		}
-		return into
-	}
-	if p.Callers == Listed {
-		p.Allow = add(p.Allow, allow)
-	}
-	if p.Approval == Unlisted {
-		p.Trusted = add(p.Trusted, trusted)
-	}
-	p.Version = prev.Version + 1
-	p.UpdatedBy, p.UpdatedAt = by, at.UTC()
-	if err := s.kept.Put(tenant, p.Agent, p); err != nil {
-		return Policy{}, fmt.Errorf("callpolicy: write: %w", err)
-	}
-	t[p.Agent] = clone(p)
-	return clone(p), nil
+		allow, trusted := keep(clone(stored))
+		add := func(into, from []string) []string {
+			for _, n := range from {
+				if !slices.Contains(into, n) {
+					into = append(into, n)
+				}
+			}
+			return into
+		}
+		if p.Callers == Listed {
+			p.Allow = add(p.Allow, allow)
+		}
+		if p.Approval == Unlisted {
+			p.Trusted = add(p.Trusted, trusted)
+		}
+		return nil
+	})
 }
 
 // Delete drops an agent's policy, so it reads as the default again.
 func (s *Store) Delete(tenant, agent string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.tenants[tenant][agent]; !ok {
+	if agent == "" || strings.HasPrefix(agent, "!") {
 		return nil
 	}
-	if err := s.kept.Delete(tenant, agent); err != nil {
-		return fmt.Errorf("callpolicy: write: %w", err)
-	}
-	delete(s.tenants[tenant], agent)
-	return nil
+	return state.Retry(func() error {
+		var p Policy
+		v, err := s.lookup(tenant, agent, &p)
+		if err != nil || v == 0 {
+			return err
+		}
+		n, cv, err := s.count(tenant)
+		if err != nil {
+			return err
+		}
+		w := &write{tenant: tenant}
+		w.put(countKey, max(n-1, 0), cv)
+		w.ops = append(w.ops, state.DeleteAt(tenant, agent, v))
+		return w.commit(s.st)
+	})
 }
 
 // Snapshots returns at most 500 current policy snapshots in a time window.
 // It is not a revision history: an older overwritten policy is unavailable.
 // Visibility is applied before the bounded newest selection.
-func (s *Store) Snapshots(tenant string, from, to time.Time, limit int, visible func(Policy) bool) []Policy {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *Store) Snapshots(tenant string, from, to time.Time, limit int, visible func(Policy) bool) ([]Policy, error) {
+	all, err := s.all(tenant)
+	if err != nil {
+		return nil, err
+	}
 	limit = min(max(limit, 1), 500)
 	out := []Policy{}
-	for _, p := range s.tenants[tenant] {
+	for _, p := range all {
 		if p.UpdatedAt.Before(from) || !p.UpdatedAt.Before(to) || visible != nil && !visible(clone(p)) {
 			continue
 		}
-		out = append(out, clone(p))
-		slices.SortFunc(out, func(a, b Policy) int {
-			if n := b.UpdatedAt.Compare(a.UpdatedAt); n != 0 {
-				return n
-			}
-			return strings.Compare(a.Agent, b.Agent)
-		})
-		if len(out) > limit {
-			out = out[:limit]
-		}
+		out = append(out, p)
 	}
-	return out
+	slices.SortFunc(out, func(a, b Policy) int {
+		if n := b.UpdatedAt.Compare(a.UpdatedAt); n != 0 {
+			return n
+		}
+		return strings.Compare(a.Agent, b.Agent)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }

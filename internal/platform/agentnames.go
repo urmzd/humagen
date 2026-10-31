@@ -571,7 +571,10 @@ func (p *Platform) SetCallPolicyBy(ctx context.Context, who auth.Principal, agen
 		}
 		return h
 	}
-	before, _ := p.CallPolicies.Get(who.Tenant, agent)
+	before, _, err := p.CallPolicies.Get(who.Tenant, agent)
+	if err != nil {
+		return callpolicy.Policy{}, err
+	}
 	for _, a := range slices.Concat(before.Allow, before.Trusted) {
 		isHidden(a)
 	}

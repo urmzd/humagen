@@ -104,9 +104,13 @@ func (p *Platform) AuditRecords(who auth.Principal, q audit.Query) ([]audit.Reco
 		}
 		rows = append(rows, audit.Record{ID: id, Actor: r.By, At: r.At, FinishedAt: r.At, Outcome: audit.Succeeded, Change: audit.Change{Action: "project." + r.What, Resource: "project", ID: r.Project, Project: r.Project, Scope: "project", Before: before, After: after}})
 	}
-	for _, r := range p.CallPolicies.Snapshots(who.Tenant, from, q.To, limit, func(pol callpolicy.Policy) bool {
+	snapshots, err := p.CallPolicies.Snapshots(who.Tenant, from, q.To, limit, func(pol callpolicy.Policy) bool {
 		return (q.Actor == "" || q.Actor == pol.UpdatedBy) && (q.Resource == "" || q.Resource == "call_policy") && seer.Agent(pol.Agent)
-	}) {
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range snapshots {
 		id, err := p.AuditReferences.ID(who.Tenant, "call-policy", fmt.Sprintf("%s:%d", r.Agent, r.Version))
 		if err != nil {
 			return nil, err
