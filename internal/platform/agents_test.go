@@ -88,7 +88,7 @@ func TestARefusedRunIsNeitherCountedNorRecorded(t *testing.T) {
 	if _, err := p.Runs.Get(tenant, "x"); err == nil {
 		t.Fatal("a refused run was recorded")
 	}
-	for _, e := range p.Usage.Entries() {
+	for _, e := range entriesOf(p, tenant) {
 		if e.Tenant == tenant {
 			t.Fatalf("a refused run left a usage entry: %+v", e)
 		}

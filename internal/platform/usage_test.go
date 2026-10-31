@@ -140,12 +140,14 @@ func script(responses ...[]saigetypes.Delta) saigetypes.Provider {
 }
 
 func spendOf(p *platform.Platform, tenantName string) policy.Usage {
-	return p.Usage.Usage(tenantName, policy.Scope{Kind: policy.Tenant}, time.Time{})
+	return usageOf(p, tenantName, policy.Scope{Kind: policy.Tenant}, time.Time{})
 }
 
-func settled(p *platform.Platform, runID string) int {
+func settled(p *platform.Platform, runID string) int { return settledIn(p, tenant, runID) }
+
+func settledIn(p *platform.Platform, tenantName, runID string) int {
 	n := 0
-	for _, e := range p.Usage.Entries() {
+	for _, e := range entriesOf(p, tenantName) {
 		if e.Kind == usage.Settled && e.RunID == runID {
 			n++
 		}
@@ -397,7 +399,7 @@ func TestARunCrossingTheHardLimitMidRunIsStoppedThroughTheRuntime(t *testing.T) 
 		t.Fatalf("%d warning and %d stop messages, want one of each", warned, halted)
 	}
 	notices := 0
-	for _, n := range p.Usage.Notices(tenant, 0) {
+	for _, n := range noticesOf(p, tenant, 0) {
 		if n.Kind == usage.Halted && n.RunID == r.ID && n.Limit == policy.LimitSpend {
 			notices++
 		}
@@ -511,7 +513,7 @@ func TestAnotherTenantsUsageNeverAffectsALimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	within(t, "globex's run is settled", func() bool { return settled(p, theirs.ID) == 1 })
+	within(t, "globex's run is settled", func() bool { return settledIn(p, "globex", theirs.ID) == 1 })
 	if got := spendOf(p, tenant); got.Spend != 0 || got.ModelCalls != 0 {
 		t.Fatalf("acme counts globex's spending: %+v", got)
 	}
@@ -750,12 +752,12 @@ func TestHousekeepingIsExemptFromTheSpendStop(t *testing.T) {
 		t.Fatalf("the housekeeping run ended %s: %s", hook.Status, hook.Cause)
 	}
 	within(t, "its spend is counted", func() bool { return settled(p, hook.ID) == 1 })
-	for _, n := range p.Usage.Notices(tenant, 0) {
+	for _, n := range noticesOf(p, tenant, 0) {
 		if n.Kind == usage.Halted && n.RunID == hook.ID {
 			t.Fatal("the housekeeping run was halted")
 		}
 	}
-	if got := p.Usage.RunSpend(tenant, hook.ID); got.Micros != 3*cost(1000, 100) {
+	if got := runSpendOf(p, tenant, hook.ID); got.Micros != 3*cost(1000, 100) {
 		t.Fatalf("the housekeeping run's spend = %+v", got)
 	}
 }

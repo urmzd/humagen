@@ -454,7 +454,7 @@ func TestConcurrentRunsNeverExceedALimit(t *testing.T) {
 		}
 	}
 	scope := policy.Scope{Kind: policy.Tenant}
-	if got := p.Usage.Usage(tenant, scope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != limit {
+	if got := usageOf(p, tenant, scope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != limit {
 		t.Fatalf("the ledger counted %d runs, want %d", got.Runs, limit)
 	}
 	// One alert for the limit, however many runs it refused.
@@ -472,7 +472,7 @@ func TestConcurrentRunsNeverExceedALimit(t *testing.T) {
 	// reads are not one step, so compare once they agree or the runs are done.
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		live, replayed := p.Usage.Usage(tenant, scope, time.Time{}), usage.Rebuild(p.Usage.Entries()).Usage(tenant, scope, time.Time{})
+		live, replayed := usageOf(p, tenant, scope, time.Time{}), ledgerUsage(usage.Rebuild(entriesOf(p, tenant)), tenant, scope, time.Time{})
 		if reflect.DeepEqual(live, replayed) {
 			break
 		}
@@ -497,7 +497,7 @@ func TestAConcurrencyLimitFreesUp(t *testing.T) {
 	}
 	await(t, p, first.ID, runs.Completed)
 	deadline := time.Now().Add(5 * time.Second)
-	for p.Usage.Usage(tenant, scope, time.Time{}).Concurrent != 0 {
+	for usageOf(p, tenant, scope, time.Time{}).Concurrent != 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("a finished run still holds its place")
 		}

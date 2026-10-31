@@ -60,14 +60,13 @@ func benchProcesses(b *testing.B, n int) []*Ledger {
 		_, _ = pools[0].Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
 		pools[0].Close()
 	})
-	st, err := state.OpenPostgres(ctx, pools[0])
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.Cleanup(func() { _ = st.Close() })
 	out := make([]*Ledger, n)
 	for i, p := range pools {
 		c, err := OpenCounters(ctx, p)
+		if err != nil {
+			b.Fatal(err)
+		}
+		st, err := state.OpenPostgresShared(ctx, p)
 		if err != nil {
 			b.Fatal(err)
 		}

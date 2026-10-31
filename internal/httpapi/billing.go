@@ -224,7 +224,11 @@ func (s *Server) usage(w http.ResponseWriter, _ *http.Request, who auth.Principa
 			continue
 		}
 		start, end := policy.PeriodStart(pol.Period, now), policy.PeriodEnd(pol.Period, now)
-		u := s.P.Usage.Usage(who.Tenant, pol.Scope, start)
+		u, err := s.P.Usage.Usage(who.Tenant, pol.Scope, start)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
 		warn := pol.WarnAt
 		if warn == 0 {
 			warn = policy.DefaultWarnAt
@@ -257,7 +261,12 @@ func (s *Server) usage(w http.ResponseWriter, _ *http.Request, who auth.Principa
 func (s *Server) usageNotices(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
 	out := []usage.Entry{}
-	for _, e := range s.P.Usage.Notices(who.Tenant, 200) {
+	notices, err := s.P.Usage.Notices(who.Tenant, 200)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, e := range notices {
 		if seer.Notice(e) {
 			out = append(out, e)
 		}
