@@ -157,6 +157,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	set("webhook-addr", sp.Server.WebhookAddr)
 	set("drain-grace", sp.Server.DrainGrace)
 	set("shutdown-timeout", sp.Server.ShutdownTimeout)
+	set("role", sp.Server.Role)
 	if !sp.Server.Console.On() {
 		l.args = append(l.args, "-web=")
 	} else if d := sp.Server.Console.Dir; d != "" && d != "auto" {

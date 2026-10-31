@@ -7,6 +7,7 @@ import (
 	"net"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -147,6 +148,11 @@ type Server struct {
 	// ShutdownTimeout is how long open requests, event streams among them,
 	// may take to end once the drain is over, a Go duration. Left out, 10s.
 	ShutdownTimeout string `json:"shutdown_timeout,omitempty"`
+	// Role is which parts of the platform this process runs: all (the
+	// default), api (the API and the listeners, executing no turns) or
+	// worker (the turns on the run queue, serving nothing). api and worker
+	// share the run queue, so they need stores on Postgres.
+	Role string `json:"role,omitempty"`
 }
 
 // Defaults for Server's durations.
@@ -167,6 +173,9 @@ func (s Server) check() error {
 	}
 	return nil
 }
+
+// Roles are the values server.role takes.
+var Roles = []string{"all", "api", "worker"}
 
 // Console is the web console the server serves.
 type Console struct {
@@ -448,6 +457,9 @@ func (s *System) Defaults() {
 	if sp.Server.PublicURL == "" {
 		sp.Server.PublicURL = "http://localhost:8080"
 	}
+	if sp.Server.Role == "" {
+		sp.Server.Role = "all"
+	}
 	if sp.Auth.Kind == "" {
 		sp.Auth.Kind = "dev"
 	}
@@ -568,6 +580,12 @@ func (s System) check(kinds Kinds) error {
 	}
 	if sp.Bus.Kind == "redis" {
 		return errors.New("system: bus: the redis bus was removed; use kind: postgres, which shares the stores' database, or leave bus out")
+	}
+	if r := sp.Server.Role; r != "" && !slices.Contains(Roles, r) {
+		return fmt.Errorf("system: server.role: %q is not all, api or worker", r)
+	}
+	if r := sp.Server.Role; (r == "api" || r == "worker") && sp.Stores.Kind != "postgres" {
+		return fmt.Errorf("system: server.role: %s shares the run queue with other processes; set stores.kind: postgres", r)
 	}
 	if sp.Bus.Kind == "postgres" && sp.Stores.Kind != "postgres" {
 		return errors.New("system: bus: kind postgres shares the stores' database; set stores.kind: postgres")

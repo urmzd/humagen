@@ -8,11 +8,13 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/ready"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/leader"
 )
 
 // postgresURLEnv names the database everything is kept in with
@@ -87,6 +89,21 @@ func openStateBackends(ctx context.Context, f stateFlags, getenv func(string) st
 		}
 		pool.Close()
 	}, pool, nil
+}
+
+// openLeader returns the elector for the work done once per deployment: on
+// the stores' Postgres, a lock every process on that schema campaigns for;
+// in memory, nil, which always leads, since memory is one process.
+func openLeader(f stateFlags, getenv func(string) string, log *slog.Logger) (leader.Elector, error) {
+	if strings.TrimSpace(*f.kind) != "postgres" {
+		return nil, nil
+	}
+	cfg, err := pgx.ParseConfig(strings.TrimSpace(getenv(postgresURLEnv)))
+	if err != nil {
+		// The error could quote the URL, password and all.
+		return nil, fmt.Errorf("leader: $%s is not a Postgres URL", postgresURLEnv)
+	}
+	return leader.NewPostgres(cfg, leader.WithLogger(log))
 }
 
 // registerSpec puts an agent spec from a file in the registry: a new agent,

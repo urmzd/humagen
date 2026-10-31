@@ -41,7 +41,8 @@ process with its stores beside it.
   [Limits at scale](../architecture/overview.md#limits-at-scale)). Admission
   and spend counts are shared on Postgres, but that alone does not make a
   second process safe, and `pkg/state` refuses one at start. The chart
-  refuses `replicaCount` other than 1 and upgrades with `Recreate`.
+  refuses `replicaCount` other than 1 and upgrades with `Recreate`. The
+  roles that will split it are in place: see [Process roles](#process-roles).
 - **Sign-in in a container is OIDC.** `auth.kind` `dev`, `mock` and
   `tailscale` trust loopback and refuse any other listen address, and a
   published container port is not loopback. Use `kind: oidc` with `issuer`,
@@ -63,6 +64,31 @@ process with its stores beside it.
   stdio MCP servers execute in the driver `sandbox` names
   ([the spec](../reference/spec.md#sandbox)). See
   [Upgrading: choose a sandbox](#upgrading-choose-a-sandbox).
+
+### Process roles
+
+A process runs one role ([the spec](../reference/spec.md#process-roles)):
+`all`, the default and what every setup here runs, or the API and the turns
+apart, so each scales on its own:
+
+| Pods | Command | Probes |
+|------|---------|--------|
+| API, behind the load balancer | `humagen serve -f humagen.yaml -role api` (or `server.role: api`) | `/healthz` on `server.addr` |
+| Workers, as many as the run queue needs | `humagen worker -f humagen.yaml` | none over HTTP: a worker listens on nothing, so check the process |
+
+Both read the same spec and the same Postgres; runs pass between them through
+anchor's ledger and queue. A split role on memory stores is refused at start.
+Whatever the roles, the processes elect one leader with a Postgres advisory
+lock, and only it runs the reconciler, schedules, inbox retention, email
+notices, knowledge refresh and catalog crawls. If the leader's database
+connection drops, another process takes over within about ten seconds,
+without a restart. Each process logs `msg=process role=...` at start and
+`platform: leading` when it becomes the leader.
+
+Until the stores read the database per request, `pkg/state` still refuses a
+second process on one database, so run one process with `role: all`. The
+split is for the step that lifts that limit
+([Limits at scale](../architecture/overview.md#limits-at-scale)).
 
 ### Upgrading: choose a sandbox
 

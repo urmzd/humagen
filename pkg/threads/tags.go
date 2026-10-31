@@ -62,6 +62,15 @@ type Resolver interface {
 	Slack(user string) (subject string, ok bool)
 }
 
+// Roster is a Resolver that reads the agents a message can tag in one
+// bounded read, so tagging an agent costs no lookup of its own and a message
+// may tag any number of them. complete is false when the read stopped at its
+// bound with more agents left: a name not in it is then looked up as a
+// Resolver looks one up, which counts toward MaxMentions.
+type Roster interface {
+	Agents() (names map[string]bool, complete bool)
+}
+
 // Lookups is what a Resolver may look up besides: the skills a message
 // posted where it is can name, and the mention kinds the workspace declares
 // besides the built-in ones. A Resolver without it knows no skill and only
@@ -85,33 +94,42 @@ var slackMention = regexp.MustCompile(`^<@([A-Z][A-Z0-9]{2,31})(?:\|[^<>]{0,100}
 // address. A $ is a skill only when a skill's name follows it whole, so a
 // price ($5) or a variable ($PATH, $my_var) is not one. A tag that names
 // nobody is kept, refused, so the person who wrote it is told. Each tag is
-// kept once, in the order it first appears, and a message holds at most
-// MaxMentions, of which at most MaxSkills skills (ErrInvalid). Parse is a
-// pure function of the text and the lookups.
+// kept once, in the order it first appears. Parse is a pure function of the
+// text and the lookups.
 //
-// Each name is looked up once, however often it is written, and a message
-// naming more than MaxMentions is refused before the next one is looked up,
-// so a message costs at most MaxMentions lookups of each kind.
+// A Resolver that is a Roster answers agents from its one read, so a message
+// tags any number of agents, bounded by MaxText. Every other tag (a person,
+// a Slack person, a skill, experts, a role, and an agent the roster's read
+// did not reach) holds one of MaxMentions places, of which at most MaxSkills
+// skills (ErrInvalid). Each name is looked up once, however often it is
+// written, and a message naming more than MaxMentions of them is refused
+// before the next lookup, so a message costs at most one roster read and
+// MaxMentions lookups of each kind.
 func Parse(text string, r Resolver) ([]Mention, error) {
 	var out []Mention
 	seen := map[[2]string]bool{}
 	asked := map[string]bool{}
-	tooMany := fmt.Errorf("%w: a message tags at most %d people, agents and skills", ErrInvalid, MaxMentions)
+	places := 0
+	tooMany := fmt.Errorf("%w: a message tags at most %d people, experts, roles and skills (agents are not counted)", ErrInvalid, MaxMentions)
 	kinds := kindLookup{r: r, asked: map[string]kindAnswer{}}
-	add := func(key string, resolve func() Mention) error {
-		if asked[key] {
-			return nil
-		}
-		if len(asked) == MaxMentions {
-			return tooMany
-		}
-		asked[key] = true
-		m := resolve()
+	roster := rosterLookup{r: r}
+	keep := func(m Mention) {
 		k := [2]string{m.Kind, m.Name}
 		if !seen[k] {
 			seen[k] = true
 			out = append(out, m)
 		}
+	}
+	add := func(key string, resolve func() Mention) error {
+		if asked[key] {
+			return nil
+		}
+		if places == MaxMentions {
+			return tooMany
+		}
+		asked[key] = true
+		places++
+		keep(resolve())
 		return nil
 	}
 	for i := 0; i < len(text); {
@@ -133,9 +151,22 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 				i++
 				continue
 			}
-			key, resolve := atTag(token, r, &kinds)
-			if err := add(key, resolve); err != nil {
-				return nil, err
+			key, name, resolve := atTag(token, r, &kinds)
+			switch known, complete := roster.has(name); {
+			case asked[key]:
+			case known:
+				// An agent the roster read costs no lookup and holds no place,
+				// and is kept by its own name, whatever case the tag wrote.
+				asked[key] = true
+				keep(Mention{Kind: Agent, Name: strings.ToLower(name)})
+			default:
+				if name != "" && complete {
+					// The roster read every agent, so this name is no agent's.
+					resolve = func() Mention { return personTag(strings.ToLower(name), r) }
+				}
+				if err := add(key, resolve); err != nil {
+					return nil, err
+				}
 			}
 			i += 1 + len(token)
 		case c == '$' && startsTag(text, i):
@@ -159,7 +190,7 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 		}
 	}
 	switch {
-	case len(out) > MaxMentions:
+	case PerNameTags(out) > MaxMentions:
 		return nil, tooMany
 	case skills > MaxSkills:
 		return nil, fmt.Errorf("%w: a message names at most %d skills", ErrInvalid, MaxSkills)
@@ -168,6 +199,44 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 		out = []Mention{}
 	}
 	return out, nil
+}
+
+// PerNameTags counts the tags that hold one of a message's MaxMentions
+// places: every tag but an agent's.
+func PerNameTags(ms []Mention) int {
+	n := 0
+	for _, m := range ms {
+		if m.Kind != Agent {
+			n++
+		}
+	}
+	return n
+}
+
+// rosterLookup reads a Roster's agents once, when a message first writes a
+// name that could be an agent's.
+type rosterLookup struct {
+	r        Resolver
+	read     bool
+	names    map[string]bool
+	complete bool
+}
+
+// has reports whether the roster read an agent of this name, and whether
+// it read every agent. Without a Roster, nothing is read and nothing is
+// known.
+func (l *rosterLookup) has(name string) (known, complete bool) {
+	if name == "" {
+		return false, false
+	}
+	if !l.read {
+		l.read = true
+		if ro, ok := l.r.(Roster); ok && l.r != nil {
+			l.names, l.complete = ro.Agents()
+		}
+	}
+	// Agents' names are lower case, and a tag of one is read whatever its case.
+	return l.names[strings.ToLower(name)], l.complete
 }
 
 // WithSkillAgent is what a message that names a skill and tags no agent
@@ -194,9 +263,10 @@ func WithSkillAgent(ms []Mention) []Mention {
 }
 
 // RoomForSkillAgent refuses a message whose tags leave no room for the OpenName
-// WithSkillAgent would add: it already holds MaxMentions (ErrInvalid).
+// WithSkillAgent would add: it already holds MaxMentions tags that are not
+// agents' (ErrInvalid).
 func RoomForSkillAgent(ms []Mention) error {
-	if len(WithSkillAgent(ms)) > MaxMentions {
+	if ag := WithSkillAgent(ms); len(ag) > len(ms) && PerNameTags(ms)+1 > MaxMentions {
 		return fmt.Errorf("%w: a message tags at most %d people, agents and skills, and asking the agents a skill starts is one more", ErrInvalid, MaxMentions)
 	}
 	return nil
@@ -249,29 +319,32 @@ func (k *kindLookup) of(kind string) (string, bool) {
 // and otherwise the name before any colon, as tag reads it. A token that
 // names a kind's item resolves as the kind says, so @skill:review is
 // $review and a kind over experts is @sme:<topic>.
-func atTag(token string, r Resolver, kinds *kindLookup) (string, func() Mention) {
+//
+// name is the agent the token could name, "" when it names a kind's item or
+// experts.
+func atTag(token string, r Resolver, kinds *kindLookup) (key, name string, resolve func() Mention) {
 	low := strings.ToLower(token)
 	switch low {
 	case SMEName:
-		return "@" + low, func() Mention { return Mention{Kind: SME} }
+		return "@" + low, "", func() Mention { return Mention{Kind: SME} }
 	}
 	if kind, item, cut := strings.Cut(token, ":"); cut && item != "" {
 		if resolves, ok := kinds.of(strings.ToLower(kind)); ok {
 			lowItem := strings.ToLower(item)
 			switch resolves {
 			case ResolvesSkills:
-				return "$" + lowItem, func() Mention { return skillTag(lowItem, r) }
+				return "$" + lowItem, "", func() Mention { return skillTag(lowItem, r) }
 			case ResolvesExperts:
-				return "@sme:" + lowItem, func() Mention { return smeTag(lowItem) }
+				return "@sme:" + lowItem, "", func() Mention { return smeTag(lowItem) }
 			case ResolvesRole:
-				return "@role:" + item, func() Mention { return roleTag(item) }
+				return "@role:" + item, "", func() Mention { return roleTag(item) }
 			case ResolvesPeople:
-				return "@person:" + lowItem, func() Mention { return personTag(lowItem, r) }
+				return "@person:" + lowItem, "", func() Mention { return personTag(lowItem, r) }
 			}
 		}
 	}
-	name, _, _ := strings.Cut(token, ":")
-	return "@" + name, func() Mention { return tag(name, r) }
+	name, _, _ = strings.Cut(token, ":")
+	return "@" + name, name, func() Mention { return tag(name, r) }
 }
 
 // maxSlackMention bounds how much of the text one Slack mention is read

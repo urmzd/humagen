@@ -155,9 +155,24 @@ async function twoAgents(page: Page): Promise<void> {
 }
 
 /**
+ * The + menu's agents are mentions in the box, never chips beside the
+ * project, and nothing chooses how they are routed.
+ */
+async function mentioned(page: Page, text: string): Promise<void> {
+  await page.waitForFunction(
+    (expected) =>
+      document.querySelector<HTMLTextAreaElement>('form[aria-label="Message"] textarea')?.value ===
+      expected,
+    text,
+  );
+  assert.equal(await page.getByRole("button", { name: /^Remove (helper|lead)$/ }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: /^(Each Decides|All of Them)$/ }).count(), 0);
+}
+
+/**
  * The chat's states, each a page and what a person does on it: completion
- * open after @ and after $, the + menu with two agents checked, the chips
- * with Each Decides and All of Them, a private conversation answered, its Share
+ * open after @ and after $, the + menu with two agents checked, the box
+ * with their mentions, a private conversation answered, its Share
  * dialog, a shared conversation, and answers its selected agents were
  * routed to.
  */
@@ -613,7 +628,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         await twoAgents(page);
         await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
-        await page.getByRole("button", { name: "All of Them" }).waitFor();
+        await mentioned(page, "@helper @lead ");
       },
     },
     {
@@ -744,13 +759,13 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
     ),
 
     {
-      name: "chat-chips",
+      name: "chat-mentions",
       path: "/",
       act: async (page) => {
         await twoAgents(page);
         await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
-        await page.getByRole("button", { name: "All of Them" }).click();
+        await mentioned(page, "@helper @lead ");
       },
     },
     { name: "chat-private", path: `/conversations/${ids.privateChat}` },

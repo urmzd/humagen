@@ -75,6 +75,9 @@ type Options struct {
 	slackDone func(tenant string, err error)
 	// signals, for tests, stands for the process's SIGTERM and Ctrl-C.
 	signals <-chan os.Signal
+	// running, for tests, is called with the platform once it runs, in
+	// every role.
+	running func(*platform.Platform)
 
 	// notes are said once each at start, about an old name in use.
 	notes *legacy.Notes
@@ -82,6 +85,7 @@ type Options struct {
 
 const usage = `usage: humagen start [-f PATH] [flags]     run the platform here; no file needs no configuration
        humagen serve [-f PATH] [flags]     run it as a server: OIDC sign-in, nothing seeded, no questions
+       humagen worker [-f PATH] [flags]    run only the turns on the shared run queue, with no API (needs -state=postgres)
        humagen deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
        humagen setup                      answer a few questions and write humagen.yaml
        humagen config check|print -f PATH check a spec, or print it with every default
@@ -144,6 +148,10 @@ func run(o Options, args []string) error {
 		// The server: what a container, a chart or a unit file runs. It
 		// reads only the files -f names and never asks.
 		return serve(o, args[1:], serveDefaults{})
+	case "worker":
+		// The worker role: the turns on the run queue, beside api
+		// processes on the same database.
+		return serve(o, args[1:], serveDefaults{role: platform.RoleWorker})
 	case "deploy":
 		return deployCmd(o, args[1:], os.Stdin, os.Stdout)
 	case "setup":
@@ -186,12 +194,17 @@ type serveDefaults struct {
 	// whether a runtime that shares the host's kernel, such as runc, is
 	// accepted.
 	sandboxInsecure bool
+	// role, when set, is the only role the command runs as: humagen worker
+	// is the worker role. A spec's server.role does not change it, and a
+	// different -role on the command line is refused.
+	role platform.ProcessRole
 }
 
 func serve(o Options, args []string, d serveDefaults) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8080", "listen address")
 	webhookAddr := fs.String("webhook-addr", "", "optional separate listener exposing only signed connector webhooks")
+	roleFlag := fs.String("role", string(platform.RoleAll), `which parts of the platform this process runs: "all", the API and the turns; "api", the API, executing no turns; or "worker", the turns on the run queue, serving nothing. api and worker share the queue, so they need -state=postgres`)
 	authDefault := d.auth
 	if authDefault == "" {
 		authDefault = "oidc"
@@ -290,6 +303,16 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := fs.Parse(append(file.args, args...)); err != nil {
 		return err
 	}
+	role, err := processRole(*roleFlag, args, d.role)
+	if err != nil {
+		return err
+	}
+	serves := role.Serves()
+	// A split role hands turns to other processes through the run queue,
+	// which only a shared database holds.
+	if role != platform.RoleAll && strings.TrimSpace(*stateKind.kind) != "postgres" {
+		return fmt.Errorf("the %s role shares the run queue with other processes; set -state=postgres (or stores.kind: postgres) and $%s", role, postgresURLEnv)
+	}
 	// Branding's files are read now, so one that is missing fails the start
 	// rather than a page.
 	brand, err := branding.Load(file.cfg)
@@ -298,13 +321,17 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	// Said once every flag is known: a console -web or the file names is
 	// served, and one turned off was turned off on purpose.
-	if d.notes != nil && *webDir == "" && !given(fs, "web") {
+	if d.notes != nil && serves && *webDir == "" && !given(fs, "web") {
 		fmt.Fprintln(d.notes, "humagen: no built console found (run pnpm --filter @humagen/console build, or set HUMAGEN_WEB_DIR); serving the API only")
 	}
 	getenv := overlay(file.env, os.Getenv)
 	// A Slack app calls this server's API, so it needs a credential for the
 	// sign-in a flag may have chosen over the file's.
-	slack := slackApps(file.cfg, keys, getenv)
+	// A worker serves no API, so it starts no Slack app.
+	var slack []*slackApp
+	if serves {
+		slack = slackApps(file.cfg, keys, getenv)
+	}
 	for _, app := range slack {
 		if err := app.choice.CheckSignIn(*authMode); err != nil {
 			return fmt.Errorf("platform %q: surfaces.slack: %w", app.tenant, err)
@@ -328,11 +355,15 @@ func serve(o Options, args []string, d serveDefaults) error {
 		mockAddr: *mockAddr, mockPersonas: *mockPersonas,
 		getenv: getenv, log: log,
 	}
-	authn, stopAuthn, err := newAuthn(ctx, ac)
-	if err != nil {
-		return err
+	// Sign-in is for callers of the API, which a worker does not serve.
+	var authn *httpapi.Authn
+	if serves {
+		var stopAuthn func()
+		if authn, stopAuthn, err = newAuthn(ctx, ac); err != nil {
+			return err
+		}
+		defer stopAuthn()
 	}
-	defer stopAuthn()
 
 	refs, err := secretRefs(*secretRefsFlag, *tenant, getenv)
 	if err != nil {
@@ -397,6 +428,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 		checks = append(checks, ready.Check{Name: "bus", Probe: b.Ping})
 	}
 	gate := ready.New(log, checks...)
+	elector, err := openLeader(stateKind, getenv, log)
+	if err != nil {
+		return err
+	}
 	cfg := platform.Config{
 		Email:    emailConfiguration(file.cfg.System, *publicURL, keys),
 		Wording:  brand.Wording,
@@ -420,6 +455,8 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Workspace:        *workspaceDir,
 		Sandbox:          sbx,
 		Concurrency:      *concurrency,
+		Role:             role,
+		Leader:           elector,
 		// How a conversation with many readers is read and admitted.
 		Rooms: rooms.Config{CoalesceAbove: *roomCoalesce, TailInterval: *roomTail, RoomRunsPerMinute: *roomRate, PersonRuns: *personRuns},
 		Ext:   ext,
@@ -488,77 +525,80 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 
-	srv := &http.Server{
-		Addr:              *addr,
-		Handler:           (&httpapi.Server{P: p, Authn: authn, Log: log, WebDir: *webDir, Branding: brand, Ready: gate}).Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       2 * time.Minute,
-		MaxHeaderBytes:    1 << 16,
-	}
-
+	log.Info("process", "role", role, "serves_api", serves, "executes_turns", role.Executes())
 	errc := make(chan error, 8)
-	var ingress *http.Server
-	if *webhookAddr != "" {
-		ingress = &http.Server{Addr: *webhookAddr, Handler: p.IngressHandler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 1 << 16}
-		go func() {
-			log.Info("webhook ingress listening", "addr", *webhookAddr)
-			if err := ingress.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-				errc <- err
-			}
-		}()
-	}
 	ran := make(chan struct{})
 	go func() { defer close(ran); errc <- p.Run(ctx) }()
-	if *seed {
-		go func() {
-			// After the platform is running, so the conversation the files
-			// belong to is a real one.
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(500 * time.Millisecond):
-			}
-			if err := seedFiles(ctx, p, *tenant); err != nil {
-				log.Warn("seed files", "error", err)
-			}
-		}()
+	if o.running != nil {
+		o.running(p)
 	}
-	ln, err := net.Listen("tcp", *addr)
-	if err != nil {
-		return err
-	}
-	go func() {
-		log.Info("listening", "addr", ln.Addr().String(), "auth", *authMode, "tenant", *tenant)
-		if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
-			errc <- err
+	// The listeners, sign-in's clients and the seed are the API's. A worker
+	// runs the platform's loops, the turns among them, and the extensions,
+	// and listens on nothing; it stops through the same path as a server.
+	var srv, ingress *http.Server
+	if serves {
+		srv = &http.Server{
+			Addr:              *addr,
+			Handler:           (&httpapi.Server{P: p, Authn: authn, Log: log, WebDir: *webDir, Branding: brand, Ready: gate}).Handler(),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       2 * time.Minute,
+			MaxHeaderBytes:    1 << 16,
 		}
-	}()
-	if o.ready != nil {
-		o.ready(ln.Addr().String())
-	}
-	// Each Slack app is a client of this server, started once it listens.
-	// One that cannot start is logged and left off: the server, the console
-	// and every other surface keep running without it.
-	for _, app := range slack {
+
+		if *webhookAddr != "" {
+			ingress = &http.Server{Addr: *webhookAddr, Handler: p.IngressHandler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 1 << 16}
+			go func() {
+				log.Info("webhook ingress listening", "addr", *webhookAddr)
+				if err := ingress.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+					errc <- err
+				}
+			}()
+		}
+		if *seed {
+			go func() {
+				// After the platform is running, so the conversation the files
+				// belong to is a real one.
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(500 * time.Millisecond):
+				}
+				if err := seedFiles(ctx, p, *tenant); err != nil {
+					log.Warn("seed files", "error", err)
+				}
+			}()
+		}
+		ln, err := net.Listen("tcp", *addr)
+		if err != nil {
+			return err
+		}
 		go func() {
-			err := app.run(ctx, "http://"+ln.Addr().String(), *publicURL, log)
-			if err != nil {
-				log.Error("slack app is off", "tenant", app.tenant, "error", err)
-			}
-			if o.slackDone != nil {
-				o.slackDone(app.tenant, err)
-			}
-		}()
-	}
-	for _, x := range extensions {
-		go func() {
-			if err := x.Run(ctx); err != nil && ctx.Err() == nil {
+			log.Info("listening", "addr", ln.Addr().String(), "auth", *authMode, "tenant", *tenant)
+			if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 				errc <- err
 			}
 		}()
+		if o.ready != nil {
+			o.ready(ln.Addr().String())
+		}
+		// Each Slack app is a client of this server, started once it listens.
+		// One that cannot start is logged and left off: the server, the console
+		// and every other surface keep running without it.
+		for _, app := range slack {
+			go func() {
+				err := app.run(ctx, "http://"+ln.Addr().String(), *publicURL, log)
+				if err != nil {
+					log.Error("slack app is off", "tenant", app.tenant, "error", err)
+				}
+				if o.slackDone != nil {
+					o.slackDone(app.tenant, err)
+				}
+			}()
+		}
 	}
+	runExtensions(ctx, extensions, errc)
 
 	serving.Store(true)
 	gate.Started()
@@ -571,7 +611,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	shutdown, cancel := context.WithTimeout(context.Background(), *shutdownTimeout)
 	defer cancel()
-	_ = srv.Shutdown(shutdown)
+	if srv != nil {
+		_ = srv.Shutdown(shutdown)
+	}
 	if ingress != nil {
 		_ = ingress.Shutdown(shutdown)
 	}
@@ -597,6 +639,56 @@ func drainPlatform(ctx context.Context, p *platform.Platform, gate *ready.Gate, 
 		return
 	}
 	log.Info("drained: no runs in flight")
+}
+
+// runExtensions runs each extension beside the platform until ctx ends. One
+// that fails stops the process through errc.
+func runExtensions(ctx context.Context, extensions []Extension, errc chan<- error) {
+	for _, x := range extensions {
+		go func() {
+			if err := x.Run(ctx); err != nil && ctx.Err() == nil {
+				errc <- err
+			}
+		}()
+	}
+}
+
+// processRole is the role a process runs as: fixed, when the command is one
+// role (humagen worker), else what -role or the spec says. A -role on the
+// command line that contradicts the command is refused rather than ignored.
+func processRole(flagValue string, args []string, fixed platform.ProcessRole) (platform.ProcessRole, error) {
+	if fixed == "" {
+		return platform.ParseProcessRole(flagValue)
+	}
+	if v, ok := commandLineFlag(args, "role"); ok && v != string(fixed) {
+		return "", fmt.Errorf("-role=%s: this command runs the %s role; use humagen serve -role=%s", v, fixed, v)
+	}
+	return fixed, nil
+}
+
+// commandLineFlag is the value of -name as typed in args, before any "--".
+func commandLineFlag(args []string, name string) (string, bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			break
+		}
+		if !strings.HasPrefix(a, "-") {
+			continue
+		}
+		n, val, hasVal := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if n != name {
+			continue
+		}
+		if hasVal {
+			return val, true
+		}
+		if i+1 < len(args) {
+			return args[i+1], true
+		}
+		return "", true
+	}
+	return "", false
 }
 
 // seedFiles publishes a few example files, so the storage page has something
