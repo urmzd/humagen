@@ -83,8 +83,12 @@ func TestConcurrentAssignmentsAreUnique(t *testing.T) {
 		})
 	}
 	wg.Wait()
+	hues, _, err := s.reservations(t.Context(), "a")
+	if err != nil || len(hues) != 100 {
+		t.Fatalf("%d reservations, %v", len(hues), err)
+	}
 	seen := map[float64]bool{}
-	for _, hue := range s.tenants["a"] {
+	for _, hue := range hues {
 		if seen[hue] {
 			t.Fatal("collision")
 		}
@@ -93,16 +97,21 @@ func TestConcurrentAssignmentsAreUnique(t *testing.T) {
 }
 
 func TestReservationLimitFailsClosed(t *testing.T) {
-	s, _ := Open(nil)
+	st := state.NewMemory()
+	hues := map[string]float64{}
 	for i := 0; i < Limit; i++ {
-		s.tenant("a")[fmt.Sprintf("a%d", i)] = float64(i) / 100
+		hues[fmt.Sprintf("a%d", i)] = float64(i) / 100
 	}
+	if err := state.NewTable[map[string]float64](st, "agent-colors").Put("a", all, hues); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := Open(st)
 	if _, err := s.Assign("a", []string{"extra"}); err == nil {
 		t.Fatal("accepted extra reservation")
 	}
 }
 
-func TestOpenRefusesDuplicateStoredHues(t *testing.T) {
+func TestAssignRefusesDuplicateStoredHues(t *testing.T) {
 	st := state.NewMemory()
 	table := state.NewTable[float64](st, "agent-colors")
 	if err := table.Put("a", "one", 15); err != nil {
@@ -111,7 +120,11 @@ func TestOpenRefusesDuplicateStoredHues(t *testing.T) {
 	if err := table.Put("a", "two", 15); err != nil {
 		t.Fatal(err)
 	}
-	if store, err := Open(st); err == nil || store != nil {
+	store, err := Open(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Assign("a", []string{"three"}); err == nil {
 		t.Fatal("accepted colliding stored hues")
 	}
 }

@@ -14,7 +14,7 @@ var (
 )
 
 func TestDefaults(t *testing.T) {
-	got := NewStore().Get("acme", "ada")
+	got := get(t, NewStore(), "acme", "ada")
 	if got.Theme != System || got.Accent != "workspace" || got.HasPhoto {
 		t.Fatalf("got %+v", got)
 	}
@@ -24,7 +24,7 @@ func TestAccentPresetsKeepExistingChoices(t *testing.T) {
 	s := NewStore()
 	for _, accent := range []string{"workspace", "red", "yellow", "green", "purple", "blue", "teal"} {
 		got, err := s.Set("acme", "ada", Preferences{Theme: Dark, Accent: accent})
-		if err != nil || got.Accent != accent || s.Get("acme", "ada").Accent != accent {
+		if err != nil || got.Accent != accent || get(t, s, "acme", "ada").Accent != accent {
 			t.Fatalf("accent %s: %+v, %v", accent, got, err)
 		}
 	}
@@ -47,7 +47,7 @@ func TestSet(t *testing.T) {
 			t.Errorf("%s: got %v", name, err)
 		}
 	}
-	if got := s.Get("acme", "ada"); got.DisplayName != "Ada L." {
+	if got := get(t, s, "acme", "ada"); got.DisplayName != "Ada L." {
 		t.Fatalf("a rejected change was stored: %+v", got)
 	}
 }
@@ -57,7 +57,7 @@ func TestPreferencesBelongToOnePerson(t *testing.T) {
 	_, _ = s.Set("acme", "ada", Preferences{DisplayName: "Ada", Theme: Dark, Accent: "teal"})
 	_, _ = s.SetPhoto("acme", "ada", png)
 	for _, who := range [][2]string{{"acme", "bob"}, {"globex", "ada"}} {
-		if got := s.Get(who[0], who[1]); got.DisplayName != "" || got.HasPhoto {
+		if got := get(t, s, who[0], who[1]); got.DisplayName != "" || got.HasPhoto {
 			t.Errorf("%v sees %+v", who, got)
 		}
 		if _, _, err := s.Photo(who[0], who[1]); !errors.Is(err, ErrNoPhoto) {
@@ -108,7 +108,7 @@ func TestPhotoVersionChanges(t *testing.T) {
 
 func TestPinned(t *testing.T) {
 	s := NewStore()
-	if got := s.Get("acme", "ada"); got.Pinned == nil || len(got.Pinned) != 0 {
+	if got := get(t, s, "acme", "ada"); got.Pinned == nil || len(got.Pinned) != 0 {
 		t.Fatalf("default pins: %#v", got.Pinned)
 	}
 	got, err := s.SetPinned("acme", "ada", []string{"t2", "t1", "t2"})
@@ -129,7 +129,16 @@ func TestPinned(t *testing.T) {
 			t.Errorf("%s: got %v", name, err)
 		}
 	}
-	if got := s.Get("acme", "bob"); len(got.Pinned) != 0 {
+	if got := get(t, s, "acme", "bob"); len(got.Pinned) != 0 {
 		t.Fatalf("another person sees pins: %v", got.Pinned)
 	}
+}
+
+func get(t *testing.T, s *Store, tenant, subject string) Preferences {
+	t.Helper()
+	p, err := s.Get(tenant, subject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

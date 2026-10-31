@@ -153,7 +153,7 @@ func (p *Platform) memoryManagement(ctx context.Context, who auth.Principal, fol
 	if folder.Scope == "workspace" {
 		return "manual"
 	}
-	if folder.Scope == "personal" && !p.Prefs.Get(who.Tenant, who.Subject).Personal.Remember {
+	if folder.Scope == "personal" && !p.PreferencesOf(who.Tenant, who.Subject).Personal.Remember {
 		return "opt_in_required"
 	}
 	cfg := p.Settings(who.Tenant)

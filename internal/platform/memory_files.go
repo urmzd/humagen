@@ -103,7 +103,7 @@ func (p *Platform) MemoryMounts(run runs.Run) []drive.Mount {
 // a run in their own project, or anywhere they chose.
 func (p *Platform) personalMemoryReaches(tenant, project, person string) bool {
 	pr, ok := p.Projects.Tree(tenant).Get(project)
-	return ok && pr.PersonalOwner == person || p.Prefs.Get(tenant, person).Personal.UsePersonalMemoryInProjects
+	return ok && pr.PersonalOwner == person || p.PreferencesOf(tenant, person).Personal.UsePersonalMemoryInProjects
 }
 
 // InstallMemory installs a run's memory into its instance's files. Content

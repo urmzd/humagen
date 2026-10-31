@@ -70,7 +70,10 @@ func (p *Platform) notificationsFor(who auth.Principal, deliveries *notification
 	}
 	candidates := []notifications.Candidate{}
 	seen := map[string]bool{}
-	cursor := deliveries.Cursor(who.Tenant, who.Subject)
+	cursor, err := deliveries.Cursor(who.Tenant, who.Subject)
+	if err != nil {
+		return nil, err
+	}
 	nextCursor := cursor
 	// The newest page is checked every poll. Four backfill pages advance a
 	// durable cursor, so a busy inbox cannot permanently starve older updates.
@@ -107,7 +110,11 @@ func (p *Platform) notificationsFor(who auth.Principal, deliveries *notification
 			break
 		}
 	}
-	delivered, err := deliveries.Reconcile(who.Tenant, who.Subject, nextCursor, candidates, p.Prefs.Get(who.Tenant, who.Subject).Personal, now, cut, lookup)
+	own, err := p.Prefs.Get(who.Tenant, who.Subject)
+	if err != nil {
+		return nil, err
+	}
+	delivered, err := deliveries.Reconcile(who.Tenant, who.Subject, nextCursor, candidates, own.Personal, now, cut, lookup)
 	if err != nil {
 		return nil, err
 	}
