@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.62.0 (2026-10-31)
+
+### Features
+
+- **platform**: process roles and one leader per database (#163) ([7569add](https://github.com/urmzd/humagen/commit/7569add6da6426ad3c24e7c2844ceecfe1c51fb9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.61.0...v0.62.0)
+
+
 ## 0.59.0 (2026-10-31)
 
 ### Features
