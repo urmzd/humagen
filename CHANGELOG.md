@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.56.0 (2026-10-31)
+
+### Features
+
+- **fiber**: let a host park a run on a question of its own (#153) ([76764d6](https://github.com/urmzd/humagen/commit/76764d625438b201cc1d0a5e0eab40894df8f13d))
+- **sandbox**: drive a Docker daemon on a sandbox host (#150) ([4ea7208](https://github.com/urmzd/humagen/commit/4ea72080538bee08bfc2091852fff0a98b8051b2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.55.0...v0.56.0)
+
+
 ## 0.54.0 (2026-10-31)
 
 ### Features
