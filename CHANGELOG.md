@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.50.0 (2026-10-31)
+
+### Features
+
+- **console**: list, add and remove a person's own tool servers (#148) ([f012088](https://github.com/urmzd/humagen/commit/f012088b5ac335893b7f198647923445be8a5a11))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.49.0...v0.50.0)
+
+
 ## 0.49.0 (2026-10-30)
 
 ### Features
