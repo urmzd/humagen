@@ -38,12 +38,20 @@ func (p *Platform) operationReminderDelay(tenant, agent string, blocked bool) ti
 // timers. It neither invents a question nor approves or restarts any work.
 func (p *Platform) reconcileOperationReminders(ctx context.Context) {
 	at := p.now()
-	for _, tenant := range p.Inbox.Tenants() {
+	tenants, err := p.Inbox.Tenants()
+	if err != nil {
+		p.log.Warn("platform: operation reminders could not list workspaces; the next pass tries again", "error", err)
+	}
+	for _, tenant := range tenants {
 		after := ""
 		if cursor, ok := p.operationReminderCursor.Load(tenant); ok {
 			after = cursor.(string)
 		}
-		messages, next := p.Inbox.OpenPage(tenant, after, operations.MaxResults)
+		messages, next, err := p.Inbox.OpenPage(tenant, after, operations.MaxResults)
+		if err != nil {
+			p.log.Warn("platform: operation reminders could not read the inbox; the next pass tries again", "tenant", tenant, "error", err)
+			continue
+		}
 		p.operationReminderCursor.Store(tenant, next)
 		for _, message := range messages {
 			for _, part := range message.Parts {

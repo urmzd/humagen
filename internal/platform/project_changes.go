@@ -20,6 +20,7 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -529,7 +530,10 @@ func (p *Platform) announcementChanges(scope changesScope) []changeRow {
 	for _, name := range scope.projects {
 		in[name] = true
 	}
-	msgs, _ := p.Inbox.Snapshot(scope.tenant)
+	msgs, err := p.Inbox.Raised(scope.tenant, inbox.KindAnnouncement, scope.since, scope.until, state.MaxList)
+	if err != nil {
+		p.log.Warn("platform: announcements for a recap could not be read", "tenant", scope.tenant, "error", err)
+	}
 	var out []changeRow
 	for _, m := range msgs {
 		if m.Kind != inbox.KindAnnouncement || !m.Broadcast || m.State == inbox.Dismissed || !in[m.Source.Project] ||
