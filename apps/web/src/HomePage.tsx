@@ -59,7 +59,7 @@ export function HomePage({
         ) : (
           <div
             data-layer="sticky"
-            className="flex flex-col bg-aui-bg max-md:sticky max-md:flex-col-reverse max-md:gap-2 max-md:bottom-0 max-md:z-10 max-md:order-last max-md:pt-2"
+            className="flex flex-col max-md:sticky max-md:bg-aui-bg max-md:flex-col-reverse max-md:gap-2 max-md:bottom-0 max-md:z-10 max-md:order-last max-md:pt-2"
           >
             {children}
           </div>

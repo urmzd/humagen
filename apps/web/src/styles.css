@@ -120,20 +120,21 @@ body {
 }
 
 /*
- * The sidebar's glass (aui-chrome in the theme), with one thin, static brand
- * streak along its top. On a desktop it sits on the frame, so the sidebar
- * and the frame read as one; on a phone it is a drawer over the page, which
- * blurs behind it.
+ * The sidebar's glass (aui-chrome in the theme). On a phone it is a drawer
+ * over the page, square at the top, and carries one thin brand streak there.
+ * Wider, the page's own edge carries it, round with the page's corners.
  */
-.humagen-glass-bar {
-  background-image: linear-gradient(
-    90deg,
-    color-mix(in oklch, var(--aui-brand-red) 38%, transparent),
-    color-mix(in oklch, var(--aui-brand-yellow) 30%, transparent),
-    color-mix(in oklch, var(--aui-brand-green) 30%, transparent)
-  );
-  background-repeat: no-repeat;
-  background-size: 100% 1px;
+@media (max-width: 47.99rem) {
+  .humagen-glass-bar {
+    background-image: linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--aui-brand-red) 38%, transparent),
+      color-mix(in oklch, var(--aui-brand-yellow) 30%, transparent),
+      color-mix(in oklch, var(--aui-brand-green) 30%, transparent)
+    );
+    background-repeat: no-repeat;
+    background-size: 100% 1px;
+  }
 }
 
 /*
@@ -148,11 +149,29 @@ body {
     --aui-chrome-solid: var(--humagen-plane);
     background: var(--humagen-plane);
   }
+  /*
+   * The page's edge is its border, so the brand streak along its top bends
+   * with the corners and runs down the sides, fading into the neutral rule.
+   */
   .humagen-content {
     margin: 0.5rem 0.5rem 0.5rem 0;
-    background: var(--aui-bg);
-    border: var(--aui-stroke);
+    border: 1px solid transparent;
     border-radius: 0.75rem;
+    background:
+      linear-gradient(var(--aui-bg), var(--aui-bg)) padding-box,
+      linear-gradient(
+          to bottom,
+          transparent,
+          color-mix(in oklch, var(--aui-fg) 10%, var(--humagen-plane)) 6rem
+        )
+        border-box,
+      linear-gradient(
+          90deg,
+          color-mix(in oklch, var(--aui-brand-red) 70%, var(--humagen-plane)),
+          color-mix(in oklch, var(--aui-brand-yellow) 70%, var(--humagen-plane)) 50%,
+          color-mix(in oklch, var(--aui-brand-green) 70%, var(--humagen-plane))
+        )
+        border-box;
     box-shadow: var(--aui-shadow-sm);
   }
 }
@@ -973,4 +992,73 @@ body {
 }
 @media (max-width: 39.99rem) {
   .humagen-update { left: max(1rem, env(safe-area-inset-left)); }
+}
+
+/*
+ * The chat bar glows: a ring in the brand's sweep, with a soft halo of the
+ * same colors under it. Quiet at rest, brighter while the person writes. While
+ * a reply is in flight the sweep turns slowly round the bar, so the system
+ * reads as working; it stops when the reply ends, and never moves with
+ * reduced motion. The sweep is a square of conic gradient turned by
+ * transform, clipped to the bar's corners (Composer.tsx).
+ */
+.humagen-glow {
+  border-color: transparent;
+}
+.humagen-glow-ring,
+.humagen-glow-halo {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity var(--humagen-dur) var(--humagen-ease-out);
+}
+/* The ring: the sweep, cut to a 1px line along the bar's own corners. */
+.humagen-glow-ring {
+  padding: 1px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  opacity: 0.7;
+}
+/* The halo, under the bar's own surface. */
+.humagen-glow-halo {
+  z-index: -1;
+  filter: blur(18px);
+  opacity: 0.16;
+}
+.humagen-glow-sweep {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: conic-gradient(
+    var(--aui-brand-red),
+    var(--aui-brand-yellow),
+    var(--aui-brand-green),
+    var(--aui-accent),
+    var(--aui-brand-red)
+  );
+}
+.humagen-glow:focus-within > .humagen-glow-ring { opacity: 1; }
+.humagen-glow:focus-within > .humagen-glow-halo { opacity: 0.3; }
+.humagen-glow[data-working] > .humagen-glow-ring { opacity: 1; }
+.humagen-glow[data-working] > .humagen-glow-halo { opacity: 0.4; }
+.humagen-glow[data-working] .humagen-glow-sweep {
+  animation: humagen-glow-turn 4s linear infinite;
+}
+@keyframes humagen-glow-turn {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .humagen-glow[data-working] .humagen-glow-sweep {
+    animation: none;
+  }
 }

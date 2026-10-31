@@ -68,6 +68,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
 | DES-041 | On a phone the console fills the installed app's screen, the drawer button floats instead of taking a row, and Home keeps the chat bar in reach of a thumb | Implemented: `viewport.ts`, `styles.css`, `HomePage.tsx`; web tests pass; Console screens pass at 320x568, 390x844 and 844x390; the iOS height needs a real device |
+| DES-042 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
 
 ### DES-001: Working integrations
 
@@ -1023,3 +1024,24 @@ handover to the keyboard (`pwa.test.ts`). `make screens` passes with
 `SCREENS_VIEWPORTS=390x844,320x568,844x390`.
 
 Needs a real device: the installed app's height on an iPhone.
+
+### DES-042: The brand's glow
+
+Owner request: the colored streak along the top had rough ends at the
+rounded corners; carry it round, and into the chat bar, so the system reads
+as glowing.
+
+Found before the change: the streak was a 1px background line along the
+sidebar's top only. It stopped where the page's rounded panel began and did
+not follow any corner.
+
+Rules:
+
+- Wider than a phone, the page's border is the streak: the brand's red,
+  yellow and green along the top, bending with the 0.75rem corners and fading
+  into the neutral rule down the sides. The phone drawer, square at the top,
+  keeps its flat streak.
+- The chat bar has a 1px ring in the brand's sweep (red, yellow, green, the
+  accent) and a soft halo under it: quiet at rest, brighter while the person
+  writes. While a reply is in flight the sweep turns round the bar, by
+  transform only; reduced motion stills it. Nothing waiting on a person moves.

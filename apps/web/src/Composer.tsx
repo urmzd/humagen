@@ -368,7 +368,7 @@ export function Composer({
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
+    <div className="isolate flex min-w-0 flex-col gap-1.5">
       <form
         ref={form}
         aria-label="Message"
@@ -376,8 +376,16 @@ export function Composer({
           e.preventDefault();
           send(false);
         }}
-        className="relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-muted"
+        data-working={queue.running ? "" : undefined}
+        className="humagen-glow relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
       >
+        {/* The brand's glow round the bar (styles.css). */}
+        <span aria-hidden className="humagen-glow-halo">
+          <span className="humagen-glow-sweep" />
+        </span>
+        <span aria-hidden className="humagen-glow-ring">
+          <span className="humagen-glow-sweep" />
+        </span>
         {tags && shown.length > 0 && (
           // Still: a list waiting on a person does not animate.
           <ul
