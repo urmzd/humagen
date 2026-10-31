@@ -67,6 +67,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
+| DES-041 | Agents a message goes to are its @mentions, never chips beside the project; a message has no cap on mentioned agents | Implemented: `mentionsIn`, `withMention`, `withoutMention` in `tags.ts`, `mentionPicks` in `Plus.tsx`; `pkg/threads.Decide` runs every tagged agent; web, tags and platform tests pass; `chat-mentions`, `channel-plus` and `workspace-find-help-selection` screens pass |
 
 ### DES-001: Working integrations
 
@@ -364,8 +365,8 @@ Existing conversations retain their fixed placement and Share review.
 
 Starter suggestions wrap with consistent marks and touch targets. They stay
 visible while the person edits a draft and change context only when the project
-changes. No action is hidden at phone widths. A suggestion fills an editable draft and adds its agent
-while retaining the project; sending remains explicit. DOM regressions cover
+changes. No action is hidden at phone widths. A suggestion fills an editable draft with its agent
+@mentioned first while retaining the project (DES-041); sending remains explicit. DOM regressions cover
 Personal selection, preserved drafts and project-aware starters. The
 `home-project-picker` screen exercises the complete selection flow and checks
 all three suggestion buttons fit within the phone viewport.
@@ -790,8 +791,9 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 
 ### DES-036: The composer holds the pick; the first message goes first
 
-- An agent or project picked from the plus menu shows inside the prompt bar,
-  not under it, so the bar keeps its height. Only the disclaimer is below it.
+- A project picked from the plus menu shows inside the prompt bar, not under
+  it, so the bar keeps its height. Only the disclaimer is below it. An agent
+  picked there is a mention in the box (DES-041).
 - Starter suggestions are centered. When they overflow, they scroll sideways
   with fades and chevrons at the ends.
 - A new conversation's first message posts before anything queued behind it.
@@ -991,3 +993,36 @@ network back loads the console.
 Needs a real device: Safari's keyboard (the visual viewport inset), Add to
 Home Screen on iOS, the standalone status bar, and the install prompt on
 Android.
+
+### DES-041: Agents are mentioned, not chips
+
+- The plus menu, a starter suggestion, Find Help's choice and an agent link
+  (`?agent=`) write `@name ` into the box, at the cursor or at the start of
+  an empty draft, as `@` completion writes it. Nothing about agents shows in
+  the row under the box: only where the conversation is filed.
+- The draft is the one place a message's agents are kept. The plus menu
+  checks the agents the draft mentions; deleting a mention's words takes the
+  agent off, and picking a mentioned agent again takes its mention out.
+- A message is sent as its text. Its mentions route it by the platform's tag
+  rule: every agent it tags answers, with no per-message cap. Budgets,
+  admission and room limits still bound what the runs spend, and a message
+  holds at most 10 tags of every kind (`threads.MaxMentions`), each looked up
+  once. There is no Each Decides or All of Them toggle in the composer.
+- An untagged follow-up runs nothing. A thread's saved `agents` and `mode`
+  from before keep routing its untagged messages; the console no longer
+  changes them.
+- In the box a mention is the plain `@name` text the completion writes; in a
+  posted message it renders as `MentionLink` with the agent's hue (DES-035).
+- Acceptance: picking two agents from the plus menu leaves `@helper @lead `
+  in the box and no chip or routing control; sending it posts the text alone,
+  and each mentioned agent answers.
+
+Evidence: `cd apps/web && pnpm test` (`tags.test.ts` for the helpers;
+`chat.dom.test.tsx` and `room.dom.test.tsx` for each entry point, removal by
+editing the words, and the posted body); `go test -race ./pkg/threads
+./internal/platform ./internal/httpapi`
+(`TestEveryAgentAMessageTagsAnswers`,
+`TestEveryAgentAConsoleMessageTagsAnswers`,
+`TestABudgetStillRefusesTagsPastItsLimit`); `make screens` with
+`chat-mentions` (was `chat-chips`), `channel-plus`, `chat-plus`,
+`home-project-picker` and `workspace-find-help-selection`.
