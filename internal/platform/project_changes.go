@@ -556,7 +556,11 @@ func (p *Platform) announcementChanges(scope changesScope) []changeRow {
 func (p *Platform) recordChanges(scope changesScope) []changeRow {
 	var out []changeRow
 	for _, project := range scope.projects {
-		changes, _ := p.Projects.History(scope.tenant, project, MaxChangeRows, 0)
+		changes, _, err := p.Projects.History(scope.tenant, project, MaxChangeRows, 0)
+		if err != nil {
+			p.log.Warn("platform: a project's history could not be read for a recap", "tenant", scope.tenant, "project", project, "error", err)
+			continue
+		}
 		for _, c := range changes {
 			if c.At.Before(scope.since) || !c.At.Before(scope.until) {
 				continue

@@ -124,7 +124,7 @@ func TestKnowledgeRules(t *testing.T) {
 	if p.Version != 2 || !reflect.DeepEqual(p.Knowledge, []string{"playbook", "handbook"}) {
 		t.Fatalf("Field = %+v", p)
 	}
-	if h, _ := s.History("acme", "Field", 1, 0); h[0].What != projects.KnowledgeChanged || len(h[0].Before.Knowledge) != 0 || len(h[0].After.Knowledge) != 2 {
+	if h, _, _ := s.History("acme", "Field", 1, 0); h[0].What != projects.KnowledgeChanged || len(h[0].Before.Knowledge) != 0 || len(h[0].After.Knowledge) != 2 {
 		t.Fatalf("the change = %+v", h[0])
 	}
 	if same := setKnowledge(t, s, "Field", ada, "playbook", "handbook"); same.Version != 2 {
@@ -178,7 +178,7 @@ func TestKnowledgeSurvivesARestart(t *testing.T) {
 		if got := given(again.Tree("acme"), "Globex"); !reflect.DeepEqual(got, []string{"playbook<Field", "handbook<"}) {
 			t.Fatalf("knowledge in Globex after a restart = %v", got)
 		}
-		if h, _ := again.History("acme", "Field", 1, 0); h[0].What != projects.KnowledgeChanged || !reflect.DeepEqual(h[0].After.Knowledge, []string{"playbook"}) {
+		if h, _, _ := again.History("acme", "Field", 1, 0); h[0].What != projects.KnowledgeChanged || !reflect.DeepEqual(h[0].After.Knowledge, []string{"playbook"}) {
 			t.Fatalf("the change after a restart = %+v", h[0])
 		}
 	})

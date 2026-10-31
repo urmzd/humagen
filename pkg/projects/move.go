@@ -142,7 +142,18 @@ func (s *Store) Move(tenantName, name string, version int, parent string, w Writ
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Project, error) { return s.move(tenantName, name, version, parent, w, at, leaving) })
+}
+
+// move is one attempt at Move. The tree's shape (no cycle, depth, the caps)
+// is checked against the tenant as this attempt read it, and the write lands
+// only if no other write landed since, so two moves at once cannot together
+// make a cycle.
+func (s *Store) move(tenantName, name string, version int, parent string, w Writer, at time.Time, leaving func(before, after *Tree, left []string) error) (Project, error) {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Project{}, err
+	}
 	cur, ok := tx.t.projects[name]
 	if !ok {
 		return Project{}, fmt.Errorf("%w: %q", ErrNotFound, name)

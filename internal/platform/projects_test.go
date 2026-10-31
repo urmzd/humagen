@@ -175,7 +175,7 @@ func TestTheMigrationMovesProjectsOutOfSettings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if h, _ := again.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 {
+		if h, _, _ := again.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 {
 			t.Fatalf("a second start wrote history: %+v", h)
 		}
 	})
@@ -202,7 +202,7 @@ func TestTheMigrationIsRepairedAfterAStopBetweenItsWrites(t *testing.T) {
 			t.Fatalf("after the repair = %+v", l)
 		}
 		for _, name := range []string{"", "Launch", "Ops"} {
-			if h, _ := p.Projects.History(tenant, name, 0, 0); len(h) != 1 || h[0].What != projects.Created {
+			if h, _, _ := p.Projects.History(tenant, name, 0, 0); len(h) != 1 || h[0].What != projects.Created {
 				t.Fatalf("the repair imported %q again: %+v", name, h)
 			}
 		}
@@ -285,12 +285,12 @@ func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testin
 			t.Fatalf("after the upgrade the tree holds %q, want %q", got, want)
 		}
 		for _, name := range []string{"Dropped", "Gone", "Spent"} {
-			h, _ := p.Projects.History(tenant, name, 0, 0)
+			h, _, _ := p.Projects.History(tenant, name, 0, 0)
 			if len(h) != 1 || h[0].What != projects.Created || h[0].By != "migration" || h[0].Note != projects.KeptNote || h[0].After.Kind != projects.Team {
 				t.Fatalf("%s's history = %+v", name, h)
 			}
 		}
-		if h, _ := p.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 || h[0].Note != "" {
+		if h, _, _ := p.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 || h[0].Note != "" {
 			t.Fatalf("Launch's history = %+v", h)
 		}
 

@@ -67,8 +67,8 @@ func TestRestartKeepsRolesKindsAndMoves(t *testing.T) {
 		if !reflect.DeepEqual(news.FileOwns, []string{projects.FieldKind, projects.FieldMembers}) {
 			t.Fatalf("what the file owns = %q", news.FileOwns)
 		}
-		h1, _ := s.History("acme", "Globex", 0, 0)
-		h2, _ := again.History("acme", "Globex", 0, 0)
+		h1, _, _ := s.History("acme", "Globex", 0, 0)
+		h2, _, _ := again.History("acme", "Globex", 0, 0)
 		if !reflect.DeepEqual(h1, h2) || h2[0].What != projects.Moved {
 			t.Fatalf("history after restart = %+v, want %+v", h2, h1)
 		}
@@ -98,7 +98,7 @@ func TestAFailedMoveChangesNothing(t *testing.T) {
 	if g, _ := s.Get("acme", "Globex"); g.Parent != "Field" || g.Version != 1 {
 		t.Fatalf("a failed move moved: %+v", g)
 	}
-	if h, _ := s.History("acme", "Globex", 0, 0); len(h) != 1 {
+	if h, _, _ := s.History("acme", "Globex", 0, 0); len(h) != 1 {
 		t.Fatalf("a failed move was recorded: %+v", h)
 	}
 	f.Fail(nil)
