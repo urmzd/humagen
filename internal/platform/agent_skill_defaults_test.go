@@ -108,7 +108,7 @@ func TestAgentDefaultSkillsUseExactPublishedRevisionInEveryTurn(t *testing.T) {
 				t.Fatal("preview claimed stale binding would be sent", layer)
 			}
 		}
-		if state := p.AgentState(who, "lead"); state.State != "needs_review" {
+		if state, _ := p.AgentState(who, "lead"); state.State != "needs_review" {
 			t.Fatal("stale defaults advertised ready", state.State)
 		}
 		changed := turn

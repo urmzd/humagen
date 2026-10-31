@@ -22,7 +22,11 @@ func (p *Platform) operationReminderDelay(tenant, agent string, blocked bool) ti
 		value = 2 * 60 * 60
 	}
 	for _, name := range []string{"", agent} {
-		control := p.AgentControl(tenant, name)
+		control, err := p.AgentControl(tenant, name)
+		if err != nil {
+			// The defaults stand in until the control can be read.
+			p.log.Error("platform: agent control could not be read", "error", err)
+		}
 		configured := control.ReminderAfterSeconds
 		if blocked {
 			configured = control.BlockedReminderAfterSeconds
@@ -74,15 +78,15 @@ func (p *Platform) reconcileOperationReminders(ctx context.Context) {
 					op := part.Operation
 					version := 0
 					if op.Kind == "assignment" {
-						a, ok := p.Operations.Assignment(tenant, op.ID)
-						if !ok || (a.State != operations.Blocked && a.State != operations.NeedsPerson) {
+						a, ok, err := p.Operations.Assignment(tenant, op.ID)
+						if err != nil || !ok || (a.State != operations.Blocked && a.State != operations.NeedsPerson) {
 							continue
 						}
 						version = a.Version
 						agent = a.Agent
 					} else if op.Kind == "handoff" {
-						h, ok := p.Operations.Handoff(tenant, op.ID)
-						if !ok || (h.State != operations.Blocked && h.State != operations.NeedsPerson) {
+						h, ok, err := p.Operations.Handoff(tenant, op.ID)
+						if err != nil || !ok || (h.State != operations.Blocked && h.State != operations.NeedsPerson) {
 							continue
 						}
 						version = h.Version

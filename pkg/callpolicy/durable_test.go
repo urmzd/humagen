@@ -39,14 +39,14 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, ok := again.Get("acme", "h")
+		got, ok, _ := again.Get("acme", "h")
 		if !ok || !reflect.DeepEqual(got, want) || got.Version != 2 {
 			t.Fatalf("after restart = %+v, want %+v", got, want)
 		}
-		if _, ok := again.Get("acme", "gone"); ok {
+		if _, ok, _ := again.Get("acme", "gone"); ok {
 			t.Fatal("a deleted policy came back")
 		}
-		if _, ok := again.Get("globex", "h"); ok {
+		if _, ok, _ := again.Get("globex", "h"); ok {
 			t.Fatal("another tenant sees the policy")
 		}
 	})
@@ -66,7 +66,7 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	if err := s.Delete("acme", "h"); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Delete = %v", err)
 	}
-	if got, ok := s.Get("acme", "h"); !ok || got.Version != 1 {
+	if got, ok, _ := s.Get("acme", "h"); !ok || got.Version != 1 {
 		t.Fatalf("after failed writes = %+v, %v", got, ok)
 	}
 }

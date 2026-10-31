@@ -177,7 +177,12 @@ func (p *Platform) projectUsers(tenant, name string) []string {
 			out = append(out, "the alert rule "+r.Name)
 		}
 	}
-	for _, pol := range p.Policies.List(tenant) {
+	pols, err := p.Policies.List(tenant)
+	if err != nil {
+		// What cannot be read may point at it: the delete waits.
+		return append(out, "its limits, which could not be read")
+	}
+	for _, pol := range pols {
 		if pol.Scope == (policy.Scope{Kind: policy.Project, Name: name}) {
 			out = append(out, "its limits")
 		}
@@ -213,7 +218,10 @@ func (p *Platform) ProjectLimits(tenant, name string) ([]policy.Policy, error) {
 	if !tree.Has(name) {
 		return nil, fmt.Errorf("%w: %q", projects.ErrNotFound, name)
 	}
-	out := p.Policies.For(tenant, chainOf(name, tree.Ancestors(name)), "", "")
+	out, err := p.Policies.For(tenant, chainOf(name, tree.Ancestors(name)), "", "")
+	if err != nil {
+		return nil, err
+	}
 	if out == nil {
 		out = []policy.Policy{}
 	}
@@ -309,7 +317,10 @@ func (p *Platform) migrateProjects() error {
 			for _, lp := range p.settings.legacy[tenant] {
 				ps = append(ps, projects.Project{Name: lp.Name, Description: lp.Description})
 			}
-			kept := p.stillNamed(tenant, ps)
+			kept, err := p.stillNamed(tenant, ps)
+			if err != nil {
+				return fmt.Errorf("platform: move the projects of %q out of its settings: %w", tenant, err)
+			}
 			// A record whose array was null held no projects: there is
 			// nothing to import unless something still names one.
 			if p.settings.legacy[tenant] != nil || len(kept) > 0 {
@@ -338,7 +349,7 @@ func (p *Platform) migrateProjects() error {
 // hold. A name the tree cannot hold (not a project's name, or one name
 // ignoring case with another) is logged and left, and what points at it is
 // refused until it is changed.
-func (p *Platform) stillNamed(tenant string, ps []projects.Project) []projects.Project {
+func (p *Platform) stillNamed(tenant string, ps []projects.Project) ([]projects.Project, error) {
 	by := map[string][]string{}
 	add := func(name, what string) {
 		if name != projects.Root {
@@ -351,7 +362,11 @@ func (p *Platform) stillNamed(tenant string, ps []projects.Project) []projects.P
 	for _, r := range p.Alerts.Rules(tenant) {
 		add(r.Project, "the alert rule "+r.Name)
 	}
-	for _, pol := range p.Policies.List(tenant) {
+	pols, err := p.Policies.List(tenant)
+	if err != nil {
+		return nil, err
+	}
+	for _, pol := range pols {
 		if pol.Scope.Kind == policy.Project {
 			add(pol.Scope.Name, "its limits")
 		}
@@ -375,7 +390,7 @@ func (p *Platform) stillNamed(tenant string, ps []projects.Project) []projects.P
 			kept = append(kept, projects.Project{Name: name})
 		}
 	}
-	return kept
+	return kept, nil
 }
 
 // names lists projects' names, quoted, for a message.
