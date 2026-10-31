@@ -250,6 +250,8 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		set("sandbox-image", b.Image)
 		set("sandbox-connectors-image", b.ConnectorsImage)
 		set("sandbox-work-root", b.WorkRoot)
+		set("sandbox-host", b.Host)
+		set("sandbox-tls-dir", b.TLSDir)
 	case "local":
 		b, _ := spec.Block[spec.LocalSandbox](sp.Sandbox)
 		set("sandbox", "local")

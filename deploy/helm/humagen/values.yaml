@@ -91,13 +91,13 @@ system:
     #   unisolated  tools run in this pod with humagen's privileges, as before
     #               the sandbox; the shell is refused. What this chart ships.
     #   docker      an instance per run, on runsc (gVisor), or runc only
-    #               with insecure_development_runtime. This image
-    #               has no Docker CLI and the pod no Docker socket, so here
-    #               every file tool and stdio server would refuse. Mounting the
-    #               node's Docker socket gives humagen root on the node: do not.
+    #               with insecure_development_runtime. The pod has no
+    #               Docker socket: mounting the node's gives humagen root on
+    #               the node, so do not. Set host and tls_dir to drive a
+    #               daemon on a separate sandbox host over TLS instead.
     #   local       host processes in this pod, not isolated; development only.
-    # A Kubernetes driver that runs each run's instance as its own pod is the
-    # production target and is not built yet.
+    # A Kubernetes driver that runs each run's instance as its own pod is not
+    # built yet.
     sandbox:
       kind: unisolated
 
