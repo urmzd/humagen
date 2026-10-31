@@ -555,7 +555,7 @@ func TestAClientsRunLimitCountsOnlyItsOwnRuns(t *testing.T) {
 		t.Fatalf("answered %d", code)
 	}
 	eventually(t, "the refusal is in the ledger", func() bool {
-		for _, n := range p.Usage.Notices(tenant, 10) {
+		for _, n := range noticesOf(p, tenant, 10) {
 			if n.Client == "narrow" && n.Scope != nil && n.Scope.Kind == policy.Client && n.Limit == policy.LimitConcurrent {
 				return true
 			}
@@ -578,7 +578,7 @@ func TestAClientsRunLimitCountsOnlyItsOwnRuns(t *testing.T) {
 	if n := len(p.Runs.List(tenant, 50)); n != 2 {
 		t.Fatalf("%d runs exist, want the first of narrow and the one of wide", n)
 	}
-	if u := p.Usage.Usage(tenant, policy.Scope{Kind: policy.Client, Name: "narrow"}, time.Time{}); u.Concurrent != 1 {
+	if u := usageOf(p, tenant, policy.Scope{Kind: policy.Client, Name: "narrow"}, time.Time{}); u.Concurrent != 1 {
 		t.Fatalf("narrow has %d in flight, want 1", u.Concurrent)
 	}
 }

@@ -9,40 +9,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
-// process is one humagen process's ledger on the shared counters: its own
-// pool, its own counters and its own memory. pkg/state still keeps a second
-// process off the database, so the state store is the first one's, used
-// only to load; every write of a ledger with counters goes through its own
-// pool.
+// processes is n humagen processes' ledgers on one database: each its own
+// pool, its own shared state store and its own counters. The store returned
+// is the first process's.
 func processes(t *testing.T, n int) ([]*Ledger, state.Store) {
 	t.Helper()
-	st, pool := statetest.OpenPostgres(t)
-	var schema string
-	if err := pool.QueryRow(t.Context(), `SELECT current_schema()`).Scan(&schema); err != nil {
-		t.Fatal(err)
-	}
 	out := make([]*Ledger, n)
-	for i := range out {
-		p := pool
-		if i > 0 {
-			cfg, err := pgxpool.ParseConfig(legacy.Getenv(statetest.URLEnv))
-			if err != nil {
-				t.Fatal(err)
-			}
-			cfg.MaxConns = 8
-			cfg.ConnConfig.RuntimeParams["search_path"] = schema
-			if p, err = pgxpool.NewWithConfig(t.Context(), cfg); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(p.Close)
+	var first state.Store
+	for i, p := range statetest.Pools(t, n) {
+		st, err := state.OpenPostgresShared(t.Context(), p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			first = st
 		}
 		c, err := OpenCounters(t.Context(), p)
 		if err != nil {
@@ -52,7 +37,7 @@ func processes(t *testing.T, n int) ([]*Ledger, state.Store) {
 			t.Fatal(err)
 		}
 	}
-	return out, st
+	return out, first
 }
 
 // Many racers in two processes admit against one run limit. Exactly the
@@ -80,7 +65,7 @@ func TestSharedAdmissionHoldsTheLimitAcrossProcesses(t *testing.T) {
 		t.Fatalf("admitted %d runs under a limit of %d", in.Load(), limit)
 	}
 	for i, l := range ls {
-		if u := l.Usage("acme", launch, t0); u.Runs != limit || u.Concurrent != limit {
+		if u := l.used("acme", launch, t0); u.Runs != limit || u.Concurrent != limit {
 			t.Fatalf("process %d reads %+v, want %d runs, %d in flight", i, u, limit, limit)
 		}
 	}
@@ -109,7 +94,7 @@ func TestSharedConcurrencyIsReleasedAcrossProcesses(t *testing.T) {
 // per call, every process reads the whole of it, and a ledger rebuilt from
 // the entries both wrote answers the same.
 func TestSharedSpendIsCountedOnceAcrossProcesses(t *testing.T) {
-	ls, kept := processes(t, 2)
+	ls, _ := processes(t, 2)
 	for i, l := range ls {
 		admit(l, "acme", "Launch", "lead", fmt.Sprintf("r%d", i), t0)
 	}
@@ -137,65 +122,127 @@ func TestSharedSpendIsCountedOnceAcrossProcesses(t *testing.T) {
 	}
 	want := policy.Usage{Runs: 2, Concurrent: 2, Spend: 6100, Tokens: 610, ModelCalls: 61, OtherCosts: []policy.Cost{{Micros: 300, Currency: "EUR"}}}
 	for i, l := range ls {
-		if u := l.Usage("acme", launch, t0); !reflect.DeepEqual(u, want) {
+		if u := l.used("acme", launch, t0); !reflect.DeepEqual(u, want) {
 			t.Fatalf("process %d reads %+v\nwant %+v", i, u, want)
 		}
 	}
-	st, err := Open(kept)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if u := st.Usage("acme", launch, t0); !reflect.DeepEqual(u, want) {
+	if u := Rebuild(ls[0].all("acme")).used("acme", launch, t0); !reflect.DeepEqual(u, want) {
 		t.Fatalf("rebuilt from the entries: %+v\nwant %+v", u, want)
 	}
 }
 
-// A ledger that kept its counts in memory, opened on counters for the first
-// time, fills them from its entries, once.
-func TestSharedCountersAreFilledFromTheLedger(t *testing.T) {
-	st, pool := statetest.OpenPostgres(t)
-	before, err := Open(st)
-	if err != nil {
+// oldLedger writes entries as a release before this layout kept them:
+// every tenant's in the tenant "", under its place alone.
+func oldLedger(t *testing.T, st state.Store, entries []Entry) {
+	t.Helper()
+	b := state.NewTable[Entry](st, "usage").Batch()
+	for i, e := range entries {
+		b.Put("", state.Seq(int64(i+1)), e)
+	}
+	if err := b.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	admit(before, "acme", "Launch", "lead", "r1", t0)
-	admit(before, "acme", "Launch", "lead", "r2", t0)
-	call(before, "acme", "r1", "c1", t0, Spend{Micros: 250, ModelCalls: 1, Tokens: 40})
-	if _, err := before.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r2", At: t0}); err != nil {
-		t.Fatal(err)
-	}
-	want := before.Usage("acme", launch, t0)
+}
 
-	c, err := OpenCounters(context.Background(), pool)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		l, err := Open(st, WithCounters(c))
+var oldEntries = []Entry{
+	{Kind: Admitted, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r1", At: t0},
+	{Kind: Admitted, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r2", At: t0},
+	{Kind: Spent, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r1", Key: "c1", Spend: &Spend{Micros: 250, ModelCalls: 1, Tokens: 40}, At: t0},
+	{Kind: Ended, Tenant: "acme", RunID: "r2", At: t0},
+	{Kind: Granted, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r1", At: t0, Scope: &launch, Grant: &policy.Grant{Spend: 9}, By: "ana"},
+	{Kind: Admitted, Tenant: "globex", Agent: "lead", RunID: "g1", At: t0},
+}
+
+// The entries of a release before this layout, opened on counters for the
+// first time by two processes at once, fill the counters once and move to
+// their tenants once.
+func TestSharedCountersAreFilledFromAnEarlierLedger(t *testing.T) {
+	pools := statetest.Pools(t, 2)
+	var sts [2]state.Store
+	for i, p := range pools {
+		st, err := state.OpenPostgresShared(t.Context(), p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if u, err := c.Usage(t.Context(), "acme", launch, t0); err != nil || !reflect.DeepEqual(u, want) {
-			t.Fatalf("counters read %+v, %v\nwant %+v", u, err, want)
+		sts[i] = st
+	}
+	oldLedger(t, sts[0], oldEntries)
+	want := Rebuild(oldEntries).used("acme", launch, t0)
+
+	var ls [2]*Ledger
+	var wg sync.WaitGroup
+	for i, p := range pools {
+		wg.Go(func() {
+			c, err := OpenCounters(context.Background(), p)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if ls[i], err = Open(sts[i], WithCounters(c)); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	if t.Failed() {
+		t.FailNow()
+	}
+	for i, l := range ls {
+		if u := l.used("acme", launch, t0); !reflect.DeepEqual(u, want) {
+			t.Fatalf("process %d reads %+v\nwant %+v", i, u, want)
 		}
-		// The call already counted is not counted again, and new entries
-		// take keys past the old ones.
-		if call(l, "acme", "r1", "c1", t0, Spend{Micros: 250, ModelCalls: 1, Tokens: 40}) {
-			t.Fatal("a call counted before the counters existed was counted again")
+		if n := len(l.all("acme")); n != 5 {
+			t.Fatalf("process %d reads %d entries, want 5", i, n)
+		}
+		if g := l.granted("acme", "r1", launch, t0); g.Spend != 9 {
+			t.Fatalf("process %d reads the old grant as %+v", i, g)
 		}
 	}
-	l, err := Open(st, WithCounters(c))
-	if err != nil {
-		t.Fatal(err)
+	if recs, _, err := sts[0].List(t.Context(), "usage", "", state.Query{Prefix: "0", Limit: 10}); err != nil || len(recs) != 0 {
+		t.Fatalf("old entries left behind: %d, %v", len(recs), err)
 	}
-	admit(l, "acme", "Launch", "lead", "r3", t0)
-	again, err := Open(st)
-	if err != nil {
-		t.Fatal(err)
+	// The call already counted is not counted again, and new entries take
+	// places past the old ones.
+	if call(ls[1], "acme", "r1", "c1", t0, Spend{Micros: 250, ModelCalls: 1, Tokens: 40}) {
+		t.Fatal("a call counted before the counters existed was counted again")
 	}
-	if n := len(again.Entries()); n != 5 {
-		t.Fatalf("%d entries kept, want 5: a new key overwrote an old one", n)
+	admit(ls[0], "acme", "Launch", "lead", "r3", t0)
+	if e := ls[1].all("acme"); len(e) != 6 || e[5].RunID != "r3" {
+		t.Fatalf("after a new admission: %+v", e)
 	}
+}
+
+// Without counters, two processes converting at once move each entry once,
+// so nothing is counted twice.
+func TestTwoProcessesConvertOnce(t *testing.T) {
+	statetest.Processes(t, func(t *testing.T, a, b state.Store) {
+		oldLedger(t, a, oldEntries)
+		var ls [2]*Ledger
+		var wg sync.WaitGroup
+		for i, st := range []state.Store{a, b} {
+			wg.Go(func() {
+				var err error
+				if ls[i], err = Open(st); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+		wg.Wait()
+		if t.Failed() {
+			t.FailNow()
+		}
+		want := Rebuild(oldEntries)
+		for i, l := range ls {
+			for _, tenant := range []string{"acme", "globex"} {
+				if got, w := l.used(tenant, all, t0), want.used(tenant, all, t0); !reflect.DeepEqual(got, w) {
+					t.Fatalf("process %d, %s: %+v, want %+v", i, tenant, got, w)
+				}
+			}
+			if n := len(l.all("acme")); n != 5 {
+				t.Fatalf("process %d reads %d entries, want 5", i, n)
+			}
+		}
+	})
 }
 
 // Without counters, many racers in one process admit exactly the limit, and

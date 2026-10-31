@@ -260,7 +260,7 @@ func (p *Platform) openStores(cfg Config) error {
 	if cfg.Backends.Counters != nil {
 		shared = append(shared, usage.WithCounters(cfg.Backends.Counters))
 	}
-	p.Usage, err = usage.Open(st, shared...)
+	p.Usage, err = usage.Open(perRequest, shared...)
 	keep("usage", err)
 	p.AuditReferences, err = auditrefs.Open(st)
 	keep("audit references", err)
@@ -301,15 +301,12 @@ func (p *Platform) openStores(cfg Config) error {
 }
 
 // flush writes what the stores that write behind have not written yet: the
-// journal, the run index and the usage ledger.
+// journal and the run index.
 func (p *Platform) flush() {
 	if err := p.Journal.Flush(); err != nil {
 		p.log.Error("platform: journal could not be written", "error", err)
 	}
 	if err := p.Runs.Flush(); err != nil {
 		p.log.Error("platform: runs could not be written", "error", err)
-	}
-	if err := p.Usage.Flush(); err != nil {
-		p.log.Error("platform: usage could not be written", "error", err)
 	}
 }

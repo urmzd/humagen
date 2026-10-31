@@ -42,12 +42,12 @@ func TestUsageByScopeAndPeriod(t *testing.T) {
 		"project, today":     {launch, t0, 1, 1},
 		"agent, this month":  {lead, policy.PeriodStart(policy.Month, t0), 2, 1},
 	} {
-		got := l.Usage("acme", tc.scope, tc.since)
+		got := l.used("acme", tc.scope, tc.since)
 		if got.Runs != tc.runs || got.Concurrent != tc.live {
 			t.Errorf("%s: %d runs, %d in flight, want %d and %d", name, got.Runs, got.Concurrent, tc.runs, tc.live)
 		}
 	}
-	if got := l.Usage("initech", all, t0); !reflect.DeepEqual(got, policy.Usage{}) {
+	if got := l.used("initech", all, t0); !reflect.DeepEqual(got, policy.Usage{}) {
 		t.Errorf("a tenant with no runs used %+v", got)
 	}
 }
@@ -99,17 +99,17 @@ func TestRebuildMatchesTheLiveLedger(t *testing.T) {
 		}
 	}
 
-	rebuilt := Rebuild(l.Entries())
+	rebuilt := Rebuild(l.all("acme"))
 	scopes := []policy.Scope{all, launch, {Kind: policy.Project, Name: "Billing"}, lead, {Kind: policy.Agent, Name: "oncall"}}
 	for _, scope := range scopes {
 		for _, since := range []time.Time{t0, policy.PeriodStart(policy.Day, at), policy.PeriodStart(policy.Month, at), at} {
-			live, replayed := l.Usage("acme", scope, since), rebuilt.Usage("acme", scope, since)
+			live, replayed := l.used("acme", scope, since), rebuilt.used("acme", scope, since)
 			if !reflect.DeepEqual(live, replayed) {
 				t.Fatalf("%v since %s: live %+v, rebuilt %+v", scope, since.Format(time.RFC3339), live, replayed)
 			}
 		}
 	}
-	if len(rebuilt.Notices("acme", 0)) != len(l.Notices("acme", 0)) {
+	if len(rebuilt.notices("acme", 0)) != len(l.notices("acme", 0)) {
 		t.Fatal("the rebuilt ledger lost warnings or refusals")
 	}
 }
@@ -118,11 +118,11 @@ func TestOldAdmissionsAreDropped(t *testing.T) {
 	l := NewLedger()
 	admit(l, "acme", "", "lead", "old", t0)
 	admit(l, "acme", "", "lead", "new", t0.Add(keepAdmissions+25*time.Hour)) // days are kept whole
-	if got := l.Usage("acme", all, time.Time{}); got.Runs != 1 {
+	if got := l.used("acme", all, time.Time{}); got.Runs != 1 {
 		t.Fatalf("%d runs kept, want only the recent one", got.Runs)
 	}
-	if len(l.Entries()) != 1 {
-		t.Fatalf("%d entries kept", len(l.Entries()))
+	if len(l.all("acme")) != 1 {
+		t.Fatalf("%d entries kept", len(l.all("acme")))
 	}
 }
 
@@ -147,17 +147,17 @@ func TestUsageByClient(t *testing.T) {
 	}
 
 	docs := policy.Scope{Kind: policy.Client, Name: "docs-app"}
-	if got := l.Usage("acme", docs, t0); got.Runs != 2 || got.Concurrent != 1 {
+	if got := l.used("acme", docs, t0); got.Runs != 2 || got.Concurrent != 1 {
 		t.Fatalf("docs-app: %+v, want 2 runs and 1 in flight", got)
 	}
-	if got := l.Usage("acme", policy.Scope{Kind: policy.Client, Name: "nobody"}, t0); got.Runs != 0 || got.Concurrent != 0 {
+	if got := l.used("acme", policy.Scope{Kind: policy.Client, Name: "nobody"}, t0); got.Runs != 0 || got.Concurrent != 0 {
 		t.Fatalf("a client that raised nothing: %+v", got)
 	}
-	if got := l.Usage("acme", all, t0); got.Runs != 4 {
+	if got := l.used("acme", all, t0); got.Runs != 4 {
 		t.Fatalf("the tenant: %+v", got)
 	}
 	// Rebuilding from the entries gives the same answer.
-	if got := Rebuild(l.Entries()).Usage("acme", docs, t0); got.Runs != 2 || got.Concurrent != 1 {
+	if got := Rebuild(l.all("acme")).used("acme", docs, t0); got.Runs != 2 || got.Concurrent != 1 {
 		t.Fatalf("rebuilt docs-app: %+v", got)
 	}
 }
@@ -190,21 +190,21 @@ func TestARunsSpendIsCountedOnceDespiteRedeliveryAndSettlement(t *testing.T) {
 	if _, again := settle(); again {
 		t.Fatal("a second settlement of the same run was counted")
 	}
-	got := l.Usage("acme", launch, t0)
+	got := l.used("acme", launch, t0)
 	if got.Spend != 900 || got.ModelCalls != 3 || got.Tokens != 3000 {
 		t.Fatalf("usage = %+v, want the run's three calls once", got)
 	}
-	if run := l.RunSpend("acme", "r1"); run.Micros != 900 {
+	if run := l.runSpend("acme", "r1"); run.Micros != 900 {
 		t.Fatalf("the run's own spend is %+v", run)
 	}
 	// Another tenant reusing the key is its own call, and is not seen here.
 	if !call(l, "globex", "r1", "r1/a1/1", t0, one) {
 		t.Fatal("another tenant's call with the same key was refused")
 	}
-	if got := l.Usage("acme", all, t0); got.Spend != 900 {
+	if got := l.used("acme", all, t0); got.Spend != 900 {
 		t.Fatalf("another tenant's spend leaked: %+v", got)
 	}
-	if !reflect.DeepEqual(Rebuild(l.Entries()).Usage("acme", all, t0), l.Usage("acme", all, t0)) {
+	if !reflect.DeepEqual(Rebuild(l.all("acme")).used("acme", all, t0), l.used("acme", all, t0)) {
 		t.Fatal("the rebuilt ledger counts spend differently")
 	}
 }
@@ -217,7 +217,7 @@ func TestUnpricedAndOtherCurrencyCallsAreNotDollars(t *testing.T) {
 	call(l, "acme", "r1", "b", t0, Spend{ModelCalls: 1, Tokens: 20, Unpriced: 1})
 	call(l, "acme", "r1", "c", t0, Spend{ModelCalls: 1, Tokens: 30, Other: []policy.Cost{{Micros: 800, Currency: "EUR"}}})
 	call(l, "acme", "r1", "d", t0, Spend{ModelCalls: 1, Tokens: 40, Other: []policy.Cost{{Micros: 200, Currency: "EUR"}}})
-	got := l.Usage("acme", all, t0)
+	got := l.used("acme", all, t0)
 	if got.Spend != 500 || got.Tokens != 100 || got.ModelCalls != 4 || got.UnpricedCalls != 1 || !got.Unmetered() ||
 		!reflect.DeepEqual(got.OtherCosts, []policy.Cost{{Micros: 1000, Currency: "EUR"}}) {
 		t.Fatalf("usage = %+v", got)
@@ -237,12 +237,12 @@ func TestALateCallAfterSettlementIsNotCountedTwice(t *testing.T) {
 	settledFirst := NewLedger()
 	settle(settledFirst, one)
 	call(settledFirst, "acme", "r1", "r1/a1/1", t0, one)
-	if got := settledFirst.Usage("acme", all, t0); got.Spend != 4500 || got.ModelCalls != 1 {
+	if got := settledFirst.used("acme", all, t0); got.Spend != 4500 || got.ModelCalls != 1 {
 		t.Fatalf("settled then called: %+v, want the one call", got)
 	}
 	// A second late call is beyond the settled total, and counts.
 	call(settledFirst, "acme", "r1", "r1/a1/2", t0, one)
-	if got := settledFirst.Usage("acme", all, t0); got.Spend != 9000 || got.ModelCalls != 2 {
+	if got := settledFirst.used("acme", all, t0); got.Spend != 9000 || got.ModelCalls != 2 {
 		t.Fatalf("a call beyond the settled total: %+v", got)
 	}
 
@@ -251,11 +251,11 @@ func TestALateCallAfterSettlementIsNotCountedTwice(t *testing.T) {
 	if added := settle(calledFirst, one); !added.IsZero() {
 		t.Fatalf("settling a run whose call was counted added %+v", added)
 	}
-	if got := calledFirst.Usage("acme", all, t0); got.Spend != 4500 || got.ModelCalls != 1 {
+	if got := calledFirst.used("acme", all, t0); got.Spend != 4500 || got.ModelCalls != 1 {
 		t.Fatalf("called then settled: %+v", got)
 	}
 	for _, l := range []*Ledger{settledFirst, calledFirst} {
-		if !reflect.DeepEqual(Rebuild(l.Entries()).Usage("acme", all, t0), l.Usage("acme", all, t0)) {
+		if !reflect.DeepEqual(Rebuild(l.all("acme")).used("acme", all, t0), l.used("acme", all, t0)) {
 			t.Fatal("the rebuilt ledger disagrees")
 		}
 	}
@@ -272,19 +272,19 @@ func TestEntriesOutOfOrderAndAcrossAPeriodBoundaryAreCountedInTheirOwnPeriod(t *
 	call(l, "acme", "r3", "c", t0.Add(time.Hour), Spend{Micros: 1, ModelCalls: 1})      // earlier today, appended after
 	admit(l, "acme", "", "lead", "r4", t0.Add(2*time.Hour))
 	admit(l, "acme", "", "lead", "r5", t0.Add(-2*time.Hour))
-	got := l.Usage("acme", all, policy.PeriodStart(policy.Day, today))
+	got := l.used("acme", all, policy.PeriodStart(policy.Day, today))
 	if got.Spend != 9001 || got.Runs != 1 {
 		t.Fatalf("today = %+v, want 9001 and one run", got)
 	}
-	month := l.Usage("acme", all, policy.PeriodStart(policy.Month, today))
+	month := l.used("acme", all, policy.PeriodStart(policy.Month, today))
 	if month.Spend != 9101 || month.Runs != 2 {
 		t.Fatalf("this month = %+v", month)
 	}
 	// A period that starts inside a day reads that day's entries.
-	if mid := l.Usage("acme", all, t0.Add(5*time.Hour)); mid.Spend != 9000 || mid.Runs != 0 {
+	if mid := l.used("acme", all, t0.Add(5*time.Hour)); mid.Spend != 9000 || mid.Runs != 0 {
 		t.Fatalf("since mid-morning = %+v", mid)
 	}
-	if !reflect.DeepEqual(Rebuild(l.Entries()).Usage("acme", all, t0), got) {
+	if !reflect.DeepEqual(Rebuild(l.all("acme")).used("acme", all, t0), got) {
 		t.Fatal("the rebuilt ledger disagrees")
 	}
 }
@@ -329,20 +329,20 @@ func TestWithinCountsFromDayTotalsAndFromInsideADay(t *testing.T) {
 		// Since yesterday: a day inside, then a whole day.
 		"Field, across two days": {scope: field, since: t0.Add(-3 * time.Hour), runs: 3, live: 2, spend: 1000, tokens: 15},
 	} {
-		got := l.Usage("acme", c.scope, c.since)
+		got := l.used("acme", c.scope, c.since)
 		if got.Runs != c.runs || got.Concurrent != c.live || got.Spend != c.spend || got.Tokens != c.tokens {
 			t.Errorf("%s: %+v, want %d runs, %d in flight, %d spent, %d tokens", name, got, c.runs, c.live, c.spend, c.tokens)
 		}
-		if replayed := Rebuild(l.Entries()).Usage("acme", c.scope, c.since); !reflect.DeepEqual(replayed, got) {
+		if replayed := Rebuild(l.all("acme")).used("acme", c.scope, c.since); !reflect.DeepEqual(replayed, got) {
 			t.Errorf("%s: rebuilt %+v, live %+v", name, replayed, got)
 		}
 	}
 	// The tenant counts each run once, however many projects it counts in.
-	if got := l.Usage("acme", all, t0); got.Runs != 3 || got.Spend != 1000 {
+	if got := l.used("acme", all, t0); got.Runs != 3 || got.Spend != 1000 {
 		t.Fatalf("tenant = %+v", got)
 	}
 	// A project a run is not within is not charged for it.
-	if got := l.Usage("acme", policy.Scope{Kind: policy.Project, Name: "Initech"}, t0); got.Runs != 1 || got.Spend != 700 {
+	if got := l.used("acme", policy.Scope{Kind: policy.Project, Name: "Initech"}, t0); got.Runs != 1 || got.Spend != 700 {
 		t.Fatalf("Initech = %+v", got)
 	}
 }
@@ -380,11 +380,11 @@ func TestRebuildAgreesAlongTheTree(t *testing.T) {
 		}
 		open = append(open, i)
 	}
-	rebuilt := Rebuild(l.Entries())
+	rebuilt := Rebuild(l.all("acme"))
 	for _, name := range []string{"Field", "Globex", "Renewals"} {
 		scope := policy.Scope{Kind: policy.Project, Name: name}
 		for _, since := range []time.Time{t0, policy.PeriodStart(policy.Day, at), at.Add(-90 * time.Minute), policy.PeriodStart(policy.Month, at)} {
-			if live, replayed := l.Usage("acme", scope, since), rebuilt.Usage("acme", scope, since); !reflect.DeepEqual(live, replayed) {
+			if live, replayed := l.used("acme", scope, since), rebuilt.used("acme", scope, since); !reflect.DeepEqual(live, replayed) {
 				t.Fatalf("%s since %s: live %+v, rebuilt %+v", name, since, live, replayed)
 			}
 		}
@@ -410,22 +410,22 @@ func TestGrantsCountForTheirRunAndScopeAndSurviveARebuild(t *testing.T) {
 	grantOf("r1", all, policy.Grant{Spend: 11}, t0.Add(time.Hour))
 	grantOf("r2", launch, policy.Grant{Spend: 13}, t0.Add(time.Hour))
 
-	if got := l.Granted("acme", "r1", launch, t0); got != (policy.Grant{Spend: 7, Tokens: 100}) {
+	if got := l.granted("acme", "r1", launch, t0); got != (policy.Grant{Spend: 7, Tokens: 100}) {
 		t.Errorf("r1 in Launch today = %+v, want 7 and 100 tokens", got)
 	}
-	if got := l.Granted("acme", "r1", launch, t0.Add(-24*time.Hour)); got.Spend != 12 {
+	if got := l.granted("acme", "r1", launch, t0.Add(-24*time.Hour)); got.Spend != 12 {
 		t.Errorf("r1 in Launch since yesterday = %+v, want 12", got)
 	}
-	if got := l.Granted("globex", "r1", launch, t0); got != (policy.Grant{}) {
+	if got := l.granted("globex", "r1", launch, t0); got != (policy.Grant{}) {
 		t.Errorf("another tenant reads %+v", got)
 	}
-	if n := l.Grants("acme", "r1", launch); n != 3 {
+	if n := l.grants("acme", "r1", launch); n != 3 {
 		t.Errorf("r1 was granted %d times in Launch, want 3", n)
 	}
-	if got := Rebuild(l.Entries()).Granted("acme", "r1", launch, t0); got != l.Granted("acme", "r1", launch, t0) {
-		t.Errorf("rebuilt = %+v, live = %+v", got, l.Granted("acme", "r1", launch, t0))
+	if got := Rebuild(l.all("acme")).granted("acme", "r1", launch, t0); got != l.granted("acme", "r1", launch, t0) {
+		t.Errorf("rebuilt = %+v, live = %+v", got, l.granted("acme", "r1", launch, t0))
 	}
-	if n := l.Notices("acme", 1); len(n) != 1 || n[0].Kind != Granted || n[0].By != "ana" || n[0].Grant == nil {
+	if n := l.notices("acme", 1); len(n) != 1 || n[0].Kind != Granted || n[0].By != "ana" || n[0].Grant == nil {
 		t.Errorf("newest notice = %+v, want the grant with who made it", n)
 	}
 }

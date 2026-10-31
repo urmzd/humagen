@@ -433,7 +433,7 @@ func TestFortyRacersInTwoChildrenAgainstAParentsLimitAdmitSeven(t *testing.T) {
 		t.Fatalf("%d admitted and %d refused, want %d and %d", admitted.Load(), refused.Load(), limit, racers-limit)
 	}
 	today := policy.PeriodStart(policy.Day, time.Now())
-	if got := p.Usage.Usage(tenant, fieldScope, today); got.Runs != limit {
+	if got := usageOf(p, tenant, fieldScope, today); got.Runs != limit {
 		t.Fatalf("Field counted %d runs, want %d", got.Runs, limit)
 	}
 	// Each run is pinned to what it was admitted within.
@@ -453,8 +453,8 @@ func TestFortyRacersInTwoChildrenAgainstAParentsLimitAdmitSeven(t *testing.T) {
 	scope := policy.Scope{Kind: policy.Tenant}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		live, replayed := p.Usage.Usage(tenant, fieldScope, time.Time{}), usage.Rebuild(p.Usage.Entries()).Usage(tenant, fieldScope, time.Time{})
-		all, allReplayed := p.Usage.Usage(tenant, scope, time.Time{}), usage.Rebuild(p.Usage.Entries()).Usage(tenant, scope, time.Time{})
+		live, replayed := usageOf(p, tenant, fieldScope, time.Time{}), ledgerUsage(usage.Rebuild(entriesOf(p, tenant)), tenant, fieldScope, time.Time{})
+		all, allReplayed := usageOf(p, tenant, scope, time.Time{}), ledgerUsage(usage.Rebuild(entriesOf(p, tenant)), tenant, scope, time.Time{})
 		if reflect.DeepEqual(live, replayed) && reflect.DeepEqual(all, allReplayed) {
 			break
 		}
@@ -489,7 +489,7 @@ func TestSpendStopsAtTheParentsLimitToTheMicroDollar(t *testing.T) {
 	}
 	await(t, p, r.ID, runs.Completed)
 	month := policy.PeriodStart(policy.Month, time.Now())
-	within(t, "Field is charged for Globex's run", func() bool { return p.Usage.Usage(tenant, fieldScope, month).Spend == cost(1000, 100) })
+	within(t, "Field is charged for Globex's run", func() bool { return usageOf(p, tenant, fieldScope, month).Spend == cost(1000, 100) })
 
 	_, err = p.Invoke(ctx, inProject("evt-2", "lead", "Initech"))
 	var denied *platform.Denied
@@ -513,7 +513,7 @@ func TestSpendStopsAtTheParentsLimitToTheMicroDollar(t *testing.T) {
 	}
 	day := policy.PeriodStart(policy.Day, time.Now())
 	globexScope := policy.Scope{Kind: policy.Project, Name: "Globex"}
-	spentBefore := p.Usage.Usage(tenant, globexScope, day).Spend
+	spentBefore := usageOf(p, tenant, globexScope, day).Spend
 	held, err := p.Invoke(ctx, inProject("evt-4", "probe", "Renewals"))
 	if err != nil {
 		t.Fatalf("a run under Globex's limit was refused: %v", err)
@@ -524,7 +524,7 @@ func TestSpendStopsAtTheParentsLimitToTheMicroDollar(t *testing.T) {
 	}
 	within(t, "the stopped run is settled", func() bool { return settled(p, held.ID) == 1 })
 	stopped, _ = p.Runs.Get(tenant, held.ID)
-	if got := p.Usage.Usage(tenant, globexScope, day).Spend - spentBefore; stopped.Usage == nil || got != stopped.Usage.Total.Cost.Micros {
+	if got := usageOf(p, tenant, globexScope, day).Spend - spentBefore; stopped.Usage == nil || got != stopped.Usage.Total.Cost.Micros {
 		t.Fatalf("Globex was charged %d for the run, which recorded %+v", got, stopped.Usage)
 	}
 }
@@ -930,7 +930,7 @@ func TestADeletedChildsConversationsStayUnderItsParentsLimit(t *testing.T) {
 	if _, err := p.Invoke(ctx, inProject("late", "lead", "Initech")); !errors.Is(err, platform.ErrProjectDeleted) {
 		t.Fatalf("a run filed in the deleted child = %v", err)
 	}
-	if got := p.Usage.Usage(tenant, fieldScope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != 1 {
+	if got := usageOf(p, tenant, fieldScope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != 1 {
 		t.Fatalf("Field counted %d runs, want 1", got.Runs)
 	}
 	if n := len(p.Runs.List(tenant, 0)); n != 1 {

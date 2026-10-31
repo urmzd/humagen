@@ -144,7 +144,12 @@ func (p *Platform) granted(run runs.Run, applied []policy.Applied) map[policy.Sc
 		if a.Policy.Action != policy.Approve {
 			continue
 		}
-		g := p.Usage.Granted(run.Tenant, run.ID, a.Policy.Scope, policy.PeriodStart(a.Policy.Period, p.now()))
+		g, err := p.Usage.Granted(run.Tenant, run.ID, a.Policy.Scope, policy.PeriodStart(a.Policy.Period, p.now()))
+		if err != nil {
+			// Judged as if nothing were granted: a run is held for a person
+			// rather than let past its limit on a grant that cannot be read.
+			p.log.Error("platform: grants could not be read", "tenant", run.Tenant, "run", run.ID, "error", err)
+		}
 		pending := p.grants.by[run.ID][a.Policy.Scope]
 		g.Spend, g.Tokens = g.Spend+pending.Spend, g.Tokens+pending.Tokens
 		if g == (policy.Grant{}) {
@@ -188,7 +193,14 @@ func (p *Platform) holdAtLimit(ctx context.Context, run runs.Run, d policy.Decis
 	} else {
 		b.Granted = granted[pol.Scope].Tokens
 	}
-	id := budgetHoldID(pol.Scope, d.Limit, p.Usage.Grants(run.Tenant, run.ID, pol.Scope))
+	grants, err := p.Usage.Grants(run.Tenant, run.ID, pol.Scope)
+	if err != nil {
+		// Without the count the hold cannot be told from an earlier one.
+		p.log.Error("platform: grants could not be read; stopping the run", "tenant", run.Tenant, "run", run.ID, "error", err)
+		p.halt(ctx, run, stop)
+		return
+	}
+	id := budgetHoldID(pol.Scope, d.Limit, grants)
 	if _, already := p.holding.LoadOrStore(run.ID+"\x00"+id, true); already {
 		return
 	}
@@ -328,7 +340,7 @@ func (p *Platform) endGrant(g heldGrant, recorded bool, by string) {
 			Reason: grantNote(g.budget, g.grant), Grant: &g.grant, By: by,
 		}
 		if _, _, err := p.Usage.Record(e); err != nil {
-			p.log.Error("platform: usage entry could not be written yet", "kind", usage.Granted, "run", g.run.ID, "error", err)
+			p.log.Error("platform: usage entry could not be written", "kind", usage.Granted, "run", g.run.ID, "error", err)
 		}
 		p.log.Info("platform: a run held at a limit was granted more", "tenant", g.run.Tenant, "run", g.run.ID,
 			"scope", scope.String(), "limit", g.budget.Limit, "by", by, "spend", g.grant.Spend, "tokens", g.grant.Tokens)
