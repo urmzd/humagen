@@ -592,6 +592,7 @@ func TestPublishingWaitsForApproval(t *testing.T) {
 		}
 		await(t, p, run.ID, runs.Completed)
 		if page, _, _ := p.Artifacts.Page(tenant, artifacts.Query{Thread: run.Thread}); len(page) != c.published {
+			logEvents(t, p, run.ID)
 			t.Fatalf("after %s, %d files were published", c.action, len(page))
 		}
 	}

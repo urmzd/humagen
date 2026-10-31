@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -507,4 +508,14 @@ func kept[T any](v T, err error) T {
 		panic(err)
 	}
 	return v
+}
+
+// logEvents logs every event a run published, for a test about to fail on
+// what the run did: a tool's error or a refused call is on its stream.
+func logEvents(t *testing.T, p *platform.Platform, runID string) {
+	t.Helper()
+	for _, e := range kept(p.Journal.Events(tenant, []string{runID})) {
+		b, _ := json.Marshal(e.Data)
+		t.Logf("event %d %s %s", e.Seq, e.Type, b)
+	}
 }

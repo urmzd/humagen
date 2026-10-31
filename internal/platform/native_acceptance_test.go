@@ -97,6 +97,7 @@ func TestNativeAgentOfficeRevisionAcceptance(t *testing.T) {
 			})
 			before, _, err := p.Artifacts.Page(tenant, artifacts.Query{Thread: run.Thread})
 			if err != nil || len(before) != 1 || before[0].Version != 1 {
+				logEvents(t, p, run.ID)
 				t.Fatalf("first publication: %+v, %v", before, err)
 			}
 			_, originalBytes, err := p.OpenArtifact(t.Context(), admin, before[0].ID)
