@@ -313,7 +313,10 @@ func (p *Platform) planProjectFork(ctx context.Context, who auth.Principal, sour
 		}
 		plan.Projects = append(plan.Projects, projectforks.ProjectCopy{Source: name, Name: mapped[name], Parent: parent, Config: config, Channels: channels, Rules: rules})
 	}
-	notes := p.Memory.List(who.Tenant, memory.ProjectOwner(source))
+	notes, err := p.Memory.List(who.Tenant, memory.ProjectOwner(source))
+	if err != nil {
+		return projectforks.Plan{}, err
+	}
 	for _, id := range in.Memory {
 		found := false
 		for _, note := range notes {

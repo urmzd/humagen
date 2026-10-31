@@ -460,7 +460,14 @@ func (p *Platform) filedUnder(tenant string) func(string) bool {
 		}
 	}
 	if p.Artifacts != nil {
-		for _, sh := range p.Artifacts.Usage(tenant).ByProject {
+		u, err := p.Artifacts.Usage(tenant)
+		if err != nil {
+			// Without what is filed, every name is held as filed: a name is
+			// never forgotten while files may be filed under it.
+			p.log.Error("platform: artifact usage could not be read", "tenant", tenant, "error", err)
+			return func(string) bool { return true }
+		}
+		for _, sh := range u.ByProject {
 			filed[strings.ToLower(sh.Name)] = true
 		}
 	}
@@ -569,13 +576,13 @@ func (p *Platform) noteLayers(tenant string, chain []projects.Project, workspace
 	if own.IsRoot() {
 		heading = fmt.Sprintf("What everyone in %s knows:", titleOf(own, workspace))
 	}
-	if s := p.Memory.PromptAt(tenant, memory.ProjectOwner(own.Name), heading, p.now()); s != "" {
+	if s := p.promptOf(tenant, memory.ProjectOwner(own.Name), heading); s != "" {
 		parts = append(parts, ContextLayer{Kind: "project_notes", From: own.Name, Text: s, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, memory.ProjectOwner(own.Name)), Sent: true, Unit: "characters"})
 	}
 	used, full := 0, false
 	for _, pr := range chain[1:] {
 		var notes []string
-		for _, n := range p.Memory.List(tenant, memory.ProjectOwner(pr.Name)) {
+		for _, n := range p.notesOf(tenant, memory.ProjectOwner(pr.Name)) {
 			if n.Status == memory.Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(p.now())) {
 				notes = append(notes, n.Text)
 			}

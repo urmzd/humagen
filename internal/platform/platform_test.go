@@ -334,7 +334,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 		for _, th := range p.Runs.Threads(tenant, 0) {
 			named = named || (th.ID == first.Thread && th.Named && th.Title != "Plan the launch")
 		}
-		notes := p.Memory.List(tenant, "lead")
+		notes := notesOf(t, p.Memory, tenant, "lead")
 		if named && len(notes) > 0 {
 			// What the memory agent wrote is a proposal, not yet a memory.
 			if notes[0].Source != "consolidated" || notes[0].Status != "pending" || len(notes) > 3 {
@@ -349,7 +349,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 	}
 	// The housekeeping agent itself gets no title and no memory: a system run
 	// must not start more system runs.
-	if got := p.Memory.List(tenant, "scribe"); len(got) != 0 {
+	if got := notesOf(t, p.Memory, tenant, "scribe"); len(got) != 0 {
 		t.Fatalf("the memory agent was given memory of its own housekeeping: %v", got)
 	}
 	system := 0
@@ -374,7 +374,7 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 		t.Fatalf("an unapproved proposal reached the agent: %q", got)
 	}
 	var ids []string
-	for _, n := range p.Memory.List(tenant, "lead") {
+	for _, n := range notesOf(t, p.Memory, tenant, "lead") {
 		ids = append(ids, n.ID)
 	}
 	if n, err := p.Memory.Approve(tenant, "lead", ids); err != nil || n == 0 {

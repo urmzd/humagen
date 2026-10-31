@@ -803,12 +803,12 @@ func TestWhatAPersonsCredentialReachedIsNotTaughtToMemory(t *testing.T) {
 	turn("api-app-1", "worker", "", "", "Any open bugs?", platform.ActorOf(slackApp))
 	launch := memory.ProjectOwner("Launch")
 	within(t, "the turns that reached no credential are taught", func() bool {
-		return len(w.p.Memory.List(tenant, launch)) > 0 && len(w.p.Memory.List(tenant, "worker")) > 0
+		return len(notesOf(t, w.p.Memory, tenant, launch)) > 0 && len(notesOf(t, w.p.Memory, tenant, "worker")) > 0
 	})
 	untaught := func(turns ...runs.Run) {
 		t.Helper()
 		for _, owner := range []string{launch, "worker", "lead"} {
-			for _, n := range w.p.Memory.List(tenant, owner) {
+			for _, n := range notesOf(t, w.p.Memory, tenant, owner) {
 				if strings.Contains(n.Text, "PRIV-7") {
 					t.Fatalf("what ana's credential reached was kept in %s's notes: %+v", owner, n)
 				}
@@ -851,7 +851,7 @@ func TestWhatAPersonsCredentialReachedIsNotTaughtToMemory(t *testing.T) {
 		t.Fatalf("ana's later follow-up answered %q", later.Answer)
 	}
 	turn("api-ben-3", "lead", "", "", "Plan the week", platform.ActorOf(ben))
-	within(t, "lead's turn at the root is taught", func() bool { return len(w.p.Memory.List(tenant, "lead")) > 0 })
+	within(t, "lead's turn at the root is taught", func() bool { return len(notesOf(t, w.p.Memory, tenant, "lead")) > 0 })
 	untaught(later)
 	w.leaks(t, environment["HUMAGEN_PERSON_ANA_ISSUES"])
 }

@@ -31,7 +31,7 @@ func (p *Platform) personalLayers(tenant, project, subject string) []ContextLaye
 		return out
 	}
 	owner := memory.PersonalOwner(subject)
-	if text := p.Memory.PromptAt(tenant, owner, "What the person asking has chosen to remember:", p.now()); text != "" {
+	if text := p.promptOf(tenant, owner, "What the person asking has chosen to remember:"); text != "" {
 		out = append(out, ContextLayer{Kind: "personal_notes", From: subject, Text: text, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, owner), Sent: true, Unit: "characters"})
 	}
 	return out

@@ -121,7 +121,11 @@ func (p *Platform) RollupProject(who auth.Principal, name string) (ProjectRollup
 				out.MoreProjects = true
 			}
 		}
-		for _, note := range p.Memory.List(who.Tenant, memory.ProjectOwner(child)) {
+		notes, err := p.Memory.List(who.Tenant, memory.ProjectOwner(child))
+		if err != nil {
+			return ProjectRollup{}, err
+		}
+		for _, note := range notes {
 			if note.Status != memory.Approved || !note.ExpiresAt.IsZero() && !note.ExpiresAt.After(now) || note.Kind != memory.Decision && note.Kind != memory.Risk {
 				continue
 			}

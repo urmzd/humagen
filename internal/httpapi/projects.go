@@ -239,7 +239,13 @@ func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	}
 	c := f.counts[p.Name]
 	v.Conversations, v.Active, v.ActiveAt = c.Threads, c.Active, c.ActiveAt
-	for _, n := range s.P.Memory.List(f.tenant, memory.ProjectOwner(p.Name)) {
+	notes, err := s.P.Memory.List(f.tenant, memory.ProjectOwner(p.Name))
+	if err != nil {
+		// The counts are a summary beside the project: it is shown without
+		// them rather than not at all.
+		s.Log.Error("httpapi: project notes could not be read", "project", p.Name, "error", err)
+	}
+	for _, n := range notes {
 		if n.Status == memory.Approved {
 			v.Notes++
 		} else {
@@ -546,7 +552,12 @@ func (s *Server) projectMemory(w http.ResponseWriter, r *http.Request, who auth.
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, s.P.Memory.List(who.Tenant, owner))})
+	notes, err := s.P.Memory.List(who.Tenant, owner)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"notes": s.viewNotesAs(who, notes)})
 }
 
 // addProjectMemory adds a note. An owner's is in use at once; a member's is

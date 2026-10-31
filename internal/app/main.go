@@ -539,7 +539,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 // seedFiles publishes a few example files, so the storage page has something
 // on it before any agent with a model has run.
 func seedFiles(ctx context.Context, p *platform.Platform, tenant string) error {
-	if p.Artifacts.Usage(tenant).Count > 0 {
+	u, err := p.Artifacts.Usage(tenant)
+	if err != nil {
+		return err
+	}
+	if u.Count > 0 {
 		return nil
 	}
 	run, err := p.Converse(ctx, tenant, platform.Turn{

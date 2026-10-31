@@ -65,11 +65,11 @@ func TestPersonalMemoryStaysWithOwnerAndNeedsSharedProjectOptIn(t *testing.T) {
 	if got := run("shared-with-opt-in", "Shared"); !strings.Contains(wire.TextOf(got.Tag()), note.Text) || !strings.Contains(wire.TextOf(got.Tag()), next.Briefing) {
 		t.Fatal("explicit personal context choices ignored")
 	}
-	before := p.Memory.List(tenant, owner)[0].Uses
+	before := notesOf(t, p.Memory, tenant, owner)[0].Uses
 	if _, err := p.ProjectContextAs(t.Context(), who, personal.Name, projects.General, "lead"); err != nil {
 		t.Fatal(err)
 	}
-	if p.Memory.List(tenant, owner)[0].Uses != before {
+	if notesOf(t, p.Memory, tenant, owner)[0].Uses != before {
 		t.Fatal("preview increased use count")
 	}
 	if err := p.RemoveMemory(tenant, owner, note.ID); err != nil {
@@ -106,7 +106,7 @@ func TestPersonalContextClassificationFailsClosedAndSurvivesJournalExpiry(t *tes
 			t.Fatal("model saw notes without durable classification")
 		default:
 		}
-		if p.Memory.List(tenant, memory.PersonalOwner(who.Subject))[0].Uses != 0 {
+		if notesOf(t, p.Memory, tenant, memory.PersonalOwner(who.Subject))[0].Uses != 0 {
 			t.Fatal("refused turn counted as use")
 		}
 		st.fail("")
@@ -125,7 +125,7 @@ func TestPersonalContextClassificationFailsClosedAndSurvivesJournalExpiry(t *tes
 		if err != nil || joined.ID != done.ID || wire.TextOf(joined.Tag()) != wire.TextOf(done.Tag()) {
 			t.Fatal("same ID changed accepted context")
 		}
-		if got := p.Memory.List(tenant, memory.PersonalOwner(who.Subject))[0]; got.ID != note.ID || got.Uses != 1 {
+		if got := notesOf(t, p.Memory, tenant, memory.PersonalOwner(who.Subject))[0]; got.ID != note.ID || got.Uses != 1 {
 			t.Fatalf("replay counted context twice: %+v", got)
 		}
 		if _, err := journal.Open(st, 1); err != nil {

@@ -429,7 +429,7 @@ func (p *Platform) noteChanges(scope changesScope) []changeRow {
 		if project == "" {
 			continue
 		}
-		for _, n := range p.Memory.List(scope.tenant, memory.ProjectOwner(project)) {
+		for _, n := range p.notesOf(scope.tenant, memory.ProjectOwner(project)) {
 			if n.Status != memory.Approved || n.At.Before(scope.since) || !n.At.Before(scope.until) {
 				continue
 			}

@@ -129,7 +129,7 @@ func TestOpaqueArtifactsFailedMetadataWriteAndConcurrentReservations(t *testing.
 		if _, err := x.Publish("acme", a); !errors.Is(err, statetest.ErrInjected) {
 			t.Fatal(err)
 		}
-		if x.Usage("acme").Count != 1 {
+		if usageOf(t, x, "acme").Count != 1 {
 			t.Fatal("failed metadata became visible")
 		}
 		counterAfter, err := st.Get(t.Context(), "artifacts", "acme", "next")
@@ -170,7 +170,7 @@ func TestOpaqueArtifactsFailedMetadataWriteAndConcurrentReservations(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		if replay.Usage("acme").Count != 52 {
+		if usageOf(t, replay, "acme").Count != 52 {
 			t.Fatal("concurrent writes lost artifacts")
 		}
 		afterRestart, _, err := replay.Page("acme", artifacts.Query{Limit: artifacts.MaxPage})

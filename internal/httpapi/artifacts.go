@@ -127,7 +127,11 @@ func (s *Server) deleteArtifact(w http.ResponseWriter, r *http.Request, who auth
 
 // storage reports what a tenant has published and what it is allowed.
 func (s *Server) storage(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	u := s.P.Artifacts.Usage(who.Tenant)
+	u, err := s.P.Artifacts.Usage(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	var limit *int64
 	pols, err := s.P.Policies.List(who.Tenant)
 	if err != nil {

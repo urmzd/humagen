@@ -346,7 +346,7 @@ func TestWhatAPersonsCredentialReachedInARoomIsNotTaughtToMemory(t *testing.T) {
 		}
 		return false
 	})
-	for _, n := range w.p.Memory.List(tenant, launch) {
+	for _, n := range notesOf(t, w.p.Memory, tenant, launch) {
 		if strings.Contains(n.Text, "PRIV-7") {
 			t.Fatalf("what ana's credential reached was kept in Launch's notes: %+v", n)
 		}

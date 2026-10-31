@@ -28,8 +28,10 @@ type Hit struct {
 	Snippet string `json:"snippet"`
 }
 
-// index is one head's words, by path.
+// index is one version's words, by path. A version of one generation of a
+// tree never changes, so an index of it is right for as long as it is kept.
 type index struct {
+	gen     string
 	version int64
 	words   map[string][]string
 	text    map[string]string
@@ -41,21 +43,26 @@ func words(text string) []string {
 	return slices.Compact(out)
 }
 
-// indexOf returns the index of a tree's head, built when the head changed.
+// indexOf returns the index of a tree's head, read per call: the index
+// cached for the head's generation and version, or one built from the head's
+// files, at most MaxEntries of at most maxIndexed bytes each.
 func (s *Store) indexOf(ctx context.Context, tenant string, tree Tree) (*index, error) {
-	h := s.headOf(tenant, tree)
+	h, _, err := s.head(ctx, tenant, tree)
+	if err != nil {
+		return nil, err
+	}
 	k := tk(tenant, tree)
 	s.indexMu.Lock()
 	x := s.indexes[k]
 	s.indexMu.Unlock()
-	if x != nil && x.version == h.Version {
+	if x != nil && x.gen == h.Gen && x.version == h.Version {
 		return x, nil
 	}
-	v, err := s.version(ctx, tenant, tree, h.Version)
+	v, err := s.version(ctx, tenant, h, h.Version)
 	if err != nil {
 		return nil, err
 	}
-	x = &index{version: v.N, words: map[string][]string{}, text: map[string]string{}}
+	x = &index{gen: h.Gen, version: v.N, words: map[string][]string{}, text: map[string]string{}}
 	for _, e := range v.Entries {
 		if e.Size > maxIndexed {
 			continue

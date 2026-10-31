@@ -46,7 +46,7 @@ func (p *Platform) turnLayers(tenant string, tree *projects.Tree, chain []projec
 	}
 
 	out = append(out, p.noteLayers(tenant, chain, workspace)...)
-	if text := p.Memory.PromptAt(tenant, agent, "What you remember from earlier conversations:", p.now()); text != "" {
+	if text := p.promptOf(tenant, agent, "What you remember from earlier conversations:"); text != "" {
 		out = append(out, ContextLayer{Kind: "agent_notes", From: agent, Text: text, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, agent), Sent: true, Unit: "characters"})
 	}
 	return out
@@ -169,9 +169,31 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 	return out, nil
 }
 
+// notesOf reads an owner's notes for what is composed without an error to
+// return: a turn's context and the views built beside it. A read that fails
+// is logged and reads as no notes, so the turn goes on without them.
+func (p *Platform) notesOf(tenant, owner string) []memory.Note {
+	notes, err := p.Memory.List(tenant, owner)
+	if err != nil {
+		p.log.Error("platform: memory could not be read", "tenant", tenant, "owner", owner, "error", err)
+		return nil
+	}
+	return notes
+}
+
+// promptOf renders an owner's notes under a heading as notesOf reads them.
+func (p *Platform) promptOf(tenant, owner, heading string) string {
+	text, err := p.Memory.PromptAt(tenant, owner, heading, p.now())
+	if err != nil {
+		p.log.Error("platform: memory could not be read", "tenant", tenant, "owner", owner, "error", err)
+		return ""
+	}
+	return text
+}
+
 func (p *Platform) noteCharacters(tenant, owner string) int {
 	used := 0
-	for _, n := range p.Memory.List(tenant, owner) {
+	for _, n := range p.notesOf(tenant, owner) {
 		if n.Status == memory.Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(p.now())) {
 			used += utf8.RuneCountInString(n.Text)
 		}

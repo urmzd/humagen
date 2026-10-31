@@ -620,7 +620,7 @@ func TestAnApproverCanChangeWhatIsPublished(t *testing.T) {
 	if !strings.Contains(string(run.Question.Tool.Arguments), "draft.md") {
 		t.Fatalf("the question shows %s, not the model's arguments", run.Question.Tool.Arguments)
 	}
-	if u := p.Artifacts.Usage(tenant); u.Count != 0 {
+	if u := artifactUsage(t, p, tenant); u.Count != 0 {
 		t.Fatalf("stored before approval: %+v", u)
 	}
 	edited := json.RawMessage(`{"path":"plan.md","title":"Launch plan.md","description":"Approved by olu"}`)
