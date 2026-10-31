@@ -215,7 +215,7 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if rules := q.Alerts.Rules(tenant); len(rules) != 1 || rules[0].Name != "fails" {
 			t.Fatalf("alert rules after restart = %+v", rules)
 		}
-		if sc, paused, err := q.Schedules.Get(tenant, "nightly"); err != nil || !paused || sc.Expression != "0 3 * * *" || q.Schedules.About("nightly").Description != "Every night" {
+		if sc, paused, err := q.Schedules.Get(tenant, "nightly"); err != nil || !paused || sc.Expression != "0 3 * * *" || func() string { a, _ := q.Schedules.About(tenant, "nightly"); return a.Description }() != "Every night" {
 			t.Fatalf("the schedule after restart = %+v, %v, %v", sc, paused, err)
 		}
 		if _, author, err := q.Schedules.Authored(tenant, "nightly"); err != nil || author != "ben" {

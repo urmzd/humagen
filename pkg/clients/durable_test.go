@@ -44,7 +44,7 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := again.List("acme")
+		got := list(t, again, "acme")
 		// The environment's client is not kept: it is made again at start.
 		if len(got) != 2 || got[0].ID != "zeta" || got[1].ID != "alpha" {
 			t.Fatalf("after restart = %+v", got)
@@ -53,8 +53,8 @@ func TestRestart(t *testing.T) {
 		if !reflect.DeepEqual(got[1], want) || got[1].Version != 2 || got[1].Tenant != "acme" {
 			t.Fatalf("alpha after restart = %+v, want %+v", got[1], want)
 		}
-		if len(again.On(Slack)) != 3 {
-			t.Fatalf("On(slack) after restart = %+v", again.On(Slack))
+		if len(on(t, again, Slack)) != 3 {
+			t.Fatalf("On(slack) after restart = %+v", on(t, again, Slack))
 		}
 		if _, err := again.Get("globex", "alpha"); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("another tenant's client = %v", err)
@@ -66,7 +66,7 @@ func TestRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		third, _ := Open(st)
-		if l := third.List("acme"); len(l) != 3 || l[2].ID != "later" || l[2].GitHub == nil || l[2].GitHub.Login != "humagen[bot]" {
+		if l := list(t, third, "acme"); len(l) != 3 || l[2].ID != "later" || l[2].GitHub == nil || l[2].GitHub.Login != "humagen[bot]" {
 			t.Fatalf("order after a second restart = %+v", l)
 		}
 	})
@@ -131,10 +131,28 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	if err := s.Drop("acme", "docs"); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("secret Drop = %v", err)
 	}
-	if l := m.List("acme"); len(l) != 1 || !l[0].Enabled || l[0].Version != 1 {
+	if l := list(t, m, "acme"); len(l) != 1 || !l[0].Enabled || l[0].Version != 1 {
 		t.Fatalf("after failed writes = %+v", l)
 	}
 	if v, _ := s.Get("acme", "docs", SecretToken); v != "kept" {
 		t.Fatalf("secret after failed writes = %q", v)
 	}
+}
+
+func list(t *testing.T, s Store, tenant string) []Client {
+	t.Helper()
+	out, err := s.List(tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func on(t *testing.T, s Store, surface Surface) []Client {
+	t.Helper()
+	out, err := s.On(surface)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

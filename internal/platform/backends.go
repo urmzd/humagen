@@ -61,17 +61,18 @@ type Ledger interface {
 // zero value keeps everything in memory, as a test wants. Each is chosen on
 // its own; OpenPostgres chooses all of them on one database.
 type Backends struct {
-	// State is where humagen's own stores keep their records: clients and
-	// their secrets (unless Config sets its own), people's own credentials
-	// for tool providers (their values beside the clients' secrets), the
-	// inbox, preferences, memory, projects, threads, limits, call policies,
-	// alerts, evals, schedules, the journal,
-	// artifacts, the run index, the usage ledger, knowledge and workspace
-	// settings. Nil keeps them in memory.
+	// State is where humagen's own stores keep their records: people's own
+	// credentials for tool providers, the inbox, preferences, memory,
+	// projects, threads, limits, call policies, alerts, evals, the journal,
+	// artifacts, the run index, the usage ledger and knowledge. Nil keeps
+	// them in memory.
 	State state.Store
 	// Shared is where the stores that read and write per request keep their
-	// records (see pkg/state): feedback. They need no lock, so Shared may be
-	// open in any number of processes at once. Nil uses State.
+	// records (see pkg/state): feedback, clients and their secrets (unless
+	// Config sets its own), agent definitions, the skill library and agent
+	// skill defaults, schedules, agent setups and workspace settings. They
+	// need no lock, so Shared may be open in any number of processes at
+	// once. Nil uses State.
 	Shared state.Store
 	// Agents is where agent definitions are kept, as saige definitions.
 	// Nil keeps them in memory.
@@ -95,7 +96,7 @@ type Backends struct {
 }
 
 // OpenPostgres puts every backend on one Postgres database: humagen's state
-// (pkg/state), agent definitions (pkg/agents, on the same state), anchor's run ledger and queue
+// (pkg/state), agent definitions (pkg/agents, on Backends.Shared), anchor's run ledger and queue
 // (fiber's pkg/durable), fiber's Postgres event bus, and the usage ledger's
 // shared counts (usage.Counters). Each migrates its own tables, idempotently. The
 // caller owns the pool and closes it after calling release.
@@ -118,14 +119,18 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 			_ = st.Close()
 		}
 	}()
+	shared, err := state.OpenPostgresShared(ctx, pool)
+	if err != nil {
+		return Backends{}, nil, err
+	}
 	names := append(providers(), providerNames...)
-	defs, err := wire.OpenAgents(st, names...)
+	defs, err := wire.OpenAgents(shared, names...)
 	if err != nil {
 		return Backends{}, nil, err
 	}
 	// Agents fiber's registry kept move into the store once. A platform
 	// agent that cannot be moved fails the start.
-	if _, err := legacy.ConvertAgents(ctx, st, defs.Source(), legacy.PostgresOldAgents{Pool: pool}, legacy.ConvertOptions{
+	if _, err := legacy.ConvertAgents(ctx, shared, defs.Source(), legacy.PostgresOldAgents{Pool: pool}, legacy.ConvertOptions{
 		Builtin: func(name string) bool { return IsBuiltin(name) || legacy.IsBuiltinAgent(name) },
 		Logf:    func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) },
 	}); err != nil {
@@ -140,10 +145,6 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 		return Backends{}, nil, err
 	}
 	counters, err := usage.OpenCounters(ctx, pool)
-	if err != nil {
-		return Backends{}, nil, err
-	}
-	shared, err := state.OpenPostgresShared(ctx, pool)
 	if err != nil {
 		return Backends{}, nil, err
 	}
@@ -175,11 +176,15 @@ func (p *Platform) openStores(cfg Config) error {
 		}
 	}
 	var err error
+	perRequest := cfg.Backends.Shared
+	if perRequest == nil {
+		perRequest = st
+	}
 	p.AgentColors, err = agentcolors.Open(st)
 	keep("agent colors", err)
 	p.Runs, err = runs.Open(st)
 	keep("runs", err)
-	p.Schedules, err = OpenSchedules(st)
+	p.Schedules, err = OpenSchedules(perRequest)
 	keep("schedules", err)
 	p.Journal, err = journal.Open(st, 0)
 	keep("journal", err)
@@ -197,10 +202,6 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(st)
 	keep("evals", err)
-	perRequest := cfg.Backends.Shared
-	if perRequest == nil {
-		perRequest = st
-	}
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
 	p.Prefs, err = prefs.Open(st)
@@ -211,11 +212,11 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("private context flags", err)
 	p.Notifications, err = notifications.Open(st)
 	keep("native notifications", err)
-	p.AgentSkillDefaults, err = library.OpenDefaults(st)
+	p.AgentSkillDefaults, err = library.OpenDefaults(perRequest)
 	keep("agent skill defaults", err)
 	p.EmailNotifications, err = notifications.OpenEmail(st)
 	keep("email notifications", err)
-	p.SkillLibrary, err = library.Open(st)
+	p.SkillLibrary, err = library.Open(perRequest)
 	keep("skill library", err)
 	// Memory is files: manifests on st, content in the configured blob
 	// store. With none, or one in memory, the content is kept beside the
@@ -246,7 +247,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("threads", err)
 	p.Policies, err = policy.Open(st)
 	keep("policies", err)
-	p.setups, err = openAgentSetups(st)
+	p.setups, err = openAgentSetups(perRequest)
 	keep("agent setups", err)
 	keep("agent setup admission", p.RegisterAgentTestGate(setupGate{p: p}))
 	p.Operations, err = operations.Open(st)
@@ -272,7 +273,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("inbox", err)
 	p.Artifacts, err = artifacts.Open(st)
 	keep("artifacts", err)
-	keep("settings", p.settings.open(st))
+	keep("settings", p.settings.open(perRequest))
 	if len(errs) == 0 {
 		// Projects once lived in settings; they move before anything reads
 		// either.
@@ -286,11 +287,11 @@ func (p *Platform) openStores(cfg Config) error {
 
 	p.Clients, p.secrets = cfg.Clients, cfg.Secrets
 	if p.Clients == nil {
-		p.Clients, err = clients.Open(st)
+		p.Clients, err = clients.Open(perRequest)
 		keep("clients", err)
 	}
 	if p.secrets == nil {
-		p.secrets, err = clients.OpenSecrets(st)
+		p.secrets, err = clients.OpenSecrets(perRequest)
 		keep("client secrets", err)
 	}
 	// People's values are kept where client secrets are, and guarded the
