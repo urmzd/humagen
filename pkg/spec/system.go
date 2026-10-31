@@ -39,7 +39,7 @@ var Builtin = map[string][]string{
 	SlotAuth:       {"dev", "tailscale", "oidc", "mock"},
 	SlotStores:     {"memory", "postgres"},
 	SlotBus:        {"memory", "postgres"},
-	SlotBlobs:      {"disk", "memory", "s3"},
+	SlotBlobs:      {"disk", "gcs", "memory", "s3"},
 	SlotEmbedder:   {"none", "hashing", "openai", "vertex"},
 	SlotExtensions: {},
 	SlotDeploy:     {"local", "compose", "kubernetes"},
@@ -140,6 +140,32 @@ type Server struct {
 	PublicURL   string  `json:"public_url,omitempty"`
 	WebhookAddr string  `json:"webhook_addr,omitempty"`
 	Console     Console `json:"console,omitzero"`
+	// DrainGrace is how long, after SIGTERM, runs in flight may finish
+	// before what is left is handed back for another process to resume, a
+	// Go duration. Left out, 25s.
+	DrainGrace string `json:"drain_grace,omitempty"`
+	// ShutdownTimeout is how long open requests, event streams among them,
+	// may take to end once the drain is over, a Go duration. Left out, 10s.
+	ShutdownTimeout string `json:"shutdown_timeout,omitempty"`
+}
+
+// Defaults for Server's durations.
+const (
+	DefaultDrainGrace      = 25 * time.Second
+	DefaultShutdownTimeout = 10 * time.Second
+)
+
+// check refuses a duration that is not one, or is negative.
+func (s Server) check() error {
+	for _, f := range []struct{ name, v string }{{"drain_grace", s.DrainGrace}, {"shutdown_timeout", s.ShutdownTimeout}} {
+		if f.v == "" {
+			continue
+		}
+		if d, err := time.ParseDuration(f.v); err != nil || d < 0 {
+			return fmt.Errorf("server: %s %q is not a duration, such as 25s", f.name, f.v)
+		}
+	}
+	return nil
 }
 
 // Console is the web console the server serves.
@@ -235,6 +261,17 @@ const DefaultEgressListen = "127.0.0.1:3128"
 // Disk is the disk blob kind's block.
 type Disk struct {
 	Dir string `json:"dir,omitempty"`
+}
+
+// GCS is the gcs blob kind's block: a Google Cloud Storage bucket, reached
+// with Application Default Credentials (Workload Identity on GKE,
+// GOOGLE_APPLICATION_CREDENTIALS, or gcloud's application default login).
+type GCS struct {
+	Bucket string `json:"bucket"`
+	Prefix string `json:"prefix,omitempty"`
+	// Endpoint is an emulator's base URL, such as http://127.0.0.1:4443.
+	// Empty means Google Cloud Storage itself.
+	Endpoint string `json:"endpoint,omitempty"`
 }
 
 // DockerSandbox is the docker sandbox kind's block. Each run's tools
@@ -451,6 +488,12 @@ func (s *System) Defaults() {
 	if sp.Execution.Concurrency == 0 {
 		sp.Execution.Concurrency = 4
 	}
+	if sp.Server.DrainGrace == "" {
+		sp.Server.DrainGrace = DefaultDrainGrace.String()
+	}
+	if sp.Server.ShutdownTimeout == "" {
+		sp.Server.ShutdownTimeout = DefaultShutdownTimeout.String()
+	}
 	if sp.Rooms.CoalesceAbove == 0 {
 		sp.Rooms.CoalesceAbove = rooms.DefaultCoalesceAbove
 	}
@@ -520,6 +563,9 @@ func (s System) check(kinds Kinds) error {
 	if _, err := sp.Rooms.Config(); err != nil {
 		return fmt.Errorf("system: %w", err)
 	}
+	if err := sp.Server.check(); err != nil {
+		return fmt.Errorf("system: %w", err)
+	}
 	if sp.Bus.Kind == "redis" {
 		return errors.New("system: bus: the redis bus was removed; use kind: postgres, which shares the stores' database, or leave bus out")
 	}
@@ -576,6 +622,8 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &Disk{}, true
 	case "blobs.s3":
 		return &S3{}, true
+	case "blobs.gcs":
+		return &GCS{}, true
 	case "embedder.hashing":
 		return &HashingEmbedder{}, true
 	case "embedder.openai":
@@ -676,6 +724,10 @@ func checkBlock(where string, blk any) error {
 			if d, err := time.ParseDuration(b.Timeout); err != nil || d <= 0 {
 				return fmt.Errorf("%s: timeout is a duration, such as 60s", where)
 			}
+		}
+	case *GCS:
+		if b.Bucket == "" {
+			return fmt.Errorf("%s: bucket is required", where)
 		}
 	case *S3:
 		if b.Bucket == "" {

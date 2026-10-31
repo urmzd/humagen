@@ -157,6 +157,7 @@ import type {
   PutClientCapabilitiesBodyPart2,
   QueryJournalResponse,
   QuestionAnswer,
+  Readiness,
   RememberOutcomeDecisionBody,
   Resolution,
   ReviseAgentBody,
@@ -893,6 +894,21 @@ export class ApiClient {
   async getHealthRaw(options?: RequestOptions): Promise<ApiResponse<string>> {
     const path = "/healthz";
     return this.rawRequest<string>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Whether this process should be sent traffic. It is ready once it has finished starting, while its database and event bus answer, and until it starts draining to stop. A failed check is named, never explained; the reason is in the server's log. */
+  async getReadiness(options?: RequestOptions): Promise<Readiness> {
+    const path = "/readyz";
+    return this.request<Readiness>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getReadinessRaw(options?: RequestOptions): Promise<ApiResponse<Readiness>> {
+    const path = "/readyz";
+    return this.rawRequest<Readiness>("GET", path, {
       ...options,
     });
   }

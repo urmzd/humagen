@@ -334,6 +334,11 @@ func NoProjectCalled(name string) error {
 // what the conversation's project chain, its channel and the agent itself
 // bring (see contextIn).
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
+	// Refused before anything is posted, so a refused turn leaves no
+	// message without a run behind it.
+	if p.Draining() {
+		return runs.Run{}, ErrDraining
+	}
 	cfg := p.Settings(tenant)
 	meta := map[string]string{runs.MetaAsk: t.Text}
 	if t.TestSkill != nil {
