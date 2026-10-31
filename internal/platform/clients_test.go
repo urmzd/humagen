@@ -477,7 +477,7 @@ func TestTheNumberOfClientsIsCapped(t *testing.T) {
 	create(t, p, tenant, gh("gh-two", "acme-labs"))
 
 	// With no policy the defaults apply.
-	if caps := p.ClientCaps("globex"); caps != clients.DefaultCaps() {
+	if caps, err := p.ClientCaps("globex"); err != nil || caps != clients.DefaultCaps() {
 		t.Fatalf("caps with no policy = %+v", caps)
 	}
 }

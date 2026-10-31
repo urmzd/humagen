@@ -788,7 +788,7 @@ func TestDeleteKeepsThePolicy(t *testing.T) {
 	if err := p.DeleteProject(ctx, tenant, "Initech", ada); !errors.Is(err, projects.ErrInUse) {
 		t.Fatalf("delete with only its limits left = %v", err)
 	}
-	if got := p.Policies.For(tenant, []string{"Initech"}, "", ""); len(got) != 1 || got[0].Scope != scope {
+	if got, err := p.Policies.For(tenant, []string{"Initech"}, "", ""); err != nil || len(got) != 1 || got[0].Scope != scope {
 		t.Fatalf("the policy after a refused delete = %+v", got)
 	}
 	if err := p.Policies.Delete(tenant, scope, "ada", time.Now()); err != nil {

@@ -1,12 +1,22 @@
 package readaudit_test
 
 import (
+	"testing"
+	"time"
+
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"testing"
-	"time"
 )
+
+func list(t *testing.T, s *readaudit.Store, tenant string, from, to time.Time) []readaudit.Record {
+	t.Helper()
+	got, err := s.List(tenant, from, to, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
 
 func TestReadsSurviveRestartAndRetention(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
@@ -24,11 +34,11 @@ func TestReadsSurviveRestartAndRetention(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := s.List("acme", at.Add(-time.Hour), at.Add(time.Hour), 100)
+		got := list(t, s, "acme", at.Add(-time.Hour), at.Add(time.Hour))
 		if len(got) != 1 || got[0].Subject != want.Subject || got[0].Route != want.Route {
 			t.Fatalf("restart = %#v", got)
 		}
-		if len(s.List("other", at.Add(-time.Hour), at.Add(time.Hour), 100)) != 0 {
+		if len(list(t, s, "other", at.Add(-time.Hour), at.Add(time.Hour))) != 0 {
 			t.Fatal("cross tenant read")
 		}
 		if err := s.Retain("acme", at.Add(time.Hour)); err != nil {
@@ -38,7 +48,7 @@ func TestReadsSurviveRestartAndRetention(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(s.List("acme", at.Add(-time.Hour), at.Add(time.Hour), 100)) != 0 {
+		if len(list(t, s, "acme", at.Add(-time.Hour), at.Add(time.Hour))) != 0 {
 			t.Fatal("retention lost on replay")
 		}
 	})
@@ -56,7 +66,7 @@ func TestFailedWritesDoNotPermitOrLoseAnAudit(t *testing.T) {
 	if s.Add("acme", r) == nil {
 		t.Fatal("unrecorded read permitted")
 	}
-	if len(s.List("acme", at.Add(-time.Hour), at.Add(time.Hour), 100)) != 0 {
+	if len(list(t, s, "acme", at.Add(-time.Hour), at.Add(time.Hour))) != 0 {
 		t.Fatal("failed write changed memory")
 	}
 	st.Fail(nil)
@@ -67,17 +77,17 @@ func TestFailedWritesDoNotPermitOrLoseAnAudit(t *testing.T) {
 	if s.Retain("acme", at.Add(time.Hour)) == nil {
 		t.Fatal("failed delete accepted")
 	}
-	if len(s.List("acme", at.Add(-time.Hour), at.Add(time.Hour), 100)) != 1 {
+	if len(list(t, s, "acme", at.Add(-time.Hour), at.Add(time.Hour))) != 1 {
 		t.Fatal("failed retention lost record")
 	}
 	again, err := readaudit.Open(st)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(again.List("acme", at.Add(-time.Hour), at.Add(time.Hour), 100)) != 1 {
+	if len(list(t, again, "acme", at.Add(-time.Hour), at.Add(time.Hour))) != 1 {
 		t.Fatal("record lost on replay")
 	}
-	if len(again.List("acme", at.Add(-32*24*time.Hour), at.Add(time.Hour), 100)) != 0 {
+	if len(list(t, again, "acme", at.Add(-32*24*time.Hour), at.Add(time.Hour))) != 0 {
 		t.Fatal("unbounded window accepted")
 	}
 }

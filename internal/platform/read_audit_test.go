@@ -26,7 +26,13 @@ func TestBreakGlassChecksOrdinaryRolesAndCachesWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 		start := time.Now().Add(-time.Second)
-		count := func() int { return len(p.ReadAudit.List(tenant, start, time.Now().Add(time.Second), 500)) }
+		count := func() int {
+			rows, err := p.ReadAudit.List(tenant, start, time.Now().Add(time.Second), 500)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return len(rows)
+		}
 		ordinary := gov
 		ordinary.Subject = "owner"
 		if !p.Seer(p.AuditedReader(ordinary, "GET /api/projects/{name}")).Project("Secret") || count() != 0 {
@@ -117,10 +123,10 @@ func TestAuditOnlyWorkspacesFollowTheirInboxRetention(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(again.List("short", now.Add(-10*24*time.Hour), now, 100)) != 0 {
+		if rows, err := again.List("short", now.Add(-10*24*time.Hour), now, 100); err != nil || len(rows) != 0 {
 			t.Fatal("short retention was not replayed")
 		}
-		if len(again.List("default", now.Add(-10*24*time.Hour), now, 100)) != 1 {
+		if rows, err := again.List("default", now.Add(-10*24*time.Hour), now, 100); err != nil || len(rows) != 1 {
 			t.Fatal("default retention discarded a kept read")
 		}
 	})

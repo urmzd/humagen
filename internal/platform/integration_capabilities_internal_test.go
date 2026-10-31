@@ -126,7 +126,7 @@ func TestNativeGitHubAndSlackEffectsRespectExternalMessagesPolicy(t *testing.T) 
 	t.Cleanup(func() { _ = p.Close() })
 	scope := operations.Scope{Kind: "workspace"}
 	policy := func(external, files operations.Level) {
-		current := p.Operations.Policy("t", scope)
+		current, _ := p.Operations.Policy("t", scope)
 		if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: scope, Rules: map[operations.Category]operations.Level{operations.ExternalMessages: external, operations.WriteFiles: files}}, current.Version, "admin", time.Now()); err != nil {
 			t.Fatal(err)
 		}

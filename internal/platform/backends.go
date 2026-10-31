@@ -246,17 +246,17 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("people", err)
 	p.Threads, err = threads.Open(perRequest)
 	keep("threads", err)
-	p.Policies, err = policy.Open(st)
+	p.Policies, err = policy.Open(perRequest)
 	keep("policies", err)
 	p.setups, err = openAgentSetups(st)
 	keep("agent setups", err)
 	keep("agent setup admission", p.RegisterAgentTestGate(setupGate{p: p}))
-	p.Operations, err = operations.Open(st)
+	p.Operations, err = operations.Open(perRequest)
 	keep("operations", err)
 	if err == nil {
 		keep("operation publication guard", p.RegisterPublicationGuard(p))
 	}
-	p.CallPolicies, err = callpolicy.Open(st)
+	p.CallPolicies, err = callpolicy.Open(perRequest)
 	keep("call policies", err)
 	var shared []usage.Option
 	if cfg.Backends.Counters != nil {
@@ -264,11 +264,11 @@ func (p *Platform) openStores(cfg Config) error {
 	}
 	p.Usage, err = usage.Open(perRequest, shared...)
 	keep("usage", err)
-	p.AuditReferences, err = auditrefs.Open(st)
+	p.AuditReferences, err = auditrefs.Open(perRequest)
 	keep("audit references", err)
-	p.Audit, err = audit.Open(st)
+	p.Audit, err = audit.Open(perRequest)
 	keep("audit", err)
-	p.ReadAudit, err = readaudit.Open(st)
+	p.ReadAudit, err = readaudit.Open(perRequest)
 	keep("read audit", err)
 	p.Inbox, err = inbox.OpenStore(perRequest)
 	keep("inbox", err)
