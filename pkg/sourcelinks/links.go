@@ -1,16 +1,20 @@
 // Package sourcelinks matches resource metadata to explicit project-link rules.
 // A match never grants source access or permissions on the external service.
+//
+// It reads and writes the database per request (pkg/state, per request): it
+// holds no rules or suggestions in memory, so any number of processes on one
+// database agree, and it does not need pkg/state's single-writer lock.
 package sourcelinks
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/state"
@@ -60,32 +64,31 @@ type Match struct {
 	Rules   []string `json:"rules"`
 }
 
+// Store keeps each tenant's rules in a state.Store, one record per rule
+// keyed by its ID, and reads them per request.
 type Store struct {
-	mu   sync.RWMutex
-	by   map[string]map[string]Rule
-	kept *state.Table[Rule]
+	st state.Store
 }
 
-func New() *Store { return &Store{by: map[string]map[string]Rule{}} }
+// rulesNamespace holds rules, keyed by ID, and in each tenant the head:
+// a stamp every new rule moves, so two processes adding rules at once
+// cannot both count under MaxRules.
+const (
+	rulesNamespace = "source_link_rules"
+	ruleHead       = "#head"
+)
+
+// New returns a store in this process's memory.
+func New() *Store { s, _ := Open(nil); return s }
+
+// Open returns a store on st, which may be shared with other processes. A nil
+// st keeps rules in this process's memory.
 func Open(st state.Store) (*Store, error) {
-	s := New()
-	s.kept = state.NewTable[Rule](st, "source_link_rules")
-	err := s.kept.Load(func(tenant, key string, rule Rule) error {
-		if rule.ID != key {
-			return ErrInvalid
-		}
-		if err := check(rule); err != nil {
-			return err
-		}
-		if s.by[tenant] == nil {
-			s.by[tenant] = map[string]Rule{}
-		}
-		s.by[tenant][key] = rule
-		return nil
-	})
-	return s, err
+	if st == nil {
+		st = state.NewMemory()
+	}
+	return &Store{st: st}, nil
 }
-
 func check(rule Rule) error {
 	if !knowledge.ValidName(rule.ID) || len(rule.Pattern) == 0 || len(rule.Pattern) > 256 || strings.TrimSpace(rule.Project) == "" || len(rule.Project) > 64 || len(rule.Channel) > 40 || len(rule.CopiedFrom) > 200 {
 		return ErrInvalid
@@ -115,43 +118,79 @@ func (s *Store) put(tenant string, rule Rule, expected *Rule, guard bool) (Rule,
 	if err := check(rule); err != nil {
 		return Rule{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	old, exists := s.by[tenant][rule.ID]
-	if guard && ((expected == nil && exists) || (expected != nil && (!exists || old != *expected))) {
-		return Rule{}, ErrConflict
-	}
-	if exists && old.CopiedFrom != "" && !reflect.DeepEqual(old, rule) {
-		return Rule{}, fmt.Errorf("%w: copied rules remain off", ErrInvalid)
-	}
-	if !exists && len(s.by[tenant]) >= MaxRules {
-		return Rule{}, ErrLimit
-	}
-	if err := s.kept.Put(tenant, rule.ID, rule); err != nil {
+	err := state.Retry(func() error {
+		var old Rule
+		at, err := lookup(s.st, rulesNamespace, tenant, rule.ID, &old)
+		exists := err == nil
+		if err != nil && !errors.Is(err, state.ErrNotFound) {
+			return err
+		}
+		if guard && ((expected == nil && exists) || (expected != nil && (!exists || old != *expected))) {
+			return ErrConflict
+		}
+		if exists && old.CopiedFrom != "" && !reflect.DeepEqual(old, rule) {
+			return fmt.Errorf("%w: copied rules remain off", ErrInvalid)
+		}
+		w := &write{}
+		if exists {
+			w.put(tenant, rule.ID, rule, at)
+			return w.commit(s.st, rulesNamespace)
+		}
+		rules, head, err := s.all(tenant)
+		if err != nil {
+			return err
+		}
+		if len(rules) >= MaxRules {
+			return ErrLimit
+		}
+		w.put(tenant, rule.ID, rule, state.Missing)
+		w.bump(tenant, ruleHead, head)
+		return w.commit(s.st, rulesNamespace)
+	})
+	if err != nil {
 		return Rule{}, err
 	}
-	if s.by[tenant] == nil {
-		s.by[tenant] = map[string]Rule{}
-	}
-	s.by[tenant][rule.ID] = rule
 	return rule, nil
 }
-func (s *Store) List(tenant string) []Rule {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+
+// all reads a tenant's rules by ID, and the version of its head (0 when it
+// has none). The head sorts before every rule ID and the bound fits one
+// page, so both are read at once.
+func (s *Store) all(tenant string) ([]Rule, int64, error) {
+	recs, err := all(s.st, rulesNamespace, tenant, "", MaxRules+1)
+	if err != nil {
+		return nil, 0, err
+	}
+	var head int64
 	out := []Rule{}
-	for _, rule := range s.by[tenant] {
+	for _, r := range recs {
+		if r.Key == ruleHead {
+			head = r.Version
+			continue
+		}
+		var rule Rule
+		if err := json.Unmarshal(r.Value, &rule); err != nil {
+			return nil, 0, fmt.Errorf("source links: %q: %w", r.Key, err)
+		}
 		out = append(out, rule)
 	}
-	slices.SortFunc(out, func(a, b Rule) int { return strings.Compare(a.ID, b.ID) })
-	return out
+	return out, head, nil
+}
+
+// List returns a tenant's rules by ID.
+func (s *Store) List(tenant string) ([]Rule, error) {
+	rules, _, err := s.all(tenant)
+	return rules, err
 }
 func (s *Store) Get(tenant, id string) (Rule, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	rule, ok := s.by[tenant][id]
-	if !ok {
+	if id == ruleHead {
 		return Rule{}, ErrNotFound
+	}
+	var rule Rule
+	if _, err := lookup(s.st, rulesNamespace, tenant, id, &rule); errors.Is(err, state.ErrNotFound) {
+		return Rule{}, ErrNotFound
+	} else if err != nil {
+		return Rule{}, err
 	}
 	return rule, nil
 }
@@ -160,23 +199,28 @@ func (s *Store) DeleteIfCurrent(tenant, id string, expected Rule) error {
 	return s.delete(tenant, id, &expected)
 }
 func (s *Store) delete(tenant, id string, expected *Rule) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if expected != nil {
-		if actual, ok := s.by[tenant][id]; !ok || actual != *expected {
+	if id == ruleHead {
+		return ErrNotFound
+	}
+	return state.Retry(func() error {
+		var existing Rule
+		at, err := lookup(s.st, rulesNamespace, tenant, id, &existing)
+		ok := err == nil
+		if err != nil && !errors.Is(err, state.ErrNotFound) {
+			return err
+		}
+		if expected != nil && (!ok || existing != *expected) {
 			return ErrConflict
 		}
-	}
-	if existing, ok := s.by[tenant][id]; !ok {
-		return ErrNotFound
-	} else if existing.CopiedFrom != "" {
-		return fmt.Errorf("%w: copied rules remain off", ErrConflict)
-	}
-	if err := s.kept.Delete(tenant, id); err != nil {
-		return err
-	}
-	delete(s.by[tenant], id)
-	return nil
+		if !ok {
+			return ErrNotFound
+		} else if existing.CopiedFrom != "" {
+			return fmt.Errorf("%w: copied rules remain off", ErrConflict)
+		}
+		w := &write{}
+		w.ops = append(w.ops, state.DeleteAt(tenant, id, at))
+		return w.commit(s.st, rulesNamespace)
+	})
 }
 
 // Match evaluates at most 200 rules and 400 metadata values. Ambiguity is
@@ -187,7 +231,13 @@ func (s *Store) Match(tenant string, resource Resource) ([]Match, error) {
 
 // MatchCandidate previews one unsaved rule without writing state or applying a link.
 func (s *Store) MatchCandidate(tenant string, resource Resource, candidate *Rule) ([]Match, error) {
-	rules := s.List(tenant)
+	if err := checkResource(resource); err != nil {
+		return nil, err
+	}
+	rules, err := s.List(tenant)
+	if err != nil {
+		return nil, err
+	}
 	if candidate != nil {
 		copy := *candidate
 		copy.ID = "preview-candidate"
@@ -199,19 +249,6 @@ func (s *Store) MatchCandidate(tenant string, resource Resource, candidate *Rule
 			return nil, err
 		}
 		rules = append(rules, copy)
-	}
-	if len(resource.Provider) == 0 || len(resource.Provider) > 64 || resource.Attributes == nil || len(resource.ID) == 0 || len(resource.ID) > 256 || len(resource.Attributes) > 8 {
-		return nil, ErrInvalid
-	}
-	for key, values := range resource.Attributes {
-		if len(key) > 64 || len(values) > 50 {
-			return nil, ErrInvalid
-		}
-		for _, value := range values {
-			if len(value) > 512 {
-				return nil, ErrInvalid
-			}
-		}
 	}
 	byDestination := map[[2]string]Match{}
 	for _, rule := range rules {
@@ -264,41 +301,62 @@ func (s *Store) RestoreDisabled(tenant, destination, operation string, rules []R
 	if len(operation) == 0 || len(operation) > 200 || len(rules) > MaxRules {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	staged := map[string]Rule{}
-	for _, rule := range rules {
-		sum := sha256.Sum256([]byte(operation + "\x00" + rule.ID))
-		rule.ID = "copy-" + hex.EncodeToString(sum[:16])
-		rule.Project = destination
-		rule.Mode = Off
-		rule.CopiedFrom = operation
-		if err := check(rule); err != nil {
+	return state.Retry(func() error {
+		have, head, err := s.all(tenant)
+		if err != nil {
 			return err
 		}
-		if existing, ok := s.by[tenant][rule.ID]; ok {
-			if !reflect.DeepEqual(existing, rule) {
+		byID := make(map[string]Rule, len(have))
+		for _, rule := range have {
+			byID[rule.ID] = rule
+		}
+		staged := map[string]Rule{}
+		for _, rule := range rules {
+			sum := sha256.Sum256([]byte(operation + "\x00" + rule.ID))
+			rule.ID = "copy-" + hex.EncodeToString(sum[:16])
+			rule.Project = destination
+			rule.Mode = Off
+			rule.CopiedFrom = operation
+			if err := check(rule); err != nil {
+				return err
+			}
+			if existing, ok := byID[rule.ID]; ok {
+				if !reflect.DeepEqual(existing, rule) {
+					return ErrInvalid
+				}
+				continue
+			}
+			staged[rule.ID] = rule
+		}
+		if len(staged) == 0 {
+			return nil
+		}
+		if len(have)+len(staged) > MaxRules {
+			return ErrLimit
+		}
+		w := &write{}
+		for id, rule := range staged {
+			w.put(tenant, id, rule, state.Missing)
+		}
+		w.bump(tenant, ruleHead, head)
+		return w.commit(s.st, rulesNamespace)
+	})
+}
+
+// checkResource bounds resource metadata before it is matched or kept.
+func checkResource(resource Resource) error {
+	if len(resource.Provider) == 0 || len(resource.Provider) > 64 || resource.Attributes == nil || len(resource.ID) == 0 || len(resource.ID) > 256 || len(resource.Attributes) > 8 {
+		return ErrInvalid
+	}
+	for key, values := range resource.Attributes {
+		if len(key) > 64 || len(values) > 50 {
+			return ErrInvalid
+		}
+		for _, value := range values {
+			if len(value) > 512 {
 				return ErrInvalid
 			}
-			continue
 		}
-		staged[rule.ID] = rule
-	}
-	if len(s.by[tenant])+len(staged) > MaxRules {
-		return ErrLimit
-	}
-	b := s.kept.Batch()
-	for id, rule := range staged {
-		b.Put(tenant, id, rule)
-	}
-	if err := b.Commit(); err != nil {
-		return err
-	}
-	if s.by[tenant] == nil {
-		s.by[tenant] = map[string]Rule{}
-	}
-	for id, rule := range staged {
-		s.by[tenant][id] = rule
 	}
 	return nil
 }

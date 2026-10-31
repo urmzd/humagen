@@ -452,7 +452,12 @@ func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 func (s *Server) listSources(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"sources": s.P.SourcesAs(who)})
+	sources, err := s.P.SourcesAs(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"sources": sources})
 }
 
 func (s *Server) createSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {

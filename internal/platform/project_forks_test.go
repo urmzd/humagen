@@ -375,7 +375,8 @@ func TestProjectForkExplicitArchivesArePassiveConfinedAndReplayable(t *testing.T
 		if err == nil {
 			t.Fatal("archive accepted direct run")
 		}
-		for _, rule := range again.SourceLinks.List(tenant) {
+		rules, _ := again.SourceLinks.List(tenant)
+		for _, rule := range rules {
 			if rule.Project == "Copy" && (rule.Mode != sourcelinks.Off || rule.Pattern != "original") {
 				t.Fatalf("copied rule activated or read a new snapshot: %+v", rule)
 			}

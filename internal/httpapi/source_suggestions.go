@@ -32,7 +32,12 @@ func (s *Server) listSourceSuggestions(w http.ResponseWriter, r *http.Request, w
 		}
 		limit = parsed
 	}
-	ok(w, http.StatusOK, map[string]any{"suggestions": s.P.SourceSuggestionsAs(who, query.Get("client"), query.Get("knowledge"), status, limit)})
+	rows, err := s.P.SourceSuggestionsAs(who, query.Get("client"), query.Get("knowledge"), status, limit)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"suggestions": rows})
 }
 func (s *Server) seenSourceSuggestion(next func(http.ResponseWriter, *http.Request, auth.Principal)) func(http.ResponseWriter, *http.Request, auth.Principal) {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {

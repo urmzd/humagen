@@ -121,7 +121,7 @@ func TestCatalogConnectorsAreCrawledAndDeclared(t *testing.T) {
 	if _, err := f.p.CrawlConnector(t.Context(), auth.Principal{Tenant: "tenant", Subject: "owner", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead}}, "mine"); err == nil {
 		t.Fatal("a failed crawl succeeded")
 	}
-	if got := f.p.CatalogStore.List("tenant", []string{"mine"}, 10); len(got) != 1 {
+	if got, err := f.p.CatalogStore.List("tenant", []string{"mine"}, 10); err != nil || len(got) != 1 {
 		t.Fatalf("after a failed crawl: %v", got)
 	}
 	// A connector no longer declared is removed with its entries.
