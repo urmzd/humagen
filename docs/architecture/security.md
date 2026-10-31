@@ -167,9 +167,11 @@ no permission, grants nothing.
   those containers needs the Docker socket, and **access to the Docker socket
   is host-root equivalent**: a compromised Humagen process could start a
   privileged container and own the host. Run the `docker` driver only on a
-  host dedicated to sandboxes. A remote or Kubernetes driver, where Humagen
-  asks for instances without holding root anywhere, is the production target
-  and is not built. `unisolated` and `local` run tools with Humagen's own
+  host dedicated to sandboxes, or set `sandbox.docker.host` to drive a
+  daemon on a separate sandbox host over mutual TLS, so Humagen's own host
+  holds no socket; the client certificate is still root on the sandbox host.
+  A Kubernetes driver, where Humagen asks for instances without holding root
+  anywhere, is not built. `unisolated` and `local` run tools with Humagen's own
   privileges, and the shell is refused under `unisolated`.
 - **Tenant is never taken from a request.** It comes from the deployment or a
   verified token claim. A body that carries a `tenant` field is rejected.

@@ -7,7 +7,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/urmzd/anchor v0.5.1
 	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213
-	github.com/urmzd/playscape v0.10.0
+	github.com/urmzd/playscape v0.10.1-0.20261031004032-be43e20a833d
 	github.com/urmzd/saige v0.44.0
 	golang.org/x/oauth2 v0.37.0
 )

@@ -23,8 +23,8 @@ import (
 // sandboxFlags say where a run's tools execute (docs/reference/spec.md,
 // sandbox).
 type sandboxFlags struct {
-	kind, runtime, image, connectorsImage, workRoot *string
-	insecure                                        *bool
+	kind, runtime, image, connectorsImage, workRoot, host, tlsDir *string
+	insecure                                                      *bool
 }
 
 func addSandboxFlags(fs *flag.FlagSet, runtime string, insecure bool) sandboxFlags {
@@ -37,6 +37,8 @@ func addSandboxFlags(fs *flag.FlagSet, runtime string, insecure bool) sandboxFla
 		insecure:        fs.Bool("sandbox-insecure-development-runtime", insecure, `with -sandbox=docker, accept a runtime that shares the host's kernel, such as runc. For development machines without gVisor, running your own code`),
 		image:           fs.String("sandbox-image", spec.DefaultSandboxImage, "with -sandbox=docker, the image a run's shell and files are in"),
 		connectorsImage: fs.String("sandbox-connectors-image", "", "with -sandbox=docker, the image stdio MCP servers run in. Empty means -sandbox-image"),
+		host:            fs.String("sandbox-host", "", `with -sandbox=docker, a Docker daemon on a sandbox host ("tcp://sandbox:2376", "ssh://user@sandbox" or "unix:///path"), so this server holds no Docker socket. Empty is the local daemon`),
+		tlsDir:          fs.String("sandbox-tls-dir", "", "with -sandbox-host, the directory with ca.pem, cert.pem and key.pem; a tcp:// host requires it"),
 		workRoot:        fs.String("sandbox-work-root", "", "with -sandbox=docker, the host directory runs' work directories are made in; the Docker daemon must be able to mount it. With -sandbox=local, where instances are made. Empty means the system temporary directory"),
 	}
 }
@@ -63,6 +65,10 @@ func openSandbox(ctx context.Context, o Options, l loaded, f sandboxFlags, log *
 			runtime = spec.RuntimeGVisor
 		}
 		name := "docker/" + runtime
+		host := strings.TrimSpace(*f.host)
+		if host != "" {
+			name += " on " + host
+		}
 		var cfg poolleaser.Config
 		if l.cfg.System.Spec.Sandbox.Kind == "docker" {
 			b, _ := spec.Block[spec.DockerSandbox](l.cfg.System.Spec.Sandbox)
@@ -83,6 +89,8 @@ func openSandbox(ctx context.Context, o Options, l loaded, f sandboxFlags, log *
 			InsecureDevelopmentRuntime: *f.insecure,
 			Log:                        warnWriter{log: log, sandbox: name},
 			WorkRoot:                   sandboxWorkRoot(*f.workRoot),
+			Host:                       host,
+			TLSDir:                     strings.TrimSpace(*f.tlsDir),
 		})
 		if err != nil {
 			// Fail closed, not at start: the server answers, and every
