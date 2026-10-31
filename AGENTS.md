@@ -55,7 +55,7 @@ and evidence when implementing a requirement.
 ## Layout
 
 - `internal/legacy`: every name from before the rename to Humagen that is still read, the names kept for stored data, and the notes printed at start. `pkg/call`: the call primitive. `pkg/runs`: the run index and statistics. `pkg/auth`: principals, roles, OIDC. `pkg/authz`: the policy language. `pkg/auth/mockidp`: the loopback development provider.
-- `pkg/journal`: the event log, queries and traces. `pkg/alerts`: rules and alerts. `pkg/knowledge`: sources and search.
+- `pkg/journal`: the event log, queries and traces. `pkg/alerts`: rules and alerts. `pkg/knowledge`: sources and search. `pkg/catalog`: what exists in connected systems, metadata only, searched hybrid (RFC 0005).
 - `pkg/memory`: what an agent carries between conversations, as notes over `pkg/drive`. `pkg/drive`: versioned file trees (manifests on `pkg/state`, content by hash in `pkg/blob`), installed into and diffed from a run's files. `internal/platform/hooks.go`: housekeeping runs.
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/join`: whether each agent takes a message that names none (the dynamic router). `pkg/prefs`: a person's own settings.
