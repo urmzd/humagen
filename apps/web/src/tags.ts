@@ -120,6 +120,51 @@ export function insertTag(
   return { text: text.slice(0, at.start) + tag + rest, caret: at.start + tag.length };
 }
 
+// An agent's name as a mention writes it: `@` and the name, starting a word.
+const AGENT_MENTION = /(^|[\s(])@([a-z0-9][a-z0-9_-]*)(?![A-Za-z0-9_-])/gi;
+
+/**
+ * The agents a draft mentions, once each in the order written: each
+ * `@name` that starts a word, outside code, naming one of `agents`. The
+ * draft is the one place a message's agents are kept, so removing the words
+ * removes the agent.
+ */
+export function mentionsIn(text: string, agents: Iterable<string>): string[] {
+  const known = new Set(agents);
+  const out: string[] = [];
+  for (const m of text.matchAll(AGENT_MENTION)) {
+    const name = m[2] ?? "";
+    const at = (m.index ?? 0) + (m[1] ?? "").length;
+    const ticks = (text.slice(0, at).match(/`/g) ?? []).length;
+    if (ticks % 2 === 0 && known.has(name) && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+/**
+ * The draft with `@name ` written at the caret, as the `@` completion writes
+ * it, and where the caret goes after it. A draft that already mentions the
+ * agent is kept as it is.
+ */
+export function withMention(
+  text: string,
+  caret: number,
+  name: string,
+): { text: string; caret: number } {
+  if (mentionsIn(text, [name]).length > 0) return { text, caret };
+  const before = text.slice(0, caret);
+  const lead = before && !/[\s(]$/.test(before) ? " " : "";
+  const tag = `${lead}@${name} `;
+  const rest = text.slice(caret).replace(/^ /, "");
+  return { text: before + tag + rest, caret: before.length + tag.length };
+}
+
+/** The draft with every mention of an agent taken out, with the space after it. */
+export function withoutMention(text: string, name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(^|[\\s(])@${escaped}(?![A-Za-z0-9_-]) ?`, "g"), "$1");
+}
+
 /** A mention kind, as completion offers it. */
 export interface KindOption {
   kind: string;

@@ -7,8 +7,11 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 )
 
-// MaxRuns is how many agents answer one message, side by side.
-const MaxRuns = 3
+// MaxAll is how many of a thread's selected agents answer one untagged
+// message side by side (ModeAll). A message's tags have no such cap: each
+// agent it tags answers, however many it tags, and budgets and admission
+// bound what they spend.
+const MaxAll = 3
 
 // Rule names which rule decided what a message starts.
 type Rule string
@@ -88,7 +91,7 @@ type Input struct {
 // Decision is what a message starts.
 type Decision struct {
 	Rule Rule `json:"rule"`
-	// Agents answer, in order, at most MaxRuns. OpenName asks every agent, which the
+	// Agents answer, in order. OpenName asks every agent, which the
 	// platform resolves.
 	Agents []string `json:"agents"`
 	// Among is set when the thread's selected agents answer with ModeJoin:
@@ -98,14 +101,14 @@ type Decision struct {
 	Default bool `json:"default,omitempty"`
 	// Reason says why no agent answers, when none does.
 	Reason string `json:"reason,omitempty"`
-	// Mentions are the input's, with the agents beyond MaxRuns refused.
+	// Mentions are the input's.
 	Mentions []Mention `json:"mentions"`
 }
 
 // Decide applies the rules in order, and the first that applies decides:
 //
 //  1. a message that tags agents is answered by each tagged agent
-//     that can answer, at most MaxRuns, and by no default, even when none
+//     that can answer, however many it tags, and by no default, even when none
 //     can;
 //  2. one that tags only people, experts or a role starts no run, unless it
 //     names a skill in a thread with selected agents;
@@ -127,15 +130,11 @@ type Decision struct {
 func Decide(in Input) Decision {
 	ms := cloneMentions(in.Mentions)
 	agents, tagged, people, skill := []string{}, false, false, false
-	for i, m := range ms {
+	for _, m := range ms {
 		switch m.Kind {
 		case Agent:
 			tagged = true
 			if m.Refused != "" {
-				continue
-			}
-			if len(agents) == MaxRuns {
-				ms[i].Refused = fmt.Sprintf("at most %d agents answer one message", MaxRuns)
 				continue
 			}
 			agents = append(agents, m.Name)
@@ -162,7 +161,7 @@ func Decide(in Input) Decision {
 	case in.PostOnly:
 		d.Rule, d.Reason = RulePostOnly, "Posted only, so no agent answers."
 	case routed && (len(in.Routed) == 1 || in.Mode == ModeAll):
-		d.Rule, d.Agents = RuleRouted, slices.Clone(in.Routed[:min(len(in.Routed), MaxRuns)])
+		d.Rule, d.Agents = RuleRouted, slices.Clone(in.Routed[:min(len(in.Routed), MaxAll)])
 	case routed:
 		d.Rule, d.Agents, d.Among = RuleRouted, []string{OpenName}, slices.Clone(in.Routed)
 	case in.TagsOnly:

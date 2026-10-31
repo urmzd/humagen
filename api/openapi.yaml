@@ -2453,7 +2453,8 @@ paths:
         The message is posted as the caller, or as the person `act_as` names
         through a client that maps them; no field names an author, and a
         credential acting for nobody is refused (403). What the message
-        starts follows the tag rules: the agents it tags answer, at most 3,
+        starts follows the tag rules: every agent it tags answers, each
+        bounded by budgets and admission like any run,
         and a `$skill` with no agent tagged asks the agents; tagging only
         people or experts notifies them; posted only, nothing answers. A
         message a person posts as themselves, as the console does, that tags
@@ -9587,8 +9588,9 @@ components:
           type: string
         text: {type: string, maxLength: 8000}
         mentions:
+          description: Its tags, each once. Agents are not counted against a cap and are bounded by the text's length; at most 10 are people, experts, roles and skills, which each take a lookup of their own.
           type: array
-          maxItems: 10
+          maxItems: 4000
           items: {$ref: "#/components/schemas/ThreadMention"}
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         via:
@@ -9907,9 +9909,8 @@ components:
         thread: {$ref: "#/components/schemas/Thread"}
         message: {$ref: "#/components/schemas/ThreadMessage"}
         runs:
-          description: The runs it started, at most 3.
+          description: The runs it started, one for each agent it tags that answers, or at most 3 of the thread's selected agents.
           type: array
-          maxItems: 3
           items: {$ref: "#/components/schemas/Run"}
         notified:
           description: Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`.

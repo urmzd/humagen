@@ -5,8 +5,8 @@ import { conflictOf } from "./conflicts.ts";
 import type { Selection } from "./Plus.tsx";
 
 /**
- * A conversation's + selection: its agents and how they are routed to, and
- * where it lives, shown at once as it is changed and saved on the thread
+ * Where a conversation lives, from its + menu, shown at once as it is
+ * changed and saved on the thread
  * with PUT /api/threads/{id}. One save at a time: a change made while one
  * is in flight waits for it, then is saved from the version it answered,
  * so quick changes never send a version already gone. A refusal is said in
@@ -23,8 +23,6 @@ export function useThreadSelection(
   },
 ): { selection: Selection; select: (next: Selection) => void } {
   const saved: Selection = {
-    agents: th.agents ?? [],
-    mode: th.mode === "all" ? "all" : "join",
     project: th.project,
     channel: th.channel,
   };
@@ -44,8 +42,10 @@ export function useThreadSelection(
         title: from.title ?? "",
         visibility: from.visibility,
         default: from.default ?? "",
-        agents: next.agents,
-        mode: next.mode,
+        // The agents a thread selected before mentions replaced selecting
+        // are kept as they are: the console no longer changes them.
+        agents: from.agents ?? [],
+        ...(from.mode ? { mode: from.mode } : {}),
         ...(moved && next.project !== null
           ? { project: next.project === "" ? "~" : next.project, channel: next.channel }
           : {}),

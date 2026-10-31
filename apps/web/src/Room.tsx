@@ -42,13 +42,7 @@ import { OLD_SYSTEM_SENDER } from "./legacy.ts";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
-import {
-  emptySelection,
-  PlusMenu,
-  placeholderFor,
-  type Selection,
-  SelectionChips,
-} from "./Plus.tsx";
+import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { followRoom } from "./roomFollow.ts";
@@ -178,6 +172,7 @@ function RoomComposer({
   autoFocus,
   seed,
   plus,
+  onDraft,
   onPost,
 }: {
   /** The conversation it posts in, whose first message, posted where it started, may have said something. */
@@ -186,6 +181,8 @@ function RoomComposer({
   tags: Completion;
   autoFocus?: boolean;
   seed?: ComposerSeed;
+  /** Called as the text changes, so the + menu shows the agents it mentions. */
+  onDraft?: (text: string) => void;
   plus?: Parameters<typeof Composer>[0]["plus"];
   onPost: (text: string) => Promise<ThreadPosted>;
 }) {
@@ -213,6 +210,7 @@ function RoomComposer({
         queue={queue}
         autoFocus={autoFocus}
         seed={seed}
+        onDraft={onDraft}
         tags={tags}
         plus={plus}
       />
@@ -484,6 +482,8 @@ export function ThreadRoom({
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
+  // The draft, whose mentions are the + menu's agents.
+  const [draft, setDraft] = useState("");
   const shownView = onView ? (view ?? {}) : localView;
   const openPanel = (
     panel?: ConversationPanel,
@@ -867,19 +867,15 @@ export function ThreadRoom({
             <RoomComposer
               thread={id}
               seed={seed}
-              placeholder={
-                selection.agents.length > 0
-                  ? placeholderFor(selection)
-                  : th.visibility === "private"
-                    ? words.message
-                    : words.channel(th.channel)
-              }
+              placeholder={th.visibility === "private" ? words.message : words.channel(th.channel)}
               tags={tags}
+              onDraft={setDraft}
               plus={{
                 menu: (close, attach, leave) => (
                   <PlusMenu
                     onLeave={leave}
                     agents={tags.agents}
+                    {...mentionPicks(draft, tags.agents, setSeed)}
                     skills={tags.skills}
                     skillsFailed={tags.skillsFailed}
                     onSkill={(name) => {
@@ -1053,8 +1049,8 @@ export function ChannelPage({
   // see answers as one that does not exist), or the channel in it.
   const [missing, setMissing] = useState<"project" | "channel" | null>(null);
   const tags = useCompletion(project, agents, homes, topicsOf(projects, root, project), me, handle);
-  // The agents the + menu picked for the thread this channel's chat bar starts.
-  const [picked, setPicked] = useState<Selection>(emptySelection);
+  // The draft of the thread this channel's chat bar starts, whose mentions are the + menu's agents.
+  const [draft, setDraft] = useState("");
   const [seed, setSeed] = useState<ComposerSeed>();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
@@ -1162,25 +1158,26 @@ export function ChannelPage({
       {canRun && info && !info.archived && postsIn(projects, project) && (
         <RoomComposer
           seed={seed}
-          placeholder={picked.agents.length > 0 ? placeholderFor(picked) : words.startThread}
+          placeholder={words.startThread}
           tags={tags}
+          onDraft={setDraft}
           plus={{
             menu: (close, attach, leave) => (
               <PlusMenu
                 agents={tags.agents}
+                {...mentionPicks(draft, tags.agents, setSeed)}
                 skills={tags.skills}
                 skillsFailed={tags.skillsFailed}
                 onSkill={(name) => {
                   setSeed({ text: `$${name} `, mode: "prepend" });
                 }}
-                selection={picked}
-                onChange={setPicked}
+                selection={{ project, channel }}
+                onChange={() => {}}
                 onAttach={attach}
                 onClose={close}
                 onLeave={leave}
               />
             ),
-            chips: <SelectionChips selection={picked} onChange={setPicked} />,
           }}
           onPost={(text) =>
             // Started in a channel, a thread is shared there: the channel is where it was posted.
@@ -1190,7 +1187,6 @@ export function ChannelPage({
                 channel,
                 text,
                 visibility: "shared",
-                ...(picked.agents.length > 0 ? { agents: picked.agents, mode: picked.mode } : {}),
               })
               .then((p) => {
                 onOpenThread(p.thread.id);
