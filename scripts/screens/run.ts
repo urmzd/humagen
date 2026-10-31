@@ -207,6 +207,46 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       },
     },
     {
+      // The Not helpful flow: the rating, then a prompt with quick reasons
+      // (FEEDBACK_REASONS) and an optional comment, left open for capture.
+      name: "conversation-feedback-reasons",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        const agent = page.getByRole("article", { name: "helper message", exact: true }).first();
+        const rating = agent.getByRole("group", { name: "Rate this answer" });
+        const down = rating.getByRole("button", { name: "Not helpful", exact: true });
+        await down.waitFor();
+        // The rating is stored, so an earlier viewport left it selected:
+        // take it back first so the click asks again.
+        if ((await down.getAttribute("aria-pressed")) === "true") {
+          await down.click();
+          await page.waitForFunction(
+            (el) => el?.getAttribute("aria-pressed") === "false",
+            await down.elementHandle(),
+          );
+        }
+        await down.click();
+        const prompt = page.getByRole("dialog", { name: "What went wrong?", exact: true });
+        await prompt.waitFor();
+        const reasons = prompt.locator("button[aria-pressed]");
+        assert.deepEqual(await reasons.allTextContents(), [
+          "Wrong",
+          "Incomplete",
+          "Too slow",
+          "Other",
+        ]);
+        const incomplete = prompt.getByRole("button", { name: "Incomplete", exact: true });
+        await incomplete.click();
+        assert.equal(await incomplete.getAttribute("aria-pressed"), "true");
+        await prompt.getByRole("textbox").fill("It skipped the owner for each step.");
+        const box = await prompt.boundingBox();
+        assert.ok(
+          box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0),
+          "The feedback prompt must stay in the viewport",
+        );
+      },
+    },
+    {
       name: "conversation-agent-time",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
