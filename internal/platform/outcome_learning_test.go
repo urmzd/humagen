@@ -39,9 +39,6 @@ func learningRun(t *testing.T, p *platform.Platform) (auth.Principal, string) {
 	p.Runs.Observe(event.Envelope{Tenant: tenant, Run: id, Type: event.TypeAction, Data: wire.BodyOf(event.TypeAction, action), Time: time.Now()})
 	end, _ := json.Marshal(wire.Lifecycle{Text: "The plan is ready."})
 	p.Runs.Observe(event.Envelope{Tenant: tenant, Run: id, Type: event.TypeCompleted, Data: wire.BodyOf(event.TypeCompleted, end), Time: time.Now()})
-	if err := p.Runs.Flush(); err != nil {
-		t.Fatal(err)
-	}
 	return who, id
 }
 func learnedDefinition(name string) library.Definition {

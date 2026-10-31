@@ -174,10 +174,16 @@ func (p *Platform) openStores(cfg Config) error {
 			errs = append(errs, fmt.Errorf("platform: %s: %w", what, err))
 		}
 	}
+	// Stores that read and write per request open on the shared store,
+	// which needs no lock; with none, they share st.
+	perRequest := cfg.Backends.Shared
+	if perRequest == nil {
+		perRequest = st
+	}
 	var err error
 	p.AgentColors, err = agentcolors.Open(st)
 	keep("agent colors", err)
-	p.Runs, err = runs.Open(st)
+	p.Runs, err = runs.Open(perRequest)
 	keep("runs", err)
 	p.Schedules, err = OpenSchedules(st)
 	keep("schedules", err)
@@ -197,10 +203,6 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(st)
 	keep("evals", err)
-	perRequest := cfg.Backends.Shared
-	if perRequest == nil {
-		perRequest = st
-	}
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
 	p.Prefs, err = prefs.Open(st)
@@ -301,13 +303,10 @@ func (p *Platform) openStores(cfg Config) error {
 }
 
 // flush writes what the stores that write behind have not written yet: the
-// journal, the run index and the usage ledger.
+// journal and the usage ledger.
 func (p *Platform) flush() {
 	if err := p.Journal.Flush(); err != nil {
 		p.log.Error("platform: journal could not be written", "error", err)
-	}
-	if err := p.Runs.Flush(); err != nil {
-		p.log.Error("platform: runs could not be written", "error", err)
 	}
 	if err := p.Usage.Flush(); err != nil {
 		p.log.Error("platform: usage could not be written", "error", err)

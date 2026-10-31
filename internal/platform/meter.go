@@ -83,7 +83,7 @@ func (p *Platform) observeUsage(ctx context.Context, e event.Envelope) {
 		return
 	}
 	if added.Micros > 0 {
-		run, _ = p.Runs.Spend(run.ID, added.Micros)
+		run, _ = p.Runs.Spend(run.Tenant, run.ID, added.Micros)
 	}
 	p.enforce(ctx, run, added)
 }
@@ -204,7 +204,7 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 	}
 	// From here a call reported late changes the ledger, by what goes beyond
 	// this total, and not the run's Spent, which settles into its caller now.
-	p.Runs.SetUsage(run.ID, recorded, micros)
+	p.Runs.SetUsage(run.Tenant, run.ID, recorded, micros)
 	p.halting.Delete(run.ID)
 	p.holding.Range(func(k, _ any) bool {
 		if key, _ := k.(string); strings.HasPrefix(key, run.ID+"\x00") {

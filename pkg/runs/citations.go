@@ -87,33 +87,31 @@ func (x *Index) RecordCitation(e event.Envelope, metadata *CitationMetadata) err
 		failed := metadata.RefreshFailed
 		next.RefreshFailed = &failed
 	}
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[e.Run]
-	if !ok || r.Tenant != e.Tenant {
-		return ErrNotFound
-	}
-	copy := *r
-	copy.Citations = CloneCitations(r.Citations)
-	index := slices.IndexFunc(copy.Citations, func(c Citation) bool { return c.ID == next.ID })
-	if index >= 0 {
-		if copy.Citations[index].Mode != "" && next.Mode == "" {
-			return nil
-		}
-		copy.Citations[index] = next
-	} else {
-		if len(copy.Citations) >= MaxCitations {
-			return nil
-		}
-		copy.Citations = append(copy.Citations, next)
-	}
-	if x.kept != nil {
-		if err := x.kept.runs.Put(copy.Tenant, copy.ID, x.kept.record(&copy)); err != nil {
+	return x.do(e.Tenant, func(t *txn) error {
+		r, err := t.run(e.Run)
+		if err != nil {
 			return err
 		}
-	}
-	r.Citations = copy.Citations
-	return nil
+		if r == nil {
+			return ErrNotFound
+		}
+		citations := CloneCitations(r.Citations)
+		index := slices.IndexFunc(citations, func(c Citation) bool { return c.ID == next.ID })
+		if index >= 0 {
+			if citations[index].Mode != "" && next.Mode == "" {
+				return errSkip
+			}
+			citations[index] = next
+		} else {
+			if len(citations) >= MaxCitations {
+				return errSkip
+			}
+			citations = append(citations, next)
+		}
+		r.Citations = citations
+		t.touch(r)
+		return nil
+	})
 }
 
 // CitationPayload preserves the established wire body while adding only
@@ -128,5 +126,8 @@ type CitationPayload struct {
 func citationSnapshot(r *Run) Run {
 	out := *r
 	out.Citations = CloneCitations(r.Citations)
+	// Where the store keeps the run is not part of it: two processes, or
+	// two indexes, return the same run the same.
+	out.seq, out.observedBy, out.lastSeq, out.openAttached, out.tally = 0, "", 0, 0, nil
 	return out
 }

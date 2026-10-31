@@ -20,14 +20,14 @@ func LearningSnapshot(run Run) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// GuardLearning serializes a learning write with run mutations. The callback
-// may write only its destination store; it must not read or mutate this index.
+// GuardLearning commits a learning write only while the run's outcome is the
+// one reviewed: it reads the run, and calls commit when its snapshot still
+// matches. The callback may write only its destination store; it must not read
+// or mutate this index.
 func (x *Index) GuardLearning(tenant, id, snapshot string, commit func(Run) error) error {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	run, ok := x.runs[id]
-	if !ok || run.Tenant != tenant {
-		return ErrNotFound
+	run, _, err := x.get(tenant, id)
+	if err != nil {
+		return err
 	}
 	if run.Status != Completed || run.Outcome == nil || snapshot == "" || LearningSnapshot(*run) != snapshot {
 		return ErrLearningConflict
