@@ -93,7 +93,7 @@ func TestStandingAssignmentsCannotPublishPrivateConversationGoals(t *testing.T) 
 	if len(f.p.Schedules.List("acme")) != 0 {
 		t.Fatal("private assignment left an active or paused schedule")
 	}
-	if _, ok := f.p.Operations.Assignment("acme", "private"); ok {
+	if _, ok, _ := f.p.Operations.Assignment("acme", "private"); ok {
 		t.Fatal("unsafe private contract was saved")
 	}
 }
@@ -122,7 +122,7 @@ func TestStandingAssignmentPausesWhenOwnerLosesProjectAccess(t *testing.T) {
 	if err != nil || !paused {
 		t.Fatal("revoked work was not paused")
 	}
-	a, ok := f.p.Operations.Assignment("acme", "duty")
+	a, ok, _ := f.p.Operations.Assignment("acme", "duty")
 	if !ok || a.State != operations.Blocked {
 		t.Fatalf("refusal was not recorded: %+v", a)
 	}

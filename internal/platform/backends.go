@@ -249,7 +249,7 @@ func (p *Platform) openStores(cfg Config) error {
 	p.setups, err = openAgentSetups(st)
 	keep("agent setups", err)
 	keep("agent setup admission", p.RegisterAgentTestGate(setupGate{p: p}))
-	p.Operations, err = operations.Open(st)
+	p.Operations, err = operations.Open(perRequest)
 	keep("operations", err)
 	if err == nil {
 		keep("operation publication guard", p.RegisterPublicationGuard(p))

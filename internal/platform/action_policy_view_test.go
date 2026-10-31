@@ -35,7 +35,7 @@ func TestEffectivePolicyKeepsHiddenAncestorIdentityConfined(t *testing.T) {
 		if p.Seer(who).Project("Secret") || !p.Seer(who).Project("SharedChild") {
 			t.Fatal("test does not isolate a hidden ancestor")
 		}
-		view := p.ActionPolicy(who, operations.Scope{Kind: "project", Name: "SharedChild"})
+		view, _ := p.ActionPolicy(who, operations.Scope{Kind: "project", Name: "SharedChild"})
 		raw, err := json.Marshal(view)
 		if err != nil {
 			t.Fatal(err)

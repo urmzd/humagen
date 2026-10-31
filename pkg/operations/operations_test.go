@@ -36,14 +36,17 @@ func TestDurableControlsAndTightening(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !s.Paused("acme", "helper") || s.Paused("other", "helper") {
-			t.Fatal("pause lost or crossed tenant")
+		if paused, err := s.Paused("acme", "helper"); err != nil || !paused {
+			t.Fatalf("pause lost: %v", err)
 		}
-		if got := s.Decision("acme", scopes, operations.CallAgents); got != operations.Never {
-			t.Fatalf("decision = %s", got)
+		if paused, err := s.Paused("other", "helper"); err != nil || paused {
+			t.Fatalf("pause crossed tenant: %v", err)
 		}
-		if got := s.Decision("acme", scopes, operations.WriteFiles); got != operations.Unspecified {
-			t.Fatalf("missing rule grants = %s", got)
+		if got, err := s.Decision("acme", scopes, operations.CallAgents); err != nil || got != operations.Never {
+			t.Fatalf("decision = %s, %v", got, err)
+		}
+		if got, err := s.Decision("acme", scopes, operations.WriteFiles); err != nil || got != operations.Unspecified {
+			t.Fatalf("missing rule grants = %s, %v", got, err)
 		}
 	})
 }
@@ -68,17 +71,17 @@ func TestAssignmentReservationAndRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, _ := s.Assignment("t", "a"); got.RunID != "run" || !got.DueAt.Equal(a.DueAt) {
+		if got, _, _ := s.Assignment("t", "a"); got.RunID != "run" || !got.DueAt.Equal(a.DueAt) {
 			t.Fatalf("lost pending work: %+v", got)
 		}
 		if err = s.Settle("t", "run", true, at); err != nil {
 			t.Fatal(err)
 		}
-		got, _ := s.Assignment("t", "a")
+		got, _, _ := s.Assignment("t", "a")
 		if got.State != operations.Result {
 			t.Fatalf("settled = %+v", got)
 		}
-		if got := s.Assignments("t", 200, func(a operations.Assignment) bool { return a.Project == "hidden" }); len(got) != 0 {
+		if got, err := s.Assignments("t", 200, func(a operations.Assignment) bool { return a.Project == "hidden" }); err != nil || len(got) != 0 {
 			t.Fatal("hidden assignment leaked")
 		}
 	})
@@ -92,8 +95,8 @@ func TestFailedWriteAndContractBounds(t *testing.T) {
 	if _, err := s.SetControl("t", "a", operations.Control{Paused: true}, 0, "x", at); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("write = %v", err)
 	}
-	if s.Paused("t", "a") {
-		t.Fatal("failed pause changed memory")
+	if paused, err := s.Paused("t", "a"); err != nil || paused {
+		t.Fatalf("failed pause was kept: %v", err)
 	}
 	st.Fail(nil)
 	h := operations.Handoff{ID: "h", From: "a", To: "b", Project: "p", Goal: "Review", DoneWhen: "Reviewed", State: operations.Requested, Chain: []string{"a", "b", "a"}}
@@ -127,7 +130,7 @@ func TestDeadlinesSurviveRestartWithoutInventingCompletion(t *testing.T) {
 		if err != nil || len(notices) != 1 {
 			t.Fatalf("deadline = %+v, %v", notices, err)
 		}
-		a, _ = s.Assignment("t", a.ID)
+		a, _, _ = s.Assignment("t", a.ID)
 		if a.State != operations.NeedsPerson || a.RunID != "still-running" {
 			t.Fatalf("deadline invented an ending: %+v", a)
 		}
@@ -137,7 +140,7 @@ func TestDeadlinesSurviveRestartWithoutInventingCompletion(t *testing.T) {
 	})
 }
 
-func TestReplayRejectsMalformedPolicyRatherThanDroppingItsRestriction(t *testing.T) {
+func TestReadRejectsMalformedPolicyRatherThanDroppingItsRestriction(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		for _, policy := range []operations.Policy{
 			{Scope: operations.Scope{Kind: "workspace"}, Rules: map[operations.Category]operations.Level{operations.CallAgents: "unexpected"}},
@@ -149,8 +152,13 @@ func TestReplayRejectsMalformedPolicyRatherThanDroppingItsRestriction(t *testing
 			if err := table.Put("acme", "policy:workspace:", map[string]any{"policy": policy}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := operations.Open(st); !errors.Is(err, operations.ErrInvalid) {
-				t.Fatalf("malformed policy was accepted on replay: %+v, %v", policy, err)
+			s, err := operations.Open(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scopes := []operations.Scope{{Kind: "workspace"}}
+			if _, err := s.Decision("acme", scopes, operations.CallAgents); !errors.Is(err, operations.ErrInvalid) {
+				t.Fatalf("malformed policy was accepted: %+v, %v", policy, err)
 			}
 		}
 	})
@@ -181,7 +189,7 @@ func TestCompletedRunSettlesAfterItsDeadlineAcrossRestart(t *testing.T) {
 		if err := s.Settle("t", "native-run", true, at.Add(3*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
-		a, _ = s.Assignment("t", a.ID)
+		a, _, _ = s.Assignment("t", a.ID)
 		if a.State != operations.Result {
 			t.Fatalf("deadline hid a real recorded result: %+v", a)
 		}
