@@ -107,7 +107,10 @@ func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src kno
 	if who.Kind == auth.Machine || who.Subject == "" {
 		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
-	c, ok := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	c, ok, err := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	if err != nil {
+		return mcptools.Secret{}, err
+	}
 	if !ok || c.Kind != credentials.Reference || !p.refAllowed(who.Tenant, who.Subject, c.Ref) {
 		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
@@ -469,7 +472,10 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 	if provider == nil {
 		return nil, knowledge.ProviderError{Cause: knowledge.Unavailable}
 	}
-	connection, _ := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	connection, _, err := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	if err != nil {
+		return nil, err
+	}
 	secret, err := p.sourceSecret(ctx, who, src)
 	if err != nil {
 		return nil, err
@@ -481,7 +487,10 @@ func (p *Platform) searchSourceLive(ctx context.Context, who auth.Principal, src
 	if ctx.Err() != nil {
 		return nil, knowledge.ProviderError{Cause: knowledge.Interrupted}
 	}
-	currentConnection, connected := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	currentConnection, connected, err := p.Credentials.Get(who.Tenant, who.Subject, sourceCredentialID(src))
+	if err != nil {
+		return nil, err
+	}
 	if !connected || currentConnection.Kind != credentials.Reference || currentConnection.Ref != connection.Ref || !currentConnection.UpdatedAt.Equal(connection.UpdatedAt) || !p.refAllowed(who.Tenant, who.Subject, currentConnection.Ref) {
 		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}

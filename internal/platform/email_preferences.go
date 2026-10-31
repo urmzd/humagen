@@ -10,6 +10,19 @@ import (
 	"github.com/urmzd/humagen/pkg/prefs"
 )
 
+// PreferencesOf is a person's preferences where what they chose only narrows
+// or decorates: one that cannot be read is logged and taken as Defaults,
+// which turn nothing on. A path that writes or answers with them reads
+// p.Prefs.Get and returns its error.
+func (p *Platform) PreferencesOf(tenant, subject string) prefs.Preferences {
+	got, err := p.Prefs.Get(tenant, subject)
+	if err != nil {
+		p.log.Warn("platform: preferences could not be read; using the defaults", "tenant", tenant, "error", err)
+		return prefs.Defaults()
+	}
+	return got
+}
+
 // SavePreferences applies the caller's own preferences and records email opt-in
 // changes before mutation. Recipient addresses remain operator-owned configuration.
 func (p *Platform) SavePreferences(who auth.Principal, value prefs.Preferences, personal ...prefs.Personal) (prefs.Preferences, error) {
@@ -21,7 +34,11 @@ func (p *Platform) SavePreferences(who auth.Principal, value prefs.Preferences, 
 	lock := &p.emailPreferenceLocks[hash.Sum64()%uint64(len(p.emailPreferenceLocks))]
 	lock.Lock()
 	defer lock.Unlock()
-	old := p.Prefs.Get(who.Tenant, who.Subject).Personal
+	current, err := p.Prefs.Get(who.Tenant, who.Subject)
+	if err != nil {
+		return prefs.Preferences{}, err
+	}
+	old := current.Personal
 	if len(personal) == 0 {
 		return p.Prefs.Set(who.Tenant, who.Subject, value)
 	}

@@ -41,7 +41,7 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := again.Get("acme", "ada")
+		got := get(t, again, "acme", "ada")
 		if got.DisplayName != "Ada" || got.Theme != Dark || got.Accent != "teal" || !got.OnboardedAt.Equal(at) ||
 			len(got.Pinned) != 2 || got.Pinned[0] != "t-2" || !got.HasPhoto || got.PhotoVersion != 1 {
 			t.Fatalf("after restart = %+v", got)
@@ -50,13 +50,13 @@ func TestRestart(t *testing.T) {
 		if err != nil || mime != "image/png" || !bytes.Equal(data, png) {
 			t.Fatalf("photo after restart = %d bytes, %q, %v", len(data), mime, err)
 		}
-		if b := again.Get("acme", "bob"); b.HasPhoto || b.PhotoVersion != 2 {
+		if b := get(t, again, "acme", "bob"); b.HasPhoto || b.PhotoVersion != 2 {
 			t.Fatalf("bob after restart = %+v", b)
 		}
 		if _, _, err := again.Photo("acme", "bob"); !errors.Is(err, ErrNoPhoto) {
 			t.Fatalf("bob's cleared photo = %v", err)
 		}
-		if other := again.Get("other", "ada"); other.DisplayName != "" {
+		if other := get(t, again, "other", "ada"); other.DisplayName != "" {
 			t.Fatalf("another tenant sees %+v", other)
 		}
 	})
@@ -84,15 +84,15 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	if _, err := s.MarkOnboarded("acme", "new", time.Now()); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("MarkOnboarded = %v", err)
 	}
-	if got := s.Get("acme", "ada"); got.DisplayName != "Ada" || got.HasPhoto || got.PhotoVersion != 0 || len(got.PinnedProjects) != 0 {
+	if got := get(t, s, "acme", "ada"); got.DisplayName != "Ada" || got.HasPhoto || got.PhotoVersion != 0 || len(got.PinnedProjects) != 0 {
 		t.Fatalf("after failed writes = %+v", got)
 	}
-	if got := s.Get("acme", "new"); !got.OnboardedAt.IsZero() {
+	if got := get(t, s, "acme", "new"); !got.OnboardedAt.IsZero() {
 		t.Fatalf("a failed write onboarded %+v", got)
 	}
 	f.Fail(nil)
 	again, _ := Open(f)
-	if got := again.Get("acme", "ada"); got.DisplayName != "Ada" {
+	if got := get(t, again, "acme", "ada"); got.DisplayName != "Ada" {
 		t.Fatalf("after restart = %+v", got)
 	}
 }

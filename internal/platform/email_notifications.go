@@ -100,10 +100,14 @@ func (p *Platform) DeliverEmailNotifications(ctx context.Context) (int, error) {
 			return sent, ctx.Err()
 		}
 		who := p.emailReader(r.tenant, r.subject)
-		if !p.EmailAvailable(who) || !p.Prefs.Get(r.tenant, r.subject).Personal.Email {
+		own, err := p.Prefs.Get(r.tenant, r.subject)
+		if err != nil {
+			return sent, err
+		}
+		if !p.EmailAvailable(who) || !own.Personal.Email {
 			continue
 		}
-		if err := p.EmailNotifications.RecheckEmailPolicy(r.tenant, r.subject, p.Prefs.Get(r.tenant, r.subject).Personal, p.now()); err != nil {
+		if err := p.EmailNotifications.RecheckEmailPolicy(r.tenant, r.subject, own.Personal, p.now()); err != nil {
 			return sent, err
 		}
 		queue, err := p.notificationsFor(who, p.EmailNotifications)
@@ -115,10 +119,14 @@ func (p *Platform) DeliverEmailNotifications(ctx context.Context) (int, error) {
 				return sent, nil
 			}
 			fresh := p.emailReader(r.tenant, r.subject)
-			if !p.EmailAvailable(fresh) || !p.Prefs.Get(r.tenant, r.subject).Personal.Email {
+			current, err := p.Prefs.Get(r.tenant, r.subject)
+			if err != nil {
+				return sent, err
+			}
+			if !p.EmailAvailable(fresh) || !current.Personal.Email {
 				break
 			}
-			dispatch := p.Prefs.Get(r.tenant, r.subject).Personal
+			dispatch := current.Personal
 			if !notifications.QuietUntil(dispatch, p.now()).IsZero() {
 				continue
 			}

@@ -57,9 +57,16 @@ func TestFortyRacersSeeingOneSubjectKeepOne(t *testing.T) {
 			})
 		}
 		wg.Wait()
-		recs, err := st.Load(context.Background(), "people")
+		all, err := st.Load(context.Background(), "people")
 		if err != nil {
 			t.Fatal(err)
+		}
+		// One person, under their subject; the rest index them.
+		var recs []state.Record
+		for _, r := range all {
+			if r.Tenant == "acme" && !strings.HasPrefix(r.Key, "\x1f") {
+				recs = append(recs, r)
+			}
 		}
 		p, err := s.Get("acme", "okta|00u1dana")
 		if err != nil || failed.Load() != 0 || len(recs) != 1 || s.Len("acme") != 1 {
@@ -306,6 +313,7 @@ func TestASightingThatChangesNothingWritesNothingForAnHour(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	st.writes.Store(0) // opening marks the directory indexed
 	at := signIn("okta|1", "Dana Scully", "viewer")
 	for _, when := range []time.Duration{0, time.Minute, 59 * time.Minute} {
 		if _, err := s.Seen("acme", at, t0.Add(when)); err != nil {

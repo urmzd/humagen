@@ -13,13 +13,21 @@ func (s *Store) RecheckEmailPolicy(tenant, subject string, p prefs.Personal, now
 	if s.namespace != emailNamespace || tenant == "" || subject == "" || now.IsZero() {
 		return ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	owner := [2]string{tenant, subject}
-	before := s.rows[owner]
-	rows := make(map[string]Entry, len(before))
+	return state.Retry(func() error {
+		read, err := s.read(tenant, subject)
+		if err != nil {
+			return err
+		}
+		return s.write(tenant, recheck(tenant, read, p, now))
+	})
+}
+
+// recheck is the ops that bring one person's prepared rows in line with
+// their policy now.
+func recheck(tenant string, read person, p prefs.Personal, now time.Time) []state.Op {
 	ops := []state.Op{}
-	for id, e := range before {
+	for _, r := range read.rows {
+		e := r.Entry
 		original := e
 		if !e.Acknowledged && !e.Suppressed {
 			configured := p.Notifications[e.Kind]
@@ -48,14 +56,9 @@ func (s *Store) RecheckEmailPolicy(tenant, subject string, p prefs.Personal, now
 				e.Delivery = ""
 			}
 		}
-		rows[id] = e
 		if original != e {
-			ops = append(ops, entryOp(tenant, e))
+			ops = append(ops, entryOp(tenant, e, r.version))
 		}
 	}
-	if err := s.write(ops); err != nil {
-		return err
-	}
-	s.rows[owner] = rows
-	return nil
+	return ops
 }
