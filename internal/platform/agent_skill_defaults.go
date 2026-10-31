@@ -31,7 +31,10 @@ func (p *Platform) AgentSkills(tenant, agent string) (AgentSkillsView, error) {
 	if err != nil {
 		return AgentSkillsView{}, library.ErrNotFound
 	}
-	v := p.AgentSkillDefaults.Get(tenant, rev.Spec.Name)
+	v, err := p.AgentSkillDefaults.Get(tenant, rev.Spec.Name)
+	if err != nil {
+		return AgentSkillsView{}, err
+	}
 	if v.Version == 0 {
 		v.AgentRevision = rev.Rev
 	}
@@ -122,7 +125,10 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 		return AgentSkillsView{}, err
 	}
 
-	current := p.AgentSkillDefaults.Get(who.Tenant, rev.Spec.Name)
+	current, err := p.AgentSkillDefaults.Get(who.Tenant, rev.Spec.Name)
+	if err != nil {
+		return AgentSkillsView{}, err
+	}
 	for _, ref := range current.Skills {
 		if !who.Can(auth.ProjectsRead) {
 			return AgentSkillsView{}, projects.ErrForbidden
@@ -160,7 +166,11 @@ func (p *Platform) setAgentSkills(who auth.Principal, agent string, agentRevisio
 	return saved, err
 }
 func (p *Platform) defaultSkillsFitHome(tenant, agent, project string, tree *projects.Tree) bool {
-	for _, ref := range p.AgentSkillDefaults.Get(tenant, wire.NormalizeName(agent)).Skills {
+	defaults, err := p.AgentSkillDefaults.Get(tenant, wire.NormalizeName(agent))
+	if err != nil {
+		return false
+	}
+	for _, ref := range defaults.Skills {
 		latest, err := p.SkillLibrary.Find(tenant, ref.ID)
 		if err != nil {
 			return false
@@ -183,7 +193,10 @@ func (p *Platform) pinAgentSkillDefaults(ctx context.Context, tag event.Envelope
 	// Never believe a caller-supplied defaults marker.
 	wire.DeleteMeta(&tag, metaDefaultSkills)
 	wire.DeleteMeta(&tag, metaDefaultSkillRevision)
-	defaults := p.AgentSkillDefaults.Get(tag.Tenant, wire.NormalizeName(tag.Agent))
+	defaults, err := p.AgentSkillDefaults.Get(tag.Tenant, wire.NormalizeName(tag.Agent))
+	if err != nil {
+		return tag, err
+	}
 	if defaults.Version == 0 || len(defaults.Skills) == 0 {
 		return tag, nil
 	}
@@ -290,7 +303,10 @@ func (p *Platform) checkAgentSkillDefaults(req runtime.Request) error {
 // defaultSkillPreview uses the admission compiler to report whether the exact
 // defaults would be sent, then projects names through the reader's scope rule.
 func (p *Platform) defaultSkillPreview(ctx context.Context, who auth.Principal, project, agent string) *ContextLayer {
-	defaults := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(agent))
+	defaults, err := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(agent))
+	if err != nil {
+		return nil
+	}
 	names := []string{}
 	for _, ref := range defaults.Skills {
 		latest, err := p.LibrarySkill(who, ref.ID)
@@ -306,7 +322,7 @@ func (p *Platform) defaultSkillPreview(ctx context.Context, who auth.Principal, 
 	if len(names) == 0 {
 		return nil
 	}
-	_, err := p.pinAgentSkillDefaults(ctx, wire.NewEvent(wire.Raise{Tenant: who.Tenant, Agent: agent, Origin: runs.OriginAPI, Actor: ActorOf(who)}), call.Edge{}, project)
+	_, err = p.pinAgentSkillDefaults(ctx, wire.NewEvent(wire.Raise{Tenant: who.Tenant, Agent: agent, Origin: runs.OriginAPI, Actor: ActorOf(who)}), call.Edge{}, project)
 	layer := nameLayer("agent_skills", agent, names, library.MaxDefaultSkills)
 	if err != nil {
 		layer.Sent = false

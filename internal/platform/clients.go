@@ -468,7 +468,12 @@ func (a clientAgents) Lookup(token string) (string, bool) {
 // built is left unseated and said so: it answers nothing until it is fixed.
 func (p *Platform) restore() {
 	for _, surface := range clients.Surfaces() {
-		for _, c := range p.Clients.On(surface) {
+		on, err := p.Clients.On(surface)
+		if err != nil {
+			p.log.Error("platform: clients could not be read, so none on this surface were started", "surface", surface, "error", err)
+			continue
+		}
+		for _, c := range on {
 			_, secrets, err := p.credentials(c.Tenant, c.ID, c.Credentials, ClientInput{})
 			var st *seat
 			if err == nil {

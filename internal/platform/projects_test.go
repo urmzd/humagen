@@ -113,7 +113,9 @@ func oldSettings(t *testing.T, st state.Store, tenantName string, setupAt time.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Write(t.Context(), "settings", state.Put(tenantName, "settings", raw)); err != nil {
+	// A database an earlier version wrote has no mark that its settings
+	// were moved out.
+	if err := st.Write(t.Context(), "settings", state.Put(tenantName, "settings", raw), state.Delete("", "migrated:v1")); err != nil {
 		t.Fatal(err)
 	}
 }

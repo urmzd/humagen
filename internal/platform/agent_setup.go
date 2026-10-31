@@ -5,11 +5,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,55 +63,93 @@ type AgentSetup struct {
 	TestTag              string         `json:"test_tag,omitempty"`
 }
 
+// agentSetups are the setups agents are made through. They are read and
+// written per request (pkg/state, per request), so every process on one
+// database sees the same setups, and they do not need pkg/state's
+// single-writer lock. In the namespace "agent-setups":
+//
+//	<tenant>/<agent>   a setup (AgentSetup)
+//	<tenant>/#count    how many setups the tenant holds
+//
+// A setup's Version only grows: a write at a version no greater than the
+// one stored lost to another writer, and is refused.
 type agentSetups struct {
-	mu      sync.RWMutex
-	records map[string]map[string]AgentSetup
-	kept    *state.Table[AgentSetup]
-	locks   sync.Map
+	rec recordSet
+	// locks serialize the steps of one setup within this process. Across
+	// processes, a write at a stale Version is refused.
+	locks sync.Map
 }
 
+const setupCount = "#count"
+
 func openAgentSetups(st state.Store) (*agentSetups, error) {
-	s := &agentSetups{records: map[string]map[string]AgentSetup{}, kept: state.NewTable[AgentSetup](st, "agent-setups")}
-	err := s.kept.Load(func(tenant, name string, record AgentSetup) error {
-		if record.Name != name || record.Owner == "" || record.Version < 1 {
-			return operations.ErrInvalid
-		}
-		if s.records[tenant] == nil {
-			s.records[tenant] = map[string]AgentSetup{}
-		}
-		if len(s.records[tenant]) >= maxAgentSetups {
-			return operations.ErrInvalid
-		}
-		s.records[tenant][name] = record
-		return nil
-	})
-	return s, err
-}
-func (s *agentSetups) get(tenant, name string) (AgentSetup, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	record, ok := s.records[tenant][name]
-	raw, _ := json.Marshal(record)
-	var copy AgentSetup
-	_ = json.Unmarshal(raw, &copy)
-	return copy, ok
-}
-func (s *agentSetups) put(tenant string, record AgentSetup) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	records := s.records[tenant]
-	if records == nil {
-		records = map[string]AgentSetup{}
+	if st == nil {
+		st = state.NewMemory()
 	}
-	if _, exists := records[record.Name]; !exists && len(records) >= maxAgentSetups {
+	return &agentSetups{rec: recordSet{st: st, namespace: "agent-setups"}}, nil
+}
+
+// get reads one setup, and whether there is one.
+func (s *agentSetups) get(tenant, name string) (AgentSetup, bool, error) {
+	var record AgentSetup
+	if name == "" || strings.HasPrefix(name, "#") {
+		return AgentSetup{}, false, nil
+	}
+	_, err := s.rec.lookup(tenant, name, &record)
+	switch {
+	case errors.Is(err, state.ErrNotFound):
+		return AgentSetup{}, false, nil
+	case err != nil:
+		return AgentSetup{}, false, fmt.Errorf("platform: read agent setup: %w", err)
+	}
+	return record, true, nil
+}
+
+// put writes a setup at a Version greater than the one stored, and counts a
+// new one against maxAgentSetups in the same write.
+func (s *agentSetups) put(tenant string, record AgentSetup) error {
+	if record.Name == "" || strings.HasPrefix(record.Name, "#") || record.Owner == "" || record.Version < 1 {
 		return operations.ErrInvalid
 	}
-	if err := s.kept.Put(tenant, record.Name, record); err != nil {
-		return err
-	}
-	records[record.Name] = record
-	s.records[tenant] = records
-	return nil
+	return state.Retry(func() error {
+		var cur AgentSetup
+		v, err := s.rec.lookup(tenant, record.Name, &cur)
+		if err != nil && !errors.Is(err, state.ErrNotFound) {
+			return err
+		}
+		if err == nil && cur.Version >= record.Version {
+			return operations.ErrConflict
+		}
+		op, err := recordOp(tenant, record.Name, record, versionOf(v))
+		if err != nil {
+			return err
+		}
+		ops := []state.Op{op}
+		if v == 0 {
+			var n int
+			cv, err := s.rec.lookup(tenant, setupCount, &n)
+			if err != nil && !errors.Is(err, state.ErrNotFound) {
+				return err
+			}
+			if err != nil {
+				// No count is kept yet: count what is there.
+				page, _, lerr := s.rec.list(tenant, state.Query{Limit: maxAgentSetups + 1})
+				if lerr != nil {
+					return lerr
+				}
+				n = len(page)
+			}
+			if n >= maxAgentSetups {
+				return operations.ErrInvalid
+			}
+			cnt, err := recordOp(tenant, setupCount, n+1, versionOf(cv))
+			if err != nil {
+				return err
+			}
+			ops = append(ops, cnt)
+		}
+		return s.rec.write(ops...)
+	})
 }
 func (s *agentSetups) lock(tenant, name string) *sync.Mutex {
 	v, _ := s.locks.LoadOrStore(tenant+"\x00"+name, &sync.Mutex{})
@@ -130,7 +168,9 @@ func (p *Platform) CreateAgentBy(ctx context.Context, who auth.Principal, spec w
 	defer lock.Unlock()
 	p.admission.Lock()
 	defer p.admission.Unlock()
-	if record, ok := p.setups.get(who.Tenant, spec.Name); ok && record.Phase != "ready" {
+	if record, ok, err := p.setups.get(who.Tenant, spec.Name); err != nil {
+		return wire.Revision{}, err
+	} else if ok && record.Phase != "ready" {
 		return wire.Revision{}, operations.ErrConflict
 	}
 	return p.Agents.Create(ctx, who.Tenant, spec, who.Subject)
@@ -156,7 +196,10 @@ func (p *Platform) checkSetupSpec(ctx context.Context, who auth.Principal, spec 
 	return p.SpecWrittenBy(ctx, who, previous, spec)
 }
 func (p *Platform) AgentSetup(who auth.Principal, name string) (AgentSetup, error) {
-	record, ok := p.setups.get(who.Tenant, name)
+	record, ok, err := p.setups.get(who.Tenant, name)
+	if err != nil {
+		return AgentSetup{}, err
+	}
 	if !ok || who.Kind != auth.User || record.Owner != who.Subject || !p.Seer(who).Project(record.Plan.Project) {
 		return AgentSetup{}, operations.ErrNotFound
 	}
@@ -296,7 +339,9 @@ func (p *Platform) CreateAgentSetup(ctx context.Context, who auth.Principal, pla
 	lock := p.setups.lock(who.Tenant, spec.Name)
 	lock.Lock()
 	defer lock.Unlock()
-	if old, ok := p.setups.get(who.Tenant, spec.Name); ok {
+	if old, ok, err := p.setups.get(who.Tenant, spec.Name); err != nil {
+		return AgentSetup{}, err
+	} else if ok {
 		if old.Owner != who.Subject || !reflect.DeepEqual(old.Plan, plan) {
 			return AgentSetup{}, operations.ErrConflict
 		}
@@ -332,7 +377,10 @@ func (p *Platform) AmendAgentSetup(ctx context.Context, who auth.Principal, name
 	lock := p.setups.lock(who.Tenant, name)
 	lock.Lock()
 	defer lock.Unlock()
-	record, ok := p.setups.get(who.Tenant, name)
+	record, ok, err := p.setups.get(who.Tenant, name)
+	if err != nil {
+		return AgentSetup{}, err
+	}
 	if !ok || record.Owner != who.Subject {
 		return AgentSetup{}, operations.ErrNotFound
 	}
@@ -340,7 +388,7 @@ func (p *Platform) AmendAgentSetup(ctx context.Context, who auth.Principal, name
 		return AgentSetup{}, operations.ErrConflict
 	}
 	p.admission.Lock()
-	plan, err := p.validateSetupPlan(ctx, who, plan, &wire.Revision{Spec: record.Plan.Spec})
+	plan, err = p.validateSetupPlan(ctx, who, plan, &wire.Revision{Spec: record.Plan.Spec})
 	if err != nil {
 		p.admission.Unlock()
 		return AgentSetup{}, err
@@ -466,7 +514,10 @@ func (p *Platform) ResumeAgentSetup(ctx context.Context, who auth.Principal, nam
 	lock := p.setups.lock(who.Tenant, name)
 	lock.Lock()
 	defer lock.Unlock()
-	record, _ := p.setups.get(who.Tenant, name)
+	record, _, err := p.setups.get(who.Tenant, name)
+	if err != nil {
+		return AgentSetup{}, err
+	}
 	return p.resumeAgentSetup(ctx, who, record)
 }
 func (p *Platform) resumeAgentSetup(ctx context.Context, who auth.Principal, record AgentSetup) (AgentSetup, error) {
@@ -613,7 +664,10 @@ func (p *Platform) setupSkillsMatch(tenant string, record AgentSetup) bool {
 type setupGate struct{ p *Platform }
 
 func (g setupGate) Ready(tenant, name string) bool {
-	record, ok := g.p.setups.get(tenant, name)
+	record, ok, err := g.p.setups.get(tenant, name)
+	if err != nil {
+		return false
+	}
 	if !ok || record.Phase == "ready" || record.Phase == "activating" {
 		return true
 	}
@@ -633,7 +687,7 @@ func (g setupGate) Ready(tenant, name string) bool {
 	return first.CreatedBy != record.Owner || first.Hash != record.RevisionHash
 }
 func (g setupGate) AllowTag(tag event.Envelope) bool {
-	record, ok := g.p.setups.get(tag.Tenant, tag.Agent)
+	record, ok, _ := g.p.setups.get(tag.Tenant, tag.Agent)
 	if !ok || record.TestTag == "" || record.TestTag != tag.ID || record.Owner != wire.ActorOf(tag).User || wire.ActorOf(tag).Bot || wire.Origin(tag) != runs.OriginAPI || record.Phase != "configured" {
 		return false
 	}
@@ -641,7 +695,7 @@ func (g setupGate) AllowTag(tag event.Envelope) bool {
 	return err == nil && rev.Rev == record.Revision && rev.Hash == record.RevisionHash && g.p.setupSkillsMatch(tag.Tenant, record)
 }
 func (g setupGate) AllowRequest(req runtime.Request) bool {
-	record, ok := g.p.setups.get(req.Tenant, req.Agent())
+	record, ok, _ := g.p.setups.get(req.Tenant, req.Agent())
 	if !ok || record.TestTag == "" || req.RunID != runtime.RunID(req.Tenant, record.TestTag) || record.Phase != "configured" {
 		return false
 	}
@@ -674,7 +728,9 @@ func (p *Platform) TestAgentSetup(ctx context.Context, who auth.Principal, name,
 	lock := p.setups.lock(who.Tenant, name)
 	lock.Lock()
 	defer lock.Unlock()
-	record, _ = p.setups.get(who.Tenant, name)
+	if record, _, err = p.setups.get(who.Tenant, name); err != nil {
+		return AgentSetup{}, err
+	}
 	if record.Phase != "configured" || len(text) == 0 || len(text) > 8000 {
 		return AgentSetup{}, operations.ErrInvalid
 	}
@@ -720,7 +776,9 @@ func (p *Platform) ActivateAgentSetup(ctx context.Context, who auth.Principal, n
 	lock := p.setups.lock(who.Tenant, name)
 	lock.Lock()
 	defer lock.Unlock()
-	record, _ = p.setups.get(who.Tenant, name)
+	if record, _, err = p.setups.get(who.Tenant, name); err != nil {
+		return AgentSetup{}, err
+	}
 	if record.Phase == "ready" {
 		record.TestTag = ""
 		return record, nil
@@ -783,7 +841,10 @@ func (p *Platform) lockSetupRevision(tenant, name string) (func(), error) {
 	}
 	lock := p.setups.lock(tenant, wire.NormalizeName(name))
 	lock.Lock()
-	if record, ok := p.setups.get(tenant, wire.NormalizeName(name)); ok && record.Phase != "ready" {
+	if record, ok, err := p.setups.get(tenant, wire.NormalizeName(name)); err != nil {
+		lock.Unlock()
+		return nil, err
+	} else if ok && record.Phase != "ready" {
 		lock.Unlock()
 		return nil, operations.ErrConflict
 	}

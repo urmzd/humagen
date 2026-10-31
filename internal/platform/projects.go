@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // ErrProjectExists and ErrProjectNotFound are the project store's own, so a
@@ -167,7 +168,13 @@ func (p *Platform) DeleteProject(_ context.Context, tenant, name string, w proje
 // filed in it, alert rules watching it, and its limits.
 func (p *Platform) projectUsers(tenant, name string) []string {
 	var out []string
-	for _, sc := range p.Schedules.List(tenant) {
+	// Schedules that cannot be read are named, so a delete is refused
+	// rather than allowed blind.
+	scheds, err := p.Schedules.List(tenant)
+	if err != nil {
+		out = append(out, "the schedules, which could not be read")
+	}
+	for _, sc := range scheds {
 		if sc.Context[runs.MetaProject] == name {
 			out = append(out, "the schedule "+sc.Name)
 		}
@@ -296,23 +303,31 @@ const migration = "migration"
 // start. A failed import fails the start and changes nothing, and one past the
 // cap names what it would have kept.
 func (p *Platform) migrateProjects() error {
-	p.settings.mu.Lock()
-	defer p.settings.mu.Unlock()
-	for _, tenant := range slices.Sorted(maps.Keys(p.settings.legacy)) {
+	legacy, _, done, err := p.settings.leftovers()
+	if err != nil || done {
+		return err
+	}
+	for _, tenant := range slices.Sorted(maps.Keys(legacy)) {
 		if !p.Projects.Stored(tenant) {
-			cfg := p.settings.by[tenant]
+			cfg, err := p.settings.get(tenant)
+			if err != nil {
+				return err
+			}
 			at := cfg.SetupAt
 			if at.IsZero() {
 				at = p.now()
 			}
 			var ps []projects.Project
-			for _, lp := range p.settings.legacy[tenant] {
+			for _, lp := range legacy[tenant] {
 				ps = append(ps, projects.Project{Name: lp.Name, Description: lp.Description})
 			}
-			kept := p.stillNamed(tenant, ps)
+			kept, err := p.stillNamed(tenant, ps)
+			if err != nil {
+				return err
+			}
 			// A record whose array was null held no projects: there is
 			// nothing to import unless something still names one.
-			if p.settings.legacy[tenant] != nil || len(kept) > 0 {
+			if legacy[tenant] != nil || len(kept) > 0 {
 				if err := p.Projects.Import(tenant, ps, kept, migration, at); err != nil {
 					if len(kept) > 0 {
 						return fmt.Errorf("platform: move the projects of %q out of its settings, keeping %s, which a schedule, an alert rule or a limit still names: %w", tenant, names(kept), err)
@@ -322,10 +337,16 @@ func (p *Platform) migrateProjects() error {
 				p.log.Info("platform: projects moved out of settings", "tenant", tenant, "projects", len(ps), "kept", names(kept))
 			}
 		}
-		if err := p.settings.put(tenant, p.settings.by[tenant]); err != nil {
+		err := p.settings.update(tenant, func(v *storedSettings) error {
+			if v.LegacyProjects == nil {
+				return state.ErrUnchanged
+			}
+			v.LegacyProjects = nil
+			return nil
+		})
+		if err != nil {
 			return fmt.Errorf("platform: clear the projects of %q from its settings: %w", tenant, err)
 		}
-		delete(p.settings.legacy, tenant)
 	}
 	return nil
 }
@@ -338,14 +359,18 @@ func (p *Platform) migrateProjects() error {
 // hold. A name the tree cannot hold (not a project's name, or one name
 // ignoring case with another) is logged and left, and what points at it is
 // refused until it is changed.
-func (p *Platform) stillNamed(tenant string, ps []projects.Project) []projects.Project {
+func (p *Platform) stillNamed(tenant string, ps []projects.Project) ([]projects.Project, error) {
 	by := map[string][]string{}
 	add := func(name, what string) {
 		if name != projects.Root {
 			by[name] = append(by[name], what)
 		}
 	}
-	for _, sc := range p.Schedules.List(tenant) {
+	scheds, err := p.Schedules.List(tenant)
+	if err != nil {
+		return nil, err
+	}
+	for _, sc := range scheds {
 		add(sc.Context[runs.MetaProject], "the schedule "+sc.Name)
 	}
 	for _, r := range p.Alerts.Rules(tenant) {
@@ -375,7 +400,7 @@ func (p *Platform) stillNamed(tenant string, ps []projects.Project) []projects.P
 			kept = append(kept, projects.Project{Name: name})
 		}
 	}
-	return kept
+	return kept, nil
 }
 
 // names lists projects' names, quoted, for a message.

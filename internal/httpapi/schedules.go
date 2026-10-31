@@ -53,14 +53,14 @@ type scheduleView struct {
 // had the name, filed wherever each was then: one moved out of a project, or
 // a name used again, keeps them. Each is shown only to a reader who may read
 // it where it lives, as GET /api/runs/{id} would.
-func (s *Server) viewOf(seer *platform.Seer, sc cron.Schedule, now time.Time) scheduleView {
-	about := s.P.Schedules.About(sc.Name)
+func (s *Server) viewOf(seer *platform.Seer, e platform.ScheduleEntry, now time.Time) scheduleView {
+	sc, about := e.Schedule, e.About
 	v := scheduleView{
 		schedule: schedule{
 			Name: sc.Name, Expression: sc.Expression, Agent: sc.Agent, Text: sc.Text,
 			Project: sc.Context[runs.MetaProject], Description: about.Description, Deliver: sc.Context[platform.MetaDeliver],
 		},
-		Paused:        s.P.Schedules.Paused(sc.Name),
+		Paused:        e.Paused,
 		Managed:       about.Managed,
 		CreatedBy:     sc.Context["created_by"],
 		CreatedByName: s.P.NameOf(sc.Tenant, sc.Context["created_by"]),
@@ -79,7 +79,12 @@ func (s *Server) listSchedules(w http.ResponseWriter, _ *http.Request, who auth.
 	now := time.Now()
 	out := []scheduleView{}
 	seer := s.P.Seer(who)
-	for _, sc := range s.P.Schedules.List(who.Tenant) {
+	all, err := s.P.Schedules.List(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, sc := range all {
 		// A schedule filed in a project the caller cannot see is not theirs
 		// to read.
 		if !seer.Project(sc.Context[runs.MetaProject]) {
@@ -110,7 +115,7 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, who auth
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, s.viewOf(s.P.Seer(who), sc, time.Now()))
+	s.viewNamed(w, http.StatusCreated, who, sc.Name)
 }
 
 // updateSchedule changes what a schedule runs and when. Its name cannot
@@ -135,7 +140,7 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 		fail(w, http.StatusBadRequest, "a schedule's name cannot change; delete it and create another")
 		return
 	}
-	if !s.filedBy(w, who, old) {
+	if !s.filedBy(w, who, old.Schedule) {
 		return
 	}
 	meta, valid := s.scheduleMeta(w, r, who, body, maps.Clone(old.Context))
@@ -148,13 +153,13 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 	}
 	about := platform.About{
 		Description: strings.TrimSpace(body.Description), UpdatedBy: who.Subject, UpdatedAt: time.Now().UTC(),
-		CreatedAt: s.P.Schedules.About(name).CreatedAt,
+		CreatedAt: old.About.CreatedAt,
 	}
 	if err := s.filed(who.Tenant, meta[runs.MetaProject], func() error { return s.P.Schedules.Replace(sc, about) }); err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.viewOf(s.P.Seer(who), sc, time.Now()))
+	s.viewNamed(w, http.StatusOK, who, name)
 }
 
 // filedBy holds the caller to being a member of the project a stored
@@ -262,11 +267,7 @@ func (s *Server) pauseSchedule(paused bool) handler {
 			s.problem(w, err)
 			return
 		}
-		if sc, _, err = s.P.Schedules.Get(who.Tenant, name); err != nil {
-			s.problem(w, err)
-			return
-		}
-		ok(w, http.StatusOK, s.viewOf(s.P.Seer(who), sc, time.Now()))
+		s.viewNamed(w, http.StatusOK, who, name)
 	}
 }
 
@@ -319,11 +320,21 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 }
 
 // scheduleIn is one of the caller's schedules, held to its project.
-func (s *Server) scheduleIn(w http.ResponseWriter, who auth.Principal, name string) (cron.Schedule, bool) {
-	sc, _, err := s.P.Schedules.Get(who.Tenant, name)
+func (s *Server) scheduleIn(w http.ResponseWriter, who auth.Principal, name string) (platform.ScheduleEntry, bool) {
+	e, err := s.P.Schedules.Entry(who.Tenant, name)
 	if err != nil {
 		s.problem(w, err)
-		return cron.Schedule{}, false
+		return platform.ScheduleEntry{}, false
 	}
-	return sc, s.filedBy(w, who, sc)
+	return e, s.filedBy(w, who, e.Schedule)
+}
+
+// viewNamed answers with one of the caller's schedules as it now reads.
+func (s *Server) viewNamed(w http.ResponseWriter, status int, who auth.Principal, name string) {
+	e, err := s.P.Schedules.Entry(who.Tenant, name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, status, s.viewOf(s.P.Seer(who), e, time.Now()))
 }

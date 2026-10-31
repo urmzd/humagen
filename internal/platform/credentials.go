@@ -178,7 +178,12 @@ func (p *Platform) surfacePerson(c clients.Client, tag event.Envelope) string {
 		return ""
 	}
 	person := ""
-	for _, other := range p.Clients.List(c.Tenant) {
+	all, err := p.Clients.List(c.Tenant)
+	if err != nil {
+		p.log.Error("platform: clients could not be read, so the run acts for nobody", "tenant", c.Tenant, "error", err)
+		return ""
+	}
+	for _, other := range all {
 		if other.Surface != clients.Slack || !other.Enabled || other.Identity.Team != c.Identity.Team || other.Slack == nil {
 			continue
 		}

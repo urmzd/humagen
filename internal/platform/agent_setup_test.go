@@ -413,8 +413,17 @@ func (r setupAmendRegistry) Revise(ctx context.Context, tenant string, spec wire
 
 func TestAgentSetupAmendmentRestartsAcrossRealRegistryAndStateBackends(t *testing.T) {
 	eachBackend(t, func(t *testing.T, b platform.Backends, again func() platform.Backends) {
-		fault := statetest.NewFaulty(b.State)
-		b.State = fault
+		// Setups are kept on the shared store when there is one.
+		shared := b.State
+		if b.Shared != nil {
+			shared = b.Shared
+		}
+		fault := statetest.NewFaulty(shared)
+		if b.Shared != nil {
+			b.Shared = fault
+		} else {
+			b.State = fault
+		}
 		p, stop := running(t, b)
 		saved, err := p.CreateAgentSetup(t.Context(), admin, setupPlan("registry-correction"))
 		if err != nil {

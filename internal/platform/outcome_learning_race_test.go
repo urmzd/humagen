@@ -68,7 +68,11 @@ func TestOutcomeLearningWriteFailureLeavesNoApprovedMemoryOrDraft(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(again.Memory.List(tenant, memory.PersonalOwner("ada"))) != 0 || len(again.SkillLibrary.List(tenant, library.Scope{Kind: "personal", Subject: "ada"})) != 0 {
+		skills, err := again.SkillLibrary.List(tenant, library.Scope{Kind: "personal", Subject: "ada"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(again.Memory.List(tenant, memory.PersonalOwner("ada"))) != 0 || len(skills) != 0 {
 			t.Fatal("failed learning state reappeared after restart")
 		}
 		if _, err := again.RememberOutcomeDecision(who, id, input); err != nil {
