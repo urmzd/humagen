@@ -6,7 +6,9 @@ import {
   AgentMessage,
   MessageActionRow,
   messageActionButton,
+  railEntry,
   Thread as ThreadList,
+  type TurnRailEntry,
   useQueue,
 } from "@humagen/web";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -88,6 +90,34 @@ const words = defaultCopy.threads;
  * starting runs, and a project whose role is not known here is the
  * server's to decide.
  */
+/**
+ * The wave down a thread's left edge: a tick per message and per answer, as
+ * long as what it says. A message previews its own words; an answer, its
+ * first line, or what was asked when it has none yet.
+ */
+export function waveOf(turns: ThreadTurn[]): TurnRailEntry[] {
+  return turns.flatMap((t): TurnRailEntry[] => {
+    if (t.message) {
+      const text = t.message.text.replace(/\s+/g, " ").trim();
+      return [
+        {
+          id: t.message.id,
+          agent: t.message.name || t.message.by,
+          preview: text,
+          status: "done",
+          weight: text.length + 40,
+          at: t.message.at,
+        },
+      ];
+    }
+    if (t.run) {
+      const entry = railEntry(turnOf(t.run), t.run.created_at);
+      return [{ ...entry, preview: entry.preview || t.run.text.replace(/\s+/g, " ").trim() }];
+    }
+    return [];
+  });
+}
+
 export function postsIn(projects: ProjectView[], name: string): boolean {
   if (name === "") return true;
   const role = projects.find((p) => p.name === name)?.access?.role;
@@ -240,6 +270,7 @@ function MessageView({
     <article
       ref={ref}
       id={`message-${m.id}`}
+      data-turn-id={m.id}
       aria-label={`Message from ${m.name || m.by}`}
       className={`group/message flex gap-3 rounded-aui ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
     >
@@ -375,6 +406,7 @@ function AnswerView({
   return (
     <article
       id={`turn-${run.id}`}
+      data-turn-id={run.id}
       className="flex flex-col gap-2"
       aria-label={`Answered by ${run.agent}`}
     >
@@ -479,6 +511,8 @@ export function ThreadRoom({
   // Every turn read so far, oldest first. A refresh reads the newest page,
   // which moves on as the thread grows; the turns it no longer holds stay.
   const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
+  // The thread's wave: a tick per message and per answer, previewing what each says.
+  const wave = useMemo(() => waveOf(turns), [turns]);
   // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
   const [problem, setProblem] = useState<string | null>(null);
@@ -749,7 +783,12 @@ export function ThreadRoom({
           />
         )}
         <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-          <ThreadList className="mx-auto w-full max-w-4xl flex-1 px-4" busy={busy} label="Thread">
+          <ThreadList
+            className="mx-auto w-full max-w-4xl flex-1 px-4"
+            busy={busy}
+            label="Thread"
+            turns={wave}
+          >
             {before && (
               <button type="button" className={`${button} self-center`} onClick={loadEarlier}>
                 {words.olderTurns}

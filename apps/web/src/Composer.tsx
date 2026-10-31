@@ -368,7 +368,7 @@ export function Composer({
   };
 
   return (
-    <div className="isolate flex min-w-0 flex-col gap-1.5">
+    <div className="relative z-10 flex min-w-0 flex-col gap-1.5">
       <form
         ref={form}
         aria-label="Message"
@@ -592,7 +592,11 @@ export function Composer({
         </div>
       </form>
       {/* One line under the prompt bar, the same before and after the first message. */}
-      {disclaimer && <p className="px-1 text-center text-aui-2xs text-aui-muted">{disclaimer}</p>}
+      {disclaimer && (
+        <p className="humagen-disclaimer px-1 text-center text-aui-2xs text-aui-muted">
+          {disclaimer}
+        </p>
+      )}
     </div>
   );
 }

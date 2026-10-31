@@ -45,6 +45,8 @@ export function Thread({
       if (stuck.current) toBottom(false);
     });
     observer.observe(el);
+    // The list itself shrinking (the keyboard opening on a phone) keeps the latest in view too.
+    if (scroller.current) observer.observe(scroller.current);
     return () => observer.disconnect();
   }, [toBottom]);
 

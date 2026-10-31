@@ -64,6 +64,7 @@ interface WindowLike {
   matchMedia?: (query: string) => { matches: boolean };
   visualViewport?: VisualViewportLike | null;
   document: {
+    addEventListener?(type: "focusin" | "focusout", fn: () => void): void;
     documentElement: {
       style: { setProperty(name: string, value: string): void };
       dataset: Record<string, string | undefined>;
@@ -107,14 +108,22 @@ export function installViewport(win: WindowLike): void {
     last = `${inset}:${height}`;
     root.style.setProperty("--humagen-app-height", height);
     root.style.setProperty("--humagen-keyboard", `${inset}px`);
-    if (inset > 0) {
-      root.dataset.keyboard = "";
-      // Safari pans the page to show the field; the console is now short
-      // enough to show it in place, so the pan is undone.
-      win.scrollTo(0, 0);
-    } else delete root.dataset.keyboard;
+    if (inset > 0) root.dataset.keyboard = "";
+    else delete root.dataset.keyboard;
+    // Safari pans the page to show a field as the keyboard opens, and can
+    // leave it panned after the keyboard closes, a strip of nothing under
+    // the console. The console is always exactly as tall as what shows, so
+    // either way the pan is undone.
+    win.scrollTo(0, 0);
   };
   vv.addEventListener("resize", apply);
   vv.addEventListener("scroll", apply);
+  // Safari can report the keyboard's last size after its animation ends,
+  // without a resize, so a field gaining or losing focus checks again then.
+  const settle = () => {
+    for (const ms of [80, 400]) setTimeout(apply, ms);
+  };
+  win.document.addEventListener?.("focusin", settle);
+  win.document.addEventListener?.("focusout", settle);
   apply();
 }

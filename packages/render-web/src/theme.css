@@ -1415,3 +1415,34 @@
 @media (prefers-reduced-motion: reduce) {
   [data-slot] { scroll-behavior: auto; transition-duration: 0s; animation-duration: 0s; }
 }
+
+/*
+ * The conversation's wave (TurnRail in @humagen/web): one tick per turn down
+ * the thread's left edge. The turn in view is drawn in the brand's sweep. On
+ * a phone the ticks stay inside the thread's gutter, and the rail is a full
+ * 44px wide to catch a thumb.
+ */
+.aui-wave-rail {
+  width: 1.75rem;
+  padding-inline: 0.25rem;
+}
+.aui-wave-tick {
+  width: var(--aui-wave-w, 8px);
+}
+.aui-wave-now {
+  background: linear-gradient(
+    90deg,
+    var(--aui-brand-red),
+    var(--aui-brand-yellow),
+    var(--aui-brand-green)
+  );
+}
+@media (max-width: 47.99rem) {
+  .aui-wave-rail {
+    width: 2.75rem;
+    padding-inline: 2px 0;
+  }
+  .aui-wave-tick {
+    width: calc(var(--aui-wave-w, 8px) * 0.55);
+  }
+}

@@ -69,6 +69,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
 | DES-041 | On a phone the console fills the installed app's screen, the drawer button floats instead of taking a row, and Home keeps the chat bar in reach of a thumb | Implemented: `viewport.ts`, `styles.css`, `HomePage.tsx`; web tests pass; Console screens pass at 320x568, 390x844 and 844x390; the iOS height needs a real device |
 | DES-042 | The brand's colors edge the page round its corners and glow round the chat bar, turning while a reply is in flight | Implemented: `styles.css`, `Composer.tsx`; web tests pass; screens pass light and dark at 1280x800 and 390x844 |
+| DES-043 | A conversation has a wave down its left edge to scan and scrub through its turns, and the keyboard opens and closes cleanly on a phone | Implemented: `TurnRail.tsx`, `Thread.tsx`, `Chat.tsx`, `Room.tsx`, `viewport.ts`; web tests pass (`wave.dom.test.tsx`, `pwa.test.ts`); screens pass at 390x844 and 1280x800; the keyboard on iOS needs a real device |
 
 ### DES-001: Working integrations
 
@@ -1045,3 +1046,32 @@ Rules:
   accent) and a soft halo under it: quiet at rest, brighter while the person
   writes. While a reply is in flight the sweep turns round the bar, by
   transform only; reduced motion stills it. Nothing waiting on a person moves.
+
+### DES-043: The conversation's wave, and the keyboard
+
+Owner request: a sound-wave strip down the left of a conversation, with
+previews of what was said, to scan through it on the web and on a phone; and
+the keyboard's open and close fixed on a phone.
+
+Found before the change: `TurnRail` in `@humagen/web` drew such a rail, but
+no conversation passed it any turns, it was hidden on a phone, and each tick
+was an 8px button. After the keyboard closed, Safari could leave the page
+panned up, with a strip of nothing under the console, and the message list
+did not keep the latest message in view as the keyboard shrank it.
+
+Rules:
+
+- A conversation of two or more turns has a wave down its left edge: a tick
+  per message and per answer, longer the more it says, swelling near the turn
+  in view or under the pointer. The turn in view is drawn in the brand's
+  sweep. It rests faint and brightens while the reader scrolls or reaches for
+  it.
+- It is one vertical slider. Hover previews a turn: a person's own words, an
+  answer's first line. Press, or on a touch screen press and drag, to scrub
+  through the conversation; arrows, Home and End step through it. On a phone
+  the ticks stay in the thread's gutter and the rail is 44px wide.
+- Whenever the keyboard opens or closes, the page's pan is undone, and the
+  height is checked again once focus settles. The list keeps the latest
+  message in view as it shrinks. While the keyboard is up the chat bar sits
+  right on it and the disclaimer is hidden; it returns when the keyboard
+  closes.

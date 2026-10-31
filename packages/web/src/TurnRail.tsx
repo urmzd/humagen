@@ -1,14 +1,22 @@
 import type { Turn, TurnStatus } from "@humagen/core";
-import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 export interface TurnRailEntry {
   /** Matches `data-turn-id` on the turn's element (AgentMessage stamps it). */
   id: string;
   agent: string;
-  /** First line of the answer, for the preview card. */
+  /** What the preview card says: the prompt that started the turn, or the answer's first line. */
   preview: string;
   status: TurnStatus;
-  /** How much happened in the turn; sets the tick height. Any positive scale. */
+  /** How much happened in the turn; sets the tick's length. Any positive scale. */
   weight: number;
   /** When the turn started, ISO. */
   at?: string;
@@ -28,6 +36,9 @@ export function railEntry(turn: Turn, at?: string): TurnRailEntry {
 }
 
 const REVEAL_MS = 1400;
+/** The height of one turn's slot on the rail, and of the whole rail at most. */
+const SLOT_PX = 12;
+const MAX_RAIL = "min(60vh, 32rem)";
 const statusWord: Record<TurnStatus, string> = {
   queued: "Queued",
   working: "Working",
@@ -37,11 +48,21 @@ const statusWord: Record<TurnStatus, string> = {
   stopped: "Stopped",
 };
 
+/** The slot a pointer at `y` is over, on a rail of `n` slots from `top` to `top + height`. */
+export function slotAt(y: number, top: number, height: number, n: number): number {
+  if (n <= 0 || height <= 0) return 0;
+  return Math.min(n - 1, Math.max(0, Math.floor(((y - top) / height) * n)));
+}
+
 /**
- * Left-edge turn scrubber. One tick per turn, tall like an equalizer bar when
- * the turn did a lot. Ticks near the turn in view grow (springy height), the
- * rail brightens while the reader scrolls, and it rests faint. Hover shows a
- * preview; click or Enter jumps there; arrows, Home, End move between turns.
+ * The conversation's wave, down its left edge: one tick per turn, longer when
+ * the turn did more, so a long conversation reads like a sound wave. Ticks
+ * near the one in view or under the pointer swell. It rests faint and
+ * brightens while the reader scrolls or reaches for it.
+ *
+ * It is one vertical slider. Hover shows the turn's prompt; press, or on a
+ * touch screen press and drag, to scrub through the conversation, which
+ * follows; arrows, Home and End step through it from the keyboard.
  */
 export function TurnRail({
   turns,
@@ -51,13 +72,15 @@ export function TurnRail({
   scroller: RefObject<HTMLElement | null>;
 }) {
   const [active, setActive] = useState<string | null>(turns.at(-1)?.id ?? null);
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [scrubbing, setScrubbing] = useState(false);
   const [scrolling, setScrolling] = useState(false);
   const ids = useRef<string[]>([]);
   ids.current = turns.map((t) => t.id);
-  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const rail = useRef<HTMLDivElement>(null);
   // After a jump, the target stays current while the scroll settles.
   const lockUntil = useRef(0);
+  const lastJump = useRef(-1);
 
   useEffect(() => {
     const root = scroller.current;
@@ -104,20 +127,56 @@ export function TurnRail({
 
   if (turns.length === 0) return null;
 
-  const jump = (id: string) => {
-    const el = scroller.current?.querySelector(`[data-turn-id="${CSS.escape(id)}"]`);
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const reduce = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const jump = (i: number, smooth: boolean) => {
+    const t = turns[i];
+    if (!t) return;
+    const el = scroller.current?.querySelector(`[data-turn-id="${CSS.escape(t.id)}"]`);
     lockUntil.current = Date.now() + 900;
-    el?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
-    setActive(id);
+    el?.scrollIntoView({ block: "start", behavior: smooth && !reduce() ? "smooth" : "auto" });
+    setActive(t.id);
+    lastJump.current = i;
   };
 
-  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+  const slotOf = (e: PointerEvent<HTMLDivElement>) => {
+    const box = rail.current?.getBoundingClientRect();
+    return box ? slotAt(e.clientY, box.top, box.height, turns.length) : 0;
+  };
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const i = slotOf(e);
+    setScrubbing(true);
+    setHovered(i);
+    jump(i, e.pointerType === "mouse");
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const i = slotOf(e);
+    if (scrubbing) {
+      if (i !== lastJump.current) {
+        jump(i, false);
+        // A light tick under the thumb for each turn passed, where the device has one.
+        if (e.pointerType === "touch") navigator.vibrate?.(4);
+      }
+      setHovered(i);
+    } else if (e.pointerType === "mouse") setHovered(i);
+  };
+  const onPointerEnd = (e: PointerEvent<HTMLDivElement>) => {
+    setScrubbing(false);
+    if (e.pointerType !== "mouse" || e.type === "pointerleave") setHovered(null);
+  };
+
+  const activeIndex = Math.max(
+    0,
+    turns.findIndex((t) => t.id === active),
+  );
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const to =
       e.key === "ArrowDown" || e.key === "ArrowRight"
-        ? Math.min(turns.length - 1, i + 1)
+        ? Math.min(turns.length - 1, activeIndex + 1)
         : e.key === "ArrowUp" || e.key === "ArrowLeft"
-          ? Math.max(0, i - 1)
+          ? Math.max(0, activeIndex - 1)
           : e.key === "Home"
             ? 0
             : e.key === "End"
@@ -125,85 +184,99 @@ export function TurnRail({
               : null;
     if (to === null) return;
     e.preventDefault();
-    const t = turns[to];
-    if (!t) return;
-    jump(t.id);
-    buttons.current[to]?.focus();
+    jump(to, true);
+    setHovered(to);
   };
 
-  const max = Math.max(...turns.map((t) => Math.log(t.weight + 1)));
-  const min = Math.min(...turns.map((t) => Math.log(t.weight + 1)));
-  const activeIndex = turns.findIndex((t) => t.id === active);
-  const focus = hovered ? turns.findIndex((t) => t.id === hovered) : activeIndex;
+  const logs = turns.map((t) => Math.log(t.weight + 1));
+  const max = Math.max(...logs);
+  const min = Math.min(...logs);
+  const focus = hovered ?? activeIndex;
+  const current = turns[activeIndex];
+  const shown = hovered !== null ? turns[hovered] : undefined;
+  const lit = scrolling || scrubbing || hovered !== null;
 
   return (
     <nav
-      aria-label="Jump to a turn"
-      className={`group/rail absolute top-1/2 left-0 z-20 hidden -translate-y-1/2 transition-opacity duration-(--aui-dur-page) focus-within:opacity-100 hover:opacity-100 md:block ${scrolling ? "opacity-100" : "opacity-40"}`}
+      aria-label="Conversation wave"
+      data-layer="wave"
+      className={`aui-wave absolute top-1/2 left-0 z-20 -translate-y-1/2 transition-opacity duration-(--aui-dur-page) focus-within:opacity-100 hover:opacity-100 ${lit ? "opacity-100" : "opacity-45"}`}
     >
-      <ol className="flex max-h-[70vh] flex-col items-start gap-[3px] overflow-visible py-1 pr-2 pl-1">
+      <div
+        ref={rail}
+        role="slider"
+        tabIndex={0}
+        aria-label="Turns in this conversation"
+        aria-orientation="vertical"
+        aria-valuemin={1}
+        aria-valuemax={turns.length}
+        aria-valuenow={activeIndex + 1}
+        aria-valuetext={
+          current
+            ? `${activeIndex + 1} of ${turns.length}, ${current.agent}: ${current.preview || "no answer yet"}`
+            : undefined
+        }
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
+        onPointerLeave={onPointerEnd}
+        onKeyDown={onKeyDown}
+        onBlur={() => setHovered(null)}
+        className="aui-wave-rail flex cursor-pointer touch-none select-none flex-col rounded-full outline-none focus-visible:ring-2 focus-visible:ring-aui-accent"
+        style={{ height: `min(${turns.length * SLOT_PX}px, ${MAX_RAIL})` }}
+      >
         {turns.map((t, i) => {
-          const norm = max > min ? (Math.log(t.weight + 1) - min) / (max - min) : 0.5;
-          // Ticks near the turn in view grow, like a waveform under the playhead.
-          const near = focus >= 0 ? Math.max(0, 1 - Math.abs(i - focus) / 3) : 0;
-          const width = 6 + norm * 10 + near * 6;
-          const isActive = t.id === active;
+          const norm = max > min ? ((logs[i] ?? min) - min) / (max - min) : 0.5;
+          // Ticks near the one in view, or under the pointer, swell like a wave under the playhead.
+          const near = Math.max(0, 1 - Math.abs(i - focus) / 3);
+          const isActive = i === activeIndex;
           const tone =
             t.status === "failed"
               ? "bg-aui-bad"
               : isActive
-                ? "bg-aui-accent"
+                ? "aui-wave-now"
                 : t.status === "waiting"
                   ? "bg-aui-accent/60"
-                  : "bg-aui-fg/25 group-hover/rail:bg-aui-fg/40";
+                  : near > 0 && lit
+                    ? "bg-aui-fg/45"
+                    : "bg-aui-fg/25";
           return (
-            <li key={t.id} className="relative flex items-center">
-              <button
-                ref={(el) => {
-                  buttons.current[i] = el;
-                }}
-                type="button"
-                aria-current={isActive ? "true" : undefined}
-                aria-label={`${t.agent}, ${statusWord[t.status]}: ${t.preview || "no answer yet"}`}
-                onClick={() => jump(t.id)}
-                onKeyDown={(e) => onKeyDown(e, i)}
-                onMouseEnter={() => setHovered(t.id)}
-                onMouseLeave={() => setHovered((h) => (h === t.id ? null : h))}
-                onFocus={() => setHovered(t.id)}
-                onBlur={() => setHovered((h) => (h === t.id ? null : h))}
-                className="flex h-2 items-center rounded-full py-px outline-none focus-visible:ring-2 focus-visible:ring-aui-accent"
-                style={{ width: 26 }}
-              >
-                <span
-                  aria-hidden
-                  className={`aui-rail-tick block rounded-full ${tone}`}
-                  style={{ width, height: isActive ? 3 : 2 }}
-                />
-              </button>
-              {hovered === t.id && (
-                <div
-                  role="tooltip"
-                  className="aui-pop-in aui-glass pointer-events-none absolute top-1/2 left-full z-30 ml-1 flex w-60 -translate-y-1/2 flex-col gap-0.5 rounded-aui px-2.5 py-2 text-aui-xs"
-                >
-                  <span className="flex items-center gap-1.5 text-aui-2xs text-aui-muted">
-                    <span className="font-medium text-aui-fg">{t.agent}</span>
-                    <span>· {statusWord[t.status]}</span>
-                    {t.at && (
-                      <span className="ml-auto tabular-nums">
-                        {new Date(t.at).toLocaleTimeString(undefined, {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    )}
-                  </span>
-                  <span className="line-clamp-2 text-aui-fg">{t.preview || "No answer yet"}</span>
-                </div>
-              )}
-            </li>
+            <span key={t.id} aria-hidden className="flex min-h-0 flex-1 items-center">
+              <span
+                className={`aui-rail-tick aui-wave-tick block rounded-full ${tone}`}
+                style={
+                  {
+                    "--aui-wave-w": `${6 + norm * 10 + near * 6}px`,
+                    height: isActive ? 4 : 3,
+                  } as CSSProperties
+                }
+              />
+            </span>
           );
         })}
-      </ol>
+      </div>
+      {shown && hovered !== null && (
+        <div
+          role="tooltip"
+          className="aui-glass pointer-events-none absolute left-full z-30 ml-2 flex w-64 max-w-[70vw] -translate-y-1/2 flex-col gap-0.5 rounded-aui px-2.5 py-2 text-aui-xs shadow-md"
+          style={{ top: `${((hovered + 0.5) / turns.length) * 100}%` }}
+        >
+          <span className="flex items-center gap-1.5 text-aui-2xs text-aui-muted">
+            <span className="font-medium text-aui-fg">{shown.agent}</span>
+            <span>· {statusWord[shown.status]}</span>
+            <span className="ml-auto tabular-nums">
+              {shown.at
+                ? new Date(shown.at).toLocaleTimeString(undefined, {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                : `${hovered + 1}/${turns.length}`}
+            </span>
+          </span>
+          <span className="line-clamp-2 text-aui-fg">{shown.preview || "No answer yet"}</span>
+        </div>
+      )}
     </nav>
   );
 }

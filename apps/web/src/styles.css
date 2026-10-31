@@ -869,6 +869,8 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
   /* The page ends above the home indicator, except while the keyboard covers it. */
   .humagen-content { padding-bottom: env(safe-area-inset-bottom); }
   :root[data-keyboard] .humagen-content { padding-bottom: 0; }
+  /* While the keyboard is up the chat bar sits right on it; the disclaimer comes back when it closes. */
+  :root[data-keyboard] .humagen-disclaimer { display: none; }
   /* The drawer runs the full height and keeps its rows clear of the notch and the indicator. */
   .humagen-sidebar {
     padding-top: env(safe-area-inset-top);

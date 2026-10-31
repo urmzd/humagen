@@ -2,7 +2,7 @@ import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
-import { AgentMessage, messageActionButton, Thread, useQueue } from "@humagen/web";
+import { AgentMessage, messageActionButton, railEntry, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
@@ -194,6 +194,7 @@ function TurnView({
   return (
     <article
       id={`turn-${run.id}`}
+      data-turn-id={run.id}
       className="flex flex-col gap-3"
       aria-label={`Turn answered by ${run.agent}`}
     >
@@ -523,6 +524,15 @@ export function Chat({
   }, [threadId]);
 
   const path = useMemo(() => pathOf(turns, chosen), [turns, chosen]);
+  // The conversation's wave: a tick per turn, as long as the answer is, previewing the prompt that asked it.
+  const wave = useMemo(
+    () =>
+      path.map((run) => ({
+        ...railEntry(turnOf(run), run.created_at),
+        preview: run.text.replace(/\s+/g, " ").trim(),
+      })),
+    [path],
+  );
   // What each parked run asks, as the reader stands to it.
   const asks = useMemo(
     () =>
@@ -1000,6 +1010,7 @@ export function Chat({
             className="mx-auto w-full max-w-4xl flex-1 px-4"
             busy={tailWorking}
             label="Conversation"
+            turns={wave}
           >
             {path.map((run, i) => (
               <TurnView

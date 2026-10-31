@@ -299,10 +299,12 @@ test("installViewport writes the keyboard's height to the root and undoes Safari
   assert.equal(props["--humagen-keyboard"], "336px");
   assert.equal(dataset.keyboard, "");
   assert.deepEqual(scrolls.at(-1), [0, 0]);
+  scrolls.length = 0;
   vv.height = 844;
   for (const fn of handlers) fn();
   assert.equal(props["--humagen-keyboard"], "0px");
   assert.equal("keyboard" in dataset, false);
+  assert.deepEqual(scrolls, [[0, 0]], "the pan Safari leaves after the keyboard closes is undone");
 });
 
 test("standaloneHeight: installed on an iPhone, the app fills the screen, not Safari's short viewport", () => {
