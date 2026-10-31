@@ -5,29 +5,34 @@
 // budget each has handed out. It is a projection of two inputs, the tag a run
 // was accepted with and the lifecycle events that run later publishes.
 //
-// Index is in memory. Built with Open, it keeps its runs in a state.Store and
-// reads them back when it is built again; see persisted for when each change
-// is written.
+// It reads and writes the database per request (pkg/state, per request): it
+// holds no runs in memory, so any number of processes on one database agree,
+// a run stopped through one is stopping in every other, and it does not need
+// pkg/state's single-writer lock. Every change is written before it is
+// reported, at the version it read, and read again when another process
+// wrote first. An event two processes both fold changes a run once: a
+// lifecycle event by its sequence, a usage report by its accounting id. See
+// namespace for the layout.
 package runs
 
 import (
 	"cmp"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
 	"github.com/urmzd/humagen/fiber/pkg/runtime"
 
-	"github.com/urmzd/humagen/internal/textindex"
 	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/usage"
 )
 
@@ -360,6 +365,12 @@ type Run struct {
 	// settled into its caller, so a call that ends later climbs past it.
 	closed, settledUp bool
 	privateContext    bool
+	// seq is the run's number in its tenant. observedBy, lastSeq and
+	// openAttached are storedRun's.
+	seq          int64
+	observedBy   string
+	lastSeq      uint64
+	openAttached int
 }
 
 // Requesters returns the names pinned for the person who asked for the run.
@@ -367,13 +378,15 @@ func (r Run) Requesters() []string { return slices.Clone(r.requesters) }
 
 // PinRequesters records every name the person who asked for a run goes by,
 // once, when it is accepted.
-func (x *Index) PinRequesters(runID string, names []string) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	if r, ok := x.runs[runID]; ok && r.requesters == nil {
+func (x *Index) PinRequesters(tenant, runID string, names []string) {
+	x.update("requesters", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+		if r.requesters != nil {
+			return Run{}, false
+		}
 		r.requesters = slices.Clone(names)
-		x.touch(runID)
-	}
+		t.touch(r)
+		return Run{}, true
+	})
 }
 
 // Tag returns the tag the run was accepted with.
@@ -396,36 +409,51 @@ func (r Run) Left() int64 {
 	return max(r.Lease-r.Spent-r.Granted, 0)
 }
 
-// Index holds every run this process has accepted.
-type Index struct {
-	search textindex.Index
-	mu     sync.RWMutex
-	runs   map[string]*Run
-	// order is run ids, oldest first.
-	order []string
-	// titles names conversations, by tenant and thread.
-	titles map[string]string
-	// counts are what each project holds, kept as runs change.
-	counts counters
-	// observed tracks runs accepted in this process. Recovered active runs
-	// cannot prove their earlier questions were fully observed.
-	observed map[string]bool
-	// kept is where runs are written. Nil keeps them only in memory.
-	kept *persisted
-}
-
-// NewIndex returns an empty index.
-func NewIndex() *Index {
-	return &Index{runs: map[string]*Run{}, titles: map[string]string{}, counts: newCounters(), observed: map[string]bool{}}
+// update changes one run in a txn. fn returns what the caller is told, and
+// touches the run when it changed it, so it is written. A run the tenant
+// does not have is reported as Run{}, false, and so is a change that could
+// not be written, which is logged.
+func (x *Index) update(what, tenant, runID string, fn func(t *txn, r *Run) (Run, bool)) (Run, bool) {
+	var out Run
+	var ok bool
+	err := x.do(tenant, func(t *txn) error {
+		out, ok = Run{}, false
+		r, err := t.run(runID)
+		if err != nil || r == nil {
+			return err
+		}
+		out, ok = fn(t, r)
+		return nil
+	})
+	if err != nil {
+		x.fail(what, tenant, runID, err)
+		return Run{}, false
+	}
+	return out, ok
 }
 
 // SetTitle names a conversation. A conversation with no name is shown by the
 // first thing that was asked in it.
 func (x *Index) SetTitle(tenant, thread, title string) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	x.titles[tenant+"\x00"+thread] = title
-	x.titled(tenant + "\x00" + thread)
+	if err := x.setTitle(tenant, thread, title, false); err != nil {
+		x.fail("title", tenant, thread, err)
+	}
+}
+
+// setTitle names a conversation; with unset only one not yet named.
+func (x *Index) setTitle(tenant, thread, title string, unset bool) error {
+	return x.do(tenant, func(t *txn) error {
+		s, err := t.thread(thread)
+		if err != nil {
+			return err
+		}
+		if s.Name == title || unset && s.Name != "" {
+			return errSkip
+		}
+		s.Name = title
+		t.threadChanged(thread)
+		return t.x.tenants.Mark(tenant)
+	})
 }
 
 // Record adds an accepted run. Recording a run that is already known changes
@@ -438,11 +466,6 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 	input, err := call.InputOf(tag)
 	if err != nil {
 		return err
-	}
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	if _, ok := x.runs[runID]; ok {
-		return nil
 	}
 	// The edge names tags. Runs are indexed by run id, which fiber derives
 	// from the tenant and the tag id together, so the links are translated
@@ -460,7 +483,7 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 	}
 	// A run is its own conversation unless the API placed it in one. A run
 	// called by an agent belongs to its root's conversation.
-	thread, prev, picked, routed, text, project, client := runID, "", "", "", wire.TextOf(tag), "", ClientOf(tag)
+	thread, prev, picked, routed, text, client := runID, "", "", "", wire.TextOf(tag), ClientOf(tag)
 	channel, message := "", ""
 	// A schedule's project is written by the server when the schedule is
 	// created, so the cron trigger and a person's run-now are believed too.
@@ -482,44 +505,66 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 	if v := wire.Meta(tag)[MetaAsk]; v != "" && (wire.Origin(tag) == OriginAPI || wire.Origin(tag) == "cron" || wire.Origin(tag) == OriginManual || wire.Origin(tag) == OriginAssignment) {
 		text = v
 	}
-	if top, ok := x.runs[root]; ok && parent != "" && top.Tenant == tag.Tenant {
-		thread, project, client, within, channel, message = top.Thread, top.Project, top.Client, top.Within, top.Channel, ""
-	}
-	r := &Run{
-		Citations: []Citation{},
-		ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: wire.AgentOf(tag), Rev: rev, Origin: wire.Origin(tag),
-		Text: text, Input: input, Actor: wire.ActorOf(tag), Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
-		Channel: channel, Message: message,
-		Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
-		Lease: edge.Lease, Schedule: schedule,
-		Status: Accepted, CreatedAt: tag.Time, UpdatedAt: tag.Time,
-		tag: tag,
-	}
-	if err := x.recorded(r); err != nil {
-		return err
-	}
-	x.runs[runID] = r
-	x.observed[runID] = true
-	x.order = append(x.order, runID)
-	x.count(r)
-	return nil
+	return x.do(tag.Tenant, func(t *txn) error {
+		if n, err := x.seq(tag.Tenant, runID); err != nil || n != 0 {
+			return cmp.Or(err, errSkip)
+		}
+		thread, project, client, within, channel, message := thread, project, client, within, channel, message
+		if parent != "" {
+			top, err := t.run(root)
+			if err != nil {
+				return err
+			}
+			if top != nil {
+				thread, project, client, within, channel, message = top.Thread, top.Project, top.Client, top.Within, top.Channel, ""
+			}
+		}
+		r := &Run{
+			Citations: []Citation{},
+			ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: wire.AgentOf(tag), Rev: rev, Origin: wire.Origin(tag),
+			Text: text, Input: input, Actor: wire.ActorOf(tag), Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
+			Channel: channel, Message: message,
+			Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
+			Lease: edge.Lease, Schedule: schedule,
+			Status: Accepted, CreatedAt: tag.Time, UpdatedAt: tag.Time,
+			tag: tag, observedBy: x.instance,
+		}
+		if r.Lifecycle == Attached {
+			p, err := t.run(parent)
+			if err != nil {
+				return err
+			}
+			if p != nil {
+				p.openAttached++
+				t.touch(p)
+			}
+		}
+		return t.place(r)
+	})
 }
 
 // Called records that a run made a call and granted it a lease.
-func (x *Index) Called(runID string, lease int64) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	if r, ok := x.runs[runID]; ok {
+func (x *Index) Called(tenant, runID string, lease int64) {
+	x.update("call", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+		t.touch(r)
 		r.Calls++
 		r.Granted += lease
-		x.touch(runID)
-	}
+		return Run{}, true
+	})
+}
+
+// fresh reports whether an event is one the run has not folded yet: an event
+// with no sequence always is, and one at or below the last sequence folded
+// was folded already, by this process or another.
+func fresh(r *Run, e event.Envelope) bool {
+	return e.Seq == 0 || e.Seq > r.lastSeq
 }
 
 // Observe folds a lifecycle event into the run it belongs to. It returns the
 // run as it now stands and whether this event is the one that ended it, so a
-// caller can react to an ending exactly once. Other kinds, and events for runs
-// this index never recorded, change nothing.
+// caller can react to an ending exactly once, whichever process folds it
+// first. Other kinds, and events for runs this index never recorded, change
+// nothing.
 func (x *Index) Observe(e event.Envelope) (Run, bool) {
 	if e.Type == event.TypeAction {
 		return x.observeDetail(e), false
@@ -527,93 +572,130 @@ func (x *Index) Observe(e event.Envelope) (Run, bool) {
 	if !wire.IsLifecycle(e.Type) {
 		return Run{}, false
 	}
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[e.Run]
-	if !ok || r.Tenant != e.Tenant || r.Status.Terminal() {
+	var out Run
+	var ended bool
+	err := x.do(e.Tenant, func(t *txn) error {
+		out, ended = Run{}, false
+		r, err := t.run(e.Run)
+		if err != nil || r == nil || r.Status.Terminal() || !fresh(r, e) {
+			return err
+		}
+		t.touch(r)
+		if e.Seq > 0 {
+			r.lastSeq = e.Seq
+		}
+		r.UpdatedAt = e.Time
+		switch b := e.Data.(type) {
+		case event.Started, event.Resumed:
+			r.Status, r.Reason, r.Question = Running, "", nil
+		case event.Parked:
+			r.Status, r.Reason, r.Question = Parked, b.Reason, b.Question
+			if b.Question != nil {
+				if err := t.neededPerson(r); err != nil {
+					return err
+				}
+			}
+		case event.Completed:
+			r.Answer = b.Text
+			if b.Usage != nil {
+				u := *b.Usage
+				r.Usage, r.final = &u, true
+			}
+			if hold(r) {
+				out = citationSnapshot(r)
+				return nil
+			}
+			r.Status = Completed
+		case event.Failed:
+			// A failed attempt may still be retried. Only a terminal failure
+			// ends the run.
+			r.Error = b.Error
+			if b.Terminal {
+				r.Status = Failed
+			}
+		case event.Stopped:
+			// The runtime says the run wrapped up on request. What it had
+			// said is the answer people saw, and is kept. A stopped run is
+			// not held open for what is attached to it: those are stopped
+			// with it.
+			r.Answer, r.Status, r.Finishing, r.Reason = b.Text, Stopped, false, ""
+			if b.Usage != nil {
+				u := *b.Usage
+				r.Usage, r.final = &u, true
+			}
+			r.Cause = causeOf(b.Reason, b.By)
+		}
+		if r.Status.Terminal() {
+			x.finishAssistance(r)
+			r.Stopping, r.Question = false, nil
+		}
+		out, ended = citationSnapshot(r), r.Status.Terminal()
+		return nil
+	})
+	if err != nil {
+		x.fail("event", e.Tenant, e.Run, err)
 		return Run{}, false
 	}
-	defer x.recount(r)
-	x.touch(r.ID)
-	r.UpdatedAt = e.Time
-	switch b := e.Data.(type) {
-	case event.Started, event.Resumed:
-		r.Status, r.Reason, r.Question = Running, "", nil
-	case event.Parked:
-		r.Status, r.Reason, r.Question = Parked, b.Reason, b.Question
-		if b.Question != nil {
-			x.neededPerson(r)
-		}
-	case event.Completed:
-		r.Answer = b.Text
-		if b.Usage != nil {
-			u := *b.Usage
-			r.Usage, r.final = &u, true
-		}
-		if x.hold(r) {
-			return citationSnapshot(r), false
-		}
-		r.Status = Completed
-	case event.Failed:
-		// A failed attempt may still be retried. Only a terminal failure
-		// ends the run.
-		r.Error = b.Error
-		if b.Terminal {
-			r.Status = Failed
-		}
-	case event.Stopped:
-		// The runtime says the run wrapped up on request. What it had said
-		// is the answer people saw, and is kept. A stopped run is not held
-		// open for what is attached to it: those are stopped with it.
-		r.Answer, r.Status, r.Finishing, r.Reason = b.Text, Stopped, false, ""
-		if b.Usage != nil {
-			u := *b.Usage
-			r.Usage, r.final = &u, true
-		}
-		r.Cause = causeOf(b.Reason, b.By)
-	}
-	if r.Status.Terminal() {
-		x.finishAssistance(r)
-		r.Stopping, r.Question = false, nil
-	}
-	return citationSnapshot(r), r.Status.Terminal()
+	return out, ended
 }
 
 // ObserveUsage folds a usage.call or usage.child event into the usage of the
 // run that published it, while the runtime's own total is not in yet. Each
 // report is counted once by its AccountingID, so a redelivered event changes
-// nothing. It returns the run as it now stands, and false for any other kind,
-// a run this index does not hold, or another tenant's.
+// nothing, whichever process folds it. It returns the run as it now stands,
+// and false for any other kind, a run this index does not hold, or another
+// tenant's.
 func (x *Index) ObserveUsage(e event.Envelope) (Run, bool) {
 	if e.Type != event.TypeUsageCall && e.Type != event.TypeUsageChild {
 		return Run{}, false
 	}
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[e.Run]
-	if !ok || r.Tenant != e.Tenant {
+	var out Run
+	var ok bool
+	err := x.do(e.Tenant, func(t *txn) error {
+		out, ok = Run{}, false
+		r, err := t.run(e.Run)
+		if err != nil || r == nil {
+			return err
+		}
+		if r.final {
+			// The runtime's record stands. The call is still the ledger's
+			// to judge, so the run is returned.
+			out, ok = citationSnapshot(r), true
+			return nil
+		}
+		if r.tally == nil {
+			r.tally = &event.Tally{}
+		}
+		var counted bool
+		// A report with no accounting id of its own is told apart by where
+		// it was published, which folding it again repeats.
+		where := ""
+		if e.Seq > 0 {
+			where = fmt.Sprintf("%s#%d", e.Run, e.Seq)
+		}
+		switch b := e.Data.(type) {
+		case event.UsageCall:
+			b.AccountingID = cmp.Or(b.AccountingID, where)
+			counted = r.tally.Call(b)
+		case event.UsageChild:
+			b.AccountingID = cmp.Or(b.AccountingID, where)
+			counted = r.tally.Child(b)
+		default:
+			return nil
+		}
+		if counted {
+			u := r.tally.Usage()
+			r.Usage = &u
+			t.touch(r)
+		}
+		out, ok = citationSnapshot(r), true
+		return nil
+	})
+	if err != nil {
+		x.fail("usage", e.Tenant, e.Run, err)
 		return Run{}, false
 	}
-	if r.final {
-		// The runtime's record stands. The call is still the ledger's to
-		// judge, so the run is returned.
-		return citationSnapshot(r), true
-	}
-	x.touch(r.ID)
-	if r.tally == nil {
-		r.tally = &event.Tally{}
-	}
-	switch b := e.Data.(type) {
-	case event.UsageCall:
-		r.tally.Call(b)
-	case event.UsageChild:
-		r.tally.Child(b)
-	default:
-		return Run{}, false
-	}
-	u := r.tally.Usage()
-	r.Usage = &u
-	return citationSnapshot(r), true
+	return out, ok
 }
 
 // SetUsage closes a run's spending once it has ended: the runtime's own
@@ -621,20 +703,20 @@ func (x *Index) ObserveUsage(e event.Envelope) (Run, bool) {
 // the micro-USD its settlement added beyond the calls already spent joins
 // Spent, in one step. Nothing changes a closed run's usage or Spent after
 // that but the calls it made, as they settle with it. A run is closed once.
-func (x *Index) SetUsage(runID string, u *event.RunUsage, micros int64) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[runID]
-	if !ok || r.closed {
-		return
-	}
-	if u != nil && !r.final {
-		v := *u
-		r.Usage, r.final = &v, true
-	}
-	r.tally, r.closed = nil, true
-	r.Spent += micros
-	x.touch(runID)
+func (x *Index) SetUsage(tenant, runID string, u *event.RunUsage, micros int64) {
+	x.update("usage", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+		if r.closed {
+			return Run{}, false
+		}
+		t.touch(r)
+		if u != nil && !r.final {
+			v := *u
+			r.Usage, r.final = &v, true
+		}
+		r.tally, r.closed = nil, true
+		r.Spent += micros
+		return Run{}, true
+	})
 }
 
 // Spend adds what a run's own model call cost, in micro-USD, to what it has
@@ -642,19 +724,19 @@ func (x *Index) SetUsage(runID string, u *event.RunUsage, micros int64) {
 // has settled, and perhaps settled into its caller, so a call reported after
 // that changes nothing here and Spend reports false: the usage ledger still
 // counts whatever the call adds beyond the run's settled total.
-func (x *Index) Spend(runID string, micros int64) (Run, bool) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[runID]
-	if !ok {
-		return Run{}, false
-	}
-	if r.closed {
-		return citationSnapshot(r), false
-	}
-	r.Spent += micros
-	x.touch(runID)
-	return citationSnapshot(r), true
+func (x *Index) Spend(tenant, runID string, micros int64) (Run, bool) {
+	var out Run
+	_, ok := x.update("spend", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+		out = citationSnapshot(r)
+		if r.closed {
+			return Run{}, false
+		}
+		t.touch(r)
+		r.Spent += micros
+		out = citationSnapshot(r)
+		return out, true
+	})
+	return out, ok
 }
 
 // SettleCall settles a call that has ended with the run that made it: the
@@ -667,30 +749,35 @@ func (x *Index) Spend(runID string, micros int64) (Run, bool) {
 // through every ancestor that has settled, to the nearest one that has not,
 // or to the root, so the tree's figure is whole wherever it is read.
 func (x *Index) SettleCall(child Run) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	c, ok := x.runs[child.ID]
-	if !ok || c.settledUp {
-		return
-	}
-	r, ok := x.runs[child.Parent]
-	if !ok || r.Tenant != child.Tenant {
-		return
-	}
-	c.settledUp = true
-	r.Granted = max(r.Granted-c.Lease, 0)
-	x.touch(c.ID)
-	for {
-		r.Spent += c.Spent
-		x.touch(r.ID)
-		if !r.settledUp {
-			return
+	err := x.do(child.Tenant, func(t *txn) error {
+		c, err := t.run(child.ID)
+		if err != nil || c == nil || c.settledUp {
+			return err
 		}
-		next, ok := x.runs[r.Parent]
-		if !ok || next.Tenant != r.Tenant {
-			return
+		r, err := t.run(child.Parent)
+		if err != nil || r == nil {
+			return err
 		}
-		r = next
+		c.settledUp = true
+		r.Granted = max(r.Granted-c.Lease, 0)
+		t.touch(c)
+		for seen := map[string]bool{}; !seen[r.ID]; {
+			seen[r.ID] = true
+			r.Spent += c.Spent
+			t.touch(r)
+			if !r.settledUp {
+				return nil
+			}
+			next, err := t.run(r.Parent)
+			if err != nil || next == nil {
+				return err
+			}
+			r = next
+		}
+		return nil
+	})
+	if err != nil {
+		x.fail("settle call", child.Tenant, child.ID, err)
 	}
 }
 
@@ -705,29 +792,20 @@ func causeOf(reason, by string) string {
 	return "Stopped"
 }
 
-// Active returns the ids of runs that have not ended.
-func (x *Index) Active() []string {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	var out []string
-	for _, id := range x.order {
-		if !x.runs[id].Status.Terminal() {
-			out = append(out, id)
-		}
-	}
-	return out
-}
-
-// Unfinished returns the runs that have not ended, oldest first, each with the
-// tag it was accepted with.
+// Unfinished returns the runs that have not ended, each with the tag it was
+// accepted with: tenant by tenant, oldest first in each, at most MaxTree in
+// one tenant.
 func (x *Index) Unfinished() []Run {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
 	var out []Run
-	for _, id := range x.order {
-		if r := x.runs[id]; !r.Status.Terminal() {
+	err := x.tenants.Each(func(tenant string) error {
+		rs, err := x.under(tenant, "a:", MaxTree)
+		for _, r := range rs {
 			out = append(out, citationSnapshot(r))
 		}
+		return err
+	})
+	if err != nil {
+		x.log.Error("runs: could not read the runs that have not ended", "error", err)
 	}
 	return out
 }
@@ -738,46 +816,33 @@ func (x *Index) Unfinished() []Run {
 // The bus reports what each attempt did. Whether the run is over is the durable
 // ledger's call, and the two can disagree: a run that exhausts its retries is
 // failed in the ledger without a final event ever being published.
-func (x *Index) End(runID string, status Status, answer, failure string, at time.Time) (Run, bool) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[runID]
-	if !ok || r.Status.Terminal() || !status.Terminal() {
-		return Run{}, false
-	}
-	defer x.recount(r)
-	x.touch(runID)
-	if answer != "" {
-		r.Answer = answer
-	}
-	if failure != "" {
-		r.Error = failure
-	}
-	if status == Completed && x.hold(r) {
-		return Run{}, false
-	}
-	r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = status, at, false, "", false, nil
-	x.finishAssistance(r)
-	return citationSnapshot(r), true
-}
-
-// openAttached counts the runs attached to a run that have not ended. The
-// caller holds the lock.
-func (x *Index) openAttached(runID string) int {
-	n := 0
-	for _, c := range x.runs {
-		if c.Parent == runID && c.Lifecycle == Attached && !c.Status.Terminal() {
-			n++
+func (x *Index) End(tenant, runID string, status Status, answer, failure string, at time.Time) (Run, bool) {
+	return x.update("end", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+		if r.Status.Terminal() || !status.Terminal() {
+			return Run{}, false
 		}
-	}
-	return n
+		t.touch(r)
+		if answer != "" {
+			r.Answer = answer
+		}
+		if failure != "" {
+			r.Error = failure
+		}
+		if status == Completed && hold(r) {
+			// Held open: written, but not ended.
+			return Run{}, false
+		}
+		r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = status, at, false, "", false, nil
+		x.finishAssistance(r)
+		return citationSnapshot(r), true
+	})
 }
 
 // hold keeps a run that has answered open while runs attached to it are still
-// working, and reports whether it did. The caller holds the lock.
-func (x *Index) hold(r *Run) bool {
-	n := x.openAttached(r.ID)
-	if n == 0 {
+// working, and reports whether it did.
+func hold(r *Run) bool {
+	n := r.openAttached
+	if n <= 0 {
 		return false
 	}
 	r.Status, r.Finishing = Running, true
@@ -787,18 +852,16 @@ func (x *Index) hold(r *Run) bool {
 
 // Settle completes a run that was held open by attached runs, once none of
 // them is still working. It returns the run and whether this call ended it.
-func (x *Index) Settle(runID string, at time.Time) (Run, bool) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[runID]
-	if !ok || !r.Finishing || r.Status.Terminal() || x.openAttached(runID) > 0 {
-		return Run{}, false
-	}
-	defer x.recount(r)
-	x.touch(runID)
-	r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping = Completed, at, false, "", false
-	x.finishAssistance(r)
-	return citationSnapshot(r), true
+func (x *Index) Settle(tenant, runID string, at time.Time) (Run, bool) {
+	return x.update("settle", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+		if !r.Finishing || r.Status.Terminal() || r.openAttached > 0 {
+			return Run{}, false
+		}
+		t.touch(r)
+		r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping = Completed, at, false, "", false
+		x.finishAssistance(r)
+		return citationSnapshot(r), true
+	})
 }
 
 // AskStop records that a run was asked to stop. From now on the run
@@ -806,49 +869,60 @@ func (x *Index) Settle(runID string, at time.Time) (Run, bool) {
 // ends. It returns the run as it stands and false for a run that has ended or
 // that this index does not hold. Asking again keeps the first request, as the
 // runtime does.
-func (x *Index) AskStop(runID string, at time.Time) (Run, bool) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[runID]
-	if !ok || r.Status.Terminal() {
-		return Run{}, false
-	}
-	if !r.Stopping {
+func (x *Index) AskStop(tenant, runID string, at time.Time) (Run, bool) {
+	var out Run
+	var ok bool
+	x.update("ask stop", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+		out, ok = Run{}, false
+		if r.Status.Terminal() {
+			return Run{}, false
+		}
+		ok = true
+		if r.Stopping {
+			out = citationSnapshot(r)
+			return Run{}, false
+		}
 		r.Stopping, r.StopRequestedAt, r.UpdatedAt = true, at, at
-		x.touch(runID)
-		x.recount(r)
-	}
-	return citationSnapshot(r), true
+		t.touch(r)
+		out = citationSnapshot(r)
+		return out, true
+	})
+	return out, ok
 }
 
 // Stop ends a run as stopped from a source other than its own events: one the
 // ledger says ended stopped before its final event was observed. answer, when given, is
 // what the run had said, and cause is why it stopped. It returns the run and
 // whether this call is what ended it.
-func (x *Index) Stop(runID, answer, cause string, at time.Time) (Run, bool) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	r, ok := x.runs[runID]
-	if !ok || r.Status.Terminal() {
-		return Run{}, false
-	}
-	defer x.recount(r)
-	x.touch(runID)
-	if answer != "" {
-		r.Answer = answer
-	}
-	r.Status, r.Cause, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = Stopped, causeOf(cause, ""), at, false, "", false, nil
-	x.finishAssistance(r)
-	return citationSnapshot(r), true
+func (x *Index) Stop(tenant, runID, answer, cause string, at time.Time) (Run, bool) {
+	return x.update("stop", tenant, runID, func(t *txn, r *Run) (Run, bool) {
+		if r.Status.Terminal() {
+			return Run{}, false
+		}
+		t.touch(r)
+		if answer != "" {
+			r.Answer = answer
+		}
+		r.Status, r.Cause, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = Stopped, causeOf(cause, ""), at, false, "", false, nil
+		x.finishAssistance(r)
+		return citationSnapshot(r), true
+	})
 }
 
 // AttachedTo returns the runs attached to a run that have not ended.
-func (x *Index) AttachedTo(runID string) []Run {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
+func (x *Index) AttachedTo(tenant, runID string) []Run {
+	r, _, err := x.get(tenant, runID)
+	if err != nil {
+		return nil
+	}
+	tree, err := x.under(tenant, treePrefix(r.Root), MaxTree)
+	if err != nil {
+		x.log.Error("runs: could not read a call tree", "tenant", tenant, "run", runID, "error", err)
+		return nil
+	}
 	var out []Run
-	for _, id := range x.order {
-		if c := x.runs[id]; c.Parent == runID && c.Lifecycle == Attached && !c.Status.Terminal() {
+	for _, c := range tree {
+		if c.Parent == runID && c.Lifecycle == Attached && !c.Status.Terminal() {
 			out = append(out, citationSnapshot(c))
 		}
 	}
@@ -868,14 +942,13 @@ type Window struct {
 // Recent sums a tenant's runs that started since a time. An empty agent or
 // project matches every agent or project; both narrow when set.
 func (x *Index) Recent(tenant, agent, project string, since time.Time) Window {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
 	var w Window
-	for _, id := range x.order {
-		r := x.runs[id]
-		if r.Tenant != tenant || r.CreatedAt.Before(since) ||
-			(agent != "" && r.Agent != agent) || (project != "" && r.Project != project) {
-			continue
+	err := x.scan(tenant, func(r *Run) bool {
+		if r.CreatedAt.Before(since.Add(-scanSlack)) {
+			return false
+		}
+		if r.CreatedAt.Before(since) || (agent != "" && r.Agent != agent) || (project != "" && r.Project != project) {
+			return true
 		}
 		w.Total++
 		if r.Status == Failed {
@@ -884,51 +957,54 @@ func (x *Index) Recent(tenant, agent, project string, since time.Time) Window {
 		if r.Usage != nil {
 			w.Spent += usage.Of(r.Usage.Own).Micros
 		}
+		return true
+	})
+	if err != nil {
+		x.log.Error("runs: could not read recent runs", "tenant", tenant, "error", err)
 	}
 	return w
 }
 
 // Get returns one run in a tenant.
 func (x *Index) Get(tenant, runID string) (Run, error) {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	r, ok := x.runs[runID]
-	if !ok || r.Tenant != tenant {
-		return Run{}, ErrNotFound
+	r, _, err := x.get(tenant, runID)
+	if err != nil {
+		return Run{}, err
 	}
 	return citationSnapshot(r), nil
 }
 
-// List returns a tenant's runs, newest first, at most limit of them.
+// List returns a tenant's runs, newest first, at most limit of them, and at
+// most state.MaxList.
 func (x *Index) List(tenant string, limit int) []Run {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
+	if limit <= 0 || limit > state.MaxList {
+		limit = state.MaxList
+	}
 	var out []Run
-	for _, id := range slices.Backward(x.order) {
-		if r := x.runs[id]; r.Tenant == tenant {
-			out = append(out, citationSnapshot(r))
-			if limit > 0 && len(out) == limit {
-				break
-			}
-		}
+	err := x.scan(tenant, func(r *Run) bool {
+		out = append(out, citationSnapshot(r))
+		return len(out) < limit
+	})
+	if err != nil {
+		x.log.Error("runs: could not list runs", "tenant", tenant, "error", err)
 	}
 	return out
 }
 
 // Tree returns every run under the same root as runID, oldest first, so a
-// parent always precedes its children.
+// parent always precedes its children: at most MaxTree.
 func (x *Index) Tree(tenant, runID string) ([]Run, error) {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	r, ok := x.runs[runID]
-	if !ok || r.Tenant != tenant {
-		return nil, ErrNotFound
+	r, _, err := x.get(tenant, runID)
+	if err != nil {
+		return nil, err
 	}
-	var out []Run
-	for _, id := range x.order {
-		if c := x.runs[id]; c.Tenant == tenant && c.Root == r.Root {
-			out = append(out, citationSnapshot(c))
-		}
+	tree, err := x.under(tenant, treePrefix(r.Root), MaxTree)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Run, 0, len(tree))
+	for _, c := range tree {
+		out = append(out, citationSnapshot(c))
 	}
 	return out, nil
 }
@@ -965,31 +1041,32 @@ type ThreadSummary struct {
 // called along the way are not turns and are left out: they hang off a turn's
 // call tree.
 func (x *Index) Conversation(tenant, thread string) ([]Run, error) {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	var out []Run
-	for _, id := range x.order {
-		if r := x.runs[id]; r.Tenant == tenant && r.Thread == thread && r.Parent == "" {
-			out = append(out, citationSnapshot(r))
-		}
+	turns, err := x.under(tenant, turnPrefix(thread), MaxTree)
+	if err != nil {
+		return nil, err
 	}
-	if len(out) == 0 {
+	if len(turns) == 0 {
 		return nil, ErrNotFound
+	}
+	out := make([]Run, 0, len(turns))
+	for _, r := range turns {
+		out = append(out, citationSnapshot(r))
 	}
 	return out, nil
 }
 
 // Path returns the turns from the start of a conversation down to a run,
-// oldest first: the one branch that run sits on.
+// oldest first: the one branch that run sits on, at most MaxTree turns.
 func (x *Index) Path(tenant, runID string) ([]Run, error) {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
 	var out []Run
 	seen := map[string]bool{}
-	for id := runID; id != "" && !seen[id]; {
-		r, ok := x.runs[id]
-		if !ok || r.Tenant != tenant {
+	for id := runID; id != "" && !seen[id] && len(out) < MaxTree; {
+		r, _, err := x.get(tenant, id)
+		if errors.Is(err, ErrNotFound) {
 			break
+		}
+		if err != nil {
+			return nil, err
 		}
 		seen[id] = true
 		out = append(out, citationSnapshot(r))
@@ -1077,31 +1154,67 @@ func decodeCursor(c string) (at int64, id string, err error) {
 // Threads returns a tenant's conversations, most recently active first. A limit
 // of zero returns them all.
 func (x *Index) Threads(tenant string, limit int) []ThreadSummary {
-	all := x.threads(tenant)
-	if limit > 0 && len(all) > limit {
-		all = all[:limit]
+	if limit <= 0 {
+		limit = MaxThreadScan
 	}
-	return all
+	var out []ThreadSummary
+	err := x.eachThread(tenant, "", func(s storedThread) bool {
+		out = append(out, s.summary())
+		return len(out) < limit
+	})
+	if err != nil {
+		x.log.Error("runs: could not list conversations", "tenant", tenant, "error", err)
+	}
+	return out
+}
+
+// eachThread calls fn for a tenant's conversations, most recently active
+// first, from after a key of the activity order, until fn returns false or
+// MaxThreadScan have been read.
+func (x *Index) eachThread(tenant, after string, fn func(s storedThread) bool) error {
+	seen := 0
+	for seen < MaxThreadScan {
+		recs, next, err := x.page(tenant, state.Query{Prefix: "u:", After: after, Limit: min(state.MaxList, MaxThreadScan-seen)})
+		if err != nil {
+			return err
+		}
+		for _, rec := range recs {
+			seen++
+			var s storedThread
+			if err := json.Unmarshal(rec.Value, &s); err != nil {
+				return fmt.Errorf("runs: %q: %w", rec.Key, err)
+			}
+			if !fn(s) {
+				return nil
+			}
+		}
+		if next == "" {
+			return nil
+		}
+		after = next
+	}
+	return nil
 }
 
 // ThreadPage returns one page of a tenant's conversations, most recently active
 // first, and the cursor for the page after it. The cursor is empty when there
-// is nothing older.
+// is nothing older. A page looks at most MaxThreadScan conversations; when it
+// stops there short of its limit, its cursor goes on from the last it looked
+// at.
 func (x *Index) ThreadPage(tenant string, q ThreadQuery) ([]ThreadSummary, string, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = DefaultThreadPage
 	}
 	limit = min(limit, MaxThreadPage)
-	var afterAt int64
-	var afterID string
+	after := ""
 	if q.Before != "" {
-		var err error
-		if afterAt, afterID, err = decodeCursor(q.Before); err != nil {
+		at, id, err := decodeCursor(q.Before)
+		if err != nil {
 			return nil, "", err
 		}
+		after = activityKey(time.Unix(0, at), id)
 	}
-
 	var in map[string]bool
 	if q.Projects != nil {
 		in = make(map[string]bool, len(q.Projects))
@@ -1110,128 +1223,85 @@ func (x *Index) ThreadPage(tenant string, q ThreadQuery) ([]ThreadSummary, strin
 		}
 	}
 	page := []ThreadSummary{}
-	for _, s := range x.threads(tenant) {
+	next, scanned := "", 0
+	var last ThreadSummary
+	err := x.eachThread(tenant, after, func(st storedThread) bool {
+		s := st.summary()
+		scanned++
+		last = s
 		switch {
 		case in != nil && !in[s.Project]:
-			continue
+			return true
 		case q.Origin != "" && s.Origin != q.Origin:
-			continue
+			return true
 		case q.Agent != "" && !slices.Contains(s.Agents, q.Agent):
-			continue
+			return true
 		case q.Standing == StandingRunning && s.Active == 0:
-			continue
+			return true
 		case q.Standing == StandingFailed && s.Failed == 0:
-			continue
+			return true
 		case q.Channel != "" && s.Channel != q.Channel:
-			continue
-		}
-		if q.Before != "" {
-			at := s.UpdatedAt.UnixNano()
-			// Skip everything at or above the cursor's position.
-			if at > afterAt || (at == afterAt && s.ID <= afterID) {
-				continue
-			}
+			return true
 		}
 		if len(page) == limit {
 			// One more match exists, so there is a next page.
-			return page, encodeCursor(page[len(page)-1]), nil
+			next = encodeCursor(page[len(page)-1])
+			return false
 		}
 		page = append(page, s)
-	}
-	return page, "", nil
-}
-
-// threads builds every conversation in a tenant, most recently active first,
-// with the id breaking ties so the order is the same on every read.
-func (x *Index) threads(tenant string) []ThreadSummary {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	byID := map[string]*ThreadSummary{}
-	answers := map[string]int{}
-	var order []string
-	for _, id := range x.order {
-		r := x.runs[id]
-		if r.Tenant != tenant {
-			continue
-		}
-		s, ok := byID[r.Thread]
-		if !ok {
-			s = &ThreadSummary{ID: r.Thread, Title: r.Text, Origin: r.Origin, Project: r.Project, Channel: cmp.Or(r.Channel, DefaultChannel), People: []string{}, CreatedAt: r.CreatedAt}
-			byID[r.Thread] = s
-			order = append(order, r.Thread)
-		}
-		if !r.Status.Terminal() {
-			s.Active++
-		}
-		if r.Status == Failed {
-			s.Failed++
-		}
-		if r.UpdatedAt.After(s.UpdatedAt) {
-			s.UpdatedAt = r.UpdatedAt
-		}
-		if r.Parent != "" {
-			continue
-		}
-		s.Turns++
-		if !slices.Contains(s.Agents, r.Agent) {
-			s.Agents = append(s.Agents, r.Agent)
-		}
-		if who := AskedBy(*r); who != "" && !slices.Contains(s.People, who) {
-			s.People = append(s.People, who)
-		}
-		// A second answer at the same point makes that point a branch. Runs
-		// answering one person's message answer it side by side instead.
-		key := r.Thread + "\x00" + r.Prev
-		if answers[key]++; answers[key] == 2 && r.Message == "" {
-			s.Branches++
-		}
-	}
-	out := make([]ThreadSummary, 0, len(order))
-	for _, id := range order {
-		s := *byID[id]
-		if title := x.titles[tenant+"\x00"+id]; title != "" {
-			s.Title, s.Named = title, true
-		}
-		out = append(out, s)
-	}
-	slices.SortFunc(out, func(a, b ThreadSummary) int {
-		return cmp.Or(b.UpdatedAt.Compare(a.UpdatedAt), strings.Compare(a.ID, b.ID))
+		return true
 	})
-	return out
+	if err != nil {
+		return nil, "", err
+	}
+	if next == "" && scanned == MaxThreadScan {
+		next = encodeCursor(last)
+	}
+	return page, next, nil
 }
 
 // AnyActive returns whether an unfinished run satisfies keep. The callback is
 // pure and must not call the index. This includes delegated and system work,
-// which Conversation deliberately leaves out of its human turn list.
+// which Conversation deliberately leaves out of its human turn list. It looks
+// at most at MaxTree runs.
 func (x *Index) AnyActive(tenant string, keep func(Run) bool) bool {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	for _, id := range x.order {
-		r := x.runs[id]
-		if r.Tenant == tenant && !r.Status.Terminal() && keep(*r) {
+	rs, err := x.under(tenant, "a:", MaxTree)
+	if err != nil {
+		x.log.Error("runs: could not read the runs in flight", "tenant", tenant, "error", err)
+		return false
+	}
+	for _, r := range rs {
+		if keep(*r) {
 			return true
 		}
 	}
 	return false
 }
 
-// neededPerson propagates only within the authoritative execution tree.
-// The caller holds the index lock. The flag survives question resolution.
-func (x *Index) neededPerson(r *Run) {
+// neededPerson propagates only within the authoritative execution tree. The
+// flag survives question resolution.
+func (t *txn) neededPerson(r *Run) error {
 	seen := map[string]bool{}
 	for r != nil && !seen[r.ID] {
 		seen[r.ID] = true
 		r.Assistance = "needed"
-		x.touch(r.ID)
-		parent := x.runs[r.Parent]
-		if parent == nil || parent.Tenant != r.Tenant {
-			break
+		t.touch(r)
+		if r.Parent == "" {
+			return nil
+		}
+		parent, err := t.run(r.Parent)
+		if err != nil {
+			return err
 		}
 		r = parent
 	}
+	return nil
 }
+
+// finishAssistance says a run needed no person, when this index recorded it
+// and so folded every question it asked.
 func (x *Index) finishAssistance(r *Run) {
-	if r.Assistance == "" && x.observed[r.ID] {
+	if r.Assistance == "" && r.observedBy == x.instance {
 		r.Assistance = "none"
 	}
 }

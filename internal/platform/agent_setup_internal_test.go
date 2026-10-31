@@ -120,7 +120,7 @@ func TestSetupAmendmentInvalidatesOldTestAndRecoversPartialRegistryWrite(t *test
 		if err := p.Runs.Record(old.TestRun, tag, old.Revision); err != nil {
 			t.Fatal(err)
 		}
-		p.Runs.End(old.TestRun, runs.Completed, "done", "", time.Now())
+		p.Runs.End("t", old.TestRun, runs.Completed, "done", "", time.Now())
 		if err := p.setups.put("t", old); err != nil {
 			t.Fatal(err)
 		}
@@ -219,7 +219,7 @@ func TestSetupAmendmentChecksOwnerVersionInFlightAndExactHome(t *testing.T) {
 		if _, err := p.AmendAgentSetup(t.Context(), who, saved.Name, plan, saved.Version); !errors.Is(err, operations.ErrConflict) {
 			t.Fatalf("in-flight amendment=%v", err)
 		}
-		p.Runs.End(live.TestRun, runs.Stopped, "", "stopped", time.Now())
+		p.Runs.End("t", live.TestRun, runs.Stopped, "", "stopped", time.Now())
 		var wg sync.WaitGroup
 		wg.Add(3)
 		var amended AgentSetup
@@ -296,7 +296,7 @@ func TestReviewedSetupCannotActivateAnOfflineNoticeWithoutAModelCall(t *testing.
 	if err := p.Runs.Record(record.TestRun, wire.NewEvent(wire.Raise{ID: record.TestTag, Tenant: "t", Agent: record.Name, Origin: runs.OriginAPI, Text: "test", At: time.Now()}), record.Revision); err != nil {
 		t.Fatal(err)
 	}
-	p.Runs.End(record.TestRun, runs.Completed, "Offline notice", "", time.Now())
+	p.Runs.End("t", record.TestRun, runs.Completed, "Offline notice", "", time.Now())
 	if err := p.setups.put("t", record); err != nil {
 		t.Fatal(err)
 	}

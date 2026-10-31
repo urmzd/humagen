@@ -716,7 +716,7 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	p.recordContextUse(tag, project)
 	// Who asked, by every name they go by now: a mapping removed later does
 	// not let them approve their own calls.
-	p.Runs.PinRequesters(acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
+	p.Runs.PinRequesters(tag.Tenant, acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
 	return p.Runs.Get(tag.Tenant, acc.RunID)
 }
 
@@ -902,7 +902,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, err
 	}
-	p.Runs.Called(runID, req.Lease)
+	p.Runs.Called(tenant, runID, req.Lease)
 	return child, nil
 }
 
@@ -945,8 +945,8 @@ func (p *Platform) reconcile(ctx context.Context) {
 	p.reconcileOperationReminders(ctx)
 	p.settleOperations(ctx)
 	p.syncAssignmentSchedules()
-	for _, id := range p.Runs.Active() {
-		p.settleFromLedger(ctx, id)
+	for _, run := range p.Runs.Unfinished() {
+		p.settleFromLedger(ctx, run.Tenant, run.ID)
 	}
 }
 
@@ -954,7 +954,7 @@ func (p *Platform) reconcile(ctx context.Context) {
 // runtime recorded, and reports whether the ledger says it is over. A run
 // whose final event has not been observed yet ends here, and the event, when
 // it arrives, changes nothing: it says the same thing.
-func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
+func (p *Platform) settleFromLedger(ctx context.Context, tenant, id string) bool {
 	rec, err := p.ledger.GetRun(ctx, id)
 	if err != nil {
 		return false
@@ -979,7 +979,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			// A stopped run succeeds in the ledger: it ended and did not
 			// fail. Its output says it was stopped, and what it had said.
 			if out.Stopped != nil {
-				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(id, out.Text, out.Stopped.Reason, at) }); ended {
+				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(tenant, id, out.Text, out.Stopped.Reason, at) }); ended {
 					p.log.Info("platform: run ended stopped in the ledger before its final event was seen", "run", id)
 					p.ended(ctx, run)
 				}
@@ -987,7 +987,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			}
 		}
 	}
-	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(id, status, answer, rec.Error, at) }); ended {
+	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(tenant, id, status, answer, rec.Error, at) }); ended {
 		p.log.Info("platform: run ended in the ledger before its final event was seen", "run", id, "status", status)
 		p.ended(ctx, run)
 	}
