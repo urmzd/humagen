@@ -706,7 +706,7 @@ export interface RunSettings {
   preferences?: RunPreferences;
 }
 
-/** A list left out narrows nothing at its level; an empty list allows nothing. Tool servers are default deny. */
+/** A list left out narrows nothing at its level; an empty list allows nothing. Tool servers and egress are default deny. */
 export interface RunCeilings {
   /** Tool names an agent's tools may keep, at most 64. */
   tools?: string[];
@@ -716,6 +716,8 @@ export interface RunCeilings {
   call_depth?: number;
   /** Hosts a person's own tool servers may be on, at most 64. */
   tool_servers?: string[];
+  /** Hosts a run's sandbox may reach through the egress gate, on ports 80 and 443, at most 64: an exact name or `*.domain` for its subdomains. */
+  egress?: string[];
 }
 
 export interface RunPreferences {

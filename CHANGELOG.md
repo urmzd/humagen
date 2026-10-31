@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.51.1 (2026-10-31)
+
+### Bug Fixes
+
+- feedback prompt capture, configured-runtime compaction budget, held-call docs (#149) ([ece3f25](https://github.com/urmzd/humagen/commit/ece3f257d99641342def7d8ffa04c1c642c7badf))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.51.0...v0.51.1)
+
+
+## 0.50.0 (2026-10-31)
+
+### Features
+
+- **console**: list, add and remove a person's own tool servers (#148) ([f012088](https://github.com/urmzd/humagen/commit/f012088b5ac335893b7f198647923445be8a5a11))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.49.0...v0.50.0)
+
+
 ## 0.49.0 (2026-10-30)
 
 ### Features

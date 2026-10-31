@@ -163,7 +163,10 @@ no permission, grants nothing.
   trust boundary of its own.** With `sandbox: docker` each run's file tools,
   shell and stdio MCP servers run in containers with no network, a read-only
   root, no capabilities and a non-root user, and the agent loop and model
-  keys stay in the server ([spec](../reference/spec.md#sandbox)). Starting
+  keys stay in the server ([spec](../reference/spec.md#sandbox)). With
+  `egress: gate` their only way out is the egress gate, which lets a run
+  reach the hosts its `ceilings.egress` allows, default deny, and audits
+  every decision ([spec](../reference/spec.md#egress)). Starting
   those containers needs the Docker socket, and **access to the Docker socket
   is host-root equivalent**: a compromised Humagen process could start a
   privileged container and own the host. Run the `docker` driver only on a

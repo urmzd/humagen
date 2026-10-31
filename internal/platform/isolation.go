@@ -58,7 +58,7 @@ var ErrUnisolated = errors.New("platform: this deployment runs no sandbox")
 // instance starts empty; a called run has a run of its own, so it never
 // shares its caller's instance.
 func (p *Platform) runInstances(_ context.Context, req runtime.Request) *isolation.Run {
-	ir := isolation.Request{Tenant: req.Tenant, Run: req.RunID, Connectors: grantsToolServers(req)}
+	ir := isolation.Request{Tenant: req.Tenant, Run: req.RunID, Connectors: grantsToolServers(req), Egress: egressHosts(req)}
 	if !p.cfg.Sandbox.Isolated() {
 		return isolation.Unisolated(ir)
 	}
@@ -67,6 +67,16 @@ func (p *Platform) runInstances(_ context.Context, req runtime.Request) *isolati
 		files = &runFiles{p: p, tenant: req.Tenant, run: req.RunID}
 	}
 	return isolation.NewRun(p.cfg.Sandbox.Leaser, ir, files)
+}
+
+// egressHosts are the hosts a turn's sandbox may reach: its pinned egress
+// ceiling. A context that cannot be read reaches none.
+func egressHosts(req runtime.Request) []string {
+	c, err := requestContext(req)
+	if err != nil {
+		return []string{}
+	}
+	return c.Settings.Ceilings.EgressHosts()
 }
 
 // grantsToolServers reports whether a turn may start a tool server, so its
@@ -238,11 +248,16 @@ func (a workArea) write(ctx context.Context, clean, content string) error {
 // instance. Unisolated, it refuses: a model's command never runs on the
 // host.
 func (p *Platform) shellTool(req runtime.Request, action func(event.Action) error) saigetypes.Tool {
+	network := "The sandbox has no network and is destroyed when the run ends; "
+	if hosts := egressHosts(req); p.cfg.Sandbox.Egress && len(hosts) > 0 {
+		network = "The sandbox reaches only these hosts, on ports 80 and 443, through the proxy its environment names (HTTPS_PROXY), and refuses any other: " +
+			strings.Join(hosts, ", ") + ". It is destroyed when the run ends; "
+	}
 	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{
 			Name: ToolShell,
 			Description: "Run a shell command (sh -c) in this run's sandbox, starting in the working directory the file tools use. " +
-				"The sandbox has no network and is destroyed when the run ends; files in the working directory are kept for the conversation. " +
+				network + "files in the working directory are kept for the conversation. " +
 				fmt.Sprintf("A command may run for %s; the last %d bytes of its output are returned with its exit code.", ShellTimeout, MaxShellOutput),
 			Parameters: schema([]string{"command"}, map[string]string{"command": "The command, run with sh -c"}),
 		},

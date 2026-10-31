@@ -22,6 +22,8 @@ import type {
   NoteInput,
   Person,
   PersonalPreferences,
+  PersonContext,
+  PersonContextInput,
   PlacementPreview,
   ProjectAgentsInput,
   ProjectAgentsView,
@@ -56,6 +58,9 @@ export type {
   ContextLayer,
   DefaultResolved,
   Person,
+  PersonContext,
+  PersonContextInput,
+  PersonToolServer,
   Project,
   ProjectAccess,
   ProjectAccount,
@@ -1044,6 +1049,10 @@ export const api = {
     call<ToolCredential>("PUT", `/api/me/credentials/${encodeURIComponent(provider)}`, input),
   disconnectTool: (provider: string) =>
     call<void>("DELETE", `/api/me/credentials/${encodeURIComponent(provider)}`),
+  /** Your own run context: your run settings and the tool servers you added. */
+  personContext: () => call<PersonContext>("GET", "/api/me/context"),
+  setPersonContext: (input: PersonContextInput) =>
+    call<PersonContext>("PUT", "/api/me/context", input),
   policies: () => call<{ policies: Policy[] }>("GET", "/api/policies").then((r) => r.policies),
   savePolicy: (
     p: Omit<Policy, "version" | "updated_at" | "updated_by" | "action"> & {
