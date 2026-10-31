@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.54.0 (2026-10-31)
+
+### Features
+
+- **catalog**: tenant-scoped catalog store with hybrid search (#154) ([12df401](https://github.com/urmzd/humagen/commit/12df4014cb047edde78ea0f5929b5280e4f535ad))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.53.0...v0.54.0)
+
+
 ## 0.52.0 (2026-10-31)
 
 ### Features
