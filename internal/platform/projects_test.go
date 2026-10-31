@@ -355,7 +355,10 @@ func TestKeepingWhatIsStillNamedFailsTheStartPastTheCap(t *testing.T) {
 		if !errors.Is(err, projects.ErrLimit) || !strings.Contains(err.Error(), `"P000"`) || !strings.Contains(err.Error(), fmt.Sprintf(`"P%03d"`, named-1)) {
 			t.Fatalf("a start that would keep %d names beside 2 projects = %v", named, err)
 		}
-		if recs, err := st.Load(t.Context(), "projects"); err != nil || len(recs) != 0 {
+		recs, err := st.Load(t.Context(), "projects")
+		// The tenant directory, in tenant "", is written when the store opens.
+		recs = slices.DeleteFunc(recs, func(r state.Record) bool { return r.Tenant == "" })
+		if err != nil || len(recs) != 0 {
 			t.Fatalf("a refused import left %d records (%v)", len(recs), err)
 		}
 		if _, held := storedSettings(t, st, tenant)["projects"]; !held {
