@@ -422,7 +422,8 @@ type Store struct {
 // beginning one drops the oldest past that.
 const namespace = "evals"
 
-// stored is one record: a suite, a run, or a tenant's run counter.
+// stored is one record: a suite, a run, a tenant's run counter, or a suite's
+// guard, which holds the number of the suite's newest run in Next.
 type stored struct {
 	Suite *Suite `json:"suite,omitempty"`
 	Run   *Run   `json:"run,omitempty"`
@@ -435,6 +436,7 @@ const (
 	nextKey     = "next"
 	suitePrefix = "suite/"
 	runPrefix   = "run/"
+	openPrefix  = "open/"
 	// maxSuites is the most suites a tenant may create.
 	maxSuites = 200
 	// staleAfter is how long a running run may go unwritten before it is
@@ -446,6 +448,11 @@ const (
 func suiteKey(name string) string { return suitePrefix + name }
 
 func suiteRuns(name string) string { return runPrefix + name + "/" }
+
+// openKey is a suite's guard: every Begin writes it at the version it read
+// before reading the suite's runs, so two Begins of one suite conflict on
+// this one key and the one that loses reads again and sees the other's run.
+func openKey(name string) string { return openPrefix + name }
 
 // runKey sorts a suite's runs in the order they were numbered.
 func runKey(run Run) string {
@@ -596,6 +603,12 @@ func (s *Store) Delete(tenantName, name string) error {
 			return err
 		}
 		b.DeleteAt(tenantName, suiteKey(name), version)
+		switch guard, err := s.kept.Lookup(tenantName, openKey(name)); {
+		case err == nil:
+			b.DeleteAt(tenantName, openKey(name), guard.Version)
+		case !errors.Is(err, state.ErrNotFound):
+			return fmt.Errorf("evals: read: %w", err)
+		}
 		for _, it := range runs {
 			b.DeleteAt(tenantName, it.Key, it.Version)
 		}
@@ -613,6 +626,13 @@ func (s *Store) Begin(tenantName string, suite Suite, rev int, by string, at tim
 		if _, _, err := s.lookup(tenantName, suite.Name); err != nil {
 			return err
 		}
+		// The guard is read before the runs: a Begin that commits after this
+		// read moves the guard and this one's write of it conflicts, and one
+		// that committed before it is seen in the runs read next.
+		guard, err := s.kept.Lookup(tenantName, openKey(suite.Name))
+		if err != nil && !errors.Is(err, state.ErrNotFound) {
+			return fmt.Errorf("evals: read: %w", err)
+		}
 		b := s.kept.Batch()
 		runs, err := s.runsOf(tenantName, suite.Name, state.MaxList)
 		if err != nil {
@@ -628,6 +648,11 @@ func (s *Store) Begin(tenantName string, suite Suite, rev int, by string, at tim
 		next, err := s.counter(b, tenantName, 1)
 		if err != nil {
 			return err
+		}
+		if guard.Version == 0 {
+			b.Create(tenantName, openKey(suite.Name), stored{Next: next})
+		} else {
+			b.PutAt(tenantName, openKey(suite.Name), stored{Next: next}, guard.Version)
 		}
 		run := Run{
 			ID: fmt.Sprintf("ev-%d", next), Suite: suite.Name, Target: suite.Target, Subject: suite.Subject,
