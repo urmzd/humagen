@@ -50,7 +50,7 @@ func TestStripedQuotasAreExactAcrossProcesses(t *testing.T) {
 				t.Fatalf("admitted %d and refused %d of %d under %d", in, full, racers, limit)
 			}
 			for i, l := range ls {
-				if u := l.Usage("acme", all, t0); u.Runs != limit || u.Concurrent != limit {
+				if u := l.used("acme", all, t0); u.Runs != limit || u.Concurrent != limit {
 					t.Fatalf("process %d reads %+v", i, u)
 				}
 			}
@@ -101,7 +101,7 @@ func TestStripedQuotasHoldTogether(t *testing.T) {
 	if admitted.Load() > 30 {
 		t.Fatalf("admitted %d, over 30", admitted.Load())
 	}
-	if u := ls[0].Usage("acme", all, t0); u.Runs != int(admitted.Load()) || u.Concurrent != 0 {
+	if u := ls[0].used("acme", all, t0); u.Runs != int(admitted.Load()) || u.Concurrent != 0 {
 		t.Fatalf("reads %+v after %d admitted and all ended", u, admitted.Load())
 	}
 }

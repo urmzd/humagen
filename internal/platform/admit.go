@@ -168,10 +168,10 @@ func fullDecision(applied []policy.Applied, q usage.Quota, lease int64) policy.D
 }
 
 // appendUsage appends an entry the platform has nobody to report a failed
-// write to. The ledger has counted it all the same and writes it later.
+// write to. One that could not be written is logged, and not kept.
 func (p *Platform) appendUsage(e usage.Entry) {
 	if _, err := p.Usage.Append(e); err != nil {
-		p.log.Error("platform: usage entry could not be written yet", "kind", e.Kind, "run", e.RunID, "error", err)
+		p.log.Error("platform: usage entry could not be written", "kind", e.Kind, "run", e.RunID, "error", err)
 	}
 }
 
@@ -179,9 +179,12 @@ func (p *Platform) appendUsage(e usage.Entry) {
 // first, with what its scope has used in the policy's current period. chain is
 // the run's project and the ancestors it is within, nearest first.
 func (p *Platform) applied(tenant string, chain []string, agent, client string, now time.Time) []policy.Applied {
-	out, _ := p.appliedBy(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
-		return p.Usage.Usage(tenant, scope, since), nil
+	out, err := p.appliedBy(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
+		return p.Usage.Usage(tenant, scope, since)
 	}, tenant, chain, agent, client, now)
+	if err != nil {
+		p.log.Error("platform: usage could not be read", "tenant", tenant, "error", err)
+	}
 	return out
 }
 

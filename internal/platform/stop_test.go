@@ -70,7 +70,7 @@ func countEndings(p *platform.Platform, runID string) (events, freed int) {
 			events++
 		}
 	}
-	for _, en := range p.Usage.Entries() {
+	for _, en := range entriesOf(p, tenant) {
 		if en.Kind == usage.Ended && en.RunID == runID {
 			freed++
 		}
@@ -121,7 +121,7 @@ func TestStopInterruptsTheModelCallAndKeepsThePartialAnswer(t *testing.T) {
 	if events, freed := endings(p, first.ID); events != 1 || freed != 1 {
 		t.Fatalf("%d terminal events and %d places freed, want one of each", events, freed)
 	}
-	if u := p.Usage.Usage(tenant, policy.Scope{}, time.Time{}); u.Concurrent != 0 {
+	if u := usageOf(p, tenant, policy.Scope{}, time.Time{}); u.Concurrent != 0 {
 		t.Fatalf("%d runs still hold a place", u.Concurrent)
 	}
 
@@ -293,7 +293,7 @@ func TestStopIsIdempotentAndSafeAgainstACompletion(t *testing.T) {
 	if outcomes[runs.Stopped] == 0 || outcomes[runs.Completed] == 0 {
 		t.Fatalf("the race was not exercised both ways: %v", outcomes)
 	}
-	if u := p.Usage.Usage(tenant, policy.Scope{}, time.Time{}); u.Concurrent != 0 {
+	if u := usageOf(p, tenant, policy.Scope{}, time.Time{}); u.Concurrent != 0 {
 		t.Fatalf("%d runs still hold a place", u.Concurrent)
 	}
 }

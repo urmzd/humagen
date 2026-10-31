@@ -77,7 +77,8 @@ func (p *Platform) observeUsage(ctx context.Context, e event.Envelope) {
 		RunID: run.ID, At: p.now(), EventAt: e.Time, Spend: new(usage.OfCall(c)),
 	})
 	if err != nil {
-		p.log.Error("platform: usage entry could not be written yet", "kind", usage.Spent, "run", run.ID, "error", err)
+		// Not counted: the run's settled total, at its end, counts the call.
+		p.log.Error("platform: usage entry could not be written", "kind", usage.Spent, "run", run.ID, "error", err)
 	}
 	if !counted {
 		return
@@ -198,7 +199,7 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 			Client: run.Client, RunID: run.ID, At: p.now(), Spend: new(usage.Of(u.Own)),
 		})
 		if err != nil {
-			p.log.Error("platform: usage entry could not be written yet", "kind", usage.Settled, "run", run.ID, "error", err)
+			p.log.Error("platform: usage entry could not be written", "kind", usage.Settled, "run", run.ID, "error", err)
 		}
 		micros = added.Micros
 	}
