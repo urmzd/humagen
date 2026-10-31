@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.49.0 (2026-10-30)
+
+### Features
+
+- **console**: work on a phone and install as an app (#144) ([dbf6d38](https://github.com/urmzd/humagen/commit/dbf6d3815d142c5bbd6cd327e7e48758f801e282))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.48.2...v0.49.0)
+
+
 ## 0.48.2 (2026-10-30)
 
 ### Bug Fixes
