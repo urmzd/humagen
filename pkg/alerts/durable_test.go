@@ -57,13 +57,13 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(again.Rules("acme"), e.Rules("acme")) || len(again.Rules("acme")) != 2 {
-			t.Fatalf("rules after restart = %+v", again.Rules("acme"))
+		if !reflect.DeepEqual(must(again.Rules("acme")), must(e.Rules("acme"))) || len(must(again.Rules("acme"))) != 2 {
+			t.Fatalf("rules after restart = %+v", must(again.Rules("acme")))
 		}
-		if !reflect.DeepEqual(again.Alerts("acme"), e.Alerts("acme")) {
-			t.Fatalf("alerts after restart = %+v, want %+v", again.Alerts("acme"), e.Alerts("acme"))
+		if !reflect.DeepEqual(must(again.Alerts("acme")), must(e.Alerts("acme"))) {
+			t.Fatalf("alerts after restart = %+v, want %+v", must(again.Alerts("acme")), must(e.Alerts("acme")))
 		}
-		if a := again.Alerts("acme")[1]; a.AckedBy != "ada" || len(a.Notify) != 1 {
+		if a := must(again.Alerts("acme"))[1]; a.AckedBy != "ada" || len(a.Notify) != 1 {
 			t.Fatalf("the acknowledged alert after restart = %+v", a)
 		}
 		// The cooldown survives: the same failure an hour later is quiet.
@@ -78,7 +78,7 @@ func TestRestart(t *testing.T) {
 		if next.ID == budget.ID || next.ID == raised[0].ID {
 			t.Fatalf("a restarted engine issued %q again", next.ID)
 		}
-		if len(again.Rules("globex")) != 0 || len(again.Alerts("globex")) != 0 {
+		if len(must(again.Rules("globex"))) != 0 || len(must(again.Alerts("globex"))) != 0 {
 			t.Fatal("another tenant sees acme's rules")
 		}
 	})
@@ -92,14 +92,14 @@ func TestRestartKeepsTheCap(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Acknowledge it, so the next is raised.
-		a := e.Alerts("acme")[0]
+		a := must(e.Alerts("acme"))[0]
 		if _, err := e.Ack("acme", a.ID, "ada", t0); err != nil {
 			t.Fatal(err)
 		}
 	}
 	again, _ := Open(st)
-	got := again.Alerts("acme")
-	if len(got) != maxAlerts || got[0].ID != e.Alerts("acme")[0].ID || got[len(got)-1].ID != "al-6" {
+	got := must(again.Alerts("acme"))
+	if len(got) != maxAlerts || got[0].ID != must(e.Alerts("acme"))[0].ID || got[len(got)-1].ID != "al-6" {
 		t.Fatalf("after restart: %d alerts, newest %s, oldest %s", len(got), got[0].ID, got[len(got)-1].ID)
 	}
 }
@@ -123,8 +123,8 @@ func TestFailedWriteRaisesNothing(t *testing.T) {
 	if err := e.RemoveRule("acme", "fails"); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("RemoveRule = %v", err)
 	}
-	if len(e.Alerts("acme")) != 0 || len(e.Rules("acme")) != 1 {
-		t.Fatalf("after failed writes: %d alerts, %d rules", len(e.Alerts("acme")), len(e.Rules("acme")))
+	if len(must(e.Alerts("acme"))) != 0 || len(must(e.Rules("acme"))) != 1 {
+		t.Fatalf("after failed writes: %d alerts, %d rules", len(must(e.Alerts("acme"))), len(must(e.Rules("acme"))))
 	}
 	f.Fail(nil)
 	// Nothing was raised, so nothing is cooling down and no id was used.

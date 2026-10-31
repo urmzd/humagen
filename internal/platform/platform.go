@@ -931,10 +931,6 @@ func reserved(origin string) bool {
 // reconcileEvery is how often open runs are checked against the ledger.
 const reconcileEvery = 2 * time.Second
 
-// flushEvery is how often what the journal, the run index and the usage
-// ledger write behind is written: what a crash can lose.
-const flushEvery = 250 * time.Millisecond
-
 // reconcile closes runs the ledger says are over but whose events never said so.
 //
 // The ledger is the authority on whether a run has ended. The usual way to
@@ -1004,7 +1000,9 @@ func (p *Platform) observe(ctx context.Context, e event.Envelope) {
 		// published. The run's own events say what came of it.
 		return
 	}
-	p.Journal.Append(e, p.originOf(e.Tenant, e.Run))
+	if err := p.Journal.Append(e, p.originOf(e.Tenant, e.Run)); err != nil {
+		p.log.Error("platform: event could not be kept in the journal", "tenant", e.Tenant, "run", e.Run, "seq", e.Seq, "error", err)
+	}
 	if event.HasPrefix(e.Type, "run.usage") {
 		p.observeUsage(ctx, e)
 		return
@@ -1193,18 +1191,6 @@ func (p *Platform) Run(ctx context.Context) error {
 		loop("observer "+tenant, func() error { return p.observeTenant(ctx, sub, observed) })
 		loop("egress "+tenant, func() error { return p.deliver.Run(ctx, tenant) })
 	})
-	loop("state flush", func() error {
-		tick := time.NewTicker(flushEvery)
-		defer tick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-tick.C:
-				p.flush()
-			}
-		}
-	})
 	loop("email notifications", func() error { return p.runEmailNotifications(ctx) })
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
 	loop("source refresh", func() error { return p.refreshSources(ctx) })
@@ -1285,9 +1271,6 @@ func (p *Platform) Run(ctx context.Context) error {
 	// No tenant starts being watched once the loops are winding down.
 	p.watching.end()
 	wg.Wait()
-	// What changed last is written once every loop has stopped, so nothing
-	// the observer folded in while the platform stopped is left unwritten.
-	p.flush()
 	close(errc)
 	return <-errc
 }

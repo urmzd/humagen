@@ -187,9 +187,9 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("runs", err)
 	p.Schedules, err = OpenSchedules(st)
 	keep("schedules", err)
-	p.Journal, err = journal.Open(st, 0)
+	p.Journal, err = journal.Open(perRequest, 0)
 	keep("journal", err)
-	p.Alerts, err = alerts.Open(st)
+	p.Alerts, err = alerts.Open(perRequest)
 	keep("alerts", err)
 	p.SourceLinks, err = sourcelinks.Open(st)
 	keep("source link rules", err)
@@ -201,7 +201,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("catalog", err)
 	p.SourceEvidence, err = knowledge.OpenEvidenceStore(st)
 	keep("source citation evidence", err)
-	p.Evals, err = evals.Open(st)
+	p.Evals, err = evals.Open(perRequest)
 	keep("evals", err)
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
@@ -300,12 +300,4 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Credentials, err = credentials.Open(st, p.secrets)
 	keep("credentials", err)
 	return errors.Join(errs...)
-}
-
-// flush writes what the stores that write behind have not written yet: the
-// journal.
-func (p *Platform) flush() {
-	if err := p.Journal.Flush(); err != nil {
-		p.log.Error("platform: journal could not be written", "error", err)
-	}
 }

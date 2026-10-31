@@ -143,7 +143,7 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 	if q.Has("type") {
 		kind = ""
 	}
-	entries := s.P.Journal.Query(journal.Query{
+	entries, err := s.P.Journal.Query(journal.Query{
 		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Type: kind, Types: q["type"],
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
 		ProjectEvent: func(e event.Envelope) event.Envelope { return s.P.ShownEvent(who, e) },
@@ -158,6 +158,10 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 			return seer.RunID(e.Run)
 		},
 	})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	// An event of a run the caller may not read is left out, as is one of
 	// an agent that lives in a project they cannot see.
 	seer, verdict := s.P.Seer(who), map[string]bool{}
@@ -187,7 +191,12 @@ func (s *Server) trace(w http.ResponseWriter, r *http.Request, who auth.Principa
 	for i, run := range tree {
 		ids[i] = run.ID
 	}
-	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRunsAs(who, tree), "spans": orEmpty(s.P.ShownSpans(who, s.P.Journal.Trace(who.Tenant, ids)))})
+	spans, err := s.P.Journal.Trace(who.Tenant, ids)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"runs": s.P.ShownRunsAs(who, tree), "spans": orEmpty(s.P.ShownSpans(who, spans))})
 }
 
 // runEvents returns one run's events as they were published, oldest first, for
@@ -199,7 +208,11 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	held := s.P.Journal.Events(who.Tenant, []string{run.ID})
+	held, err := s.P.Journal.Events(who.Tenant, []string{run.ID})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	events := make([]platform.APIEvent, 0, len(held))
 	for _, e := range held {
 		if !s.P.CitationEventVisible(who, e) {
@@ -264,7 +277,11 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 			shown := seer.Revision(rev)
 			e.Definition = &shown
 		}
-		held := s.P.Journal.Events(who.Tenant, []string{run.ID})
+		held, err := s.P.Journal.Events(who.Tenant, []string{run.ID})
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
 		e.Complete = complete(held)
 		for _, ev := range held {
 			if !s.P.CitationEventVisible(who, ev) {
@@ -324,7 +341,12 @@ func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Pri
 	seer := s.P.Seer(who)
 	names := s.P.Names(who.Tenant)
 	out := []alertView{}
-	for _, a := range s.P.Alerts.Alerts(who.Tenant) {
+	all, err := s.P.Alerts.Alerts(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, a := range all {
 		if seer.Alert(a) {
 			out = append(out, alertView{Alert: a, AckedByName: names.Of(a.AckedBy)})
 		}
@@ -345,7 +367,12 @@ func (s *Server) listRules(w http.ResponseWriter, _ *http.Request, who auth.Prin
 	seer := s.P.Seer(who)
 	names := s.P.Names(who.Tenant)
 	out := []ruleView{}
-	for _, r := range s.P.Alerts.Rules(who.Tenant) {
+	rules, err := s.P.Alerts.Rules(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, r := range rules {
 		if seer.Rule(r) {
 			out = append(out, viewRule(names, r))
 		}
@@ -615,7 +642,12 @@ type suiteView struct {
 func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	out := []suiteView{}
 	seer := s.P.Seer(who)
-	for _, suite := range s.P.Evals.List(who.Tenant) {
+	suites, err := s.P.Evals.List(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	for _, suite := range suites {
 		if !seer.Suite(suite) {
 			continue
 		}

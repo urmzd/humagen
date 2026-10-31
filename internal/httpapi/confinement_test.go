@@ -421,7 +421,7 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 		if time.Now().After(deadline) {
 			t.Fatalf("the private run raised no alert (%q) or no message about it (%q)", h.alert, h.message)
 		}
-		for _, a := range f.p.Alerts.Alerts("acme") {
+		for _, a := range kept(f.p.Alerts.Alerts("acme")) {
 			if a.RunID == h.run {
 				h.alert = a.ID
 			}
@@ -959,7 +959,7 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 		if !strings.Contains(th, `"visibility":"private"`) || strings.Contains(th, "svc-nonmember") {
 			t.Errorf("after the sweep the private thread is %s", th)
 		}
-		for _, a := range f.p.Alerts.Alerts("acme") {
+		for _, a := range kept(f.p.Alerts.Alerts("acme")) {
 			if a.ID == h.alert && !a.Open() {
 				t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
 			}
@@ -1140,7 +1140,7 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			}
 		}
 	}
-	for _, a := range f.p.Alerts.Alerts("acme") {
+	for _, a := range kept(f.p.Alerts.Alerts("acme")) {
 		if a.ID == h.alert && !a.Open() {
 			t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
 		}
@@ -1329,4 +1329,12 @@ func seedHiddenSetup(t *testing.T, f *fixture) string {
 		t.Fatalf("hidden setup=%+v,%v", saved, err)
 	}
 	return saved.Name
+}
+
+// kept is what a store read, for a test whose store cannot fail to read.
+func kept[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }

@@ -15,6 +15,41 @@ func ev(t *testing.T, tenant, run string, at int, body event.Body) event.Envelop
 	return event.Envelope{Seq: uint64(at), Run: run, Tenant: tenant, Agent: "lead", Version: wire.VersionOf(1), Type: body.Type(), Data: body, Time: t0.Add(time.Duration(at) * time.Second)}
 }
 
+// query runs a query that cannot fail.
+func query(t *testing.T, j *Journal, q Query) []Entry {
+	t.Helper()
+	got, err := j.Query(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func traced(t *testing.T, j *Journal, tenant string, runIDs ...string) []Span {
+	t.Helper()
+	got, err := j.Trace(tenant, runIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func events(t *testing.T, j *Journal, tenant string, runIDs ...string) []event.Envelope {
+	t.Helper()
+	got, err := j.Events(tenant, runIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func appended(t *testing.T, j *Journal, e event.Envelope) {
+	t.Helper()
+	if err := j.Append(e, "slack"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func filled(t *testing.T) *Journal {
 	j := New(0)
 	for _, e := range []event.Envelope{
@@ -27,14 +62,14 @@ func filled(t *testing.T) *Journal {
 		ev(t, "acme", "r1", 9, event.Completed{Text: "Posted the comment. Done."}),
 		ev(t, "globex", "r9", 3, event.Text{Text: "secret"}),
 	} {
-		j.Append(e, "slack")
+		appended(t, j, e)
 	}
 	return j
 }
 
 func TestQueryIsNewestFirstAndConfinedToATenant(t *testing.T) {
 	j := filled(t)
-	got := j.Query(Query{Tenant: "acme"})
+	got := query(t, j, Query{Tenant: "acme"})
 	if len(got) != 7 || got[0].Type != event.TypeCompleted || got[6].Type != event.TypeAccepted {
 		t.Fatalf("got %d entries, first %s", len(got), got[0].Type)
 	}
@@ -43,7 +78,7 @@ func TestQueryIsNewestFirstAndConfinedToATenant(t *testing.T) {
 			t.Fatalf("another tenant's event leaked: %+v", e)
 		}
 	}
-	if got := j.Query(Query{}); len(got) != 0 {
+	if got := query(t, j, Query{}); len(got) != 0 {
 		t.Fatalf("a query with no tenant returned %d entries", len(got))
 	}
 }
@@ -66,14 +101,14 @@ func TestQueryNarrows(t *testing.T) {
 		"no run":   {Query{Tenant: "acme", RunID: "r9"}, 0},
 		"no agent": {Query{Tenant: "acme", Agent: "helper"}, 0},
 	} {
-		if got := j.Query(tc.q); len(got) != tc.want {
+		if got := query(t, j, tc.q); len(got) != tc.want {
 			t.Errorf("%s: got %d, want %d", name, len(got), tc.want)
 		}
 	}
 }
 
 func TestTraceRebuildsSpans(t *testing.T) {
-	spans := filled(t).Trace("acme", []string{"r1", "r9"})
+	spans := traced(t, filled(t), "acme", "r1", "r9")
 	by := map[SpanKind]Span{}
 	for _, s := range spans {
 		if s.RunID != "r1" {
@@ -96,10 +131,10 @@ func TestTraceRebuildsSpans(t *testing.T) {
 
 func TestARetriedFailureDoesNotEndTheRun(t *testing.T) {
 	j := New(0)
-	j.Append(ev(t, "acme", "r1", 0, event.Accepted{}), "slack")
-	j.Append(ev(t, "acme", "r1", 1, event.Started{Attempt: 1}), "slack")
-	j.Append(ev(t, "acme", "r1", 2, event.Failed{Error: "timeout"}), "slack")
-	for _, s := range j.Trace("acme", []string{"r1"}) {
+	appended(t, j, ev(t, "acme", "r1", 0, event.Accepted{}))
+	appended(t, j, ev(t, "acme", "r1", 1, event.Started{Attempt: 1}))
+	appended(t, j, ev(t, "acme", "r1", 2, event.Failed{Error: "timeout"}))
+	for _, s := range traced(t, j, "acme", "r1") {
 		if s.Kind == SpanRun && !s.End.IsZero() {
 			t.Fatal("the run span closed on a failure that will be retried")
 		}
@@ -109,12 +144,12 @@ func TestARetriedFailureDoesNotEndTheRun(t *testing.T) {
 	}
 }
 
-func TestTheRingDropsTheOldest(t *testing.T) {
+func TestATenantDropsItsOldest(t *testing.T) {
 	j := New(3)
 	for i := range 5 {
-		j.Append(ev(t, "acme", "r1", i, event.Text{Text: "x"}), "slack")
+		appended(t, j, ev(t, "acme", "r1", i, event.Text{Text: "x"}))
 	}
-	got := j.Query(Query{Tenant: "acme"})
+	got := query(t, j, Query{Tenant: "acme"})
 	if len(got) != 3 || got[0].Seq != 4 || got[2].Seq != 2 {
 		t.Fatalf("got %+v", got)
 	}
@@ -126,8 +161,8 @@ func TestDetailIsClippedOnARuneBoundary(t *testing.T) {
 		long += "é"
 	}
 	j := New(0)
-	j.Append(ev(t, "acme", "r1", 0, event.Text{Text: long}), "slack")
-	d := j.Query(Query{Tenant: "acme"})[0].Detail
+	appended(t, j, ev(t, "acme", "r1", 0, event.Text{Text: long}))
+	d := query(t, j, Query{Tenant: "acme"})[0].Detail
 	if len(d) > maxDetail+4 || []rune(d)[len([]rune(d))-2] != 'é' {
 		t.Fatalf("clipped badly: %d bytes", len(d))
 	}

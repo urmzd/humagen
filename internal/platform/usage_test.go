@@ -192,7 +192,7 @@ func TestARunsUsageIsRecordedOnceDespiteRedeliveredTerminalEventsAndReconcilerPa
 
 	// Everything again: every event the run published, its ending, a pass of
 	// the reconciler.
-	for _, e := range p.Journal.Events(tenant, []string{r.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{r.ID})) {
 		p.Redeliver(ctx, e)
 	}
 	p.Ended(ctx, done)
@@ -295,7 +295,7 @@ func TestChildrenRollUpExactlyOnceThroughTheDelegator(t *testing.T) {
 		t.Fatalf("helper's total = %+v", helper.Usage.Total)
 	}
 	reports := 0
-	for _, e := range p.Journal.Events(tenant, []string{lead.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{lead.ID})) {
 		if e.Type == event.TypeUsageChild {
 			reports++
 		}
@@ -370,7 +370,7 @@ func TestARunCrossingTheHardLimitMidRunIsStoppedThroughTheRuntime(t *testing.T) 
 		t.Fatalf("the run was stopped for %q", stopped.Cause)
 	}
 	stoppedEvent := false
-	for _, e := range p.Journal.Events(tenant, []string{r.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{r.ID})) {
 		stoppedEvent = stoppedEvent || (e.Type == event.TypeStopped && strings.Contains(wire.JSONOf(e), platform.StoppedByLimit))
 	}
 	if !stoppedEvent {
@@ -601,7 +601,7 @@ func TestACallReportedAfterItsRunSettledDoesNotInflateSpent(t *testing.T) {
 	// The helper's call again, under a key never seen: the shape of a call
 	// whose event was missed and arrives after settlement.
 	var late event.Envelope
-	for _, e := range p.Journal.Events(tenant, []string{helper.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{helper.ID})) {
 		if e.Type == event.TypeUsageCall {
 			late = e
 		}

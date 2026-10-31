@@ -172,7 +172,12 @@ func (p *Platform) projectUsers(tenant, name string) []string {
 			out = append(out, "the schedule "+sc.Name)
 		}
 	}
-	for _, r := range p.Alerts.Rules(tenant) {
+	rules, err := p.Alerts.Rules(tenant)
+	if err != nil {
+		// What cannot be read may point at the project, so it stays.
+		out = append(out, "the alert rules, which could not be read")
+	}
+	for _, r := range rules {
 		if r.Project == name {
 			out = append(out, "the alert rule "+r.Name)
 		}
@@ -348,7 +353,11 @@ func (p *Platform) stillNamed(tenant string, ps []projects.Project) []projects.P
 	for _, sc := range p.Schedules.List(tenant) {
 		add(sc.Context[runs.MetaProject], "the schedule "+sc.Name)
 	}
-	for _, r := range p.Alerts.Rules(tenant) {
+	rules, err := p.Alerts.Rules(tenant)
+	if err != nil {
+		p.log.Error("platform: alert rules could not be read; the projects they name are not kept this time", "tenant", tenant, "error", err)
+	}
+	for _, r := range rules {
 		add(r.Project, "the alert rule "+r.Name)
 	}
 	for _, pol := range p.Policies.List(tenant) {

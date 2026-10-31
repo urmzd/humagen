@@ -269,18 +269,18 @@ func TestARunThatExhaustsItsRetriesEnds(t *testing.T) {
 		got, _ := p.Runs.Get(tenant, r.ID)
 		// A run reads failed before its ending is dealt with, so its alert
 		// is waited for as well.
-		if got.Status == runs.Failed && len(p.Alerts.Alerts(tenant)) > 0 {
+		if got.Status == runs.Failed && len(kept(p.Alerts.Alerts(tenant))) > 0 {
 			if got.Error == "" {
 				t.Fatal("a failed run carries no error")
 			}
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("run is %q after its retries, with alerts %+v: it would look alive forever", got.Status, p.Alerts.Alerts(tenant))
+			t.Fatalf("run is %q after its retries, with alerts %+v: it would look alive forever", got.Status, kept(p.Alerts.Alerts(tenant)))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	raised := p.Alerts.Alerts(tenant)
+	raised := kept(p.Alerts.Alerts(tenant))
 	if len(raised) != 1 || raised[0].RunID != r.ID {
 		t.Fatalf("alerts = %+v, want exactly one for the run", raised)
 	}
@@ -459,7 +459,7 @@ func TestConcurrentRunsNeverExceedALimit(t *testing.T) {
 	}
 	// One alert for the limit, however many runs it refused.
 	budget := 0
-	for _, a := range p.Alerts.Alerts(tenant) {
+	for _, a := range kept(p.Alerts.Alerts(tenant)) {
 		if a.Kind == "budget" && a.Severity == "critical" {
 			budget++
 		}
