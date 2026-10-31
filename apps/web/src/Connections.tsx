@@ -13,6 +13,7 @@ import {
   whereReferences,
 } from "./connections.ts";
 import { href } from "./route.ts";
+import { YourToolServers } from "./ToolServers.tsx";
 import { button, card, Empty, field, Label, Page, Problem, primary, Segmented } from "./ui.tsx";
 
 /** A plain click goes there in place; a modified one is the browser's. */
@@ -112,6 +113,7 @@ export function YourConnections({
           onRemove={() => remove(c.provider)}
         />
       ))}
+      {state && <YourToolServers references={state.references} canConnect={canConnect} />}
     </Page>
   );
 }
