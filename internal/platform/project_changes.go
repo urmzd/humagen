@@ -448,12 +448,16 @@ func (p *Platform) scheduleChanges(scope changesScope) []changeRow {
 	}
 	inWindow := func(t time.Time) bool { return !t.Before(scope.since) && t.Before(scope.until) }
 	var out []changeRow
-	for _, sc := range p.Schedules.List(scope.tenant) {
+	scheds, err := p.Schedules.List(scope.tenant)
+	if err != nil {
+		p.log.Error("platform: schedules could not be read for the changes", "tenant", scope.tenant, "error", err)
+	}
+	for _, sc := range scheds {
 		project := sc.Context[runs.MetaProject]
 		if project == "" || !in[project] {
 			continue
 		}
-		about := p.Schedules.About(sc.Name)
+		about := sc.About
 		agent := sc.Agent
 		if !scope.shown(agent) {
 			agent = "an agent"

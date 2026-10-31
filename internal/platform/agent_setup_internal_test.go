@@ -121,6 +121,7 @@ func TestSetupAmendmentInvalidatesOldTestAndRecoversPartialRegistryWrite(t *test
 			t.Fatal(err)
 		}
 		p.Runs.End("t", old.TestRun, runs.Completed, "done", "", time.Now())
+		old.Version++
 		if err := p.setups.put("t", old); err != nil {
 			t.Fatal(err)
 		}
@@ -132,7 +133,7 @@ func TestSetupAmendmentInvalidatesOldTestAndRecoversPartialRegistryWrite(t *test
 			t.Fatalf("intent write failure=%v", err)
 		}
 		fault.Fail(nil)
-		unchanged, _ := p.setups.get("t", old.Name)
+		unchanged, _, _ := p.setups.get("t", old.Name)
 		before, _ := p.Agents.Get(t.Context(), "t", old.Name, 0)
 		if unchanged.TestRun != old.TestRun || before.Hash != old.RevisionHash {
 			t.Fatal("failed intent changed the prior setup")
@@ -148,7 +149,7 @@ func TestSetupAmendmentInvalidatesOldTestAndRecoversPartialRegistryWrite(t *test
 			t.Fatalf("post-registry write failure=%v", err)
 		}
 		fault.Fail(nil)
-		pending, _ := p.setups.get("t", old.Name)
+		pending, _, _ := p.setups.get("t", old.Name)
 		if pending.Phase != "amending" || pending.TestRun != "" || pending.TestTag != "" {
 			t.Fatalf("durable amendment intent=%+v", pending)
 		}
@@ -207,12 +208,13 @@ func TestSetupAmendmentChecksOwnerVersionInFlightAndExactHome(t *testing.T) {
 		if _, err := p.AmendAgentSetup(t.Context(), who, saved.Name, unknown, saved.Version); err == nil {
 			t.Fatal("amendment granted an unreadable source")
 		}
-		live, _ := p.setups.get("t", saved.Name)
+		live, _, _ := p.setups.get("t", saved.Name)
 		live.TestTag = "in-flight-test"
 		live.TestRun = runtime.RunID("t", live.TestTag)
 		if err := p.Runs.Record(live.TestRun, wire.NewEvent(wire.Raise{ID: live.TestTag, Tenant: "t", Agent: live.Name, Origin: runs.OriginAPI, Text: "test", At: time.Now()}), live.Revision); err != nil {
 			t.Fatal(err)
 		}
+		live.Version++
 		if err := p.setups.put("t", live); err != nil {
 			t.Fatal(err)
 		}
@@ -226,7 +228,7 @@ func TestSetupAmendmentChecksOwnerVersionInFlightAndExactHome(t *testing.T) {
 		var amendErr, reviseErr, homeErr error
 		go func() {
 			defer wg.Done()
-			amended, amendErr = p.AmendAgentSetup(t.Context(), who, saved.Name, plan, saved.Version)
+			amended, amendErr = p.AmendAgentSetup(t.Context(), who, saved.Name, plan, live.Version)
 		}()
 		go func() { defer wg.Done(); _, reviseErr = p.ReviseBy(t.Context(), who, plan.Spec, saved.Revision) }()
 		go func() { defer wg.Done(); homeErr = p.SetAgentHome(t.Context(), "t", saved.Name, "~", WriterOf(who)) }()
@@ -290,8 +292,9 @@ func TestReviewedSetupCannotActivateAnOfflineNoticeWithoutAModelCall(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, _ := p.setups.get("t", saved.Name)
+	record, _, _ := p.setups.get("t", saved.Name)
 	record.TestTag = "notice"
+	record.Version++
 	record.TestRun = runtime.RunID("t", record.TestTag)
 	if err := p.Runs.Record(record.TestRun, wire.NewEvent(wire.Raise{ID: record.TestTag, Tenant: "t", Agent: record.Name, Origin: runs.OriginAPI, Text: "test", At: time.Now()}), record.Revision); err != nil {
 		t.Fatal(err)

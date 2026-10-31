@@ -1,13 +1,11 @@
 package platform
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -75,34 +73,68 @@ func (a About) validate() error {
 	return nil
 }
 
-// Schedules is the store the cron connector reads. It is in memory. Built
-// with OpenSchedules, it writes every change through a state.Store and reads
-// the schedules back when it is built again, paused or not.
+// Schedules is the store the cron connector reads. It reads and writes the
+// database per request (pkg/state, per request): it holds no schedule in
+// memory, so every process on one database sees the same schedules, and it
+// does not need pkg/state's single-writer lock.
+//
+// Its records, in the namespace "schedules":
+//
+//	<tenant>/<name>          a schedule (storedSchedule)
+//	<tenant>/#count          how many schedules the tenant holds
+//	""/name:<name>           which tenant holds a name (nameClaim)
+//	""/tenant:<tenant>       the directory of tenants (state.Tenants)
+//	""/converted:v1          that names held before claims were kept are claimed
+//
+// A schedule's name is unique across tenants, because it is part of the id
+// of every run it raises. A tenant claims a name before it writes the
+// schedule, and gives the claim up after removing it.
 type Schedules struct {
-	mu     sync.Mutex
-	all    []cron.Schedule
-	paused map[string]bool
-	about  map[string]About
-	// edited are schedules changed since the connector last read the store.
-	// The next read leaves them out once, so the connector forgets where it
-	// was in the old expression and starts the new one from now, as it does
-	// for a resumed schedule. Otherwise an edit from "daily" to "every
-	// minute" would catch up on every minute since the last daily run.
-	edited map[string]bool
+	rec     recordSet
+	tenants *state.Tenants
 
-	// kept is where schedules are written, and seqs each one's place in all
-	// as it was written. Nil keeps them only in memory.
-	kept *state.Table[storedSchedule]
-	seq  int64
-	seqs map[string]int64
+	// read is when the connector's last read began, or when the store was
+	// opened. A schedule edited since is left out of the next read once, so
+	// the connector forgets where it was in the old expression and starts
+	// the new one from now, as it does for a resumed schedule. Otherwise an
+	// edit from "daily" to "every minute" would catch up on every minute
+	// since the last daily run. It is the connector's own memory: dropped
+	// with the process, as the connector's place in each schedule is.
+	mu   sync.Mutex
+	read time.Time
 }
 
-// storedSchedule is a schedule as it is written.
+// MaxSchedules is the most schedules a tenant may hold.
+const MaxSchedules = 1000
+
+// claimGrace is how long a claim on a name with no schedule under it is
+// taken to be a create in flight. Past it, the claim was left by a create
+// that failed, and another create may take it.
+const claimGrace = time.Minute
+
+const (
+	schedulesNamespace = "schedules"
+	scheduleCount      = "#count"
+	schedulesConverted = "converted:v1"
+)
+
+func claimKey(name string) string { return "name:" + name }
+
+// nameClaim is which tenant holds a schedule's name, and since when.
+type nameClaim struct {
+	Tenant string    `json:"tenant"`
+	At     time.Time `json:"at"`
+}
+
+// storedSchedule is a schedule as it is written. Seq is the place a release
+// before this one kept it in; it is read and kept, and orders nothing.
 type storedSchedule struct {
 	Seq      int64         `json:"seq"`
 	Schedule cron.Schedule `json:"schedule"`
 	Paused   bool          `json:"paused,omitempty"`
 	About    About         `json:"about"`
+	// EditedAt is when what the schedule runs, or when, last changed.
+	EditedAt time.Time `json:"edited_at,omitzero"`
 }
 
 // UnmarshalJSON reads a stored schedule, one written before the event union
@@ -133,55 +165,162 @@ func (r *storedSchedule) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// OpenSchedules returns schedules kept in st, holding what st already has. A
-// nil st keeps them in memory.
+// ScheduleEntry is a schedule with what the platform keeps beside it.
+type ScheduleEntry struct {
+	cron.Schedule
+	Paused bool
+	About  About
+}
+
+// OpenSchedules returns schedules kept in st, which may be shared with other
+// processes. A nil st keeps them in this process's memory.
+//
+// Names held before claims were kept are claimed the first time any process
+// opens the store; a process that opens it at the same time claims the same.
 func OpenSchedules(st state.Store) (*Schedules, error) {
-	s := &Schedules{kept: state.NewTable[storedSchedule](st, "schedules"), seqs: map[string]int64{}}
-	var loaded []storedSchedule
-	if err := s.kept.Load(func(_, _ string, r storedSchedule) error {
-		loaded = append(loaded, r)
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("platform: load schedules: %w", err)
+	if st == nil {
+		st = state.NewMemory()
 	}
-	slices.SortFunc(loaded, func(a, b storedSchedule) int { return cmp.Compare(a.Seq, b.Seq) })
-	for _, r := range loaded {
-		s.all = append(s.all, r.Schedule)
-		s.setAbout(r.Schedule.Name, r.About)
-		if r.Paused {
-			if s.paused == nil {
-				s.paused = map[string]bool{}
-			}
-			s.paused[r.Schedule.Name] = true
-		}
-		s.seqs[r.Schedule.Name] = r.Seq
-		s.seq = max(s.seq, r.Seq)
+	s := &Schedules{rec: recordSet{st: st, namespace: schedulesNamespace}, read: time.Now()}
+	if err := s.convert(); err != nil {
+		return nil, fmt.Errorf("platform: claim schedule names: %w", err)
 	}
+	tenants, err := state.OpenTenants(st, schedulesNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("platform: schedule tenants: %w", err)
+	}
+	s.tenants = tenants
 	return s, nil
 }
 
-// write puts a schedule's record. The caller holds the lock.
-func (s *Schedules) write(sc cron.Schedule, paused bool, about About) error {
-	if s.kept == nil {
+// convert claims every name a schedule was kept under before claims were.
+func (s *Schedules) convert() error {
+	var done bool
+	if _, err := s.rec.lookup("", schedulesConverted, &done); err == nil {
 		return nil
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return err
 	}
-	seq, ok := s.seqs[sc.Name]
-	if !ok {
-		seq = s.seq + 1
+	c, cancel := storeCtx()
+	recs, err := s.rec.st.Load(c, schedulesNamespace)
+	cancel()
+	if err != nil {
+		return err
 	}
-	if err := s.kept.Put(sc.Tenant, sc.Name, storedSchedule{Seq: seq, Schedule: sc, Paused: paused, About: about}); err != nil {
-		return fmt.Errorf("platform: write schedule: %w", err)
+	for _, r := range recs {
+		if r.Tenant == "" || strings.HasPrefix(r.Key, "#") {
+			continue
+		}
+		op, err := recordOp("", claimKey(r.Key), nameClaim{Tenant: r.Tenant}, state.Missing)
+		if err != nil {
+			return err
+		}
+		if err := s.rec.write(op); err != nil && !errors.Is(err, state.ErrConflict) {
+			return err
+		}
 	}
-	if !ok {
-		s.seq, s.seqs[sc.Name] = seq, seq
+	op, err := recordOp("", schedulesConverted, true, state.Missing)
+	if err != nil {
+		return err
+	}
+	if err := s.rec.write(op); err != nil && !errors.Is(err, state.ErrConflict) {
+		return err
 	}
 	return nil
+}
+
+// lookup reads one schedule and its version.
+func (s *Schedules) lookup(tenant, name string) (storedSchedule, int64, error) {
+	var r storedSchedule
+	if tenant == "" || name == "" || strings.HasPrefix(name, "#") {
+		return r, 0, fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+	}
+	v, err := s.rec.lookup(tenant, name, &r)
+	if errors.Is(err, state.ErrNotFound) {
+		return r, 0, fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+	}
+	if err != nil {
+		return r, 0, fmt.Errorf("platform: read schedule: %w", err)
+	}
+	return r, v, nil
+}
+
+// all reads every schedule of a tenant, by name.
+func (s *Schedules) all(tenant string) ([]storedSchedule, error) {
+	var out []storedSchedule
+	after := ""
+	for {
+		page, next, err := s.rec.list(tenant, state.Query{After: after, Limit: state.MaxList})
+		if err != nil {
+			return nil, fmt.Errorf("platform: read schedules: %w", err)
+		}
+		for _, r := range page {
+			if strings.HasPrefix(r.Key, "#") {
+				continue
+			}
+			var sc storedSchedule
+			if err := json.Unmarshal(r.Value, &sc); err != nil {
+				return nil, fmt.Errorf("platform: schedule %q/%q: %w", tenant, r.Key, err)
+			}
+			out = append(out, sc)
+		}
+		if len(out) > MaxSchedules {
+			return nil, fmt.Errorf("%w: %q holds more than %d schedules", state.ErrTooMany, tenant, MaxSchedules)
+		}
+		if next == "" {
+			return out, nil
+		}
+		after = next
+	}
+}
+
+// count reads how many schedules a tenant holds, and the version of the
+// count, 0 when none is kept yet and it was counted.
+func (s *Schedules) count(tenant string) (int, int64, error) {
+	var n int
+	v, err := s.rec.lookup(tenant, scheduleCount, &n)
+	if err == nil {
+		return n, v, nil
+	}
+	if !errors.Is(err, state.ErrNotFound) {
+		return 0, 0, err
+	}
+	all, err := s.all(tenant)
+	return len(all), 0, err
+}
+
+// update changes one schedule by compare-and-set. fn returning
+// state.ErrUnchanged writes nothing.
+func (s *Schedules) update(tenant, name string, fn func(r *storedSchedule) error) error {
+	return state.Retry(func() error {
+		r, v, err := s.lookup(tenant, name)
+		if err != nil {
+			return err
+		}
+		if err := fn(&r); errors.Is(err, state.ErrUnchanged) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		op, err := recordOp(tenant, name, r, v)
+		if err != nil {
+			return err
+		}
+		if err := s.rec.write(op); err != nil {
+			if errors.Is(err, state.ErrConflict) {
+				return err
+			}
+			return fmt.Errorf("platform: write schedule: %w", err)
+		}
+		return nil
+	})
 }
 
 var _ cron.Store = (*Schedules)(nil)
 
 // Schedules implements cron.Store. It returns every tenant's schedules, because
 // the connector is the deployment's and each schedule carries its own tenant.
+// It pages the directory of tenants, and reads each tenant's schedules.
 //
 // A paused schedule is left out, which is all pausing is: the connector forgets
 // a schedule it is no longer shown, and starts it fresh when it reappears, so a
@@ -189,84 +328,75 @@ var _ cron.Store = (*Schedules)(nil)
 //
 // An edited schedule is left out of one read for the same reason.
 func (s *Schedules) Schedules(context.Context) ([]cron.Schedule, error) {
+	now := time.Now()
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]cron.Schedule, 0, len(s.all))
-	for _, sc := range s.all {
-		if s.edited[sc.Name] {
-			delete(s.edited, sc.Name)
-			continue
+	since := s.read
+	s.mu.Unlock()
+	var out []cron.Schedule
+	err := s.tenants.Each(func(tenant string) error {
+		all, err := s.all(tenant)
+		if err != nil {
+			return err
 		}
-		if !s.paused[sc.Name] {
-			out = append(out, sc)
+		for _, r := range all {
+			if !r.Paused && r.EditedAt.Before(since) {
+				out = append(out, r.Schedule)
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	s.mu.Lock()
+	s.read = now
+	s.mu.Unlock()
 	return out, nil
 }
 
 // Get returns one of a tenant's schedules and whether it is paused.
 func (s *Schedules) Get(tenant, name string) (cron.Schedule, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sc := range s.all {
-		if sc.Name == name && sc.Tenant == tenant {
-			return sc, s.paused[name], nil
-		}
+	r, _, err := s.lookup(tenant, name)
+	if err != nil {
+		return cron.Schedule{}, false, err
 	}
-	return cron.Schedule{}, false, fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+	return r.Schedule, r.Paused, nil
+}
+
+// Entry returns one of a tenant's schedules with what is kept beside it.
+func (s *Schedules) Entry(tenant, name string) (ScheduleEntry, error) {
+	r, _, err := s.lookup(tenant, name)
+	if err != nil {
+		return ScheduleEntry{}, err
+	}
+	return ScheduleEntry{Schedule: r.Schedule, Paused: r.Paused, About: r.About}, nil
 }
 
 // Authored returns one of a tenant's schedules and who wrote what it runs:
 // whoever last changed its text, or its creator (meta created_by) while
 // nobody has, and nobody ("") once someone else chose its agent or its
-// project (see About.WrittenBy). Both are read under one lock, so the author is the
-// text's.
+// project (see About.WrittenBy). Both are read in one record, so the author
+// is the text's.
 func (s *Schedules) Authored(tenant, name string) (cron.Schedule, string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sc := range s.all {
-		if sc.Name == name && sc.Tenant == tenant {
-			return sc, authorOf(sc, s.about[name]), nil
-		}
+	r, _, err := s.lookup(tenant, name)
+	if err != nil {
+		return cron.Schedule{}, "", err
 	}
-	return cron.Schedule{}, "", fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+	return r.Schedule, authorOf(r.Schedule, r.About), nil
 }
 
-// Paused reports whether a schedule is paused.
-func (s *Schedules) Paused(name string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.paused[name]
-}
-
-// About returns what the platform keeps about a schedule.
-func (s *Schedules) About(name string) About {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.about[name]
+// About returns what the platform keeps about one of a tenant's schedules.
+func (s *Schedules) About(tenant, name string) (About, error) {
+	r, _, err := s.lookup(tenant, name)
+	return r.About, err
 }
 
 // SetPaused pauses or resumes a tenant's schedule.
 func (s *Schedules) SetPaused(tenant, name string, paused bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sc := range s.all {
-		if sc.Name == name && sc.Tenant == tenant {
-			if err := s.write(sc, paused, s.about[name]); err != nil {
-				return err
-			}
-			if s.paused == nil {
-				s.paused = map[string]bool{}
-			}
-			if paused {
-				s.paused[name] = true
-			} else {
-				delete(s.paused, name)
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+	return s.update(tenant, name, func(r *storedSchedule) error {
+		r.Paused = paused
+		return nil
+	})
 }
 
 // Upcoming returns the next n times an expression fires after a time, in UTC.
@@ -289,17 +419,16 @@ func Upcoming(expression string, after time.Time, n int) []time.Time {
 }
 
 // List returns one tenant's schedules, by name.
-func (s *Schedules) List(tenant string) []cron.Schedule {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var out []cron.Schedule
-	for _, sc := range s.all {
-		if sc.Tenant == tenant {
-			out = append(out, sc)
-		}
+func (s *Schedules) List(tenant string) ([]ScheduleEntry, error) {
+	all, err := s.all(tenant)
+	if err != nil {
+		return nil, err
 	}
-	slices.SortFunc(out, func(a, b cron.Schedule) int { return strings.Compare(a.Name, b.Name) })
-	return out
+	out := make([]ScheduleEntry, 0, len(all))
+	for _, r := range all {
+		out = append(out, ScheduleEntry{Schedule: r.Schedule, Paused: r.Paused, About: r.About})
+	}
+	return out, nil
 }
 
 // Add stores a schedule. Names are unique across tenants, because a schedule's
@@ -316,37 +445,113 @@ func (s *Schedules) add(sc cron.Schedule, about About, paused bool) error {
 	if err := about.validate(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, have := range s.all {
-		if have.Name == sc.Name {
-			return fmt.Errorf("%w: %q", ErrScheduleExists, sc.Name)
-		}
-	}
-	if err := s.write(sc, paused, about); err != nil {
+	return s.create(sc, about, paused)
+}
+
+// create claims a schedule's name for its tenant and writes it, with the
+// tenant's count, in one write. A create that fails gives the claim up.
+func (s *Schedules) create(sc cron.Schedule, about About, paused bool) error {
+	if err := s.claim(sc.Tenant, sc.Name); err != nil {
 		return err
 	}
-	s.all = append(s.all, sc)
-	if paused {
-		if s.paused == nil {
-			s.paused = map[string]bool{}
-		}
-		s.paused[sc.Name] = true
+	if err := s.tenants.Mark(sc.Tenant); err != nil {
+		s.unclaim(sc.Tenant, sc.Name)
+		return fmt.Errorf("platform: write schedule: %w", err)
 	}
-	s.setAbout(sc.Name, about)
-	return nil
+	err := state.Retry(func() error {
+		if _, _, err := s.lookup(sc.Tenant, sc.Name); err == nil {
+			return fmt.Errorf("%w: %q", ErrScheduleExists, sc.Name)
+		} else if !errors.Is(err, ErrScheduleNotFound) {
+			return err
+		}
+		n, v, err := s.count(sc.Tenant)
+		if err != nil {
+			return err
+		}
+		if n >= MaxSchedules {
+			return fmt.Errorf("%w: a workspace holds at most %d schedules", ErrScheduleInvalid, MaxSchedules)
+		}
+		rec, err := recordOp(sc.Tenant, sc.Name, storedSchedule{Schedule: sc, Paused: paused, About: about}, state.Missing)
+		if err != nil {
+			return err
+		}
+		cnt, err := recordOp(sc.Tenant, scheduleCount, n+1, versionOf(v))
+		if err != nil {
+			return err
+		}
+		if err := s.rec.write(rec, cnt); err != nil {
+			if errors.Is(err, state.ErrConflict) {
+				return err
+			}
+			return fmt.Errorf("platform: write schedule: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		s.unclaim(sc.Tenant, sc.Name)
+	}
+	return err
+}
+
+// claim takes a name for a tenant, or reports ErrScheduleExists when a
+// schedule holds it, or another create claimed it within claimGrace.
+func (s *Schedules) claim(tenant, name string) error {
+	return state.Retry(func() error {
+		var c nameClaim
+		v, err := s.rec.lookup("", claimKey(name), &c)
+		if err != nil && !errors.Is(err, state.ErrNotFound) {
+			return fmt.Errorf("platform: read schedule names: %w", err)
+		}
+		if err == nil {
+			if _, _, err := s.lookup(c.Tenant, name); err == nil {
+				if c.Tenant != tenant {
+					return fmt.Errorf("%w: %q is another workspace's", ErrScheduleExists, name)
+				}
+				return fmt.Errorf("%w: %q", ErrScheduleExists, name)
+			} else if !errors.Is(err, ErrScheduleNotFound) {
+				return err
+			}
+			if time.Since(c.At) < claimGrace {
+				return fmt.Errorf("%w: %q is being created", ErrScheduleExists, name)
+			}
+		}
+		op, err := recordOp("", claimKey(name), nameClaim{Tenant: tenant, At: time.Now().UTC()}, versionOf(v))
+		if err != nil {
+			return err
+		}
+		if err := s.rec.write(op); err != nil {
+			if errors.Is(err, state.ErrConflict) {
+				return err
+			}
+			return fmt.Errorf("platform: write schedule names: %w", err)
+		}
+		return nil
+	})
+}
+
+// unclaim gives a tenant's claim on a name up, when no schedule holds it. A
+// claim it cannot give up is taken over by the next create after claimGrace.
+func (s *Schedules) unclaim(tenant, name string) {
+	var c nameClaim
+	v, err := s.rec.lookup("", claimKey(name), &c)
+	if err != nil || c.Tenant != tenant {
+		return
+	}
+	if _, _, err := s.lookup(tenant, name); !errors.Is(err, ErrScheduleNotFound) {
+		return
+	}
+	_ = s.rec.write(state.DeleteAt("", claimKey(name), v))
 }
 
 // Replace changes a tenant's schedule in place: its expression, agent, text
 // and meta, by about.UpdatedBy. Whether it is paused is kept. The new
 // schedule is checked in full before the old one is touched, so an edit that
 // is refused changes nothing. Who wrote what it runs (About.WrittenBy) is
-// decided here, from the schedule as it was, under the lock: the editor
+// decided here, from the schedule as it was read for the write: the editor
 // when they change its text, and when they change only its agent or its
 // project, whose instructions and notes go ahead of the text, they if they
 // wrote its text and else nobody, since anyone else's choice of agent or
-// project for those words is no one's whole say-so. Saving it as it was
-// writes nothing.
+// project for those words is no one's whole say-so.
 func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	if err := sc.Validate(); err != nil {
 		return err
@@ -354,69 +559,59 @@ func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	if err := about.validate(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	i := slices.IndexFunc(s.all, func(have cron.Schedule) bool { return have.Name == sc.Name && have.Tenant == sc.Tenant })
-	if i < 0 {
-		return fmt.Errorf("%w: %q", ErrScheduleNotFound, sc.Name)
-	}
-	if s.about[sc.Name].Managed != "" {
-		return fmt.Errorf("%w: change %q in the file", ErrScheduleManaged, sc.Name)
-	}
-	old, author := s.all[i], authorOf(s.all[i], s.about[sc.Name])
-	switch {
-	case sc.Text != old.Text:
-		author = about.UpdatedBy
-	case (sc.Agent != old.Agent || sc.Context[runs.MetaProject] != old.Context[runs.MetaProject]) && author != about.UpdatedBy:
-		author = ""
-	}
-	about.WrittenBy = author
-	if err := s.write(sc, s.paused[sc.Name], about); err != nil {
-		return err
-	}
-	s.all[i] = sc
-	s.setAbout(sc.Name, about)
-	if s.edited == nil {
-		s.edited = map[string]bool{}
-	}
-	s.edited[sc.Name] = true
-	return nil
-}
-
-func (s *Schedules) setAbout(name string, about About) {
-	if about == (About{}) {
-		delete(s.about, name)
-		return
-	}
-	if s.about == nil {
-		s.about = map[string]About{}
-	}
-	s.about[name] = about
+	return s.update(sc.Tenant, sc.Name, func(r *storedSchedule) error {
+		if r.About.Managed != "" {
+			return fmt.Errorf("%w: change %q in the file", ErrScheduleManaged, sc.Name)
+		}
+		old, author := r.Schedule, authorOf(r.Schedule, r.About)
+		switch {
+		case sc.Text != old.Text:
+			author = about.UpdatedBy
+		case (sc.Agent != old.Agent || sc.Context[runs.MetaProject] != old.Context[runs.MetaProject]) && author != about.UpdatedBy:
+			author = ""
+		}
+		next := about
+		next.WrittenBy = author
+		r.Schedule, r.About = sc, next
+		r.EditedAt = time.Now().UTC()
+		return nil
+	})
 }
 
 // Remove deletes a tenant's schedule.
 func (s *Schedules) Remove(tenant, name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i, have := range s.all {
-		if have.Name == name && have.Tenant == tenant {
-			if s.about[name].Managed != "" {
-				return fmt.Errorf("%w: remove %q from the file first", ErrScheduleManaged, name)
-			}
-			if s.kept != nil {
-				if err := s.kept.Delete(tenant, name); err != nil {
-					return fmt.Errorf("platform: write schedule: %w", err)
-				}
-				delete(s.seqs, name)
-			}
-			s.all = slices.Delete(s.all, i, i+1)
-			delete(s.paused, name)
-			delete(s.about, name)
-			delete(s.edited, name)
-			return nil
+	err := state.Retry(func() error {
+		r, v, err := s.lookup(tenant, name)
+		if err != nil {
+			return err
 		}
+		if r.About.Managed != "" {
+			return fmt.Errorf("%w: remove %q from the file first", ErrScheduleManaged, name)
+		}
+		ops := []state.Op{state.DeleteAt(tenant, name, v)}
+		var n int
+		if cv, err := s.rec.lookup(tenant, scheduleCount, &n); err == nil {
+			op, err := recordOp(tenant, scheduleCount, max(n-1, 0), cv)
+			if err != nil {
+				return err
+			}
+			ops = append(ops, op)
+		} else if !errors.Is(err, state.ErrNotFound) {
+			return err
+		}
+		if err := s.rec.write(ops...); err != nil {
+			if errors.Is(err, state.ErrConflict) {
+				return err
+			}
+			return fmt.Errorf("platform: write schedule: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	return fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+	s.unclaim(tenant, name)
+	return nil
 }
 
 // Declare puts a schedule the platform file declares: created, or taken over
@@ -433,59 +628,40 @@ func (s *Schedules) Declare(sc cron.Schedule, description string, at time.Time) 
 	if err := about.validate(); err != nil {
 		return false, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	i := slices.IndexFunc(s.all, func(have cron.Schedule) bool { return have.Name == sc.Name })
-	if i < 0 {
-		about.CreatedAt = at
-		if err := s.write(sc, false, about); err != nil {
-			return false, err
+	err = s.update(sc.Tenant, sc.Name, func(r *storedSchedule) error {
+		next := about
+		was := r.About
+		next.CreatedAt, next.UpdatedBy, next.UpdatedAt = was.CreatedAt, was.UpdatedBy, was.UpdatedAt
+		if was == next && sameSchedule(r.Schedule, sc) {
+			changed = false
+			return state.ErrUnchanged
 		}
-		s.all = append(s.all, sc)
-		s.setAbout(sc.Name, about)
-		return true, nil
+		next.UpdatedBy, next.UpdatedAt = ManagedFile, at
+		r.Schedule, r.About = sc, next
+		r.EditedAt = time.Now().UTC()
+		changed = true
+		return nil
+	})
+	if !errors.Is(err, ErrScheduleNotFound) {
+		return changed, err
 	}
-	have, was := s.all[i], s.about[sc.Name]
-	if have.Tenant != sc.Tenant {
-		return false, fmt.Errorf("%w: %q is another workspace's", ErrScheduleExists, sc.Name)
-	}
-	about.CreatedAt, about.UpdatedBy, about.UpdatedAt = was.CreatedAt, was.UpdatedBy, was.UpdatedAt
-	if was == about && sameSchedule(have, sc) {
-		return false, nil
-	}
-	about.UpdatedBy, about.UpdatedAt = ManagedFile, at
-	if err := s.write(sc, s.paused[sc.Name], about); err != nil {
+	about.CreatedAt = at
+	if err := s.create(sc, about, false); err != nil {
 		return false, err
 	}
-	s.all[i] = sc
-	s.setAbout(sc.Name, about)
-	if s.edited == nil {
-		s.edited = map[string]bool{}
-	}
-	s.edited[sc.Name] = true
 	return true, nil
 }
 
 // Release hands a schedule that left the platform file to the console. It
 // stays as it is, and the API may change it from now on.
 func (s *Schedules) Release(tenant, name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, have := range s.all {
-		if have.Name == name && have.Tenant == tenant {
-			about := s.about[name]
-			if about.Managed == "" {
-				return nil
-			}
-			about.Managed = ""
-			if err := s.write(have, s.paused[name], about); err != nil {
-				return err
-			}
-			s.setAbout(name, about)
-			return nil
+	return s.update(tenant, name, func(r *storedSchedule) error {
+		if r.About.Managed == "" {
+			return state.ErrUnchanged
 		}
-	}
-	return fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+		r.About.Managed = ""
+		return nil
+	})
 }
 
 func sameSchedule(a, b cron.Schedule) bool {

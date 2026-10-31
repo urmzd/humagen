@@ -87,7 +87,11 @@ func (s *Server) view(seer *platform.Seer, tenant string, c clients.Client) (cli
 
 func (s *Server) listClients(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	// The store returns one tenant's clients and never more than its ceiling.
-	all := s.P.Clients.List(who.Tenant)
+	all, err := s.P.Clients.List(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	out := make([]clientView, 0, len(all))
 	seer := s.P.Seer(who)
 	for _, c := range all {

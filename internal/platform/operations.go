@@ -659,8 +659,11 @@ func (p *Platform) AgentState(who auth.Principal, agent string) (AgentControlVie
 	view := AgentControlView{Control: c, State: "ready", EffectivePaused: workspace.Paused || c.Paused || !p.agentReady(who.Tenant, agent), ManagerName: p.NameOf(who.Tenant, c.Manager)}
 
 	if agent != "" && who.Can(auth.AgentsRead) && p.Seer(who).Agent(agent) {
-		binding := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(legacy.BuiltinAgent(agent)))
-		if len(binding.Skills) > 0 {
+		binding, berr := p.AgentSkillDefaults.Get(who.Tenant, wire.NormalizeName(legacy.BuiltinAgent(agent)))
+		if berr != nil {
+			// Defaults that cannot be read are not known to fit.
+			view.NeedsSkillReview, view.State = true, "needs_review"
+		} else if len(binding.Skills) > 0 {
 			revision, err := p.Catalog().Get(context.Background(), who.Tenant, agent, 0)
 			home, homed := p.Projects.Tree(who.Tenant).Home(agent)
 			view.NeedsSkillReview = err != nil || binding.AgentRevision != revision.Rev || !homed || !p.defaultSkillsFitHome(who.Tenant, agent, home, p.Projects.Tree(who.Tenant))

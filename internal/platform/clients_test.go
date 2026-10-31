@@ -508,8 +508,8 @@ func TestTheLastClientPlaceIsTakenOnce(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	if made != 4 || len(p.Clients.List(tenant)) != 4 {
-		t.Fatalf("%d creates succeeded and %d clients exist under a limit of 4", made, len(p.Clients.List(tenant)))
+	if all, err := p.Clients.List(tenant); err != nil || made != 4 || len(all) != 4 {
+		t.Fatalf("%d creates succeeded and %d clients exist under a limit of 4: %v", made, len(all), err)
 	}
 }
 
@@ -758,7 +758,7 @@ func TestATenantCannotReferenceASecretItWasNotGiven(t *testing.T) {
 			t.Errorf("globex created a client with %s: %v", name, err)
 		}
 	}
-	if got := p.Clients.List("globex"); len(got) != 0 {
+	if got, err := p.Clients.List("globex"); err != nil || len(got) != 0 {
 		t.Fatalf("a refused client was kept: %+v", got)
 	}
 	// A reference given to acme is refused for initech, which has its own list.

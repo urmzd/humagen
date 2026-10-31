@@ -29,23 +29,23 @@ func TestAgentDefaultSkillsReplayCASAndCloning(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		saved := again.Get("t", "agent")
+		saved := get(t, again, "t", "agent")
 		if saved.Version != 1 || saved.AgentRevision != 3 || saved.Skills[0].Version != 2 {
 			t.Fatal("lost immutable references", saved)
 		}
-		users := again.Using("t", SkillRef{ID: "skill", Version: 2})
+		users := using(t, again, "t", SkillRef{ID: "skill", Version: 2})
 		if len(users) != 1 || users[0].Agent != "agent" {
 			t.Fatal("exact inverse binding lost after replay", users)
 		}
 		users[0].Skills[0].Version = 6
-		if len(again.Using("t", SkillRef{ID: "skill", Version: 3})) != 0 || len(again.Using("other", SkillRef{ID: "skill", Version: 2})) != 0 {
+		if len(using(t, again, "t", SkillRef{ID: "skill", Version: 3})) != 0 || len(using(t, again, "other", SkillRef{ID: "skill", Version: 2})) != 0 {
 			t.Fatal("inverse binding widened version or tenant")
 		}
 		saved.Skills[0].Version = 7
-		if again.Get("t", "agent").Skills[0].Version != 2 {
+		if get(t, again, "t", "agent").Skills[0].Version != 2 {
 			t.Fatal("getter aliases saved bindings")
 		}
-		if len(again.Get("other", "agent").Skills) != 0 {
+		if len(get(t, again, "other", "agent").Skills) != 0 {
 			t.Fatal("cross tenant bindings")
 		}
 	})
@@ -60,7 +60,25 @@ func TestAgentDefaultSkillWriteFailureDoesNotMutate(t *testing.T) {
 	if _, err := s.Set("t", "agent", 1, 0, []SkillRef{{ID: "skill", Version: 1}}); err == nil {
 		t.Fatal("failed durable write accepted")
 	}
-	if s.Get("t", "agent").Version != 0 {
+	if get(t, s, "t", "agent").Version != 0 {
 		t.Fatal("failed write changed current defaults")
 	}
+}
+
+func get(t *testing.T, s *DefaultsStore, tenant, agent string) AgentDefaults {
+	t.Helper()
+	v, err := s.Get(tenant, agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+func using(t *testing.T, s *DefaultsStore, tenant string, ref SkillRef) []AgentDefaults {
+	t.Helper()
+	v, err := s.Using(tenant, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
 }

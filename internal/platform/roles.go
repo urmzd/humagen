@@ -6,8 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/humagen/fiber/pkg/connectors/cron"
-
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -173,8 +171,10 @@ func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names
 		return agent != "" && agent != Open && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
 	}
 	var out []string
-	scheds := p.Schedules.List(tenant)
-	slices.SortFunc(scheds, func(a, b cron.Schedule) int { return strings.Compare(a.Name, b.Name) })
+	scheds, err := p.Schedules.List(tenant)
+	if err != nil {
+		out = append(out, "the schedules, which could not be read, might be refused")
+	}
 	for _, sc := range scheds {
 		if at := sc.Context[runs.MetaProject]; moved[at] && lost(at, sc.Agent) {
 			out = append(out, fmt.Sprintf("the schedule %s, which runs %s in %s, would be refused every time", sc.Name, sc.Agent, at))

@@ -71,7 +71,7 @@ func TestOutcomeLearningRequiresHumanReviewAndSurvivesRestart(t *testing.T) {
 		if skill.Version != 1 || len(skill.Tools) != 0 || !skill.PublishedAt.IsZero() || len(skill.Tests) != 0 || skill.OriginRun != id {
 			t.Fatalf("not a tool-free passive draft: %+v", skill)
 		}
-		if _, active := p.SkillLibrary.Published(tenant, skill.Scope, skill.Name); active {
+		if _, active, _ := p.SkillLibrary.Published(tenant, skill.Scope, skill.Name); active {
 			t.Fatal("draft became active without test/publication")
 		}
 		if again, err := p.DraftOutcomeSkill(who, id, input); err != nil || again.ID != skill.ID {

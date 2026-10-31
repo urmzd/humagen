@@ -90,7 +90,7 @@ func TestStandingAssignmentsCannotPublishPrivateConversationGoals(t *testing.T) 
 	thread := opened["thread"].(map[string]any)["id"].(string)
 	body := fmt.Sprintf(`{"id":"private","agent":"helper","project":"","thread":%q,"owner":"ana","goal":"PRIVATE-GOAL-CANARY","done_when":"Ready","cron":"0 3 * * *","state":"requested","version":0}`, thread)
 	want(t, f, ana, "POST", "/api/assignments", body, http.StatusBadRequest)
-	if len(f.p.Schedules.List("acme")) != 0 {
+	if all, err := f.p.Schedules.List("acme"); err != nil || len(all) != 0 {
 		t.Fatal("private assignment left an active or paused schedule")
 	}
 	if _, ok, _ := f.p.Operations.Assignment("acme", "private"); ok {

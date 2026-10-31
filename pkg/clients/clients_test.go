@@ -148,10 +148,10 @@ func TestAStoreKeepsEachTenantsClientsToItself(t *testing.T) {
 	if _, err := m.Update("initech", slackOf("docs", "A0DOCS", "T01ABCDEF"), t0); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("another tenant updated a client: %v", err)
 	}
-	if got := m.List("initech"); len(got) != 0 {
+	if got := list(t, m, "initech"); len(got) != 0 {
 		t.Fatalf("another tenant lists %d clients", len(got))
 	}
-	if got := m.List("acme"); len(got) != 1 || got[0].Tenant != "acme" {
+	if got := list(t, m, "acme"); len(got) != 1 || got[0].Tenant != "acme" {
 		t.Fatalf("acme lists %+v", got)
 	}
 	// What a read returns is a copy: changing it changes nothing kept.
@@ -215,7 +215,7 @@ func TestTheCapHoldsUnderRacingCreates(t *testing.T) {
 	}
 	wg.Wait()
 	on := map[Surface]int{}
-	for _, c := range m.List("acme") {
+	for _, c := range list(t, m, "acme") {
 		on[c.Surface]++
 	}
 	if on[Slack]+on[GitHub] != 7 || on[Slack] > 5 || on[GitHub] > 5 {
@@ -236,11 +236,11 @@ func TestOnListsOnlyEnabledClientsOldestFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := m.On(Slack)
+	got := on(t, m, Slack)
 	if len(got) != 2 || got[0].Tenant != "acme" || got[1].Tenant != "initech" {
 		t.Fatalf("on slack = %+v", got)
 	}
-	if len(m.On(GitHub)) != 0 {
+	if len(on(t, m, GitHub)) != 0 {
 		t.Fatal("a slack client is on github")
 	}
 }

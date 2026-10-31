@@ -513,7 +513,10 @@ func TestAConcurrencyLimitFreesUp(t *testing.T) {
 }
 
 func TestSchedules(t *testing.T) {
-	var s platform.Schedules
+	s, err := platform.OpenSchedules(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	every := cron.Schedule{Name: "nightly", Expression: "0 2 * * *", Agent: "lead", Text: "report", Tenant: tenant}
 	if err := s.Add(every, platform.About{}); err != nil {
 		t.Fatal(err)
@@ -526,7 +529,7 @@ func TestSchedules(t *testing.T) {
 	if err := s.Add(bad, platform.About{}); err == nil {
 		t.Fatal("an invalid expression was stored")
 	}
-	if got := s.List("globex"); len(got) != 0 {
+	if got, err := s.List("globex"); err != nil || len(got) != 0 {
 		t.Fatalf("other tenant listed %d schedules", len(got))
 	}
 	if err := s.Remove("globex", "nightly"); !errors.Is(err, platform.ErrScheduleNotFound) {
@@ -535,14 +538,17 @@ func TestSchedules(t *testing.T) {
 	if err := s.Remove(tenant, "nightly"); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.List(tenant); len(got) != 0 {
+	if got, err := s.List(tenant); err != nil || len(got) != 0 {
 		t.Fatalf("still listed: %v", got)
 	}
 }
 
 func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
 	ctx := context.Background()
-	var s platform.Schedules
+	s, err := platform.OpenSchedules(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	daily := cron.Schedule{Name: "nightly", Expression: "0 2 * * *", Agent: "lead", Text: "report", Tenant: tenant, Context: map[string]string{"created_by": "ada"}}
 	if err := s.Add(daily, platform.About{Description: "The nightly report"}); err != nil {
 		t.Fatal(err)
@@ -565,8 +571,8 @@ func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
 	if err := s.Replace(other, platform.About{}); !errors.Is(err, platform.ErrScheduleNotFound) {
 		t.Fatalf("another tenant's schedule: %v", err)
 	}
-	if got, _, _ := s.Get(tenant, "nightly"); got.Expression != "0 2 * * *" || s.About("nightly").Description != "The nightly report" {
-		t.Fatalf("a refused edit changed the schedule: %+v %+v", got, s.About("nightly"))
+	if got, _ := s.Entry(tenant, "nightly"); got.Expression != "0 2 * * *" || got.About.Description != "The nightly report" {
+		t.Fatalf("a refused edit changed the schedule: %+v", got)
 	}
 
 	minutely := daily
@@ -578,7 +584,7 @@ func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
 	if got.Expression != "* * * * *" || got.Text != "status" || !paused || got.Context["created_by"] != "ada" {
 		t.Fatalf("after the edit: %+v, paused %v", got, paused)
 	}
-	if a := s.About("nightly"); a.UpdatedBy != "bob" || a.Description != "" {
+	if a, _ := s.About(tenant, "nightly"); a.UpdatedBy != "bob" || a.Description != "" {
 		t.Fatalf("about = %+v", a)
 	}
 

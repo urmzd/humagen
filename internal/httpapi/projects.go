@@ -151,7 +151,10 @@ func (s *Server) projectFacts(who auth.Principal) projectFacts {
 	for _, name := range f.tree.Named(platform.ReaderOf(who)) {
 		f.named[name] = true
 	}
-	for _, sc := range s.P.Schedules.List(tenant) {
+	// A count that cannot be read is left out: the facts are what is shown,
+	// and nothing is decided on them.
+	scheds, _ := s.P.Schedules.List(tenant)
+	for _, sc := range scheds {
 		f.schedules[sc.Context[runs.MetaProject]]++
 	}
 	return f
