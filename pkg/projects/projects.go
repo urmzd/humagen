@@ -14,6 +14,17 @@
 // work. A write and its history entry are one state.Write: both are kept or
 // neither is.
 //
+// # Per request
+//
+// The store reads and writes per request and does not need the database's
+// lock: two processes on one database agree. A tenant's records are a capped
+// collection, and every write moves the tenant's head record in the same
+// state.Write, at the version it read. So a write checks the tree's shape (no
+// cycle, one name ignoring case, depth and size caps, kinds and openness)
+// against the tree as it lands, and one that lost to another process reads
+// again and checks again. A process keeps the last tree it read of each
+// tenant only while the head has not moved.
+//
 // # Default deny
 //
 // A Writer with no Govern changes no company project and not the root, and
@@ -442,6 +453,9 @@ type Tree struct {
 	// each project is home to, by name.
 	homes map[string]string
 	lives map[string][]string
+	// version is the version of the tenant's head the tree was read at, or
+	// 0 for a tree that was not read from one.
+	version int64
 }
 
 type node struct {

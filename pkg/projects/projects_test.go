@@ -23,6 +23,15 @@ func team(name, parent string) projects.Project {
 	return projects.Project{Name: name, Parent: parent}
 }
 
+// stored is Stored for a store that can always be read.
+func stored(s *projects.Store, tenant string) bool {
+	ok, err := s.Stored(tenant)
+	if err != nil {
+		panic(err)
+	}
+	return ok
+}
+
 func mustCreate(t *testing.T, s *projects.Store, tenant string, p projects.Project, w projects.Writer) projects.Project {
 	t.Helper()
 	got, err := s.Create(tenant, p, w, t0)
@@ -199,7 +208,7 @@ func TestATombstonedNameNeedsGovern(t *testing.T) {
 	if _, ok := s.Tombstone("acme", "Launch"); ok {
 		t.Fatal("the tombstone outlived the adoption")
 	}
-	h, _ := s.History("acme", "Launch", 0, 0)
+	h, _, _ := s.History("acme", "Launch", 0, 0)
 	if len(h) != 3 || h[0].What != projects.Created || h[0].Note != projects.AdoptsNote || h[1].What != projects.Deleted {
 		t.Fatalf("history = %+v", h)
 	}
@@ -274,7 +283,7 @@ func TestAFullTombstoneTableRefusesTheNextDelete(t *testing.T) {
 			if _, ok := s.Tombstone("acme", "Junk 0000"); !ok {
 				t.Fatal("a refused delete forgot a tombstone")
 			}
-			if h, _ := s.History("acme", "Last", 0, 0); len(h) != 1 {
+			if h, _, _ := s.History("acme", "Last", 0, 0); len(h) != 1 {
 				t.Fatalf("a refused delete recorded a change: %+v", h)
 			}
 			// Taking a deleted name back with govern makes room.
@@ -372,7 +381,7 @@ func TestManagedFields(t *testing.T) {
 	if got.Managed != projects.ManagedFile || got.Version != 2 || got.Title != "Field engineering" || got.Description != "console" {
 		t.Fatalf("taken over = %+v", got)
 	}
-	h, _ := s.History("acme", "Field", 1, 0)
+	h, _, _ := s.History("acme", "Field", 1, 0)
 	if h[0].What != projects.Managed {
 		t.Fatalf("takeover recorded as %q", h[0].What)
 	}
@@ -484,10 +493,10 @@ func TestTenantsAreApart(t *testing.T) {
 	if err := s.Delete("globex", "Field", ada, t0, nil); !errors.Is(err, projects.ErrNotFound) {
 		t.Fatalf("Delete = %v", err)
 	}
-	if h, _ := s.History("globex", "Field", 0, 0); len(h) != 0 {
+	if h, _, _ := s.History("globex", "Field", 0, 0); len(h) != 0 {
 		t.Fatalf("History = %+v", h)
 	}
-	if s.Stored("globex") || !s.Stored("acme") {
+	if stored(s, "globex") || !stored(s, "acme") {
 		t.Fatal("Stored is not per tenant")
 	}
 }
@@ -550,15 +559,15 @@ func TestHistoryPagesNewestFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, next := s.History("acme", "Field", 4, 0)
+	page, next, _ := s.History("acme", "Field", 4, 0)
 	if len(page) != 4 || page[0].After.Version != 6 || next == 0 {
 		t.Fatalf("first page = %d entries, next %d", len(page), next)
 	}
-	rest, next := s.History("acme", "Field", 4, next)
+	rest, next, _ := s.History("acme", "Field", 4, next)
 	if len(rest) != 2 || rest[1].What != projects.Created || next != 0 {
 		t.Fatalf("second page = %+v, next %d", rest, next)
 	}
-	if root, _ := s.History("acme", "", 0, 0); len(root) != 1 || root[0].What != projects.Created {
+	if root, _, _ := s.History("acme", "", 0, 0); len(root) != 1 || root[0].What != projects.Created {
 		t.Fatalf("the root's history = %+v", root)
 	}
 }
@@ -583,10 +592,10 @@ func TestImportWritesOnceAndAsTeams(t *testing.T) {
 	if err := s.Import("initech", []projects.Project{{Name: "Launch"}}, []projects.Project{{Name: "Dropped"}}, "migration", t0); err != nil {
 		t.Fatal(err)
 	}
-	if h, _ := s.History("initech", "Dropped", 0, 0); len(h) != 1 || h[0].Note != projects.KeptNote || h[0].After.Kind != projects.Team {
+	if h, _, _ := s.History("initech", "Dropped", 0, 0); len(h) != 1 || h[0].Note != projects.KeptNote || h[0].After.Kind != projects.Team {
 		t.Fatalf("a kept name's history = %+v", h)
 	}
-	if h, _ := s.History("initech", "Launch", 0, 0); len(h) != 1 || h[0].Note != "" {
+	if h, _, _ := s.History("initech", "Launch", 0, 0); len(h) != 1 || h[0].Note != "" {
 		t.Fatalf("an imported project's history = %+v", h)
 	}
 	// Past the cap together, nothing is written.
@@ -594,14 +603,14 @@ func TestImportWritesOnceAndAsTeams(t *testing.T) {
 	if err := capped.Import("acme", []projects.Project{{Name: "A"}, {Name: "B"}}, []projects.Project{{Name: "C"}}, "migration", t0); !errors.Is(err, projects.ErrLimit) {
 		t.Fatalf("an import past the cap = %v, want ErrLimit", err)
 	}
-	if capped.Stored("acme") {
+	if stored(capped, "acme") {
 		t.Fatal("an import past the cap left records")
 	}
 	// An import that cannot be written whole writes nothing.
 	if err := s.Import("globex", []projects.Project{{Name: "A"}, {Name: "a"}}, nil, "migration", t0); !errors.Is(err, projects.ErrExists) {
 		t.Fatalf("an import with one name twice = %v", err)
 	}
-	if s.Stored("globex") {
+	if stored(s, "globex") {
 		t.Fatal("a refused import left records")
 	}
 }

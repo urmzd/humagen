@@ -217,8 +217,7 @@ func (p *Platform) ProjectHistory(tenant, name string, limit int, before int64) 
 	if !p.Projects.Tree(tenant).Has(name) {
 		return nil, 0, fmt.Errorf("%w: %q", projects.ErrNotFound, name)
 	}
-	changes, next = p.Projects.History(tenant, name, limit, before)
-	return changes, next, nil
+	return p.Projects.History(tenant, name, limit, before)
 }
 
 // ProjectLimits are the limits a run filed in a project falls under for being
@@ -314,14 +313,20 @@ const migration = "migration"
 // them. A tenant whose store already has records is past the first write, so
 // only the second is made: stopping between the two is repaired at the next
 // start. A failed import fails the start and changes nothing, and one past the
-// cap names what it would have kept.
+// cap names what it would have kept. Two processes starting at once import a
+// tenant once: the import whose write lands second finds the tenant written
+// and leaves it as the first wrote it.
 func (p *Platform) migrateProjects() error {
 	legacy, _, done, err := p.settings.leftovers()
 	if err != nil || done {
 		return err
 	}
 	for _, tenant := range slices.Sorted(maps.Keys(legacy)) {
-		if !p.Projects.Stored(tenant) {
+		stored, err := p.Projects.Stored(tenant)
+		if err != nil {
+			return fmt.Errorf("platform: read the projects of %q: %w", tenant, err)
+		}
+		if !stored {
 			cfg, err := p.settings.get(tenant)
 			if err != nil {
 				return err
@@ -341,7 +346,14 @@ func (p *Platform) migrateProjects() error {
 			// A record whose array was null held no projects: there is
 			// nothing to import unless something still names one.
 			if legacy[tenant] != nil || len(kept) > 0 {
-				if err := p.Projects.Import(tenant, ps, kept, migration, at); err != nil {
+				err := p.Projects.Import(tenant, ps, kept, migration, at)
+				if errors.Is(err, projects.ErrExists) {
+					// Another process imported the tenant first.
+					if now, _ := p.Projects.Stored(tenant); now {
+						err = nil
+					}
+				}
+				if err != nil {
 					if len(kept) > 0 {
 						return fmt.Errorf("platform: move the projects of %q out of its settings, keeping %s, which a schedule, an alert rule or a limit still names: %w", tenant, names(kept), err)
 					}
@@ -350,7 +362,7 @@ func (p *Platform) migrateProjects() error {
 				p.log.Info("platform: projects moved out of settings", "tenant", tenant, "projects", len(ps), "kept", names(kept))
 			}
 		}
-		err := p.settings.update(tenant, func(v *storedSettings) error {
+		err = p.settings.update(tenant, func(v *storedSettings) error {
 			if v.LegacyProjects == nil {
 				return state.ErrUnchanged
 			}

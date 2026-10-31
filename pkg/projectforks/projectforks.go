@@ -1,4 +1,10 @@
 // Package projectforks keeps bounded private plans for restartable project copies.
+//
+// It reads and writes per request: a plan is one record, read by Lookup and
+// written by compare-and-set, and a tenant's count of plans is a record kept
+// in the same write as each new plan, so the cap holds across processes. It
+// keeps nothing in memory, does not need the database's lock, and two
+// processes on one database agree.
 package projectforks
 
 import (
@@ -7,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
@@ -85,29 +90,84 @@ type Record struct {
 	Plan      Plan      `json:"plan"`
 }
 
+// namespace is where plans are kept: one record per destination, under the
+// destination's name, and the tenant's count under countKey.
+const namespace = "project-forks"
+
+// countKey holds how many plans a tenant keeps. A project's name never starts
+// with "#", so it names no plan.
+const countKey = "#count"
+
+// Store keeps every tenant's plans in a state.Store.
 type Store struct {
-	mu      sync.Mutex
-	records map[string]map[string]Record
-	table   *state.Table[Record]
+	table *state.Table[json.RawMessage]
 }
 
+// Open returns a store that keeps its plans in st. A nil st keeps them in
+// memory.
 func Open(st state.Store) (*Store, error) {
-	s := &Store{records: map[string]map[string]Record{}, table: state.NewTable[Record](st, "project-forks")}
-	err := s.table.Load(func(tenant, key string, record Record) error {
-		if key != record.Plan.Destination || validate(record) != nil {
-			return ErrInvalid
-		}
-		if s.records[tenant] == nil {
-			s.records[tenant] = map[string]Record{}
-		}
-		if len(s.records[tenant]) >= MaxOperations {
-			return ErrLimit
-		}
-		s.records[tenant][key] = record
-		return nil
-	})
-	return s, err
+	if st == nil {
+		st = state.NewMemory()
+	}
+	return &Store{table: state.NewTable[json.RawMessage](st, namespace)}, nil
 }
+
+// lookup reads one plan, holding it to what a plan must be.
+func (s *Store) lookup(tenant, destination string) (Record, int64, error) {
+	if !projects.ValidName(destination) {
+		return Record{}, 0, ErrNotFound
+	}
+	it, err := s.table.Lookup(tenant, destination)
+	if errors.Is(err, state.ErrNotFound) {
+		return Record{}, 0, ErrNotFound
+	}
+	if err != nil {
+		return Record{}, 0, fmt.Errorf("project forks: read: %w", err)
+	}
+	var record Record
+	if err := json.Unmarshal(it.Value, &record); err != nil || record.Plan.Destination != destination || validate(record) != nil {
+		return Record{}, 0, ErrInvalid
+	}
+	return record, it.Version, nil
+}
+
+// count is how many plans a tenant keeps, and the version of its count
+// record, state.Missing when there is none yet. A tenant written before the
+// count was kept is counted once from its plans, a page at a time; the write
+// that creates the count conflicts with any other that counted at once.
+func (s *Store) count(tenant string) (int, int64, error) {
+	it, err := s.table.Lookup(tenant, countKey)
+	if err == nil {
+		var n int
+		if err := json.Unmarshal(it.Value, &n); err != nil || n < 0 {
+			return 0, 0, ErrInvalid
+		}
+		return n, it.Version, nil
+	}
+	if !errors.Is(err, state.ErrNotFound) {
+		return 0, 0, fmt.Errorf("project forks: read: %w", err)
+	}
+	n, after := 0, ""
+	for {
+		page, next, err := s.table.List(tenant, state.Query{After: after, Limit: 20})
+		if err != nil {
+			return 0, 0, fmt.Errorf("project forks: read: %w", err)
+		}
+		for _, it := range page {
+			if it.Key != countKey {
+				n++
+			}
+		}
+		if n > MaxOperations {
+			return 0, 0, fmt.Errorf("%w: more than %d plans are kept", ErrLimit, MaxOperations)
+		}
+		if next == "" {
+			return n, state.Missing, nil
+		}
+		after = next
+	}
+}
+
 func validate(record Record) error {
 	plan := record.Plan
 	if record.By == "" || record.At.IsZero() || len(record.ID) != 19 || !projects.ValidName(plan.Source) || !projects.ValidName(plan.Destination) || plan.Source == plan.Destination || len(plan.Projects) == 0 || len(plan.Projects) > MaxProjects || len(plan.Agents) > MaxAgents || len(plan.Notes) > MaxNotes || len(plan.Archives) > 20 || len(record.Error) > 1000 {
@@ -163,58 +223,94 @@ func clone(record Record) Record {
 	return out
 }
 func (s *Store) Get(tenant, destination, by string) (Record, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	record, ok := s.records[tenant][destination]
-	if !ok || record.By != by {
+	record, _, err := s.lookup(tenant, destination)
+	if err != nil {
+		return Record{}, err
+	}
+	if record.By != by {
 		return Record{}, ErrNotFound
 	}
-	return clone(record), nil
+	return record, nil
 }
+
+// Start keeps a new plan, or returns the one its creator already started for
+// the destination. A tenant keeps at most MaxOperations; two processes
+// starting plans at once keep the count exact, since each new plan and its
+// count are one write that lands only at the count's version it read.
 func (s *Store) Start(tenant, by string, plan Plan, at time.Time) (Record, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if existing, ok := s.records[tenant][plan.Destination]; ok {
-		if existing.By != by || existing.Plan.Source != plan.Source || existing.Plan.Parent != plan.Parent {
-			return Record{}, ErrNotFound
-		}
-		return clone(existing), nil
-	}
-	if len(s.records[tenant]) >= MaxOperations {
-		return Record{}, ErrLimit
-	}
 	var id [8]byte
 	if _, err := rand.Read(id[:]); err != nil {
 		return Record{}, err
 	}
 	record := Record{ID: "pf-" + hex.EncodeToString(id[:]), By: by, At: at, UpdatedAt: at, Plan: plan}
-	if err := validate(record); err != nil {
-		return Record{}, err
-	}
-	if err := s.table.Put(tenant, plan.Destination, record); err != nil {
-		return Record{}, fmt.Errorf("project forks: write: %w", err)
-	}
-	if s.records[tenant] == nil {
-		s.records[tenant] = map[string]Record{}
-	}
-	s.records[tenant][plan.Destination] = clone(record)
-	return clone(record), nil
+	var out Record
+	err := state.Retry(func() error {
+		existing, _, err := s.lookup(tenant, plan.Destination)
+		switch {
+		case err == nil:
+			if existing.By != by || existing.Plan.Source != plan.Source || existing.Plan.Parent != plan.Parent {
+				return ErrNotFound
+			}
+			out = existing
+			return nil
+		case !errors.Is(err, ErrNotFound):
+			return err
+		}
+		if err := validate(record); err != nil {
+			return err
+		}
+		n, version, err := s.count(tenant)
+		if err != nil {
+			return err
+		}
+		if n >= MaxOperations {
+			return ErrLimit
+		}
+		raw, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		next, _ := json.Marshal(n + 1)
+		b := s.table.Batch()
+		b.Create(tenant, plan.Destination, raw)
+		if version == state.Missing {
+			b.Create(tenant, countKey, next)
+		} else {
+			b.PutAt(tenant, countKey, next, version)
+		}
+		if err := b.Commit(); err != nil {
+			return fmt.Errorf("project forks: write: %w", err)
+		}
+		out = clone(record)
+		return nil
+	})
+	return out, err
 }
+
+// Failure records whether a copy stopped, at the plan's version it read.
 func (s *Store) Failure(tenant, destination, by string, cause error, at time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	record, ok := s.records[tenant][destination]
-	if !ok || record.By != by {
-		return ErrNotFound
-	}
-	record.Error = ""
-	if cause != nil {
-		record.Error = "Copy stopped before publication. Retry to continue."
-	}
-	record.UpdatedAt = at
-	if err := s.table.Put(tenant, destination, record); err != nil {
-		return err
-	}
-	s.records[tenant][destination] = record
-	return nil
+	return state.Retry(func() error {
+		record, version, err := s.lookup(tenant, destination)
+		if err != nil {
+			return err
+		}
+		if record.By != by {
+			return ErrNotFound
+		}
+		record.Error = ""
+		if cause != nil {
+			record.Error = "Copy stopped before publication. Retry to continue."
+		}
+		record.UpdatedAt = at
+		raw, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		b := s.table.Batch()
+		b.PutAt(tenant, destination, raw, version)
+		if err := b.Commit(); err != nil {
+			return fmt.Errorf("project forks: write: %w", err)
+		}
+		return nil
+	})
 }

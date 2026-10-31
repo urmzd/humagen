@@ -271,7 +271,13 @@ func (p *Platform) noticeReader(tree *projects.Tree, who auth.Principal) inbox.R
 		if !machineOf(c, who) {
 			continue
 		}
-		for _, b := range p.Projects.Bindings(who.Tenant, c.ID) {
+		bindings, err := p.Projects.Bindings(who.Tenant, c.ID)
+		if err != nil {
+			// What a client's bindings would add stays out until they can be read.
+			p.log.Warn("platform: a client's channel bindings could not be read", "tenant", who.Tenant, "client", c.ID, "error", err)
+			continue
+		}
+		for _, b := range bindings {
 			if b.Channel != projects.General || slices.Contains(r.Projects, b.Project) {
 				continue
 			}

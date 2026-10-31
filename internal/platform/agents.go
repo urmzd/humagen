@@ -387,10 +387,18 @@ func (p *Platform) migrateBaseline() error {
 		return err
 	}
 	tenants := slices.Collect(maps.Keys(baselines))
-	for _, t := range p.Projects.Tenants() {
-		if p.Projects.Tree(t).Root().Agents.Enable == nil && !slices.Contains(tenants, t) {
+	err = p.Projects.EachTenant(func(t string) error {
+		tree, err := p.Projects.Read(t)
+		if err != nil {
+			return err
+		}
+		if tree.Root().Agents.Enable == nil && !slices.Contains(tenants, t) {
 			tenants = append(tenants, t)
 		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("platform: read the workspaces' roots: %w", err)
 	}
 	slices.Sort(tenants)
 	w := projects.Writer{By: migration, Govern: true}

@@ -46,7 +46,7 @@ func TestASlackChannelIsBoundToOneChannel(t *testing.T) {
 	if c, ok := s.BoundTo("acme", "slack-acme", "C0123"); !ok || c.Name != "renewals" || c.Project != "Field" {
 		t.Fatalf("C0123 is bound to %+v, %v", c, ok)
 	}
-	if got := s.Bindings("acme", "slack-acme"); !reflect.DeepEqual(got, []projects.Binding{{Direction: projects.BridgeTwoWay, SlackChannel: "C0123", Project: "Field", Channel: "renewals", BoundAt: t0}}) {
+	if got, _ := s.Bindings("acme", "slack-acme"); !reflect.DeepEqual(got, []projects.Binding{{Direction: projects.BridgeTwoWay, SlackChannel: "C0123", Project: "Field", Channel: "renewals", BoundAt: t0}}) {
 		t.Fatalf("slack-acme's bindings = %+v", got)
 	}
 	if _, err := s.ArchiveChannel("acme", "Field", "renewals", ada, t0); err != nil {
@@ -97,7 +97,7 @@ func TestBindingsSurviveARestart(t *testing.T) {
 		if c, ok := again.BoundTo("acme", "slack-acme", "C0123"); !ok || c.Name != projects.General {
 			t.Fatalf("after a restart C0123 is bound to %+v, %v", c, ok)
 		}
-		if got := again.Bindings("acme", "slack-acme"); len(got) != 1 || !got[0].BoundAt.Equal(t0) {
+		if got, _ := again.Bindings("acme", "slack-acme"); len(got) != 1 || !got[0].BoundAt.Equal(t0) {
 			t.Fatalf("after a restart the binding reads %+v, want bound at %v", got, t0)
 		}
 	})
@@ -127,7 +127,7 @@ func TestABindingSaysWhenItWasMade(t *testing.T) {
 	}
 	boundAt := func() time.Time {
 		t.Helper()
-		got := s.Bindings("acme", "slack-acme")
+		got, _ := s.Bindings("acme", "slack-acme")
 		if len(got) != 1 {
 			t.Fatalf("bindings = %+v", got)
 		}

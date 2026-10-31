@@ -18,7 +18,15 @@ func (s *Store) EnsurePersonal(tenantName, subject string, at time.Time) (Projec
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return retry(func() (Project, error) { return s.ensurePersonal(tenantName, subject, at) })
+}
+
+// ensurePersonal is one attempt at EnsurePersonal.
+func (s *Store) ensurePersonal(tenantName, subject string, at time.Time) (Project, error) {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return Project{}, err
+	}
 	for _, p := range tx.t.projects {
 		if p.PersonalOwner == subject {
 			return p.clone(), nil

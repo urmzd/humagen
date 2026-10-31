@@ -155,7 +155,7 @@ func TestSkillRules(t *testing.T) {
 	if err != nil || p.Version != 2 || len(p.Skills) != 2 {
 		t.Fatalf("Field = %+v, %v", p, err)
 	}
-	if h, _ := s.History("acme", "Field", 1, 0); h[0].What != projects.SkillsChanged || len(h[0].Before.Skills) != 0 || len(h[0].After.Skills) != 2 {
+	if h, _, _ := s.History("acme", "Field", 1, 0); h[0].What != projects.SkillsChanged || len(h[0].Before.Skills) != 0 || len(h[0].After.Skills) != 2 {
 		t.Fatalf("the change = %+v", h[0])
 	}
 	if same, _ := s.SetSkills("acme", "Field", 2, []projects.Skill{skill("review"), long}, ada, t0); same.Version != 2 {
@@ -249,7 +249,7 @@ func TestAChangeRecordsSkillsWithoutTheirInstructions(t *testing.T) {
 	if sk, _, _ := s.Tree("acme").Skill("Field", "s0"); sk.Instructions == "" {
 		t.Fatal("the tree lost the instructions")
 	}
-	h, _ := s.History("acme", "Field", 1, 0)
+	h, _, _ := s.History("acme", "Field", 1, 0)
 	after := h[0].After
 	if h[0].What != projects.SkillsChanged || after == nil || len(after.Skills) != projects.MaxSkills {
 		t.Fatalf("the change = %+v", h[0])

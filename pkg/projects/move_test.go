@@ -143,7 +143,7 @@ func TestMoveIsCheckedAndRecorded(t *testing.T) {
 	if _, err := s.Move("acme", "Platform", 1, "Field", ada, t0, func(_, _ *projects.Tree, l []string) error { asked, left = true, l; return nil }); err != nil || !asked || len(left) != 0 {
 		t.Fatalf("moving under a sibling = %v, asked %v with %q", err, asked, left)
 	}
-	h, _ := s.History("acme", "Platform", 1, 0)
+	h, _, _ := s.History("acme", "Platform", 1, 0)
 	if h[0].What != projects.Moved || h[0].Before.Parent != "" || h[0].After.Parent != "Field" {
 		t.Fatalf("recorded %+v", h[0])
 	}
@@ -260,7 +260,7 @@ func TestAKindChangeFollowsTheKindRules(t *testing.T) {
 	if err := kind("Platform", 2, ada, projects.Team); !errors.Is(err, projects.ErrForbidden) {
 		t.Fatalf("a company project changed without govern = %v", err)
 	}
-	h, _ := s.History("acme", "Platform", 1, 0)
+	h, _, _ := s.History("acme", "Platform", 1, 0)
 	if h[0].What != projects.Updated || h[0].After.Kind != projects.Company {
 		t.Fatalf("recorded %+v", h[0])
 	}
@@ -278,7 +278,7 @@ func TestArchivedProjectsTakeNoChildren(t *testing.T) {
 	if err != nil || !field.Archived {
 		t.Fatalf("archive = %+v, %v", field, err)
 	}
-	if h, _ := s.History("acme", "Field", 1, 0); h[0].What != projects.Archived {
+	if h, _, _ := s.History("acme", "Field", 1, 0); h[0].What != projects.Archived {
 		t.Fatalf("recorded %q", h[0].What)
 	}
 	for _, under := range []string{"Field", "Globex"} {
@@ -319,7 +319,7 @@ func TestTheRecordNamesMembersAndUpdates(t *testing.T) {
 	if _, err := s.Update("acme", "Field", 3, ada, t0, func(p *projects.Project) error { p.Announce = "admin"; return nil }); !errors.Is(err, projects.ErrInvalid) {
 		t.Fatalf("an unknown role to announce = %v", err)
 	}
-	h, _ := s.History("acme", "Field", 0, 0)
+	h, _, _ := s.History("acme", "Field", 0, 0)
 	if len(h) != 3 || h[0].What != projects.Updated || h[0].After.Announce != projects.Member || h[1].What != projects.Members {
 		t.Fatalf("history = %+v", h)
 	}
