@@ -1766,7 +1766,7 @@ paths:
         path. Seeing an entry never grants reading the object.
       x-permission: knowledge:read
       parameters:
-        - {name: q, in: query, description: Words to rank entries by. Left out, entries are listed., schema: {type: string, maxLength: 1000}}
+        - {name: q, in: query, description: "Words to rank entries by. Left out, entries are listed.", schema: {type: string, maxLength: 1000}}
         - {name: limit, in: query, description: "At most this many entries, and at most 50. Zero is 50 when listing and 10 when searching.", schema: {type: integer, minimum: 0, maximum: 50}}
       responses:
         "200":
@@ -12346,8 +12346,8 @@ components:
             capabilities:
               type: array
               items: {type: string, enum: [catalog, live]}
-            mine: {description: You own it, so you may publish, withdraw and crawl it., type: boolean}
-            last_error: {description: The last crawl's failure, shown to the owner only., type: string}
+            mine: {description: "You own it, so you may publish, withdraw and crawl it.", type: boolean}
+            last_error: {description: "The last crawl's failure, shown to the owner only.", type: string}
     CatalogPage:
       type: object
       required: [connectors, entries]
