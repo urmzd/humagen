@@ -1,6 +1,14 @@
 import { ActionId, FEEDBACK_CLEAR } from "@humagen/core";
 import type { FeedbackPromptLabels, PrimitiveProps } from "@humagen/primitives";
-import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ActionContext, buttonClass } from "./buttons";
 import { ThumbsDownIcon, ThumbsUpIcon } from "./icons";
 import { SuppressContext } from "./meta";
@@ -49,6 +57,7 @@ export function Rating({ up, down, selected, labels, prompt }: PrimitiveProps["F
   const [reason, setReason] = useState<string | null>(null);
   const root = useRef<HTMLFieldSetElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
+  const dialog = useRef<HTMLFormElement>(null);
   const buttons = useRef<Partial<Record<Rated, HTMLButtonElement | null>>>({});
   const title = useId();
 
@@ -91,6 +100,20 @@ export function Rating({ up, down, selected, labels, prompt }: PrimitiveProps["F
     }
     close(rating);
   };
+
+  // The prompt opens under the thumbs, which can sit far enough right on a
+  // phone that it would end past the viewport; it moves left to fit.
+  useLayoutEffect(() => {
+    const el = dialog.current;
+    if (!asking || !el) return;
+    const margin = 16;
+    el.style.transform = "";
+    const box = el.getBoundingClientRect();
+    const over = box.right - (window.innerWidth - margin);
+    if (over > 0) {
+      el.style.transform = `translateX(${-Math.min(over, Math.max(0, box.left - margin))}px)`;
+    }
+  }, [asking]);
 
   useEffect(() => {
     if (!asking) return;
@@ -146,6 +169,7 @@ export function Rating({ up, down, selected, labels, prompt }: PrimitiveProps["F
       )}
       {asking && (
         <form
+          ref={dialog}
           role="dialog"
           aria-labelledby={title}
           data-aui="feedback-prompt"
