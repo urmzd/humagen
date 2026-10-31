@@ -51,13 +51,13 @@ func TestMemoryPromotionNeedsExplicitReviewAndDropsPrivateProvenance(t *testing.
 		if copied.Status != memory.Pending || copied.Source != memory.Person || copied.By != who.Subject || copied.Kind != memory.Decision || copied.ID == private.ID {
 			t.Fatalf("unsafe copy: %+v", copied)
 		}
-		if len(p.Memory.List(tenant, memory.PersonalOwner(who.Subject))) != 1 {
+		if len(notesOf(t, p.Memory, tenant, memory.PersonalOwner(who.Subject))) != 1 {
 			t.Fatal("promotion moved original note")
 		}
 		if _, err := p.PromoteMemory(who, in); err == nil {
 			t.Fatal("duplicate promotion accepted")
 		}
-		if got := p.Memory.PromptAt(tenant, memory.ProjectOwner("Destination"), "Context", time.Now()); got != "" {
+		if got := promptAtOf(t, p.Memory, tenant, memory.ProjectOwner("Destination"), "Context", time.Now()); got != "" {
 			t.Fatal("unreviewed child learning reached destination")
 		}
 
@@ -69,7 +69,7 @@ func TestMemoryPromotionNeedsExplicitReviewAndDropsPrivateProvenance(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := replay.List(tenant, memory.ProjectOwner("Destination")); len(got) != 1 || got[0].Status != memory.Pending || got[0].ID != copied.ID {
+		if got := notesOf(t, replay, tenant, memory.ProjectOwner("Destination")); len(got) != 1 || got[0].Status != memory.Pending || got[0].ID != copied.ID {
 			t.Fatal("pending review lost on replay")
 		}
 		for _, status := range []memory.Status{memory.Pending, memory.Approved} {
@@ -91,7 +91,7 @@ func TestMemoryPromotionNeedsExplicitReviewAndDropsPrivateProvenance(t *testing.
 		if _, err := p.Memory.Approve(tenant, memory.ProjectOwner("Destination"), []string{copied.ID}); err != nil {
 			t.Fatal(err)
 		}
-		if got := p.Memory.PromptAt(tenant, memory.ProjectOwner("Destination"), "Context", time.Now()); got == "" {
+		if got := promptAtOf(t, p.Memory, tenant, memory.ProjectOwner("Destination"), "Context", time.Now()); got == "" {
 			t.Fatal("explicit destination review did not activate copied decision")
 		}
 	})

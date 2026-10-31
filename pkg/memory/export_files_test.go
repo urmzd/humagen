@@ -29,7 +29,7 @@ func TestNotesAreExportedToFilesOnce(t *testing.T) {
 		}
 		check := func(s *Store) {
 			t.Helper()
-			notes := s.List("acme", "lead")
+			notes := listOf(t, s, "acme", "lead")
 			if len(notes) != 3 || notes[0].ID != "m3" || notes[1].ID != "m5" || notes[2].ID != "m6" {
 				t.Fatalf("notes = %+v", notes)
 			}
@@ -39,10 +39,10 @@ func TestNotesAreExportedToFilesOnce(t *testing.T) {
 			if notes[1].Status != Pending || notes[1].By != "run-2" {
 				t.Fatalf("a proposal = %+v", notes[1])
 			}
-			if got := s.Prompt("acme", "lead"); got != "What you remember from earlier conversations:\n- Releases go out on Tuesdays.\n- Launch is in Q4." {
+			if got := promptOf(t, s, "acme", "lead"); got != "What you remember from earlier conversations:\n- Releases go out on Tuesdays.\n- Launch is in Q4." {
 				t.Fatalf("prompt = %q", got)
 			}
-			if o := s.ReviewedOrigins("acme", []string{"run-1"}); len(o) != 1 || o[0].Note.ID != "m3" {
+			if o := originsOf(t, s, "acme", []string{"run-1"}); len(o) != 1 || o[0].Note.ID != "m3" {
 				t.Fatalf("origins = %+v", o)
 			}
 		}
@@ -90,9 +90,12 @@ func TestNotesAreExportedToFilesOnce(t *testing.T) {
 			t.Fatalf("opening again wrote %d versions", n)
 		}
 
-		// A crash after the files were written and before the mark: the
+		// A crash after the files were written and before the marks: the
 		// export runs again and finds nothing to do.
 		if err := table.Put("acme", "lead", legacy); err != nil {
+			t.Fatal(err)
+		}
+		if err := table.Delete("", exported); err != nil {
 			t.Fatal(err)
 		}
 		s, d = reopen()
@@ -123,7 +126,7 @@ func TestFilesWrittenElsewhereAreNotes(t *testing.T) {
 	}, By: "run-9"}); err != nil {
 		t.Fatal(err)
 	}
-	notes := s.List("acme", owner)
+	notes := listOf(t, s, "acme", owner)
 	if len(notes) != 1 || notes[0].Text != "Prefers tables." || notes[0].By != "run-9" || notes[0].Status != Approved {
 		t.Fatalf("notes = %+v", notes)
 	}
@@ -131,7 +134,7 @@ func TestFilesWrittenElsewhereAreNotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending := s.Pending("acme")
+	pending := pendingOf(t, s, "acme")
 	if len(pending) != 1 || pending[0].Note.ID != "n2" || pending[0].Agent != ProjectOwner("Field") {
 		t.Fatalf("pending = %+v", pending)
 	}
@@ -141,7 +144,7 @@ func TestFilesWrittenElsewhereAreNotes(t *testing.T) {
 	if ps, _ := d.Proposals("acme", drive.System, drive.Project("Field")); len(ps) != 0 {
 		t.Fatalf("the drive proposal %s is still open: %+v", p.ID, ps)
 	}
-	if got := s.Prompt("acme", ProjectOwner("Field")); !strings.Contains(got, "Ship on Tuesday.") {
+	if got := promptOf(t, s, "acme", ProjectOwner("Field")); !strings.Contains(got, "Ship on Tuesday.") {
 		t.Fatalf("prompt = %q", got)
 	}
 	// A restore through the drive is what the notes become.
@@ -155,7 +158,7 @@ func TestFilesWrittenElsewhereAreNotes(t *testing.T) {
 	if _, err := d.Restore(ctx, "acme", drive.Actor{Subject: "ada"}, drive.Person("ada"), h[len(h)-1].N, "ada", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if notes := s.List("acme", owner); len(notes) != 1 || notes[0].Text != "Prefers tables." {
+	if notes := listOf(t, s, "acme", owner); len(notes) != 1 || notes[0].Text != "Prefers tables." {
 		t.Fatalf("after restore = %+v", notes)
 	}
 }

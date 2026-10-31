@@ -217,10 +217,10 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("email notifications", err)
 	p.SkillLibrary, err = library.Open(st)
 	keep("skill library", err)
-	// Memory is files: manifests on st, content in the configured blob
+	// Memory is files: manifests on the shared store, content in the configured blob
 	// store. With none, or one in memory, the content is kept beside the
 	// manifests, so a restart that keeps the notes' places keeps their text.
-	driveState := st
+	driveState := perRequest
 	if driveState == nil {
 		driveState = state.NewMemory()
 	}
@@ -231,7 +231,7 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Drive, err = drive.Open(driveState, driveBlobs, drive.WithScreen(memory.Screen), drive.WithClock(p.now))
 	keep("drive", err)
 	if err == nil {
-		p.Memory, err = memory.Open(st, p.Drive)
+		p.Memory, err = memory.Open(driveState, p.Drive)
 		keep("memory", err)
 	}
 	// A deleted name is forgotten only once nothing is filed under it.
@@ -270,7 +270,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("read audit", err)
 	p.Inbox, err = inbox.OpenStore(st)
 	keep("inbox", err)
-	p.Artifacts, err = artifacts.Open(st)
+	p.Artifacts, err = artifacts.Open(perRequest)
 	keep("artifacts", err)
 	keep("settings", p.settings.open(st))
 	if len(errs) == 0 {

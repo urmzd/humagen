@@ -999,7 +999,13 @@ func (p *Platform) RemoveMemory(tenant, owner, id string) error {
 // syncMemory closes messages whose proposals have all been dealt with elsewhere.
 func (p *Platform) syncMemory(tenant, owner string) {
 	var pending []string
-	for _, n := range p.Memory.List(tenant, owner) {
+	notes, err := p.Memory.List(tenant, owner)
+	if err != nil {
+		// Without the notes nothing is known to be dealt with.
+		p.log.Error("platform: memory could not be read", "tenant", tenant, "owner", owner, "error", err)
+		return
+	}
+	for _, n := range notes {
 		if n.Status == memory.Pending {
 			pending = append(pending, n.ID)
 		}

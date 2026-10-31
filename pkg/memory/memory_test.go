@@ -22,8 +22,8 @@ func TestAddCleansAndDeduplicates(t *testing.T) {
 		t.Fatalf("got %+v, %v", a, err)
 	}
 	b, _ := s.Add("acme", "lead", "releases go out on tuesdays.", Consolidated, Approved, "run-1", now)
-	if b.ID != a.ID || len(s.List("acme", "lead")) != 1 {
-		t.Fatalf("the same note was stored twice: %+v", s.List("acme", "lead"))
+	if b.ID != a.ID || len(listOf(t, s, "acme", "lead")) != 1 {
+		t.Fatalf("the same note was stored twice: %+v", listOf(t, s, "acme", "lead"))
 	}
 	for _, bad := range []string{"", "   ", strings.Repeat("x", MaxChars+1)} {
 		if _, err := s.Add("acme", "lead", bad, Person, Approved, "ada", now); !errors.Is(err, ErrInvalid) {
@@ -36,17 +36,17 @@ func TestMemoryBelongsToOneAgentInOneTenant(t *testing.T) {
 	s := NewStore()
 	n, _ := s.Add("acme", "lead", "The launch is in Q4.", Person, Approved, "ada", now)
 	for _, who := range [][2]string{{"acme", "helper"}, {"globex", "lead"}} {
-		if got := s.List(who[0], who[1]); len(got) != 0 {
+		if got := listOf(t, s, who[0], who[1]); len(got) != 0 {
 			t.Errorf("%v sees %v", who, got)
 		}
-		if s.Prompt(who[0], who[1]) != "" {
+		if promptOf(t, s, who[0], who[1]) != "" {
 			t.Errorf("%v is sent the note", who)
 		}
 		if err := s.Remove(who[0], who[1], n.ID); !errors.Is(err, ErrNotFound) {
 			t.Errorf("%v removed it: %v", who, err)
 		}
 	}
-	if got := s.Prompt("acme", "lead"); !strings.Contains(got, "- The launch is in Q4.") {
+	if got := promptOf(t, s, "acme", "lead"); !strings.Contains(got, "- The launch is in Q4.") {
 		t.Fatalf("prompt = %q", got)
 	}
 }
@@ -63,7 +63,7 @@ func TestAFullListDropsConsolidatedNotesFirst(t *testing.T) {
 	if _, err := s.Add("acme", "lead", "auto 2", Consolidated, Approved, "run-2", now); err != nil {
 		t.Fatal(err)
 	}
-	notes := s.List("acme", "lead")
+	notes := listOf(t, s, "acme", "lead")
 	if len(notes) != MaxNotes || notes[len(notes)-1].Text != "auto 2" {
 		t.Fatalf("got %d notes, last %q", len(notes), notes[len(notes)-1].Text)
 	}
@@ -87,13 +87,13 @@ func TestProposalsWaitForApproval(t *testing.T) {
 	s := NewStore()
 	a, _ := s.Add("acme", "lead", "The launch is in Q4.", Consolidated, Pending, "run-1", now)
 	b, _ := s.Add("acme", "lead", "The team ships on Tuesdays.", Consolidated, Pending, "run-1", now)
-	if s.Prompt("acme", "lead") != "" {
+	if promptOf(t, s, "acme", "lead") != "" {
 		t.Fatal("a proposal was sent to the agent before anyone approved it")
 	}
-	if got := s.Pending("acme"); len(got) != 2 || got[0].Agent != "lead" {
+	if got := pendingOf(t, s, "acme"); len(got) != 2 || got[0].Agent != "lead" {
 		t.Fatalf("pending = %+v", got)
 	}
-	if len(s.Pending("globex")) != 0 {
+	if len(pendingOf(t, s, "globex")) != 0 {
 		t.Fatal("another tenant sees the proposals")
 	}
 
@@ -107,7 +107,7 @@ func TestProposalsWaitForApproval(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("approved %d, %v", n, err)
 	}
-	if got := s.Prompt("acme", "lead"); !strings.Contains(got, "Q4") || strings.Contains(got, "Tuesdays") {
+	if got := promptOf(t, s, "acme", "lead"); !strings.Contains(got, "Q4") || strings.Contains(got, "Tuesdays") {
 		t.Fatalf("prompt = %q", got)
 	}
 	// Approving twice does nothing, and discarding is removal.
@@ -117,7 +117,7 @@ func TestProposalsWaitForApproval(t *testing.T) {
 	if err := s.Remove("acme", "lead", b.ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Pending("acme")) != 0 {
+	if len(pendingOf(t, s, "acme")) != 0 {
 		t.Fatal("a discarded proposal is still pending")
 	}
 }
@@ -129,7 +129,7 @@ func TestPendingIsBounded(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := s.Pending("acme")
+	got := pendingOf(t, s, "acme")
 	if len(got) != MaxPending || got[0].Note.Text != "proposal 5" {
 		t.Fatalf("%d pending, oldest %q", len(got), got[0].Note.Text)
 	}
@@ -146,7 +146,7 @@ func TestPersonalDataIsRefused(t *testing.T) {
 			t.Errorf("%q: got %v, want ErrSensitive", text, err)
 		}
 	}
-	if len(s.List("acme", "lead")) != 0 {
+	if len(listOf(t, s, "acme", "lead")) != 0 {
 		t.Fatal("a refused note was stored")
 	}
 }
@@ -176,10 +176,10 @@ func TestNoAgentNameIsAProjectsOwner(t *testing.T) {
 	if _, err := s.Add("acme", ProjectOwner(""), "Everyone's.", Person, Approved, "ada", now); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.Prompt("acme", "workspace"); strings.Contains(got, "Everyone's.") || !strings.Contains(got, "The agent's own.") {
+	if got := promptOf(t, s, "acme", "workspace"); strings.Contains(got, "Everyone's.") || !strings.Contains(got, "The agent's own.") {
 		t.Fatalf("the agent named workspace is sent %q", got)
 	}
-	if got := s.List("acme", ProjectOwner("")); len(got) != 1 || got[0].Text != "Everyone's." {
+	if got := listOf(t, s, "acme", ProjectOwner("")); len(got) != 1 || got[0].Text != "Everyone's." {
 		t.Fatalf("the workspace's notes are %+v", got)
 	}
 }
@@ -191,7 +191,7 @@ func TestExpiredAndPersonalMemoryDoesNotEnterPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := s.PromptAt("acme", PersonalOwner("ada"), "Notes", now.Add(2*time.Hour)); got != "" {
+	if got := promptAtOf(t, s, "acme", PersonalOwner("ada"), "Notes", now.Add(2*time.Hour)); got != "" {
 		t.Fatalf("expired note sent: %q", got)
 	}
 	if n.Kind != Preference || n.ExpiresAt.IsZero() {
@@ -215,8 +215,8 @@ func TestRenderedMemoryUseSurvivesReplayWithoutCountingPreview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		preview := s.PromptAt("acme", "lead", "Notes", now)
-		if s.List("acme", "lead")[0].Uses != 0 {
+		preview := promptAtOf(t, s, "acme", "lead", "Notes", now)
+		if listOf(t, s, "acme", "lead")[0].Uses != 0 {
 			t.Fatal("preview counted as use")
 		}
 		if err := s.UsedRendered("acme", "lead", preview, now); err != nil {
@@ -229,11 +229,11 @@ func TestRenderedMemoryUseSurvivesReplayWithoutCountingPreview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := s.List("acme", "lead")[0]
+		got := listOf(t, s, "acme", "lead")[0]
 		if got.Uses != 1 || got.Kind != Decision || got.LastUsedAt.IsZero() {
 			t.Fatalf("use/provenance lost: %+v", got)
 		}
-		if s.PromptAt("acme", "lead", "Notes", now.Add(2*time.Hour)) != "" {
+		if promptAtOf(t, s, "acme", "lead", "Notes", now.Add(2*time.Hour)) != "" {
 			t.Fatal("expired memory replayed into context")
 		}
 	})
@@ -260,7 +260,7 @@ func TestCorrectionRetainsProvenanceReviewAndExpiryAcrossReplay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		held := s.List("acme", ProjectOwner("Field"))[0]
+		held := listOf(t, s, "acme", ProjectOwner("Field"))[0]
 		if held.Text != "Ship on Wednesday" || held.EditedBy != "ada" || held.Status != Pending {
 			t.Fatalf("correction not replayed: %+v", held)
 		}

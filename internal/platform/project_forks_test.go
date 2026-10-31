@@ -69,7 +69,7 @@ func TestProjectForkCopiesBoundedConfigurationAndOnlyConfirmedSelectedMemory(t *
 	if err != nil || channel.Default != "copy-planner" || channel.Slack != nil {
 		t.Fatalf("channel: %+v %v", channel, err)
 	}
-	notes := p.Memory.List(tenant, memory.ProjectOwner("Copy"))
+	notes := notesOf(t, p.Memory, tenant, memory.ProjectOwner("Copy"))
 	if len(notes) != 1 || notes[0].Text != "A confirmed launch decision" {
 		t.Fatalf("memory copied without selection: %+v", notes)
 	}
@@ -91,7 +91,7 @@ func TestFailedProjectForkRemainsHiddenAcrossRestartAndResumes(t *testing.T) {
 		fault := &faultyIn{Store: raw}
 		p := startWith(t, platform.Config{Backends: platform.Backends{State: fault}})
 		note := projectForkSource(t, p)
-		fault.fail("memory")
+		fault.fail("drive.trees")
 		op, err := p.ForkProject(t.Context(), admin, "Field", platform.ProjectForkInput{Name: "Copy", Memory: []string{note}})
 		if err != nil || op.State != "failed" {
 			t.Fatalf("failed fork: %+v %v", op, err)
@@ -111,7 +111,7 @@ func TestFailedProjectForkRemainsHiddenAcrossRestartAndResumes(t *testing.T) {
 		if err != nil || done.State != "ready" || done.ID != op.ID {
 			t.Fatalf("resume: %+v %v", done, err)
 		}
-		if len(again.Memory.List(tenant, memory.ProjectOwner("Copy"))) != 1 {
+		if len(notesOf(t, again.Memory, tenant, memory.ProjectOwner("Copy"))) != 1 {
 			t.Fatal("retry duplicated or omitted selected memory")
 		}
 	})
@@ -144,7 +144,7 @@ type blockedForkStore struct {
 
 func (s *blockedForkStore) Write(ctx context.Context, namespace string, ops ...state.Op) error {
 	s.mu.Lock()
-	hold := s.hold && namespace == "memory"
+	hold := s.hold && namespace == "drive.trees"
 	if hold {
 		s.hold = false
 	}
@@ -242,7 +242,7 @@ func TestProjectForkResumeRechecksSourceAccessAfterRevocation(t *testing.T) {
 	st := &faultyIn{Store: state.NewMemory()}
 	p := startWith(t, platform.Config{Backends: platform.Backends{State: st}})
 	note := projectForkSource(t, p)
-	st.fail("memory")
+	st.fail("drive.trees")
 	author := operator
 	author.Scopes = []auth.Permission{auth.ProjectsWrite, auth.AgentsWrite, auth.AgentsRead}
 	op, err := p.ForkProject(t.Context(), author, "Field", platform.ProjectForkInput{Name: "Copy", Memory: []string{note}})
@@ -420,7 +420,7 @@ func TestCopiedMemoryStripsNonportableProvenanceWhenAudienceExpands(t *testing.T
 	if !p.Seer(peer).Project("Copy") || p.Seer(peer).Project("Field") {
 		t.Fatal("audience fixture does not isolate original source")
 	}
-	notes := p.Memory.List(tenant, memory.ProjectOwner("Copy"))
+	notes := notesOf(t, p.Memory, tenant, memory.ProjectOwner("Copy"))
 	if len(notes) != 1 || notes[0].Kind != memory.Decision || !notes[0].ExpiresAt.Equal(expires) || notes[0].By != author.Subject || notes[0].ReviewedBy != author.Subject || notes[0].Source != memory.Person {
 		t.Fatalf("copied note retained nonportable metadata: %+v", notes)
 	}
