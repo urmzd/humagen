@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.61.0 (2026-10-31)
+
+### Features
+
+- **state**: compare-and-set update, bounded reads and a tenant directory for per-request stores (#159) ([69d9f62](https://github.com/urmzd/humagen/commit/69d9f629bc28b29615849057a92fe565179c3fc3))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.60.0...v0.61.0)
+
+
 ## 0.59.0 (2026-10-31)
 
 ### Features
