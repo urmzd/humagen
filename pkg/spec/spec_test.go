@@ -47,6 +47,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if sb, err := Block[DockerSandbox](cfg.System.Spec.Sandbox); err != nil || cfg.System.Spec.Sandbox.Kind != "docker" || sb.Runtime != RuntimeGVisor || sb.Image != DefaultSandboxImage || sb.Max != 64 {
 		t.Fatalf("the example's sandbox = %+v %+v %v", cfg.System.Spec.Sandbox, sb, err)
 	}
+	if g, err := Block[EgressGate](cfg.System.Spec.Egress); err != nil || cfg.System.Spec.Egress.Kind != "gate" || g.Network != "humagen-egress" || g.Address != "10.0.9.2:3128" || g.Listen != "10.0.9.2:3128" {
+		t.Fatalf("the example's egress = %+v %+v %v", cfg.System.Spec.Egress, g, err)
+	}
 	if r, err := cfg.System.Spec.Rooms.Config(); err != nil || r.CoalesceAbove != 200 || r.TailInterval != 3*time.Second || r.RoomRunsPerMinute != 600 || r.PersonRuns != 25 {
 		t.Fatalf("rooms = %+v %v", r, err)
 	}
@@ -63,7 +66,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if f := w.Projects[1]; len(w.Knowledge) != 1 || len(f.Knowledge) != 1 || f.Knowledge[0] != "field-playbook" {
 		t.Fatalf("the example's knowledge = %v %v", w.Knowledge, f.Knowledge)
 	}
-	if f := w.Projects[1]; w.Run == nil || f.Run == nil || w.Run.Ceilings.Depth(5) != 2 || len(w.Run.Ceilings.ToolServers) != 1 ||
+	if f := w.Projects[1]; w.Run == nil || f.Run == nil || w.Run.Ceilings.Depth(5) != 2 || len(w.Run.Ceilings.ToolServers) != 1 || !w.Run.Ceilings.AllowsEgress("api.github.com") ||
 		w.Run.Preferences.Model != "anthropic/claude-sonnet-4-5" || f.Run.Ceilings.Depth(5) != 1 || len(f.Run.Ceilings.Tools) != 3 || f.Run.Preferences.CompactionTokens != 120000 {
 		t.Fatalf("the example's run settings = %+v %+v", w.Run, f.Run)
 	}
@@ -76,7 +79,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 func TestNoFileIsAWorkingDefault(t *testing.T) {
 	var s System
 	s.Defaults()
-	if s.Spec.Auth.Kind != "dev" || s.Spec.Server.Addr != "127.0.0.1:8080" || s.Spec.Stores.Kind != "memory" || s.Tenant() != "default" || s.Spec.Knowledge.Embedder.Kind != "none" {
+	if s.Spec.Auth.Kind != "dev" || s.Spec.Server.Addr != "127.0.0.1:8080" || s.Spec.Stores.Kind != "memory" || s.Tenant() != "default" || s.Spec.Knowledge.Embedder.Kind != "none" || s.Spec.Egress.Kind != "none" {
 		t.Fatalf("defaults = %+v", s)
 	}
 }
@@ -109,12 +112,16 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a person reference that is nobody's own":      {sys + "  person_refs: {default: ['op://People/']}\n", "person_refs.default"},
 		"two workspaces' people in one place": {sys + "  person_refs: {default: ['op://People/{subject}/'], globex: ['op://People/{subject}/']}\n",
 			"could name one reference for two people"},
-		"an inbox kept less than a week":    {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
-		"a call depth past the hop limit":   {sys + "  execution: {max_depth: 8}\n", "execution.max_depth: 8"},
-		"an inbox kept for no time":         {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
-		"a vertex embedder with no project": {sys + "  knowledge: {embedder: {kind: vertex, vertex: {location: us-central1}}}\n", "vertex needs project"},
-		"an openai embedder with no width":  {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m}}}\n", "openai needs model and dimensions"},
-		"an embedder key as a value":        {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m, dimensions: 8, key: {ref: sk-123}}}}\n", "use env:NAME"},
+		"an inbox kept less than a week":                  {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
+		"a call depth past the hop limit":                 {sys + "  execution: {max_depth: 8}\n", "execution.max_depth: 8"},
+		"an inbox kept for no time":                       {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
+		"a vertex embedder with no project":               {sys + "  knowledge: {embedder: {kind: vertex, vertex: {location: us-central1}}}\n", "vertex needs project"},
+		"an openai embedder with no width":                {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m}}}\n", "openai needs model and dimensions"},
+		"an egress gate on every address with no address": {sys + "  egress: {kind: gate, gate: {listen: ':3128'}}\n", "address must say which one"},
+		"an egress address with no port":                  {sys + "  egress: {kind: gate, gate: {address: 10.0.9.2}}\n", `address "10.0.9.2" is not host:port`},
+		"an egress network that is no name":               {sys + "  egress: {kind: gate, gate: {network: 'a b'}}\n", "is not a Docker network's name"},
+		"an egress host with a port":                      {plat + "  workspace: {run: {ceilings: {egress: ['api.github.com:443']}}}\n", "egress"},
+		"an embedder key as a value":                      {sys + "  knowledge: {embedder: {kind: openai, openai: {model: m, dimensions: 8, key: {ref: sk-123}}}}\n", "use env:NAME"},
 	} {
 		path := filepath.Join(t.TempDir(), "humagen.yaml")
 		writeFile(t, path, tc.body)
@@ -141,6 +148,18 @@ func TestAKindIsOneTheBinaryHas(t *testing.T) {
 	var blk struct{ Bucket string }
 	if err := cfg.System.Spec.Blobs.Decode(&blk); err != nil || blk.Bucket != "b" {
 		t.Fatalf("its block: %+v %v", blk, err)
+	}
+}
+
+func TestAnEgressIsOneTheBinaryHas(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  egress: {kind: squid}\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Check(Kinds{}); err == nil || !strings.Contains(err.Error(), "none, gate") {
+		t.Fatalf("an unknown egress: %v", err)
 	}
 }
 

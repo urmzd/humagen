@@ -8688,7 +8688,7 @@ components:
         ceilings: {$ref: "#/components/schemas/RunCeilings"}
         preferences: {$ref: "#/components/schemas/RunPreferences"}
     RunCeilings:
-      description: A list left out narrows nothing at its level; an empty list allows nothing. Tool servers are default deny.
+      description: A list left out narrows nothing at its level; an empty list allows nothing. Tool servers and egress are default deny.
       type: object
       properties:
         tools:
@@ -8704,6 +8704,10 @@ components:
           type: integer
         tool_servers:
           description: Hosts a person's own tool servers may be on, at most 64.
+          type: array
+          items: {type: string}
+        egress:
+          description: "Hosts a run's sandbox may reach through the egress gate, on ports 80 and 443, at most 64: an exact name or `*.domain` for its subdomains."
           type: array
           items: {type: string}
     RunPreferences:
