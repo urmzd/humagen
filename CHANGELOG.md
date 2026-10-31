@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.51.0 (2026-10-31)
+
+### Features
+
+- **signals**: fold a run's events and ratings into its signals (#147) ([77d7788](https://github.com/urmzd/humagen/commit/77d7788debea8cdedc0121544b5cb91489108e21))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.50.0...v0.51.0)
+
+
 ## 0.50.0 (2026-10-31)
 
 ### Features
