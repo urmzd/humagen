@@ -12812,15 +12812,18 @@ components:
     Question:
       description: |
         What a run is waiting on a person for: to approve a tool call, to
-        choose one of `options`, or to reply. `asked_of` is a routing hint and
-        admits nobody. `default` is what applies when it expires.
+        choose one of `options`, to reply, or, for a `hold`, whether the run
+        may go on at all, a question the platform asked rather than the agent
+        (`hold` says which). `asked_of` is a routing hint and admits nobody.
+        `default` is what applies when it expires.
       type: object
       required: [id, kind, prompt]
       properties:
         id: {type: string}
         kind:
           type: string
-          enum: [approval, choice, reply, delegation]
+          enum: [approval, choice, reply, delegation, hold]
+        hold: {$ref: "#/components/schemas/QuestionHold"}
         approvers:
           description: When set on an approval, only these people and `role:<name>` holders may answer it, in place of the agent's own approvers.
           type: array
@@ -12839,6 +12842,19 @@ components:
         default: {$ref: "#/components/schemas/Answer"}
         at: {type: string, format: date-time}
         child_run_id: {type: string}
+    QuestionHold:
+      description: |
+        The platform's hold a `hold` question asks about. `topic` is what the
+        run is held on (`budget`); `data` is its detail, for `budget` the
+        limit reached and what approving grants.
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
+        topic: {type: string}
+        data:
+          type: object
+          additionalProperties: true
     Answer:
       description: An answer to a question, or its default when nobody answered in time (`expired`).
       type: object
