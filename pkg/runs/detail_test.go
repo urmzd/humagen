@@ -29,9 +29,6 @@ func TestOutcomeAndCitationsSurviveRestartWithoutJournal(t *testing.T) {
 			t.Fatal(err)
 		}
 		end(t, index, "acme", "r1", 2*time.Second, event.TypeCompleted, wire.Lifecycle{Text: "Renew it. [[1]]"})
-		if err := index.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		again, err := Open(store)
 		if err != nil {
 			t.Fatal(err)

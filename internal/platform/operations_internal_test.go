@@ -200,7 +200,7 @@ func TestAssignmentRecoveryAdvancesPastFullPageOfUnfinishedRuns(t *testing.T) {
 	if err := p.Runs.Record(last, tag, 1); err != nil {
 		t.Fatal(err)
 	}
-	p.Runs.End(last, runs.Completed, "done", "", at)
+	p.Runs.End("t", last, runs.Completed, "done", "", at)
 	p.settleOperations(t.Context())
 	p.settleOperations(t.Context())
 	a, _ := p.Operations.Assignment("t", last)

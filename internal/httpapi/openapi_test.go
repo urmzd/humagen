@@ -2159,9 +2159,6 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	f.p.Runs.Observe(event.Envelope{Tenant: "acme", Run: learningID, Type: event.TypeAction, Data: wire.BodyOf(event.TypeAction, learningAction), Time: time.Now()})
 	learningEnd, _ := json.Marshal(wire.Lifecycle{Text: "The decision is ready."})
 	f.p.Runs.Observe(event.Envelope{Tenant: "acme", Run: learningID, Type: event.TypeCompleted, Data: wire.BodyOf(event.TypeCompleted, learningEnd), Time: time.Now()})
-	if err := f.p.Runs.Flush(); err != nil {
-		t.Fatal(err)
-	}
 	learningAt := "/api/runs/" + learningID
 	previewLearning := c.call(auditAdmin, "GET", "/api/runs/{id}/learning", learningAt+"/learning", "", http.StatusOK)
 	c.call(auditAdmin, "GET", "/api/runs/{id}/learning", learningAt+"/learning?scope=invalid", "", http.StatusBadRequest)

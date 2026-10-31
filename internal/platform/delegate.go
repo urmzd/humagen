@@ -254,7 +254,7 @@ func (p *Platform) cascade(ctx context.Context, run runs.Run) {
 		if run.Status == runs.Stopped {
 			why = "stopped"
 		}
-		for _, child := range p.Runs.AttachedTo(run.ID) {
+		for _, child := range p.Runs.AttachedTo(run.Tenant, run.ID) {
 			if err := p.requestStop(ctx, child.Tenant, child.ID, attachedCause(why, run), "system"); err != nil {
 				p.log.Warn("platform: an attached run could not be asked to stop", "tenant", child.Tenant, "run", child.ID, "error", err)
 			}
@@ -262,7 +262,7 @@ func (p *Platform) cascade(ctx context.Context, run runs.Run) {
 	}
 	// A caller that had answered and was waiting on this run may be done now.
 	if run.Parent != "" && run.Lifecycle == runs.Attached {
-		if parent, done := p.over(func() (runs.Run, bool) { return p.Runs.Settle(run.Parent, p.now()) }); done {
+		if parent, done := p.over(func() (runs.Run, bool) { return p.Runs.Settle(run.Tenant, run.Parent, p.now()) }); done {
 			p.ended(ctx, parent)
 		}
 	}
@@ -328,7 +328,7 @@ func (p *Platform) requestStop(ctx context.Context, tenant, runID, cause, by str
 		if _, err := p.Runs.Get(tenant, next.run.ID); err != nil {
 			continue
 		}
-		run, ok := p.Runs.AskStop(next.run.ID, p.now())
+		run, ok := p.Runs.AskStop(tenant, next.run.ID, p.now())
 		if !ok {
 			continue
 		}
@@ -337,7 +337,7 @@ func (p *Platform) requestStop(ctx context.Context, tenant, runID, cause, by str
 		if !run.Finishing {
 			asks = append(asks, ask{run, next.cause})
 		}
-		for _, child := range p.Runs.AttachedTo(run.ID) {
+		for _, child := range p.Runs.AttachedTo(tenant, run.ID) {
 			queue = append(queue, ask{child, attachedCause("stopped", run)})
 		}
 	}
@@ -360,7 +360,7 @@ func (p *Platform) requestStop(ctx context.Context, tenant, runID, cause, by str
 		// the ledger now rather than reported as stopping.
 		if p.asked != nil {
 			if _, held, aerr := p.asked(ctx, a.run.Tenant, a.run.ID); aerr == nil && !held {
-				p.settleFromLedger(ctx, a.run.ID)
+				p.settleFromLedger(ctx, a.run.Tenant, a.run.ID)
 			}
 		}
 	}

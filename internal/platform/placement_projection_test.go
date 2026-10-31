@@ -54,7 +54,7 @@ func TestMovedHistoryDoesNotRevealPrivatePlacementMetadata(t *testing.T) {
 		if strings.Contains(string(shown), personal.Name) || strings.Contains(string(shown), "private-source") {
 			t.Fatalf("private identity in operational run: %s", shown)
 		}
-		if _, err := p.Runs.End(id, runs.Completed, "answer from private-source", "", time.Now()); !err {
+		if _, err := p.Runs.End(tenant, id, runs.Completed, "answer from private-source", "", time.Now()); !err {
 			t.Fatal("run did not settle")
 		}
 		reader := who

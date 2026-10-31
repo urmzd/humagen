@@ -163,8 +163,8 @@ func TestRecentSpendCountsEachRunsOwnCalls(t *testing.T) {
 			Total: event.Usage{ModelCalls: 2, Cost: &event.Cost{Micros: 10 * micros, Currency: currency}},
 		}
 	}
-	x.SetUsage("a", own(1500, "USD"), 0)
-	x.SetUsage("b", own(900, "EUR"), 0)
+	x.SetUsage("acme", "a", own(1500, "USD"), 0)
+	x.SetUsage("acme", "b", own(900, "EUR"), 0)
 	if w := x.Recent("acme", "", "", t0); w.Spent != 1500 {
 		t.Fatalf("spent = %d, want only a's own dollars", w.Spent)
 	}
@@ -241,8 +241,7 @@ func TestThreadPaging(t *testing.T) {
 	// New activity between pages: a conversation on a later page moves to the
 	// top. It is not repeated and nothing else is skipped.
 	first, next, _ := x.ThreadPage("acme", ThreadQuery{Limit: 3})
-	record(t, x, "acme", "t1-again", "helper", "cron", 30*time.Minute, map[string]string{})
-	x.runs["t1-again"].Thread = "t1"
+	record(t, x, "acme", "t1-again", "helper", "api", 30*time.Minute, map[string]string{MetaThread: "t1"})
 	rest, _, _ := x.ThreadPage("acme", ThreadQuery{Limit: 10, Before: next})
 	if ids(first) != "t6 t5 t4 " || ids(rest) != "t3 t2 t0 " {
 		t.Fatalf("after new activity: first %q, rest %q", ids(first), ids(rest))
@@ -272,13 +271,13 @@ func TestAStopIsRequestedThenConfirmedByTheRuntime(t *testing.T) {
 	record(t, x, "acme", "r1", "lead", "api", 0, nil)
 	record(t, x, "acme", "r2", "lead", "api", 0, nil)
 	for _, id := range []string{"r1", "r2"} {
-		r, ok := x.AskStop(id, t0.Add(time.Second))
+		r, ok := x.AskStop("acme", id, t0.Add(time.Second))
 		if !ok || !r.Stopping || r.Status.Terminal() || r.Cause != "" {
 			t.Fatalf("asked = %+v, %v", r, ok)
 		}
 	}
 	// Asking again keeps the first request.
-	if r, _ := x.AskStop("r1", t0.Add(2*time.Second)); !r.StopRequestedAt.Equal(t0.Add(time.Second)) {
+	if r, _ := x.AskStop("acme", "r1", t0.Add(2*time.Second)); !r.StopRequestedAt.Equal(t0.Add(time.Second)) {
 		t.Fatalf("a second request moved the first: %+v", r)
 	}
 
@@ -291,7 +290,7 @@ func TestAStopIsRequestedThenConfirmedByTheRuntime(t *testing.T) {
 	if !ended || r.Status != Completed || r.Answer != "Whole" || r.Cause != "" || r.Stopping {
 		t.Fatalf("completed first = %+v, %v", r, ended)
 	}
-	if _, ok := x.AskStop("r2", t0.Add(4*time.Second)); ok {
+	if _, ok := x.AskStop("acme", "r2", t0.Add(4*time.Second)); ok {
 		t.Fatal("a run that ended was asked to stop")
 	}
 	if _, again := x.Observe(event.Envelope{Run: "r1", Tenant: "acme", Type: event.TypeStopped, Data: wire.BodyOf(event.TypeStopped, b), Time: t0.Add(5 * time.Second)}); again {
@@ -330,12 +329,12 @@ func TestObserveUsageIsConfinedToTheRunsTenant(t *testing.T) {
 func TestAClosedRunsSpentDoesNotMove(t *testing.T) {
 	x := NewIndex()
 	record(t, x, "acme", "r1", "lead", "api", 0, nil)
-	x.Spend("r1", 100)
-	x.SetUsage("r1", &event.RunUsage{Total: event.Usage{ModelCalls: 1}}, 50)
-	if _, ok := x.Spend("r1", 900); ok {
+	x.Spend("acme", "r1", 100)
+	x.SetUsage("acme", "r1", &event.RunUsage{Total: event.Usage{ModelCalls: 1}}, 50)
+	if _, ok := x.Spend("acme", "r1", 900); ok {
 		t.Fatal("a closed run took more spend")
 	}
-	x.SetUsage("r1", nil, 1000) // a second close
+	x.SetUsage("acme", "r1", nil, 1000) // a second close
 	if r, _ := x.Get("acme", "r1"); r.Spent != 150 || r.Usage.Total.ModelCalls != 1 {
 		t.Fatalf("closed run = spent %d, usage %+v", r.Spent, r.Usage)
 	}
@@ -367,13 +366,13 @@ func TestACallEndingAfterItsCallerSettlesClimbsToTheRoot(t *testing.T) {
 	if err := x.Record(rootID, root, 1); err != nil {
 		t.Fatal(err)
 	}
-	x.Spend(ids["mid"], 300)
-	x.Spend(ids["leaf"], 700)
+	x.Spend("acme", ids["mid"], 300)
+	x.Spend("acme", ids["leaf"], 700)
 	// mid ends first and settles into the root; leaf ends after.
-	x.SetUsage(ids["mid"], nil, 0)
+	x.SetUsage("acme", ids["mid"], nil, 0)
 	m, _ := x.Get("acme", ids["mid"])
 	x.SettleCall(m)
-	x.SetUsage(ids["leaf"], nil, 0)
+	x.SetUsage("acme", ids["leaf"], nil, 0)
 	l, _ := x.Get("acme", ids["leaf"])
 	x.SettleCall(l)
 	x.SettleCall(l) // a second report changes nothing

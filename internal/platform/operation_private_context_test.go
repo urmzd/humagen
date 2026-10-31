@@ -110,9 +110,6 @@ func TestPrivateParentClassifiesStandaloneHelperAfterRestart(t *testing.T) {
 		if err := index.MarkPrivateContext("t", runtime.RunID("t", parent.ID)); err != nil {
 			t.Fatal(err)
 		}
-		if err := index.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		replay, err := runs.Open(st)
 		if err != nil {
 			t.Fatal(err)
