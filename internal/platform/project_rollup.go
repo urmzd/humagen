@@ -74,7 +74,11 @@ func (p *Platform) RollupProject(who auth.Principal, name string) (ProjectRollup
 	// Resolve passive source chains before entering the run index read lock:
 	// legacy source records can require an index lookup of their own.
 	inheritedAccess := map[string]bool{}
-	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Fork != nil }) {
+	forks, err := p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Fork != nil })
+	if err != nil {
+		return ProjectRollup{}, err
+	}
+	for _, th := range forks {
 		inheritedAccess[th.ID] = seer.Place(Place{Project: th.Project, Thread: th.ID})
 	}
 	if who.Can(auth.RunsRead) {

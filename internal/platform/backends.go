@@ -244,7 +244,7 @@ func (p *Platform) openStores(cfg Config) error {
 	// An agent's name is a handle no person is given.
 	p.People, err = people.Open(st, people.WithTaken(p.agentTaken))
 	keep("people", err)
-	p.Threads, err = threads.Open(st)
+	p.Threads, err = threads.Open(perRequest)
 	keep("threads", err)
 	p.Policies, err = policy.Open(st)
 	keep("policies", err)

@@ -175,7 +175,9 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 		return Posted{}, err
 	}
 	post := MessageInput{Text: in.Text, PostOnly: in.PostOnly, ActAs: in.ActAs, Surface: &ref}
-	if th, ok := p.Threads.BySurface(who.Tenant, sf); ok {
+	if th, ok, err := p.Threads.BySurface(who.Tenant, sf); err != nil {
+		return Posted{}, err
+	} else if ok {
 		return p.PostMessage(ctx, who, th.ID, post)
 	}
 	if resource, ok := slackResource(ref.Channel); ok {
@@ -195,7 +197,9 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	got, err := p.startThread(ctx, who, in, &surfaced{client: c, ref: ref, announcement: seed})
 	if errors.Is(err, threads.ErrExists) {
 		// Another post started it first: this one joins it.
-		if th, ok := p.Threads.BySurface(who.Tenant, sf); ok {
+		if th, ok, err := p.Threads.BySurface(who.Tenant, sf); err != nil {
+			return Posted{}, err
+		} else if ok {
 			return p.PostMessage(ctx, who, th.ID, post)
 		}
 	}

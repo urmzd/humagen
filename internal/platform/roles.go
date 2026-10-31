@@ -130,7 +130,11 @@ func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name strin
 				}
 			}
 		}
-		if lost := p.lostByMove(who.Tenant, before, after, before.Subtree(name)); len(lost) > 0 {
+		lost, err := p.lostByMove(who.Tenant, before, after, before.Subtree(name))
+		if err != nil {
+			return err
+		}
+		if len(lost) > 0 {
 			under := parent
 			if under == projects.Root {
 				under = "the workspace"
@@ -152,7 +156,7 @@ const maxLostThreads = 5
 // whose own default would answer nothing, as a default that stopped being
 // available is refused rather than passed over. The tree's own defaults and
 // homes are the projects store's to check (projects.Store.Move).
-func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names []string) []string {
+func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names []string) ([]string, error) {
 	moved := make(map[string]bool, len(names))
 	for _, n := range names {
 		moved[n] = true
@@ -168,7 +172,10 @@ func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names
 			out = append(out, fmt.Sprintf("the schedule %s, which runs %s in %s, would be refused every time", sc.Name, sc.Agent, at))
 		}
 	}
-	ths := p.Threads.Records(tenant, func(th threads.Thread) bool { return moved[th.Project] && lost(th.Project, th.Default) })
+	ths, err := p.Threads.Records(tenant, func(th threads.Thread) bool { return moved[th.Project] && lost(th.Project, th.Default) })
+	if err != nil {
+		return nil, err
+	}
 	slices.SortFunc(ths, func(a, b threads.Thread) int { return strings.Compare(a.ID, b.ID) })
 	for i, th := range ths {
 		if i == maxLostThreads {
@@ -181,7 +188,7 @@ func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names
 		}
 		out = append(out, fmt.Sprintf("the default of the thread %s in %s, %s, would not be available", name, th.Project, th.Default))
 	}
-	return out
+	return out, nil
 }
 
 // keepsAllowLists refuses a move that would let an agent run in the moved

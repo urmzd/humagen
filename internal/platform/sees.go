@@ -413,7 +413,14 @@ func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCoun
 	seer := p.Seer(who)
 	mark := p.Runs.Opened(who.Tenant)
 	hidden := map[string]bool{}
-	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return true }) {
+	recs, err := p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return true })
+	if err != nil {
+		// Without the records, nothing says which conversations are hidden,
+		// so nothing is counted.
+		p.log.Warn("platform: project counts: threads", "err", err)
+		return map[string]runs.ProjectCount{}
+	}
+	for _, th := range recs {
 		if !seer.Place(Place{Project: th.Project, Thread: th.ID}) {
 			hidden[th.ID] = true
 		}
