@@ -23,7 +23,8 @@ process with its stores beside it.
   chart's `system` value. A `Platform` document per workspace says what that
   workspace offers: models, tools, agents, Slack and GitHub. `humagen serve -f
   PATH` reads them, and flags win over them: every setup below forces only the
-  listen address and the console's directory as flags.
+  listen address and the console's directory as flags, and the chart adds
+  the drain timings.
 - **Secrets go in the environment, never in the spec.** A credential in a
   document is a reference, `{ref: env:NAME}`, read at start. The variable comes
   from `.env` in compose and from the `existingSecret` Secret in Kubernetes. A
@@ -46,6 +47,9 @@ process with its stores beside it.
   published container port is not loopback. Use `kind: oidc` with `issuer`,
   `client_id`, `audience` and `client_secret: {ref: env:HUMAGEN_OIDC_CLIENT_SECRET}`,
   and register `public_url` plus `/auth/callback` with your identity provider.
+  The exception is `tailscale` in the chart with its Tailscale proxy container
+  in the same pod: Humagen listens on the pod's loopback and the proxy is the
+  only way in (see [Tailscale sign-in](#tailscale-sign-in)).
   See [security](../architecture/security.md).
 - **Stores.** `stores.kind: postgres` with `url: {ref: env:HUMAGEN_POSTGRES_URL}`
   puts every store in Postgres; `memory` loses them on restart. The event bus
@@ -53,7 +57,8 @@ process with its stores beside it.
   on the same database with readers woken by LISTEN/NOTIFY, so there is no
   second service to run. `bus.kind: memory` keeps it in the process. See
   [Storage](../architecture/overview.md#storage). **Published files** go to `blobs.kind: disk` (the workspace
-  volume) or `s3`, any S3-compatible bucket.
+  volume), `s3`, any S3-compatible bucket, or `gcs`, Google Cloud Storage
+  with Application Default Credentials.
 - **Tools need a sandbox driver.** A run's file tools, its shell and its
   stdio MCP servers execute in the driver `sandbox` names
   ([the spec](../reference/spec.md#sandbox)). See
@@ -166,9 +171,9 @@ Every request is an admin. Do not use it anywhere but your own machine.
 
 [`deploy/helm/humagen`](../../deploy/helm/humagen) deploys one Humagen server: a Deployment, a
 Service, an optional Ingress, a ConfigMap, a PersistentVolumeClaim for the
-workspace, and a ServiceAccount with no API token. The pod runs as non-root
-with a read-only root filesystem and no capabilities. Startup, liveness and
-readiness probes call `/healthz`. Every value is documented in
+workspace when blobs are on disk, a PodDisruptionBudget, and a ServiceAccount
+with no API token. The pod runs as non-root with a read-only root filesystem
+and no capabilities. Every value is documented in
 [`values.yaml`](../../deploy/helm/humagen/values.yaml).
 
 The `system` value (`metadata` and `spec`) and each item of `platforms` are
@@ -181,6 +186,11 @@ Ingress, probes, resources. The defaults are OIDC (`issuer`, `client_id` and
 `audience` are required) and Postgres, both reading their credentials through
 references. Rendering fails for `auth.kind` `dev`, `mock` or `tailscale`, for
 missing OIDC values, and for `replicaCount` other than 1.
+
+The bus is left unset in the values: when `stores.kind` is `postgres` the
+chart writes `bus: {kind: postgres}`, and with memory stores it stays memory.
+A `bus.kind` in the values wins. A release upgraded with `--reuse-values`
+keeps the `bus: {kind: memory}` older values set; drop it to move to Postgres.
 
 Secrets never go in values. Create a Secret with the variables the references
 name and set `existingSecret`; its keys become the container's environment:
@@ -209,6 +219,87 @@ each file in `ci/` and the Flux values, runs `kubeconform` on the manifests
 when it is installed, and runs `humagen config check` on the `humagen.yaml` each
 render produces, so the chart cannot render a spec Humagen refuses. It also checks
 the compose stack's two specs.
+
+### Probes and shutdown
+
+The liveness probe calls `/healthz` (the process answers). The readiness
+probe calls `/readyz`, which answers 200 only when the database and bus
+answer, the platform has finished starting and the process is not draining,
+so a draining pod leaves the Service's endpoints. The startup probe calls
+`/healthz` every 2 seconds for up to two minutes, since migrations run at
+start. Under `development.loopback` or tailscale sign-in the kubelet cannot
+reach the listener, so each probe runs `wget` inside the pod against its own
+path.
+
+On SIGTERM Humagen stops claiming work, lets turns in flight finish for
+`shutdown.drainGrace` (25s), releases the leases of the turns still running
+so another replica resumes them, then shuts the HTTP server down within
+`shutdown.httpTimeout` (10s). The chart passes them as `-drain-grace` and
+`-shutdown-timeout`. Before SIGTERM a preStop sleep of
+`shutdown.preStopSleepSeconds` (5, the kubelet's sleep action, Kubernetes
+1.30 or later; 0 turns it off) lets endpoints be removed first.
+`terminationGracePeriodSeconds` (45) must exceed the three together, and
+rendering fails when it does not. `/readyz` and the two flags need a release
+that has them.
+
+### Blobs and the volume
+
+With `blobs.kind: disk` published files live on the workspace volume, a
+ReadWriteOnce claim the chart creates (or `persistence.existingClaim`). With
+`s3` or `gcs` the chart creates no claim and the workspace is an `emptyDir`,
+scratch, so the pod is not tied to a node; `persistence.existingClaim` is
+still used when set. `gcs` takes `{bucket, prefix}` and authenticates with
+Application Default Credentials: on GKE, Workload Identity, by annotating the
+ServiceAccount with `iam.gke.io/gcp-service-account`. `s3` takes `bucket`,
+`region`, `endpoint`, `path_style` and keys; `values.yaml` shows AWS, GCS's
+S3-compatible endpoint with an HMAC key, R2 and MinIO.
+
+### Disruption budget and autoscaling
+
+`podDisruptionBudget` is on with `maxUnavailable: 1`. A `minAvailable: 1`
+budget on one replica would block every node drain; `maxUnavailable: 1` lets
+a drain evict the pod and limits evictions once there are more replicas.
+
+`autoscaling.enabled` adds a HorizontalPodAutoscaler for the server (CPU,
+optional memory, and `autoscaling.metrics` appended as written) and the
+Deployment then omits `replicas`. While the stores are single-writer the
+chart refuses `maxReplicas` above 1, the same rule as `replicaCount`.
+
+### Workers and KEDA
+
+`worker.enabled` adds a second Deployment running `humagen worker -f
+/etc/warp/humagen.yaml`: the same image, spec, Secret, volumes and security
+context, no Service, the same drain flags and grace period, and its own
+resources and disruption budget. A worker claims turns from the Postgres
+queue and serves no API. It needs a release with the `humagen worker`
+command, Postgres stores and a bucket (`s3` or `gcs`); rendering fails
+otherwise. Off by default.
+
+`worker.keda.enabled` adds a KEDA ScaledObject for the worker with a
+`postgresql` trigger, reading the connection string from `existingSecret`'s
+`HUMAGEN_POSTGRES_URL` through a TriggerAuthentication. Its default query
+counts the runs in `fiber_run_queue` that are due to be claimed or held by a
+live lease; `targetQueryValue` is the rows per worker, best set to
+`execution.concurrency`. It needs KEDA installed in the cluster.
+
+### Tailscale sign-in
+
+`auth.kind: tailscale` trusts the `Tailscale-User-Login` and
+`Tailscale-User-Name` headers from a loopback caller. In the chart it needs
+`tailscale.proxy.enabled`: a proxy container in the same pod, such as Caddy
+built with caddy-tailscale, that joins the tailnet (auth key from a Secret
+through `tailscale.proxy.envFrom`) and reverse-proxies to `127.0.0.1:8080`,
+where Humagen listens. Its config (a Caddyfile) goes in
+`tailscale.proxy.files`, mounted at `/etc/tailscale-proxy`; `values.yaml` and
+[`ci/tailscale-values.yaml`](../../deploy/helm/humagen/ci/tailscale-values.yaml)
+show one. The proxy is the only way in: the chart refuses an Ingress, and the
+Service exposes no Humagen port (only the webhooks port, when on). The
+Tailscale Kubernetes operator's ingress proxies to the Service or pod IP, not
+the pod's loopback, so it cannot front this listener. Never expose the pod
+any other way. `public_url` is the proxy's https tailnet URL, `auth.oidc` is
+`null`, and `dev` and `mock` stay refused outside `development.loopback`.
+
+### Infrastructure
 
 The chart does not run Postgres or a bucket: use what your cluster
 already has, or an operator. With an ingress, turn off proxy buffering and
@@ -285,8 +376,18 @@ The compose files pass `docker compose config`, and both compose specs pass
 serve` and served the console. `make chart-check` passes: `helm lint --strict`,
 `kubeconform -strict` on the renders (the defaults with the required OIDC
 values, every option on in
-[`ci/full-values.yaml`](../../deploy/helm/humagen/ci/full-values.yaml), and the Flux
-override), and `humagen config check` on each rendered `humagen.yaml`. The Flux
+[`ci/full-values.yaml`](../../deploy/helm/humagen/ci/full-values.yaml), the worker, KEDA,
+autoscaler, disruption budgets and `gcs` blobs in
+[`ci/scale-values.yaml`](../../deploy/helm/humagen/ci/scale-values.yaml), tailscale behind
+its proxy in [`ci/tailscale-values.yaml`](../../deploy/helm/humagen/ci/tailscale-values.yaml),
+and the Flux and Tilt overrides; KEDA's ScaledObject and TriggerAuthentication
+are skipped, having no schema), `humagen config check` on each rendered
+`humagen.yaml`, the refusals (grace period too short, unparsable durations,
+server autoscaling above one replica, a worker without Postgres or a bucket,
+tailscale without its proxy or behind an Ingress), and the shape of each
+render (the claim only for disk blobs, the Postgres bus, `/readyz`, the
+probes' paths under loopback). The drain, `/readyz` and the worker have not
+been run in a cluster. The Flux
 manifests pass `kubeconform` after `kustomize build`. `config check` does not
 resolve references or read the files a spec names, so an unset variable or a
 missing file shows only at start. The image has not been built and run here (no

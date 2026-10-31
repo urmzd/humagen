@@ -1,4 +1,6 @@
-{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+{{- /* Only disk blobs need the volume to outlive the pod: with a bucket the
+workspace is scratch, an emptyDir, and nothing pins the pod to one node. */}}
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) (eq (include "humagen.blobsKind" .) "disk") }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

@@ -17,10 +17,11 @@
 development:
   loopback: false
 
-# -- One replica. Keep it at one: humagen's stores are single-writer (the run
+# -- One replica of the server. Keep it at one: humagen's stores are single-writer (the run
 # index, the usage ledger, the admission lock and the schedules all assume one
 # process owns them), and the workspace volume is ReadWriteOnce. A second
-# replica would race the first, not share its load.
+# replica would race the first, not share its load. To run turns on more
+# pods, use `worker` below.
 replicaCount: 1
 
 image:
@@ -42,8 +43,10 @@ fullnameOverride: ""
 # Null store entries are omitted; other values are rendered as written.
 # The chart passes -addr=0.0.0.0:8080 and
 # -web=/usr/share/warp/web as flags, which win over server.addr and
-# server.console. auth.kind must be oidc: dev, mock and tailscale trust
-# loopback and refuse any other listen address.
+# server.console. auth.kind must be oidc, or tailscale with tailscale.proxy
+# on: dev, mock and tailscale trust loopback and refuse any other listen
+# address, so tailscale listens on the pod's loopback behind the proxy
+# container, and dev and mock only under development.loopback.
 system:
   metadata:
     name: humagen
@@ -71,14 +74,38 @@ system:
     stores:
       kind: postgres
       postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}
-    bus:
-      kind: memory
-    # disk keeps published files on the workspace volume. For a bucket:
+    # The bus is left unset: the chart sets bus: {kind: postgres} when the
+    # stores are on Postgres (events in a table on the same database), and
+    # humagen defaults to memory otherwise. Set bus.kind to choose.
+    # bus:
+    #   kind: postgres
+    # Where published files go. disk keeps them on the workspace volume, a
+    # ReadWriteOnce claim that ties the pod to one node. With a bucket the
+    # chart makes no claim and the workspace is an emptyDir, scratch.
+    #
+    # gcs, Google Cloud Storage, keyless with Application Default Credentials
+    # (on GKE, Workload Identity: annotate the ServiceAccount with
+    # iam.gke.io/gcp-service-account, see serviceAccount.annotations).
+    # prefix is optional:
+    #   kind: gcs
+    #   gcs: {bucket: humagen-files, prefix: prod/}
+    #
+    # s3, fields bucket, region, endpoint, path_style, access_key, secret_key.
+    # AWS (both keys left out means the AWS chain, such as IRSA):
     #   kind: s3
     #   s3: {bucket: humagen-files, region: us-east-1,
     #        access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID},
     #        secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY}}
-    # Both keys left out means the AWS chain, such as IRSA.
+    # GCS through its S3-compatible endpoint, with an HMAC key:
+    #   kind: s3
+    #   s3: {bucket: humagen-files, region: auto,
+    #        endpoint: https://storage.googleapis.com,
+    #        access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID},
+    #        secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY}}
+    # Cloudflare R2 or MinIO: endpoint set to the account's or the server's
+    # URL (https://ACCOUNT.r2.cloudflarestorage.com, region: auto; or
+    # http://minio.storage:9000 with path_style: true), keys as above.
+    # The worker needs a bucket: its pods do not share the server's disk.
     blobs:
       kind: disk
     # The workspace defaults to the volume (the image points the user cache
@@ -127,11 +154,16 @@ files: {}
 existingSecret: ""
 
 # -- The workspace volume: agents' files and, with blobs.kind=disk,
-# published files. Mounted at /var/lib/warp.
+# published files. Mounted at /var/lib/warp. The chart creates the claim only
+# for blobs.kind=disk; with a bucket the volume is an emptyDir.
 persistence:
   enabled: true
-  # Use a claim you made instead of creating one.
+  # Use a claim you made instead of creating one. It is used whatever the
+  # blobs kind.
   existingClaim: ""
+  # The emptyDir's size limit when there is no claim, such as 10Gi. Empty
+  # means none.
+  scratchSizeLimit: ""
   # Empty means the cluster's default class.
   storageClass: ""
   accessModes:
@@ -203,14 +235,22 @@ securityContext:
   capabilities:
     drop: ["ALL"]
 
+# No CPU limit: throttling stalls the event stream; the request reserves what
+# a turn needs and the memory limit bounds a runaway.
 resources:
   requests:
-    cpu: 100m
-    memory: 256Mi
+    cpu: 250m
+    memory: 512Mi
   limits:
-    memory: 1Gi
+    memory: 2Gi
 
-# /healthz answers once the server is listening.
+# /healthz is liveness: the process answers. /readyz is readiness: the
+# database and bus answer, the platform finished starting, and the process is
+# not draining, so a draining pod leaves the Service's endpoints. The startup
+# probe allows two minutes, since migrations run at start. Under
+# development.loopback or tailscale the chart runs each check inside the pod
+# with wget against its own path. /readyz needs a humagen release that serves
+# it.
 livenessProbe:
   httpGet:
     path: /healthz
@@ -220,16 +260,158 @@ livenessProbe:
   failureThreshold: 4
 readinessProbe:
   httpGet:
-    path: /healthz
+    path: /readyz
     port: http
   periodSeconds: 5
   timeoutSeconds: 3
+  failureThreshold: 2
 startupProbe:
   httpGet:
     path: /healthz
     port: http
   periodSeconds: 2
-  failureThreshold: 30
+  failureThreshold: 60
+
+# -- Graceful shutdown, passed as `humagen serve` (and `humagen worker`) flags
+# -drain-grace and -shutdown-timeout, which need a release that has them. On
+# SIGTERM humagen stops claiming work and reports not ready, lets turns in
+# flight finish for drainGrace, releases the leases of those still running so
+# another replica resumes them, then shuts the HTTP server down within
+# httpTimeout. Go durations in whole h, m and s.
+shutdown:
+  drainGrace: 25s
+  httpTimeout: 10s
+  # A preStop sleep before SIGTERM, so the endpoint is gone from the Service
+  # and load balancers before draining starts. 0 turns it off. Uses the
+  # kubelet's sleep action (Kubernetes 1.30 or later).
+  preStopSleepSeconds: 5
+
+# -- Must exceed preStopSleepSeconds + drainGrace + httpTimeout (40 seconds
+# with the defaults); the chart refuses a value that does not.
+terminationGracePeriodSeconds: 45
+
+# -- A PodDisruptionBudget for the server (and one for the worker, under
+# worker.podDisruptionBudget). maxUnavailable: 1, not minAvailable: 1, because
+# with one replica minAvailable would block every node drain; maxUnavailable
+# lets the drain evict the pod and limits evictions once there are more. Set
+# minAvailable instead to require that many stay up.
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+  minAvailable: ""
+
+# -- A HorizontalPodAutoscaler for the server. The Deployment then omits
+# replicas. maxReplicas above 1 is refused while the stores are single-writer
+# (see replicaCount); scale turns out with the worker instead.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: ""
+  # Further metrics (Pods, Object, External), appended as written.
+  metrics: []
+  behavior: {}
+
+# -- Worker pods that run `humagen worker -f /etc/warp/humagen.yaml`: they
+# claim turns from the Postgres queue and run them, with no API and no
+# Service. Needs a humagen release with the `humagen worker` command, Postgres
+# stores and a bucket for blobs (s3 or gcs). Same image, spec, Secret,
+# volumes and security context as the server; the workspace is an emptyDir.
+worker:
+  enabled: false
+  # Ignored when keda is on: KEDA sets the count.
+  replicas: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  # Further flags for `humagen worker`, appended last.
+  extraArgs: []
+  # No probes until the worker serves health; set any as for the server.
+  startupProbe: {}
+  livenessProbe: {}
+  readinessProbe: {}
+  # Empty means the server's.
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+    minAvailable: ""
+  # A KEDA ScaledObject that scales the worker on the queue: KEDA runs
+  # `query` against Postgres and keeps about one worker per targetQueryValue
+  # rows. Needs KEDA in the cluster and existingSecret, whose
+  # connectionSecretKey KEDA reads through a TriggerAuthentication.
+  keda:
+    enabled: false
+    minReplicaCount: 0
+    maxReplicaCount: 4
+    pollingInterval: 15
+    cooldownPeriod: 300
+    # Rows per worker: set it to execution.concurrency, the turns one
+    # process runs at once.
+    targetQueryValue: 4
+    connectionSecretKey: HUMAGEN_POSTGRES_URL
+    # Runs due to be claimed (ready_at reached, or a lease that lapsed) plus
+    # runs a live lease holds, so busy workers are not scaled away.
+    query: >-
+      SELECT count(*) FROM fiber_run_queue
+      WHERE (ready_at IS NOT NULL AND ready_at <= now())
+      OR lease_until IS NOT NULL
+
+# -- Tailscale sign-in (system.spec.auth.kind: tailscale) in a pod. humagen
+# then listens on 127.0.0.1:8080 and trusts the Tailscale-User-Login and
+# Tailscale-User-Name headers a loopback caller sets, so a trusted Tailscale
+# proxy must run in the same pod: this container, such as Caddy built with
+# the caddy-tailscale plugin, which joins the tailnet and reverse-proxies to
+# 127.0.0.1:8080. It is the only way in: the chart refuses an Ingress and the
+# Service exposes no humagen port. The Tailscale Kubernetes operator's
+# ingress proxies to the pod IP, not its loopback, so it cannot front this
+# listener. Never expose the pod any other way. public_url must be the
+# proxy's https tailnet URL, and auth.oidc must be null.
+tailscale:
+  proxy:
+    enabled: false
+    image:
+      repository: ""
+      tag: ""
+      pullPolicy: IfNotPresent
+    command: []
+    # For example: [run, --config, /etc/tailscale-proxy/Caddyfile]
+    args: []
+    # The auth key comes from a Secret, for example:
+    #   - secretRef: {name: humagen-tailscale}   # holds TS_AUTHKEY
+    envFrom: []
+    env: []
+    # Files mounted at /etc/tailscale-proxy, such as a Caddyfile. A sketch
+    # for caddy-tailscale (check the plugin's README for your version):
+    #   Caddyfile: |
+    #     { tailscale { state_dir /var/lib/tailscale-proxy } }
+    #     https://humagen.TAILNET.ts.net {
+    #       bind tailscale/humagen
+    #       tailscale_auth
+    #       reverse_proxy 127.0.0.1:8080 {
+    #         header_up Tailscale-User-Login {http.auth.user.tailscale_login}
+    #         header_up Tailscale-User-Name {http.auth.user.tailscale_name}
+    #       }
+    #     }
+    files: {}
+    # An emptyDir for the proxy's tailnet state: use an ephemeral auth key,
+    # or mount a volume here to keep the node across restarts.
+    stateDir: /var/lib/tailscale-proxy
+    volumeMounts: []
+    # Empty means the chart's securityContext.
+    securityContext: {}
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
 
 nodeSelector: {}
 tolerations: []
