@@ -197,7 +197,11 @@ func (p *Platform) planProjectFork(ctx context.Context, who auth.Principal, sour
 		return plan, projects.ErrNotFound
 	}
 	known := map[string]bool{}
-	for _, src := range p.Knowledge.List(who.Tenant) {
+	sources, err := p.Knowledge.List(who.Tenant)
+	if err != nil {
+		return plan, err
+	}
+	for _, src := range sources {
 		known[src.Name] = true
 	}
 	for _, name := range in.Sources {
@@ -303,7 +307,11 @@ func (p *Platform) planProjectFork(ctx context.Context, who auth.Principal, sour
 				config.Title = in.Title
 			}
 		}
-		plan.Projects = append(plan.Projects, projectforks.ProjectCopy{Source: name, Name: mapped[name], Parent: parent, Config: config, Channels: channels, Rules: p.SourceLinkRulesForFork(who.Tenant, name)})
+		rules, err := p.SourceLinkRulesForFork(who.Tenant, name)
+		if err != nil {
+			return plan, err
+		}
+		plan.Projects = append(plan.Projects, projectforks.ProjectCopy{Source: name, Name: mapped[name], Parent: parent, Config: config, Channels: channels, Rules: rules})
 	}
 	notes := p.Memory.List(who.Tenant, memory.ProjectOwner(source))
 	for _, id := range in.Memory {

@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 var resourceID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
@@ -125,13 +127,11 @@ func lifecycle(src Source) *Lifecycle {
 
 // Get reads one source without revealing another tenant's objects.
 func (s *Store) Get(tenant, name string) (Source, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	src, err := s.get(tenant, name)
+	src, _, err := s.meta(tenant, name)
 	if err != nil {
 		return Source{}, err
 	}
-	return cloneSource(src.Source), nil
+	return cloneSource(src), nil
 }
 
 // Configure replaces public metadata. An active import cannot change identity.
@@ -139,8 +139,9 @@ func (s *Store) Configure(tenant, name string, cfg SourceConfig, at time.Time) (
 	return s.configure(tenant, name, cfg, at, nil, false, false)
 }
 
-// ConfigureIfCurrent checks the exact authorized connection snapshot under the
-// source lock. Nil expects a legacy source without lifecycle configuration.
+// ConfigureIfCurrent checks the exact authorized connection snapshot in the
+// same write as the change. Nil expects a legacy source without lifecycle
+// configuration.
 func (s *Store) ConfigureIfCurrent(tenant, name string, cfg SourceConfig, at time.Time, expected *SourceConfig) (Source, error) {
 	return s.configure(tenant, name, cfg, at, expected, true, false)
 }
@@ -156,39 +157,31 @@ func (s *Store) configure(tenant, name string, cfg SourceConfig, at time.Time, e
 	if configErr != nil {
 		return Source{}, configErr
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
-		return Source{}, err
-	}
-	if guard && !sameConfiguration(src.Source, expected) {
-		return Source{}, fmt.Errorf("%w: source configuration changed", ErrExists)
-	}
-	lc := lifecycle(src.Source)
-	if active(lc) != "" {
-		return Source{}, fmt.Errorf("%w: refresh in progress", ErrExists)
-	}
-	// Changing origin/provider cannot retain a copy from a different authority.
-	if (src.Documents > 0 || lc.LastGoodAt != nil) && (cfg.Provider != lc.Provider || cfg.Origin != lc.Origin || cfg.Project != lc.Project || cfg.Owner != lc.Owner) {
-		return Source{}, fmt.Errorf("%w: create a new source for a different origin, owner or project", ErrInvalid)
-	}
-	if cfg.Snapshot && (cfg.Mode != Indexed || lc.LastGoodAt == nil || cfg.Provider == "manual") {
-		return Source{}, fmt.Errorf("%w: snapshot requires a successful external indexed copy", ErrInvalid)
-	}
-	if cfg.Snapshot && (!lc.Snapshot || snapshotDecision) {
-		lc.Status = Available
-		lc.Cause = ""
-	}
-	lc.SourceConfig = cfg
-	next := cloneSource(src.Source)
-	next.Lifecycle = lc
-	next.UpdatedAt = at
-	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &next}); err != nil {
-		return Source{}, err
-	}
-	src.Source = next
-	return cloneSource(next), nil
+	return s.update(tenant, name, func(src *Source) error {
+		if guard && !sameConfiguration(*src, expected) {
+			return fmt.Errorf("%w: source configuration changed", ErrExists)
+		}
+		lc := lifecycle(*src)
+		interrupt(lc, at)
+		if active(lc) != "" {
+			return fmt.Errorf("%w: refresh in progress", ErrExists)
+		}
+		// Changing origin/provider cannot retain a copy from a different authority.
+		if (src.Documents > 0 || lc.LastGoodAt != nil) && (cfg.Provider != lc.Provider || cfg.Origin != lc.Origin || cfg.Project != lc.Project || cfg.Owner != lc.Owner) {
+			return fmt.Errorf("%w: create a new source for a different origin, owner or project", ErrInvalid)
+		}
+		if cfg.Snapshot && (cfg.Mode != Indexed || lc.LastGoodAt == nil || cfg.Provider == "manual") {
+			return fmt.Errorf("%w: snapshot requires a successful external indexed copy", ErrInvalid)
+		}
+		if cfg.Snapshot && (!lc.Snapshot || snapshotDecision) {
+			lc.Status = Available
+			lc.Cause = ""
+		}
+		lc.SourceConfig = cfg
+		src.Lifecycle = lc
+		src.UpdatedAt = at
+		return nil
+	})
 }
 
 func active(lc *Lifecycle) string {
@@ -202,6 +195,29 @@ func active(lc *Lifecycle) string {
 	return ""
 }
 
+// stale returns the active attempt when it has run longer than AttemptLease
+// at at: the process running it ended before it finished.
+func stale(lc *Lifecycle, at time.Time) string {
+	id := active(lc)
+	if id == "" || at.Sub(lc.Attempts[len(lc.Attempts)-1].StartedAt) < AttemptLease {
+		return ""
+	}
+	return id
+}
+
+// interrupt records a stale attempt as failed, keeping the last good copy.
+func interrupt(lc *Lifecycle, at time.Time) {
+	if stale(lc, at) == "" {
+		return
+	}
+	lc.Status = NeedsAttention
+	lc.Cause = Interrupted
+	last := &lc.Attempts[len(lc.Attempts)-1]
+	last.FinishedAt = &at
+	last.Status = "failed"
+	last.Cause = Interrupted
+}
+
 // BeginSync durably records an attempt before making an external request.
 func (s *Store) BeginSync(tenant, name string, at time.Time) (string, error) {
 	return s.beginSync(tenant, name, at, nil, false)
@@ -212,42 +228,39 @@ func (s *Store) BeginSyncIfCurrent(tenant, name string, at time.Time, expected *
 	return s.beginSync(tenant, name, at, expected, true)
 }
 func (s *Store) beginSync(tenant, name string, at time.Time, expected *SourceConfig, guard bool) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
-		return "", err
-	}
-	if guard && !sameConfiguration(src.Source, expected) {
-		return "", fmt.Errorf("%w: source configuration changed", ErrExists)
-	}
-	lc := lifecycle(src.Source)
-	if active(lc) != "" {
-		return "", fmt.Errorf("%w: refresh in progress", ErrExists)
-	}
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
 		return "", err
 	}
-	state := Importing
-	if lc.LastGoodAt != nil {
-		state = Syncing
-	}
-	lc.Status = state
-	lc.Cause = ""
-	attempt := Attempt{ID: hex.EncodeToString(id[:]), StartedAt: at, Status: string(state)}
-	lc.Attempts = append(lc.Attempts, attempt)
-	if len(lc.Attempts) > MaxAttempts {
-		lc.Attempts = slices.Clone(lc.Attempts[len(lc.Attempts)-MaxAttempts:])
-	}
-	next := cloneSource(src.Source)
-	next.Lifecycle = lc
-	next.UpdatedAt = at
-	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &next}); err != nil {
+	attemptID := hex.EncodeToString(id[:])
+	_, err := s.update(tenant, name, func(src *Source) error {
+		if guard && !sameConfiguration(*src, expected) {
+			return fmt.Errorf("%w: source configuration changed", ErrExists)
+		}
+		lc := lifecycle(*src)
+		interrupt(lc, at)
+		if active(lc) != "" {
+			return fmt.Errorf("%w: refresh in progress", ErrExists)
+		}
+		status := Importing
+		if lc.LastGoodAt != nil {
+			status = Syncing
+		}
+		lc.Status = status
+		lc.Cause = ""
+		attempt := Attempt{ID: attemptID, StartedAt: at, Status: string(status)}
+		lc.Attempts = append(lc.Attempts, attempt)
+		if len(lc.Attempts) > MaxAttempts {
+			lc.Attempts = slices.Clone(lc.Attempts[len(lc.Attempts)-MaxAttempts:])
+		}
+		src.Lifecycle = lc
+		src.UpdatedAt = at
+		return nil
+	})
+	if err != nil {
 		return "", err
 	}
-	src.Source = next
-	return attempt.ID, nil
+	return attemptID, nil
 }
 
 // FailSync preserves every document and the last successful refresh timestamp.
@@ -255,30 +268,21 @@ func (s *Store) FailSync(tenant, name, id string, cause Cause, at time.Time) (So
 	if cause != AuthExpired && cause != Quota && cause != Unsupported && cause != Unavailable && cause != Interrupted {
 		return Source{}, fmt.Errorf("%w: failure cause", ErrInvalid)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
-		return Source{}, err
-	}
-	lc := lifecycle(src.Source)
-	if active(lc) != id || id == "" {
-		return Source{}, fmt.Errorf("%w: inactive attempt", ErrInvalid)
-	}
-	lc.Status = NeedsAttention
-	lc.Cause = cause
-	last := &lc.Attempts[len(lc.Attempts)-1]
-	last.FinishedAt = &at
-	last.Status = "failed"
-	last.Cause = cause
-	next := cloneSource(src.Source)
-	next.Lifecycle = lc
-	next.UpdatedAt = at
-	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &next}); err != nil {
-		return Source{}, err
-	}
-	src.Source = next
-	return cloneSource(next), nil
+	return s.update(tenant, name, func(src *Source) error {
+		lc := lifecycle(*src)
+		if active(lc) != id || id == "" {
+			return fmt.Errorf("%w: inactive attempt", ErrInvalid)
+		}
+		lc.Status = NeedsAttention
+		lc.Cause = cause
+		last := &lc.Attempts[len(lc.Attempts)-1]
+		last.FinishedAt = &at
+		last.Status = "failed"
+		last.Cause = cause
+		src.Lifecycle = lc
+		src.UpdatedAt = at
+		return nil
+	})
 }
 
 // ImportDocument is a validated provider result, not an independently committed write.
@@ -299,67 +303,75 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 		}
 		seen[d.ID] = true
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
+	var out Source
+	err := state.Retry(func() error {
+		src, srcAt, err := s.load(tenant, name)
+		if err != nil {
+			return err
+		}
+		lc := lifecycle(src.Source)
+		if active(lc) != id || id == "" {
+			return fmt.Errorf("%w: inactive attempt", ErrInvalid)
+		}
+		clk, clkAt, err := s.clock(tenant, name)
+		if err != nil {
+			return err
+		}
+		next := &source{Source: cloneSource(src.Source), seqs: map[string]int64{}}
+		b := s.kept.Batch()
+		last := clk.Seq
+		for _, seq := range src.seqs {
+			b.Delete(tenant, docKey(name, seq))
+			b.Delete(tenant, textKey(name, seq))
+			b.Delete(tenant, vecKey(name, seq))
+			last = max(last, seq)
+		}
+		seq := last
+		for _, d := range docs {
+			seq++
+			texts := split(d.Text)
+			doc := &Document{ID: d.ID, Title: strings.TrimSpace(d.Title), URI: d.URI, Bytes: len(d.Text), Passages: len(texts), AddedBy: by, AddedAt: at}
+			next.docs = append(next.docs, doc)
+			next.passages = append(next.passages, passagesOf(doc, texts)...)
+			next.seqs[doc.ID] = seq
+			b.Put(tenant, docKey(name, seq), stored{Document: doc})
+			b.Put(tenant, textKey(name, seq), stored{Passages: texts})
+		}
+		lc.Status = Available
+		if lc.Provider != "manual" {
+			lc.Status = InSync
+		}
+		lc.Cause = ""
+		lc.LastGoodAt = &at
+		attempt := &lc.Attempts[len(lc.Attempts)-1]
+		attempt.Status = "succeeded"
+		attempt.FinishedAt = &at
+		next.Lifecycle = lc
+		next.Documents = len(next.docs)
+		next.Passages = len(next.passages)
+		next.Excluded = 0
+		next.Variants = []Variant{}
+		next.UpdatedAt = at
+		if retainedDigest(next) != retainedDigest(src) {
+			version, err := nextVersion(src.Source, clk)
+			if err != nil {
+				return err
+			}
+			next.ContentVersion = version
+		}
+		b.PutAt(tenant, sourceKey(name), stored{Source: &next.Source}, srcAt)
+		putClock(b, tenant, contentClock{Name: name, Value: max(clk.Value, next.ContentVersion), Seq: seq}, clkAt)
+		if err := b.Commit(); err != nil {
+			return err
+		}
+		out = next.Source
+		return nil
+	})
 	if err != nil {
 		return Source{}, err
 	}
-	lc := lifecycle(src.Source)
-	if active(lc) != id || id == "" {
-		return Source{}, fmt.Errorf("%w: inactive attempt", ErrInvalid)
-	}
-	next := &source{Source: cloneSource(src.Source), seqs: map[string]int64{}}
-	b := s.kept.Batch()
-	for _, seq := range src.seqs {
-		b.Delete(tenant, docKey(name, seq))
-		b.Delete(tenant, textKey(name, seq))
-		b.Delete(tenant, vecKey(name, seq))
-	}
-	seq := s.seq
-	for _, d := range docs {
-		seq++
-		documentID := d.ID
-		texts := split(d.Text)
-		doc := &Document{ID: documentID, Title: strings.TrimSpace(d.Title), URI: d.URI, Bytes: len(d.Text), Passages: len(texts), AddedBy: by, AddedAt: at}
-		next.docs = append(next.docs, doc)
-		next.passages = append(next.passages, passagesOf(doc, texts)...)
-		next.seqs[doc.ID] = seq
-		b.Put(tenant, docKey(name, seq), stored{Document: doc})
-		b.Put(tenant, textKey(name, seq), stored{Passages: texts})
-	}
-	lc.Status = Available
-	if lc.Provider != "manual" {
-		lc.Status = InSync
-	}
-	lc.Cause = ""
-	lc.LastGoodAt = &at
-	last := &lc.Attempts[len(lc.Attempts)-1]
-	last.Status = "succeeded"
-	last.FinishedAt = &at
-	next.Lifecycle = lc
-	next.Documents = len(next.docs)
-	next.Passages = len(next.passages)
-	next.Excluded = 0
-	next.Variants = []Variant{}
-	next.UpdatedAt = at
-	if retainedDigest(next) != retainedDigest(src) {
-		version, versionErr := s.nextVersion(tenant, name)
-		if versionErr != nil {
-			return Source{}, versionErr
-		}
-		next.ContentVersion = version
-	}
-	b.Put(tenant, sourceKey(name), stored{Source: &next.Source})
-	b.Put(tenant, clockKey(name), stored{Clock: &contentClock{Name: name, Value: next.ContentVersion}})
-	if err := b.Commit(); err != nil {
-		return Source{}, err
-	}
-	s.rememberVersion(tenant, name, next.ContentVersion)
-	s.seq = seq
-	s.tenants[tenant][name] = next
-	s.dense.nudge()
-	return cloneSource(next.Source), nil
+	s.nudge()
+	return cloneSource(out), nil
 }
 
 // HardStale enforces a stop rule only for managed sources, including never-synced ones.
@@ -381,26 +393,18 @@ func (src Source) HardStale(at time.Time) bool {
 // IndexSync records that provider fetching completed and local indexing begins.
 // It never replaces or marks the retained documents successful.
 func (s *Store) IndexSync(tenant, name, id string, at time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	src, err := s.get(tenant, name)
-	if err != nil {
-		return err
-	}
-	lc := lifecycle(src.Source)
-	if active(lc) != id || id == "" {
-		return fmt.Errorf("%w: inactive attempt", ErrInvalid)
-	}
-	lc.Status = Indexing
-	lc.Attempts[len(lc.Attempts)-1].Status = string(Indexing)
-	next := cloneSource(src.Source)
-	next.Lifecycle = lc
-	next.UpdatedAt = at
-	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &next}); err != nil {
-		return err
-	}
-	src.Source = next
-	return nil
+	_, err := s.update(tenant, name, func(src *Source) error {
+		lc := lifecycle(*src)
+		if active(lc) != id || id == "" {
+			return fmt.Errorf("%w: inactive attempt", ErrInvalid)
+		}
+		lc.Status = Indexing
+		lc.Attempts[len(lc.Attempts)-1].Status = string(Indexing)
+		src.Lifecycle = lc
+		src.UpdatedAt = at
+		return nil
+	})
+	return err
 }
 
 func sameConfiguration(src Source, expected *SourceConfig) bool {

@@ -10,10 +10,15 @@ import (
 // refreshSourceOnce uses current standing subject policy, never remembered
 // sign-in groups. One provider read at a time bounds external work.
 func (p *Platform) refreshSourceOnce(ctx context.Context) {
-	for _, candidate := range p.Knowledge.RefreshDueEligible(p.now(), 200, func(tenant string, src knowledge.Source) bool {
+	due, err := p.Knowledge.RefreshDueEligible(p.now(), 200, func(tenant string, src knowledge.Source) bool {
 		cfg := src.Lifecycle.SourceConfig
 		return p.mayScheduleSource(tenant, cfg.Owner, cfg.Project)
-	}) {
+	})
+	if err != nil {
+		p.log.Warn("source scheduled refresh could not read due sources", "error", err)
+		return
+	}
+	for _, candidate := range due {
 		if ctx.Err() != nil {
 			return
 		}

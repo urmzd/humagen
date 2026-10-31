@@ -192,7 +192,7 @@ func TestExtraSourceGraphRequiresOrdinaryHumanSourceAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := auth.Principal{Tenant: "tenant", Subject: "owner", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead, auth.RunsRead}}
-	if len(p.ordinarySourceDependencyRuns(owner, "private")) != 1 {
+	if ids, _ := p.ordinarySourceDependencyRuns(owner, "private"); len(ids) != 1 {
 		t.Fatal("ordinary owner lost real origin proof")
 	}
 	for _, provider := range []string{"", "drive"} {
@@ -205,18 +205,18 @@ func TestExtraSourceGraphRequiresOrdinaryHumanSourceAccess(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if ids := p.ordinarySourceDependencyRuns(owner, "private"); len(ids) != 1 || ids[0] != "run1" {
+	if ids, _ := p.ordinarySourceDependencyRuns(owner, "private"); len(ids) != 1 || ids[0] != "run1" {
 		t.Fatal("derived learning graph exposed external or unknown file provenance", ids)
 	}
 	govern := owner
 	govern.Subject = "govern-only"
 	govern.Scopes = append(govern.Scopes, auth.ProjectsGovern)
-	if len(p.ordinarySourceDependencyRuns(govern, "private")) != 0 {
+	if ids, _ := p.ordinarySourceDependencyRuns(govern, "private"); len(ids) != 0 {
 		t.Fatal("governance became a derived-origin copy grant")
 	}
 	machine := owner
 	machine.Kind = auth.Machine
-	if len(p.ordinarySourceDependencyRuns(machine, "private")) != 0 {
+	if ids, _ := p.ordinarySourceDependencyRuns(machine, "private"); len(ids) != 0 {
 		t.Fatal("machine received personal origin references")
 	}
 }

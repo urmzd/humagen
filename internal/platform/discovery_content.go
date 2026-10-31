@@ -94,7 +94,11 @@ func (p *Platform) discoverContent(who auth.Principal, q DiscoveryQuery, seer *S
 	if wants("source") && who.Can(auth.KnowledgeRead) {
 		indexed := []string{}
 		expected := map[string]*knowledge.SourceConfig{}
-		for _, source := range p.SourcesAs(who) {
+		sources, err := p.SourcesAs(who)
+		if err != nil {
+			return nil, err
+		}
+		for _, source := range sources {
 			if len(indexed) >= 50 {
 				break
 			}

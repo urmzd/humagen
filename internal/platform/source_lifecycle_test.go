@@ -55,7 +55,7 @@ func TestManagedSourceConfinementAttentionAndPersonalAccess(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if p.SourceVisible(outsider, "source") || len(p.SourcesAs(outsider)) != 0 {
+		if p.SourceVisible(outsider, "source") || len(must(p.SourcesAs(outsider))) != 0 {
 			t.Fatal("hidden source revealed")
 		}
 		if _, err := p.SearchSources(t.Context(), outsider, []string{"source"}, "release", ""); !errors.Is(err, knowledge.ErrNotFound) {
