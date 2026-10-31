@@ -205,7 +205,7 @@ func TestAnsweringResumesTheRunAndSettlesTheMessage(t *testing.T) {
 				t.Fatal("a completed run still carries its question")
 			}
 			resumed := false
-			for _, e := range p.Journal.Events(tenant, []string{run.ID}) {
+			for _, e := range kept(p.Journal.Events(tenant, []string{run.ID})) {
 				resumed = resumed || (e.Type == event.TypeResumed && strings.Contains(wire.JSONOf(e), `"by":"olu"`))
 			}
 			if !resumed {
@@ -420,7 +420,7 @@ func TestADelegatedChildsQuestionReachesTheRightInbox(t *testing.T) {
 		t.Fatal("the called agent's question is not addressed by its own answerers")
 	}
 	within(t, "the caller's stream shows the question", func() bool {
-		for _, e := range p.Journal.Events(tenant, []string{first.ID}) {
+		for _, e := range kept(p.Journal.Events(tenant, []string{first.ID})) {
 			if e.Type == event.TypeChildParked && strings.Contains(wire.JSONOf(e), helper.ID) {
 				return true
 			}
@@ -436,7 +436,7 @@ func TestADelegatedChildsQuestionReachesTheRightInbox(t *testing.T) {
 		t.Fatalf("lead answered %q", lead.Answer)
 	}
 	children := 0
-	for _, e := range p.Journal.Events(tenant, []string{first.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{first.ID})) {
 		if e.Type == event.TypeUsageChild {
 			children++
 		}
@@ -464,7 +464,7 @@ func TestUsageIsCountedOnceAcrossAPark(t *testing.T) {
 		t.Fatalf("usage = %+v", done.Usage)
 	}
 	calls := 0
-	for _, e := range p.Journal.Events(tenant, []string{run.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{run.ID})) {
 		if e.Type == event.TypeUsageCall {
 			calls++
 		}

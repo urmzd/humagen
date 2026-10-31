@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -46,6 +47,12 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// The run that was going stays open while it may still be carried
+		// out, and reads as interrupted once it has gone unwritten too long.
+		if runs, _ := again.Runs("acme", "smoke"); runs[0].Status != Running {
+			t.Fatalf("a run just begun reads %+v", runs[0])
+		}
+		again.now = func() time.Time { return time.Now().Add(staleAfter + time.Minute) }
 		if got, err := again.Get("acme", "smoke"); err != nil || !reflect.DeepEqual(got, suite) {
 			t.Fatalf("suite after restart = %+v, %v", got, err)
 		}
@@ -64,7 +71,7 @@ func TestRestart(t *testing.T) {
 		if err != nil || next.ID == going.ID || next.ID == done.ID {
 			t.Fatalf("Begin after restart = %+v, %v", next, err)
 		}
-		if len(again.List("globex")) != 0 {
+		if suites, err := again.List("globex"); err != nil || len(suites) != 0 {
 			t.Fatal("another tenant sees the suites")
 		}
 	})

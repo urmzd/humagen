@@ -521,7 +521,7 @@ func TestARunStoppedBeforeItStartsJournalsNoPinnedKeys(t *testing.T) {
 			t.Errorf("the stopped run's record holds %q: %s", leak, recorded)
 		}
 	}
-	for _, e := range p.Journal.Events(tenant, []string{queued.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{queued.ID})) {
 		if strings.Contains(wire.JSONOf(e), "CANARY-review") {
 			t.Errorf("%s event holds the skill's instructions", e.Type)
 		}

@@ -1004,7 +1004,9 @@ func (p *Platform) observe(ctx context.Context, e event.Envelope) {
 		// published. The run's own events say what came of it.
 		return
 	}
-	p.Journal.Append(e, p.originOf(e.Tenant, e.Run))
+	if err := p.Journal.Append(e, p.originOf(e.Tenant, e.Run)); err != nil {
+		p.log.Error("platform: event could not be kept in the journal", "tenant", e.Tenant, "run", e.Run, "seq", e.Seq, "error", err)
+	}
 	if event.HasPrefix(e.Type, "run.usage") {
 		p.observeUsage(ctx, e)
 		return

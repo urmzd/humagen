@@ -128,9 +128,6 @@ func TestPersonalContextClassificationFailsClosedAndSurvivesJournalExpiry(t *tes
 		if got := p.Memory.List(tenant, memory.PersonalOwner(who.Subject))[0]; got.ID != note.ID || got.Uses != 1 {
 			t.Fatalf("replay counted context twice: %+v", got)
 		}
-		if err := p.Journal.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := journal.Open(st, 1); err != nil {
 			t.Fatal(err)
 		}

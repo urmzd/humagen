@@ -40,7 +40,7 @@ func within(t *testing.T, what string, ok func() bool) {
 // said reports whether a run's stream carried text containing s.
 func streamed(p *platform.Platform, runID, s string) bool {
 	text := ""
-	for _, e := range p.Journal.Events(tenant, []string{runID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{runID})) {
 		if e.Type == event.TypeText {
 			text += wire.JSONOf(e)
 		}
@@ -65,7 +65,7 @@ func endings(p *platform.Platform, runID string) (events, freed int) {
 }
 
 func countEndings(p *platform.Platform, runID string) (events, freed int) {
-	for _, e := range p.Journal.Events(tenant, []string{runID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{runID})) {
 		if e.Type == event.TypeCompleted || e.Type == event.TypeStopped || (e.Type == event.TypeFailed && strings.Contains(wire.JSONOf(e), `"terminal":true`)) {
 			events++
 		}
@@ -112,7 +112,7 @@ func TestStopInterruptsTheModelCallAndKeepsThePartialAnswer(t *testing.T) {
 		t.Fatalf("stopped run = answer %q, cause %q, stopping %v", got.Answer, got.Cause, got.Stopping)
 	}
 	stoppedEvent := false
-	for _, e := range p.Journal.Events(tenant, []string{first.ID}) {
+	for _, e := range kept(p.Journal.Events(tenant, []string{first.ID})) {
 		stoppedEvent = stoppedEvent || (e.Type == event.TypeStopped && strings.Contains(wire.JSONOf(e), "Half an ans"))
 	}
 	if !stoppedEvent {
@@ -499,4 +499,12 @@ func TestStoppingARunThatHasAnsweredCompletesIt(t *testing.T) {
 	if events, freed := endings(p, first.ID); events != 1 || freed != 1 {
 		t.Fatalf("%d terminal events, %d places freed", events, freed)
 	}
+}
+
+// kept is what a store read, for a test whose store cannot fail to read.
+func kept[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }

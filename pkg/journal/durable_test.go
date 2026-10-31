@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/urmzd/humagen/fiber/pkg/event"
@@ -20,55 +21,47 @@ func TestRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		src := filled(t)
-		src.mu.RLock()
-		src.each(func(h held) { j.Append(h.e, h.origin) })
-		src.mu.RUnlock()
-		// Nothing is written until a flush.
-		if early, _ := Open(st, 0); len(early.Events("acme", []string{"r1"})) != 0 {
-			t.Fatal("events were written before a flush")
+		for _, e := range append(events(t, src, "acme", "r1"), events(t, src, "globex", "r9")...) {
+			appended(t, j, e)
 		}
-		if err := j.Flush(); err != nil {
-			t.Fatal(err)
-		}
+		// An event is written as it is appended.
 		again, err := Open(st, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, want := again.Events("acme", []string{"r1"}), j.Events("acme", []string{"r1"}); !reflect.DeepEqual(got, want) || len(got) != 7 {
+		if got, want := events(t, again, "acme", "r1"), events(t, src, "acme", "r1"); !reflect.DeepEqual(got, want) || len(got) != 7 {
 			t.Fatalf("events after restart = %+v, want %+v", got, want)
 		}
-		if got, want := again.Trace("acme", []string{"r1"}), j.Trace("acme", []string{"r1"}); !reflect.DeepEqual(got, want) {
+		if got, want := traced(t, again, "acme", "r1"), traced(t, src, "acme", "r1"); !reflect.DeepEqual(got, want) {
 			t.Fatalf("trace after restart = %+v, want %+v", got, want)
 		}
-		if got := again.Query(Query{Tenant: "globex"}); len(got) != 1 {
+		if got := query(t, again, Query{Tenant: "globex"}); len(got) != 1 {
 			t.Fatalf("globex after restart = %+v", got)
 		}
 	})
 }
 
-// The ring holds no more in the store than in memory, and a restart with a
-// smaller capacity keeps the newest events.
-func TestRestartKeepsTheBound(t *testing.T) {
+// A tenant holds no more than the capacity, another tenant's events do not
+// count against it, and a journal opened with a smaller capacity shrinks to
+// it as events arrive.
+func TestEachTenantKeepsTheBound(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
 		j, _ := Open(st, 5)
 		for i := range 12 {
-			j.Append(ev(t, "acme", "r1", i, event.Text{Text: fmt.Sprint(i)}), "slack")
-			if i%4 == 0 {
-				if err := j.Flush(); err != nil {
-					t.Fatal(err)
-				}
-			}
+			appended(t, j, ev(t, "acme", "r1", i, event.Text{Text: fmt.Sprint(i)}))
 		}
-		if err := j.Flush(); err != nil {
-			t.Fatal(err)
+		for i := range 3 {
+			appended(t, j, ev(t, "globex", "r9", i, event.Text{Text: fmt.Sprint(i)}))
 		}
-		recs, _ := st.Load(t.Context(), "journal")
-		if len(recs) != 5+1 {
-			t.Fatalf("the store holds %d records for a ring of 5", len(recs))
+		if n := kept(t, st, "acme"); n != 5 {
+			t.Fatalf("acme holds %d events for a capacity of 5", n)
+		}
+		if got := events(t, j, "globex", "r9"); len(got) != 3 {
+			t.Fatalf("globex = %d events", len(got))
 		}
 		again, _ := Open(st, 5)
-		got := again.Events("acme", []string{"r1"})
+		got := events(t, again, "acme", "r1")
 		if len(got) != 5 || got[0].Seq != 7 || got[4].Seq != 11 {
 			t.Fatalf("after restart = %d events, first %d", len(got), got[0].Seq)
 		}
@@ -76,38 +69,57 @@ func TestRestartKeepsTheBound(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := smaller.Events("acme", []string{"r1"}); len(got) != 3 || got[0].Seq != 9 {
-			t.Fatalf("with a smaller ring = %+v", got)
+		appended(t, smaller, ev(t, "acme", "r1", 12, event.Text{Text: "12"}))
+		if got := events(t, smaller, "acme", "r1"); len(got) != 3 || got[0].Seq != 10 || got[2].Seq != 12 {
+			t.Fatalf("after writing with a smaller capacity = %+v", got)
 		}
-		smaller.Append(ev(t, "acme", "r1", 12, event.Text{Text: "12"}), "slack")
-		if err := smaller.Flush(); err != nil {
-			t.Fatal(err)
-		}
-		last, _ := Open(st, 3)
-		if got := last.Events("acme", []string{"r1"}); len(got) != 3 || got[0].Seq != 10 || got[2].Seq != 12 {
-			t.Fatalf("after writing to the smaller ring = %+v", got)
-		}
-		if recs, _ := st.Load(t.Context(), "journal"); len(recs) != 3+1 {
-			t.Fatalf("the store holds %d records for a ring of 3", len(recs))
+		if n := kept(t, st, "acme"); n != 3 {
+			t.Fatalf("acme holds %d events for a capacity of 3", n)
 		}
 	})
 }
 
-func TestFailedFlushIsRetried(t *testing.T) {
-	f := statetest.NewFaulty(state.NewMemory())
-	j, _ := Open(f, 0)
-	j.Append(ev(t, "acme", "r1", 0, event.Accepted{}), "slack")
-	f.Fail(statetest.ErrInjected)
-	if err := j.Flush(); !errors.Is(err, statetest.ErrInjected) {
-		t.Fatalf("Flush = %v", err)
-	}
-	j.Append(ev(t, "acme", "r1", 1, event.Started{Attempt: 1}), "slack")
-	f.Fail(nil)
-	if err := j.Flush(); err != nil {
+// kept counts a tenant's events by time and checks that each has its twin by
+// run and that the count says as much.
+func kept(t *testing.T, st state.Store, tenant string) int {
+	t.Helper()
+	recs, err := st.Load(t.Context(), namespace)
+	if err != nil {
 		t.Fatal(err)
 	}
-	again, _ := Open(f, 0)
-	if got := again.Events("acme", []string{"r1"}); len(got) != 2 || got[0].Seq != 0 || got[1].Seq != 1 {
-		t.Fatalf("after a failed flush and a good one = %+v", got)
+	byTime, byRun := 0, 0
+	for _, r := range recs {
+		if r.Tenant != tenant {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(r.Key, eventPrefix):
+			byTime++
+		case strings.HasPrefix(r.Key, runPrefix):
+			byRun++
+		}
+	}
+	n, err := state.NewTable[stored](st, namespace).Lookup(tenant, countKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byTime != byRun || int64(byTime) != n.Value.Count {
+		t.Fatalf("%s: %d by time, %d by run, count %d", tenant, byTime, byRun, n.Value.Count)
+	}
+	return byTime
+}
+
+func TestAFailedWriteIsAnError(t *testing.T) {
+	f := statetest.NewFaulty(state.NewMemory())
+	j, _ := Open(f, 0)
+	appended(t, j, ev(t, "acme", "r1", 0, event.Accepted{}))
+	f.Fail(statetest.ErrInjected)
+	if err := j.Append(ev(t, "acme", "r1", 1, event.Started{Attempt: 1}), "slack"); !errors.Is(err, statetest.ErrInjected) {
+		t.Fatalf("Append = %v", err)
+	}
+	f.Fail(nil)
+	appended(t, j, ev(t, "acme", "r1", 1, event.Started{Attempt: 1}))
+	if got := events(t, j, "acme", "r1"); len(got) != 2 || got[0].Seq != 0 || got[1].Seq != 1 {
+		t.Fatalf("after a failed write and a good one = %+v", got)
 	}
 }

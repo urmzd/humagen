@@ -434,7 +434,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 	if len(page) != 1 || page[0].Kind != inbox.KindAlert || len(page[0].Parts) != 2 || page[0].From.Name != "any" {
 		t.Fatalf("with a rule the inbox is %+v", page)
 	}
-	raised := p.Alerts.Alerts(tenant)
+	raised := kept(p.Alerts.Alerts(tenant))
 	if len(raised) != 1 || !raised[0].Open() {
 		t.Fatalf("alerts = %+v", raised)
 	}
@@ -457,7 +457,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 	if got, err := p.InboxDismiss(operator, page[0].ID); err != nil || got.State != inbox.Resolved {
 		t.Fatalf("dismiss = %s, %v", got.State, err)
 	}
-	for _, a := range p.Alerts.Alerts(tenant) {
+	for _, a := range kept(p.Alerts.Alerts(tenant)) {
 		if a.Open() {
 			t.Fatalf("an alert is open with its message settled: %+v", a)
 		}
@@ -495,7 +495,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 	// Anyone who may acknowledge alerts can still acknowledge it from the
 	// alert's side, and its message is settled though they were not notified.
 	var opsAlert alerts.Alert
-	for _, a := range p.Alerts.Alerts(tenant) {
+	for _, a := range kept(p.Alerts.Alerts(tenant)) {
 		if a.RunID == fourth.ID {
 			opsAlert = a
 		}
