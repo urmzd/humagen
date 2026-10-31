@@ -341,6 +341,20 @@ func (s *Store) Connector(tenant, name string) (Connector, error) {
 	return c.Connector, nil
 }
 
+// Tenants returns every tenant that has a connector.
+func (s *Store) Tenants() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]string, 0, len(s.tenants))
+	for t, cs := range s.tenants {
+		if len(cs) > 0 {
+			out = append(out, t)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // Connectors returns a tenant's connectors by name.
 func (s *Store) Connectors(tenant string) []Connector {
 	s.mu.RLock()

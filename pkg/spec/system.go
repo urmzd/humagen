@@ -30,6 +30,7 @@ const (
 	SlotEgress     = "egress"
 	SlotModels     = "models"
 	SlotTools      = "tools"
+	SlotConnectors = "connectors"
 )
 
 // Builtin is the kinds each slot has with no extension. internal/app builds
@@ -46,6 +47,7 @@ var Builtin = map[string][]string{
 	SlotEgress:     {"none", "gate"},
 	SlotModels:     {"anthropic", "openai", "google"},
 	SlotTools:      {"mcp"},
+	SlotConnectors: {"bigquery"},
 }
 
 // System is how and where humagen runs.
@@ -582,6 +584,8 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &VertexEmbedder{}, true
 	case "models.anthropic", "models.openai", "models.google":
 		return &ModelBlock{}, true
+	case "connectors.bigquery":
+		return &BigQueryConnector{}, true
 	case "tools.mcp":
 		return &MCP{}, true
 	case "sandbox.docker":
@@ -660,6 +664,18 @@ func checkBlock(where string, blk any) error {
 		}
 		if b.Network != "" && !runtimeName.MatchString(b.Network) {
 			return fmt.Errorf("%s: network %q is not a Docker network's name", where, b.Network)
+		}
+	case *BigQueryConnector:
+		if b.Project == "" {
+			return fmt.Errorf("%s: project is required", where)
+		}
+		if b.MaxBytesBilled < 0 || b.MaxRows < 0 {
+			return fmt.Errorf("%s: max_bytes_billed and max_rows are not negative", where)
+		}
+		if b.Timeout != "" {
+			if d, err := time.ParseDuration(b.Timeout); err != nil || d <= 0 {
+				return fmt.Errorf("%s: timeout is a duration, such as 60s", where)
+			}
 		}
 	case *S3:
 		if b.Bucket == "" {

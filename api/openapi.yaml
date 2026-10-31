@@ -1753,6 +1753,94 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog:
+    get:
+      operationId: getCatalog
+      tags: [knowledge]
+      summary: Browse or search the catalog of connected systems
+      description: |
+        The connectors you see (your own, and the published ones of projects
+        you see) and their entries: tables, columns and descriptions, never
+        data (RFC 0005). With q, entries are ranked against it, hybrid when
+        the deployment has an embedder; without it, listed by connector and
+        path. Seeing an entry never grants reading the object.
+      x-permission: knowledge:read
+      parameters:
+        - {name: q, in: query, description: "Words to rank entries by. Left out, entries are listed.", schema: {type: string, maxLength: 1000}}
+        - {name: limit, in: query, description: "At most this many entries, and at most 50. Zero is 50 when listing and 10 when searching.", schema: {type: integer, minimum: 0, maximum: 50}}
+      responses:
+        "200":
+          description: The connectors you see and their entries.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogPage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/{name}/publish:
+    post:
+      operationId: publishConnector
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      tags: [knowledge]
+      summary: Publish a connector's entries to its project's members
+      description: Only the connector's owner publishes. Who published and when are recorded.
+      x-permission: knowledge:write
+      responses:
+        "200":
+          description: The connector, published.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: withdrawConnector
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      tags: [knowledge]
+      summary: Withdraw a connector's published entries
+      description: Hides them from everyone but the owner at once. The owner withdraws, and so may whoever governs the workspace. Who withdrew and when are recorded.
+      x-permission: knowledge:write
+      responses:
+        "200":
+          description: The connector, withdrawn.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/{name}/crawl:
+    post:
+      operationId: crawlConnector
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      tags: [knowledge]
+      summary: Crawl a connector now
+      description: Lists the connected system again and replaces the connector's entries whole. Only its owner asks. A crawl that fails keeps the entries before it.
+      x-permission: knowledge:write
+      responses:
+        "200":
+          description: The connector after the crawl.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "502":
+          description: The connected system could not be listed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/join:
     get:
       operationId: previewJoin
@@ -12217,6 +12305,80 @@ components:
         excluded: {type: boolean}
         added_by: {type: string}
         added_at: {type: string, format: date-time}
+    CatalogColumn:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+        type: {type: string}
+        mode: {type: string}
+        description: {type: string}
+        fields:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogColumn"}
+    CatalogStats:
+      type: object
+      properties:
+        rows: {type: integer, format: int64}
+        bytes: {type: integer, format: int64}
+        modified: {type: string, format: date-time}
+    CatalogEntry:
+      type: object
+      description: One object in a connected system. Metadata only, never data.
+      required: [system, kind, path, connector, seen_at]
+      properties:
+        system: {type: string, examples: [bigquery]}
+        kind: {type: string, examples: [table]}
+        path: {type: string, examples: [analytics.billing.churn_monthly]}
+        title: {type: string}
+        description: {type: string}
+        schema:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogColumn"}
+        stats: {$ref: "#/components/schemas/CatalogStats"}
+        connector: {type: string}
+        seen_at: {type: string, format: date-time}
+    CatalogMark:
+      type: object
+      required: [by, at]
+      properties:
+        by: {type: string}
+        at: {type: string, format: date-time}
+    CatalogConnector:
+      type: object
+      required: [name, system, entries, generation]
+      properties:
+        name: {type: string}
+        system: {type: string}
+        owner: {description: The person whose credential it uses., type: string}
+        project: {description: Whose members see its entries while it is published. Empty is the workspace., type: string}
+        published: {$ref: "#/components/schemas/CatalogMark"}
+        withdrawn: {$ref: "#/components/schemas/CatalogMark"}
+        crawled_at: {type: string, format: date-time}
+        entries: {type: integer, minimum: 0}
+        generation: {type: integer, minimum: 0}
+    CatalogConnectorView:
+      allOf:
+        - {$ref: "#/components/schemas/CatalogConnector"}
+        - type: object
+          required: [capabilities, mine]
+          properties:
+            capabilities:
+              type: array
+              items: {type: string, enum: [catalog, live]}
+            mine: {description: "You own it, so you may publish, withdraw and crawl it.", type: boolean}
+            last_error: {description: "The last crawl's failure, shown to the owner only.", type: string}
+    CatalogPage:
+      type: object
+      required: [connectors, entries]
+      properties:
+        connectors:
+          type: array
+          items: {$ref: "#/components/schemas/CatalogConnectorView"}
+        entries:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/CatalogEntry"}
     KnowledgeHit:
       type: object
       required: [source, document_id, title, index, text, score]

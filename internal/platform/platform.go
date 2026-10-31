@@ -58,6 +58,7 @@ import (
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
+	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
@@ -181,6 +182,9 @@ type Config struct {
 	// Embedder gives knowledge passages vectors for hybrid search, filled in
 	// the background while Run runs. Nil keeps search lexical.
 	Embedder knowledge.Embedder
+	// Connectors are the catalog connectors the Platform documents declare.
+	// The store's connectors become exactly these at start.
+	Connectors []CatalogConnector
 	// Bus carries every run's events. Nil means in memory, for one process.
 	Bus bus.Bus
 	// Limits bounds every tree of calls.
@@ -252,16 +256,19 @@ type Platform struct {
 	sourceDependencyReader SourceDependencyReader
 
 	// Agents keeps agent definitions. Read them through Catalog.
-	Agents      wire.AgentStore
-	Runs        *runs.Index
-	Schedules   *Schedules
-	Journal     *journal.Journal
-	Alerts      *alerts.Engine
-	Knowledge   *knowledge.Store
-	SourceLinks *sourcelinks.Store
-	Evals       *evals.Store
-	Feedback    *feedback.Store
-	Prefs       *prefs.Store
+	Agents    wire.AgentStore
+	Runs      *runs.Index
+	Schedules *Schedules
+	Journal   *journal.Journal
+	Alerts    *alerts.Engine
+	Knowledge *knowledge.Store
+	// CatalogStore is the catalog: what exists in connected systems.
+	CatalogStore *catalog.Store
+	catalog      catalogState
+	SourceLinks  *sourcelinks.Store
+	Evals        *evals.Store
+	Feedback     *feedback.Store
+	Prefs        *prefs.Store
 	// PersonContexts is what each person brings to the runs that act for
 	// them: their run settings, tool servers and memory volume.
 	PersonContexts       *personctx.Store
@@ -465,6 +472,9 @@ func New(cfg Config) (*Platform, error) {
 	p.closers = append(p.closers, files.Close)
 	// Every store is in memory, reading back what Backends.State holds.
 	if err := p.openStores(cfg); err != nil {
+		return nil, err
+	}
+	if err := p.declareConnectors(cfg.Connectors); err != nil {
 		return nil, err
 	}
 	if cfg.SourceDependencies == nil {
@@ -1146,6 +1156,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	defer cancel()
 	defer p.stopWakers()
 	p.Knowledge.UseEmbedder(ctx, p.cfg.Embedder, p.log)
+	p.CatalogStore.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 
 	var wg sync.WaitGroup
 	errc := make(chan error, 8)
@@ -1197,6 +1208,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	loop("email notifications", func() error { return p.runEmailNotifications(ctx) })
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
 	loop("source refresh", func() error { return p.refreshSources(ctx) })
+	loop("catalog crawl", func() error { return p.crawlCatalog(ctx) })
 	loop("inbox retention", func() error {
 		tick := time.NewTicker(retainEvery)
 		defer tick.Stop()

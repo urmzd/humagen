@@ -21,6 +21,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auditrefs"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/callpolicy"
+	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
@@ -190,6 +191,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("source link suggestions", err)
 	p.Knowledge, err = knowledge.Open(st)
 	keep("knowledge", err)
+	p.CatalogStore, err = catalog.Open(st)
+	keep("catalog", err)
 	p.SourceEvidence, err = knowledge.OpenEvidenceStore(st)
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(st)
