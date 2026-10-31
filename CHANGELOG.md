@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.58.0 (2026-10-31)
+
+### Features
+
+- **limits**: ask a person to approve a run at a limit (#157) ([8dd9ddd](https://github.com/urmzd/humagen/commit/8dd9ddd6fc43626bdcc7fc0a0046d6f319f40189))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.57.0...v0.58.0)
+
+
 ## 0.57.0 (2026-10-31)
 
 ### Features
