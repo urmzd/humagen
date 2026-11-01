@@ -16,6 +16,15 @@
 // nearer a message than its project (Nearer) and the room's transcript
 // (Ask).
 //
+// # Storage
+//
+// The Store reads and writes the database per request (pkg/state, per
+// request): it holds no thread or message in memory, so any number of
+// processes on one database agree, and it does not need pkg/state's
+// single-writer lock. A conversation is its shard key, then time: its
+// messages are appended under it, numbered from the head its record keeps,
+// and never updated in place but to settle their tags.
+//
 // # Default deny
 //
 // A thread is shared, read by everyone who can see its project, or private,

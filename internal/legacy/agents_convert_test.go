@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -265,4 +266,57 @@ CREATE TABLE `+revsT+` (tenant text NOT NULL, name text COLLATE "C" NOT NULL, re
 			}
 		}
 	}
+}
+
+// Two processes starting at once both move the old agents: the result is
+// the one move, and the deleted agent is retired once. A move run after an
+// agent was revived leaves it revived.
+func TestTwoProcessesConvertAgentsOnce(t *testing.T) {
+	ctx := context.Background()
+	statetest.Processes(t, func(t *testing.T, a, b state.Store) {
+		var wg sync.WaitGroup
+		dsts := make([]*agents.Store, 4)
+		for i := range dsts {
+			wg.Go(func() {
+				st := []state.Store{a, b}[i%2]
+				dst, err := agents.Open(st)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if _, err := legacy.ConvertAgents(ctx, st, dst, oldRows(t), legacy.ConvertOptions{Now: func() time.Time { return t0 }}); err != nil {
+					t.Error(err)
+				}
+				dsts[i] = dst
+			})
+		}
+		wg.Wait()
+		if t.Failed() {
+			return
+		}
+		want := dump(t, dsts[0])
+		if len(want) != 4 {
+			t.Fatalf("%d versions after the move, want 4", len(want))
+		}
+		for _, d := range dsts[1:] {
+			if got := dump(t, d); !reflect.DeepEqual(got, want) {
+				t.Fatalf("processes disagree:\n%+v\n%+v", got, want)
+			}
+		}
+		if _, err := dsts[1].Latest(ctx, "acme", "old-bot"); !errors.Is(err, definition.ErrRetired) {
+			t.Fatalf("old-bot latest = %v", err)
+		}
+		// Revived, then moved again by a start that missed the marker: it
+		// stays revived.
+		if err := dsts[0].Revive(ctx, "acme", "old-bot"); err != nil {
+			t.Fatal(err)
+		}
+		fresh := state.NewMemory()
+		if _, err := legacy.ConvertAgents(ctx, fresh, dsts[1], oldRows(t), legacy.ConvertOptions{Now: func() time.Time { return t0 }}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dsts[0].Latest(ctx, "acme", "old-bot"); err != nil {
+			t.Fatalf("a later move retired a revived agent: %v", err)
+		}
+	})
 }

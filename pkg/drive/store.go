@@ -19,16 +19,36 @@ import (
 	"github.com/urmzd/humagen/pkg/state"
 )
 
-// The namespaces the store writes. Trees holds heads and open proposals and
-// is read whole when the store opens; versions are read one at a time.
+// The namespaces the store writes. The tenant is the shard key of every
+// record, and every key starts with its tree's key, the owner:
+//
+//	drive.trees     <tree>#h          the head: its version, the oldest kept,
+//	                                  its generation and its open proposals
+//	drive.trees     <tree>#v/<seq>    a version, written with the head
+//	drive.trees     <tree>#p/<id>     an open proposal, written with the head
+//	drive.dir       <tree>            the tree, so a tenant's trees can be paged
+//	drive.versions  <tree>#v/<seq>    a version written before versions were
+//	                                  kept beside their head; read, never written
+//
+// Every change to a tree writes its head at the version it read, in the same
+// write as the version and the proposals it adds or removes, so two
+// processes changing one tree cannot both win from the same head.
 const (
 	nsTrees    = "drive.trees"
 	nsVersions = "drive.versions"
+	nsDir      = "drive.dir"
 )
+
+// listed marks, in the tenant "" of drive.dir, that every tree written before
+// the directory existed is in it.
+const listed = "listed:v1"
 
 // Head, as a Commit's Base, applies the change to whatever the head is,
 // without checking it against an earlier version.
 const Head int64 = -1
+
+// MaxTrees is the most trees one page of a tenant's trees holds.
+const MaxTrees = state.MaxList
 
 // Screen decides whether content may be kept in a tree that is not a
 // person's own. A non-nil error refuses it.
@@ -43,26 +63,37 @@ type Event struct {
 	Proposal string
 }
 
-// Store keeps every tenant's trees.
+// Store keeps every tenant's trees. It holds no tree in memory: every call
+// reads the head it needs, and the cache holds only what never changes once
+// written (a version of one generation of a tree, content by hash, and the
+// search index built from a version).
 type Store struct {
-	mu        sync.Mutex
-	st        state.Store
-	blobs     blob.Store
-	heads     map[string]headRecord
-	proposals map[string]map[string]Proposal
-	cache     *lru
-	screen    Screen
-	now       func() time.Time
-	watchMu   sync.RWMutex
-	watchers  []func(Event)
-	indexMu   sync.Mutex
-	indexes   map[string]*index
+	st       state.Store
+	blobs    blob.Store
+	cache    *lru
+	screen   Screen
+	now      func() time.Time
+	watchMu  sync.RWMutex
+	watchers []func(Event)
+	indexMu  sync.Mutex
+	indexes  map[string]*index
 }
 
+// headRecord is a tree's head. A tree with no head record is version 0,
+// empty, with no proposals.
 type headRecord struct {
 	Tree    Tree  `json:"tree"`
 	Version int64 `json:"version"`
 	Oldest  int64 `json:"oldest"`
+	// Gen names this life of the tree: a tree dropped and written again
+	// starts its versions at 1 under a new one, so a cached version is
+	// never taken for another life's. A head written before generations
+	// has "".
+	Gen string `json:"gen,omitempty"`
+	// Open are the ids of the tree's open proposals, once Indexed. A head
+	// written before it kept them is read with its proposals listed.
+	Open    []string `json:"open,omitempty"`
+	Indexed bool     `json:"indexed,omitempty"`
 }
 
 // Option configures a Store.
@@ -79,47 +110,78 @@ func WithClock(now func() time.Time) Option { return func(s *Store) { s.now = no
 // memory. The default is 64 MiB.
 func WithCache(bytes int64) Option { return func(s *Store) { s.cache = newLRU(bytes) } }
 
-// Open returns a store on st and blobs, holding the heads and proposals st
-// already has.
+// Open returns a store on st and blobs. It reads nothing but, the first time
+// any process opens the store, the heads and proposals written before the
+// directory of trees existed, to list them in it; a process that opens it at
+// the same time lists the same trees.
 func Open(st state.Store, blobs blob.Store, opts ...Option) (*Store, error) {
 	if st == nil || blobs == nil {
 		return nil, fmt.Errorf("%w: a state store and a blob store are required", ErrInvalid)
 	}
-	s := &Store{st: st, blobs: blobs, heads: map[string]headRecord{}, proposals: map[string]map[string]Proposal{}, cache: newLRU(64 << 20), now: time.Now, indexes: map[string]*index{}}
+	s := &Store{st: st, blobs: blobs, cache: newLRU(64 << 20), now: time.Now, indexes: map[string]*index{}}
 	for _, o := range opts {
 		o(s)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
-	defer cancel()
-	recs, err := st.Load(ctx, nsTrees)
-	if err != nil {
-		return nil, fmt.Errorf("drive: load: %w", err)
-	}
-	for _, r := range recs {
-		switch {
-		case strings.HasSuffix(r.Key, "#h"):
-			var h headRecord
-			if err := json.Unmarshal(r.Value, &h); err != nil {
-				return nil, fmt.Errorf("drive: load %q: %w", r.Key, err)
-			}
-			s.heads[tk(r.Tenant, h.Tree)] = h
-		case strings.Contains(r.Key, "#p/"):
-			var p Proposal
-			if err := json.Unmarshal(r.Value, &p); err != nil {
-				return nil, fmt.Errorf("drive: load %q: %w", r.Key, err)
-			}
-			k := tk(r.Tenant, p.Tree)
-			if s.proposals[k] == nil {
-				s.proposals[k] = map[string]Proposal{}
-			}
-			s.proposals[k][p.ID] = p
-		}
+	if err := s.list(); err != nil {
+		return nil, fmt.Errorf("drive: list trees: %w", err)
 	}
 	return s, nil
 }
 
-// Watch calls fn after every change to a tree. It is called without the
-// store's lock held, and must not block.
+// list fills the directory of trees from the heads and proposals written
+// before it existed, once.
+func (s *Store) list() error {
+	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	if _, err := s.st.Lookup(ctx, nsDir, "", listed); err == nil {
+		return nil
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return err
+	}
+	recs, err := s.st.Load(ctx, nsTrees)
+	if err != nil {
+		return err
+	}
+	var ops []state.Op
+	seen := map[string]bool{}
+	for _, r := range recs {
+		var t Tree
+		switch {
+		case strings.HasSuffix(r.Key, "#h"):
+			var h headRecord
+			if err := json.Unmarshal(r.Value, &h); err != nil {
+				return fmt.Errorf("%q: %w", r.Key, err)
+			}
+			t = h.Tree
+		case strings.Contains(r.Key, "#p/"):
+			var p Proposal
+			if err := json.Unmarshal(r.Value, &p); err != nil {
+				return fmt.Errorf("%q: %w", r.Key, err)
+			}
+			t = p.Tree
+		default:
+			continue
+		}
+		if r.Tenant == "" || seen[tk(r.Tenant, t)] {
+			continue
+		}
+		seen[tk(r.Tenant, t)] = true
+		raw, _ := json.Marshal(t)
+		ops = append(ops, state.Put(r.Tenant, t.Key(), raw))
+	}
+	ops = append(ops, state.Put("", listed, []byte{}))
+	for len(ops) > 0 {
+		n := min(len(ops), state.MaxList)
+		if err := s.st.Write(ctx, nsDir, ops[:n]...); err != nil {
+			return err
+		}
+		ops = ops[n:]
+	}
+	return nil
+}
+
+// Watch calls fn after every change to a tree made through this store, in
+// this process. It is called without any lock held, and must not block.
 func (s *Store) Watch(fn func(Event)) {
 	s.watchMu.Lock()
 	defer s.watchMu.Unlock()
@@ -143,7 +205,9 @@ func versionKey(t Tree, n int64) string { return t.Key() + "#v/" + state.Seq(n) 
 
 func headKey(t Tree) string { return t.Key() + "#h" }
 
-func proposalKey(t Tree, id string) string { return t.Key() + "#p/" + id }
+func proposalPrefix(t Tree) string { return t.Key() + "#p/" }
+
+func proposalKey(t Tree, id string) string { return proposalPrefix(t) + id }
 
 func blobKey(hash string) string { return "drive/sha256/" + hash[:2] + "/" + hash }
 
@@ -173,62 +237,64 @@ func (s *Store) check(who Actor, tree Tree, need func(Grant) bool) error {
 	return nil
 }
 
-// Trees returns every tree a tenant holds, by key.
-func (s *Store) Trees(tenant string) []Tree {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	seen := map[string]Tree{}
-	prefix := tenant + "\x00"
-	for k, h := range s.heads {
-		if strings.HasPrefix(k, prefix) {
-			seen[h.Tree.Key()] = h.Tree
-		}
+// Trees returns one page of the trees a tenant holds, by key, after a
+// cursor, and the cursor of the next page, "" when none follow. A tree that
+// was dropped may still be listed, and reads as an empty tree.
+func (s *Store) Trees(ctx context.Context, tenant, after string, limit int) ([]Tree, string, error) {
+	if tenant == "" {
+		return nil, "", nil
 	}
-	for k, ps := range s.proposals {
-		if strings.HasPrefix(k, prefix) {
-			for _, p := range ps {
-				seen[p.Tree.Key()] = p.Tree
-			}
-		}
+	if limit <= 0 || limit > MaxTrees {
+		limit = MaxTrees
 	}
-	out := make([]Tree, 0, len(seen))
-	for _, t := range seen {
+	recs, next, err := s.st.List(ctx, nsDir, tenant, state.Query{After: after, Limit: limit})
+	if err != nil {
+		return nil, "", fmt.Errorf("drive: list trees: %w", err)
+	}
+	out := make([]Tree, 0, len(recs))
+	for _, r := range recs {
+		var t Tree
+		if err := json.Unmarshal(r.Value, &t); err != nil {
+			return nil, "", fmt.Errorf("drive: list trees %q: %w", r.Key, err)
+		}
 		out = append(out, t)
 	}
-	slices.SortFunc(out, func(a, b Tree) int { return strings.Compare(a.Key(), b.Key()) })
-	return out
+	return out, next, nil
 }
 
-// Tenants returns every tenant that holds a tree.
-func (s *Store) Tenants() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	seen := map[string]bool{}
-	for k := range s.heads {
-		seen[strings.SplitN(k, "\x00", 2)[0]] = true
+// head reads a tree's head and the version of its record, state.Missing
+// when it has none.
+func (s *Store) head(ctx context.Context, tenant string, tree Tree) (headRecord, int64, error) {
+	r, err := s.st.Lookup(ctx, nsTrees, tenant, headKey(tree))
+	if errors.Is(err, state.ErrNotFound) {
+		return headRecord{Tree: tree}, state.Missing, nil
 	}
-	for k := range s.proposals {
-		seen[strings.SplitN(k, "\x00", 2)[0]] = true
+	if err != nil {
+		return headRecord{}, 0, fmt.Errorf("drive: read head: %w", err)
 	}
-	out := make([]string, 0, len(seen))
-	for t := range seen {
-		out = append(out, t)
+	var h headRecord
+	if err := json.Unmarshal(r.Value, &h); err != nil {
+		return headRecord{}, 0, fmt.Errorf("drive: read head: %w", err)
 	}
-	slices.Sort(out)
-	return out
+	return h, r.Version, nil
 }
 
-// version reads one version, from the cache when it is there. Version 0 is
-// the empty tree.
-func (s *Store) version(ctx context.Context, tenant string, tree Tree, n int64) (Version, error) {
+// version reads one version of a head's generation, from the cache when it
+// is there. Version 0 is the empty tree.
+func (s *Store) version(ctx context.Context, tenant string, h headRecord, n int64) (Version, error) {
+	tree := h.Tree
 	if n == 0 {
 		return Version{Tree: tree, Entries: []Entry{}}, nil
 	}
-	ck := "v\x00" + tk(tenant, tree) + "\x00" + state.Seq(n)
+	ck := "v\x00" + tk(tenant, tree) + "\x00" + h.Gen + "\x00" + state.Seq(n)
 	if v, ok := s.cache.get(ck); ok {
 		return v.(Version), nil
 	}
-	raw, err := s.st.Get(ctx, nsVersions, tenant, versionKey(tree, n))
+	raw, err := s.st.Get(ctx, nsTrees, tenant, versionKey(tree, n))
+	if errors.Is(err, state.ErrNotFound) && h.Gen == "" {
+		// Written before versions were kept beside their head.
+		raw, err = s.st.Get(ctx, nsVersions, tenant, versionKey(tree, n))
+	}
 	if errors.Is(err, state.ErrNotFound) {
 		return Version{}, fmt.Errorf("%w: version %d of %s", ErrNotFound, n, tree.Key())
 	}
@@ -243,19 +309,17 @@ func (s *Store) version(ctx context.Context, tenant string, tree Tree, n int64) 
 	return v, nil
 }
 
-func (s *Store) headOf(tenant string, tree Tree) headRecord {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.heads[tk(tenant, tree)]
-}
-
 // Head returns a tree's latest version. A tree never written is version 0,
 // empty.
 func (s *Store) Head(ctx context.Context, tenant string, who Actor, tree Tree) (Version, error) {
 	if err := s.check(who, tree, func(g Grant) bool { return g.Read }); err != nil {
 		return Version{}, err
 	}
-	return s.version(ctx, tenant, tree, s.headOf(tenant, tree).Version)
+	h, _, err := s.head(ctx, tenant, tree)
+	if err != nil {
+		return Version{}, err
+	}
+	return s.version(ctx, tenant, h, h.Version)
 }
 
 // Version returns one version of a tree.
@@ -263,11 +327,14 @@ func (s *Store) Version(ctx context.Context, tenant string, who Actor, tree Tree
 	if err := s.check(who, tree, func(g Grant) bool { return g.Read }); err != nil {
 		return Version{}, err
 	}
-	h := s.headOf(tenant, tree)
+	h, _, err := s.head(ctx, tenant, tree)
+	if err != nil {
+		return Version{}, err
+	}
 	if n < 0 || n > h.Version || n != 0 && n < h.Oldest {
 		return Version{}, fmt.Errorf("%w: version %d of %s", ErrNotFound, n, tree.Key())
 	}
-	return s.version(ctx, tenant, tree, n)
+	return s.version(ctx, tenant, h, n)
 }
 
 // History returns at most limit versions older than before, newest first.
@@ -279,14 +346,17 @@ func (s *Store) History(ctx context.Context, tenant string, who Actor, tree Tree
 	if limit <= 0 || limit > MaxPage {
 		limit = MaxPage
 	}
-	h := s.headOf(tenant, tree)
+	h, _, err := s.head(ctx, tenant, tree)
+	if err != nil {
+		return nil, err
+	}
 	n := h.Version
 	if before > 0 && before-1 < n {
 		n = before - 1
 	}
 	out := []Version{}
 	for ; n >= max(h.Oldest, 1) && len(out) < limit; n-- {
-		v, err := s.version(ctx, tenant, tree, n)
+		v, err := s.version(ctx, tenant, h, n)
 		if errors.Is(err, ErrNotFound) {
 			continue
 		}
@@ -409,6 +479,195 @@ func (s *Store) putContent(ctx context.Context, tenant, h string, data []byte) e
 	return nil
 }
 
+// treeState is a tree as one change reads it.
+type treeState struct {
+	head headRecord
+	// rev is the version of the head's record, state.Missing for none.
+	rev int64
+	cur Version
+}
+
+func (t treeState) open(id string) bool { return slices.Contains(t.head.Open, id) }
+
+// change is what one change to a tree writes. A nil entries leaves the
+// files as they are.
+type change struct {
+	entries  []Entry
+	meta     Version
+	propose  []Proposal
+	discard  []string
+	restored int64
+}
+
+// result is what a change wrote.
+type result struct {
+	version Version
+	// wrote is false when the change left the tree as it was.
+	wrote bool
+}
+
+// mutate reads a tree, asks fn what to change, and writes it at the head it
+// read: the version, the head and the proposals in one write. When another
+// writer changed the tree in between, it reads again and asks fn again.
+func (s *Store) mutate(ctx context.Context, tenant string, tree Tree, fn func(t treeState) (change, error)) (result, error) {
+	var out result
+	err := state.Retry(func() error {
+		out = result{}
+		h, rev, err := s.head(ctx, tenant, tree)
+		if err != nil {
+			return err
+		}
+		if !h.Indexed {
+			if h.Open, err = s.openIDs(ctx, tenant, tree); err != nil {
+				return err
+			}
+			h.Indexed = true
+		}
+		cur, err := s.version(ctx, tenant, h, h.Version)
+		if err != nil {
+			return err
+		}
+		t := treeState{head: h, rev: rev, cur: cur}
+		c, err := fn(t)
+		if err != nil {
+			return err
+		}
+		next := h
+		next.Open = slices.Clone(h.Open)
+		if rev == state.Missing {
+			next.Gen = rand.Text()
+		}
+		var ops, pruned []state.Op
+		v := cur
+		if c.entries != nil && !slices.Equal(c.entries, cur.Entries) {
+			if len(c.entries) > MaxEntries {
+				return fmt.Errorf("%w: a tree holds at most %d files", ErrTooLarge, MaxEntries)
+			}
+			m := c.meta
+			if m.At.IsZero() {
+				m.At = s.now()
+			}
+			v = Version{Tree: tree, N: h.Version + 1, Parent: h.Version, Entries: c.entries, By: m.By, At: m.At.UTC(), Message: m.Message, Origin: m.Origin, Restored: c.restored, Resolves: m.Resolves}
+			raw, _ := json.Marshal(v)
+			ops = append(ops, state.Put(tenant, versionKey(tree, v.N), raw))
+			next.Version, next.Oldest = v.N, max(h.Oldest, 1)
+			for next.Version-next.Oldest+1 > MaxVersions {
+				ops = append(ops, state.Delete(tenant, versionKey(tree, next.Oldest)))
+				pruned = append(pruned, state.Delete(tenant, versionKey(tree, next.Oldest)))
+				next.Oldest++
+			}
+		}
+		closed := slices.Concat(c.meta.Resolves, c.discard)
+		for _, id := range closed {
+			ops = append(ops, state.Delete(tenant, proposalKey(tree, id)))
+			next.Open = slices.DeleteFunc(next.Open, func(x string) bool { return x == id })
+		}
+		for _, p := range c.propose {
+			raw, _ := json.Marshal(p)
+			ops = append(ops, state.Put(tenant, proposalKey(tree, p.ID), raw))
+			if !slices.Contains(next.Open, p.ID) {
+				next.Open = append(next.Open, p.ID)
+			}
+		}
+		if len(next.Open) > MaxProposals {
+			return fmt.Errorf("%w: a tree holds at most %d open proposals", ErrTooLarge, MaxProposals)
+		}
+		if len(ops) == 0 {
+			out.version = cur
+			return nil
+		}
+		raw, _ := json.Marshal(next)
+		if rev == state.Missing {
+			// The directory lists the tree before its head exists, so a
+			// tree with a head is always listed.
+			if err := s.mark(ctx, tenant, tree); err != nil {
+				return err
+			}
+			ops = append(ops, state.Create(tenant, headKey(tree), raw))
+		} else {
+			ops = append(ops, state.PutAt(tenant, headKey(tree), raw, rev))
+		}
+		if err := s.st.Write(ctx, nsTrees, ops...); err != nil {
+			if errors.Is(err, state.ErrConflict) {
+				return err
+			}
+			return fmt.Errorf("drive: write: %w", err)
+		}
+		if v.N != cur.N {
+			s.cache.put("v\x00"+tk(tenant, tree)+"\x00"+next.Gen+"\x00"+state.Seq(v.N), v, int64(256+96*len(v.Entries)))
+		}
+		if len(pruned) > 0 && next.Gen == "" {
+			// Best effort: a version written before versions were kept
+			// beside their head, left behind, is unreachable, not wrong.
+			_ = s.st.Write(ctx, nsVersions, pruned...)
+		}
+		out = result{version: v, wrote: true}
+		return nil
+	})
+	if errors.Is(err, state.ErrBusy) {
+		return result{}, fmt.Errorf("drive: %s: %w", tree.Key(), err)
+	}
+	return out, err
+}
+
+// mark lists a tree in the directory. Listing it again writes the same.
+func (s *Store) mark(ctx context.Context, tenant string, tree Tree) error {
+	raw, _ := json.Marshal(tree)
+	if err := s.st.Write(ctx, nsDir, state.Put(tenant, tree.Key(), raw)); err != nil {
+		return fmt.Errorf("drive: list tree: %w", err)
+	}
+	return nil
+}
+
+// openIDs lists a tree's proposals, for a head written before it kept them.
+func (s *Store) openIDs(ctx context.Context, tenant string, tree Tree) ([]string, error) {
+	ps, err := s.listProposals(ctx, tenant, tree)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(ps))
+	for _, p := range ps {
+		ids = append(ids, p.ID)
+	}
+	return ids, nil
+}
+
+// listProposals reads a tree's proposals: at most MaxProposals, which every
+// write enforces.
+func (s *Store) listProposals(ctx context.Context, tenant string, tree Tree) ([]Proposal, error) {
+	recs, next, err := s.st.List(ctx, nsTrees, tenant, state.Query{Prefix: proposalPrefix(tree), Limit: MaxProposals + 1})
+	if err != nil {
+		return nil, fmt.Errorf("drive: read proposals: %w", err)
+	}
+	if len(recs) > MaxProposals || next != "" && len(recs) == MaxProposals+1 {
+		return nil, fmt.Errorf("%w: %s holds more than %d proposals", ErrTooLarge, tree.Key(), MaxProposals)
+	}
+	out := make([]Proposal, 0, len(recs))
+	for _, r := range recs {
+		var p Proposal
+		if err := json.Unmarshal(r.Value, &p); err != nil {
+			return nil, fmt.Errorf("drive: read proposal %q: %w", r.Key, err)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (s *Store) readProposal(ctx context.Context, tenant string, tree Tree, id string) (Proposal, error) {
+	raw, err := s.st.Get(ctx, nsTrees, tenant, proposalKey(tree, id))
+	if errors.Is(err, state.ErrNotFound) {
+		return Proposal{}, fmt.Errorf("%w: proposal %q", ErrNotFound, id)
+	}
+	if err != nil {
+		return Proposal{}, fmt.Errorf("drive: read proposal: %w", err)
+	}
+	var p Proposal
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return Proposal{}, fmt.Errorf("drive: read proposal: %w", err)
+	}
+	return p, nil
+}
+
 // CommitInput is a change to a tree's head.
 type CommitInput struct {
 	// Base is the version the changes were made against. A path changed
@@ -432,113 +691,51 @@ func (s *Store) Commit(ctx context.Context, tenant string, who Actor, tree Tree,
 	if err != nil {
 		return Version{}, err
 	}
-	for _, id := range in.Resolves {
-		if _, ok := s.proposal(tenant, tree, id); !ok {
-			return Version{}, fmt.Errorf("%w: proposal %q", ErrNotFound, id)
+	r, err := s.mutate(ctx, tenant, tree, func(t treeState) (change, error) {
+		for _, id := range in.Resolves {
+			if !t.open(id) {
+				return change{}, fmt.Errorf("%w: proposal %q", ErrNotFound, id)
+			}
 		}
-	}
-	return s.apply(ctx, tenant, tree, in, changes, 0)
-}
-
-func (s *Store) proposal(tenant string, tree Tree, id string) (Proposal, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	p, ok := s.proposals[tk(tenant, tree)][id]
-	return p, ok
-}
-
-// apply writes a new version from the head and changes, or from a restored
-// version's entries when restored is set.
-func (s *Store) apply(ctx context.Context, tenant string, tree Tree, in CommitInput, changes []Change, restored int64) (Version, error) {
-	s.mu.Lock()
-	k := tk(tenant, tree)
-	h := s.heads[k]
-	cur, err := s.version(ctx, tenant, tree, h.Version)
+		entries, err := s.rebase(ctx, tenant, t, in.Base, changes)
+		if err != nil {
+			return change{}, err
+		}
+		return change{entries: entries, meta: meta(in)}, nil
+	})
 	if err != nil {
-		s.mu.Unlock()
 		return Version{}, err
 	}
-	var entries []Entry
-	if restored > 0 {
-		old, err := s.version(ctx, tenant, tree, restored)
+	if r.wrote {
+		s.notify(Event{Tenant: tenant, Tree: tree, Version: r.version.N, Origin: in.Origin})
+	}
+	return r.version, nil
+}
+
+func meta(in CommitInput) Version {
+	return Version{By: in.By, At: in.At, Message: in.Message, Origin: in.Origin, Resolves: in.Resolves}
+}
+
+// rebase applies changes made against base to the head, refusing any path
+// changed since base.
+func (s *Store) rebase(ctx context.Context, tenant string, t treeState, base int64, changes []Change) ([]Entry, error) {
+	if base != Head && base != t.head.Version {
+		if base < 0 || base > t.head.Version || base != 0 && base < t.head.Oldest {
+			return nil, fmt.Errorf("%w: base version %d", ErrConflict, base)
+		}
+		was, err := s.version(ctx, tenant, t.head, base)
 		if err != nil {
-			s.mu.Unlock()
-			return Version{}, err
+			return nil, fmt.Errorf("%w: base version %d", ErrConflict, base)
 		}
-		entries = slices.Clone(old.Entries)
-	} else {
-		if in.Base != Head && in.Base != h.Version {
-			base, err := s.version(ctx, tenant, tree, in.Base)
-			if err != nil {
-				s.mu.Unlock()
-				return Version{}, fmt.Errorf("%w: base version %d", ErrConflict, in.Base)
-			}
-			for _, c := range changes {
-				was, _ := base.Lookup(c.Path)
-				now, _ := cur.Lookup(c.Path)
-				if was != now {
-					s.mu.Unlock()
-					return Version{}, fmt.Errorf("%w: %s", ErrConflict, c.Path)
-				}
+		for _, c := range changes {
+			a, _ := was.Lookup(c.Path)
+			b, _ := t.cur.Lookup(c.Path)
+			if a != b {
+				return nil, fmt.Errorf("%w: %s", ErrConflict, c.Path)
 			}
 		}
-		entries = applyChanges(cur.Entries, changes)
 	}
-	if len(entries) > MaxEntries {
-		s.mu.Unlock()
-		return Version{}, fmt.Errorf("%w: a tree holds at most %d files", ErrTooLarge, MaxEntries)
-	}
-	if slices.Equal(entries, cur.Entries) && len(in.Resolves) == 0 {
-		s.mu.Unlock()
-		return cur, nil
-	}
-	at := in.At
-	if at.IsZero() {
-		at = s.now()
-	}
-	v := Version{Tree: tree, N: h.Version + 1, Parent: h.Version, Entries: entries, By: in.By, At: at.UTC(), Message: in.Message, Origin: in.Origin, Restored: restored, Resolves: in.Resolves}
-	if slices.Equal(entries, cur.Entries) {
-		// Only proposals are closed: no version is written.
-		v = cur
-	} else {
-		raw, _ := json.Marshal(v)
-		if err := s.st.Write(ctx, nsVersions, state.Put(tenant, versionKey(tree, v.N), raw)); err != nil {
-			s.mu.Unlock()
-			return Version{}, fmt.Errorf("drive: write version: %w", err)
-		}
-	}
-	next := headRecord{Tree: tree, Version: v.N, Oldest: max(h.Oldest, 1)}
-	var prune []state.Op
-	for next.Version-next.Oldest+1 > MaxVersions {
-		prune = append(prune, state.Delete(tenant, versionKey(tree, next.Oldest)))
-		next.Oldest++
-	}
-	rawHead, _ := json.Marshal(next)
-	ops := []state.Op{state.Put(tenant, headKey(tree), rawHead)}
-	for _, id := range in.Resolves {
-		ops = append(ops, state.Delete(tenant, proposalKey(tree, id)))
-	}
-	if err := s.st.Write(ctx, nsTrees, ops...); err != nil {
-		s.mu.Unlock()
-		return Version{}, fmt.Errorf("drive: write head: %w", err)
-	}
-	s.heads[k] = next
-	for _, id := range in.Resolves {
-		delete(s.proposals[k], id)
-	}
-	if len(s.proposals[k]) == 0 {
-		delete(s.proposals, k)
-	}
-	if v.N != cur.N || cur.N == 0 {
-		s.cache.put("v\x00"+k+"\x00"+state.Seq(v.N), v, int64(256+96*len(v.Entries)))
-	}
-	s.mu.Unlock()
-	if len(prune) > 0 {
-		// Best effort: a version left behind is unreachable, not wrong.
-		_ = s.st.Write(ctx, nsVersions, prune...)
-	}
-	s.notify(Event{Tenant: tenant, Tree: tree, Version: v.N, Origin: in.Origin})
-	return v, nil
+	return applyChanges(t.cur.Entries, changes), nil
 }
 
 func applyChanges(entries []Entry, changes []Change) []Entry {
@@ -579,6 +776,30 @@ func (s *Store) Propose(ctx context.Context, tenant string, who Actor, tree Tree
 	if err := s.check(who, tree, func(g Grant) bool { return g.Propose }); err != nil {
 		return Proposal{}, err
 	}
+	p, err := s.proposal(ctx, tenant, tree, in)
+	if err != nil {
+		return Proposal{}, err
+	}
+	r, err := s.mutate(ctx, tenant, tree, func(t treeState) (change, error) {
+		q := p
+		if q.Base == Head {
+			q.Base = t.head.Version
+		}
+		p = q
+		return change{propose: []Proposal{q}}, nil
+	})
+	if err != nil {
+		return Proposal{}, err
+	}
+	if r.wrote {
+		s.notify(Event{Tenant: tenant, Tree: tree, Origin: in.Origin, Proposal: p.ID})
+	}
+	return p, nil
+}
+
+// proposal checks a proposal and uploads its content. Its Base is left as
+// given, Head included.
+func (s *Store) proposal(ctx context.Context, tenant string, tree Tree, in ProposeInput) (Proposal, error) {
 	if in.ID == "" {
 		in.ID = "p_" + rand.Text()
 	}
@@ -593,28 +814,7 @@ func (s *Store) Propose(ctx context.Context, tenant string, who Actor, tree Tree
 	if at.IsZero() {
 		at = s.now()
 	}
-	s.mu.Lock()
-	k := tk(tenant, tree)
-	if in.Base == Head {
-		in.Base = s.heads[k].Version
-	}
-	p := Proposal{ID: in.ID, Tree: tree, Base: in.Base, Changes: changes, By: in.By, At: at.UTC(), Message: in.Message, Origin: in.Origin}
-	if _, ok := s.proposals[k][p.ID]; !ok && len(s.proposals[k]) >= MaxProposals {
-		s.mu.Unlock()
-		return Proposal{}, fmt.Errorf("%w: a tree holds at most %d open proposals", ErrTooLarge, MaxProposals)
-	}
-	raw, _ := json.Marshal(p)
-	if err := s.st.Write(ctx, nsTrees, state.Put(tenant, proposalKey(tree, p.ID), raw)); err != nil {
-		s.mu.Unlock()
-		return Proposal{}, fmt.Errorf("drive: write proposal: %w", err)
-	}
-	if s.proposals[k] == nil {
-		s.proposals[k] = map[string]Proposal{}
-	}
-	s.proposals[k][p.ID] = p
-	s.mu.Unlock()
-	s.notify(Event{Tenant: tenant, Tree: tree, Origin: in.Origin, Proposal: p.ID})
-	return p, nil
+	return Proposal{ID: in.ID, Tree: tree, Base: in.Base, Changes: changes, By: in.By, At: at.UTC(), Message: in.Message, Origin: in.Origin}, nil
 }
 
 // Proposals returns a tree's open proposals, oldest first.
@@ -622,11 +822,11 @@ func (s *Store) Proposals(tenant string, who Actor, tree Tree) ([]Proposal, erro
 	if err := s.check(who, tree, func(g Grant) bool { return g.Read }); err != nil {
 		return nil, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]Proposal, 0, len(s.proposals[tk(tenant, tree)]))
-	for _, p := range s.proposals[tk(tenant, tree)] {
-		out = append(out, p)
+	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	defer cancel()
+	out, err := s.listProposals(ctx, tenant, tree)
+	if err != nil {
+		return nil, err
 	}
 	slices.SortFunc(out, func(a, b Proposal) int {
 		if c := a.At.Compare(b.At); c != 0 {
@@ -643,11 +843,27 @@ func (s *Store) Approve(ctx context.Context, tenant string, who Actor, tree Tree
 	if err := s.check(who, tree, func(g Grant) bool { return g.Approve }); err != nil {
 		return Version{}, err
 	}
-	p, ok := s.proposal(tenant, tree, id)
-	if !ok {
-		return Version{}, fmt.Errorf("%w: proposal %q", ErrNotFound, id)
+	var origin string
+	r, err := s.mutate(ctx, tenant, tree, func(t treeState) (change, error) {
+		if !t.open(id) {
+			return change{}, fmt.Errorf("%w: proposal %q", ErrNotFound, id)
+		}
+		p, err := s.readProposal(ctx, tenant, tree, id)
+		if err != nil {
+			return change{}, err
+		}
+		entries, err := s.rebase(ctx, tenant, t, p.Base, p.Changes)
+		if err != nil {
+			return change{}, err
+		}
+		origin = p.Origin
+		return change{entries: entries, meta: Version{By: by, At: at, Message: p.Message, Origin: p.Origin, Resolves: []string{id}}}, nil
+	})
+	if err != nil {
+		return Version{}, err
 	}
-	return s.apply(ctx, tenant, tree, CommitInput{Base: p.Base, By: by, At: at, Message: p.Message, Origin: p.Origin, Resolves: []string{id}}, p.Changes, 0)
+	s.notify(Event{Tenant: tenant, Tree: tree, Version: r.version.N, Origin: origin})
+	return r.version, nil
 }
 
 // Discard closes a proposal without applying it.
@@ -656,21 +872,15 @@ func (s *Store) Discard(ctx context.Context, tenant string, who Actor, tree Tree
 	if err := s.check(who, tree, func(g Grant) bool { return g.Approve }); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	k := tk(tenant, tree)
-	if _, ok := s.proposals[k][id]; !ok {
-		s.mu.Unlock()
-		return fmt.Errorf("%w: proposal %q", ErrNotFound, id)
+	_, err := s.mutate(ctx, tenant, tree, func(t treeState) (change, error) {
+		if !t.open(id) {
+			return change{}, fmt.Errorf("%w: proposal %q", ErrNotFound, id)
+		}
+		return change{discard: []string{id}}, nil
+	})
+	if err != nil {
+		return err
 	}
-	if err := s.st.Write(ctx, nsTrees, state.Delete(tenant, proposalKey(tree, id))); err != nil {
-		s.mu.Unlock()
-		return fmt.Errorf("drive: discard: %w", err)
-	}
-	delete(s.proposals[k], id)
-	if len(s.proposals[k]) == 0 {
-		delete(s.proposals, k)
-	}
-	s.mu.Unlock()
 	s.notify(Event{Tenant: tenant, Tree: tree, Proposal: id, Origin: origin})
 	return nil
 }
@@ -681,44 +891,169 @@ func (s *Store) Restore(ctx context.Context, tenant string, who Actor, tree Tree
 	if err := s.check(who, tree, func(g Grant) bool { return g.Approve }); err != nil {
 		return Version{}, err
 	}
-	h := s.headOf(tenant, tree)
-	if version <= 0 || version > h.Version || version < h.Oldest {
-		return Version{}, fmt.Errorf("%w: version %d of %s", ErrNotFound, version, tree.Key())
+	r, err := s.mutate(ctx, tenant, tree, func(t treeState) (change, error) {
+		if version <= 0 || version > t.head.Version || version < t.head.Oldest {
+			return change{}, fmt.Errorf("%w: version %d of %s", ErrNotFound, version, tree.Key())
+		}
+		old, err := s.version(ctx, tenant, t.head, version)
+		if err != nil {
+			return change{}, err
+		}
+		return change{entries: slices.Clone(old.Entries), restored: version, meta: Version{By: by, At: at, Message: fmt.Sprintf("restore version %d", version), Origin: "restore"}}, nil
+	})
+	if err != nil {
+		return Version{}, err
 	}
-	return s.apply(ctx, tenant, tree, CommitInput{By: by, At: at, Message: fmt.Sprintf("restore version %d", version), Origin: "restore"}, nil, version)
+	if r.wrote {
+		s.notify(Event{Tenant: tenant, Tree: tree, Version: r.version.N, Origin: "restore"})
+	}
+	return r.version, nil
 }
 
-// Drop forgets a tree: its head, its proposals and its versions. The content
-// stays in the blob store, where other trees may share it. Origin is reported
-// to watchers.
+// EditInput is what an Edit writes to a tree in one change: files committed
+// to the head, proposals held or replaced, and proposals closed.
+type EditInput struct {
+	// Changes are committed to the head as it is.
+	Changes []Change
+	// Resolves close proposals as applied by this version; Discard closes
+	// them without it.
+	Resolves []string
+	Discard  []string
+	Propose  []ProposeInput
+	By       string
+	At       time.Time
+	Message  string
+	Origin   string
+}
+
+// Edit reads a tree's head and open proposals, passes them to fn, and writes
+// what fn returns in one change, at the head it read: when another writer
+// changed the tree in between, it reads again and calls fn again, so fn must
+// not keep anything from a call that did not write. It takes every grant
+// what it writes needs. It returns the head after the change.
+func (s *Store) Edit(ctx context.Context, tenant string, who Actor, tree Tree, fn func(head Version, open []Proposal) (EditInput, error)) (Version, error) {
+	if err := s.check(who, tree, func(g Grant) bool { return g.Read }); err != nil {
+		return Version{}, err
+	}
+	var origin string
+	r, err := s.mutate(ctx, tenant, tree, func(t treeState) (change, error) {
+		open, err := s.listProposals(ctx, tenant, tree)
+		if err != nil {
+			return change{}, err
+		}
+		in, err := fn(t.cur, open)
+		if err != nil {
+			return change{}, err
+		}
+		g := who.grant(tree)
+		switch {
+		case (len(in.Changes) > 0 || len(in.Resolves) > 0) && !g.Write,
+			len(in.Propose) > 0 && !g.Propose,
+			len(in.Discard) > 0 && !g.Approve:
+			return change{}, fmt.Errorf("%w: %s", ErrForbidden, tree.Key())
+		}
+		for _, id := range slices.Concat(in.Resolves, in.Discard) {
+			if !t.open(id) {
+				return change{}, fmt.Errorf("%w: proposal %q", ErrNotFound, id)
+			}
+		}
+		c := change{discard: in.Discard, meta: Version{By: in.By, At: in.At, Message: in.Message, Origin: in.Origin, Resolves: in.Resolves}}
+		if len(in.Changes) > 0 {
+			changes, err := s.upload(ctx, tenant, tree, in.Changes)
+			if err != nil {
+				return change{}, err
+			}
+			c.entries = applyChanges(t.cur.Entries, changes)
+		} else if len(in.Resolves) > 0 {
+			// Only proposals are closed: no version is written.
+			c.discard = slices.Concat(c.discard, in.Resolves)
+			c.meta.Resolves = nil
+		}
+		if c.entries != nil && slices.Equal(c.entries, t.cur.Entries) && len(c.meta.Resolves) > 0 {
+			c.discard = slices.Concat(c.discard, c.meta.Resolves)
+			c.meta.Resolves = nil
+		}
+		for _, pin := range in.Propose {
+			p, err := s.proposal(ctx, tenant, tree, pin)
+			if err != nil {
+				return change{}, err
+			}
+			if p.Base == Head {
+				p.Base = t.head.Version
+			}
+			c.propose = append(c.propose, p)
+		}
+		origin = in.Origin
+		return c, nil
+	})
+	if err != nil {
+		return Version{}, err
+	}
+	if r.wrote {
+		s.notify(Event{Tenant: tenant, Tree: tree, Version: r.version.N, Origin: origin})
+	}
+	return r.version, nil
+}
+
+// Drop forgets a tree: its head, its proposals and its versions, in one
+// write at the head it read. The content stays in the blob store, where
+// other trees may share it. The tree stays listed, as an empty tree. Origin
+// is reported to watchers.
 func (s *Store) Drop(ctx context.Context, tenant string, tree Tree, origin string) error {
 	if err := tree.Valid(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	k := tk(tenant, tree)
-	h, held := s.heads[k]
-	ops := []state.Op{}
-	if held {
-		ops = append(ops, state.Delete(tenant, headKey(tree)))
+	var dropped headRecord
+	held := false
+	err := state.Retry(func() error {
+		h, rev, err := s.head(ctx, tenant, tree)
+		if err != nil {
+			return err
+		}
+		open := h.Open
+		if !h.Indexed {
+			if open, err = s.openIDs(ctx, tenant, tree); err != nil {
+				return err
+			}
+		}
+		var ops []state.Op
+		for _, id := range open {
+			ops = append(ops, state.Delete(tenant, proposalKey(tree, id)))
+		}
+		if rev == state.Missing {
+			if len(ops) == 0 {
+				held = false
+				return nil
+			}
+			// Proposals written before a proposal wrote a head: the write
+			// requires the head to be missing still, by creating it and
+			// removing it again.
+			ops = append(ops, state.Create(tenant, headKey(tree), []byte("{}")), state.Delete(tenant, headKey(tree)))
+		} else {
+			for n := max(h.Oldest, 1); n <= h.Version; n++ {
+				ops = append(ops, state.Delete(tenant, versionKey(tree, n)))
+			}
+			ops = append(ops, state.DeleteAt(tenant, headKey(tree), rev))
+		}
+		if err := s.st.Write(ctx, nsTrees, ops...); err != nil {
+			if errors.Is(err, state.ErrConflict) {
+				return err
+			}
+			return fmt.Errorf("drive: drop: %w", err)
+		}
+		dropped, held = h, true
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	for id := range s.proposals[k] {
-		ops = append(ops, state.Delete(tenant, proposalKey(tree, id)))
-	}
-	if len(ops) == 0 {
-		s.mu.Unlock()
+	if !held {
 		return nil
 	}
-	if err := s.st.Write(ctx, nsTrees, ops...); err != nil {
-		s.mu.Unlock()
-		return fmt.Errorf("drive: drop: %w", err)
-	}
-	delete(s.heads, k)
-	delete(s.proposals, k)
-	s.mu.Unlock()
-	if held {
+	if dropped.Gen == "" && dropped.Version > 0 {
+		// Best effort: a version left behind is unreachable, not wrong.
 		var prune []state.Op
-		for n := max(h.Oldest, 1); n <= h.Version; n++ {
+		for n := max(dropped.Oldest, 1); n <= dropped.Version; n++ {
 			prune = append(prune, state.Delete(tenant, versionKey(tree, n)))
 		}
 		_ = s.st.Write(ctx, nsVersions, prune...)

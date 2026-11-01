@@ -73,7 +73,7 @@ func TestWhatWasStoredBeforeTheRenameSurvivesARestart(t *testing.T) {
 		if code := signedSlack(q.IngressHandler(), "wrong", mentionOf("A0DOCS", team, "Ev2", "C01", "1700000000.000200")); code == http.StatusOK {
 			t.Fatal("a webhook signed with another secret was accepted")
 		}
-		if c, ok := q.Credentials.Get(tenant, "ana", "issues"); !ok || c.Ref != "env:WARP_PERSON_ANA_ISSUES" || !credentials.Owns("env:HUMAGEN_PERSON_{subject}_", "ana", c.Ref) {
+		if c, ok, _ := q.Credentials.Get(tenant, "ana", "issues"); !ok || c.Ref != "env:WARP_PERSON_ANA_ISSUES" || !credentials.Owns("env:HUMAGEN_PERSON_{subject}_", "ana", c.Ref) {
 			t.Fatalf("ana's reference = %+v, %v", c, ok)
 		}
 		got, err := q.Runs.Get(tenant, r.ID)

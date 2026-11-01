@@ -4,8 +4,9 @@
 // Preferences belong to a person in a tenant. Nobody else reads or writes them,
 // and they change nothing about what the person is allowed to do.
 //
-// The store is in memory. Built with Open, it writes every change through a
-// state.Store and reads them back when it is built again.
+// It reads and writes the database per request (pkg/state, per request): it
+// holds nothing in memory, so any number of processes on one database agree,
+// and it does not need pkg/state's single-writer lock.
 package prefs
 
 import (
@@ -16,7 +17,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/projects"
@@ -93,22 +93,10 @@ func Defaults() Preferences {
 	return Preferences{Personal: DefaultPersonal(), Theme: System, Accent: Accents[0], Pinned: []string{}, PinnedProjects: []string{}, Muted: []string{}}
 }
 
-type photo struct {
-	data []byte
-	mime string
-}
-
-type entry struct {
-	Preferences
-	photo photo
-}
-
-// Store holds every person's preferences.
+// Store holds every person's preferences: in the namespace "prefs", one
+// record per person keyed by subject in their tenant, and their picture in
+// "prefs.photo" under the same key.
 type Store struct {
-	mu sync.RWMutex
-	by map[string]*entry
-	// kept and photos are where preferences and pictures are written. Nil
-	// keeps them only in memory.
 	kept   *state.Table[Preferences]
 	photos *state.Table[storedPhoto]
 }
@@ -119,115 +107,83 @@ type storedPhoto struct {
 	Mime string `json:"mime"`
 }
 
-// NewStore returns an empty store in memory.
-func NewStore() *Store { return &Store{by: map[string]*entry{}} }
+// NewStore returns an empty store in this process's memory.
+func NewStore() *Store {
+	s, _ := Open(nil)
+	return s
+}
 
-// Open returns a store that keeps everything in st, holding what st already
-// has. A nil st is NewStore.
+// Open returns a store on st, which may be shared with other processes. A
+// nil st keeps preferences in this process's memory.
 func Open(st state.Store) (*Store, error) {
-	s := NewStore()
-	s.kept = state.NewTable[Preferences](st, "prefs")
-	s.photos = state.NewTable[storedPhoto](st, "prefs.photo")
-	if err := s.kept.Load(func(tenant, subject string, p Preferences) error {
-		if p.Personal.Timezone == "" {
-			p.Personal.Timezone = "UTC"
-		}
-		if p.Personal.Notifications == nil {
-			p.Personal.Notifications = map[string]Delivery{}
-		}
-		if p.Pinned == nil {
-			p.Pinned = []string{}
-		}
-		if p.PinnedProjects == nil {
-			p.PinnedProjects = []string{}
-		}
-		if p.Muted == nil {
-			p.Muted = []string{}
-		}
-		s.by[key(tenant, subject)] = &entry{Preferences: p}
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("prefs: load: %w", err)
+	if st == nil {
+		st = state.NewMemory()
 	}
-	if err := s.photos.Load(func(tenant, subject string, ph storedPhoto) error {
-		if e, ok := s.by[key(tenant, subject)]; ok {
-			e.photo = photo{data: ph.Data, mime: ph.Mime}
-		}
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("prefs: load photos: %w", err)
-	}
-	return s, nil
+	return &Store{kept: state.NewTable[Preferences](st, "prefs"), photos: state.NewTable[storedPhoto](st, "prefs.photo")}, nil
 }
 
-func key(tenant, subject string) string { return tenant + "\x00" + subject }
-
-// change applies fn to a person's entry and writes the result, undoing it if
-// the write fails. With photo, the picture is written too. It is called with
-// the lock held.
-func (s *Store) change(tenant, subject string, photo bool, fn func(e *entry)) (Preferences, error) {
-	k := key(tenant, subject)
-	before, existed := s.by[k]
-	var saved entry
-	if existed {
-		saved = *before
+// normal fills what a record kept by an older release may lack.
+func normal(p Preferences) Preferences {
+	if p.Personal.Timezone == "" {
+		p.Personal.Timezone = "UTC"
 	}
-	e := s.of(tenant, subject)
-	fn(e)
-	if err := s.write(tenant, subject, e, photo); err != nil {
-		if existed {
-			*e = saved
-		} else {
-			delete(s.by, k)
-		}
-		return Preferences{}, err
+	if p.Personal.Notifications == nil {
+		p.Personal.Notifications = map[string]Delivery{}
 	}
-	return clonePreferences(e.Preferences), nil
+	if p.Pinned == nil {
+		p.Pinned = []string{}
+	}
+	if p.PinnedProjects == nil {
+		p.PinnedProjects = []string{}
+	}
+	if p.Muted == nil {
+		p.Muted = []string{}
+	}
+	return p
 }
 
-func (s *Store) write(tenant, subject string, e *entry, photo bool) error {
-	if !s.kept.Enabled() {
-		return nil
-	}
-	if photo {
-		// The picture is written first: preferences that say there is a
-		// picture never point at one that was not kept.
-		var err error
-		if e.HasPhoto {
-			err = s.photos.Put(tenant, subject, storedPhoto{Data: e.photo.data, Mime: e.photo.mime})
-		} else {
-			err = s.photos.Delete(tenant, subject)
+// change applies fn to a person's preferences, as last written, and writes
+// the result at the version it read, reading again when another writer
+// moved them in between. fn returning state.ErrUnchanged writes nothing.
+func (s *Store) change(tenant, subject string, fn func(p *Preferences) error) (Preferences, error) {
+	out, err := s.kept.Update(tenant, subject, func(cur Preferences, ok bool) (Preferences, error) {
+		if !ok {
+			cur = Defaults()
 		}
-		if err != nil {
-			return fmt.Errorf("prefs: write photo: %w", err)
+		next := clonePreferences(normal(cur))
+		if err := fn(&next); err != nil {
+			return Preferences{}, err
 		}
+		return next, nil
+	})
+	if err != nil {
+		if errors.Is(err, ErrInvalid) || errors.Is(err, ErrVersion) {
+			return Preferences{}, err
+		}
+		return Preferences{}, fmt.Errorf("prefs: write: %w", err)
 	}
-	if err := s.kept.Put(tenant, subject, e.Preferences); err != nil {
-		return fmt.Errorf("prefs: write: %w", err)
-	}
-	return nil
+	return clonePreferences(normal(out)), nil
 }
 
-func (s *Store) of(tenant, subject string) *entry {
-	e, ok := s.by[key(tenant, subject)]
-	if !ok {
-		e = &entry{Preferences: Defaults()}
-		s.by[key(tenant, subject)] = e
+// Get returns a person's preferences: Defaults when they have chosen
+// nothing.
+func (s *Store) Get(tenant, subject string) (Preferences, error) {
+	it, err := s.kept.Lookup(tenant, subject)
+	if errors.Is(err, state.ErrNotFound) {
+		return Defaults(), nil
 	}
-	return e
-}
-
-// Get returns a person's preferences.
-func (s *Store) Get(tenant, subject string) Preferences {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if e, ok := s.by[key(tenant, subject)]; ok {
-		return clonePreferences(e.Preferences)
+	if err != nil {
+		return Preferences{}, fmt.Errorf("prefs: read: %w", err)
 	}
-	return Defaults()
+	return normal(it.Value), nil
 }
 
 // Set replaces what a person can choose. The photo is changed separately.
+//
+// With personal, an email opt-in that changes must name the version after
+// the one stored (Personal.EmailVersion), and an opt-in that does not change
+// keeps the stored version: a change made from preferences read before
+// another changed the opt-in is ErrVersion, whichever process made either.
 func (s *Store) Set(tenant, subject string, next Preferences, personal ...Personal) (Preferences, error) {
 	if len(personal) > 1 {
 		return Preferences{}, ErrInvalid
@@ -255,13 +211,19 @@ func (s *Store) Set(tenant, subject string, next Preferences, personal ...Person
 	if !ok {
 		return Preferences{}, fmt.Errorf("%w: accent is one of %s", ErrInvalid, strings.Join(Accents, ", "))
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.change(tenant, subject, false, func(e *entry) {
-		e.DisplayName, e.Theme, e.Accent = next.DisplayName, next.Theme, next.Accent
+	return s.change(tenant, subject, func(e *Preferences) error {
 		if len(personal) == 1 {
-			e.Personal = personal[0]
+			p := personal[0]
+			switch {
+			case p.Email == e.Personal.Email:
+				p.EmailVersion = e.Personal.EmailVersion
+			case p.EmailVersion != e.Personal.EmailVersion+1:
+				return ErrVersion
+			}
+			e.Personal = p
 		}
+		e.DisplayName, e.Theme, e.Accent = next.DisplayName, next.Theme, next.Accent
+		return nil
 	})
 }
 
@@ -291,9 +253,7 @@ func (s *Store) SetPinned(tenant, subject string, ids []string) (Preferences, er
 	if err != nil {
 		return Preferences{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.change(tenant, subject, false, func(e *entry) { e.Pinned = next })
+	return s.change(tenant, subject, func(e *Preferences) error { e.Pinned = next; return nil })
 }
 
 // CleanPinnedProjects bounds project shortcuts and keeps each name once.
@@ -321,9 +281,7 @@ func (s *Store) SetPinnedProjects(tenant, subject string, names []string) (Prefe
 	if err != nil {
 		return Preferences{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.change(tenant, subject, false, func(e *entry) { e.PinnedProjects = next })
+	return s.change(tenant, subject, func(e *Preferences) error { e.PinnedProjects = next; return nil })
 }
 
 // CleanMuted checks a list of muted projects and drops repeats, keeping the
@@ -356,21 +314,20 @@ func (s *Store) SetMuted(tenant, subject string, names []string) (Preferences, e
 	if err != nil {
 		return Preferences{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.change(tenant, subject, false, func(e *entry) { e.Muted = next })
+	return s.change(tenant, subject, func(e *Preferences) error { e.Muted = next; return nil })
 }
 
 // MarkOnboarded records that a person has been through the first-run questions.
 // The time is the server's, and the first one stands: asking twice does not
 // move it.
 func (s *Store) MarkOnboarded(tenant, subject string, at time.Time) (Preferences, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if e, ok := s.by[key(tenant, subject)]; ok && !e.OnboardedAt.IsZero() {
-		return clonePreferences(e.Preferences), nil
-	}
-	return s.change(tenant, subject, false, func(e *entry) { e.OnboardedAt = at })
+	return s.change(tenant, subject, func(e *Preferences) error {
+		if !e.OnboardedAt.IsZero() {
+			return state.ErrUnchanged
+		}
+		e.OnboardedAt = at
+		return nil
+	})
 }
 
 // imageType reports the type of an image from its own bytes. What the uploader
@@ -401,34 +358,47 @@ func (s *Store) SetPhoto(tenant, subject string, data []byte) (Preferences, erro
 	if !ok || http.DetectContentType(data) != mime {
 		return Preferences{}, fmt.Errorf("%w: a picture is a PNG, JPEG or WebP image", ErrInvalid)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.change(tenant, subject, true, func(e *entry) {
-		e.photo = photo{data: bytes.Clone(data), mime: mime}
+	// The picture is written first: preferences that say there is a
+	// picture never point at one that was not kept.
+	if err := s.photos.Put(tenant, subject, storedPhoto{Data: bytes.Clone(data), Mime: mime}); err != nil {
+		return Preferences{}, fmt.Errorf("prefs: write photo: %w", err)
+	}
+	return s.change(tenant, subject, func(e *Preferences) error {
 		e.HasPhoto = true
 		e.PhotoVersion++
+		return nil
 	})
 }
 
 // ClearPhoto removes a profile picture.
 func (s *Store) ClearPhoto(tenant, subject string) (Preferences, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.change(tenant, subject, true, func(e *entry) {
-		e.photo, e.HasPhoto = photo{}, false
+	if err := s.photos.Delete(tenant, subject); err != nil {
+		return Preferences{}, fmt.Errorf("prefs: write photo: %w", err)
+	}
+	return s.change(tenant, subject, func(e *Preferences) error {
+		e.HasPhoto = false
 		e.PhotoVersion++
+		return nil
 	})
 }
 
 // Photo returns a person's picture and its type.
 func (s *Store) Photo(tenant, subject string) ([]byte, string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	e, ok := s.by[key(tenant, subject)]
-	if !ok || !e.HasPhoto {
+	p, err := s.Get(tenant, subject)
+	if err != nil {
+		return nil, "", err
+	}
+	if !p.HasPhoto {
 		return nil, "", ErrNoPhoto
 	}
-	return e.photo.data, e.photo.mime, nil
+	it, err := s.photos.Lookup(tenant, subject)
+	if errors.Is(err, state.ErrNotFound) {
+		return nil, "", ErrNoPhoto
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("prefs: read photo: %w", err)
+	}
+	return it.Value.Data, it.Value.Mime, nil
 }
 
 func clonePreferences(p Preferences) Preferences {

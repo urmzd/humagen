@@ -28,7 +28,7 @@ func TestRestart(t *testing.T) {
 		if err := x.Record(rootID, rootTag, 2); err != nil {
 			t.Fatal(err)
 		}
-		x.PinRequesters(rootID, []string{"ada", "slack:U1"})
+		x.PinRequesters("acme", rootID, []string{"ada", "slack:U1"})
 		child, err := call.New(rootTag, call.Request{Key: "k1", Agent: "helper", Text: "help", Mode: call.Subagent, Lease: 500}, call.State{}, call.Limits{MaxDepth: 3, MaxFanOut: 3}, t0)
 		if err != nil {
 			t.Fatal(err)
@@ -37,23 +37,14 @@ func TestRestart(t *testing.T) {
 		if err := x.Record(childID, child, 1); err != nil {
 			t.Fatal(err)
 		}
-		x.Called(rootID, 500)
+		x.Called("acme", rootID, 500)
 		x.SetTitle("acme", "th-1", "Release notes")
 		record(t, x, "globex", "other", "lead", "api", time.Second, nil)
 		end(t, x, "acme", rootID, time.Second, event.TypeStarted, wire.Lifecycle{Attempt: 1})
-		x.Spend(childID, 120)
+		x.Spend("acme", childID, 120)
 		end(t, x, "acme", childID, 2*time.Second, event.TypeCompleted, wire.Lifecycle{Text: "done"})
 		c, _ := x.Get("acme", childID)
 		x.SettleCall(c)
-
-		// Before a flush only the records are written.
-		early, _ := Open(st)
-		if r, err := early.Get("acme", childID); err != nil || r.Status != Accepted {
-			t.Fatalf("before a flush = %+v, %v", r, err)
-		}
-		if err := x.Flush(); err != nil {
-			t.Fatal(err)
-		}
 
 		again, err := Open(st)
 		if err != nil {
@@ -73,9 +64,6 @@ func TestRestart(t *testing.T) {
 		r, _ := again.Get("acme", rootID)
 		if r.Text != "what I typed" || r.Thread != "th-1" || r.Routed != "best_fit" || r.Calls != 1 || r.Granted != 0 || r.Spent != 120 || r.Status != Running {
 			t.Fatalf("root after restart = %+v", r)
-		}
-		if got := again.Active(); len(got) != 2 {
-			t.Fatalf("active after restart = %v", got)
 		}
 		// What has not ended comes back with the tag it was accepted with,
 		// which is where its routes are registered again from.
@@ -111,18 +99,21 @@ func TestFailedWrites(t *testing.T) {
 	if _, err := x.Get("acme", "r2"); !errors.Is(err, ErrNotFound) {
 		t.Fatal("a run that was not written was recorded")
 	}
-	// An event already happened: it is kept in memory and written later.
-	end(t, x, "acme", "r1", time.Second, event.TypeCompleted, wire.Lifecycle{Text: "ok"})
-	if err := x.Flush(); !errors.Is(err, statetest.ErrInjected) {
-		t.Fatalf("Flush = %v", err)
+	// An event that cannot be written is not folded: the run is as it was,
+	// and the event is folded when it is delivered again.
+	if _, ended := end(t, x, "acme", "r1", time.Second, event.TypeCompleted, wire.Lifecycle{Text: "ok"}); ended {
+		t.Fatal("an ending that was not written was reported")
+	}
+	if r, _ := x.Get("acme", "r1"); r.Status != Accepted {
+		t.Fatalf("after a failed write = %+v", r)
 	}
 	f.Fail(nil)
-	if err := x.Flush(); err != nil {
-		t.Fatal(err)
+	if _, ended := end(t, x, "acme", "r1", time.Second, event.TypeCompleted, wire.Lifecycle{Text: "ok"}); !ended {
+		t.Fatal("the event delivered again did not end the run")
 	}
 	again, _ := Open(f)
 	if r, _ := again.Get("acme", "r1"); r.Status != Completed || r.Answer != "ok" {
-		t.Fatalf("after a failed flush and a good one = %+v", r)
+		t.Fatalf("after a failed write and a good one = %+v", r)
 	}
 	if err := x.Record("r2", tag, 1); err != nil {
 		t.Fatal(err)

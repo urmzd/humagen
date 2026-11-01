@@ -36,11 +36,11 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := again.List("acme", "lead")
+		got := listOf(t, again, "acme", "lead")
 		if len(got) != 2 || got[0].ID != a.ID || got[1].ID != p.ID || got[1].Status != Approved || !got[0].At.Equal(now) {
 			t.Fatalf("after restart = %+v", got)
 		}
-		if len(again.List("acme", ProjectOwner("web"))) != 0 {
+		if len(listOf(t, again, "acme", ProjectOwner("web"))) != 0 {
 			t.Fatal("a dropped owner came back")
 		}
 		// Ids are never issued twice, even those of notes that are gone.
@@ -62,12 +62,12 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	if err := s.Remove("acme", "lead", a.ID); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Remove = %v", err)
 	}
-	if got := s.List("acme", "lead"); len(got) != 1 || got[0].ID != a.ID {
+	if got := listOf(t, s, "acme", "lead"); len(got) != 1 || got[0].ID != a.ID {
 		t.Fatalf("after failed writes = %+v", got)
 	}
 	f.Fail(nil)
 	n, _ := s.Add("acme", "lead", "Next.", Person, Approved, "ada", now)
-	if s.next != 2 || n.ID == a.ID || !strings.HasPrefix(n.ID, "m_") {
+	if n.ID == a.ID || !strings.HasPrefix(n.ID, "m_") || len(listOf(t, s, "acme", "lead")) != 2 {
 		t.Fatalf("a failed add used an id: next is %q", n.ID)
 	}
 }
@@ -98,7 +98,7 @@ func TestPublicMemoryIDsRevealNoPrivateSequence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := replay.List("acme", "public")
+		got := listOf(t, replay, "acme", "public")
 		if len(got) != 2 || got[0].ID != a.ID || got[1].ID != b.ID {
 			t.Fatal("opaque IDs changed on replay")
 		}

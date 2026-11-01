@@ -75,7 +75,7 @@ func TestSearchIsDefaultDeny(t *testing.T) {
 	if hits, _ := s.Search("globex", []string{"warehouse"}, "churn", 5); len(hits) != 0 {
 		t.Fatalf("another tenant found %v", paths(hits))
 	}
-	if got := s.List("acme", nil, 10); len(got) != 0 {
+	if got := list(t, s, "acme", nil, 10); len(got) != 0 {
 		t.Fatalf("list with no selection = %v", got)
 	}
 }
@@ -98,7 +98,7 @@ func TestReplaceIsWholeOrNothing(t *testing.T) {
 	if !errors.Is(err, ErrInvalid) {
 		t.Fatalf("duplicate = %v", err)
 	}
-	if got := s.List("acme", []string{"warehouse"}, 10); len(got) != 3 {
+	if got := list(t, s, "acme", []string{"warehouse"}, 10); len(got) != 3 {
 		t.Fatalf("after a refused crawl: %d entries", len(got))
 	}
 	// A kept crawl drops what it no longer lists.
@@ -128,7 +128,7 @@ func TestReplaceFailsWithoutChangingMemory(t *testing.T) {
 	if _, err := s.Replace("acme", "warehouse", nil, at); err == nil {
 		t.Fatal("a failed write was accepted")
 	}
-	if got := s.List("acme", []string{"warehouse"}, 10); len(got) != 3 {
+	if got := list(t, s, "acme", []string{"warehouse"}, 10); len(got) != 3 {
 		t.Fatalf("after a failed write: %d entries", len(got))
 	}
 }
@@ -217,7 +217,7 @@ func TestDeclareDropsWhatAnotherOwnerCrawled(t *testing.T) {
 	}
 	// Another owner's credential has crawled nothing yet.
 	c, _ = s.Declare("acme", Connector{Name: "warehouse", System: "bigquery", Owner: "bo", Project: "finance"})
-	if c.Entries != 0 || c.CrawledAt != nil || len(s.List("acme", []string{"warehouse"}, 10)) != 0 {
+	if c.Entries != 0 || c.CrawledAt != nil || len(list(t, s, "acme", []string{"warehouse"}, 10)) != 0 {
 		t.Fatalf("new owner = %+v", c)
 	}
 	if _, err := s.Declare("acme", Connector{Name: "Bad Name", System: "bigquery"}); !errors.Is(err, ErrInvalid) {
@@ -240,12 +240,19 @@ func TestRemoveAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	again, _ := Open(st)
-	if len(again.Connectors("acme")) != 0 {
+	if cs, err := again.Connectors("acme"); err != nil || len(cs) != 0 {
 		t.Fatal("removed connector came back")
 	}
 	recs, _ := st.Load(context.Background(), "catalog")
-	if len(recs) != 0 {
-		t.Fatalf("%d records left", len(recs))
+	left := 0
+	for _, r := range recs {
+		// The head stamp and the tenant directory stay; nothing of the connector does.
+		if r.Tenant != "" && r.Key != headKey {
+			left++
+		}
+	}
+	if left != 0 {
+		t.Fatalf("%d records left", left)
 	}
 }
 
@@ -257,7 +264,7 @@ func TestBoundsAreEnforced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := s.List("acme", []string{c.Name}, 1)[0]
+	e := list(t, s, "acme", []string{c.Name}, 1)[0]
 	if len(e.Description) > MaxDescription || len(e.Schema[0].Description) > MaxDescription || !strings.HasPrefix(long, e.Description) {
 		t.Fatalf("description not clipped: %d bytes", len(e.Description))
 	}
@@ -289,16 +296,23 @@ func embedded(t *testing.T, s *Store) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		s.mu.RLock()
 		done := true
-		for _, cs := range s.tenants {
+		err := s.EachTenant(func(tenant string) error {
+			cs, err := s.Connectors(tenant)
 			for _, c := range cs {
-				for _, e := range c.entries {
+				es, err := s.current(tenant, c.Name)
+				if err != nil {
+					return err
+				}
+				for _, e := range es {
 					done = done && e.vec != nil
 				}
 			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		s.mu.RUnlock()
 		if done {
 			return
 		}
@@ -337,13 +351,15 @@ func TestHybridSearchAndVectorsSurviveRecrawl(t *testing.T) {
 	}
 	// Vectors survive a restart under the new generation.
 	reopened, _ := Open(st)
-	reopened.mu.RLock()
-	for _, x := range reopened.tenants["acme"]["warehouse"].entries {
+	es, err := reopened.current("acme", "warehouse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range es {
 		if x.vec == nil {
 			t.Errorf("%s lost its vector", x.Path)
 		}
 	}
-	reopened.mu.RUnlock()
 }
 
 func TestEmbedderOutageSearchesLexically(t *testing.T) {
@@ -358,4 +374,13 @@ func TestEmbedderOutageSearchesLexically(t *testing.T) {
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("lexical fallback = %v, %v", paths(hits), err)
 	}
+}
+
+func list(t *testing.T, s *Store, tenant string, connectors []string, limit int) []Entry {
+	t.Helper()
+	got, err := s.List(tenant, connectors, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
 }

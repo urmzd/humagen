@@ -29,7 +29,7 @@ func TestAnOwnersLimitIsOnAProjectAndRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	// List orders project scopes by name: Field, then Globex.
-	got := again.List("acme")
+	got := list(t, again, "acme")
 	if len(got) != 2 || got[1].Scope.Name != "Globex" || got[1].Authority != AuthorityOwner || !got[1].ByOwner() {
 		t.Fatalf("after restart = %+v", got)
 	}
@@ -132,7 +132,7 @@ func TestAnOwnersLimitOnlyTightensAndNeverReplacesAnAdmins(t *testing.T) {
 	if err := s.DeleteOwned("acme", Scope{Project, "Globex"}, "ada", at); err != nil {
 		t.Fatalf("an owner removing their own limit = %v", err)
 	}
-	if got := s.List("acme"); len(got) != 2 {
+	if got := list(t, s, "acme"); len(got) != 2 {
 		t.Fatalf("left = %+v", got)
 	}
 }

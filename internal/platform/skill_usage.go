@@ -39,7 +39,11 @@ func (p *Platform) SkillAgents(ctx context.Context, who auth.Principal, id strin
 		return out, nil
 	}
 	seer := p.Seer(who)
-	for _, binding := range p.AgentSkillDefaults.Using(who.Tenant, library.SkillRef{ID: id, Version: version}) {
+	bindings, err := p.AgentSkillDefaults.Using(who.Tenant, library.SkillRef{ID: id, Version: version})
+	if err != nil {
+		return out, err
+	}
+	for _, binding := range bindings {
 		if !seer.Agent(binding.Agent) {
 			continue
 		}

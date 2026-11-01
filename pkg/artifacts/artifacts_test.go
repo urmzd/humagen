@@ -183,15 +183,15 @@ func TestTenantsDoNotSeeEachOther(t *testing.T) {
 		if page, next, err := x.Page(tenant, artifacts.Query{}); err != nil || len(page) != 0 || next != "" {
 			t.Errorf("%q page = %v, %q, %v", tenant, page, next, err)
 		}
-		if u := x.Usage(tenant); u.Bytes != 0 || u.Count != 0 || len(u.ByProject) != 0 {
+		if u := usageOf(t, x, tenant); u.Bytes != 0 || u.Count != 0 || len(u.ByProject) != 0 {
 			t.Errorf("%q usage = %+v", tenant, u)
 		}
 	}
 	if _, err := x.Get("acme", a.ID); err != nil {
 		t.Fatal("reading another tenant changed acme")
 	}
-	if x.Used("acme", "") != 10 || x.Used("globex", "") != 3 {
-		t.Fatalf("used = %d, %d", x.Used("acme", ""), x.Used("globex", ""))
+	if usedOf(t, x, "acme", "") != 10 || usedOf(t, x, "globex", "") != 3 {
+		t.Fatalf("used = %d, %d", usedOf(t, x, "acme", ""), usedOf(t, x, "globex", ""))
 	}
 }
 
@@ -208,7 +208,7 @@ func TestDelete(t *testing.T) {
 	if _, err := x.Delete("acme", a.ID); !errors.Is(err, artifacts.ErrNotFound) {
 		t.Fatalf("a second delete = %v", err)
 	}
-	if u := x.Usage("acme"); u.Count != 0 || u.Bytes != 0 {
+	if u := usageOf(t, x, "acme"); u.Count != 0 || u.Bytes != 0 {
 		t.Fatalf("usage after delete = %+v", u)
 	}
 }
@@ -311,7 +311,7 @@ func TestUsageCountsEveryVersion(t *testing.T) {
 	put(t, x, "acme", artifacts.Artifact{Thread: "t", Title: "a.md", Size: 150, Project: "Launch", Agent: "lead"})
 	put(t, x, "acme", artifacts.Artifact{Thread: "t", Title: "b.md", Size: 250, Project: "Ops", Agent: "helper"})
 	put(t, x, "acme", artifacts.Artifact{Thread: "t", Title: "c.md", Size: 7})
-	u := x.Usage("acme")
+	u := usageOf(t, x, "acme")
 	if u.Bytes != 507 || u.Count != 4 {
 		t.Fatalf("usage = %+v", u)
 	}
@@ -319,8 +319,8 @@ func TestUsageCountsEveryVersion(t *testing.T) {
 	if fmt.Sprint(u.ByProject) != "[{Launch 250 2} {Ops 250 1}]" || fmt.Sprint(u.ByAgent) != "[{helper 250 1} {lead 250 2}]" {
 		t.Fatalf("shares = %v, %v", u.ByProject, u.ByAgent)
 	}
-	if x.Used("acme", "") != 507 || x.Used("acme", "Launch") != 250 || x.Used("acme", "nowhere") != 0 {
-		t.Fatalf("used = %d, %d", x.Used("acme", ""), x.Used("acme", "Launch"))
+	if usedOf(t, x, "acme", "") != 507 || usedOf(t, x, "acme", "Launch") != 250 || usedOf(t, x, "acme", "nowhere") != 0 {
+		t.Fatalf("used = %d, %d", usedOf(t, x, "acme", ""), usedOf(t, x, "acme", "Launch"))
 	}
 }
 
@@ -344,8 +344,8 @@ func TestConcurrentUse(t *testing.T) {
 			for range 20 {
 				_, _ = x.Get(reader, "art-1")
 				_, _, _ = x.Page(reader, artifacts.Query{})
-				_ = x.Usage(reader)
-				_ = x.Used(tenant, "")
+				_, _ = x.Usage(reader)
+				_, _ = x.Used(tenant, "")
 				_, _, _ = x.Page(tenant, artifacts.Query{Limit: 2})
 			}
 		})
@@ -353,7 +353,7 @@ func TestConcurrentUse(t *testing.T) {
 	wg.Wait()
 	total := 0
 	for i := range 3 {
-		total += x.Usage(fmt.Sprint("t", i)).Count
+		total += usageOf(t, x, fmt.Sprint("t", i)).Count
 		page, _, _ := x.Page(fmt.Sprint("t", i), artifacts.Query{})
 		if len(page) != 4 {
 			t.Errorf("tenant %d lists %d files, want the latest of 4 titles", i, len(page))
@@ -362,4 +362,31 @@ func TestConcurrentUse(t *testing.T) {
 	if total != 160 {
 		t.Fatalf("%d of 160 publishes landed", total)
 	}
+}
+
+func usageOf(t testing.TB, x *artifacts.Index, tenant string) artifacts.Usage {
+	t.Helper()
+	u, err := x.Usage(tenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+func usedOf(t testing.TB, x *artifacts.Index, tenant, project string) int64 {
+	t.Helper()
+	n, err := x.Used(tenant, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func usedUnderOf(t testing.TB, x *artifacts.Index, tenant, project string, names []string) int64 {
+	t.Helper()
+	n, err := x.UsedUnder(tenant, project, names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

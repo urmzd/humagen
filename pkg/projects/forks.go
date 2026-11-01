@@ -3,6 +3,8 @@ package projects
 import (
 	"fmt"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // ForkOrigin is immutable lineage and the authoritative publication gate for
@@ -33,7 +35,15 @@ func (s *Store) CompleteFork(tenantName, operation string, names []string, w Wri
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tx := s.begin(tenantName)
+	return state.Retry(func() error { return s.completeFork(tenantName, operation, names, w, at) })
+}
+
+// completeFork is one attempt at CompleteFork.
+func (s *Store) completeFork(tenantName, operation string, names []string, w Writer, at time.Time) error {
+	tx, err := s.begin(tenantName)
+	if err != nil {
+		return err
+	}
 	selected := map[string]bool{}
 	for _, name := range names {
 		if selected[name] {

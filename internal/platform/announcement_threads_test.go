@@ -234,7 +234,7 @@ func TestAReplyToAWithdrawnAnnouncementOrADraftStartsNothing(t *testing.T) {
 	if _, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, "1700000000.000900", "1700000000.000901", "<@UAPP> @lead what plans?")); !errors.Is(err, platform.ErrAnnouncementGone) {
 		t.Fatalf("a reply to a withdrawn announcement = %v", err)
 	}
-	if _, ok := p.Threads.BySurface(tenant, threads.Surface{Client: "app", Channel: newsChannel, TS: "1700000000.000900"}); ok {
+	if _, ok, _ := p.Threads.BySurface(tenant, threads.Surface{Client: "app", Channel: newsChannel, TS: "1700000000.000900"}); ok {
 		t.Fatal("a reply to a withdrawn announcement started a thread")
 	}
 

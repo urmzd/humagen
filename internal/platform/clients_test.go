@@ -477,7 +477,7 @@ func TestTheNumberOfClientsIsCapped(t *testing.T) {
 	create(t, p, tenant, gh("gh-two", "acme-labs"))
 
 	// With no policy the defaults apply.
-	if caps := p.ClientCaps("globex"); caps != clients.DefaultCaps() {
+	if caps, err := p.ClientCaps("globex"); err != nil || caps != clients.DefaultCaps() {
 		t.Fatalf("caps with no policy = %+v", caps)
 	}
 }
@@ -508,8 +508,8 @@ func TestTheLastClientPlaceIsTakenOnce(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	if made != 4 || len(p.Clients.List(tenant)) != 4 {
-		t.Fatalf("%d creates succeeded and %d clients exist under a limit of 4", made, len(p.Clients.List(tenant)))
+	if all, err := p.Clients.List(tenant); err != nil || made != 4 || len(all) != 4 {
+		t.Fatalf("%d creates succeeded and %d clients exist under a limit of 4: %v", made, len(all), err)
 	}
 }
 
@@ -555,7 +555,7 @@ func TestAClientsRunLimitCountsOnlyItsOwnRuns(t *testing.T) {
 		t.Fatalf("answered %d", code)
 	}
 	eventually(t, "the refusal is in the ledger", func() bool {
-		for _, n := range p.Usage.Notices(tenant, 10) {
+		for _, n := range noticesOf(p, tenant, 10) {
 			if n.Client == "narrow" && n.Scope != nil && n.Scope.Kind == policy.Client && n.Limit == policy.LimitConcurrent {
 				return true
 			}
@@ -578,7 +578,7 @@ func TestAClientsRunLimitCountsOnlyItsOwnRuns(t *testing.T) {
 	if n := len(p.Runs.List(tenant, 50)); n != 2 {
 		t.Fatalf("%d runs exist, want the first of narrow and the one of wide", n)
 	}
-	if u := p.Usage.Usage(tenant, policy.Scope{Kind: policy.Client, Name: "narrow"}, time.Time{}); u.Concurrent != 1 {
+	if u := usageOf(p, tenant, policy.Scope{Kind: policy.Client, Name: "narrow"}, time.Time{}); u.Concurrent != 1 {
 		t.Fatalf("narrow has %d in flight, want 1", u.Concurrent)
 	}
 }
@@ -758,7 +758,7 @@ func TestATenantCannotReferenceASecretItWasNotGiven(t *testing.T) {
 			t.Errorf("globex created a client with %s: %v", name, err)
 		}
 	}
-	if got := p.Clients.List("globex"); len(got) != 0 {
+	if got, err := p.Clients.List("globex"); err != nil || len(got) != 0 {
 		t.Fatalf("a refused client was kept: %+v", got)
 	}
 	// A reference given to acme is refused for initech, which has its own list.

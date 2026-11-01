@@ -22,7 +22,11 @@ func (p *Platform) operationReminderDelay(tenant, agent string, blocked bool) ti
 		value = 2 * 60 * 60
 	}
 	for _, name := range []string{"", agent} {
-		control := p.AgentControl(tenant, name)
+		control, err := p.AgentControl(tenant, name)
+		if err != nil {
+			// The defaults stand in until the control can be read.
+			p.log.Error("platform: agent control could not be read", "error", err)
+		}
 		configured := control.ReminderAfterSeconds
 		if blocked {
 			configured = control.BlockedReminderAfterSeconds
@@ -38,12 +42,20 @@ func (p *Platform) operationReminderDelay(tenant, agent string, blocked bool) ti
 // timers. It neither invents a question nor approves or restarts any work.
 func (p *Platform) reconcileOperationReminders(ctx context.Context) {
 	at := p.now()
-	for _, tenant := range p.Inbox.Tenants() {
+	tenants, err := p.Inbox.Tenants()
+	if err != nil {
+		p.log.Warn("platform: operation reminders could not list workspaces; the next pass tries again", "error", err)
+	}
+	for _, tenant := range tenants {
 		after := ""
 		if cursor, ok := p.operationReminderCursor.Load(tenant); ok {
 			after = cursor.(string)
 		}
-		messages, next := p.Inbox.OpenPage(tenant, after, operations.MaxResults)
+		messages, next, err := p.Inbox.OpenPage(tenant, after, operations.MaxResults)
+		if err != nil {
+			p.log.Warn("platform: operation reminders could not read the inbox; the next pass tries again", "tenant", tenant, "error", err)
+			continue
+		}
 		p.operationReminderCursor.Store(tenant, next)
 		for _, message := range messages {
 			for _, part := range message.Parts {
@@ -74,15 +86,15 @@ func (p *Platform) reconcileOperationReminders(ctx context.Context) {
 					op := part.Operation
 					version := 0
 					if op.Kind == "assignment" {
-						a, ok := p.Operations.Assignment(tenant, op.ID)
-						if !ok || (a.State != operations.Blocked && a.State != operations.NeedsPerson) {
+						a, ok, err := p.Operations.Assignment(tenant, op.ID)
+						if err != nil || !ok || (a.State != operations.Blocked && a.State != operations.NeedsPerson) {
 							continue
 						}
 						version = a.Version
 						agent = a.Agent
 					} else if op.Kind == "handoff" {
-						h, ok := p.Operations.Handoff(tenant, op.ID)
-						if !ok || (h.State != operations.Blocked && h.State != operations.NeedsPerson) {
+						h, ok, err := p.Operations.Handoff(tenant, op.ID)
+						if err != nil || !ok || (h.State != operations.Blocked && h.State != operations.NeedsPerson) {
 							continue
 						}
 						version = h.Version

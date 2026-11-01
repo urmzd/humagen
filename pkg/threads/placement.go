@@ -1,8 +1,9 @@
 package threads
 
 import (
-	"github.com/urmzd/humagen/pkg/state"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // MaxMoves bounds the immutable placement history of one conversation.
@@ -19,11 +20,6 @@ type PlacementChange struct {
 	Project     string    `json:"project"`
 	Channel     string    `json:"channel"`
 	At          time.Time `json:"at"`
-}
-
-type loadedPlacement struct {
-	tenant string
-	change PlacementChange
 }
 
 func placementKey(thread string, version int) string {

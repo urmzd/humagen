@@ -29,7 +29,12 @@ func (s *Server) getOperationControl(w http.ResponseWriter, r *http.Request, who
 			return
 		}
 	}
-	ok(w, http.StatusOK, s.P.AgentState(who, r.PathValue("name")))
+	view, err := s.P.AgentState(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
 }
 func (s *Server) putOperationControl(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	if name := r.PathValue("name"); name != "" {
@@ -47,7 +52,12 @@ func (s *Server) putOperationControl(w http.ResponseWriter, r *http.Request, who
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.P.AgentState(who, r.PathValue("name")))
+	view, err := s.P.AgentState(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
 }
 func operationScope(r *http.Request, who auth.Principal) operations.Scope {
 	if r.Pattern == "GET /api/me/action-policy" || r.Pattern == "PUT /api/me/action-policy" {
@@ -73,7 +83,12 @@ func (s *Server) getActionPolicy(w http.ResponseWriter, r *http.Request, who aut
 		notFound(w)
 		return
 	}
-	ok(w, http.StatusOK, s.P.ActionPolicy(who, scope))
+	view, err := s.P.ActionPolicy(who, scope)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
 }
 func (s *Server) putActionPolicy(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	scope := operationScope(r, who)
@@ -99,7 +114,12 @@ func (s *Server) putActionPolicy(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.P.ActionPolicy(who, scope))
+	view, err := s.P.ActionPolicy(who, scope)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
 }
 func operationLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
 	v := r.URL.Query().Get("limit")
@@ -126,7 +146,11 @@ func (s *Server) listAssignments(w http.ResponseWriter, r *http.Request, who aut
 	if agent != "" {
 		agent = wire.NormalizeName(agent)
 	}
-	items := s.P.Assignments(who, limit, agent)
+	items, err := s.P.Assignments(who, limit, agent)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	views := make([]assignmentView, len(items))
 	for i, a := range items {
 		views[i] = s.assignmentView(who, a)
@@ -198,7 +222,11 @@ func (s *Server) listHandoffs(w http.ResponseWriter, r *http.Request, who auth.P
 	if !good {
 		return
 	}
-	items := s.P.Handoffs(who, limit)
+	items, err := s.P.Handoffs(who, limit)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	out := make([]handoffView, 0, len(items))
 	for _, item := range items {
 		out = append(out, s.handoffView(who, item))
@@ -206,7 +234,12 @@ func (s *Server) listHandoffs(w http.ResponseWriter, r *http.Request, who auth.P
 	ok(w, http.StatusOK, out)
 }
 func (s *Server) agentNetwork(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, s.P.AgentNetwork(who))
+	network, err := s.P.AgentNetwork(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, network)
 }
 
 func (s *Server) getHandoff(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -248,7 +281,12 @@ func (s *Server) agentRoster(w http.ResponseWriter, r *http.Request, who auth.Pr
 			return
 		}
 		if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, name, 0); err == nil && seer.Agent(name) {
-			controls[name] = s.P.AgentState(who, name)
+			view, err := s.P.AgentState(who, name)
+			if err != nil {
+				s.problem(w, err)
+				return
+			}
+			controls[name] = view
 		}
 	}
 	ok(w, http.StatusOK, map[string]any{"controls": controls, "window_days": 31})

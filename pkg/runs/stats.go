@@ -131,10 +131,34 @@ func (x *Index) summarize(tenant string, since, until time.Time, bucket time.Dur
 		return a
 	}
 
-	x.mu.RLock()
-	for _, id := range x.order {
-		r := x.runs[id]
-		if r.Tenant != tenant || r.CreatedAt.Before(since) || !r.CreatedAt.Before(until) || keep != nil && !keep(r) {
+	// The window's runs, read from the newest back to since, at most
+	// MaxScan of them, and counted oldest first.
+	var window []*Run
+	byID := map[string]*Run{}
+	err := x.scan(tenant, func(r *Run) bool {
+		if r.CreatedAt.Before(since.Add(-scanSlack)) {
+			return false
+		}
+		byID[r.ID] = r
+		if !r.CreatedAt.Before(since) && r.CreatedAt.Before(until) {
+			window = append(window, r)
+		}
+		return true
+	})
+	if err != nil {
+		x.log.Error("runs: could not read runs to summarize", "tenant", tenant, "error", err)
+	}
+	slices.Reverse(window)
+	parentOf := func(id string) *Run {
+		if p, ok := byID[id]; ok {
+			return p
+		}
+		p, _, _ := x.get(tenant, id)
+		byID[id] = p
+		return p
+	}
+	for _, r := range window {
+		if keep != nil && !keep(r) {
 			continue
 		}
 		var b *Bucket
@@ -143,7 +167,7 @@ func (x *Index) summarize(tenant string, since, until time.Time, bucket time.Dur
 		}
 		if r.Parent != "" {
 			s.Delegated++
-			if parent := x.runs[r.Parent]; parent != nil && parent.Tenant == tenant &&
+			if parent := parentOf(r.Parent); parent != nil &&
 				(r.Mode == "handoff" || r.Mode == "delegate") && (keep == nil || keep(parent)) {
 				total.g.HandoffsOut++
 				at(agents, parent.Agent).g.HandoffsOut++
@@ -204,10 +228,9 @@ func (x *Index) summarize(tenant string, since, until time.Time, bucket time.Dur
 			}
 		}
 		if r.Status.Terminal() {
-			s.Slowest = append(s.Slowest, *r)
+			s.Slowest = append(s.Slowest, citationSnapshot(r))
 		}
 	}
-	x.mu.RUnlock()
 
 	finish := func(a *acc) Group {
 		slices.Sort(a.durations)
@@ -255,16 +278,15 @@ func percentile(sorted []int64, p int) int64 {
 // count toward limit: those a reader may not see. It is given a copy, under
 // the index's read lock, so it must not call the index.
 func (x *Index) ForSchedule(tenant, schedule string, limit int, keep func(Run) bool) []Run {
-	x.mu.RLock()
-	defer x.mu.RUnlock()
 	var out []Run
-	for _, id := range slices.Backward(x.order) {
-		if r := x.runs[id]; r.Tenant == tenant && r.Schedule == schedule && (keep == nil || keep(*r)) {
-			out = append(out, *r)
-			if limit > 0 && len(out) == limit {
-				break
-			}
+	err := x.scan(tenant, func(r *Run) bool {
+		if r.Schedule == schedule && (keep == nil || keep(*r)) {
+			out = append(out, citationSnapshot(r))
 		}
+		return limit <= 0 || len(out) < limit
+	})
+	if err != nil {
+		x.log.Error("runs: could not read a schedule's runs", "tenant", tenant, "schedule", schedule, "error", err)
 	}
 	return out
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -81,12 +82,15 @@ func (s *Server) seenAgent(h handler) handler {
 // to the handler, which says so in the same words.
 func (s *Server) seenAlert(h handler) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-		id := r.PathValue("id")
-		for _, a := range s.P.Alerts.Alerts(who.Tenant) {
-			if a.ID == id && !s.P.Seer(who).Alert(a) {
-				notFound(w)
-				return
-			}
+		a, err := s.P.Alerts.Alert(who.Tenant, r.PathValue("id"))
+		switch {
+		case errors.Is(err, alerts.ErrNotFound):
+		case err != nil:
+			s.problem(w, err)
+			return
+		case !s.P.Seer(who).Alert(a):
+			notFound(w)
+			return
 		}
 		h(w, r, who)
 	}

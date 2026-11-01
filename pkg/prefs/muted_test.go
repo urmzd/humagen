@@ -14,7 +14,7 @@ import (
 
 func TestMutedIsBoundedAndNeverTheWorkspace(t *testing.T) {
 	s := NewStore()
-	if got := s.Get("acme", "ada"); got.Muted == nil || len(got.Muted) != 0 {
+	if got := get(t, s, "acme", "ada"); got.Muted == nil || len(got.Muted) != 0 {
 		t.Fatalf("default muted: %#v", got.Muted)
 	}
 	got, err := s.SetMuted("acme", "ada", []string{"Globex", "Field", "Globex"})
@@ -43,10 +43,10 @@ func TestMutedIsBoundedAndNeverTheWorkspace(t *testing.T) {
 			t.Errorf("%s: got %v", name, err)
 		}
 	}
-	if got := s.Get("acme", "ada"); !slices.Equal(got.Muted, []string{"Globex", "Field"}) {
+	if got := get(t, s, "acme", "ada"); !slices.Equal(got.Muted, []string{"Globex", "Field"}) {
 		t.Fatalf("a refused change was kept: %v", got.Muted)
 	}
-	if got := s.Get("acme", "bo"); len(got.Muted) != 0 {
+	if got := get(t, s, "acme", "bo"); len(got.Muted) != 0 {
 		t.Fatalf("another person mutes %v", got.Muted)
 	}
 }
@@ -69,11 +69,11 @@ func TestMutedSurvivesARestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := again.Get("acme", "ada").Muted; !slices.Equal(got, []string{"Globex"}) {
+		if got := get(t, again, "acme", "ada").Muted; !slices.Equal(got, []string{"Globex"}) {
 			t.Fatalf("after restart = %v", got)
 		}
 		// Preferences kept before muting existed read as muting nothing.
-		if got := again.Get("acme", "bo"); got.Muted == nil || len(got.Muted) != 0 || got.DisplayName != "Bo" {
+		if got := get(t, again, "acme", "bo"); got.Muted == nil || len(got.Muted) != 0 || got.DisplayName != "Bo" {
 			t.Fatalf("bo after restart = %#v", got)
 		}
 	})

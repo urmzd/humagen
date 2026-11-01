@@ -19,7 +19,12 @@ func (p *Platform) runNeedsSummary(ctx context.Context, run runs.Run, destinatio
 	// A source name can be deleted and recreated with different authority.
 	// Publication also checks retained query-time proofs so a later local
 	// collection cannot relabel external or unknown historical evidence.
-	for _, proof := range p.SourceEvidence.ForRun(run.Tenant, run.ID) {
+	proofs, err := p.SourceEvidence.ForRun(run.Tenant, run.ID)
+	if err != nil {
+		// Unread proofs may be external: summarize rather than publish.
+		return true
+	}
+	for _, proof := range proofs {
 		if proof.Provider != "manual" {
 			return true
 		}

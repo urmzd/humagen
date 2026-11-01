@@ -60,7 +60,7 @@ func TestPurgeDeletesMessagesAndLeavesATombstone(t *testing.T) {
 	if msgs, _, err := s.Messages("acme", th.ID, "", 10); err != nil || len(msgs) != 0 {
 		t.Fatalf("messages after purge = %v, %v", msgs, err)
 	}
-	if hits := s.Search("acme", "secret", time.Time{}, 10, func(threads.Thread) bool { return true }); len(hits) != 0 {
+	if hits, err := s.Search("acme", "secret", time.Time{}, 10, func(threads.Thread) bool { return true }); err != nil || len(hits) != 0 {
 		t.Fatalf("search still finds the deleted text: %v", hits)
 	}
 	if _, _, err := s.Post("acme", th.ID, msg("dana", "again"), t0); !errors.Is(err, threads.ErrNotFound) {
@@ -103,7 +103,7 @@ func TestArchiveAndApprovedDeletionSurviveRestart(t *testing.T) {
 		if messages, _, err := last.Messages("acme", th.ID, "", 10); err != nil || len(messages) != 0 {
 			t.Fatalf("purged messages after restart = %v, %v", messages, err)
 		}
-		if hits := last.Search("acme", "secret", time.Time{}, 10, func(threads.Thread) bool { return true }); len(hits) != 0 {
+		if hits, err := last.Search("acme", "secret", time.Time{}, 10, func(threads.Thread) bool { return true }); err != nil || len(hits) != 0 {
 			t.Fatalf("purged search after restart = %v", hits)
 		}
 	})

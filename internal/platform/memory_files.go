@@ -103,7 +103,7 @@ func (p *Platform) MemoryMounts(run runs.Run) []drive.Mount {
 // a run in their own project, or anywhere they chose.
 func (p *Platform) personalMemoryReaches(tenant, project, person string) bool {
 	pr, ok := p.Projects.Tree(tenant).Get(project)
-	return ok && pr.PersonalOwner == person || p.Prefs.Get(tenant, person).Personal.UsePersonalMemoryInProjects
+	return ok && pr.PersonalOwner == person || p.PreferencesOf(tenant, person).Personal.UsePersonalMemoryInProjects
 }
 
 // InstallMemory installs a run's memory into its instance's files. Content
@@ -145,8 +145,13 @@ func (p *Platform) FinishMemory(ctx context.Context, run runs.Run, installed []d
 		if !ok {
 			continue
 		}
+		held, err := p.Memory.List(run.Tenant, owner)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
 		var notes []memory.Note
-		for _, n := range p.Memory.List(run.Tenant, owner) {
+		for _, n := range held {
 			if n.Status == memory.Pending && n.By == run.ID {
 				notes = append(notes, n)
 			}
@@ -231,7 +236,11 @@ func (p *Platform) SearchMemory(ctx context.Context, who auth.Principal, query s
 	if who.Kind == auth.User {
 		trees = append(trees, drive.Person(who.Subject))
 	}
-	for _, t := range p.Drive.Trees(who.Tenant) {
+	all, _, err := p.Drive.Trees(ctx, who.Tenant, "", drive.MaxTrees)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range all {
 		if len(trees) == drive.MaxSearchTrees {
 			break
 		}

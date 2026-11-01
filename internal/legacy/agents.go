@@ -199,7 +199,15 @@ func ConvertAgents(ctx context.Context, st state.Store, dst *agents.Store, old O
 	for _, a := range list {
 		recs, err := convertAgent(a)
 		if err == nil {
-			_, err = dst.Import(ctx, recs)
+			// A deleted agent is retired in the write that moves it, and
+			// only by that write: one already moved, by a process moving
+			// at the same time or an earlier start, keeps its retirement
+			// as it is now.
+			if a.Deleted {
+				_, err = dst.ImportRetired(ctx, recs, AgentsConvertedBy)
+			} else {
+				_, err = dst.Import(ctx, recs)
+			}
 		}
 		if err != nil {
 			if opts.Builtin != nil && opts.Builtin(a.Name) {
@@ -214,11 +222,6 @@ func ConvertAgents(ctx context.Context, st state.Store, dst *agents.Store, old O
 				opts.Logf("agent %q in %q is disabled: %s", d.Name, d.Tenant, d.Reason)
 			}
 			continue
-		}
-		if a.Deleted {
-			if err := dst.Retire(ctx, a.Tenant, recs[0].Name, AgentsConvertedBy); err != nil {
-				return AgentConversion{}, fmt.Errorf("legacy: retire agent %q of %q: %w", a.Name, a.Tenant, err)
-			}
 		}
 		report.Converted++
 		report.Versions += len(recs)

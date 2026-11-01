@@ -126,8 +126,11 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		t.Fatalf("the connectors were built with %v", tokens)
 	}
 
-	all := p.Clients.List("trial")
-	if len(all) != 2 || len(p.Clients.List("default")) != 0 {
+	all, err := p.Clients.List("trial")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if others, err := p.Clients.List("default"); err != nil || len(all) != 2 || len(others) != 0 {
 		t.Fatalf("clients = %+v", all)
 	}
 	for _, c := range all {

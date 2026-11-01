@@ -185,7 +185,12 @@ func (p *Platform) resolveRequester(tenant string, tag event.Envelope, client st
 	if team == "" {
 		return out
 	}
-	for _, c := range p.Clients.List(tenant) {
+	all, err := p.Clients.List(tenant)
+	if err != nil {
+		p.log.Error("platform: clients could not be read", "tenant", tenant, "error", err)
+		return out
+	}
+	for _, c := range all {
 		if c.Surface != clients.Slack || c.Identity.Team != team || c.Slack == nil {
 			continue
 		}

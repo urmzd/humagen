@@ -1,20 +1,21 @@
 // Package audit keeps bounded, durable attempts and their observed outcomes.
+//
+// It reads and writes the database per request (pkg/state, per request): it
+// holds nothing in memory, so any number of processes on one database agree,
+// and it does not need pkg/state's single-writer lock.
 package audit
 
 import (
-	"container/heap"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"regexp"
-	"slices"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -25,7 +26,30 @@ const (
 	MaxRecords = 100000
 	MaxRows    = 500
 	MaxWindow  = 31 * 24 * time.Hour
-	namespace  = "audit"
+)
+
+// namespace is where attempts are kept. The tenant is the shard key; within
+// it:
+//
+//	<id>             a record, by its ID (a_<random>, or a<seq> from an
+//	                 older release)
+//	t:<at>:<id>      the same record, ordered by when it was attempted, which
+//	                 a window and retention page
+//	!n               how many records the tenant holds
+//	!next            a counter an older release kept; no longer written
+//
+// <at> is the instant as a key that sorts in time order. A record and its
+// copy under t: change in one write, so they always agree. IDs are random,
+// so two processes beginning at the same instant never write one key.
+const (
+	namespace   = "audit"
+	indexPrefix = "t:"
+	countKey    = "!n"
+	// converted marks, in the tenant "", that records kept before the
+	// index existed have their copy under t:.
+	converted = "converted:v1"
+	// retainBatch is the most records one retention write removes.
+	retainBatch = 500
 )
 
 var (
@@ -84,11 +108,11 @@ type Query struct {
 	From, To time.Time
 	Limit    int
 }
+
+// Store keeps audit records in a state.Store.
 type Store struct {
-	mu   sync.Mutex
-	st   state.Store
-	rows map[string]map[string]Record
-	next map[string]uint64
+	st      state.Store
+	tenants *state.Tenants
 }
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
@@ -175,57 +199,159 @@ func validIdentity(value string) bool {
 }
 
 func clone(r Record) Record { r.Before = maps.Clone(r.Before); r.After = maps.Clone(r.After); return r }
+
+// Open returns a store on st, which may be shared with other processes. A
+// nil st keeps records in this process's memory.
+//
+// Records kept by a release before the index are given their copy under t:
+// the first time any process opens the store; a process that opens it at
+// the same time finds them done.
 func Open(st state.Store) (*Store, error) {
-	s := &Store{st: st, rows: map[string]map[string]Record{}, next: map[string]uint64{}}
 	if st == nil {
-		return s, nil
+		st = state.NewMemory()
 	}
-	records, err := st.Load(context.Background(), namespace)
+	s := &Store{st: st}
+	if err := s.convert(); err != nil {
+		return nil, err
+	}
+	tenants, err := state.OpenTenants(st, namespace)
 	if err != nil {
 		return nil, err
 	}
-	for _, row := range records {
-		if row.Key == "!next" {
-			var seq uint64
-			if err := json.Unmarshal(row.Value, &seq); err != nil {
-				return nil, err
-			}
-			s.next[row.Tenant] = max(s.next[row.Tenant], seq)
+	s.tenants = tenants
+	return s, nil
+}
+
+func ctx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), state.Timeout)
+}
+
+// timeKey formats an instant as a key that sorts in time order, the sign
+// bit flipped so instants before 1970 sort first.
+func timeKey(t time.Time) string {
+	return fmt.Sprintf("%020d", uint64(t.UnixNano())^(1<<63))
+}
+
+func indexKey(r Record) string { return indexPrefix + timeKey(r.At) + ":" + r.ID }
+
+// check holds a stored record to what Begin and Finish write.
+func check(tenant, key string, r Record) (Record, error) {
+	checked, err := clean(r.Change)
+	if err != nil || r.ID != key || !validIdentity(tenant) || !validIdentity(r.Actor) || r.At.IsZero() || (r.Outcome != Pending && r.Outcome != Succeeded && r.Outcome != Failed) || (r.Outcome == Pending && !r.FinishedAt.IsZero()) || (r.Outcome != Pending && (r.FinishedAt.IsZero() || r.FinishedAt.Before(r.At))) {
+		return Record{}, ErrInvalid
+	}
+	if !opaqueIDPattern.MatchString(r.ID) {
+		if _, err := strconv.ParseUint(strings.TrimPrefix(r.ID, "a"), 10, 64); err != nil {
+			return Record{}, ErrInvalid
+		}
+	}
+	r.Change = checked
+	return r, nil
+}
+
+// convert gives every record kept before the index its copy under t:. Each
+// record is done in one write conditional on the record, so a record two
+// processes do at once is done once, and one removed meanwhile gets none.
+func (s *Store) convert() error {
+	c, cancel := ctx()
+	_, err := s.st.Lookup(c, namespace, "", converted)
+	cancel()
+	if err == nil {
+		return nil
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return err
+	}
+	c, cancel = ctx()
+	rows, err := s.st.Load(c, namespace)
+	cancel()
+	if err != nil {
+		return err
+	}
+	indexed := map[string]bool{}
+	for _, row := range rows {
+		if row.Tenant != "" && strings.HasPrefix(row.Key, indexPrefix) {
+			indexed[row.Tenant+"\x00"+row.Key] = true
+		}
+	}
+	for _, row := range rows {
+		if row.Tenant == "" || strings.HasPrefix(row.Key, "!") || strings.HasPrefix(row.Key, indexPrefix) {
 			continue
 		}
 		var r Record
 		if err := json.Unmarshal(row.Value, &r); err != nil {
-			return nil, err
+			return err
 		}
-		checked, err := clean(r.Change)
-		if err != nil || r.ID != row.Key || !validIdentity(row.Tenant) || !validIdentity(r.Actor) || r.At.IsZero() || (r.Outcome != Pending && r.Outcome != Succeeded && r.Outcome != Failed) || (r.Outcome == Pending && !r.FinishedAt.IsZero()) || (r.Outcome != Pending && (r.FinishedAt.IsZero() || r.FinishedAt.Before(r.At))) {
-			return nil, ErrInvalid
+		if _, err := check(row.Tenant, row.Key, r); err != nil {
+			return err
 		}
-		r.Change = checked
-		if s.rows[row.Tenant] == nil {
-			s.rows[row.Tenant] = map[string]Record{}
+		if indexed[row.Tenant+"\x00"+indexKey(r)] {
+			continue
 		}
-		if len(s.rows[row.Tenant]) >= MaxRecords {
-			return nil, ErrCapacity
-		}
-		s.rows[row.Tenant][r.ID] = r
-		if !opaqueIDPattern.MatchString(r.ID) {
-			seq, err := strconv.ParseUint(strings.TrimPrefix(r.ID, "a"), 10, 64)
-			if err != nil {
-				return nil, ErrInvalid
-			}
-			s.next[row.Tenant] = max(s.next[row.Tenant], seq)
+		c, cancel := ctx()
+		err := s.st.Write(c, namespace,
+			state.PutAt(row.Tenant, row.Key, row.Value, row.Version),
+			state.Create(row.Tenant, indexKey(r), row.Value))
+		cancel()
+		if err != nil && !errors.Is(err, state.ErrConflict) {
+			return err
 		}
 	}
-	return s, nil
-}
-func (s *Store) write(ops ...state.Op) error {
-	if s.st == nil {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+	c, cancel = ctx()
 	defer cancel()
-	return s.st.Write(ctx, namespace, ops...)
+	err = s.st.Write(c, namespace, state.Create("", converted, []byte("1")))
+	if err != nil && !errors.Is(err, state.ErrConflict) {
+		return err
+	}
+	return nil
+}
+
+// count reads how many records a tenant holds, and the version of that
+// count: 0 when none is kept yet, in which case it counts the index,
+// reading at most MaxRecords.
+func (s *Store) count(tenant string) (int, int64, error) {
+	c, cancel := ctx()
+	r, err := s.st.Lookup(c, namespace, tenant, countKey)
+	cancel()
+	if err == nil {
+		var n int
+		if err := json.Unmarshal(r.Value, &n); err != nil {
+			return 0, 0, err
+		}
+		return n, r.Version, nil
+	}
+	if !errors.Is(err, state.ErrNotFound) {
+		return 0, 0, err
+	}
+	n := 0
+	after := ""
+	for {
+		c, cancel := ctx()
+		recs, next, err := s.st.List(c, namespace, tenant, state.Query{Prefix: indexPrefix, After: after, Limit: state.MaxList})
+		cancel()
+		if err != nil {
+			return 0, 0, err
+		}
+		n += len(recs)
+		if next == "" || n > MaxRecords {
+			return n, 0, nil
+		}
+		after = next
+	}
+}
+
+// countOp writes a tenant's count at the version read.
+func countOp(tenant string, n int, version int64) state.Op {
+	raw, _ := json.Marshal(n)
+	if version == 0 {
+		return state.Create(tenant, countKey, raw)
+	}
+	return state.PutAt(tenant, countKey, raw, version)
+}
+
+func (s *Store) write(ops ...state.Op) error {
+	c, cancel := ctx()
+	defer cancel()
+	return s.st.Write(c, namespace, ops...)
 }
 
 // Begin must succeed before a caller performs its already-authorized mutation.
@@ -237,69 +363,81 @@ func (s *Store) Begin(tenant, actor string, change Change, at time.Time) (Attemp
 	if !validIdentity(tenant) || !validIdentity(actor) || at.IsZero() {
 		return Attempt{}, ErrInvalid
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.rows[tenant]) >= MaxRecords {
-		return Attempt{}, ErrCapacity
-	}
-	seq := s.next[tenant] + 1
-	if seq == 0 {
-		return Attempt{}, ErrCapacity
-	}
-	// Public IDs must not reveal the number of hidden personal records. The
-	// internal counter remains durable for legacy replay and never leaves here.
-	var nonce [16]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
+	if err := s.tenants.Mark(tenant); err != nil {
 		return Attempt{}, err
 	}
-	id := "a_" + hex.EncodeToString(nonce[:])
-	if _, exists := s.rows[tenant][id]; exists {
-		return Attempt{}, ErrConflict
-	}
-	r := Record{Change: checked, ID: id, Actor: actor, At: at.UTC(), Outcome: Pending}
-	raw, _ := json.Marshal(r)
-	counter, _ := json.Marshal(seq)
-	if err := s.write(state.Put(tenant, "!next", counter), state.Put(tenant, id, raw)); err != nil {
+	var out Attempt
+	err = state.Retry(func() error {
+		n, version, err := s.count(tenant)
+		if err != nil {
+			return err
+		}
+		if n >= MaxRecords {
+			return ErrCapacity
+		}
+		// Public IDs must not reveal the number of hidden personal records.
+		var nonce [16]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			return err
+		}
+		r := Record{Change: checked, ID: "a_" + hex.EncodeToString(nonce[:]), Actor: actor, At: at.UTC(), Outcome: Pending}
+		raw, err := json.Marshal(r)
+		if err != nil {
+			return err
+		}
+		if err := s.write(countOp(tenant, n+1, version), state.Create(tenant, r.ID, raw), state.Create(tenant, indexKey(r), raw)); err != nil {
+			return err
+		}
+		out = Attempt{ID: r.ID}
+		return nil
+	})
+	if err != nil {
 		return Attempt{}, err
 	}
-	if s.rows[tenant] == nil {
-		s.rows[tenant] = map[string]Record{}
-	}
-	s.rows[tenant][id] = r
-	s.next[tenant] = seq
-	return Attempt{ID: id}, nil
+	return out, nil
 }
 
 // Finish records an observed result once. A failed write leaves Pending intact.
 // Error strings are deliberately not stored: upstream responses can hold secrets.
 func (s *Store) Finish(tenant, id string, result error, at time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	r, ok := s.rows[tenant][id]
-	if !ok {
+	if id == "" || strings.HasPrefix(id, "!") || strings.HasPrefix(id, indexPrefix) {
 		return ErrNotFound
 	}
 	next := Succeeded
 	if result != nil {
 		next = Failed
 	}
-	if r.Outcome != Pending {
-		if r.Outcome == next {
-			return nil
+	return state.Retry(func() error {
+		c, cancel := ctx()
+		row, err := s.st.Lookup(c, namespace, tenant, id)
+		cancel()
+		if errors.Is(err, state.ErrNotFound) {
+			return ErrNotFound
 		}
-		return ErrConflict
-	}
-	if at.IsZero() || at.Before(r.At) {
-		return ErrInvalid
-	}
-	r.Outcome = next
-	r.FinishedAt = at.UTC()
-	raw, _ := json.Marshal(r)
-	if err := s.write(state.Put(tenant, id, raw)); err != nil {
-		return err
-	}
-	s.rows[tenant][id] = r
-	return nil
+		if err != nil {
+			return err
+		}
+		var r Record
+		if err := json.Unmarshal(row.Value, &r); err != nil {
+			return err
+		}
+		if r.Outcome != Pending {
+			if r.Outcome == next {
+				return nil
+			}
+			return ErrConflict
+		}
+		if at.IsZero() || at.Before(r.At) {
+			return ErrInvalid
+		}
+		r.Outcome = next
+		r.FinishedAt = at.UTC()
+		raw, err := json.Marshal(r)
+		if err != nil {
+			return err
+		}
+		return s.write(state.PutAt(tenant, id, raw, row.Version), state.Put(tenant, indexKey(r), raw))
+	})
 }
 
 // Record appends an event whose outcome is already known. Use Begin/Finish
@@ -313,7 +451,9 @@ func (s *Store) Record(tenant, actor string, change Change, at time.Time) error 
 }
 
 // List filters before choosing the newest rows, so hidden records affect neither
-// returned counts nor which visible rows fit in the bounded result.
+// returned counts nor which visible rows fit in the bounded result. It pages
+// the window from its newest record down, so it reads no more than the
+// tenant holds, which MaxRecords bounds.
 func (s *Store) List(tenant string, q Query, visible func(Record) bool) ([]Record, error) {
 	if len(q.Actor) > 512 || !utf8.ValidString(q.Actor) || strings.ContainsRune(q.Actor, 0) || q.Resource != "" && !namePattern.MatchString(q.Resource) {
 		return nil, ErrInvalid
@@ -325,77 +465,79 @@ func (s *Store) List(tenant string, q Query, visible func(Record) bool) ([]Recor
 	if q.Limit == 0 {
 		limit = 100
 	}
-	s.mu.Lock()
-	rows := make([]Record, 0, len(s.rows[tenant]))
-	for _, r := range s.rows[tenant] {
-		rows = append(rows, r)
-	}
-	s.mu.Unlock()
-	found := recordHeap{}
-	for _, r := range rows {
-		if q.Actor != "" && r.Actor != q.Actor || q.Resource != "" && r.Resource != q.Resource || r.At.Before(q.From) || !r.At.Before(q.To) || visible != nil && !visible(clone(r)) {
-			continue
+	out := []Record{}
+	floor := indexPrefix + timeKey(q.From)
+	after := indexPrefix + timeKey(q.To)
+	for {
+		c, cancel := ctx()
+		rows, next, err := s.st.List(c, namespace, tenant, state.Query{Prefix: indexPrefix, After: after, Limit: state.MaxList, Desc: true})
+		cancel()
+		if err != nil {
+			return nil, err
 		}
-		if len(found) < limit {
-			heap.Push(&found, r)
-		} else if newer(r, found[0]) {
-			found[0] = r
-			heap.Fix(&found, 0)
+		for _, row := range rows {
+			if row.Key < floor {
+				return out, nil
+			}
+			var r Record
+			if err := json.Unmarshal(row.Value, &r); err != nil {
+				return nil, err
+			}
+			if q.Actor != "" && r.Actor != q.Actor || q.Resource != "" && r.Resource != q.Resource || visible != nil && !visible(clone(r)) {
+				continue
+			}
+			out = append(out, r)
+			if len(out) == limit {
+				return out, nil
+			}
 		}
+		if next == "" {
+			return out, nil
+		}
+		after = next
 	}
-	sort.Slice(found, func(i, j int) bool { return newer(found[i], found[j]) })
-	out := make([]Record, len(found))
-	for i, r := range found {
-		out[i] = clone(r)
-	}
-	return out, nil
-}
-func newer(a, b Record) bool {
-	if a.At.Equal(b.At) {
-		return a.ID > b.ID
-	}
-	return a.At.After(b.At)
 }
 
-type recordHeap []Record
-
-func (h recordHeap) Len() int           { return len(h) }
-func (h recordHeap) Less(i, j int) bool { return newer(h[j], h[i]) }
-func (h recordHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h *recordHeap) Push(v any)        { *h = append(*h, v.(Record)) }
-func (h *recordHeap) Pop() any          { n := len(*h) - 1; r := (*h)[n]; *h = (*h)[:n]; return r }
-func (s *Store) Tenants() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := slices.Sorted(maps.Keys(s.rows))
-	return out
-}
+// EachTenant calls fn for every workspace that has recorded an attempt, a
+// page at a time.
+func (s *Store) EachTenant(fn func(tenant string) error) error { return s.tenants.Each(fn) }
 
 // Retain uses the inbox retention cutoff. Pending attempts expire by their
 // start time too; their unknown outcome is never converted into success.
+// Each write removes records oldest first, at the versions of their copies
+// read, and lowers the count with them, so two processes retaining at once
+// remove each record once.
 func (s *Store) Retain(tenant string, cut time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	end := indexPrefix + timeKey(cut)
 	for {
-		ids := []string{}
-		ops := []state.Op{}
-		for id, r := range s.rows[tenant] {
-			if r.At.Before(cut) {
-				ids = append(ids, id)
-				ops = append(ops, state.Delete(tenant, id))
-				if len(ids) == 5000 {
+		done := false
+		err := state.Retry(func() error {
+			c, cancel := ctx()
+			rows, _, err := s.st.List(c, namespace, tenant, state.Query{Prefix: indexPrefix, Limit: retainBatch})
+			cancel()
+			if err != nil {
+				return err
+			}
+			var ops []state.Op
+			for _, row := range rows {
+				if row.Key >= end {
 					break
 				}
+				id := row.Key[strings.LastIndexByte(row.Key, ':')+1:]
+				ops = append(ops, state.DeleteAt(tenant, row.Key, row.Version), state.Delete(tenant, id))
 			}
-		}
-		if len(ids) == 0 {
-			return nil
-		}
-		if err := s.write(ops...); err != nil {
+			if len(ops) == 0 {
+				done = true
+				return nil
+			}
+			n, version, err := s.count(tenant)
+			if err != nil {
+				return err
+			}
+			return s.write(append(ops, countOp(tenant, max(n-len(ops)/2, 0), version))...)
+		})
+		if err != nil || done {
 			return err
-		}
-		for _, id := range ids {
-			delete(s.rows[tenant], id)
 		}
 	}
 }

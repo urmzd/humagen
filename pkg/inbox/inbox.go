@@ -6,24 +6,30 @@
 // proposed memories to keep, raise a limit. Alert rules decide what to watch
 // for. The inbox is where what they found gets dealt with.
 //
-// The store is a projection. Everything that happens to a message is a Change,
-// Apply is the only thing that alters state, and Rebuild replays changes into
-// the same state. So what the inbox says can always be accounted for.
+// Everything that happens to a message is a Change, and apply is the only
+// thing that alters what the inbox holds. Each change is kept, so what the
+// inbox says can always be accounted for, and Rebuild replays changes into
+// the same inbox.
 //
 // The inbox does not decide who may do what, and it does not carry out a
 // decision. The platform checks the caller's rights and acts on the source
 // (the alert, the run, the notes), then records the outcome here.
 //
-// Built with Open, the store writes each change through a state.Store before
-// it takes effect, and replays them when it is built again.
+// It reads and writes the database per request (pkg/state, per request): it
+// holds nothing in memory but this process's watchers, so any number of
+// processes on one database agree, and it does not need pkg/state's
+// single-writer lock. A change reads the records it depends on and writes
+// them at the versions it read, in one write: of two processes answering or
+// settling one message at once, one wins and the other reads again, and the
+// counters kept beside the messages stay exact.
 //
 // # Retention and counts
 //
 // What was settled for everyone longer ago than a retention period is
-// dropped (Retain): the message, every change about it, and its records in
-// the state.Store, so the record and a replay hold only what is kept. A
-// count (Count) is added up from counters kept as changes apply, so it never
-// reads what is settled.
+// dropped (Retain): the message, every change about it, and every record
+// kept for it. Retention pages an index of settled messages, so it never
+// reads a tenant whole. A count (Count) is added up from counters kept in
+// the same write as each change, so it never reads what is settled.
 //
 // # Broadcasts
 //
@@ -418,7 +424,9 @@ type Part struct {
 // Message is one thing in the inbox.
 type Message struct {
 	reminded bool
-	ID       string `json:"id"`
+	// changes is the number of the last change recorded about it.
+	changes int64
+	ID      string `json:"id"`
 	// Key names what the message is about, so the same thing is not raised
 	// twice. It is not shown.
 	Key    string `json:"-"`
@@ -628,80 +636,15 @@ type Notice struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type tenant struct {
-	messages []*Message // oldest first
-	byKey    map[string]*Message
-	byID     map[string]*Message
-	// byPost finds a message by a client's receipt (postKey), as the
-	// Delivered changes recorded it.
-	byPost map[string]*Message
-	read   map[string]map[string]bool // message id -> subject
-	// hidden is how each reader set a broadcast aside for themselves:
-	// message id -> subject -> how.
-	hidden map[string]map[string]hide
-	posted posted
-	log    []Change
-	// seqs are the keys log's changes are kept under, one each, in order,
-	// and seq the key the next change is kept under. Retention leaves gaps.
-	seqs []int64
-	seq  int64
-	// garbage are records of messages already cut, awaiting bounded cleanup.
-	garbage []int64
-	// next is the number of the last message id issued.
-	next int
-	// cut is what retention keeps of what it dropped.
-	cut      cut
-	tally    tally
-	watchers map[int]chan Notice
-	nextW    int
-}
-
-// hide is one reader's own state of a broadcast: dismissed, or snoozed
-// until a time.
-type hide struct {
-	state State
-	until time.Time
-}
-
-// posted counts the announcements raised on the latest day one was, in UTC,
-// for Post's caps. It is rebuilt with everything else when changes are
-// replayed.
-type posted struct {
-	day   time.Time
-	total int
-	by    map[string]int
-}
-
-func dayOf(at time.Time) time.Time {
-	at = at.UTC()
-	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
-}
-
-func (p *posted) add(project string, at time.Time) {
-	switch day := dayOf(at); {
-	case day.After(p.day):
-		*p = posted{day: day, total: 1, by: map[string]int{project: 1}}
-	case day.Equal(p.day):
-		p.total++
-		p.by[project]++
-	}
-}
-
-// on is how many were posted on at's day: in the project, and in all.
-func (p posted) on(project string, at time.Time) (int, int) {
-	if !dayOf(at).Equal(p.day) {
-		return 0, 0
-	}
-	return p.by[project], p.total
-}
-
-// Store holds every tenant's inbox.
+// Store holds every tenant's inbox in a state.Store, read and written per
+// request.
 type Store struct {
-	mu      sync.Mutex
-	tenants map[string]*tenant
-	// kept is where changes are written, one record each, in the order they
-	// were made. Nil keeps them only in memory.
-	kept *state.Table[storedChange]
+	st  state.Store
+	dir *state.Tenants
+	// watchers are this process's watchers, by tenant.
+	mu       sync.Mutex
+	watchers map[string]map[int]chan Notice
+	nextW    int
 }
 
 // storedChange is a change as it is written, with what the wire forms of a
@@ -710,8 +653,8 @@ type storedChange struct {
 	Change
 	Raised   *storedMessage `json:"raised,omitempty"`
 	Delivery *Delivery      `json:"delivery,omitempty"`
-	// Cut is set on the one record kept under cutKey, which is no change:
-	// what retention keeps of what it dropped.
+	// Cut is set on the one record an older release kept under cutKey,
+	// which is no change: what retention kept of what it dropped.
 	Cut *cut `json:"cut,omitempty"`
 }
 
@@ -727,7 +670,9 @@ type storedMessage struct {
 func storedOf(c Change) storedChange {
 	out := storedChange{Change: c, Delivery: c.Delivery}
 	if c.Raised != nil {
-		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded, Broadcast: c.Raised.Broadcast, Once: &c.Raised.Once}
+		r := c.Raised.clone()
+		r.Unread, r.Hidden = false, false
+		out.Raised = &storedMessage{Message: r, Key: r.Key, Audience: r.Audience, Excluded: r.Excluded, Broadcast: r.Broadcast, Once: &r.Once}
 	}
 	return out
 }
@@ -751,278 +696,72 @@ func (sc storedChange) change(tenant string) Change {
 	return c
 }
 
-// NewStore returns an empty inbox in memory.
-func NewStore() *Store { return &Store{tenants: map[string]*tenant{}} }
-
-// OpenStore returns an inbox that keeps its changes in st, rebuilt from what st
-// already has. A nil st is NewStore.
-func OpenStore(st state.Store) (*Store, error) {
-	s := NewStore()
-	s.kept = state.NewTable[storedChange](st, "inbox")
-	type entry struct {
-		name string
-		seq  int64
-		c    Change
-	}
-	var entries []entry
-	err := s.kept.Load(func(name, key string, sc storedChange) error {
-		t := s.of(name)
-		if key == cutKey {
-			if sc.Cut != nil {
-				t.restore(*sc.Cut)
-			}
-			return nil
-		}
-		seq, err := strconv.ParseInt(key, 10, 64)
-		if err != nil {
-			return fmt.Errorf("inbox: %s: a change kept under %q", name, key)
-		}
-		entries = append(entries, entry{name, seq, sc.change(name)})
-		return nil
-	})
+// NewStore returns an empty inbox in this process's memory.
+func NewStore() *Store {
+	s, err := OpenStore(nil)
 	if err != nil {
-		return nil, fmt.Errorf("inbox: load: %w", err)
+		panic(err)
 	}
-	// The cut sorts after changes. Read it first so records awaiting cleanup
-	// cannot resurrect a message, even when its raise was already deleted.
-	for _, e := range entries {
-		t := s.of(e.name)
-		if slices.Contains(t.cut.Pending, e.c.Message) {
-			t.garbage = append(t.garbage, e.seq)
-			t.seq = max(t.seq, e.seq+1)
-			continue
-		}
-		t.applyAt(e.c, e.seq)
+	return s
+}
+
+// OpenStore returns an inbox kept in st, which may be shared with other
+// processes. A nil st keeps it in this process's memory.
+//
+// Changes kept by a release before this layout, one record each in the
+// order they were made, are moved into it the first time any process opens
+// the store; a process that opens it at the same time finds them moved.
+func OpenStore(st state.Store) (*Store, error) {
+	if st == nil {
+		st = state.NewMemory()
 	}
+	s := &Store{st: st, watchers: map[string]map[int]chan Notice{}}
+	if err := s.convert(); err != nil {
+		return nil, fmt.Errorf("inbox: convert: %w", err)
+	}
+	dir, err := state.OpenTenants(st, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("inbox: tenants: %w", err)
+	}
+	s.dir = dir
 	return s, nil
 }
 
-// applyAt applies a change kept under a key, as a replay does.
-func (t *tenant) applyAt(c Change, seq int64) {
-	t.seq = seq
-	t.apply(c)
-	t.seq = max(t.seq, seq+1)
+// change runs fn on a fresh read of a tenant and writes what it changed,
+// again from a fresh read whenever another writer moved what it read, and
+// tells this process's watchers once it is written.
+func (s *Store) change(tenantName string, fn func(x *tx) (Message, bool, error)) (Message, bool, error) {
+	var out Message
+	var changed bool
+	var notices []Notice
+	err := state.Retry(func() error {
+		x := newTx(s.st, tenantName)
+		m, ch, err := fn(x)
+		if err != nil {
+			return err
+		}
+		if err := x.commit(); err != nil {
+			return err
+		}
+		out, changed, notices = m, ch, x.notices
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalid) || errors.Is(err, ErrLimit) {
+			return Message{}, false, err
+		}
+		return Message{}, false, fmt.Errorf("inbox: write: %w", err)
+	}
+	for _, n := range notices {
+		s.tell(tenantName, n)
+	}
+	return out, changed, nil
 }
 
-// replay puts a tenant back to what the first n changes of its record say,
-// keeping who is watching it. It is how a change that could not be written is
-// undone.
-func (s *Store) replay(name string, n int) {
-	old := s.tenants[name]
-	delete(s.tenants, name)
-	t := s.of(name)
-	for i, c := range old.log[:n] {
-		t.applyAt(c, old.seqs[i])
-	}
-	t.restore(old.cut)
-	t.garbage = slices.Clone(old.garbage)
-	t.seq = max(t.seq, old.seq)
-	t.watchers, t.nextW = old.watchers, old.nextW
-}
-
-func (s *Store) of(name string) *tenant {
-	t, ok := s.tenants[name]
-	if !ok {
-		t = &tenant{
-			byKey: map[string]*Message{}, byID: map[string]*Message{}, byPost: map[string]*Message{}, read: map[string]map[string]bool{},
-			hidden: map[string]map[string]hide{}, tally: newTally(), watchers: map[int]chan Notice{},
-		}
-		s.tenants[name] = t
-	}
-	return t
-}
-
-// record adds a change that took effect to the tenant's record.
-func (t *tenant) record(c Change) {
-	t.log = append(t.log, c)
-	t.seqs = append(t.seqs, t.seq)
-	t.seq++
-}
-
-// issue is the id a raised message is given: the one its record names,
-// when it is replayed, else the next.
-func (t *tenant) issue(c Change) string {
-	if n, ok := strings.CutPrefix(c.Message, "m-"); ok {
-		if i, err := strconv.Atoi(n); err == nil && i > 0 {
-			t.next = max(t.next, i)
-			return c.Message
-		}
-	}
-	t.next++
-	return "m-" + strconv.Itoa(t.next)
-}
-
-// apply is the only thing that alters state. It must depend on nothing but
-// the state and the change, so that replaying changes rebuilds the state.
-func (t *tenant) apply(c Change) (*Message, bool) {
-	if c.What == Raised {
-		if c.Raised == nil {
-			return nil, false
-		}
-		if prior := t.byKey[c.Raised.Key]; prior != nil && prior.State != Resolved && prior.State != Dismissed {
-			return nil, false
-		}
-		m := c.Raised.clone()
-		m.ID = t.issue(c)
-		m.Tenant, m.At, m.UpdatedAt, m.State, m.Unread, m.Deliveries = c.Tenant, c.At, c.At, Open, false, nil
-		for i := range m.Parts {
-			m.Parts[i].ID = "p" + strconv.Itoa(i+1)
-			m.Parts[i].Actions, m.Parts[i].Outcome = nil, nil
-			if m.Parts[i].State == "" {
-				m.Parts[i].State = PartOpen
-			}
-		}
-		t.messages = append(t.messages, &m)
-		t.byKey[m.Key], t.byID[m.ID] = &m, &m
-		if m.Kind == KindAnnouncement && m.Broadcast {
-			t.posted.add(m.Source.Project, c.At)
-		}
-		t.join(&m)
-		c.Message = m.ID
-		t.record(c)
-		return &m, true
-	}
-
-	m := t.byID[c.Message]
-	if m == nil {
-		return nil, false
-	}
-	if m.Broadcast && (c.What == DidDismiss || c.What == DidSnooze || c.What == DidUnhide) {
-		return m, t.hideFor(m, c)
-	}
-	switch c.What {
-	case Reminded:
-		if m.reminded || m.Broadcast || m.State == Resolved || m.State == Dismissed || c.At.Before(m.UpdatedAt) || (m.State == Snoozed && c.At.Before(m.SnoozedUntil)) {
-			return m, false
-		}
-		t.leave(m)
-		delete(t.read, m.ID)
-		m.State, m.SnoozedUntil, m.reminded = Open, time.Time{}, true
-		t.join(m)
-	case MarkRead, MarkUnread:
-		was := t.read[m.ID][c.By]
-		if was == (c.What == MarkRead) {
-			return m, false
-		}
-		wasOut := t.isOut(m, c.By)
-		if t.read[m.ID] == nil {
-			t.read[m.ID] = map[string]bool{}
-		}
-		t.read[m.ID][c.By] = c.What == MarkRead
-		t.remark(m, c.By, wasOut)
-		t.record(c)
-		// Reading changes nothing anyone else sees.
-		return m, false
-	case Delivered:
-		if !t.deliver(m, c) {
-			return m, false
-		}
-		t.record(c)
-		return m, false
-	case DidResolve:
-		i := slices.IndexFunc(m.Parts, func(p Part) bool { return p.ID == c.Part })
-		if i < 0 || m.Parts[i].State != PartOpen {
-			return m, false
-		}
-		m.Parts[i].State = PartResolved
-		m.Parts[i].Outcome = &Outcome{Action: c.Action, By: c.By, At: c.At, Note: c.Note}
-		if !slices.ContainsFunc(m.Parts, func(p Part) bool { return p.State == PartOpen }) {
-			t.restate(m, Resolved, time.Time{})
-		}
-	case DidDismiss, DidWithdraw:
-		if m.State == Resolved || m.State == Dismissed {
-			return m, false
-		}
-		// A withdrawal from before it recorded who reads as the system's.
-		if c.What == DidWithdraw && c.By == "" {
-			c.By = "system"
-		}
-		t.restate(m, Dismissed, time.Time{})
-	case DidSnooze:
-		if m.State == Resolved || m.State == Dismissed {
-			return m, false
-		}
-		t.restate(m, Snoozed, c.Until)
-	default:
-		return m, false
-	}
-	m.UpdatedAt = c.At
-	t.record(c)
-	return m, true
-}
-
-// restate moves a message to a state everyone sees, and its count with it.
-func (t *tenant) restate(m *Message, st State, until time.Time) {
-	t.leave(m)
-	m.State, m.SnoozedUntil = st, until
-	t.join(m)
-}
-
-// hideFor records one reader dismissing, snoozing or unhiding a broadcast
-// for themselves. It changes nothing anyone else sees, so it reports no
-// change to tell watchers about. A broadcast already closed for everyone, a
-// dismiss or snooze of one the reader dismissed, a snooze to the time it is
-// already snoozed until, an unhide of one the reader never set aside, or a
-// change with no reader, is not recorded.
-func (t *tenant) hideFor(m *Message, c Change) bool {
-	if c.By == "" || m.State == Resolved || m.State == Dismissed {
-		return false
-	}
-	wasOut := t.isOut(m, c.By)
-	if c.What == DidUnhide {
-		if _, ok := t.hidden[m.ID][c.By]; !ok {
-			return false
-		}
-		delete(t.hidden[m.ID], c.By)
-		t.remark(m, c.By, wasOut)
-		t.record(c)
-		return false
-	}
-	if t.hidden[m.ID][c.By].state == Dismissed {
-		return false
-	}
-	h := hide{state: Dismissed}
-	if c.What == DidSnooze {
-		h = hide{state: Snoozed, until: c.Until}
-	}
-	if was, ok := t.hidden[m.ID][c.By]; ok && was.state == h.state && was.until.Equal(h.until) {
-		return false
-	}
-	if t.hidden[m.ID] == nil {
-		t.hidden[m.ID] = map[string]hide{}
-	}
-	t.hidden[m.ID][c.By] = h
-	t.remark(m, c.By, wasOut)
-	t.record(c)
-	return false
-}
-
-// stateFor is a message's state for one reader at a moment: a broadcast as
-// the reader set it aside, and a snooze that has run out open. A zero now
-// leaves a snooze as it is. own reports that the state is the reader's own
-// hide or snooze of a broadcast, which nobody else has.
-func (t *tenant) stateFor(m *Message, subject string, now time.Time) (st State, until time.Time, own bool) {
-	st, until = m.State, m.SnoozedUntil
-	if h, ok := t.hidden[m.ID][subject]; ok && m.Broadcast && (st == Open || st == Snoozed) {
-		st, until, own = h.state, h.until, true
-	}
-	if st == Snoozed && !now.IsZero() && !now.Before(until) {
-		return Open, time.Time{}, false
-	}
-	return st, until, own
-}
-
-// view is a message as one reader sees it.
-func (t *tenant) view(m *Message, subject string, now time.Time) Message {
-	out := m.clone()
-	out.State, out.SnoozedUntil, out.Hidden = t.stateFor(m, subject, now)
-	out.Unread = !t.read[m.ID][subject]
-	return out
-}
-
-func (t *tenant) tell(m *Message) {
-	n := Notice{ID: m.ID, Kind: m.Kind, State: m.State, UpdatedAt: m.UpdatedAt}
-	for _, ch := range t.watchers {
+func (s *Store) tell(tenantName string, n Notice) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ch := range s.watchers[tenantName] {
 		// A watcher that is not keeping up misses a notice, never blocks the
 		// inbox. It refetches on the next one.
 		select {
@@ -1032,96 +771,91 @@ func (t *tenant) tell(m *Message) {
 	}
 }
 
-func (s *Store) do(c Change) (Message, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.doLocked(c)
-}
-
-// doLocked is do with the lock held.
-func (s *Store) doLocked(c Change) (Message, bool, error) {
-	t := s.of(c.Tenant)
-	if c.What != Raised && t.byID[c.Message] == nil {
-		return Message{}, false, fmt.Errorf("%w: message %q", ErrNotFound, c.Message)
+// applyAs applies a change and returns its message as whoever made it sees
+// it.
+func applyAs(x *tx, c Change) (Message, bool, error) {
+	if c.What != Raised {
+		m, err := x.message(c.Message)
+		if err != nil {
+			return Message{}, false, err
+		}
+		if m == nil {
+			return Message{}, false, fmt.Errorf("%w: message %q", ErrNotFound, c.Message)
+		}
 	}
-	n := len(t.log)
-	m, changed := t.apply(c)
-	if err := s.commitLocked(c.Tenant, n); err != nil {
+	m, changed, err := x.apply(c)
+	if err != nil || m == nil {
 		return Message{}, false, err
 	}
-	if m == nil {
-		return Message{}, false, nil
+	k, err := x.markOf(m.ID, c.By)
+	if err != nil {
+		return Message{}, false, err
 	}
-	if changed {
-		t.tell(m)
-	}
-	return t.view(m, c.By, time.Time{}), changed, nil
+	return view(m, k, time.Time{}), changed, nil
 }
 
-// commitLocked writes what a tenant's record gained after its first n
-// changes, in one batch, or puts the tenant back to those n when it cannot
-// be written. The lock is held.
-func (s *Store) commitLocked(name string, n int) error {
-	t := s.tenants[name]
-	if len(t.log) == n || !s.kept.Enabled() {
-		return nil
+func (s *Store) do(c Change) (Message, bool, error) {
+	return s.change(c.Tenant, func(x *tx) (Message, bool, error) { return applyAs(x, c) })
+}
+
+// byKey reads the latest message raised under a key, nil for none.
+func (x *tx) byKey(key string) (*Message, error) {
+	var ref keyRef
+	if ok, err := x.get(keyKey(key), &ref); err != nil || !ok || ref.ID == "" {
+		return nil, err
 	}
-	b := s.kept.Batch()
-	for i := n; i < len(t.log); i++ {
-		b.Put(name, state.Seq(t.seqs[i]), storedOf(t.log[i]))
-	}
-	if err := b.Commit(); err != nil {
-		s.replay(name, n)
-		return fmt.Errorf("inbox: write: %w", err)
-	}
-	return nil
+	return x.message(ref.ID)
 }
 
 // Raise puts a message in the inbox. key names what it is about: while a
 // message with that key is open, a second is not raised and the first is
-// returned. The check and the raise hold one lock, so a raise that loses a
+// returned. The check and the raise are one write, so a raise that loses a
 // race returns the message that won it, never an empty one.
 func (s *Store) Raise(tenantName, key string, m Message, at time.Time) (Message, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if existing := s.of(tenantName).byKey[key]; existing != nil && existing.State != Resolved && existing.State != Dismissed {
-		return existing.clone(), false, nil
-	}
-	m.Key = key
-	return s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+	return s.raise(tenantName, key, m, at, false)
 }
 
 // RaiseOnce is Raise for a message about something that happens once, such
 // as a question a run asked: while any message with that key is kept, open
 // or not, it is returned and nothing is raised.
 func (s *Store) RaiseOnce(tenantName, key string, m Message, at time.Time) (Message, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if existing := s.of(tenantName).byKey[key]; existing != nil {
-		return existing.clone(), false, nil
+	return s.raise(tenantName, key, m, at, true)
+}
+
+func (s *Store) raise(tenantName, key string, m Message, at time.Time, once bool) (Message, bool, error) {
+	if err := s.dir.Mark(tenantName); err != nil {
+		return Message{}, false, fmt.Errorf("inbox: write: %w", err)
 	}
 	m.Key = key
-	return s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+	c := Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m}
+	return s.change(tenantName, func(x *tx) (Message, bool, error) {
+		existing, err := x.byKey(key)
+		if err != nil {
+			return Message{}, false, err
+		}
+		if existing != nil && (once || !settled(existing)) {
+			return existing.clone(), false, nil
+		}
+		return applyAs(x, c)
+	})
 }
 
 // ByID returns one message as it is, for the platform's own use: who may
-// read it is the caller's to decide.
+// read it is the caller's to decide. A message that cannot be read is not
+// found.
 func (s *Store) ByID(tenantName, id string) (Message, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m := s.of(tenantName).byID[id]
-	if m == nil {
+	m, err := newTx(s.st, tenantName).message(id)
+	if err != nil || m == nil {
 		return Message{}, false
 	}
 	return m.clone(), true
 }
 
-// ByKey returns the latest message raised under a key.
+// ByKey returns the latest message raised under a key. A message that
+// cannot be read is not found.
 func (s *Store) ByKey(tenantName, key string) (Message, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m := s.of(tenantName).byKey[key]
-	if m == nil {
+	m, err := newTx(s.st, tenantName).byKey(key)
+	if err != nil || m == nil {
 		return Message{}, false
 	}
 	return m.clone(), true
@@ -1135,14 +869,19 @@ func (s *Store) Get(tenantName, id, reader string) (Message, error) {
 // GetAs returns one message as a reader sees it. A message not addressed to
 // them does not exist for them.
 func (s *Store) GetAs(tenantName, id string, r Reader) (Message, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.of(tenantName)
-	m := t.byID[id]
+	x := newTx(s.st, tenantName)
+	m, err := x.message(id)
+	if err != nil {
+		return Message{}, fmt.Errorf("inbox: read: %w", err)
+	}
 	if m == nil || !m.For(r) {
 		return Message{}, fmt.Errorf("%w: message %q", ErrNotFound, id)
 	}
-	return t.view(m, r.Subject, time.Time{}), nil
+	k, err := x.markOf(id, r.Subject)
+	if err != nil {
+		return Message{}, fmt.Errorf("inbox: read: %w", err)
+	}
+	return view(m, k, time.Time{}), nil
 }
 
 // Read marks a message read or unread for one person.
@@ -1157,6 +896,8 @@ func (s *Store) Read(tenantName, id, by string, read bool, at time.Time) (Messag
 
 // Resolve records what was decided about a part. Resolving a part that has an
 // outcome changes nothing and returns the message with the first outcome.
+// Of two people answering one part at once, through one process or two,
+// one decides it and the other is returned that decision.
 func (s *Store) Resolve(tenantName, id, part string, o Outcome) (Message, bool, error) {
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidResolve, Part: part, Action: o.Action, By: o.By, At: o.At, Note: o.Note})
 }
@@ -1194,16 +935,32 @@ func (s *Store) Snooze(tenantName, id, by string, until, at time.Time) (Message,
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidSnooze, By: by, Until: until, At: at})
 }
 
-// History returns everything that happened to one message, oldest first:
-// the record, every reader's own marks included.
-func (s *Store) History(tenantName, id string) []Change {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var out []Change
-	for _, c := range s.of(tenantName).log {
-		if c.Message == id {
-			out = append(out, c)
+func decodeChanges(tenantName string, recs []state.Record) ([]Change, error) {
+	out := make([]Change, 0, len(recs))
+	for _, r := range recs {
+		var sc storedChange
+		if err := json.Unmarshal(r.Value, &sc); err != nil {
+			return nil, fmt.Errorf("inbox: %q: %w", r.Key, err)
 		}
+		out = append(out, sc.change(tenantName))
+	}
+	return out, nil
+}
+
+// History returns everything that happened to one message, oldest first:
+// the record, every reader's own marks included, at most maxChanges. A
+// record that cannot be read reads as none.
+func (s *Store) History(tenantName, id string) []Change {
+	if _, ok := num(id); !ok {
+		return nil
+	}
+	recs, err := listAll(s.st, tenantName, changePrefix(id), maxChanges)
+	if err != nil {
+		return nil
+	}
+	out, err := decodeChanges(tenantName, recs)
+	if err != nil || len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -1212,32 +969,67 @@ func (s *Store) History(tenantName, id string) []Change {
 const MaxHistory = 100
 
 // HistoryFor returns what happened to one message as one reader is shown it,
-// oldest first: at most MaxHistory changes, the newest kept. A reader's own
-// marks are theirs alone, so another reader's reads and unreads, and on a
-// broadcast another reader's hiding or snoozing of their own copy, are left
-// out; the record keeps them for replay. A client's receipt (Delivered) is
-// that client's own mark too: it is shown only where ownDelivery says the
-// reader may see the client's receipts, and nil shows none. What changed the
-// message for everyone is shown to everyone.
+// oldest first: at most MaxHistory changes, the newest kept, found among the
+// newest maxScan. A reader's own marks are theirs alone, so another
+// reader's reads and unreads, and on a broadcast another reader's hiding or
+// snoozing of their own copy, are left out; the record keeps them. A
+// client's receipt (Delivered) is that client's own mark too: it is shown
+// only where ownDelivery says the reader may see the client's receipts, and
+// nil shows none. What changed the message for everyone is shown to
+// everyone. A record that cannot be read reads as none.
 func (s *Store) HistoryFor(tenantName, id, subject string, ownDelivery func(client string) bool) []Change {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.of(tenantName)
-	broadcast := t.byID[id] != nil && t.byID[id].Broadcast
 	out := []Change{}
-	for _, c := range t.log {
-		if c.Message != id || (c.By != subject && ownMark(c.What, broadcast)) {
-			continue
+	m, err := newTx(s.st, tenantName).message(id)
+	if err != nil || m == nil {
+		return out
+	}
+	_, err = scan(s.st, tenantName, changePrefix(id), "", true, maxScan, func(r state.Record) (bool, error) {
+		cs, err := decodeChanges(tenantName, []state.Record{r})
+		if err != nil {
+			return false, err
+		}
+		c := cs[0]
+		if c.By != subject && ownMark(c.What, m.Broadcast) {
+			return true, nil
 		}
 		if c.What == Delivered && (ownDelivery == nil || !ownDelivery(c.By)) {
-			continue
+			return true, nil
 		}
 		out = append(out, c)
+		return len(out) < MaxHistory, nil
+	})
+	if err != nil {
+		return []Change{}
 	}
-	if len(out) > MaxHistory {
-		out = slices.Clone(out[len(out)-MaxHistory:])
-	}
+	slices.Reverse(out)
 	return out
+}
+
+// scan calls fn for each record of a tenant under a prefix past after, in
+// key order or with desc the reverse, until fn returns false or most were
+// read. It reports whether it stopped at most.
+func scan(st state.Store, tenantName, prefix, after string, desc bool, most int, fn func(state.Record) (bool, error)) (bool, error) {
+	read := 0
+	for read < most {
+		c, cancel := ctx()
+		page, next, err := st.List(c, namespace, tenantName, state.Query{Prefix: prefix, After: after, Limit: min(most-read, 200), Desc: desc})
+		cancel()
+		if err != nil {
+			return false, err
+		}
+		for _, r := range page {
+			read++
+			more, err := fn(r)
+			if err != nil || !more {
+				return false, err
+			}
+		}
+		if next == "" {
+			return false, nil
+		}
+		after = next
+	}
+	return true, nil
 }
 
 // ownMark reports whether a change is one reader's mark on their own copy of
@@ -1253,39 +1045,61 @@ func ownMark(what What, broadcast bool) bool {
 	return false
 }
 
-// Changes returns a tenant's whole record, oldest first.
+// Changes returns a tenant's whole record, message by message in the order
+// they were raised, each one's changes in the order they were made, at most
+// maxChanges. A record that cannot be read reads as none.
 func (s *Store) Changes(tenantName string) []Change {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.of(tenantName).log)
+	recs, err := listAll(s.st, tenantName, "c:", maxChanges)
+	if err != nil {
+		return nil
+	}
+	out, _ := decodeChanges(tenantName, recs)
+	return out
 }
 
-// Rebuild returns the inbox a record describes. A record retention has cut
-// rebuilds what it kept; the ids and keys its cut keeps are OpenStore's.
+// Rebuild returns the inbox a record describes, in this process's memory.
 func Rebuild(changes []Change) *Store {
 	s := NewStore()
 	for _, c := range changes {
-		s.of(c.Tenant).apply(c)
+		_, _, _ = s.change(c.Tenant, func(x *tx) (Message, bool, error) {
+			_, _, err := x.apply(c)
+			return Message{}, false, err
+		})
 	}
 	return s
 }
 
-// Snapshot returns every message in a tenant with who has read it, for
-// comparing a rebuilt inbox with a live one.
+// Snapshot returns every message in a tenant, in the order they were
+// raised, with who has read each, at most maxMessages, for comparing two
+// inboxes. A record that cannot be read reads as none.
 func (s *Store) Snapshot(tenantName string) ([]Message, map[string][]string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.of(tenantName)
-	msgs := make([]Message, 0, len(t.messages))
 	read := map[string][]string{}
-	for _, m := range t.messages {
-		msgs = append(msgs, m.clone())
-		for who, on := range t.read[m.ID] {
-			if on {
-				read[m.ID] = append(read[m.ID], who)
-			}
+	recs, err := listAll(s.st, tenantName, "a:", maxMessages)
+	if err != nil {
+		return nil, read
+	}
+	msgs := make([]Message, 0, len(recs))
+	for _, r := range recs {
+		var k keptMessage
+		if err := json.Unmarshal(r.Value, &k); err != nil {
+			return nil, read
 		}
-		slices.Sort(read[m.ID])
+		msgs = append(msgs, k.message(tenantName).clone())
+	}
+	slices.SortFunc(msgs, func(a, b Message) int { return cmp.Compare(seqOf(a.ID), seqOf(b.ID)) })
+	marks, err := listAll(s.st, tenantName, "u:", maxMessages*10)
+	if err != nil {
+		return msgs, read
+	}
+	for _, r := range marks {
+		var k mark
+		if json.Unmarshal(r.Value, &k) == nil && k.Read {
+			id := "m-" + strings.TrimLeft(r.Key[len("u:"):strings.LastIndexByte(r.Key, ':')], "0")
+			read[id] = append(read[id], k.Subject)
+		}
+	}
+	for id := range read {
+		slices.Sort(read[id])
 	}
 	return msgs, read
 }
@@ -1384,7 +1198,24 @@ func (q filter) admits(m *Message) bool {
 	return q.Sees == nil || q.Sees(*m)
 }
 
-func (t *tenant) match(m *Message, q filter) bool {
+// match reports whether a message is in a page, as one reader whose marks
+// on it are k sees it.
+func match(m *Message, k mark, q filter) bool {
+	if !matchShared(m, q) {
+		return false
+	}
+	want := q.State
+	if want == "" {
+		want = Open
+	}
+	if st, _, _ := stateFor(m, k, q.Now); want != All && st != want {
+		return false
+	}
+	return !q.Unread || !k.Read
+}
+
+// matchShared is match for what does not depend on the reader's marks.
+func matchShared(m *Message, q filter) bool {
 	project := m.Source.Project
 	if q.ProjectOf != nil {
 		project = q.ProjectOf(m.Source)
@@ -1413,18 +1244,19 @@ func (t *tenant) match(m *Message, q filter) bool {
 	if q.Agent != "" && m.Source.Agent != q.Agent && m.Source.Target != q.Agent {
 		return false
 	}
-	want := q.State
-	if want == "" {
-		want = Open
+	// Only a message open or snoozed for everyone can be open or snoozed
+	// for a reader.
+	switch q.State {
+	case "", Open, Snoozed:
+		return live(m)
+	case Resolved, Dismissed:
+		return m.State == q.State || (m.Broadcast && live(m) && q.State == Dismissed)
 	}
-	if st, _, _ := t.stateFor(m, q.Reader, q.Now); want != All && st != want {
-		return false
-	}
-	return !q.Unread || !t.read[m.ID][q.Reader]
+	return true
 }
 
 func encodeCursor(m *Message) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(m.At.UnixNano(), 10) + ":" + m.ID))
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(stamp(m.At), 10) + ":" + m.ID))
 }
 
 func decodeCursor(c string) (int64, string, error) {
@@ -1432,68 +1264,77 @@ func decodeCursor(c string) (int64, string, error) {
 	if err != nil {
 		return 0, "", ErrCursor
 	}
-	stamp, id, ok := strings.Cut(string(raw), ":")
-	if !ok || id == "" {
+	at, id, ok := strings.Cut(string(raw), ":")
+	if !ok {
 		return 0, "", ErrCursor
 	}
-	at, err := strconv.ParseInt(stamp, 10, 64)
-	if err != nil {
+	n, err := strconv.ParseInt(at, 10, 64)
+	if _, valid := num(id); err != nil || !valid || n < 0 {
 		return 0, "", ErrCursor
 	}
-	return at, id, nil
+	return n, id, nil
 }
 
 // Page returns one page of an inbox, newest first, and the cursor for the page
 // after it. The cursor is empty at the end. A message's place is when it was
-// raised, which never changes, so paging neither repeats nor skips.
+// raised, which never changes, so paging neither repeats nor skips. A page
+// reads at most maxScan messages: one that finds fewer than it holds in
+// those returns them with a cursor where it stopped.
 func (s *Store) Page(tenantName string, q Query) ([]Message, string, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = DefaultPage
 	}
 	limit = min(limit, MaxPage)
-	var beforeAt int64
-	var beforeID string
+	prefix := "a:"
+	switch q.State {
+	case "", Open, Snoozed:
+		prefix = "l:"
+	}
+	after := ""
 	if q.Before != "" {
-		var err error
-		if beforeAt, beforeID, err = decodeCursor(q.Before); err != nil {
+		at, id, err := decodeCursor(q.Before)
+		if err != nil {
 			return nil, "", err
 		}
+		after = prefix + state.Seq(at) + ":" + seqOf(id)
 	}
 	f := q.filter()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.of(tenantName)
+	x := newTx(s.st, tenantName)
 	out := []Message{}
 	var last *Message
-	for i := len(t.messages) - 1; i >= 0; i-- {
-		m := t.messages[i]
-		if q.Before != "" {
-			at := m.At.UnixNano()
-			// Ids are issued in order, so the later of two messages raised
-			// at the same instant has the longer or greater id.
-			if at > beforeAt || at == beforeAt && !older(m.ID, beforeID) {
-				continue
-			}
+	next := ""
+	capped, err := scan(s.st, tenantName, prefix, after, true, maxScan, func(r state.Record) (bool, error) {
+		var km keptMessage
+		if err := json.Unmarshal(r.Value, &km); err != nil {
+			return false, fmt.Errorf("inbox: %q: %w", r.Key, err)
 		}
-		if !t.match(m, f) {
-			continue
+		m := km.message(tenantName)
+		last = m
+		if !matchShared(m, f) {
+			return true, nil
+		}
+		k, err := x.markOf(m.ID, q.Reader)
+		if err != nil {
+			return false, err
+		}
+		if !match(m, k, f) {
+			return true, nil
 		}
 		if len(out) == limit {
-			return out, encodeCursor(last), nil
+			next = encodeCursor(&Message{At: out[len(out)-1].At, ID: out[len(out)-1].ID})
+			return false, nil
 		}
-		out = append(out, t.view(m, q.Reader, q.Now))
-		last = m
+		out = append(out, view(m, k, q.Now))
+		return true, nil
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("inbox: read: %w", err)
 	}
-	return out, "", nil
-}
-
-// older reports whether id a was issued before id b.
-func older(a, b string) bool {
-	if len(a) != len(b) {
-		return len(a) < len(b)
+	if capped && next == "" && last != nil {
+		next = encodeCursor(last)
 	}
-	return a < b
+	return out, next, nil
 }
 
 // Counts is what a reader's inbox holds open: Open and Unread count what
@@ -1508,21 +1349,22 @@ type Counts struct {
 
 // Count returns what is open for a reader across their whole inbox: the
 // narrowing fields of q are ignored, and who is reading is kept. It is added
-// up from counters kept as changes apply (tally), so it reads no message that
-// is settled, and asks q.Sees once for each set of open messages, and of
-// messages snoozed for everyone, alike in kind, addressing and what they are
-// about.
-func (s *Store) Count(tenantName string, q Query) Counts {
+// up from counters kept in the same write as each change, so it reads no
+// message that is settled, and asks q.Sees once for each set of open
+// messages, and of messages snoozed for everyone, alike in kind, addressing
+// and what they are about.
+func (s *Store) Count(tenantName string, q Query) (Counts, error) {
 	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread, q.Needs, q.News = Open, "", nil, nil, false, "", "", false, false, false
-	f := q.filter()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.of(tenantName).count(f)
+	c, err := newTx(s.st, tenantName).count(q.filter())
+	if err != nil {
+		return Counts{}, fmt.Errorf("inbox: count: %w", err)
+	}
+	return c, nil
 }
 
 // CountProject counts one project's open inbox messages with the same reader
 // counters and confinement as Count. It never includes descendant projects.
-func (s *Store) CountProject(tenantName, project string, q Query) Counts {
+func (s *Store) CountProject(tenantName, project string, q Query) (Counts, error) {
 	sees := q.Sees
 	q.Sees = func(m Message) bool {
 		current := m.Source.Project
@@ -1608,39 +1450,64 @@ func (s *Store) post(tenantName, key string, m Message, at time.Time, caps PostC
 	project := m.Source.Project
 	m.Kind, m.Broadcast, m.To = KindAnnouncement, true, ""
 	m.Audience, m.Excluded = []string{ProjectAudience(project)}, nil
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t := s.of(tenantName)
-	if prior := t.byKey[key]; key != "" && prior != nil {
-		return prior.clone(), false, nil
-	}
-	if key != "" && slices.Contains(t.cut.Gone, key) {
-		return Message{}, false, nil
-	}
 	m.Once = key != ""
-	inProject, inTenant := t.posted.on(project, at)
-	switch {
-	case inProject >= caps.PerProject:
-		return Message{}, false, fmt.Errorf("%w: a project posts at most %d announcements a day", ErrLimit, caps.PerProject)
-	case inTenant >= caps.PerTenant:
-		return Message{}, false, fmt.Errorf("%w: a workspace posts at most %d announcements a day", ErrLimit, caps.PerTenant)
+	if err := s.dir.Mark(tenantName); err != nil {
+		return Message{}, false, fmt.Errorf("inbox: write: %w", err)
 	}
-	m.Key = cmp.Or(key, "announce:"+project+":"+strconv.Itoa(t.next+1))
-	n := len(t.log)
-	raised, _ := t.apply(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
-	if raised == nil {
-		return Message{}, false, fmt.Errorf("%w: %s was raised already", ErrInvalid, m.Key)
-	}
-	// The poster's read is written with the raise, so nobody, their own
-	// console on the notice included, reads it unread for them first.
-	if who := m.From.poster(); who != "" {
-		t.apply(Change{Tenant: tenantName, Message: raised.ID, What: MarkRead, By: who, At: at})
-	}
-	if err := s.commitLocked(tenantName, n); err != nil {
-		return Message{}, false, err
-	}
-	t.tell(raised)
-	return t.view(raised, m.From.Name, time.Time{}), true, nil
+	return s.change(tenantName, func(x *tx) (Message, bool, error) {
+		m := m.clone()
+		if key != "" {
+			var ref keyRef
+			if ok, err := x.get(keyKey(key), &ref); err != nil {
+				return Message{}, false, err
+			} else if ok && ref.Gone {
+				return Message{}, false, nil
+			}
+			prior, err := x.byKey(key)
+			if err != nil {
+				return Message{}, false, err
+			}
+			if prior != nil {
+				return prior.clone(), false, nil
+			}
+		}
+		var p postedRec
+		if _, err := x.get(dayKey(dayOf(at)), &p); err != nil {
+			return Message{}, false, err
+		}
+		switch {
+		case p.By[project] >= caps.PerProject:
+			return Message{}, false, fmt.Errorf("%w: a project posts at most %d announcements a day", ErrLimit, caps.PerProject)
+		case p.Total >= caps.PerTenant:
+			return Message{}, false, fmt.Errorf("%w: a workspace posts at most %d announcements a day", ErrLimit, caps.PerTenant)
+		}
+		var h head
+		if _, err := x.get(headKey, &h); err != nil {
+			return Message{}, false, err
+		}
+		m.Key = cmp.Or(key, "announce:"+project+":"+strconv.FormatInt(h.Next+1, 10))
+		raised, _, err := x.apply(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+		if err != nil {
+			return Message{}, false, err
+		}
+		if raised == nil {
+			// Its key was raised by a post that read the same next id:
+			// read again.
+			return Message{}, false, state.ErrConflict
+		}
+		// The poster's read is written with the raise, so nobody, their own
+		// console on the notice included, reads it unread for them first.
+		if who := m.From.poster(); who != "" {
+			if _, _, err := x.apply(Change{Tenant: tenantName, Message: raised.ID, What: MarkRead, By: who, At: at}); err != nil {
+				return Message{}, false, err
+			}
+		}
+		k, err := x.markOf(raised.ID, m.From.Name)
+		if err != nil {
+			return Message{}, false, err
+		}
+		return view(raised, k, time.Time{}), true, nil
+	})
 }
 
 // poster is the person who posted a message, by subject: a person who
@@ -1655,46 +1522,81 @@ func (f From) poster() string {
 	return ""
 }
 
-// Tenants returns every tenant the inbox holds anything for.
-func (s *Store) Tenants() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]string, 0, len(s.tenants))
-	for name, t := range s.tenants {
-		if len(t.messages) > 0 || len(t.garbage) > 0 {
-			out = append(out, name)
-		}
+// Tenants returns every tenant the inbox has held anything for, from its
+// directory of tenants.
+func (s *Store) Tenants() ([]string, error) {
+	var out []string
+	if err := s.dir.Each(func(t string) error {
+		out = append(out, t)
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("inbox: tenants: %w", err)
 	}
-	slices.Sort(out)
-	return out
+	return out, nil
 }
 
 // OpenOf returns the open and snoozed messages of a kind, for keeping the
-// inbox in step with what the messages are about.
+// inbox in step with what the messages are about: the first maxOpen open
+// messages, oldest first, are read. A record that cannot be read reads as
+// none.
 func (s *Store) OpenOf(tenantName string, kind Kind) []Message {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	var out []Message
-	for _, m := range s.of(tenantName).messages {
-		if m.Kind == kind && (m.State == Open || m.State == Snoozed) {
-			out = append(out, m.clone())
+	_, err := scan(s.st, tenantName, "l:", "", false, maxOpen, func(r state.Record) (bool, error) {
+		var km keptMessage
+		if err := json.Unmarshal(r.Value, &km); err != nil {
+			return false, err
 		}
+		if km.Kind == kind && live(&km.Message) {
+			out = append(out, km.message(tenantName).clone())
+		}
+		return true, nil
+	})
+	if err != nil {
+		return nil
 	}
 	return out
 }
 
-// Watch reports changes to a tenant's inbox until cancel is called.
+// Raised returns the messages of a kind raised in [since, until), newest
+// first, at most most, reading at most maxScan.
+func (s *Store) Raised(tenantName string, kind Kind, since, until time.Time, most int) ([]Message, error) {
+	var out []Message
+	after := "a:" + state.Seq(stamp(until))
+	floor := "a:" + state.Seq(stamp(since))
+	_, err := scan(s.st, tenantName, "a:", after, true, maxScan, func(r state.Record) (bool, error) {
+		if r.Key < floor {
+			return false, nil
+		}
+		var km keptMessage
+		if err := json.Unmarshal(r.Value, &km); err != nil {
+			return false, err
+		}
+		if km.Kind == kind {
+			out = append(out, km.message(tenantName).clone())
+		}
+		return len(out) < most, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("inbox: read: %w", err)
+	}
+	return out, nil
+}
+
+// Watch reports changes this process makes to a tenant's inbox until
+// cancel is called.
 func (s *Store) Watch(tenantName string) (<-chan Notice, func()) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t := s.of(tenantName)
 	ch := make(chan Notice, 32)
-	id := t.nextW
-	t.nextW++
-	t.watchers[id] = ch
+	id := s.nextW
+	s.nextW++
+	if s.watchers[tenantName] == nil {
+		s.watchers[tenantName] = map[int]chan Notice{}
+	}
+	s.watchers[tenantName][id] = ch
 	return ch, func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		delete(t.watchers, id)
+		delete(s.watchers[tenantName], id)
 	}
 }

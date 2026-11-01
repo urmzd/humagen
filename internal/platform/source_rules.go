@@ -10,17 +10,21 @@ import (
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 )
 
-func (p *Platform) SourceRulesAs(who auth.Principal) []sourcelinks.Rule {
+func (p *Platform) SourceRulesAs(who auth.Principal) ([]sourcelinks.Rule, error) {
 	out := []sourcelinks.Rule{}
 	if !who.Can(auth.ClientsRead) {
-		return out
+		return out, nil
 	}
-	for _, rule := range p.SourceLinks.List(who.Tenant) {
+	rules, err := p.SourceLinks.List(who.Tenant)
+	if err != nil {
+		return nil, err
+	}
+	for _, rule := range rules {
 		if p.Sees(who, Place{Project: projects.NameOf(rule.Project)}) {
 			out = append(out, rule)
 		}
 	}
-	return out
+	return out, nil
 }
 func (p *Platform) sourceRuleOwner(who auth.Principal, project, channel string) error {
 	if !who.Can(auth.ClientsWrite) {

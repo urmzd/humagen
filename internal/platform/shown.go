@@ -51,7 +51,7 @@ func (s *shower) person(subject string) people.Person {
 		}
 	}
 	if s.p.Prefs != nil {
-		if own := s.p.Prefs.Get(s.tenant, subject).DisplayName; own != "" {
+		if own := s.p.PreferencesOf(s.tenant, subject).DisplayName; own != "" {
 			who.Name = own
 		}
 	}

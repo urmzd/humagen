@@ -28,7 +28,7 @@ func TestOperationToolFailsClosedAndKeepsPersonScope(t *testing.T) {
 	calls := 0
 	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "file_write"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}, operations.WriteFiles)
 	rule := func(level operations.Level) {
-		pol := p.Operations.Policy("t", operations.Scope{Kind: "workspace"})
+		pol, _ := p.Operations.Policy("t", operations.Scope{Kind: "workspace"})
 		if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: pol.Scope, Rules: map[operations.Category]operations.Level{operations.WriteFiles: level}}, pol.Version, "manager", time.Now()); err != nil {
 			t.Fatal(err)
 		}
@@ -200,10 +200,10 @@ func TestAssignmentRecoveryAdvancesPastFullPageOfUnfinishedRuns(t *testing.T) {
 	if err := p.Runs.Record(last, tag, 1); err != nil {
 		t.Fatal(err)
 	}
-	p.Runs.End(last, runs.Completed, "done", "", at)
+	p.Runs.End("t", last, runs.Completed, "done", "", at)
 	p.settleOperations(t.Context())
 	p.settleOperations(t.Context())
-	a, _ := p.Operations.Assignment("t", last)
+	a, _, _ := p.Operations.Assignment("t", last)
 	if a.State != operations.Result {
 		t.Fatal("a full page of unfinished reservations starved completed work")
 	}

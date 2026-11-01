@@ -2,41 +2,47 @@
 //
 // It is a ledger and a projection of it. Every admission, ending, warning,
 // refusal and model call is appended as an entry, and the counts a policy is
-// judged on are read from those entries. Nothing is counted that is not in the ledger, so
-// replaying the entries into an empty ledger gives the same answers: Rebuild
-// does exactly that, and a test holds the two equal.
+// judged on are moved in the same write as the entry that moves them. Nothing
+// is counted that is not in the ledger, so replaying the entries into an empty
+// ledger gives the same answers: Rebuild does exactly that, and a test holds
+// the two equal.
+//
+// # Per request
+//
+// The ledger reads and writes its store per request and keeps nothing in
+// memory: the store is the truth. An entry and the counts it moves are one
+// write, at the versions they were read at (compare-and-set), or, with shared
+// counters, one Postgres transaction. Every read is one record, or a bounded
+// page of one tenant's records (see keys.go): a scope's counts by day, a
+// day's entries, a tenant's newest notices, a run's grants. So two processes
+// that open a ledger on one database agree, and the ledger does not need
+// pkg/state's lock.
+//
+// A write that fails is an entry that was not kept, and is not counted: an
+// admission is refused, and any other entry is reported to the caller, who
+// knows what to do with it (a run's settled total, read from the runtime at
+// its end, still counts a call whose own entry was lost).
 //
 // # Scale
 //
-// The ledger is in memory. Admissions and spend are kept for a little over two
-// months, which is what a monthly limit needs, and warnings and refusals are
-// kept to a fixed number. Counts are kept per scope and UTC day as entries are
-// applied, so a count over a period sums at most 62 days of totals, and only
-// a period that starts inside a day reads that day's entries. Where an entry
-// falls is decided by its own time, never by the order it was appended in, so
-// an entry stamped earlier than the one before it is still counted in its own
-// day.
-//
-// # Kept
-//
-// Built with Open, the ledger writes each entry to a state.Store as it is
-// appended, deletes what it prunes, and replays what the store holds when it
-// is built again. An admission that cannot be written is not counted, and
-// Record says so, so the run is not let in: a limit is never judged on a
-// count a restart would lose. Every other entry is something that already
-// happened, so it is counted whether or not it could be written, and one
-// that could not is written with the next entry or by Flush.
+// Admissions, spend and notices are kept for a little over two months, which
+// is what a monthly limit needs, and a tenant's entries older than that are
+// deleted once a day, by the first process to write for the tenant that day.
+// Counts are kept per scope and UTC day, so a count over a period sums at most
+// 62 days of totals, and only a period that starts inside a day reads that
+// day's entries. Where an entry falls is decided by its own time, never by the
+// order it was appended in, so an entry stamped earlier than the one before it
+// is still counted in its own day.
 //
 // # Shared counts
 //
-// Opened WithCounters, the counts a policy is judged on are kept in the
-// database every process shares (Counters), not in memory, and an entry is
-// written in the same transaction that moves them. The counts an admission
-// moves, runs started and runs in flight, are striped, and Admit takes a
-// Quota of them exactly: two processes cannot both let in the last run a
-// limit allows, and admissions that do not near a limit do not wait on each
-// other. The ledger still folds every entry into its own memory, for
-// Notices, Entries and RunSpend.
+// Opened WithCounters, the counts are kept in Postgres tables (Counters), and
+// an entry is written in the same transaction that moves them. The counts an
+// admission moves, runs started and runs in flight, are striped, and Admit
+// takes a Quota of them exactly: two processes cannot both let in the last
+// run a limit allows, and admissions that do not near a limit do not wait on
+// each other. Without counters, the counts are records in the ledger's store,
+// changed by compare-and-set, and a quota is exact the same way.
 //
 // # Spend, counted once
 //
@@ -65,7 +71,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -245,13 +250,6 @@ type Entry struct {
 	By    string        `json:"by,omitempty"`
 }
 
-// Retention of admissions and spend, and how many warnings and refusals are
-// kept.
-const (
-	keepAdmissions = 62 * 24 * time.Hour
-	keepNotices    = 5000
-)
-
 type admission struct {
 	project, agent, client, runID string
 	within                        []string
@@ -291,75 +289,64 @@ func scopeKey(s policy.Scope) string {
 	return "t"
 }
 
-// spent is what was counted for one run at one time.
-type spent struct {
-	admission
-	key   string
-	spend Spend
+func matches(s policy.Scope, a admission) bool {
+	switch s.Kind {
+	case policy.Project:
+		return a.project == s.Name || slices.Contains(a.within, s.Name)
+	case policy.Agent:
+		return a.agent == s.Name
+	case policy.Client:
+		return a.client == s.Name
+	}
+	return true
 }
 
-// day is one UTC day of a tenant's admissions and spend, with running totals
-// per scope.
-type day struct {
-	start      time.Time
-	admissions []admission
-	spends     []spent
-	runs       map[string]int
-	spend      map[string]Spend
+// sorted orders costs by currency, so a sum read from a map is the same every
+// time.
+func sorted(costs []policy.Cost) []policy.Cost {
+	costs = slices.DeleteFunc(costs, func(c policy.Cost) bool { return c.Micros == 0 })
+	if len(costs) == 0 {
+		return nil
+	}
+	slices.SortFunc(costs, func(a, b policy.Cost) int { return strings.Compare(a.Currency, b.Currency) })
+	return costs
 }
 
-// runSpend is what has been seen of one run: its calls, and its settled total
-// once it has one. It outlives the settlement, so a late call is judged
-// against it.
-type runSpend struct {
-	live, settled Spend
-	last          time.Time
-}
+// Retention and bounds.
+const (
+	// keepAdmissions is how long entries and counts are kept.
+	keepAdmissions = 62 * 24 * time.Hour
+	// keepNotices is the most notices Notices returns.
+	keepNotices = 5000
+	// maxDays bounds a scope's counts by day, which retention keeps to 64.
+	maxDays = state.MaxList
+	// maxGrants bounds the grants one run is read with. Each is a person's
+	// approval, so a run never nears it.
+	maxGrants = state.MaxList
+	// maxDayEntries bounds the entries of the one day a period that starts
+	// inside it reads.
+	maxDayEntries = 200_000
+	// maxEntries bounds Entries.
+	maxEntries = 1_000_000
+	// prunePages is how many pages of old entries one retention pass deletes.
+	// A pass that stops there runs again on the tenant's next write.
+	prunePages = 100
+)
 
-func (r *runSpend) counted() Spend { return r.live.ceil(r.settled) }
-
-type tenant struct {
-	days map[int64]*day
-	// active is the runs in flight, by id.
-	active  map[string]admission
-	notices []Entry
-	// keys is every Spent and Settled key still held, so each counts once.
-	keys map[string]bool
-	runs map[string]*runSpend
-	// grants is what people granted each run beyond a scope's limit.
-	grants map[string][]grant
-}
-
-// grant is one Granted entry, as a run's limit in a scope is judged on it.
-type grant struct {
-	scope string
-	grant policy.Grant
-	at    time.Time
-}
-
-// Ledger holds every tenant's usage.
+// Ledger is every tenant's usage, read and written per request.
 type Ledger struct {
-	mu      sync.RWMutex
-	entries []Entry
-	tenants map[string]*tenant
-	// oldest is the start of the oldest day any tenant holds.
-	oldest time.Time
+	st      state.Store
+	records *state.Table[record]
+	entries *state.Table[Entry]
 
-	// kept is where entries are written, each under its place in the
-	// ledger. seqs are those places, beside entries, and seq the last one
-	// given. pending are entries counted but not yet written, and stale the
-	// places of pruned entries not yet deleted.
-	kept    *state.Table[Entry]
-	seqs    []int64
-	seq     int64
-	pending map[int64]Entry
-	stale   []int64
-
-	// shared, when set, holds the counts every process judges by, and
-	// gives entries their keys. retry is entries counted here whose shared
-	// write failed, written by Flush.
+	// shared, when set, holds the counts every process judges by.
 	shared *Counters
-	retry  []Entry
+
+	// retained is the day each tenant's old entries were last deleted by
+	// this process: a cache that saves a read, dropped without changing an
+	// answer.
+	mu       sync.Mutex
+	retained map[string]string
 }
 
 // Option configures a ledger opened with Open.
@@ -367,143 +354,45 @@ type Option func(*Ledger)
 
 // WithCounters keeps the counts in shared counters, so every process that
 // opens a ledger on them admits, and judges spend, against the same counts.
-// The ledger still keeps its own entries in memory, for Notices and Entries,
-// and RunSpend from them.
 func WithCounters(c *Counters) Option { return func(l *Ledger) { l.shared = c } }
 
 // NewLedger returns an empty ledger in memory.
-func NewLedger() *Ledger { return &Ledger{tenants: map[string]*tenant{}} }
+func NewLedger() *Ledger {
+	l, _ := Open(nil)
+	return l
+}
 
-// Open returns a ledger that keeps its entries in st, rebuilt from what st
-// already has. A nil st is NewLedger.
+// Open returns a ledger that keeps its entries and counts in st. A nil st
+// is a new state.NewMemory.
 //
-// With WithCounters, st must be the state store on the counters' database,
-// and the counters are filled from st's entries the first time.
+// With WithCounters, st must be the state store on the counters' database.
+// Entries an earlier release kept are moved to where this one reads them,
+// once, and the counters are filled from them the first time.
 func Open(st state.Store, opts ...Option) (*Ledger, error) {
-	l := NewLedger()
+	l := &Ledger{retained: map[string]string{}}
 	for _, o := range opts {
 		o(l)
 	}
-	l.kept = state.NewTable[Entry](st, "usage")
 	if st == nil {
 		if l.shared != nil {
 			return nil, errors.New("usage: shared counters need a store")
 		}
-		return l, nil
+		st = state.NewMemory()
 	}
-	l.pending = map[int64]Entry{}
-	var last time.Time
-	err := l.kept.Load(func(_, key string, e Entry) error {
-		n, err := strconv.ParseInt(key, 10, 64)
-		if err != nil {
-			return fmt.Errorf("usage: an entry is kept under %q", key)
-		}
-		l.entries = append(l.entries, e)
-		l.seqs = append(l.seqs, n)
-		l.seq = max(l.seq, n)
-		_ = l.apply(e)
-		if e.At.After(last) {
-			last = e.At
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("usage: load: %w", err)
-	}
-	if l.shared != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
-		defer cancel()
-		if err := l.shared.seed(ctx, l); err != nil {
-			return nil, fmt.Errorf("usage: counters: %w", err)
-		}
-	}
-	if !last.IsZero() {
-		l.prune(last)
+	l.st = st
+	l.records = state.NewTable[record](st, namespace)
+	l.entries = state.NewTable[Entry](st, namespace)
+	if err := l.convert(); err != nil {
+		return nil, fmt.Errorf("usage: convert: %w", err)
 	}
 	return l, nil
 }
 
-// write writes what is pending and stale, and e when given. The caller holds
-// the lock. On failure nothing is cleared.
-func (l *Ledger) write(n int64, e *Entry) error {
-	b := l.kept.Batch()
-	for seq, p := range l.pending {
-		b.Put("", state.Seq(seq), p)
-	}
-	if e != nil {
-		b.Put("", state.Seq(n), *e)
-	}
-	for _, seq := range l.stale {
-		b.Delete("", state.Seq(seq))
-	}
-	if err := b.Commit(); err != nil {
-		return fmt.Errorf("usage: write: %w", err)
-	}
-	clear(l.pending)
-	l.stale = l.stale[:0]
-	return nil
-}
-
-// Flush writes the entries that could not be written when they were
-// appended, and deletes what was pruned since.
-func (l *Ledger) Flush() error {
-	if !l.kept.Enabled() {
-		return nil
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.shared != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
-		defer cancel()
-		for len(l.retry) > 0 {
-			n, _, _, err := l.shared.record(ctx, l.retry[0])
-			if err != nil {
-				return fmt.Errorf("usage: write: %w", err)
-			}
-			if n > 0 {
-				l.place(n)
-			}
-			l.retry = l.retry[1:]
-		}
-	}
-	if len(l.pending) == 0 && len(l.stale) == 0 {
-		return nil
-	}
-	return l.write(0, nil)
-}
-
-// place notes a key the shared counters gave an entry already in l.entries,
-// written after it was appended. The caller holds the lock.
-func (l *Ledger) place(n int64) {
-	l.seq = max(l.seq, n)
-}
-
-func (l *Ledger) of(name string) *tenant {
-	t, ok := l.tenants[name]
-	if !ok {
-		t = &tenant{days: map[int64]*day{}, active: map[string]admission{}, keys: map[string]bool{}, runs: map[string]*runSpend{}, grants: map[string][]grant{}}
-		l.tenants[name] = t
-	}
-	return t
-}
-
-func (l *Ledger) dayOf(t *tenant, at time.Time) *day {
-	start := policy.PeriodStart(policy.Day, at)
-	d, ok := t.days[start.Unix()]
-	if !ok {
-		d = &day{start: start, runs: map[string]int{}, spend: map[string]Spend{}}
-		t.days[start.Unix()] = d
-		if l.oldest.IsZero() || start.Before(l.oldest) {
-			l.oldest = start
-		}
-	}
-	return d
-}
-
 // Append records an entry and folds it into the counts. It is the only way the
-// counts change. A Spent or Settled entry whose key was already counted is
-// not recorded, and Append reports false. An error is a write that failed:
-// see Record for what was counted.
+// counts change. A Spent or Settled entry whose key was already counted, or
+// an Ended entry for a run not in flight, is not recorded, and Append reports
+// false: an event folded twice, by one process or two, is kept once. An error is a write that failed,
+// and nothing was recorded.
 func (l *Ledger) Append(e Entry) (bool, error) {
 	_, ok, err := l.Record(e)
 	return ok, err
@@ -512,15 +401,29 @@ func (l *Ledger) Append(e Entry) (bool, error) {
 // Record appends an entry, as Append does, and returns what it added to the
 // counts: for a Spent entry its call, unless its run had already settled a
 // total that covers it, and for a Settled entry only what the run's calls
-// already counted did not cover. Anything else adds no spend.
-//
-// With a store, an error says the entry could not be written. An admission
-// is then not counted, and Record reports false. Any other entry is counted
-// and reported true, and is written later.
+// already counted did not cover. Anything else adds no spend. With shared
+// counters, what was added counts calls other processes saw.
 func (l *Ledger) Record(e Entry) (Spend, bool, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.record(e)
+	if (e.Kind == Spent || e.Kind == Settled) && (e.Key == "" || e.Spend == nil) {
+		return Spend{}, false, nil
+	}
+	var added Spend
+	var ok bool
+	var err error
+	if l.shared != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		defer cancel()
+		_, added, ok, err = l.shared.record(ctx, e)
+	} else {
+		added, ok, err = recordLocal(l.st, e, nil)
+	}
+	if err != nil {
+		return Spend{}, false, fmt.Errorf("usage: write: %w", err)
+	}
+	if ok {
+		l.retain(e.Tenant, e.At)
+	}
+	return added, ok, nil
 }
 
 // QuotaKind is what a Quota bounds.
@@ -544,13 +447,21 @@ type Quota struct {
 	Max   int
 }
 
+// Judge decides, from the counts read, whether an admission goes ahead. It
+// reads them as they are, without holding them: a limit that must hold
+// exactly is a Quota.
+type Judge func(read Reader) (bool, error)
+
+// Reader reads what a scope has used since a time.
+type Reader func(scope policy.Scope, since time.Time) (policy.Usage, error)
+
 // Admit judges an admission and, if the judge lets it in and every quota
-// has room, records it. Quotas are taken as one step with the record: with
-// shared counters, no other process admits between the check and the count.
-// The judge reads the counts as they are, without holding them, so a limit
-// that must hold exactly is a quota; a judge decides what admission does not
-// count, such as spend. It reports whether the run was admitted. An error is
-// a judge's, or a write that failed, and the run is not admitted.
+// has room, records it. Quotas are taken as one step with the record: no
+// other process admits between the check and the count. The judge reads the
+// counts as they are, before that step, so a limit that must hold exactly is
+// a quota; a judge decides what admission does not count, such as spend. It
+// reports whether the run was admitted. An error is a judge's, or a write
+// that failed, and the run is not admitted.
 func (l *Ledger) Admit(e Entry, judge Judge, quotas ...Quota) (bool, error) {
 	ok, _, err := l.AdmitQuotas(e, judge, quotas)
 	return ok, err
@@ -560,393 +471,323 @@ func (l *Ledger) Admit(e Entry, judge Judge, quotas ...Quota) (bool, error) {
 // room. A run the judge refused has none.
 func (l *Ledger) AdmitQuotas(e Entry, judge Judge, quotas []Quota) (ok bool, full *Quota, err error) {
 	e.Kind = Admitted
-	if judge == nil {
-		judge = func(Reader) (bool, error) { return true, nil }
+	if judge != nil {
+		in, err := judge(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
+			return l.Usage(e.Tenant, scope, since)
+		})
+		if err != nil || !in {
+			return false, nil, err
+		}
 	}
 	if l.shared != nil {
-		return l.admitShared(e, judge, quotas)
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		defer cancel()
+		_, ok, full, err = l.shared.admit(ctx, e, quotas)
+	} else {
+		ok, full, err = admitLocal(l.st, e, quotas)
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	in, err := judge(func(scope policy.Scope, since time.Time) (policy.Usage, error) {
-		return l.usage(e.Tenant, scope, since), nil
-	})
-	if err != nil || !in {
-		return false, nil, err
-	}
-	for _, q := range quotas {
-		u := l.usage(e.Tenant, q.Scope, q.Since)
-		used := u.Runs
-		if q.Kind == QuotaConcurrent {
-			used = u.Concurrent
-		}
-		if used+1 > q.Max {
-			return false, &q, nil
-		}
-	}
-	_, ok, err = l.record(e)
-	return ok, nil, err
-}
-
-// admitShared admits through the shared counters, without the ledger's lock:
-// admissions in one process do not wait on each other here, only, near a
-// limit, in the database. The admission is folded into memory after.
-func (l *Ledger) admitShared(e Entry, judge Judge, quotas []Quota) (bool, *Quota, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
-	defer cancel()
-	n, ok, full, err := l.shared.admit(ctx, e, judge, quotas)
-	if err != nil || !ok {
-		return false, full, err
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.place(n)
-	l.seqs = append(l.seqs, n)
-	l.entries = append(l.entries, e)
-	_ = l.apply(e)
-	l.prune(e.At)
-	if len(l.stale) > 0 {
-		_ = l.write(0, nil)
-	}
-	return true, nil, nil
-}
-
-// record is Record. The caller holds the lock.
-func (l *Ledger) record(e Entry) (Spend, bool, error) {
-	if (e.Kind == Spent || e.Kind == Settled) && (e.Key == "" || e.Spend == nil || l.of(e.Tenant).keys[e.Key]) {
-		return Spend{}, false, nil
-	}
-	if l.shared != nil {
-		return l.recordShared(e)
-	}
-	var werr error
-	if l.kept.Enabled() {
-		n := l.seq + 1
-		if werr = l.write(n, &e); werr != nil {
-			if e.Kind == Admitted {
-				return Spend{}, false, werr
-			}
-			l.pending[n] = e
-		}
-		l.seq = n
-		l.seqs = append(l.seqs, n)
-	}
-	l.entries = append(l.entries, e)
-	added := l.apply(e)
-	l.prune(e.At)
-	if len(l.stale) > 0 && werr == nil {
-		// What a failed delete leaves is deleted by a later write.
-		_ = l.write(0, nil)
-	}
-	return added, true, werr
-}
-
-// recordShared records an entry through the shared counters, then folds it
-// into this process's ledger. What it added is the shared counters' figure,
-// which counts calls other processes saw.
-func (l *Ledger) recordShared(e Entry) (Spend, bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
-	defer cancel()
-	n, added, ok, err := l.shared.record(ctx, e)
 	if err != nil {
-		if e.Kind == Admitted {
-			return Spend{}, false, err
-		}
-		// It happened all the same: it is counted here and written by
-		// Flush, as an entry that could not be written is without counters.
-		l.retry = append(l.retry, e)
-		l.entries = append(l.entries, e)
-		l.seqs = append(l.seqs, 0)
-		added = l.apply(e)
-		l.prune(e.At)
-		return added, true, err
+		return false, nil, fmt.Errorf("usage: write: %w", err)
 	}
-	if !ok {
-		// Refused by the judge, or a key another process counted.
-		return Spend{}, false, nil
+	if ok {
+		l.retain(e.Tenant, e.At)
 	}
-	l.place(n)
-	l.seqs = append(l.seqs, n)
-	l.entries = append(l.entries, e)
-	_ = l.apply(e)
-	l.prune(e.At)
-	if len(l.stale) > 0 {
-		_ = l.write(0, nil)
-	}
-	return added, true, nil
+	return ok, full, nil
 }
 
-func (l *Ledger) apply(e Entry) Spend {
-	t := l.of(e.Tenant)
-	a := admission{project: e.Project, agent: e.Agent, client: e.Client, runID: e.RunID, within: e.Within, at: e.At}
-	var added Spend
-	switch e.Kind {
-	case Admitted:
-		d := l.dayOf(t, e.At)
-		d.admissions = append(d.admissions, a)
-		for _, k := range a.scopes() {
-			d.runs[k]++
-		}
-		t.active[e.RunID] = a
-	case Ended:
-		delete(t.active, e.RunID)
-	case Warned, Refused, Halted, Held, Granted:
-		if e.Kind == Granted && e.Scope != nil && e.Grant != nil && e.RunID != "" {
-			t.grants[e.RunID] = append(t.grants[e.RunID], grant{scope: scopeKey(*e.Scope), grant: *e.Grant, at: e.At})
-		}
-		t.notices = append(t.notices, e)
-		if len(t.notices) > keepNotices {
-			t.notices = t.notices[len(t.notices)-keepNotices:]
-		}
-	case Spent, Settled:
-		r, ok := t.runs[e.RunID]
-		if !ok {
-			r = &runSpend{}
-			t.runs[e.RunID] = r
-		}
-		before := r.counted()
-		if e.Kind == Spent {
-			r.live = r.live.add(*e.Spend)
-		} else {
-			r.settled = *e.Spend
-		}
-		if e.At.After(r.last) {
-			r.last = e.At
-		}
-		added = r.counted().beyond(before)
-		t.keys[e.Key] = true
-		// Kept even when it adds nothing, so its key is held as long as a
-		// counted one would be.
-		d := l.dayOf(t, e.At)
-		d.spends = append(d.spends, spent{admission: a, key: e.Key, spend: added})
-		for _, k := range a.scopes() {
-			d.spend[k] = d.spend[k].add(added)
-		}
-	}
-	return added
-}
-
-// prune drops the days no period can still need.
-func (l *Ledger) prune(now time.Time) {
-	cutoff := policy.PeriodStart(policy.Day, now.Add(-keepAdmissions))
-	if l.oldest.IsZero() || !l.oldest.Before(cutoff) {
-		return
-	}
-	if l.kept.Enabled() {
-		keep := l.seqs[:0]
-		for i, e := range l.entries {
-			if !e.At.Before(cutoff) {
-				keep = append(keep, l.seqs[i])
-				continue
-			}
-			if _, ok := l.pending[l.seqs[i]]; ok {
-				delete(l.pending, l.seqs[i])
-			} else {
-				l.stale = append(l.stale, l.seqs[i])
-			}
-		}
-		l.seqs = keep
-	}
-	l.entries = slices.DeleteFunc(l.entries, func(e Entry) bool { return e.At.Before(cutoff) })
-	l.oldest = time.Time{}
-	for _, t := range l.tenants {
-		for k, d := range t.days {
-			if d.start.Before(cutoff) {
-				for _, s := range d.spends {
-					delete(t.keys, s.key)
-				}
-				delete(t.days, k)
-				continue
-			}
-			if l.oldest.IsZero() || d.start.Before(l.oldest) {
-				l.oldest = d.start
-			}
-		}
-		for id, r := range t.runs {
-			if r.last.Before(cutoff) {
-				delete(t.runs, id)
-			}
-		}
-		for id, gs := range t.grants {
-			if gs = slices.DeleteFunc(gs, func(g grant) bool { return g.at.Before(cutoff) }); len(gs) == 0 {
-				delete(t.grants, id)
-			} else {
-				t.grants[id] = gs
-			}
-		}
-	}
-}
-
-func matches(s policy.Scope, a admission) bool {
-	switch s.Kind {
-	case policy.Project:
-		return a.project == s.Name || slices.Contains(a.within, s.Name)
-	case policy.Agent:
-		return a.agent == s.Name
-	case policy.Client:
-		return a.client == s.Name
-	}
-	return true
+func admissionOf(e Entry) admission {
+	return admission{project: e.Project, agent: e.Agent, client: e.Client, runID: e.RunID, within: e.Within, at: e.At}
 }
 
 // Usage counts what a scope has used: runs started since a time, runs in
-// flight now, and what model calls since that time spent. A day that starts
-// at or after since is read from its totals; only a day since falls inside is
-// read entry by entry.
-//
-// With shared counters, a since at the start of a UTC day (as every period
-// starts) is read from them, so it counts what every process counted. A
-// since inside a day, or a read that fails, is answered from this process's
-// own counts.
-func (l *Ledger) Usage(tenantName string, scope policy.Scope, since time.Time) policy.Usage {
-	if l.shared != nil && since.Equal(policy.PeriodStart(policy.Day, since)) {
-		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
-		defer cancel()
-		if u, err := l.shared.Usage(ctx, tenantName, scope, since); err == nil {
-			return u
-		}
+// flight now, and what model calls since that time spent. Whole days are read
+// from their totals; only a day since falls inside is read entry by entry.
+func (l *Ledger) Usage(tenantName string, scope policy.Scope, since time.Time) (policy.Usage, error) {
+	start := policy.PeriodStart(policy.Day, since)
+	if since.Equal(start) {
+		return l.dayUsage(tenantName, scope, start)
 	}
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return l.usage(tenantName, scope, since)
-}
-
-// usage is Usage from this process's counts. The caller holds the lock.
-func (l *Ledger) usage(tenantName string, scope policy.Scope, since time.Time) policy.Usage {
-	t, ok := l.tenants[tenantName]
-	if !ok {
-		return policy.Usage{}
+	u, err := l.dayUsage(tenantName, scope, start.AddDate(0, 0, 1))
+	if err != nil {
+		return u, err
 	}
-	var u policy.Usage
-	var sum Spend
-	key := scopeKey(scope)
-	for _, d := range t.days {
-		if !d.start.AddDate(0, 0, 1).After(since) {
-			continue
+	sum := Spend{Micros: u.Spend, ModelCalls: u.ModelCalls, Tokens: u.Tokens, Unpriced: u.UnpricedCalls, Other: u.OtherCosts}
+	prefix := "e:" + dayKey(start) + ":"
+	after := ""
+	for read := 0; ; {
+		page, next, err := l.records.List(tenantName, state.Query{Prefix: prefix, After: after, Limit: state.MaxList})
+		if err != nil {
+			return u, err
 		}
-		if !d.start.Before(since) {
-			u.Runs += d.runs[key]
-			sum = sum.add(d.spend[key])
-			continue
-		}
-		for _, a := range d.admissions {
-			if !a.at.Before(since) && matches(scope, a) {
+		for _, it := range page {
+			r := it.Value
+			if r.At.Before(since) || !matches(scope, admissionOf(r.Entry)) {
+				continue
+			}
+			switch r.Kind {
+			case Admitted:
 				u.Runs++
+			case Spent, Settled:
+				switch {
+				case r.Added != nil:
+					sum = sum.add(*r.Added)
+				case r.Kind == Spent && r.Spend != nil:
+					// Kept by an earlier release, which did not keep what
+					// it added: a call counts as it was reported.
+					sum = sum.add(*r.Spend)
+				}
 			}
 		}
-		for _, s := range d.spends {
-			if !s.at.Before(since) && matches(scope, s.admission) {
-				sum = sum.add(s.spend)
-			}
+		if read += len(page); read > maxDayEntries {
+			return u, fmt.Errorf("%w: usage: %q holds more than %d entries on %s", state.ErrTooMany, tenantName, maxDayEntries, dayKey(start))
 		}
-	}
-	for _, a := range t.active {
-		if matches(scope, a) {
-			u.Concurrent++
+		if next == "" {
+			break
 		}
+		after = next
 	}
 	u.Spend, u.Tokens, u.ModelCalls, u.UnpricedCalls, u.OtherCosts = sum.Micros, sum.Tokens, sum.ModelCalls, sum.Unpriced, sorted(sum.Other)
-	return u
+	return u, nil
 }
 
-// sorted orders costs by currency, so a sum read from a map is the same every
-// time.
-func sorted(costs []policy.Cost) []policy.Cost {
-	costs = slices.DeleteFunc(costs, func(c policy.Cost) bool { return c.Micros == 0 })
-	if len(costs) == 0 {
-		return nil
+// dayUsage is Usage since the start of a UTC day.
+func (l *Ledger) dayUsage(tenantName string, scope policy.Scope, since time.Time) (policy.Usage, error) {
+	if l.shared != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		defer cancel()
+		return l.shared.Usage(ctx, tenantName, scope, since)
 	}
-	slices.SortFunc(costs, func(a, b policy.Cost) int { return strings.Compare(a.Currency, b.Currency) })
-	return costs
+	return usageLocal(l.st, tenantName, scope, since)
 }
 
 // RunSpend is what has been counted for one run so far: the larger of its
 // calls and its settled total.
-func (l *Ledger) RunSpend(tenantName, runID string) Spend {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	t, ok := l.tenants[tenantName]
-	if !ok {
-		return Spend{}
+func (l *Ledger) RunSpend(tenantName, runID string) (Spend, error) {
+	var out Spend
+	var err error
+	if l.shared != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		defer cancel()
+		out, err = l.shared.runSpend(ctx, tenantName, runID)
+	} else {
+		out, err = runSpendLocal(l.st, tenantName, runID)
 	}
-	r, ok := t.runs[runID]
-	if !ok {
-		return Spend{}
-	}
-	out := r.counted()
 	out.Other = sorted(out.Other)
-	return out
+	return out, err
+}
+
+// grantsOf reads one run's Granted entries.
+func (l *Ledger) grantsOf(tenantName, runID string) ([]Entry, error) {
+	items, err := l.entries.All(tenantName, grantPrefix(runID), maxGrants)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Entry, 0, len(items))
+	for _, it := range items {
+		// A run whose id is another's and more shares its prefix.
+		if e := it.Value; e.RunID == runID && e.Scope != nil && e.Grant != nil {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 // Granted is what people granted one run beyond a scope's limits since a
-// time: the sum of its Granted entries in that scope.
-func (l *Ledger) Granted(tenantName, runID string, scope policy.Scope, since time.Time) policy.Grant {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	t, ok := l.tenants[tenantName]
-	if !ok {
-		return policy.Grant{}
+// time: the sum of its Granted entries in that scope, whichever process
+// recorded them.
+func (l *Ledger) Granted(tenantName, runID string, scope policy.Scope, since time.Time) (policy.Grant, error) {
+	gs, err := l.grantsOf(tenantName, runID)
+	if err != nil {
+		return policy.Grant{}, err
 	}
 	var out policy.Grant
 	key := scopeKey(scope)
-	for _, g := range t.grants[runID] {
-		if g.scope == key && !g.at.Before(since) {
-			out.Spend += g.grant.Spend
-			out.Tokens += g.grant.Tokens
+	for _, g := range gs {
+		if scopeKey(*g.Scope) == key && !g.At.Before(since) {
+			out.Spend += g.Grant.Spend
+			out.Tokens += g.Grant.Tokens
 		}
 	}
-	return out
+	return out, nil
 }
 
 // Grants counts the Granted entries of one run in a scope, whenever they
 // were made: how many times people let it go on there.
-func (l *Ledger) Grants(tenantName, runID string, scope policy.Scope) int {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	t, ok := l.tenants[tenantName]
-	if !ok {
-		return 0
+func (l *Ledger) Grants(tenantName, runID string, scope policy.Scope) (int, error) {
+	gs, err := l.grantsOf(tenantName, runID)
+	if err != nil {
+		return 0, err
 	}
 	n, key := 0, scopeKey(scope)
-	for _, g := range t.grants[runID] {
-		if g.scope == key {
+	for _, g := range gs {
+		if scopeKey(*g.Scope) == key {
 			n++
 		}
 	}
-	return n
+	return n, nil
 }
 
 // Notices returns a tenant's warnings, refusals, halts, holds and grants,
-// newest first.
-func (l *Ledger) Notices(tenantName string, limit int) []Entry {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	t, ok := l.tenants[tenantName]
-	if !ok {
-		return []Entry{}
+// newest first: at most limit, and at most keepNotices, which a limit of 0
+// asks for.
+func (l *Ledger) Notices(tenantName string, limit int) ([]Entry, error) {
+	if limit <= 0 || limit > keepNotices {
+		limit = keepNotices
 	}
-	out := slices.Clone(t.notices)
-	slices.Reverse(out)
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
+	out := []Entry{}
+	after := ""
+	for len(out) < limit {
+		page, next, err := l.entries.List(tenantName, state.Query{Prefix: "n:", After: after, Limit: min(limit-len(out), state.MaxList), Desc: true})
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range page {
+			out = append(out, it.Value)
+		}
+		if next == "" {
+			break
+		}
+		after = next
 	}
-	return out
+	return out, nil
 }
 
-// Entries returns the whole ledger, in the order it was appended.
-func (l *Ledger) Entries() []Entry {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return slices.Clone(l.entries)
+// Entries returns a tenant's whole ledger, by day and in the order each day
+// was appended. It is for tests and exports, and fails past maxEntries.
+func (l *Ledger) Entries(tenantName string) ([]Entry, error) {
+	items, err := l.records.All(tenantName, "e:", maxEntries)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Entry, len(items))
+	for i, it := range items {
+		out[i] = it.Value.Entry
+	}
+	return out, nil
 }
 
-// Rebuild replays entries into a new ledger. A ledger rebuilt from another's
-// entries answers every Usage question the same way.
+// Rebuild replays entries into a new ledger in memory. A ledger rebuilt from
+// another's entries answers every Usage question the same way.
 func Rebuild(entries []Entry) *Ledger {
 	l := NewLedger()
 	for _, e := range entries {
-		l.entries = append(l.entries, e)
-		_ = l.apply(e)
+		_, _, _ = l.Record(e)
 	}
 	return l
+}
+
+// retain deletes a tenant's entries, and counts, no period can still need,
+// once a day per tenant in this process, the day being that of the entry
+// just written. It is housekeeping: an error leaves them for the next try.
+func (l *Ledger) retain(tenant string, at time.Time) {
+	day := dayKey(at)
+	l.mu.Lock()
+	if l.retained[tenant] >= day {
+		l.mu.Unlock()
+		return
+	}
+	l.retained[tenant] = day
+	l.mu.Unlock()
+	cutoff := policy.PeriodStart(policy.Day, at.Add(-keepAdmissions))
+	done := true
+	if l.shared != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+		if err := l.shared.prune(ctx, tenant, cutoff); err != nil {
+			done = false
+		}
+		cancel()
+	}
+	if ok, err := l.prune(tenant, cutoff); err != nil || !ok {
+		done = false
+	}
+	if !done {
+		l.mu.Lock()
+		delete(l.retained, tenant)
+		l.mu.Unlock()
+	}
+}
+
+// prune deletes a tenant's entries of days before cutoff, oldest first, with
+// the records each is read by, and without shared counters the counts of
+// those days. It reports false when it stopped at prunePages with more left.
+func (l *Ledger) prune(tenant string, cutoff time.Time) (bool, error) {
+	before := dayKey(cutoff)
+	runs := map[string]bool{}
+	for range prunePages {
+		page, next, err := l.records.List(tenant, state.Query{Prefix: "e:", Limit: state.MaxList})
+		if err != nil {
+			return false, err
+		}
+		var ops []state.Op
+		gone := map[string]bool{}
+		del := func(key string) {
+			if !gone[key] {
+				gone[key] = true
+				ops = append(ops, state.Delete(tenant, key))
+			}
+		}
+		last := false
+		for _, it := range page {
+			if len(it.Key) < 10 || it.Key[2:10] >= before {
+				last = true
+				break
+			}
+			r, seq := it.Value, seqOf(it.Key)
+			del(it.Key)
+			if isNotice(r.Kind) {
+				del("n:" + seq)
+			}
+			if r.Kind == Granted && r.RunID != "" {
+				del(grantPrefix(r.RunID) + seq)
+			}
+			if l.shared == nil {
+				switch r.Kind {
+				case Spent, Settled:
+					del(spentKey(r.Key))
+					runs[r.RunID] = true
+					fallthrough
+				case Admitted:
+					for _, k := range admissionOf(r.Entry).scopes() {
+						del(dayCountKey(k, it.Key[2:10]))
+					}
+				}
+			}
+		}
+		if len(ops) > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), state.Timeout)
+			err := l.st.Write(ctx, namespace, ops...)
+			cancel()
+			if err != nil {
+				return false, err
+			}
+		}
+		if last || next == "" {
+			return true, l.pruneRuns(tenant, cutoff, runs)
+		}
+	}
+	return false, l.pruneRuns(tenant, cutoff, runs)
+}
+
+// pruneRuns deletes what runs whose last spend is before cutoff spent.
+func (l *Ledger) pruneRuns(tenant string, cutoff time.Time, runs map[string]bool) error {
+	t := state.NewTable[runRec](l.st, namespace)
+	for run := range runs {
+		r, err := t.Lookup(tenant, runKey(run))
+		if errors.Is(err, state.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !r.Value.Last.Before(cutoff) {
+			continue
+		}
+		b := t.Batch()
+		b.DeleteAt(tenant, runKey(run), r.Version)
+		// A spend recorded since is kept with its run.
+		if err := b.Commit(); err != nil && !errors.Is(err, state.ErrConflict) {
+			return err
+		}
+	}
+	return nil
 }

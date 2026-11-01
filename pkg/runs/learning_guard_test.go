@@ -31,9 +31,6 @@ func TestLearningGuardBindsRetainedOutcomeAndTenantAcrossRestart(t *testing.T) {
 		}
 		current, _ := index.Get("acme", "r1")
 		token := LearningSnapshot(current)
-		if err := index.Flush(); err != nil {
-			t.Fatal(err)
-		}
 		again, err := Open(st)
 		if err != nil {
 			t.Fatal(err)

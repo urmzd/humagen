@@ -7,12 +7,26 @@ import (
 // Keep the existing scheduler's admission switch aligned with durable work.
 // A failed activation becomes blocked instead of falsely reporting Watching.
 func (p *Platform) syncAssignmentSchedules() {
-	for _, tenant := range p.Operations.Tenants() {
+	err := p.Operations.EachTenant(func(tenant string) error {
+		p.syncTenantAssignmentSchedules(tenant)
+		return nil
+	})
+	if err != nil {
+		p.log.Error("platform: operation tenants could not be read", "error", err)
+	}
+}
+
+func (p *Platform) syncTenantAssignmentSchedules(tenant string) {
+	{
 		after := ""
 		if v, ok := p.operationScheduleCursor.Load(tenant); ok {
 			after = v.(string)
 		}
-		assignments, next := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool { return a.Schedule != "" })
+		assignments, next, err := p.Operations.AssignmentPage(tenant, after, operations.MaxResults, func(a operations.Assignment) bool { return a.Schedule != "" })
+		if err != nil {
+			p.log.Error("platform: assignments could not be read", "error", err)
+			return
+		}
 		p.operationScheduleCursor.Store(tenant, next)
 		for _, a := range assignments {
 			watching := a.State == operations.Watching || a.State == operations.Accepted

@@ -105,7 +105,7 @@ type runFiles struct {
 }
 
 func (f *runFiles) conversation() (string, error) {
-	r, err := f.p.Runs.Get(f.tenant, f.run)
+	r, err := f.p.runRecordOf(f.tenant, f.run)
 	if err != nil {
 		return "", fmt.Errorf("%w: this run has no conversation", ErrSandbox)
 	}

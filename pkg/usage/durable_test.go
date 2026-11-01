@@ -3,6 +3,7 @@ package usage
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,68 +37,70 @@ func TestRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(again.Entries(), l.Entries()) {
-			t.Fatalf("entries after restart = %+v\nwant %+v", again.Entries(), l.Entries())
+		if !reflect.DeepEqual(again.all("acme"), l.all("acme")) {
+			t.Fatalf("entries after restart = %+v\nwant %+v", again.all("acme"), l.all("acme"))
 		}
 		for _, scope := range []policy.Scope{all, launch, lead} {
-			if got, want := again.Usage("acme", scope, t0), l.Usage("acme", scope, t0); !reflect.DeepEqual(got, want) {
+			if got, want := again.used("acme", scope, t0), l.used("acme", scope, t0); !reflect.DeepEqual(got, want) {
 				t.Fatalf("%v after restart = %+v, want %+v", scope, got, want)
 			}
 		}
-		if got := again.Usage("acme", all, t0); got.Concurrent != 1 || got.Spend != 500 {
+		if got := again.used("acme", all, t0); got.Concurrent != 1 || got.Spend != 500 {
 			t.Fatalf("after restart: %+v", got)
 		}
 		// A call counted before the restart is not counted again.
 		if call(again, "acme", "r1", "r1/a1/1", t0.Add(time.Minute), Spend{Micros: 300, ModelCalls: 1}) {
 			t.Fatal("a call was counted twice across a restart")
 		}
-		if n := again.Notices("acme", 0); len(n) != 1 || n[0].Reason != "full" {
+		if n := again.notices("acme", 0); len(n) != 1 || n[0].Reason != "full" {
 			t.Fatalf("notices after restart = %+v", n)
 		}
 	})
 }
 
-// What the ledger prunes from memory it deletes from the store.
+// What no period needs any more is deleted from the store, entries and
+// counts alike.
 func TestRestartAfterPruning(t *testing.T) {
 	st := state.NewMemory()
 	l, _ := Open(st)
 	admit(l, "acme", "", "lead", "old", t0)
+	call(l, "acme", "old", "old/1", t0, Spend{Micros: 5, ModelCalls: 1})
 	later := t0.Add(keepAdmissions + 48*time.Hour)
 	admit(l, "acme", "", "lead", "new", later)
 	recs, _ := st.Load(t.Context(), "usage")
-	if len(recs) != 1 {
-		t.Fatalf("the store holds %d entries after a prune, want 1", len(recs))
+	for _, r := range recs {
+		if strings.Contains(r.Key, dayKey(t0)) || r.Key == spentKey("old/1") || r.Key == runKey("old") {
+			t.Fatalf("the store still holds %s after a prune", r.Key)
+		}
 	}
 	again, _ := Open(st)
-	if e := again.Entries(); len(e) != 1 || e[0].RunID != "new" {
+	if e := again.all("acme"); len(e) != 1 || e[0].RunID != "new" {
 		t.Fatalf("after restart = %+v", e)
 	}
 }
 
+// A write that fails is not counted, whatever the entry: an admission is
+// refused, and a call is reported to the caller, nothing kept to write later.
 func TestFailedWrites(t *testing.T) {
 	f := statetest.NewFaulty(state.NewMemory())
 	l, _ := Open(f)
 	f.Fail(statetest.ErrInjected)
-	// An admission that cannot be kept is not counted.
 	if ok, err := l.Append(Entry{Kind: Admitted, Tenant: "acme", Agent: "lead", RunID: "r1", At: t0}); ok || !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Append(admitted) = %v, %v", ok, err)
 	}
-	if got := l.Usage("acme", all, t0); got.Runs != 0 || got.Concurrent != 0 {
-		t.Fatalf("a refused admission was counted: %+v", got)
-	}
-	// A call already happened: it is counted and written later.
-	if added, ok, err := l.Record(Entry{Kind: Spent, Tenant: "acme", Agent: "lead", RunID: "r0", Key: "k1", Spend: &Spend{Micros: 7, ModelCalls: 1}, At: t0}); !ok || added.Micros != 7 || !errors.Is(err, statetest.ErrInjected) {
+	if added, ok, err := l.Record(Entry{Kind: Spent, Tenant: "acme", Agent: "lead", RunID: "r0", Key: "k1", Spend: &Spend{Micros: 7, ModelCalls: 1}, At: t0}); ok || !added.IsZero() || !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Record(spent) = %+v, %v, %v", added, ok, err)
 	}
-	if err := l.Flush(); !errors.Is(err, statetest.ErrInjected) {
-		t.Fatalf("Flush = %v", err)
-	}
 	f.Fail(nil)
-	if err := l.Flush(); err != nil {
-		t.Fatal(err)
+	if got := l.used("acme", all, t0); got.Spend != 0 || got.Runs != 0 || got.Concurrent != 0 {
+		t.Fatalf("a failed write was counted: %+v", got)
+	}
+	// Delivered again once the store is back, the call counts once.
+	if added, ok, err := l.Record(Entry{Kind: Spent, Tenant: "acme", Agent: "lead", RunID: "r0", Key: "k1", Spend: &Spend{Micros: 7, ModelCalls: 1}, At: t0}); !ok || added.Micros != 7 || err != nil {
+		t.Fatalf("Record(spent) after recovery = %+v, %v, %v", added, ok, err)
 	}
 	again, _ := Open(f)
-	if got := again.Usage("acme", all, t0); got.Spend != 7 || got.Runs != 0 {
+	if got := again.used("acme", all, t0); got.Spend != 7 || got.Runs != 0 {
 		t.Fatalf("after the store recovered and a restart = %+v", got)
 	}
 }
@@ -123,7 +126,7 @@ func TestWithinSurvivesARestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := again.Usage("acme", field, t0); got.Runs != 1 || got.Concurrent != 1 || got.Spend != 42 {
+		if got := again.used("acme", field, t0); got.Runs != 1 || got.Concurrent != 1 || got.Spend != 42 {
 			t.Fatalf("Field after restart = %+v", got)
 		}
 	})

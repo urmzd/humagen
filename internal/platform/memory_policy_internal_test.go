@@ -18,7 +18,7 @@ func TestAutomaticNotesRespectReadContextPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, decision := range []operations.Level{operations.Allow, operations.Ask, operations.Never} {
-		policy := p.Operations.Policy("t", operations.Scope{Kind: "workspace"})
+		policy, _ := p.Operations.Policy("t", operations.Scope{Kind: "workspace"})
 		if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: policy.Scope, Rules: map[operations.Category]operations.Level{operations.ReadContext: decision}}, policy.Version, "ada", time.Now()); err != nil {
 			t.Fatal(err)
 		}
@@ -27,7 +27,7 @@ func TestAutomaticNotesRespectReadContextPolicy(t *testing.T) {
 			t.Fatalf("%s: %s", decision, got)
 		}
 	}
-	policy := p.Operations.Policy("t", operations.Scope{Kind: "workspace"})
+	policy, _ := p.Operations.Policy("t", operations.Scope{Kind: "workspace"})
 	if _, err := p.Operations.SetPolicy("t", operations.Policy{Scope: policy.Scope, Rules: map[operations.Category]operations.Level{operations.ReadContext: operations.Allow}}, policy.Version, "ada", time.Now()); err != nil {
 		t.Fatal(err)
 	}

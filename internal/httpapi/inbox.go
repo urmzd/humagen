@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -127,15 +128,23 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 		query.Projects = []string{pr.Name}
 	}
 	page, next, err := s.P.InboxPage(who, query)
-	if err != nil {
+	if errors.Is(err, inbox.ErrCursor) {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
+		return
+	}
+	if err != nil {
+		s.problem(w, err)
 		return
 	}
 	var cursor *string
 	if next != "" {
 		cursor = &next
 	}
-	c := s.P.InboxCount(who)
+	c, err := s.P.InboxCount(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	ok(w, http.StatusOK, map[string]any{"messages": page, "next": cursor, "open": c.Open, "unread": c.Unread, "updates": c.Updates})
 }
 
@@ -147,7 +156,12 @@ func (s *Server) countInbox(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !acting {
 		return
 	}
-	ok(w, http.StatusOK, s.P.InboxCount(who))
+	c, err := s.P.InboxCount(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
 }
 
 func (s *Server) getInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {

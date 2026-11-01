@@ -77,13 +77,14 @@ func (p *Platform) observeUsage(ctx context.Context, e event.Envelope) {
 		RunID: run.ID, At: p.now(), EventAt: e.Time, Spend: new(usage.OfCall(c)),
 	})
 	if err != nil {
-		p.log.Error("platform: usage entry could not be written yet", "kind", usage.Spent, "run", run.ID, "error", err)
+		// Not counted: the run's settled total, at its end, counts the call.
+		p.log.Error("platform: usage entry could not be written", "kind", usage.Spent, "run", run.ID, "error", err)
 	}
 	if !counted {
 		return
 	}
 	if added.Micros > 0 {
-		run, _ = p.Runs.Spend(run.ID, added.Micros)
+		run, _ = p.Runs.Spend(run.Tenant, run.ID, added.Micros)
 	}
 	p.enforce(ctx, run, added)
 }
@@ -96,7 +97,16 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 		return
 	}
 	now := p.now()
-	applied := p.applied(run.Tenant, chainOf(run.Project, run.Within), run.Agent, run.Client, now)
+	applied, err := p.applied(run.Tenant, chainOf(run.Project, run.Within), run.Agent, run.Client, now)
+	if err != nil {
+		// A limit that cannot be read is not a limit that allows: the run
+		// stops, as it would at a limit it reached.
+		p.log.Error("platform: the limits on a run could not be read", "run", run.ID, "error", err)
+		if !run.Stopping {
+			p.halt(ctx, run, "Stopped: its limits could not be read")
+		}
+		return
+	}
 	if call.Unpriced > 0 || len(call.Other) > 0 {
 		for _, a := range applied {
 			if a.Policy.SpendLimit > 0 {
@@ -198,13 +208,13 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 			Client: run.Client, RunID: run.ID, At: p.now(), Spend: new(usage.Of(u.Own)),
 		})
 		if err != nil {
-			p.log.Error("platform: usage entry could not be written yet", "kind", usage.Settled, "run", run.ID, "error", err)
+			p.log.Error("platform: usage entry could not be written", "kind", usage.Settled, "run", run.ID, "error", err)
 		}
 		micros = added.Micros
 	}
 	// From here a call reported late changes the ledger, by what goes beyond
 	// this total, and not the run's Spent, which settles into its caller now.
-	p.Runs.SetUsage(run.ID, recorded, micros)
+	p.Runs.SetUsage(run.Tenant, run.ID, recorded, micros)
 	p.halting.Delete(run.ID)
 	p.holding.Range(func(k, _ any) bool {
 		if key, _ := k.(string); strings.HasPrefix(key, run.ID+"\x00") {

@@ -433,7 +433,7 @@ func TestASourceAProjectNamesIsNotDeletedFromUnderIt(t *testing.T) {
 	if !errors.Is(err, platform.ErrSourceInUse) || !strings.Contains(err.Error(), "Field") {
 		t.Fatalf("deleting a source Field names = %v", err)
 	}
-	if !slices.ContainsFunc(p.Knowledge.List(tenant), func(s knowledge.Source) bool { return s.Name == "playbook" }) {
+	if !slices.ContainsFunc(must(p.Knowledge.List(tenant)), func(s knowledge.Source) bool { return s.Name == "playbook" }) {
 		t.Fatal("a refused delete deleted the source")
 	}
 	// A caller who may not read projects is told a project names it, not which.
@@ -460,4 +460,11 @@ func TestASourceAProjectNamesIsNotDeletedFromUnderIt(t *testing.T) {
 	if err := p.DeleteSource(bo, "playbook"); err != nil {
 		t.Fatalf("deleting a source no longer named = %v", err)
 	}
+}
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }
