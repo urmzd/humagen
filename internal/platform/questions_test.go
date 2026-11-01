@@ -575,6 +575,8 @@ func TestPublishingWaitsForApproval(t *testing.T) {
 		tools: map[string][]string{"writer": {platform.ToolFileWrite, platform.ToolPublish}, "other": {platform.ToolFileWrite, platform.ToolPublish}},
 		shape: map[string]func(*wire.AgentSpec){"writer": approvals, "other": approvals},
 	}, platform.Config{})
+	// A loaded machine records a run after its first tool call has begun.
+	p.DelayRecord(30 * time.Millisecond)
 	ctx := t.Context()
 	for _, c := range []struct {
 		agent, action string

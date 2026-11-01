@@ -842,7 +842,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	p.calls.Lock()
 	defer p.calls.Unlock()
 
-	parent, err := p.callerOf(tenant, runID)
+	parent, err := p.runRecordOf(tenant, runID)
 	if err != nil {
 		return runs.Run{}, err
 	}
@@ -935,12 +935,13 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	return child, nil
 }
 
-// callerOf is the record of a run making a call. A run starts before its
-// record is written (Invoke accepts it, then records it, holding the
-// admission lock throughout), so a call it makes at once can come before its
-// record: one still being admitted is waited for, rather than refused as a
-// run that does not exist.
-func (p *Platform) callerOf(tenant, runID string) (runs.Run, error) {
+// runRecordOf is the record of a run acting from inside its own turn: making a
+// call, or using its files. A run starts before its record is written
+// (Invoke accepts it, then records it, holding the admission lock
+// throughout), so what it does at once can come before its record: one still
+// being admitted is waited for, rather than refused as a run that does not
+// exist.
+func (p *Platform) runRecordOf(tenant, runID string) (runs.Run, error) {
 	if _, admitting := p.admitting.Load(runID); admitting {
 		p.admission.Lock()
 		defer p.admission.Unlock()

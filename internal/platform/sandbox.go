@@ -592,7 +592,7 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 		if req.RunID == "" {
 			return "", "", nil, fmt.Errorf("%w: files are not available to a turn another agent delegated", ErrSandbox)
 		}
-		run, err := p.Runs.Get(req.Tenant, req.RunID)
+		run, err := p.runRecordOf(req.Tenant, req.RunID)
 		if err != nil {
 			return "", "", nil, fmt.Errorf("%w: this run has no conversation", ErrSandbox)
 		}
@@ -633,7 +633,7 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				if req.RunID == "" {
 					return "", fmt.Errorf("outcome: a recorded run is required")
 				}
-				if _, err := p.Runs.Get(req.Tenant, req.RunID); err != nil {
+				if _, err := p.runRecordOf(req.Tenant, req.RunID); err != nil {
 					return "", err
 				}
 				data, _ := json.Marshal(outcome)
