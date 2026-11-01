@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.66.0 (2026-11-01)
+
+### Features
+
+- **notice**: watch notices reach every replica through Postgres NOTIFY (#177) ([bde73fe](https://github.com/urmzd/humagen/commit/bde73fe1a72dc79be3917641175fab60ee3c3aed))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.65.0...v0.66.0)
+
+
 ## 0.65.0 (2026-11-01)
 
 ### Features
