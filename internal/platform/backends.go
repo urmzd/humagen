@@ -33,6 +33,7 @@ import (
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/notice"
 	"github.com/urmzd/humagen/pkg/notifications"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/people"
@@ -93,6 +94,11 @@ type Backends struct {
 	// RoomCounters are a room's rate and each person's runs in flight
 	// (pkg/rooms) on the same database. Nil keeps them in this process.
 	RoomCounters *rooms.PostgresCounters
+	// Notices carries the inbox's and the threads' change notices to every
+	// process on the database (fiber's bus.Notices, Postgres NOTIFY), so a
+	// watcher on one replica hears a change made on another. Nil keeps
+	// them in this process.
+	Notices notice.Relay
 }
 
 // OpenPostgres puts every backend on one Postgres database: humagen's state
@@ -149,7 +155,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Shared: shared, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters, RoomCounters: roomCounters}, st.Close, nil
+	return Backends{State: st, Shared: shared, Agents: defs, Ledger: l, Queue: q, Bus: events, Counters: counters, RoomCounters: roomCounters, Notices: bus.NewNotices(pool)}, st.Close, nil
 }
 
 func (b Backends) check() error {

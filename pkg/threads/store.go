@@ -2,6 +2,7 @@ package threads
 
 import (
 	"cmp"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -12,10 +13,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
+	"github.com/urmzd/humagen/pkg/notice"
 	"github.com/urmzd/humagen/pkg/state"
 
 	"github.com/urmzd/humagen/internal/legacy"
@@ -127,14 +128,15 @@ type activity struct {
 // any number of processes on one database agree.
 //
 // What it holds in memory is who is watching: a notice reaches the watchers
-// of the process that made the change.
+// of the process that made the change and, while Relay runs, every other
+// process's on the database.
 type Store struct {
-	kept *state.Table[json.RawMessage]
-
-	mu       sync.Mutex
-	watchers map[string]map[int]chan Notice
-	nextW    int
+	kept    *state.Table[json.RawMessage]
+	notices *notice.Hub[Notice]
 }
+
+// noticeTopic names the threads' notices between processes.
+const noticeTopic = "threads"
 
 // NewStore returns an empty store in memory.
 func NewStore() *Store {
@@ -154,7 +156,7 @@ func Open(st state.Store) (*Store, error) {
 	if st == nil {
 		st = state.NewMemory()
 	}
-	s := &Store{kept: state.NewTable[json.RawMessage](st, namespace), watchers: map[string]map[int]chan Notice{}}
+	s := &Store{kept: state.NewTable[json.RawMessage](st, namespace), notices: notice.New[Notice](noticeTopic)}
 	if err := s.convert(st); err != nil {
 		return nil, fmt.Errorf("threads: load: %w", err)
 	}
@@ -162,38 +164,22 @@ func Open(st state.Store) (*Store, error) {
 }
 
 func (s *Store) tell(tenant string, n Notice) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, ch := range s.watchers[tenant] {
-		// A watcher that is not keeping up misses a notice and never blocks
-		// a post. It refetches on the next one.
-		select {
-		case ch <- n:
-		default:
-		}
-	}
+	// A watcher that is not keeping up misses a notice and never blocks a
+	// post. It refetches on the next one.
+	s.notices.Tell(tenant, n)
 }
 
-// Watch reports what happens in a tenant's threads, through this process,
-// until cancel is called.
+// Watch reports what happens in a tenant's threads until cancel is called:
+// through this process and, while Relay runs, through every other process
+// on the database.
 func (s *Store) Watch(tenantName string) (<-chan Notice, func()) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.watchers[tenantName] == nil {
-		s.watchers[tenantName] = map[int]chan Notice{}
-	}
-	ch := make(chan Notice, 32)
-	id := s.nextW
-	s.nextW++
-	s.watchers[tenantName][id] = ch
-	return ch, func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		delete(s.watchers[tenantName], id)
-		if len(s.watchers[tenantName]) == 0 {
-			delete(s.watchers, tenantName)
-		}
-	}
+	return s.notices.Watch(tenantName)
+}
+
+// Relay carries the threads' notices to and from the other processes on
+// their database through r until ctx ends (see pkg/notice).
+func (s *Store) Relay(ctx context.Context, r notice.Relay, report func(error)) error {
+	return s.notices.Relay(ctx, r, report)
 }
 
 // writeErr wraps a failed write, keeping state.ErrConflict matchable so a

@@ -41,7 +41,9 @@ process with its stores beside it.
   deployment runs on one elected leader, so the server runs as more than one
   replica. More than one needs `stores.kind: postgres` and shared blobs
   (`blobs.kind: s3` or `gcs`); the chart refuses otherwise. It upgrades with a
-  rolling update that adds no pod before one is gone. Turns scale on their own
+  rolling update that adds no pod before one is gone. A change to the inbox
+  or a conversation made through one replica reaches the live streams every
+  replica serves, through Postgres NOTIFY. Turns scale on their own
   with workers: see [Process roles](#process-roles).
 - **Sign-in in a container is OIDC.** `auth.kind` `dev`, `mock` and
   `tailscale` trust loopback and refuse any other listen address, and a
