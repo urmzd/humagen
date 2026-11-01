@@ -45,7 +45,12 @@ func TestASlackAppRunsOnOneReplicaAndMovesWhenItStops(t *testing.T) {
 				return nil
 			})
 		}()
-		t.Cleanup(func() { cancel(); _ = <-r.done })
+		t.Cleanup(func() {
+			cancel()
+			if err := <-r.done; err != nil && !errors.Is(err, context.Canceled) {
+				t.Error(err)
+			}
+		})
 		return r
 	}
 	a, b := start(), start()
