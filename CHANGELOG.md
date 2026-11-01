@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.64.0 (2026-11-01)
+
+### Features
+
+- **stores**: every store reads and writes per request (RFC 0004, change 9) (#176) ([86f42c5](https://github.com/urmzd/humagen/commit/86f42c549d18dfb7dd3eeaac697af75255576cc4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.63.0...v0.64.0)
+
+
 ## 0.63.0 (2026-10-31)
 
 ### Features
