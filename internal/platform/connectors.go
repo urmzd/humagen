@@ -500,6 +500,14 @@ func (s *surface) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	s.route(w, r, body, true)
+}
+
+// route offers a verified-size request to the clients it claims. A request
+// no seat claims may be for a client another replica just created: when
+// refresh is set, this replica reads the clients' change count, seats what
+// changed, and offers the request once more.
+func (s *surface) route(w http.ResponseWriter, r *http.Request, body []byte, refresh bool) {
 	claim := s.claim(r, body)
 	var unmanaged *seat
 	offered := 0
@@ -522,6 +530,8 @@ func (s *surface) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case unmanaged != nil:
 		s.hand(unmanaged, w, r, body)
+	case offered == 0 && refresh && s.p.refreshClients(true):
+		s.route(w, r, body, false)
 	case offered == 0:
 		http.NotFound(w, r)
 	default:
@@ -551,7 +561,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 
 // Deliver gives a run's event to the client that carries it.
 func (s *surface) Deliver(ctx context.Context, to address.Address, e event.Envelope) error {
-	st, err := s.carrier(to, e)
+	st, err := s.carrierOrRefresh(to, e)
 	if err != nil {
 		return err
 	}
@@ -614,6 +624,16 @@ func (s *surface) carrier(to address.Address, e event.Envelope) (*seat, error) {
 		return nil, fmt.Errorf("%w: no %s client serves %s", connector.ErrUndeliverable, s.name, to.Workspace)
 	}
 	return found, nil
+}
+
+// carrierOrRefresh is carrier, read again once after this replica seats
+// what another replica changed, when no seat carried the event.
+func (s *surface) carrierOrRefresh(to address.Address, e event.Envelope) (*seat, error) {
+	st, err := s.carrier(to, e)
+	if err != nil && errors.Is(err, connector.ErrUndeliverable) && s.p.refreshClients(true) {
+		return s.carrier(to, e)
+	}
+	return st, err
 }
 
 // actor picks the client whose actions a run gets on this surface: the client

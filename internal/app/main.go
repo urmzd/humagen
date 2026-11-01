@@ -585,10 +585,21 @@ func serve(o Options, args []string, d serveDefaults) error {
 		}
 		// Each Slack app is a client of this server, started once it listens.
 		// One that cannot start is logged and left off: the server, the console
-		// and every other surface keep running without it.
+		// and every other surface keep running without it. A Slack app holds
+		// one Socket Mode connection per deployment, so it runs on the
+		// replica that holds its lease, and moves when that replica stops.
+		var slackHeld atomic.Int32
 		for _, app := range slack {
 			go func() {
-				err := app.run(ctx, "http://"+ln.Addr().String(), *publicURL, log)
+				key := app.leaseKey()
+				lease, err := openLease(stateKind, getenv, log, key, func() time.Duration {
+					return time.Duration(slackHeld.Load()) * slackLeaseDelay
+				})
+				if err == nil {
+					err = runLeased(ctx, lease, &slackHeld, log, key, func(ctx context.Context) error {
+						return app.run(ctx, "http://"+ln.Addr().String(), *publicURL, log)
+					})
+				}
 				if err != nil {
 					log.Error("slack app is off", "tenant", app.tenant, "error", err)
 				}

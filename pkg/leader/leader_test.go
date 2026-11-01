@@ -163,3 +163,78 @@ func TestATermThatReturnsCampaignsAgain(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func keyed(t *testing.T, pool *pgxpool.Pool, key string, opts ...Option) *Postgres {
+	t.Helper()
+	e, err := NewPostgres(pool.Config().ConnConfig, append([]Option{WithInterval(tick), WithKey(key)}, opts...)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+// A lease on a key is held by one process at a time, is taken over when
+// its holder stops, and is apart from the deployment's leader.
+func TestALeaseIsHeldOnceAndTakenOver(t *testing.T) {
+	pool := statetest.Pool(t)
+	var together, most, lt, lm atomic.Int32
+	lead := campaign(t, elector(t, pool), &lt, &lm)
+	a := campaign(t, keyed(t, pool, "slack-app:acme"), &together, &most)
+	b := campaign(t, keyed(t, pool, "slack-app:acme"), &together, &most)
+	eventually(t, "a holder", func() bool { return a.leading.Load() || b.leading.Load() })
+	eventually(t, "the leader beside the lease", lead.leading.Load)
+	time.Sleep(10 * tick)
+	if most.Load() != 1 {
+		t.Fatalf("%d processes held one lease at once", most.Load())
+	}
+	holder, other := a, b
+	if b.leading.Load() {
+		holder, other = b, a
+	}
+	holder.stop()
+	<-holder.done
+	eventually(t, "the other process to take the lease over", other.leading.Load)
+	if most.Load() != 1 {
+		t.Fatalf("%d processes held one lease at once", most.Load())
+	}
+}
+
+// Two processes and two keys: a process that holds a lease waits longer
+// for the next, so each process ends up holding one.
+func TestLeasesSpreadAcrossProcesses(t *testing.T) {
+	pool := statetest.Pool(t)
+	type process struct{ held atomic.Int32 }
+	var procs [2]process
+	var cands [2][2]*candidate
+	for i := range procs {
+		delay := WithDelay(func() time.Duration { return time.Duration(procs[i].held.Load()) * 5 * tick })
+		for k, key := range []string{"slack-app:acme", "slack-app:globex"} {
+			// The first process starts first, so it would take both keys
+			// without the delay.
+			if i == 0 && k == 1 {
+				eventually(t, "the first process to hold its first lease", func() bool { return procs[0].held.Load() >= 1 })
+			}
+			e := keyed(t, pool, key, delay)
+			ctx, cancel := context.WithCancel(t.Context())
+			c := &candidate{stop: cancel, done: make(chan struct{})}
+			go func() {
+				defer close(c.done)
+				_ = e.Campaign(ctx, func(ctx context.Context) {
+					procs[i].held.Add(1)
+					c.leading.Store(true)
+					<-ctx.Done()
+					c.leading.Store(false)
+					procs[i].held.Add(-1)
+				})
+			}()
+			t.Cleanup(func() { cancel(); <-c.done })
+			cands[i][k] = c
+		}
+	}
+	eventually(t, "both keys held", func() bool {
+		return (cands[0][0].leading.Load() || cands[1][0].leading.Load()) && (cands[0][1].leading.Load() || cands[1][1].leading.Load())
+	})
+	if procs[0].held.Load() != 1 || procs[1].held.Load() != 1 {
+		t.Fatalf("held: %d and %d, want one each", procs[0].held.Load(), procs[1].held.Load())
+	}
+}

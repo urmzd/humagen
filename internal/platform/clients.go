@@ -104,6 +104,7 @@ func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, er
 		return clients.Client{}, err
 	}
 	p.seat(saved, st)
+	p.touchClients()
 	p.log.Info("platform: client created", "tenant", tenant, "client", saved.ID, "surface", saved.Surface, "by", by)
 	return saved, nil
 }
@@ -198,6 +199,7 @@ func (p *Platform) TurnOffClient(_ context.Context, tenant, id, by string) error
 		return err
 	}
 	p.seat(saved, nil)
+	p.touchClients()
 	p.log.Info("platform: client updated", "tenant", tenant, "client", id, "version", saved.Version, "enabled", saved.Enabled, "by", by)
 	return nil
 }
@@ -250,6 +252,7 @@ func (p *Platform) replace(old, c clients.Client, by string, in ClientInput) (cl
 		return clients.Client{}, err
 	}
 	p.seat(saved, st)
+	p.touchClients()
 	p.log.Info("platform: client updated", "tenant", tenant, "client", id, "version", saved.Version, "enabled", saved.Enabled, "by", by)
 	return saved, nil
 }
@@ -271,6 +274,7 @@ func (p *Platform) DeleteClient(_ context.Context, tenant, id, by string) error 
 		return err
 	}
 	p.surfaces[string(old.Surface)].remove(tenant, id)
+	p.touchClients()
 	if err := p.secrets.Drop(tenant, id); err != nil {
 		return err
 	}

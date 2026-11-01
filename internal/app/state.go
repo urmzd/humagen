@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -98,12 +99,26 @@ func openLeader(f stateFlags, getenv func(string) string, log *slog.Logger) (lea
 	if strings.TrimSpace(*f.kind) != "postgres" {
 		return nil, nil
 	}
+	return openElector(getenv, leader.WithLogger(log))
+}
+
+// openLease returns a lease on key: on the stores' Postgres, held by one
+// process on that schema at a time and taken over when it stops; in memory,
+// leader.Always, since memory is one process.
+func openLease(f stateFlags, getenv func(string) string, log *slog.Logger, key string, delay func() time.Duration) (leader.Elector, error) {
+	if strings.TrimSpace(*f.kind) != "postgres" {
+		return leader.Always{}, nil
+	}
+	return openElector(getenv, leader.WithLogger(log), leader.WithKey(key), leader.WithDelay(delay))
+}
+
+func openElector(getenv func(string) string, opts ...leader.Option) (*leader.Postgres, error) {
 	cfg, err := pgx.ParseConfig(strings.TrimSpace(getenv(postgresURLEnv)))
 	if err != nil {
 		// The error could quote the URL, password and all.
 		return nil, fmt.Errorf("leader: $%s is not a Postgres URL", postgresURLEnv)
 	}
-	return leader.NewPostgres(cfg, leader.WithLogger(log))
+	return leader.NewPostgres(cfg, opts...)
 }
 
 // registerSpec puts an agent spec from a file in the registry: a new agent,
