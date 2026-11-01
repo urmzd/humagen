@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/humagen/pkg/notice"
 	"github.com/urmzd/humagen/pkg/state"
 )
 
@@ -127,7 +128,7 @@ func moved(tenantName string, old []state.Record) ([]state.Op, error) {
 		entries = append(entries, entry{r.Key, sc.change(tenantName)})
 	}
 	slices.SortFunc(entries, func(a, b entry) int { return strings.Compare(a.key, b.key) })
-	scratch := &Store{st: state.NewMemory(), watchers: map[string]map[int]chan Notice{}}
+	scratch := &Store{st: state.NewMemory(), notices: notice.New[Notice](noticeTopic)}
 	for _, e := range entries {
 		// The cut names messages whose records were still being deleted:
 		// they are gone.
