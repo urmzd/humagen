@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.67.0 (2026-11-01)
+
+### Features
+
+- **clients**: seat clients on every replica and lease Socket Mode Slack apps (#178) ([45a6f14](https://github.com/urmzd/humagen/commit/45a6f14e04b522bef3308faa0c59ff9c43e00355))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.66.0...v0.67.0)
+
+
 ## 0.66.0 (2026-11-01)
 
 ### Features
